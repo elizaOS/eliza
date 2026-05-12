@@ -18,6 +18,7 @@
 import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
 import { OmnivoiceModelMissing, OmnivoiceTranscriptionNotSupported } from "./errors";
 import { OmnivoiceContext } from "./ffi";
+import { registerOmnivoiceCloser } from "./shutdown";
 import { getSingingContext, runSingingSynthesis } from "./singing";
 import { pcmFloatToWavBuffer, runSynthesis } from "./synth";
 import type { OmnivoiceSynthesizeOptions, OmnivoiceVoiceDesign } from "./types";
@@ -66,6 +67,20 @@ function loadSettings(runtime: IAgentRuntime): RuntimeSettings {
 }
 
 let speechCtx: OmnivoiceContext | null = null;
+
+/**
+ * Free the cached speech context, if any. Idempotent. Exposed for the
+ * shutdown hook in `./shutdown` — keep in sync with the singing-side
+ * `closeSingingContext()`.
+ */
+export function closeSpeechContext(): void {
+  if (speechCtx) {
+    speechCtx.close();
+    speechCtx = null;
+  }
+}
+
+registerOmnivoiceCloser(closeSpeechContext);
 
 async function getSpeechContext(settings: RuntimeSettings): Promise<OmnivoiceContext> {
   if (speechCtx) return speechCtx;
@@ -154,4 +169,8 @@ export {
   OmnivoiceTranscriptionNotSupported,
 } from "./errors";
 export { runSynthesis, pcmFloatToWavBuffer } from "./synth";
-export { runSingingSynthesis, getSingingContext } from "./singing";
+export { runSingingSynthesis, getSingingContext, closeSingingContext } from "./singing";
+export {
+  closeOmnivoiceShutdown,
+  registerOmnivoiceShutdownHooks,
+} from "./shutdown";
