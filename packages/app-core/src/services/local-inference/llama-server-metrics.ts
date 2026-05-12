@@ -53,7 +53,12 @@ export interface LlamaServerMetricSnapshot {
   kvCacheUsedCells: number;
 }
 
-const METRIC_KEYS: Record<string, keyof LlamaServerMetricSnapshot> = {
+type MetricNumericField = Exclude<
+  keyof LlamaServerMetricSnapshot,
+  "scrapeOk" | "hasGenerationCounters"
+>;
+
+const METRIC_KEYS: Record<string, MetricNumericField> = {
   "llamacpp:prompt_tokens_total": "promptTokensTotal",
   "llamacpp:n_tokens_predicted_total": "predictedTokensTotal",
   "llamacpp:n_prompt_tokens_processed_total": "promptTokensProcessedTotal",
@@ -97,7 +102,7 @@ export function parsePrometheusMetrics(
     kvCacheUsedCells: 0,
   };
   const buckets = new Map<
-    keyof LlamaServerMetricSnapshot,
+    MetricNumericField,
     { unlabeled: number | null; labeledSum: number }
   >();
   let hasGenerationCounters = false;
