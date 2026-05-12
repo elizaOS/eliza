@@ -1,0 +1,14 @@
+[package]
+name = "hl-common"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+chrono = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+csv = { workspace = true }

@@ -1,0 +1,1617 @@
+# Source datasets to download and normalize.
+#
+# Fields:
+#   slug:         short filesystem-safe name (used as data/raw/<slug>/ dir)
+#   repo_id:      HF dataset repo id
+#   normalizer:   adapter family in scripts/normalize.py
+#   weight:       relative sampling weight in pack_dataset.py (1.0 = baseline)
+#   est_size_gb:  rough on-disk estimate so the downloader can budget
+#   priority:     "core" | "extra" — core is required for a useful run
+#   notes:        free text
+#
+# License field is documented for traceability; downloader does NOT enforce.
+# pack_dataset.py emits a manifest.json with per-source counts and licenses.
+
+datasets:
+  # =================== CANONICAL TARGET FORMAT ===================
+  # ScamBench already publishes formats/eliza-train.jsonl — passthrough.
+  - slug: scambench
+    repo_id: shaw/scambench-training
+    normalizer: scambench_passthrough
+    weight: 4.0
+    est_size_gb: 0.5
+    priority: core
+    license: cc-by-sa-4.0
+    notes: |
+      Canonical eliza format already published as a config. We pull the
+      `eliza` config splits directly: formats/eliza-{train,test,validation}.jsonl
+
+  # =================== CLAUDE DISTILLATION (REASONING SFT) ===================
+  # Kassadin88/Claude-Distills — ~129k {system,user,assistant} chats
+  # distilled from Claude Sonnet 4.6 (~120k) and Claude Opus 4.6 (~10k)
+  # plus mixed reasoning subsets. Assistant turns ship with literal
+  # <think>...</think>final-answer reasoning — preserved verbatim by the
+  # `claude_distill` adapter so the student model learns the exact
+  # surface that Qwen3.6 / Qwopus3.6-27B-v1-preview emit.
+  #
+  # Used as an SFT pre-training stage to bootstrap reasoning quality
+  # before the elizaOS-specific training formats are layered on top.
+  - slug: claude-distills
+    repo_id: Kassadin88/Claude-Distills
+    normalizer: claude_distill
+    weight: 0.0
+    est_size_gb: 1.0
+    priority: core
+    license: mit
+    notes: |
+      `claude_distill.jsonl` is the clean unified split (~129k records,
+      messages = [{role:system,content:""}, {role:user,...}, {role:assistant,
+      "<think>...</think>final"}]). The adapter preserves <think> tags and
+      assigns task_type="claude_distill"; format_for_training.py uses a
+      minimal CLAUDE_DISTILL_SYSTEM prompt so the model learns the
+      thinking-mode shape from data, not a long header.
+
+  # =================== LOCAL MILADY CORPORA =====================
+  # Self-hosted nubilio bot — cron-snapshot trajectories already in
+  # OpenAI {messages:[…]} shape. Adapter passes the assistant content
+  # through verbatim because the action-planner output is already
+  # structured elizaOS XML.
+  - slug: nubilio-trajectories
+    local_path: local-corpora/nubilio-trajectories/training-datasets
+    normalizer: nubilio_trajectories
+    weight: 3.0
+    est_size_gb: 0.3
+    priority: core
+    license: proprietary
+    notes: |
+      Cron snapshots from the self-hosted milady bot at milady.nubs.site
+      (date range 2026-04-19 → 2026-05-02, ~6.3k examples spanning
+      action_planner + response tasks). Drop in nubilio-trajectories/
+      under training/ to ingest.
+
+  # Scam defense corpus alias. The former proprietary
+  # local-corpora/full-corpus-unweighted source is replaced by the public
+  # ScamBench training release.
+  - slug: scam-defense-corpus
+    repo_id: shaw/scambench-training
+    normalizer: scambench_passthrough
+    weight: 4.0
+    est_size_gb: 0.5
+    priority: core
+    license: cc-by-sa-4.0
+    notes: |
+      Public ScamBench training release used for the scam-defense corpus
+      slot. Pulls the canonical `formats/eliza-{train,test,validation}.jsonl`
+      files from shaw/scambench-training.
+
+  # Multi-party fantasy roleplay — Facebook LIGHT MultiLIGHT.
+  - slug: light-multilight
+    local_path: local-corpora/light-multilight/processed
+    normalizer: light_multilight
+    weight: 2.0
+    est_size_gb: 0.2
+    priority: core
+    license: mit
+    notes: |
+      Multi-party text-adventure dialogues from Facebook LIGHT
+      (https://github.com/facebookresearch/LIGHT). Source tarball
+      http://parl.ai/downloads/projects/multilight/multilight.tar.gz
+      contains an EpisodeDB + per-episode JSON dumps; pre-processed by
+      `local-corpora/light-multilight/preprocess.py` into split JSONLs
+      with one conversation per line ({episode_id, location, characters,
+      messages}). 10,917 episodes / ~324k turns / 3 named characters
+      per episode. Each turn yields one positive routing record
+      (RESPOND for the actual speaker), N-1 negative routing records
+      (IGNORE for the other characters at that turn), and one reply
+      record for the actual speaker.
+
+  # =================== TOOL CALLING (CORE) =======================
+  - slug: hermes-fc-v1
+    repo_id: NousResearch/hermes-function-calling-v1
+    normalizer: hermes_fc
+    weight: 2.0
+    est_size_gb: 0.3
+    priority: core
+    license: apache-2.0
+
+  - slug: hermes-fc-thinking-v1
+    repo_id: Jofthomas/hermes-function-calling-thinking-V1
+    normalizer: hermes_fc_thinking
+    weight: 2.0
+    est_size_gb: 0.4
+    priority: core
+    license: apache-2.0
+
+  - slug: glaive-fc-v2
+    repo_id: glaiveai/glaive-function-calling-v2
+    normalizer: glaive_fc
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: apache-2.0
+
+  - slug: glaive-fc-v2-reasoning
+    repo_id: Magneto/glaive-function-calling-v2-reasoning-nemotron49b
+    normalizer: glaive_fc_reasoning
+    weight: 1.5
+    est_size_gb: 1.5
+    priority: core
+    license: apache-2.0
+
+  # xlam-fc-60k removed: Salesforce/xlam-function-calling-60k is a gated
+  # repo (click-through CC-BY-4.0 acknowledgment + APIGen citation) that
+  # snapshot_download cannot fetch without an authenticated HF token. We
+  # don't have one configured in this environment. Re-add when a token is
+  # available; the `xlam_fc` adapter still exists in lib/adapters.py.
+
+  - slug: sharegpt-tool-calls
+    repo_id: Guilherme34/sharegpt-tool-calls
+    normalizer: sharegpt_tool_calls
+    weight: 1.0
+    est_size_gb: 0.2
+    priority: core
+    license: unknown
+
+  - slug: functions-53k
+    repo_id: crumb/Functions-53K
+    normalizer: functions_53k
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: core
+    license: unknown
+
+  - slug: bitagent-tool-calling
+    repo_id: BitAgent/tool_calling
+    normalizer: bitagent
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: core
+    license: unknown
+
+  - slug: toolhop
+    repo_id: bytedance-research/ToolHop
+    normalizer: toolhop
+    weight: 1.0
+    est_size_gb: 0.2
+    priority: core
+    license: cc-by-4.0
+
+  # =================== AGENTIC / OPERATOR / MOBILE ================
+  - slug: mobile-actions
+    repo_id: google/mobile-actions
+    normalizer: mobile_actions
+    weight: 1.0
+    est_size_gb: 1.5
+    priority: core
+    license: cc-by-4.0
+
+  - slug: nemotron-rl-tool-use
+    repo_id: nvidia/Nemotron-RL-Agentic-Conversational-Tool-Use-Pivot-v1
+    normalizer: nemotron_rl_tool_use
+    weight: 1.5
+    est_size_gb: 1.0
+    priority: core
+    license: nvidia
+
+  - slug: qwen36-trajectory
+    repo_id: zake7749/Qwen-3.6-plus-agent-tool-calling-trajectory
+    normalizer: qwen36_trajectory
+    weight: 2.0
+    est_size_gb: 1.0
+    priority: core
+    license: unknown
+
+  # =================== HERMES REASONING / TRACES =================
+  - slug: hermes-reasoning-tool-use
+    repo_id: interstellarninja/hermes_reasoning_tool_use
+    normalizer: hermes_reasoning_tool_use
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: apache-2.0
+
+  - slug: dolci-instruct-tool-use
+    repo_id: allenai/Dolci-Instruct-SFT-Tool-Use
+    normalizer: dolci_instruct
+    weight: 1.5
+    est_size_gb: 1.0
+    priority: core
+    license: odc-by
+
+  - slug: tool-reasoning-coding-nemotron
+    repo_id: AmanPriyanshu/tool-reasoning-sft-CODING-nvidia-Nemotron-Agentic-v1
+    normalizer: nemotron_coding_reasoning
+    weight: 1.0
+    est_size_gb: 0.7
+    priority: extra
+    license: nvidia
+
+  - slug: hf-coding-tools-traces
+    repo_id: clem/hf-coding-tools-traces
+    normalizer: hf_coding_tools_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: hermes-agent-reasoning-traces
+    repo_id: lambda/hermes-agent-reasoning-traces
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.7
+    priority: extra
+    license: unknown
+
+  - slug: nemotron-nano-hermes-traces
+    repo_id: ning423/nemotron-nano-hermes-traces
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: hermes-omniforge-qwen36
+    repo_id: ning423/Hermes-OmniForge-Qwen36-27B-full-v0.3.0-unsloth
+    normalizer: hermes_omniforge
+    weight: 1.5
+    est_size_gb: 2.0
+    priority: extra
+    license: unknown
+
+  - slug: hermes-agent-traces-filtered
+    repo_id: DJLougen/hermes-agent-traces-filtered
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: aureth-corpus-hermes
+    repo_id: OusiaResearch/Aureth-Corpus-Hermes4.3-Generated
+    normalizer: aureth
+    weight: 1.0
+    est_size_gb: 1.0
+    priority: extra
+    license: unknown
+
+  - slug: hermes-3
+    repo_id: NousResearch/Hermes-3-Dataset
+    normalizer: hermes_3
+    weight: 1.0
+    est_size_gb: 2.0
+    priority: extra
+    license: apache-2.0
+
+  - slug: carnice-glm5-hermes
+    repo_id: kai-os/carnice-glm5-hermes-traces
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: talos-kimi-hermes
+    repo_id: DJLougen/Talos-kimi-k2.6-Hermes-synthetic
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  # =================== MCP TOOL CALLING ===========================
+  - slug: mcp-flow
+    repo_id: wwh0411/MCP-Flow
+    normalizer: mcp_flow
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+    notes: |
+      function_call/<provider>/<tool>.json files; each is a per-tool spec
+      with examples. Custom adapter unrolls examples into ElizaRecords.
+
+  - slug: mcp-memory-auto-trigger
+    repo_id: PiGrieco/mcp-memory-auto-trigger-ultimate
+    normalizer: mcp_messages
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: core
+    license: unknown
+
+  - slug: mcp-agent-training-data
+    repo_id: muhammadtlha944/mcp-agent-training-data
+    normalizer: mcp_messages
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: core
+    license: unknown
+
+  - slug: limbic-eval-tool-use-mcp
+    repo_id: quotientai/limbic-eval-tool-use-mcp
+    normalizer: mcp_messages
+    weight: 0.5
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: eval-only, single test split
+
+  - slug: deepfabric-github-mcp
+    repo_id: alwaysfurther/deepfabric-github-mcp
+    normalizer: mcp_messages
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+
+  - slug: playwright-mcp-toolcalling
+    repo_id: jdaddyalbs/playwright-mcp-toolcalling
+    normalizer: mcp_messages
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+
+  - slug: mcp-routing-dataset
+    repo_id: dranganath76/mcp-routing-dataset
+    normalizer: mcp_routing
+    weight: 0.0
+    est_size_gb: 0.1
+    priority: core
+    license: unknown
+
+  - slug: ha-mcp-dataset
+    repo_id: jones2748/ha-mcp-dataset
+    normalizer: gemma_text
+    weight: 1.0
+    est_size_gb: 0.2
+    priority: core
+    license: unknown
+
+  - slug: phi3-mcp
+    repo_id: emrecandan0/phi3_mcp_dataset
+    normalizer: mcp_messages
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: core
+    license: unknown
+
+  # =================== AGENT TRAJECTORIES / SHELL ====================
+  - slug: agent-trove
+    repo_id: open-thoughts/AgentTrove
+    normalizer: agent_trove
+    weight: 1.5
+    est_size_gb: 1.5
+    priority: core
+    license: unknown
+
+  - slug: nemotron-terminal-corpus
+    repo_id: laion/nemotron-terminal-corpus-unified
+    normalizer: terminal_corpus
+    weight: 2.0
+    est_size_gb: 1.5
+    priority: core
+    license: unknown
+    notes: SHELL_COMMAND training corpus.
+
+  # =================== REASONING / CoT (Jackrong) ====================
+  - slug: deepseek-v4-distill-8000x
+    repo_id: Jackrong/DeepSeek-V4-Distill-8000x
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: glm-51-reasoning-1m
+    repo_id: Jackrong/GLM-5.1-Reasoning-1M-Cleaned
+    normalizer: reasoning_cot
+    weight: 0.5
+    est_size_gb: 3.0
+    priority: extra
+    license: unknown
+
+  - slug: kimi-k25-reasoning-1m
+    repo_id: Jackrong/Kimi-K2.5-Reasoning-1M-Cleaned
+    normalizer: reasoning_cot
+    weight: 0.5
+    est_size_gb: 3.0
+    priority: extra
+    license: unknown
+
+  - slug: qwen35-reasoning-700x
+    repo_id: Jackrong/Qwen3.5-reasoning-700x
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: glm-47-multiturn-cot
+    repo_id: Jackrong/glm-4.7-multiturn-CoT
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 1.0
+    priority: extra
+    license: unknown
+
+  # =================== TOOL USE EXTRAS ===============================
+  - slug: open-paws-tool-use
+    repo_id: open-paws/tool-use-llama-format
+    normalizer: open_paws_llama
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+
+  - slug: tool-reasoning-toucan
+    repo_id: AmanPriyanshu/tool-reasoning-sft-TOOLS-toucan-1.5m-sft-tool-use-data-cleaned-rectified-333k
+    normalizer: hermes_traces
+    weight: 1.5
+    est_size_gb: 2.0
+    priority: core
+    license: unknown
+
+  - slug: tool-reasoning-jupyter
+    repo_id: AmanPriyanshu/tool-reasoning-sft-CODING-jupyter-agent-dataset-sft-tool-use-agent-data-cleaned-rectified
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: akicou-merged-tool-use
+    repo_id: Akicou/merged-tool-use
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: hermes-reasoning-mlx-goekdeniz
+    repo_id: Goekdeniz-Guelmez/Hermes-Reasoning-Tool-Use-MLX
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: hermes-reasoning-mlx-community
+    repo_id: mlx-community/hermes-reasoning-tool-use
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: hermes-reasoning-cursing
+    repo_id: patrickleenyc/hermes_reasoning_tool_use_with_cursing
+    normalizer: hermes_traces
+    weight: 0.5
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  - slug: tool-use-multiturn-thinking
+    repo_id: AIGym/tool-use-multiturn-thinking
+    normalizer: hermes_traces
+    weight: 1.5
+    est_size_gb: 1.0
+    priority: core
+    license: unknown
+
+  - slug: easyr1-pc-agent-omniparser
+    repo_id: mlfoundations-cua-dev/easyr1-pc-agent-e-only-4k9-omniparser-qwen-tool-call-4MP
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: sage-agent-tools
+    repo_id: intellistream/sage-agent-tools
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: tool-call-ack-agent
+    repo_id: ChandraAdhikarla/tool-call-ack-dataset-agent
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  - slug: agent-conversations-retrieval
+    repo_id: jamescalam/agent-conversations-retrieval-tool
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  - slug: agent-tool-use-dialogue-mgmgrand
+    repo_id: Mgmgrand420/Agent-Tool-Use-Dialogue-Open-Dataset
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  - slug: agent-tool-use-dialogue-deepnlp
+    repo_id: DeepNLP/Agent-Tool-Use-Dialogue-Open-Dataset
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  # =================== RAW DIALOGUE (consumed by synthesize_routing.py)
+  # These do NOT yield supervised records during normalize; the routing
+  # synthesizer mixes them into multi-thread RESPOND/IGNORE training data.
+  - slug: discord-chat
+    repo_id: breadlicker45/discord-chat
+    normalizer: dialogue_raw
+    weight: 0.0
+    est_size_gb: 1.0
+    priority: core
+    license: unknown
+    notes: raw — used by synthesize_routing.py
+
+  - slug: telegram-filtered-messages
+    repo_id: TomData/telegram-filtered-messages
+    normalizer: dialogue_raw
+    weight: 0.0
+    est_size_gb: 1.0
+    priority: core
+    license: unknown
+    notes: raw — used by synthesize_routing.py
+
+  - slug: discord-dialogues
+    repo_id: mookiezi/Discord-Dialogues
+    normalizer: dialogue_raw
+    weight: 0.0
+    est_size_gb: 1.0
+    priority: core
+    license: unknown
+    notes: raw — used by synthesize_routing.py
+
+  # ============== AGENT/TOOL-USE EXTRAS (not yet in registry) ==============
+  - slug: pi-mono
+    repo_id: badlogicgames/pi-mono
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: monodox-agent-tool-use
+    repo_id: monodox/agent-conversations-and-tool-use
+    normalizer: hermes_traces
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  # ============== OPUS / FRONTIER REASONING DISTILLATIONS ==================
+  # Many of these are the same source data re-uploaded by different users; the
+  # pack-time hash dedupe collapses identical records, so weighting & priorities
+  # are matched to "raw signal" not "republish count".
+  - slug: opus-4647-reasoning-8k7
+    repo_id: angrygiraffe/claude-opus-4.6-4.7-reasoning-8.7k
+    normalizer: reasoning_cot
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+
+  - slug: swebench-verified-opus-47
+    repo_id: SWE-Router/swebench-verified-claude-opus-4.7
+    normalizer: reasoning_cot
+    weight: 2.0
+    est_size_gb: 1.5
+    priority: core
+    license: mit
+    notes: SWE-bench verified solved with Opus 4.7 — strong coding signal.
+
+  - slug: opus-47-max-sft-labs
+    repo_id: labs-aibusiness/reasoning-distill-opus-4-7-max-sft
+    normalizer: chatml_text
+    weight: 1.0
+    est_size_gb: 1.5
+    priority: core
+    license: unknown
+
+  - slug: opus-47-max-bas95
+    repo_id: Bas95/reasoning-distill-claude-opus-4-7-max
+    normalizer: reasoning_cot
+    weight: 0.5
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-10kx-bas95
+    repo_id: Bas95/claude-opus-4.6-10000x
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 1.5
+    priority: core
+    license: unknown
+
+  - slug: opus-47-reachy-app-clem
+    repo_id: clem/opus_4.7_buildmyfirstreachyminiapp
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-10kx-knowurknottty
+    repo_id: knowurknottty/claude-opus-4.6-10000x
+    normalizer: reasoning_cot
+    weight: 0.5
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-47-reachy-mini-clem
+    repo_id: clem/opus4.7_reachy_mini_app_building
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-reasoning-12k-senaro
+    repo_id: senaro/opus-4.6-reasoning-sft-12k
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.3
+    priority: extra
+    license: unknown
+
+  - slug: opus-47-thinking-25k-ansulev
+    repo_id: ansulev/Opus4.7_thinking_max_distill_god_seed_25k
+    normalizer: reasoning_cot
+    weight: 1.5
+    est_size_gb: 1.5
+    priority: core
+    license: unknown
+
+  - slug: zomi-opus-tatoeba
+    repo_id: zomi-language-corpora/English-Zomi-OPUS_Tatoeba_v20230412
+    normalizer: hermes_traces
+    weight: 0.2
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: |
+      Helsinki OPUS translation corpus (English↔Zomi) — NOT Claude Opus.
+      Low weight; pack will mostly drop these unless we add a translation
+      adapter later.
+
+  - slug: opus-47-lordx64-cleaned
+    repo_id: TeichAI/lordx64-claude-opus-4.7-max-cleaned
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 1.0
+    priority: extra
+    license: unknown
+
+  - slug: opus-47-huihui
+    repo_id: huihui-ai/opus-4-7
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 1.0
+    priority: extra
+    license: unknown
+
+  - slug: noesis-1m-multimodel
+    repo_id: AMAImedia/NOESIS-1M-reasoning-router-code-math-psych-opus47-deepseek4-qwen36-gemini31-r1-gpt54
+    normalizer: noesis_text
+    weight: 2.0
+    est_size_gb: 5.0
+    priority: core
+    license: apache-2.0
+    notes: "1M-row mixed reasoning/router/code/math from many frontier models. Flat User/Assistant text dump."
+
+  - slug: opus-46-quyanh
+    repo_id: quyanh/opus-4.6
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 1.0
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-ptbr-3kx
+    repo_id: traderpedroso/PTBR-Opus-4.6-Reasoning-3000x-filtered
+    normalizer: reasoning_cot
+    weight: 0.5
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+    notes: Portuguese-BR variant.
+
+  - slug: opus-47-max-sft-snow257
+    repo_id: Snow257/reasoning-distill-opus-4-7-max-sft
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.0
+    priority: extra
+    license: unknown
+
+  - slug: loomstack-opus-distill-prompted
+    repo_id: Itachi-42/loomstack-opus-distill-prompted
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-10kx-skipharlow
+    repo_id: skipharlow/claude-opus-4.6-10000x
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: loomstack-opus-distill
+    repo_id: mohit-1710/loomstack-opus-distill
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-10kx-edawking
+    repo_id: Edawking/claude-opus-4.6-10000x
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-47-reasoning-cot-ansulev
+    repo_id: ansulev/opus-4.7-reasoning-cot
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 1.0
+    priority: core
+    license: unknown
+
+  - slug: opus-47-max-sft-ansulev
+    repo_id: ansulev/reasoning-distill-opus-4-7-max-sft
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-3kx-youssef
+    repo_id: Youssef001122/Opus-4.6-Reasoning-3000x-filtered
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-reasoning-filtered-octomed
+    repo_id: OctoMed/Opus-Reasoning-Filtered
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-47-max-sft-trilogix
+    repo_id: Trilogix1/reasoning-distill-opus-4-7-max-sft
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-47-thinking-25k-trilogix
+    repo_id: Trilogix1/Opus4.7_thinking_max_distill_god_seed_25k
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-47-thinking-25k-withinus
+    repo_id: WithinUsAI/Opus4.7_thinking_max_distill_god_seed_25k
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-10kx-jeremydh
+    repo_id: Jeremydh911/claude-opus-4.6-10000x
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 1.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-translation-en-de-cs
+    repo_id: davidmeikle/opus-translation-train-en-de-cs
+    normalizer: hermes_traces
+    weight: 0.2
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+    notes: |
+      Helsinki OPUS translation (en→de/cs) — NOT Claude Opus. Low weight.
+
+  - slug: opus-46-3kx-bakrianto
+    repo_id: bakrianto/Opus-4.6-Reasoning-3000x-filtered
+    normalizer: reasoning_cot
+    weight: 0.3
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  - slug: opus-46-2kx-compactai
+    repo_id: CompactAI-O/Opus-4.6-Reasoning-2160x
+    normalizer: reasoning_cot
+    weight: 1.0
+    est_size_gb: 0.5
+    priority: extra
+    license: unknown
+
+  # =================== MULTI-PARTY → should_respond ================
+  # These corpora are NOT consumed by normalize.py. They are read by
+  # scripts/synthesize_multiparty_routing.py, which chunks each
+  # conversation, picks one participant as the "agent", and labels
+  # RESPOND vs IGNORE based on whether the agent actually spoke next
+  # in the original transcript or was directly addressed. Output goes
+  # to data/synthesized/multiparty_should_respond.jsonl with
+  # task_type="should_respond" — same shape as the runtime handler
+  # consumes. Weight=0 here so pack_dataset.py ignores raw rows.
+
+  - slug: ishiki-labs-multi-party-dialogue
+    repo_id: ishiki-labs/multi-party-dialogue
+    normalizer: dialogue_raw
+    weight: 0.0
+    est_size_gb: 0.4
+    priority: core
+    license: apache-2.0
+    notes: |
+      Pre-labeled SPEAK/SILENT decision points across AMI meetings,
+      Friends scripts, and SPGI calls. ~50/50 split out of the box.
+      Synthesizer maps SPEAK→RESPOND, SILENT→IGNORE.
+
+  - slug: mrfakename-multilight-sharegpt
+    repo_id: mrfakename/multilight-sharegpt
+    normalizer: dialogue_raw
+    weight: 0.0
+    est_size_gb: 0.05
+    priority: core
+    license: apache-2.0
+    notes: |
+      Multi-character ShareGPT roleplay. Synthesizer chunks each
+      conversation and picks a real character as the agent.
+
+  - slug: cfettuccini-multipartyconv
+    repo_id: CFettuccini/multipartyconv
+    normalizer: dialogue_raw
+    weight: 0.0
+    est_size_gb: 0.05
+    priority: core
+    license: unknown
+    notes: |
+      CSV of `<s>[INST]>>{user1} : msg>>{user2} : msg...` strings;
+      synthesizer parses the >>{name} : pattern.
+
+  - slug: nu-dialogue-multi-relational-mp
+    repo_id: nu-dialogue/multi-relational-multi-party-chat-corpus
+    normalizer: dialogue_raw
+    weight: 0.0
+    est_size_gb: 0.05
+    priority: core
+    license: cc-by-nd-4.0
+    notes: |
+      Japanese multi-party dialogues. The HF entry is a script-loader
+      that snapshot_download skips; synthesizer fetches the upstream
+      GitHub release zip directly on first run.
+
+  # =================== n8n WORKFLOW GENERATION =====================
+  # Universal n8n adapter feature-detects across six row shapes
+  # (messages, prompt+json, alpaca, raw workflow JSON, kv pairs, DPO).
+  # All emit task_type="n8n_workflow_generation". Many of these are
+  # republishes of the same underlying corpora — pack-time hash dedupe
+  # collapses identical records, so weighting is matched to raw signal.
+
+  - slug: n8n-mega-workflows
+    repo_id: Ker102/n8n-mega-workflows
+    normalizer: n8n_workflow
+    weight: 2.0
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+    notes: 131k alpaca-style {instruction,input,output} with category + complexity.
+
+  - slug: n8n-toolkit-davidrpatton
+    repo_id: DavidrPatton/n8n-Toolkit
+    normalizer: n8n_workflow
+    weight: 1.5
+    est_size_gb: 0.6
+    priority: core
+    license: unknown
+    notes: 56k messages-shape with scraped readme + screenshot metadata.
+
+  - slug: n8n-workflows-templates-0xarchit
+    repo_id: 0xarchit/n8n_workflows_templates_dataset
+    normalizer: n8n_workflow
+    weight: 1.0
+    est_size_gb: 0.8
+    priority: core
+    license: unknown
+    notes: 49k {key,value} parquet — synthetic prompt → workflow JSON.
+
+  - slug: n8n-master-corpus
+    repo_id: Ker102/n8n-master-corpus
+    normalizer: n8n_workflow
+    weight: 1.5
+    est_size_gb: 0.1
+    priority: core
+    license: unknown
+    notes: 36k raw workflow_json + integrations/category. Synthetic prompt.
+
+  - slug: n8n-workflows-sft-eclaude
+    repo_id: eclaude/n8n-workflows-sft
+    normalizer: n8n_workflow
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+    notes: messages-shape with train/eval splits.
+
+  - slug: n8n-workflow-dataset-ruh-ai
+    repo_id: ruh-ai/n8n-workflow-dataset
+    normalizer: n8n_workflow
+    weight: 1.5
+    est_size_gb: 0.2
+    priority: core
+    license: unknown
+    notes: prompt+json+thinking — thinking stashed in metadata.
+
+  - slug: n8n-workflows-v2-4k-arkelai
+    repo_id: arkelai/n8n-workflows-v2-4k
+    normalizer: n8n_workflow
+    weight: 1.5
+    est_size_gb: 0.1
+    priority: core
+    license: unknown
+    notes: prompt+answer pairs.
+
+  - slug: n8n-workflows-yagnik
+    repo_id: Yagnik-patel-12/N8n_workflows_dataset
+    normalizer: n8n_workflow
+    weight: 0.5
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-grpo-4k-aks729
+    repo_id: AKS729/grpo_n8n_dataset_4k
+    normalizer: n8n_workflow
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: core
+    license: unknown
+    notes: same prompt+json+thinking shape as ruh-ai filtered set; dedupe handles overlap.
+
+  - slug: n8n-workflow-template-rubenz
+    repo_id: rubenz-org/n8n-workflow-template
+    normalizer: n8n_workflow
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-workflow-npv2k1
+    repo_id: npv2k1/n8n-workflow
+    normalizer: n8n_workflow
+    weight: 0.5
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: small input+output pair set; high overlap with mzw2004/Di12/tahakk/fmd053131.
+
+  - slug: n8n-workflow-yonibabi
+    repo_id: yonibabi/n8n-workflow-dataset
+    normalizer: n8n_workflow
+    weight: 0.3
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-workflow-di12
+    repo_id: Di12/n8n_workflow
+    normalizer: n8n_workflow
+    weight: 0.3
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-workflow-mzw2004
+    repo_id: mzw2004/n8n-workflow
+    normalizer: n8n_workflow
+    weight: 0.3
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-workflow-tahakk
+    repo_id: tahakk/n8n-workflow
+    normalizer: n8n_workflow
+    weight: 0.3
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-workflow-fmd053131
+    repo_id: fmd053131/n8n-workflow
+    normalizer: n8n_workflow
+    weight: 0.3
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-workflows-batuhanilgarr
+    repo_id: batuhanilgarr/n8n-workflows-dataset
+    normalizer: n8n_workflow
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: 525 raw workflows with name/nodes/connections.
+
+  - slug: n8n-grpo-2k-aks729
+    repo_id: AKS729/grpo_n8n_dataset_2k
+    normalizer: n8n_workflow
+    weight: 0.5
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-preped-heriman
+    repo_id: Heriman/n8n_preped
+    normalizer: n8n_workflow
+    weight: 0.0
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+
+  - slug: n8n-workflow-ruh-ai
+    repo_id: ruh-ai/n8n-workflow
+    normalizer: n8n_workflow
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: 2.1k prompt+json pairs.
+
+  - slug: n8n-training-mustaphal
+    repo_id: MustaphaL/training_data_n8n_workflows
+    normalizer: n8n_workflow
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: ships alpaca, simple {prompt,completion}, and openai messages variants.
+
+  - slug: n8n-testset-ruh-ai
+    repo_id: ruh-ai/n8n-testset
+    normalizer: n8n_workflow
+    weight: 0.3
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: small eval-only split.
+
+  - slug: n8n-workflows-thinking-stmasson
+    repo_id: stmasson/n8n-workflows-thinking
+    normalizer: n8n_workflow
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: unknown
+    notes: |
+      Multi-format SFT/DPO/ORPO/GRPO splits with explicit <thinking> traces.
+      Adapter takes the SFT 'messages' rows directly and the DPO 'chosen'
+      branch; rejected branch is dropped.
+
+  - slug: n8nbuilder-perspicacious
+    repo_id: Perspicacious/n8nbuilder-n8n-workflows-dataset
+    normalizer: n8n_workflow
+    weight: 1.0
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: ships both alpaca train.jsonl and openai train_openai.jsonl.
+
+  - slug: n8nbuilder-velixar
+    repo_id: velixar-ai/n8nbuilder-n8n-workflows-dataset
+    normalizer: n8n_workflow
+    weight: 0.5
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: republish of n8nbuilder corpus; dedupe collapses overlap.
+
+  - slug: n8nbuilder-webman
+    repo_id: webman/n8nbuilder-n8n-workflows-dataset
+    normalizer: n8n_workflow
+    weight: 0.5
+    est_size_gb: 0.1
+    priority: extra
+    license: unknown
+    notes: republish of n8nbuilder corpus; dedupe collapses overlap.
+
+  # =================== ABLITERATION CALIBRATION (NOT IN TRAIN MIX) ===================
+  # mlabonne/harmful_behaviors + mlabonne/harmless_alpaca are calibration
+  # corpora for orthogonal-projection abliteration (refusal-direction
+  # ablation) and for the heretic eval gate. They MUST NOT enter the
+  # supervised train mix — weight=0.0 makes pack_dataset.py route the
+  # normalized records to data/abliteration/{harmful,harmless}.jsonl
+  # instead of train/val/test. Consumers:
+  #   - scripts/quantization/abliteration_apply.py (--harmful-jsonl /
+  #     --harmless-jsonl read currentMessage.content)
+  #   - scripts/training/abliterate.py (loads via HF directly; this entry
+  #     just keeps the corpus discoverable + license-traceable)
+  - slug: harmful_behaviors
+    repo_id: mlabonne/harmful_behaviors
+    normalizer: harmful_behaviors
+    weight: 0.0
+    est_size_gb: 0.01
+    priority: extra
+    license: mit
+    notes: |
+      Canonical harmful-prompt corpus referenced by
+      scripts/quantization/abliteration_apply.py (line ~68 comment).
+      ~520 refusal-eliciting prompts. Calibration only — weight=0.0 keeps
+      these records out of train.jsonl. pack_dataset.py routes records
+      with task_type="abliteration_harmful" to
+      data/abliteration/harmful.jsonl.
+
+  - slug: harmless_alpaca
+    repo_id: mlabonne/harmless_alpaca
+    normalizer: harmless_alpaca
+    weight: 0.0
+    est_size_gb: 0.05
+    priority: extra
+    license: mit
+    notes: |
+      Paired benign-instruction corpus for orthogonal-projection
+      abliteration. ~1.4k benign prompts (Alpaca-derived). Calibration
+      only — weight=0.0 keeps these records out of train.jsonl.
+      pack_dataset.py routes records with task_type="abliteration_harmless"
+      to data/abliteration/harmless.jsonl.
+
+# Synthesized examples generated from elizaOS prompt templates
+# (handled by synthesize_targets.py, not downloaded).
+synthesized:
+  # Scam-refusal `reply` records derived from lalalune/scambench-training
+  # (English subset + balanced legitimate slice). Generated by
+  # scripts/sources/scambench_adapter.py. Used to re-instill refusal /
+  # de-escalation behavior after weight-level abliteration.
+  #
+  # File: data/synthesized/scambench/scambench.jsonl
+  # Pack pipeline slug: synth:scambench-scambench
+  - task_id: scambench-scambench
+    n_examples: 11653
+    weight: 3.0
+    notes: |
+      Per-record canonical `reply` task: JSON envelope
+      {thought, reply:{text, channel}}. metadata.scam_category maps the
+      upstream scenario_category onto the canonical taxonomy (phishing,
+      impersonation, crypto-scam, sextortion, romance, tech-support,
+      wire-fraud, other) plus `none` for legitimate control records.
+      System prompt is the canonical `reply` template from
+      data/prompts/registry.json. Higher weight (3.0) so refusal
+      behaviour is well-represented in the SFT pass.
+
+  # Per-action message_handler coverage. Generated by
+  # scripts/synthesize_action_planner.py from
+  # /tmp/action_inventory_enriched.json — one entry per (action,
+  # conversation context, prompt phrasing) triple, ~30 records per
+  # action across all 312 actions in the eliza tree. The supervised
+  # target is a JSON document matching the message_handler schema
+  # (thought, actions[N]:{name,params}, providers, text, simple).
+  - task_id: action_planner_coverage
+    n_examples: 9305
+    weight: 2.0
+    notes: |
+      Covers every Action declared across eliza/packages/agent +
+      eliza/packages/core + eliza/plugins. Memory-window distribution
+      is roughly uniform across {0, 1, 3, 8, 15} turns. ~24% of
+      records chain a REPLY after the target action. All records
+      are valid JSON structures.
+
+  - task_id: should_respond
+    template: should_respond.txt
+    n_examples: 2000
+    weight: 3.0
+  - task_id: should_respond_with_context
+    template: should_respond_with_context.txt
+    n_examples: 1500
+    weight: 2.0
+  - task_id: reply
+    template: reply.txt
+    n_examples: 2000
+    weight: 2.0
+  - task_id: should_mute_room
+    template: should_mute_room.txt
+    n_examples: 800
+    weight: 1.0
+  - task_id: should_unmute_room
+    template: should_unmute_room.txt
+    n_examples: 600
+    weight: 1.0
+  - task_id: should_follow_room
+    template: should_follow_room.txt
+    n_examples: 600
+    weight: 1.0
+  - task_id: should_unfollow_room
+    template: should_unfollow_room.txt
+    n_examples: 600
+    weight: 1.0
+  - task_id: choose_option
+    template: choose_option.txt
+    n_examples: 1000
+    weight: 1.0
+  - task_id: option_extraction
+    template: option_extraction.txt
+    n_examples: 800
+    weight: 1.0
+  - task_id: reflection
+    template: reflection.txt
+    n_examples: 800
+    weight: 1.0
+  - task_id: reflection_evaluator
+    template: reflection_evaluator.txt
+    n_examples: 600
+    weight: 1.0
+  - task_id: think
+    template: think.txt
+    n_examples: 1000
+    weight: 1.0
+  - task_id: post_action_decision
+    template: post_action_decision.txt
+    n_examples: 800
+    weight: 1.0
+  - task_id: multi_step_decision
+    template: multi_step_decision.txt
+    n_examples: 800
+    weight: 1.0
+  - task_id: extract_secrets
+    template: extract_secrets.txt
+    n_examples: 600
+    weight: 1.0
+  - task_id: update_settings
+    template: update_settings.txt
+    n_examples: 400
+    weight: 0.5
+  - task_id: update_summarization
+    template: update_summarization.txt
+    n_examples: 400
+    weight: 0.5
+  - task_id: message_classifier
+    template: message_classifier.txt
+    n_examples: 1000
+    weight: 1.0
+  - task_id: long_term_extraction
+    template: long_term_extraction.txt
+    n_examples: 200
+    weight: 0.5
+
+  # Chat-augmented routing records (pre-generated by
+  # scripts/synthesize_routing_v2.py). The packer matches the file stem
+  # `dialogue_routing_v2` to this entry's task_id for weighting; the
+  # template/n_examples fields are nominal — synthesize_targets.py does not
+  # generate these, the routing-v2 synthesizer does.
+  - task_id: dialogue_routing_v2
+    template: should_respond_with_context.txt
+    n_examples: 20000
+    weight: 2.0
+    notes: |
+      Name-injection / ping / username-match should_respond records mined
+      from discord-chat, discord-dialogues, telegram-filtered-messages.
+      Generated by scripts/synthesize_routing_v2.py with seed=0xE71A05.
+      Action mix: RESPOND ~36%, IGNORE ~56%, STOP ~8%. Signal kinds:
+      direct_mention, username_match, role_address, stop, different_addressee,
+      group_chitchat, self, quoted_reference.
+
+  # Rule-based action-pair synthesis targeting registry-v2 + actions-catalog
+  # (handled by `scripts/synthesize_action_pairs.py`). One jsonl per group
+  # under `data/synthesized/action_pairs/`. Uses canned scenario pools and
+  # paraphrase variants — no LLM teacher. Every record carries a JSON
+  # expectedResponse keyed off the prompt's `expected_keys` so the tasks
+  # register in PROMPT_COVERAGE.md.
+  - task_id: action-pairs-core-prompts
+    n_examples: 3800
+    weight: 2.5
+    notes: |
+      100 examples per core prompt template (38 templates from
+      registry-v2.json). File: data/synthesized/action_pairs/core-prompts.jsonl.
+  - task_id: action-pairs-inline-actions
+    n_examples: 600
+    weight: 1.5
+    notes: |
+      100 examples per inline-action prompt (clipboard extract + dataset-generator
+      should_respond, 6 templates). File:
+      data/synthesized/action_pairs/inline-actions.jsonl.
+  - task_id: action-pairs-plugin-prompts
+    n_examples: 2800
+    weight: 2.0
+    notes: |
+      100 examples per plugin prompt (28 templates: discord, evm, solana,
+      shell). File: data/synthesized/action_pairs/plugin-prompts.jsonl.
+  - task_id: action-pairs-lifeops
+    n_examples: 20500
+    weight: 1.5
+    notes: |
+      50 paraphrased variants per lifeops scenario (410 task ids across 18
+      scenarios). File: data/synthesized/action_pairs/lifeops.jsonl.
+  - task_id: action-pairs-actions-catalog
+    n_examples: 5920
+    weight: 2.0
+    notes: |
+      100 examples per structured-param action (37) + 30 per no-param action
+      (74). 110 unique action names covered. File:
+      data/synthesized/action_pairs/actions-catalog.jsonl.
+
+  # Music plugin tool-call examples generated by
+  # scripts/synthesize_music_actions.py. Targets the 15 actions across
+  # plugin-music-library (8) + plugin-music-player (7). 100 records per
+  # action (1,500 total) with ~73% English / ~27% multilingual
+  # (zh/es/fr/ja/de/pt) and ~5% subtle-null records that resolve to a
+  # canonical thought:/text: REPLY shape instead of a tool call.
+  - task_id: action_examples-music
+    n_examples: 1500
+    weight: 2.0
+    notes: |
+      100 records per music action (15 actions, 1,500 total). File:
+      data/synthesized/action_examples/music.jsonl. Multilingual coverage
+      across zh/es/fr/ja/de/pt; ~5% subtle-null REPLY records. The slug
+      matches the pack-time `<parent_dir>-<stem>` derivation in
+      scripts/pack_dataset.py so the weight applies during sampling.
+
+  # Agent / orchestration tool-call examples generated by
+  # scripts/synthesize_agent_orch_actions.py. Covers 24 actions across the
+  # agent/orchestration plugin surface — plugin-agent-orchestrator (10),
+  # plugin-agent-skills (7), plugin-app-control (1, polymorphic APP),
+  # plugin-plugin-manager (2, polymorphic PLUGIN),
+  # plugin-elizacloud (4). 100 records per action (2,400 total).
+  # Polymorphic actions (APP, PLUGIN) spread examples across all
+  # documented sub-operations. ~70% English / ~30% multilingual
+  # (zh/es/fr/ja/de/pt) with >=3 records per non-en lang per action.
+  # 7% subtle-null records resolve to a canonical thought:/text: REPLY
+  # shape instead of a tool call. 12+ user phrasing styles.
+  - task_id: action_examples-agent_orch
+    n_examples: 2400
+    weight: 2.0
+    notes: |
+      100 records per action (24 actions, 2,400 total). File:
+      data/synthesized/action_examples/agent_orch.jsonl. Covers
+      plugin-agent-orchestrator, plugin-agent-skills, plugin-app-control,
+      plugin-plugin-manager, plugin-elizacloud. Multilingual coverage
+      across zh/es/fr/ja/de/pt; ~7% subtle-null REPLY records. The slug
+      matches the pack-time `<parent_dir>-<stem>` derivation in
+      scripts/pack_dataset.py so the weight applies during sampling.
+
+  # System / computer-use / github tool-call examples generated by
+  # scripts/synthesize_system_actions.py. Targets 11 actions across three
+  # plugins:
+  #   plugin-shell        (1) CLEAR_SHELL_HISTORY
+  #   plugin-computeruse  (5) BROWSER_ACTION, FILE_ACTION, MANAGE_WINDOW,
+  #                           TERMINAL_ACTION, USE_COMPUTER
+  #   plugin-github       (5) ASSIGN_ISSUE, CREATE_ISSUE,
+  #                           GITHUB_NOTIFICATION_TRIAGE, LIST_PRS,
+  #                           REVIEW_PR
+  # 100 records per action (1,100 total) with 70% English / 30%
+  # multilingual (zh/es/fr/ja/de/pt — exactly 5 per language per action)
+  # and ~7% subtle-null REPLY records that emit a thought:/text: shape
+  # when the user message is too underspecified to resolve to a tool
+  # call. Polymorphic *_ACTION / USE_COMPUTER actions cover every
+  # documented sub-operation: BROWSER_ACTION (open/navigate/click/type/
+  # scroll/screenshot/dom/clickables/execute/state/wait/list_tabs/
+  # open_tab/close_tab/switch_tab/close), FILE_ACTION (read/write/
+  # append/edit/delete/exists/list/delete_directory/download/upload/
+  # list_downloads), MANAGE_WINDOW (list/focus/switch/arrange/move/
+  # minimize/maximize/restore/close), TERMINAL_ACTION (connect/execute/
+  # execute_command/read/type/clear/close), USE_COMPUTER (screenshot/
+  # click/click_with_modifiers/double_click/right_click/mouse_move/
+  # type/key/key_combo/scroll/drag).
+  - task_id: action_examples-system
+    n_examples: 1100
+    weight: 2.0
+    notes: |
+      100 records per system / computer-use / github action (11 actions,
+      1,100 total). File: data/synthesized/action_examples/system.jsonl.
+      Multilingual coverage zh/es/fr/ja/de/pt (5 per language per
+      action); ~7% subtle-null REPLY records. Slug matches the pack-time
+      `<parent_dir>-<stem>` derivation in scripts/pack_dataset.py so the
+      weight applies during sampling.
+
+  # Messaging-plugin tool-call examples generated by
+  # scripts/synthesize_messaging_actions.py. Targets 34 connector intents
+  # across six connectors, each emitted with canonical action names; several
+  # intents share the same canonical action.
+  #   plugin-discord     (17 intents) CHAT_WITH_ATTACHMENTS, CREATE_POLL,
+  #                           DELETE_MESSAGE, DOWNLOAD_MEDIA, EDIT_MESSAGE,
+  #                           GET_USER, JOIN_CHANNEL, LEAVE_CHANNEL,
+  #                           LIST_CHANNELS, PIN_MESSAGE, MESSAGE,
+  #                           SERVER_INFO, SETUP_CREDENTIALS,
+  #                           SUMMARIZE_CONVERSATION, TRANSCRIBE_MEDIA
+  #   plugin-twitter     (7 intents)  READ_FEED, POST, READ_MESSAGES,
+  #                           MESSAGE, SEARCH_POSTS
+  #   plugin-signal      (5 intents)  GET_USER, LIST_CHANNELS,
+  #                           READ_MESSAGES,
+  #                           MESSAGE, REACT_TO_MESSAGE
+  #   plugin-bluebubbles (2 intents)  REACT_TO_MESSAGE,
+  #                           MESSAGE
+  #   plugin-imessage    (1 intent)   MESSAGE
+  #   plugin-whatsapp    (2 intents)  MESSAGE, REACT_TO_MESSAGE
+  # 100 records per connector intent (3,400 total). 70% English /
+  # 30% multilingual (zh/es/fr/ja/de/pt — exactly 5 per language per
+  # intent) across 10
+  # phrasing styles (direct, formal, casual, expert, naive, voice-asr,
+  # distracted, broken-english, self-correcting, subtle-null). 10% of
+  # records per intent are subtle-null cases that emit a canonical
+  # thought:/text: REPLY or thought:/actions[1]: IGNORE shape rather than
+  # a tool call.
+  - task_id: action_examples-messaging
+    n_examples: 3400
+    weight: 2.0
+    notes: |
+      100 records per messaging action (34 actions, 3,400 total). File:
+      data/synthesized/action_examples/messaging.jsonl. Multilingual
+      coverage zh/es/fr/ja/de/pt (5 per language per action); ~10%
+      subtle-null REPLY/IGNORE records. Slug matches the pack-time
+      `<parent_dir>-<stem>` derivation in scripts/pack_dataset.py so the
+      weight applies during sampling.
+
+  # Commerce / scheduling tool-call examples generated by
+  # scripts/synthesize_commerce_actions.py. Targets 18 actions across four
+  # plugins:
+  #   plugin-shopify   (5) MANAGE_SHOPIFY_CUSTOMERS, MANAGE_SHOPIFY_INVENTORY,
+  #                        MANAGE_SHOPIFY_ORDERS, MANAGE_SHOPIFY_PRODUCTS,
+  #                        SEARCH_SHOPIFY_STORE
+  #   plugin-calendly  (3) BOOK_CALENDLY_SLOT, CANCEL_CALENDLY_BOOKING,
+  #                        LIST_CALENDLY_EVENT_TYPES
+  #   plugin-cron      (5) CREATE_CRON, DELETE_CRON, LIST_CRONS, RUN_CRON,
+  #                        UPDATE_CRON
+  #   plugin-commands  (5) COMMANDS_LIST, HELP_COMMAND, MODELS_COMMAND,
+  #                        STATUS_COMMAND, STOP_COMMAND
+  # 100 records per action (1,800 total) with ~70% English / ~30%
+  # multilingual (zh/es/fr/ja/de/pt — 90 per language across actions, well
+  # above the >=3-per-language-per-action floor) and ~6% subtle-null REPLY
+  # records that emit a thought:/text: clarifying-question shape when the
+  # user message is too underspecified to resolve. Polymorphic
+  # MANAGE_SHOPIFY_* actions spread examples across documented sub-ops
+  # (list/search/get/create/update/delete/check/locations/adjust/status/
+  # fulfill/global). Argument schemas: most actions are parameter-free
+  # (arguments:{}); the four actions that expose `confirmed:boolean`
+  # (MANAGE_SHOPIFY_INVENTORY, MANAGE_SHOPIFY_ORDERS,
+  # MANAGE_SHOPIFY_PRODUCTS, CANCEL_CALENDLY_BOOKING) emit
+  # `confirmed: true` only when the user message clearly authorizes the
+  # write. 8 user phrasing styles (direct, formal, casual, expert-shorthand,
+  # voice-asr, distracted-rambling, broken-english, self-correcting) over
+  # 24 personas.
+  - task_id: action_examples-commerce
+    n_examples: 1800
+    weight: 2.0
+    notes: |
+      100 records per commerce / scheduling action (18 actions, 1,800
+      total). File: data/synthesized/action_examples/commerce.jsonl. Covers
+      plugin-shopify, plugin-calendly, plugin-cron, plugin-commands.
+      Multilingual coverage zh/es/fr/ja/de/pt (90 per language); ~6%
+      subtle-null REPLY records. Slug matches the pack-time
+      `<parent_dir>-<stem>` derivation in scripts/pack_dataset.py so the
+      weight applies during sampling.
+
+  # Translated stratified sample of train.jsonl across 8 languages, generated
+  # by scripts/translate_corpus.py using argos-translate (offline NMT).
+  # Action names, JSON keys, paths, URLs, and ALL_CAPS identifiers
+  # are masked before translation and restored after, so the structural
+  # contract of expectedResponse stays intact. Files live under
+  # data/synthesized/translated/<lang>.jsonl.
+  # 17 of the 200 sampled records exceed an 8 KB content cap and are skipped
+  # for translation runtime, leaving 183 records per language. Russian was
+  # cut short at 99 because the en->ru argos pack is ~3x slower than the
+  # others; see TRANSLATION_REPORT.md for details.
+  - task_id: translated-es
+    n_examples: 183
+    weight: 0.5
+    notes: Spanish translations of stratified train sample (183 records).
+  - task_id: translated-fr
+    n_examples: 183
+    weight: 0.5
+    notes: French translations of stratified train sample (183 records).
+  - task_id: translated-de
+    n_examples: 183
+    weight: 0.5
+    notes: German translations of stratified train sample (183 records).
+  - task_id: translated-pt
+    n_examples: 183
+    weight: 0.5
+    notes: Portuguese translations of stratified train sample (183 records).
+  - task_id: translated-zh
+    n_examples: 183
+    weight: 0.5
+    notes: Mandarin (Simplified) translations of stratified train sample (183 records).
+  - task_id: translated-ja
+    n_examples: 183
+    weight: 0.5
+    notes: Japanese translations of stratified train sample (183 records).
+  - task_id: translated-ko
+    n_examples: 183
+    weight: 0.5
+    notes: Korean translations of stratified train sample (183 records).
+  - task_id: translated-ru
+    n_examples: 99
+    weight: 0.5
+    notes: |
+      Russian translations of stratified train sample (99 records).
+      Capped early; en->ru argos pack runs at ~0.2 rec/s vs ~0.5 for others.
+
+  # Web3 plugin action examples — canonical tool_call records targeting
+  # the 9 web3 actions across plugin-evm and plugin-solana. Generated by
+  # scripts/synthesize_web3_actions.py using realistic crypto contexts
+  # (EVM addresses, Solana base58 keys, governance proposal ids, mainstream
+  # token symbols) across 22 personas, 22 styles, and 7 languages
+  # (en/zh/ja/es/fr/de/pt). 5-10% of records per action are subtle-null
+  # cases that emit a thought:/text: REPLY shape when a required field is
+  # missing from the user message. plugin-evm.TRANSFER and
+  # plugin-solana.TRANSFER are disambiguated via metadata.synth_plugin.
+  - task_id: action_examples-web3
+    n_examples: 900
+    weight: 2.0
+    notes: |
+      100 examples per action × 9 actions:
+        plugin-evm: CROSS_CHAIN_TRANSFER, GOV_EXECUTE, GOV_PROPOSE,
+                    GOV_QUEUE, GOV_VOTE, SWAP, TRANSFER
+        plugin-solana: SWAP_SOLANA, TRANSFER
+      File: data/synthesized/action_examples/web3.jsonl.
+
+  # Under-represented core-prompt coverage generated by
+  # scripts/synthesize_core_prompts.py. 100 records per task across 8
+  # critically thin core prompts. ~70% English / ~30% multilingual
+  # (zh/es/fr/ja/de/pt, >=3 each), 8 styles, 30 personas. Memory-depth
+  # mix: 30% empty / 50% 1-2 turns / 20% 3 turns. The
+  # expectedResponse for each task matches its registry-v2 schema and
+  # is valid JSON. Files:
+  # data/synthesized/core_prompts/<task_id>.jsonl. Slugs match the
+  # pack-time `<parent_dir>-<stem>` derivation in scripts/pack_dataset.py
+  # so the per-entry weight applies during sampling.
+  - task_id: core_prompts-reflection
+    n_examples: 100
+    weight: 2.0
+  - task_id: core_prompts-reflection_evaluator
+    n_examples: 100
+    weight: 2.0
+  - task_id: core_prompts-extract_secrets
+    n_examples: 100
+    weight: 2.0
+  - task_id: core_prompts-choose_option
+    n_examples: 100
+    weight: 2.0
+  - task_id: core_prompts-message_classifier
+    n_examples: 100
+    weight: 2.0
+  - task_id: core_prompts-multi_step_decision
+    n_examples: 100
+    weight: 2.0
+  - task_id: core_prompts-add_contact
+    n_examples: 100
+    weight: 2.0
+  - task_id: core_prompts-should_follow_room
+    n_examples: 100
+    weight: 2.0

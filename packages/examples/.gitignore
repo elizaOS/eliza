@@ -1,0 +1,56 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+pkg/
+target/
+.next/
+*.tsbuildinfo
+
+# Runtime data
+.eliza/
+
+# ICP
+.dfx/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ART
+.art
+art_venv
+
+# IDE
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Lock files (regenerated on install)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Backup/temp files
+*.bak
+*.tmp
+*.swp
+*.swo
+*.orig

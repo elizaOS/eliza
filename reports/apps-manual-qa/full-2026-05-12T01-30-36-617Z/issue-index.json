@@ -1,0 +1,3888 @@
+[
+  {
+    "scenario": "apps-catalog",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-catalog-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "FeaturedLifeOpsCompanionFinanceVincentDeveloper UtilitiesDatabase ViewerFine TuningLog ViewerMemory ViewerPlugin ViewerRelationship ViewerRuntime DebuggerSkills ViewerTrajectory Viewer",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 39,
+            "w": 240,
+            "h": 961
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps"
+  },
+  {
+    "scenario": "apps-lifeops",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-lifeops-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 39,
+            "w": 296,
+            "h": 961
+          },
+          {
+            "text": "SleepConnect Health",
+            "tag": "SECTION",
+            "overflowBy": 42,
+            "x": 328,
+            "y": 325,
+            "w": 162,
+            "h": 50
+          },
+          {
+            "text": "Calendar",
+            "tag": "DIV",
+            "overflowBy": 59,
+            "x": 385,
+            "y": 555,
+            "w": 2,
+            "h": 20
+          },
+          {
+            "text": "Mail",
+            "tag": "DIV",
+            "overflowBy": 26,
+            "x": 860,
+            "y": 555,
+            "w": 2,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/lifeops"
+  },
+  {
+    "scenario": "apps-companion",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-companion-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "FeaturedLifeOpsCompanionFinanceVincentDeveloper UtilitiesDatabase ViewerFine TuningLog ViewerMemory ViewerPlugin ViewerRelationship ViewerRuntime DebuggerSkills ViewerTrajectory Viewer",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 39,
+            "w": 240,
+            "h": 961
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/companion"
+  },
+  {
+    "scenario": "apps-vincent",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-vincent-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 1241,
+            "y": 16,
+            "w": 183,
+            "h": 36
+          },
+          {
+            "text": "Vincent disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 249,
+            "y": 102,
+            "w": 367,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "FeaturedLifeOpsCompanionFinanceVincentDeveloper UtilitiesDatabase ViewerFine TuningLog ViewerMemory ViewerPlugin ViewerRelationship ViewerRuntime DebuggerSkills ViewerTrajectory Viewer",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 39,
+            "w": 240,
+            "h": 961
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/vincent"
+  },
+  {
+    "scenario": "apps-plugins",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-plugins-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/plugins"
+  },
+  {
+    "scenario": "apps-skills",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-skills-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "+ New SkillInstallAll (0)ON (0)OFF (0)No Skills Installed",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 55,
+            "w": 240,
+            "h": 945
+          },
+          {
+            "text": "+ New Skill",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 16,
+            "y": 113,
+            "w": 56,
+            "h": 36
+          },
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/skills"
+  },
+  {
+    "scenario": "apps-training-details",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-training-details-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "FeaturedLifeOpsCompanionFinanceVincentDeveloper UtilitiesDatabase ViewerFine TuningLog ViewerMemory ViewerPlugin ViewerRelationship ViewerRuntime DebuggerSkills ViewerTrajectory Viewer",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 39,
+            "w": 240,
+            "h": 961
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/training/details"
+  },
+  {
+    "scenario": "apps-fine-tuning",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-fine-tuning-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Runtime:Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 49,
+            "y": 321,
+            "w": 311,
+            "h": 78
+          },
+          {
+            "text": "Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 62,
+            "y": 362,
+            "w": 285,
+            "h": 24
+          },
+          {
+            "text": "Failed Jobs:0",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 696,
+            "y": 411,
+            "w": 311,
+            "h": 78
+          },
+          {
+            "text": "Unavailable",
+            "tag": "DIV",
+            "color": "rgb(161, 161, 170)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.2)",
+            "x": 49,
+            "y": 627,
+            "w": 958,
+            "h": 54
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/fine-tuning"
+  },
+  {
+    "scenario": "apps-trajectories",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-trajectories-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "EntriesNo trajectories yet.",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 55,
+            "w": 240,
+            "h": 945
+          },
+          {
+            "text": "Entries",
+            "tag": "DIV",
+            "overflowBy": 23,
+            "x": 16,
+            "y": 143,
+            "w": 196,
+            "h": 28
+          },
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/trajectories"
+  },
+  {
+    "scenario": "apps-relationships",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-relationships-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/relationships"
+  },
+  {
+    "scenario": "apps-memories",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-memories-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Total0Filter by typeAllPeopleNo people yet.",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 55,
+            "w": 240,
+            "h": 945
+          },
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/memories"
+  },
+  {
+    "scenario": "apps-runtime",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-runtime-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "deptharray capobject capRefreshExpand TopSectionsΣSummary3 signalsRRuntime3 rootsliveAActionsregistered handlers1PProvidersloaded contexts1PPluginsactive modules1SServicesinstantiated services1EEvaluatorsdecision hooks1",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 55,
+            "w": 240,
+            "h": 945
+          },
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/runtime"
+  },
+  {
+    "scenario": "apps-database",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-database-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 424,
+            "y": 278,
+            "w": 448,
+            "h": 24
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "TablesMediaVectorsTable EditorSQL EditorConnecting...0 tablesTable EditorRefreshTables (0)",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 55,
+            "w": 240,
+            "h": 945
+          },
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/database"
+  },
+  {
+    "scenario": "apps-logs",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-logs-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 1080,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/logs"
+  },
+  {
+    "scenario": "apps-inventory",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-inventory-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 417,
+            "y": 212,
+            "w": 574,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 417,
+            "y": 331,
+            "w": 574,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 417,
+            "y": 451,
+            "w": 574,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo assets",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 55,
+            "w": 352,
+            "h": 945
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/inventory"
+  },
+  {
+    "scenario": "apps-elizamaker",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-elizamaker-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not reach the music player.Ask the agent to play music in chat.",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 1133,
+            "y": 77,
+            "w": 295,
+            "h": 110
+          },
+          {
+            "text": "Could not reach the music player.",
+            "tag": "P",
+            "color": "rgb(161, 161, 170)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 1186,
+            "y": 127,
+            "w": 189,
+            "h": 16
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "ConversationsNew chatTerminal",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 39,
+            "w": 240,
+            "h": 961
+          },
+          {
+            "text": "ElizaWhat would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 264,
+            "y": 61,
+            "w": 214,
+            "h": 50
+          },
+          {
+            "text": "What would you like to check?",
+            "tag": "DIV",
+            "overflowBy": 78,
+            "x": 264,
+            "y": 77,
+            "w": 214,
+            "h": 34
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/elizamaker"
+  },
+  {
+    "scenario": "win-lifeops",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops"
+  },
+  {
+    "scenario": "win-vincent",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-vincent-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 1241,
+            "y": 16,
+            "w": 183,
+            "h": 36
+          },
+          {
+            "text": "Vincent disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 249,
+            "y": 102,
+            "w": 367,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/vincent"
+  },
+  {
+    "scenario": "win-skills",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-skills-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "+ New SkillInstallAll (0)ON (0)OFF (0)No Skills Installed",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          },
+          {
+            "text": "+ New Skill",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 16,
+            "y": 74,
+            "w": 56,
+            "h": 36
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/skills"
+  },
+  {
+    "scenario": "win-fine-tuning",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-fine-tuning-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Runtime:Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 49,
+            "y": 282,
+            "w": 439,
+            "h": 78
+          },
+          {
+            "text": "Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 62,
+            "y": 323,
+            "w": 413,
+            "h": 24
+          },
+          {
+            "text": "Failed Jobs:0",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 952,
+            "y": 372,
+            "w": 439,
+            "h": 78
+          },
+          {
+            "text": "Unavailable",
+            "tag": "DIV",
+            "color": "rgb(161, 161, 170)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.2)",
+            "x": 49,
+            "y": 588,
+            "w": 1342,
+            "h": 54
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/fine-tuning"
+  },
+  {
+    "scenario": "win-trajectories",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-trajectories-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "EntriesNo trajectories yet.",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          },
+          {
+            "text": "Entries",
+            "tag": "DIV",
+            "overflowBy": 23,
+            "x": 16,
+            "y": 104,
+            "w": 196,
+            "h": 28
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/trajectories"
+  },
+  {
+    "scenario": "win-memories",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Total0Filter by typeAllPeopleNo people yet.",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories"
+  },
+  {
+    "scenario": "win-runtime",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-runtime-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "deptharray capobject capRefreshExpand TopSectionsΣSummary3 signalsRRuntime3 rootsliveAActionsregistered handlers1PProvidersloaded contexts1PPluginsactive modules1SServicesinstantiated services1EEvaluatorsdecision hooks1",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/runtime"
+  },
+  {
+    "scenario": "win-database",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 616,
+            "y": 239,
+            "w": 448,
+            "h": 24
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "TablesMediaVectorsTable EditorSQL EditorConnecting...0 tablesTable EditorRefreshTables (0)",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-inventory",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo assets",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-tasks",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 646,
+            "y": 472,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "01-sleep",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-01-sleep.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=sleep"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "02-screen-time",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-02-screen-time.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=screen-time"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "03-messages",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-03-messages.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=messages"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "04-mail",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-04-mail.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=mail"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "05-calendar",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-05-calendar.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=calendar"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "06-reminders",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-06-reminders.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=reminders"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "07-money",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-07-money.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=money"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "08-documents",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-08-documents.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=documents"
+  },
+  {
+    "scenario": "win-lifeops-tabs",
+    "viewport": "desktop",
+    "state": "09-settings",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-09-settings.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "OverviewSleepScreen TimeMessagesMailCalendarRemindersMoneyDocumentsSettings",
+            "tag": "DIV",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 0,
+            "w": 296,
+            "h": 1000
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#lifeops.section=setup"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 616,
+            "y": 239,
+            "w": 448,
+            "h": 24
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "TablesMediaVectorsTable EditorSQL EditorConnecting...0 tablesTable EditorRefreshTables (0)",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "desktop",
+    "state": "01-media",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-01-media.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Failed to load media: Cannot read properties of undefined (reading 'map')",
+            "tag": "MAIN",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 240,
+            "y": 0,
+            "w": 1200,
+            "h": 1000
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "TablesMediaVectors0 itemsAll mediaAllImagesVideoAudioNo media found",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "desktop",
+    "state": "02-vectors",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-02-vectors.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "TablesMediaVectorsVectorsList viewList2D3DSearchLoading memories...Failed to load tables: Cannot read properties of undefined (reading 'filter')Memory DetailSelect a memory from the sidebar to inspect its content, metadata, and embedding values.",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Failed to load tables: Cannot read properties of undefined (reading 'filter')Memory DetailSelect a memory from the sidebar to inspect its content, metadata, and embedding values.",
+            "tag": "MAIN",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 240,
+            "y": 0,
+            "w": 1200,
+            "h": 1000
+          },
+          {
+            "text": "Failed to load tables: Cannot read properties of undefined (reading 'filter')",
+            "tag": "DIV",
+            "color": "rgb(239, 68, 68)",
+            "background": "oklab(0.636841 0.187813 0.0888874 / 0.1)",
+            "x": 288,
+            "y": 36,
+            "w": 1104,
+            "h": 46
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "TablesMediaVectorsVectorsList viewList2D3DSearchLoading memories...",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "desktop",
+    "state": "03-sql-editor",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-03-sql-editor.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "TablesMediaVectorsVectorsList viewList2D3DSearchLoading memories...Failed to load tables: Cannot read properties of undefined (reading 'filter')Memory DetailSelect a memory from the sidebar to inspect its content, metadata, and embedding values.",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Failed to load tables: Cannot read properties of undefined (reading 'filter')Memory DetailSelect a memory from the sidebar to inspect its content, metadata, and embedding values.",
+            "tag": "MAIN",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 240,
+            "y": 0,
+            "w": 1200,
+            "h": 1000
+          },
+          {
+            "text": "Failed to load tables: Cannot read properties of undefined (reading 'filter')",
+            "tag": "DIV",
+            "color": "rgb(239, 68, 68)",
+            "background": "oklab(0.636841 0.187813 0.0888874 / 0.1)",
+            "x": 288,
+            "y": 36,
+            "w": 1104,
+            "h": 46
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "TablesMediaVectorsVectorsList viewList2D3DSearchLoading memories...",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo assets",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "desktop",
+    "state": "01-swap",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-01-swap.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo assets",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "desktop",
+    "state": "02-send",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-02-send.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo assets",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "desktop",
+    "state": "03-receive",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-03-receive.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo assets",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "desktop",
+    "state": "04-tokens",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-04-tokens.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo assets",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "desktop",
+    "state": "05-defi",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-05-defi.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo positions",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "desktop",
+    "state": "06-nfts",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-06-nfts.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 173,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 292,
+            "w": 950,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 421,
+            "y": 412,
+            "w": 950,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "$0.00RPCNo EVM addressNo Solana addressSwapSendReceiveTokensDeFiNFTsNo NFTs",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 352,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 646,
+            "y": 472,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "desktop",
+    "state": "01-tasks",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-01-tasks.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 646,
+            "y": 472,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "desktop",
+    "state": "02-workflows",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-02-workflows.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 646,
+            "y": 472,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "desktop",
+    "state": "03-active",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-03-active.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 646,
+            "y": 472,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "desktop",
+    "state": "04-inactive",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-04-inactive.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 646,
+            "y": 472,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "desktop",
+    "state": "05-all",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-05-all.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 1440,
+            "h": 1000
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 646,
+            "y": 472,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-memories-tabs",
+    "viewport": "desktop",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Total0Filter by typeAllPeopleNo people yet.",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories"
+  },
+  {
+    "scenario": "win-memories-tabs",
+    "viewport": "desktop",
+    "state": "01-browse",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-01-browse.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Total0Filter by typeAllPeopleNo people yet.",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories"
+  },
+  {
+    "scenario": "win-memories-tabs",
+    "viewport": "desktop",
+    "state": "02-feed",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-02-feed.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Total0Filter by typeAllPeopleNo people yet.",
+            "tag": "ASIDE",
+            "overflowBy": 6,
+            "x": 0,
+            "y": 16,
+            "w": 240,
+            "h": 984
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories"
+  },
+  {
+    "scenario": "apps-catalog",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-catalog-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps"
+  },
+  {
+    "scenario": "apps-lifeops",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-lifeops-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/lifeops"
+  },
+  {
+    "scenario": "apps-companion",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-companion-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/companion"
+  },
+  {
+    "scenario": "apps-vincent",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-vincent-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 191,
+            "y": 16,
+            "w": 183,
+            "h": 36
+          },
+          {
+            "text": "Vincent disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 57,
+            "y": 102,
+            "w": 124,
+            "h": 40
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          },
+          {
+            "text": "Hyperliquid and Polymarket trading access",
+            "tag": "P",
+            "overflowBy": 195,
+            "x": 64,
+            "y": 36,
+            "w": 115,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/vincent"
+  },
+  {
+    "scenario": "apps-plugins",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-plugins-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/plugins"
+  },
+  {
+    "scenario": "apps-skills",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-skills-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          },
+          {
+            "text": "AdvancedSkillsCustom agent skills0 visibleNo Skills InstalledInstall skills from the marketplace or create your own.Browse MarketplaceCreate Skill",
+            "tag": "DIV",
+            "overflowBy": 4,
+            "x": 16,
+            "y": 102,
+            "w": 358,
+            "h": 606
+          },
+          {
+            "text": "No Skills InstalledInstall skills from the marketplace or create your own.Browse MarketplaceCreate Skill",
+            "tag": "DIV",
+            "overflowBy": 5,
+            "x": 17,
+            "y": 199,
+            "w": 356,
+            "h": 320
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/skills"
+  },
+  {
+    "scenario": "apps-training-details",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-training-details-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/training/details"
+  },
+  {
+    "scenario": "apps-fine-tuning",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-fine-tuning-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Runtime:Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 37,
+            "y": 443,
+            "w": 152,
+            "h": 98
+          },
+          {
+            "text": "Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 50,
+            "y": 484,
+            "w": 126,
+            "h": 24
+          },
+          {
+            "text": "Failed Jobs:0",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 201,
+            "y": 663,
+            "w": 152,
+            "h": 78
+          },
+          {
+            "text": "Unavailable",
+            "tag": "DIV",
+            "color": "rgb(161, 161, 170)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.2)",
+            "x": 37,
+            "y": 931,
+            "w": 316,
+            "h": 54
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/fine-tuning"
+  },
+  {
+    "scenario": "apps-trajectories",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-trajectories-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/trajectories"
+  },
+  {
+    "scenario": "apps-relationships",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-relationships-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/relationships"
+  },
+  {
+    "scenario": "apps-memories",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-memories-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/memories"
+  },
+  {
+    "scenario": "apps-runtime",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-runtime-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/runtime"
+  },
+  {
+    "scenario": "apps-database",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-database-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 37,
+            "y": 325,
+            "w": 316,
+            "h": 24
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/database"
+  },
+  {
+    "scenario": "apps-logs",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-logs-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          },
+          {
+            "text": "TimeLevelSourceTagsMessage6:24:10 PMinfo[smoke]smokesmoke API ready",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 25,
+            "y": 419,
+            "w": 340,
+            "h": 338
+          },
+          {
+            "text": "6:24:10 PMinfo[smoke]smokesmoke API ready",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 26,
+            "y": 420,
+            "w": 338,
+            "h": 336
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/logs"
+  },
+  {
+    "scenario": "apps-inventory",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-inventory-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 245,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 364,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 484,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/inventory"
+  },
+  {
+    "scenario": "apps-elizamaker",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-elizamaker-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/elizamaker"
+  },
+  {
+    "scenario": "apps-tasks",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-tasks-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Automations",
+            "tag": "BUTTON",
+            "overflowBy": 6,
+            "x": 278,
+            "y": 782,
+            "w": 50,
+            "h": 56
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/apps/tasks"
+  },
+  {
+    "scenario": "win-vincent",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-vincent-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 191,
+            "y": 16,
+            "w": 183,
+            "h": 36
+          },
+          {
+            "text": "Vincent disconnected",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 57,
+            "y": 102,
+            "w": 124,
+            "h": 40
+          }
+        ]
+      },
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Hyperliquid and Polymarket trading access",
+            "tag": "P",
+            "overflowBy": 195,
+            "x": 64,
+            "y": 36,
+            "w": 115,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/vincent"
+  },
+  {
+    "scenario": "win-shopify",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Connect your Shopify storeStore domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxxRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scop",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 41,
+            "y": 278,
+            "w": 308,
+            "h": 345
+          },
+          {
+            "text": "Store domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 41,
+            "y": 394,
+            "w": 308,
+            "h": 163
+          },
+          {
+            "text": "Access tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 496,
+            "w": 274,
+            "h": 44
+          },
+          {
+            "text": "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 524,
+            "w": 274,
+            "h": 16
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify"
+  },
+  {
+    "scenario": "win-skills",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-skills-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "AdvancedSkillsCustom agent skills0 visibleNo Skills InstalledInstall skills from the marketplace or create your own.Browse MarketplaceCreate Skill",
+            "tag": "DIV",
+            "overflowBy": 4,
+            "x": 16,
+            "y": 8,
+            "w": 358,
+            "h": 820
+          },
+          {
+            "text": "No Skills InstalledInstall skills from the marketplace or create your own.Browse MarketplaceCreate Skill",
+            "tag": "DIV",
+            "overflowBy": 5,
+            "x": 17,
+            "y": 105,
+            "w": 356,
+            "h": 320
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/skills"
+  },
+  {
+    "scenario": "win-fine-tuning",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-fine-tuning-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Runtime:Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 37,
+            "y": 349,
+            "w": 152,
+            "h": 98
+          },
+          {
+            "text": "Offline",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 50,
+            "y": 390,
+            "w": 126,
+            "h": 24
+          },
+          {
+            "text": "Failed Jobs:0",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.3)",
+            "x": 201,
+            "y": 569,
+            "w": 152,
+            "h": 78
+          },
+          {
+            "text": "Unavailable",
+            "tag": "DIV",
+            "color": "rgb(161, 161, 170)",
+            "background": "oklab(0.11563 0.000887383 -0.00309757 / 0.2)",
+            "x": 37,
+            "y": 837,
+            "w": 316,
+            "h": 54
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/fine-tuning"
+  },
+  {
+    "scenario": "win-database",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 37,
+            "y": 231,
+            "w": 316,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-logs",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-logs-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "TimeLevelSourceTagsMessage6:24:10 PMinfo[smoke]smokesmoke API ready",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 25,
+            "y": 325,
+            "w": 340,
+            "h": 338
+          },
+          {
+            "text": "6:24:10 PMinfo[smoke]smokesmoke API ready",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 26,
+            "y": 326,
+            "w": 338,
+            "h": 336
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/logs"
+  },
+  {
+    "scenario": "win-inventory",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-tasks",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 844
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 121,
+            "y": 394,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 37,
+            "y": 231,
+            "w": 316,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "mobile",
+    "state": "01-media",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-01-media.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 37,
+            "y": 231,
+            "w": 316,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "mobile",
+    "state": "02-vectors",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-02-vectors.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 37,
+            "y": 231,
+            "w": 316,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-database-tabs",
+    "viewport": "mobile",
+    "state": "03-sql-editor",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-03-sql-editor.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Database not available",
+            "tag": "DIV",
+            "color": "rgb(255, 255, 255)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 37,
+            "y": 231,
+            "w": 316,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "mobile",
+    "state": "01-swap",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-01-swap.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "mobile",
+    "state": "02-send",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-02-send.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "mobile",
+    "state": "03-receive",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-03-receive.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "mobile",
+    "state": "04-tokens",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-04-tokens.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "mobile",
+    "state": "05-defi",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-05-defi.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-inventory-tabs",
+    "viewport": "mobile",
+    "state": "06-nfts",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-06-nfts.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Spot prices unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 195,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Top movers unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 314,
+            "w": 284,
+            "h": 20
+          },
+          {
+            "text": "Popular predictions unavailable",
+            "tag": "DIV",
+            "color": "rgb(240, 185, 11)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 53,
+            "y": 434,
+            "w": 284,
+            "h": 20
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-initial.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 844
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 121,
+            "y": 394,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "mobile",
+    "state": "01-tasks",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-01-tasks.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 844
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 121,
+            "y": 394,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "mobile",
+    "state": "02-workflows",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-02-workflows.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 844
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 121,
+            "y": 394,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "mobile",
+    "state": "03-active",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-03-active.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 844
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 121,
+            "y": 394,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "mobile",
+    "state": "04-inactive",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-04-inactive.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 844
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 121,
+            "y": 394,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-tasks-tabs",
+    "viewport": "mobile",
+    "state": "05-all",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-05-all.png",
+    "issues": [
+      {
+        "type": "red-warning-copy",
+        "examples": [
+          {
+            "text": "Could not open appNo installed or catalog app matches \"/apps/tasks\".",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgb(5, 5, 6)",
+            "x": 0,
+            "y": 0,
+            "w": 390,
+            "h": 844
+          },
+          {
+            "text": "Could not open app",
+            "tag": "DIV",
+            "color": "rgb(234, 236, 239)",
+            "background": "rgba(0, 0, 0, 0)",
+            "x": 121,
+            "y": 394,
+            "w": 148,
+            "h": 24
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks"
+  },
+  {
+    "scenario": "win-shopify-tabs",
+    "viewport": "mobile",
+    "state": "initial",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-initial.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Connect your Shopify storeStore domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxxRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scop",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 41,
+            "y": 278,
+            "w": 308,
+            "h": 345
+          },
+          {
+            "text": "Store domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 41,
+            "y": 394,
+            "w": 308,
+            "h": 163
+          },
+          {
+            "text": "Access tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 496,
+            "w": 274,
+            "h": 44
+          },
+          {
+            "text": "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 524,
+            "w": 274,
+            "h": 16
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify"
+  },
+  {
+    "scenario": "win-shopify-tabs",
+    "viewport": "mobile",
+    "state": "01-products",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-01-products.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Connect your Shopify storeStore domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxxRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scop",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 41,
+            "y": 278,
+            "w": 308,
+            "h": 345
+          },
+          {
+            "text": "Store domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 41,
+            "y": 394,
+            "w": 308,
+            "h": 163
+          },
+          {
+            "text": "Access tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 496,
+            "w": 274,
+            "h": 44
+          },
+          {
+            "text": "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 524,
+            "w": 274,
+            "h": 16
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify"
+  },
+  {
+    "scenario": "win-shopify-tabs",
+    "viewport": "mobile",
+    "state": "02-orders",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-02-orders.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Connect your Shopify storeStore domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxxRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scop",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 41,
+            "y": 278,
+            "w": 308,
+            "h": 345
+          },
+          {
+            "text": "Store domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 41,
+            "y": 394,
+            "w": 308,
+            "h": 163
+          },
+          {
+            "text": "Access tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 496,
+            "w": 274,
+            "h": 44
+          },
+          {
+            "text": "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 524,
+            "w": 274,
+            "h": 16
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify"
+  },
+  {
+    "scenario": "win-shopify-tabs",
+    "viewport": "mobile",
+    "state": "03-inventory",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-03-inventory.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Connect your Shopify storeStore domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxxRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scop",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 41,
+            "y": 278,
+            "w": 308,
+            "h": 345
+          },
+          {
+            "text": "Store domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 41,
+            "y": 394,
+            "w": 308,
+            "h": 163
+          },
+          {
+            "text": "Access tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 496,
+            "w": 274,
+            "h": 44
+          },
+          {
+            "text": "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 524,
+            "w": 274,
+            "h": 16
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify"
+  },
+  {
+    "scenario": "win-shopify-tabs",
+    "viewport": "mobile",
+    "state": "04-customers",
+    "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-04-customers.png",
+    "issues": [
+      {
+        "type": "visible-overflow",
+        "examples": [
+          {
+            "text": "Connect your Shopify storeStore domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxxRestart after setting these env vars. Required scopes: read_products, read_orders, read_inventory, and read_customers scop",
+            "tag": "DIV",
+            "overflowBy": 19,
+            "x": 41,
+            "y": 278,
+            "w": 308,
+            "h": 345
+          },
+          {
+            "text": "Store domainSHOPIFY_STORE_DOMAIN=your-store.myshopify.comAccess tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 20,
+            "x": 41,
+            "y": 394,
+            "w": 308,
+            "h": 163
+          },
+          {
+            "text": "Access tokenSHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 496,
+            "w": 274,
+            "h": 44
+          },
+          {
+            "text": "SHOPIFY_ACCESS_TOKEN=shpat_xxxxxxxxxxxxxxxx",
+            "tag": "DIV",
+            "overflowBy": 36,
+            "x": 58,
+            "y": 524,
+            "w": 274,
+            "h": 16
+          }
+        ]
+      }
+    ],
+    "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify"
+  }
+]

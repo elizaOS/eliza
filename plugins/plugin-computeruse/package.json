@@ -1,0 +1,108 @@
+{
+  "name": "@elizaos/plugin-computeruse",
+  "version": "2.0.0-beta.1",
+  "description": "Desktop automation plugin — screenshots, mouse/keyboard control, browser CDP, and window management for elizaOS agents. Ported from open-computer-use (Apache 2.0).",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": "./dist/index.js",
+      "default": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/ensure-platform-deps.mjs",
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@types/node": "^25.2.3",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "puppeteer-core": "^24.9.0"
+  },
+  "license": "Apache-2.0",
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "COMPUTER_USE_ENABLED": {
+        "type": "boolean",
+        "description": "Enable computer use capabilities (desktop automation, screenshots, browser control)",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "COMPUTER_USE_SCREENSHOT_AFTER_ACTION": {
+        "type": "boolean",
+        "description": "Automatically capture a screenshot after each desktop action",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "COMPUTER_USE_ACTION_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Maximum action execution timeout in milliseconds",
+        "required": false,
+        "default": 10000,
+        "sensitive": false
+      },
+      "COMPUTER_USE_APPROVAL_MODE": {
+        "type": "string",
+        "description": "Approval mode for computer-use commands: full_control auto-approves everything, smart_approve auto-approves safe read-only commands, approve_all requires approval for every command, off denies all commands.",
+        "required": false,
+        "default": "full_control",
+        "enum": [
+          "full_control",
+          "smart_approve",
+          "approve_all",
+          "off"
+        ],
+        "sensitive": false
+      },
+      "COMPUTER_USE_BROWSER_HEADLESS": {
+        "type": "boolean",
+        "description": "Run browser automation headlessly. Useful for CI and test environments without a visible desktop session.",
+        "required": false,
+        "default": false,
+        "sensitive": false
+      },
+      "ELIZA_COMPUTERUSE_DRIVER": {
+        "type": "string",
+        "description": "Cross-platform input driver: 'nutjs' (default; uses @nut-tree-fork/nut-js native bindings, works on macOS/Linux/Windows) or 'legacy' (per-OS shell tools: cliclick/xdotool/PowerShell).",
+        "required": false,
+        "default": "nutjs",
+        "enum": [
+          "nutjs",
+          "legacy"
+        ],
+        "sensitive": false
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

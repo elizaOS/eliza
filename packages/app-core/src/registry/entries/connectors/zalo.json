@@ -1,0 +1,112 @@
+{
+  "id": "zalo",
+  "name": "Zalo",
+  "description": "Zalo connector for official account messaging and support workflows.",
+  "npmName": "@elizaos/plugin-zalo",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "messaging", "zalo", "chat", "social", "social-chat"],
+  "config": {
+    "ZALO_APP_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "App Id",
+      "help": "Application/client ID",
+      "advanced": false
+    },
+    "ZALO_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "ZALO_PROXY_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy Url",
+      "help": "Proxy URL",
+      "advanced": false
+    },
+    "ZALO_SECRET_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Secret Key",
+      "help": "Secret for Zalo Secret Key",
+      "advanced": false
+    },
+    "ZALO_USE_POLLING": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Use Polling",
+      "help": "Use polling instead of webhooks",
+      "advanced": false
+    },
+    "ZALO_WEBHOOK_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Url",
+      "help": "Webhook URL",
+      "advanced": false
+    },
+    "ZALO_ACCESS_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Access Token",
+      "help": "Access token for Zalo",
+      "advanced": false
+    },
+    "ZALO_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "ZALO_WEBHOOK_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Port",
+      "help": "Port number",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    },
+    "ZALO_REFRESH_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Refresh Token",
+      "help": "Refresh token for Zalo",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Circle",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#zalo-vietnam-messaging"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": ["ZALO_ACCESS_TOKEN"]
+  }
+}

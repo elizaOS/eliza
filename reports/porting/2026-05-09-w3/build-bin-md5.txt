@@ -1,0 +1,7 @@
+38ce5c5edc75614878d2a98c98c1f2a3  libggml-cuda.so.0.9.7
+0278bc110d2ddf9cd8fc50bdd2bc5e36  libggml-cpu.so.0.9.7
+ed49caa4842ea20493cee703259a0dfe  libggml-base.so.0.9.7
+3c5e41d3d4e81370d9ce8852e1226cca  libggml.so.0.9.7
+5a09f6d1c23b203ad779306dfaa1d645  libllama.so.0.0.1
+ab782829901f1e09ae5f1690d9b944bf  llama-server
+16cdebb2a460d23f24408e3e72916f8d  libmtmd.so.0.0.1

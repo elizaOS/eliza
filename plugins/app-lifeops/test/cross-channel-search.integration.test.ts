@@ -1,0 +1,210 @@
+/**
+ * Integration test for WS1 cross-channel search.
+ *
+ * Boots a real AgentRuntime on PGLite, seeds messages into five rooms
+ * (each pinned to a different platform via `source`), runs the
+ * MESSAGE action (with direct query — no LLM required),
+ * and asserts merged citations across all five platforms.
+ *
+ * Run:
+ *   bunx vitest run eliza/plugins/app-lifeops/test/cross-channel-search.integration.test.ts
+ */
+
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { AgentRuntime, UUID } from "@elizaos/core";
+import { ChannelType, stringToUuid } from "@elizaos/core";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createRealTestRuntime } from "../../../test/helpers/real-runtime";
+import { runCrossChannelSearch } from "../src/lifeops/cross-channel-search.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
+
+let runtime: AgentRuntime;
+let cleanup: () => Promise<void>;
+let isolatedStateDir: string;
+let isolatedConfigPath: string;
+
+const isolatedEnvKeys = [
+  "ELIZA_STATE_DIR",
+  "ELIZA_CONFIG_PATH",
+  "ELIZA_PERSIST_CONFIG_PATH",
+  "ELIZAOS_CLOUD_API_KEY",
+  "ELIZAOS_CLOUD_BASE_URL",
+] as const;
+
+const previousEnv = new Map<string, string | undefined>();
+
+function setIsolatedEnv(): void {
+  isolatedStateDir = mkdtempSync(join(tmpdir(), "cross-channel-search-state-"));
+  isolatedConfigPath = join(isolatedStateDir, "eliza.json");
+  writeFileSync(
+    isolatedConfigPath,
+    JSON.stringify({ logging: { level: "error" } }),
+    "utf8",
+  );
+
+  for (const key of isolatedEnvKeys) {
+    previousEnv.set(key, process.env[key]);
+  }
+
+  process.env.ELIZA_STATE_DIR = isolatedStateDir;
+  process.env.ELIZA_CONFIG_PATH = isolatedConfigPath;
+  process.env.ELIZA_PERSIST_CONFIG_PATH = isolatedConfigPath;
+  delete process.env.ELIZA_STATE_DIR;
+  delete process.env.ELIZA_CONFIG_PATH;
+  delete process.env.ELIZA_PERSIST_CONFIG_PATH;
+  delete process.env.ELIZAOS_CLOUD_API_KEY;
+  delete process.env.ELIZAOS_CLOUD_BASE_URL;
+}
+
+function restoreEnv(): void {
+  for (const key of isolatedEnvKeys) {
+    const value = previousEnv.get(key);
+    if (value === undefined) {
+      delete process.env[key];
+      continue;
+    }
+    process.env[key] = value;
+  }
+}
+
+type SeedMessageInput = {
+  platform: "discord" | "telegram" | "imessage" | "signal" | "whatsapp";
+  speakerName: string;
+  text: string;
+  ageMs: number;
+};
+
+async function seedMessage(input: SeedMessageInput): Promise<{
+  roomId: UUID;
+  entityId: UUID;
+}> {
+  const roomId = stringToUuid(`ws1-${input.platform}-room`);
+  const entityId = stringToUuid(`ws1-${input.platform}-entity`);
+  const worldId = stringToUuid(`ws1-${input.platform}-world`);
+
+  await runtime.ensureConnection({
+    entityId,
+    roomId,
+    worldId,
+    worldName: input.platform,
+    userName: input.speakerName,
+    name: input.speakerName,
+    source: input.platform,
+    type: ChannelType.DM,
+    channelId: `${input.platform}-channel`,
+  });
+
+  const memory = {
+    id: stringToUuid(`ws1-${input.platform}-${input.text}-${input.ageMs}`),
+    agentId: runtime.agentId,
+    roomId,
+    entityId,
+    content: {
+      text: input.text,
+      source: input.platform,
+      name: input.speakerName,
+    },
+    createdAt: Date.now() - input.ageMs,
+  };
+
+  const embedded = await runtime.addEmbeddingToMemory(memory as never);
+  await runtime.createMemory(embedded as never, "messages");
+
+  return { roomId, entityId };
+}
+
+beforeAll(async () => {
+  setIsolatedEnv();
+  // withLLM guarantees a TEXT_EMBEDDING model in the real-runtime helper.
+  // We don't need text generation for the action path in this test because
+  // the direct `query` param bypasses TEXT_SMALL planning.
+  const result = await createRealTestRuntime({
+    plugins: [appLifeOpsPlugin],
+    withLLM: true,
+  });
+  runtime = result.runtime;
+  cleanup = result.cleanup;
+
+  // Seed messages across five platforms. Each message carries the shared
+  // keyword "ProjectAtlas" so the semantic search will pull from every
+  // room even though the surrounding text is different per platform.
+  await seedMessage({
+    platform: "discord",
+    speakerName: "PartnerOne",
+    text: "ProjectAtlas timeline slipped again — we need to regroup before Friday.",
+    ageMs: 60_000,
+  });
+  await seedMessage({
+    platform: "telegram",
+    speakerName: "PartnerOne",
+    text: "Just sent you the ProjectAtlas milestone doc, please review tonight.",
+    ageMs: 30_000,
+  });
+  await seedMessage({
+    platform: "imessage",
+    speakerName: "PartnerOne",
+    text: "Heads up: ProjectAtlas standup is moving to 9am tomorrow.",
+    ageMs: 10_000,
+  });
+  await seedMessage({
+    platform: "signal",
+    speakerName: "PartnerOne",
+    text: "ProjectAtlas Signal fallback thread has the vendor call note.",
+    ageMs: 8_000,
+  });
+  await seedMessage({
+    platform: "whatsapp",
+    speakerName: "PartnerOne",
+    text: "ProjectAtlas WhatsApp room has the launch checklist screenshot.",
+    ageMs: 6_000,
+  });
+}, 240_000);
+
+afterAll(async () => {
+  await cleanup();
+  restoreEnv();
+  rmSync(isolatedStateDir, { recursive: true, force: true });
+});
+
+describe("cross-channel-search WS1 integration", () => {
+  it("runCrossChannelSearch returns passive-memory hits from all chat platforms with typed unsupported markers when asked", async () => {
+    const result = await runCrossChannelSearch(runtime, {
+      query: "ProjectAtlas",
+      channels: [
+        "memory",
+        "discord",
+        "telegram",
+        "imessage",
+        "gmail",
+        "signal",
+        "whatsapp",
+      ],
+      limit: 5,
+    });
+
+    const platforms = new Set(result.hits.map((h) => h.channel));
+    expect(platforms.has("discord")).toBe(true);
+    expect(platforms.has("telegram")).toBe(true);
+    expect(platforms.has("imessage")).toBe(true);
+    expect(platforms.has("signal")).toBe(true);
+    expect(platforms.has("whatsapp")).toBe(true);
+
+    for (const hit of result.hits) {
+      expect(hit.citation.platform).toBeTruthy();
+      expect(typeof hit.timestamp).toBe("string");
+      expect(hit.sourceRef.length).toBeGreaterThan(0);
+    }
+
+    const unsupportedChannels = result.unsupported.map((u) => u.channel);
+    expect(unsupportedChannels).toContain("signal");
+    expect(unsupportedChannels).toContain("whatsapp");
+
+    const gmailStatus =
+      result.unsupported.find((u) => u.channel === "gmail") ??
+      result.degraded.find((d) => d.channel === "gmail");
+    expect(gmailStatus).toBeTruthy();
+  }, 120_000);
+
+});

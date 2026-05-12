@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
+      "@elizaos/app-task-coordinator": [
+        "../../plugins/app-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
+      "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
+      "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
+      "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
+      "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
+      "@elizaos/app-training": ["../../plugins/app-training/src/index.ts"],
+      "@elizaos/app-vincent": ["../../plugins/app-vincent/src/index.ts"],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/dist/index.d.ts"],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp": ["../../plugins/plugin-whatsapp/src/index.ts"],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
+      "@elizaos/plugin-telegram": ["../../plugins/plugin-telegram/src/index.ts"],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/capacitor-agent": ["../native-plugins/agent/src/index.ts"],
+      "@elizaos/capacitor-desktop": ["../native-plugins/desktop/src/index.ts"],
+      "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],
+      "@elizaos/native-activity-tracker": [
+        "../native-plugins/activity-tracker/src/index.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../native-plugins/bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar": [
+        "../native-plugins/calendar/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../native-plugins/mobile-signals/src/index.ts"
+      ],
+      "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "react": ["../../node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../../node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/client": [
+        "../../node_modules/@types/react-dom/client.d.ts"
+      ],
+      "@elizaos/app-clawville": ["../../plugins/app-clawville/src/index.ts"]
+    }
+  }
+}

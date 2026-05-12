@@ -1,0 +1,152 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway-discord.fullname" . }}
+  namespace: {{ include "gateway-discord.namespace" . }}
+  labels:
+    {{- include "gateway-discord.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gateway-discord.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway-discord.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "gateway-discord.serviceAccountName" . }}
+      {{- end }}
+      containers:
+        - name: gateway
+          {{- if .Values.image.digest }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          {{- else }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.containerPort }}
+              name: http
+          {{- if .Values.envFrom }}
+          envFrom:
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_ENV
+              value: {{ .Values.config.nodeEnv | quote }}
+            - name: PORT
+              value: {{ .Values.config.port | quote }}
+            - name: MAX_BOTS_PER_POD
+              value: {{ .Values.config.maxBotsPerPod | quote }}
+            - name: FAILOVER_CHECK_INTERVAL_MS
+              value: {{ .Values.config.failoverCheckIntervalMs | quote }}
+            - name: DEAD_POD_THRESHOLD_MS
+              value: {{ .Values.config.deadPodThresholdMs | quote }}
+            - name: KEDA_COOLDOWN_SECONDS
+              value: {{ .Values.kedaCooldownSeconds | quote }}
+            {{- if .Values.elizaAppBot.enabled }}
+            - name: ELIZA_APP_DISCORD_BOT_ENABLED
+              value: "true"
+            {{- if .Values.elizaAppBot.leaderKey }}
+            - name: ELIZA_APP_LEADER_KEY
+              value: {{ .Values.elizaAppBot.leaderKey | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if not .Values.envFrom }}
+            - name: ELIZA_CLOUD_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaCloudUrl }}
+            - name: GATEWAY_BOOTSTRAP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.gatewayBootstrapSecret }}
+            - name: KV_REST_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.redisUrl }}
+            - name: KV_REST_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.redisToken }}
+            - name: BLOB_READ_WRITE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.blobToken }}
+                  optional: true
+            {{- if .Values.elizaAppBot.enabled }}
+            - name: ELIZA_APP_DISCORD_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppDiscordBotToken }}
+            - name: ELIZA_APP_DISCORD_APPLICATION_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppDiscordApplicationId }}
+            {{- end }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    curl -sf -X POST http://localhost:{{ .Values.containerPort }}/drain || true
+                    sleep {{ .Values.preStopDrainSleepSeconds }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gateway-discord.fullname" . }}
+  namespace: {{ include "gateway-discord.namespace" . }}
+  labels:
+    {{- include "gateway-discord.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "gateway-discord.selectorLabels" . | nindent 4 }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.targetPort }}
+      name: http

@@ -1,0 +1,71 @@
+{
+  "id": "telegram",
+  "name": "Telegram",
+  "description": "Telegram connector for bot chats, groups, channels, and topic-based conversations through BotFather tokens or an Eliza Cloud webhook gateway.",
+  "npmName": "@elizaos/plugin-telegram",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "messaging",
+    "telegram",
+    "chat",
+    "social",
+    "social-chat"
+  ],
+  "config": {
+    "TELEGRAM_API_ROOT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Api Root",
+      "help": "Base URL for Telegram Bot API used by the TelegramService, allowing override of the default API endpoint.",
+      "advanced": false
+    },
+    "TELEGRAM_BOT_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Bot Token",
+      "help": "Telegram bot token used for authenticating and operating the Telegram bot.",
+      "advanced": false
+    },
+    "TELEGRAM_ALLOWED_CHATS": {
+      "type": "json",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Chats",
+      "help": "JSON-encoded array of Telegram chat IDs that are authorized to interact with the bot.",
+      "advanced": false
+    },
+    "TELEGRAM_TEST_CHAT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Test Chat Id",
+      "help": "Telegram chat ID used by the test suite to send, receive, and validate messages during Telegram bot tests.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Send",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-telegram#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-telegram",
+    "setupGuideUrl": "https://docs.eliza.ai/guides/tutorial-telegram-bot"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": ["TELEGRAM_BOT_TOKEN"]
+  }
+}

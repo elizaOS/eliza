@@ -1,0 +1,123 @@
+{
+  "id": "local-ai",
+  "name": "Local Ai",
+  "description": "LocalAI provider for self-hosted, OpenAI-compatible local model inference.",
+  "npmName": "@elizaos/plugin-local-ai",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "ai-provider",
+    "llm",
+    "local-models",
+    "self-hosted",
+    "local-ai",
+    "local"
+  ],
+  "config": {
+    "CACHE_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Dir",
+      "help": "Filesystem path to the cache directory for model assets.",
+      "advanced": false
+    },
+    "MODELS_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Dir",
+      "help": "Filesystem path to the directory where AI models are stored.",
+      "advanced": false
+    },
+    "LOCAL_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text/eliza-1-desktop-9b-64k.gguf",
+      "label": "Large Model",
+      "help": "Filename of the large local AI model.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "LOCAL_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text/eliza-1-mobile-1_7b-32k.gguf",
+      "label": "Small Model",
+      "help": "Filename of the small local AI model.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "CUDA_VISIBLE_DEVICES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Visible Devices",
+      "help": "Used to detect if CUDA-enabled GPUs are available.",
+      "advanced": false
+    },
+    "LOCAL_EMBEDDING_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text/eliza-1-lite-0_6b-32k.gguf",
+      "label": "Embedding Model",
+      "help": "Filename of the embedding model used for vector embeddings.",
+      "placeholder": "e.g., text-embedding-3-small",
+      "advanced": false
+    },
+    "LOCAL_EMBEDDING_DIMENSIONS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1024",
+      "label": "Embedding Dimensions",
+      "help": "Number of dimensions the embedding model outputs.",
+      "advanced": false
+    },
+    "MILADY_MODEL": {
+      "type": "select",
+      "required": false,
+      "sensitive": false,
+      "label": "Eliza-1 Model",
+      "help": "Select a published Eliza-1 fine-tune. The runtime auto-picks the right quant flavor (gguf/polarquant/fp8/bf16) for your detected GPU and pulls it from HuggingFace on first use.",
+      "options": [
+        {
+          "value": "eliza-1-2b",
+          "label": "Eliza-1 2B (16 GB GPU)",
+          "description": "Local-tier fine-tune, fits 16 GB consumer GPUs at Q4_K_M."
+        },
+        {
+          "value": "eliza-1-9b",
+          "label": "Eliza-1 9B (24-48 GB GPU)",
+          "description": "Workstation-tier fine-tune; Q4_K_M for 16 GB cards, PolarQuant for 24+."
+        },
+        {
+          "value": "eliza-1-27b",
+          "label": "Eliza-1 27B (cloud / 48 GB+)",
+          "description": "Cloud-tier fine-tune; Q6_K GGUF on RTX 5090, fp8/bf16 on H200/B200."
+        }
+      ],
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Monitor",
+    "group": "ai-provider",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-local-ai#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-local-ai",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#local-ai"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

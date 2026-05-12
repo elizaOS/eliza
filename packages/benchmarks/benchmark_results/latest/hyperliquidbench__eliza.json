@@ -1,0 +1,85 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133453Z_924561fd/hyperliquidbench__hyperliquidbench/run_hyperliquidbench_20260511T133514Z_3_81fa4ec5/output"
+  ],
+  "benchmark_directory": "HyperliquidBench",
+  "benchmark_id": "hyperliquidbench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "base": 6.0,
+    "bonus": 1.25,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "demo_mode": true,
+    "final_score": 7.25,
+    "mode": "eliza",
+    "model": "gpt-oss-120b",
+    "network": "testnet",
+    "passed_scenarios": 1,
+    "penalty": 0,
+    "performance_metrics": {
+      "duration_seconds": 38.9421494169801,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.02567911671470209
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_scenarios": 1,
+    "total_score": 7.25,
+    "trajectory_summary": {
+      "files": 1,
+      "prompt_chars": 14,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 38.9421494169801,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.02567911671470209
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133453Z_924561fd/hyperliquidbench__hyperliquidbench/run_hyperliquidbench_20260511T133514Z_3_81fa4ec5/output/hyperliquid_bench-eliza-20260511-063552.json",
+  "run_group_id": "rg_20260511T133453Z_924561fd",
+  "run_id": "run_hyperliquidbench_20260511T133514Z_3_81fa4ec5",
+  "score": 7.25,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "prompt_chars": 14,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "score",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

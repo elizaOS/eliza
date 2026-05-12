@@ -1,0 +1,69 @@
+---
+title: "x402 roadmap (agent seller)"
+description: "Planned work and rationale for x402 paid routes in @elizaos/agent"
+---
+
+## Purpose
+
+This page tracks **what we intend to improve next** for x402 in `@elizaos/agent`, and **why** each item matters. Implementation details live in [x402 paid plugin routes](/plugins/x402-paid-routes) and in `packages/agent/src/middleware/x402/`.
+
+## Current state (snapshot)
+
+- **Dual 402 response:** JSON body (x402scan-style, `x402Version: 1`) **and** `PAYMENT-REQUIRED` header (V2-style, `x402Version: 2`, CAIP-2 networks).
+- **Standard buyer path:** `PAYMENT-SIGNATURE` / `X-Payment` → facilitator **verify** then **settle** → handler; **`PAYMENT-RESPONSE`** on success when settlement returns JSON.
+- **Legacy paths:** on-chain proofs, facilitator payment IDs, optional gated local EIP-712 verification.
+
+**Why dual responses:** we cannot assume every consumer has migrated to V2 headers; keeping the JSON body avoids breaking existing wallets and internal tools while still giving V2 clients a correct `PAYMENT-REQUIRED`.
+
+## Roadmap
+
+### 1. Single canonical “payment details” object
+
+**Goal:** Build one in-memory object per `accepts[]` entry and reuse it for: JSON body fields, `PAYMENT-REQUIRED` encoding, and facilitator `paymentRequirements` (byte-for-byte or field-for-field parity).
+
+**Why:** Today two shapes are intentional, but drift risk remains. One source of truth eliminates subtle mismatches (e.g. `asset` as CAIP-19 vs contract address) that cause verify failures in the wild.
+
+### 2. Align `x402Version` and `accepts` strictly with chosen protocol mode
+
+**Goal:** Character or env flag to select **V1 body only**, **V2 headers only**, or **dual** (current default), with tests for each.
+
+**Why:** Some deployments want strict spec compliance; others need backward compatibility. Making the mode explicit avoids “half V2” surprises in security reviews.
+
+### 3. First-class Solana standard path
+
+**Goal:** Same verify+settle lifecycle for SVM schemes where the facilitator supports it; keep on-chain SPL verification as fallback.
+
+**Why:** Skipping Solana in the standard matcher was an incremental choice; production agents often sell on Solana first.
+
+### 4. Structured settlement parsing
+
+**Goal:** Map facilitator settle responses to a typed `SettlementResponse`, validate success/failure explicitly, and set `PAYMENT-RESPONSE` from that type—not raw `JSON.stringify` of unknown bodies.
+
+**Why:** Safer evolution when facilitators add fields; clearer logging and metrics.
+
+### 5. Operator metrics and redaction
+
+**Goal:** Optional counters / structured logs for verify latency, settle latency, replay denials, and facilitator errors—without logging full payment payloads.
+
+**Why:** Production debugging needs signals; payment payloads are sensitive.
+
+### 6. Cross-package extraction (optional)
+
+**Goal:** If `cloud/` and `packages/agent` continue to share facilitator contracts, extract a tiny shared “types + URL helpers” package to avoid two sources of truth.
+
+**Why:** Duplicated crypto or HTTP contracts rot; shared types are cheaper than repeated security audits.
+
+## Non-goals (for this middleware)
+
+- **Replacing** Coinbase CDP, `@x402/core`, or hosted facilitator products—this layer should remain a thin adapter.
+- **Wallet UI** in the agent package—that belongs in apps and client shims (see Vite notes in the main x402 doc).
+
+## How to influence this roadmap
+
+Open issues or PRs against `packages/agent` with:
+
+- Which **facilitator** you run (URL, verify/settle paths, example JSON).
+- Which **client** you use (`@x402/fetch`, custom, browser).
+- A **redacted** 402 response + paid retry request that fails against the agent.
+
+Concrete fixtures drive prioritization faster than abstract spec debates.

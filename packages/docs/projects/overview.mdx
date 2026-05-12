@@ -1,0 +1,208 @@
+---
+title: "Overview"
+description: "Understand generated elizaOS projects and how they run"
+---
+
+<Info>
+  A **project** is a deployable product workspace. It contains the app users run, the agents and plugins that power it, and the scripts used to develop, build, test, and ship it.
+</Info>
+
+## What Is a Project?
+
+An elizaOS project is the top-level workspace for a product such as Milady. It is where you:
+
+- Customize product identity and branding.
+- Configure one or more agents.
+- Choose default app plugins and runtime plugins.
+- Run web, desktop, and mobile development workflows.
+- Build and test the product app.
+
+The `elizaos` CLI creates and upgrades the workspace. The generated `package.json` scripts run the app.
+
+## Development Flow
+
+<Steps>
+  <Step title="Create the workspace">
+    ```bash
+    elizaos create my-agent-app --template project
+    cd my-agent-app
+    bun install
+    ```
+  </Step>
+  <Step title="Customize the product">
+    Update `apps/app/app.config.ts`, branding assets, app plugin registration, and platform settings.
+  </Step>
+  <Step title="Run locally">
+    ```bash
+    bun run dev
+    ```
+  </Step>
+  <Step title="Verify changes">
+    ```bash
+    bun run test
+    bun run typecheck
+    bun run lint
+    ```
+  </Step>
+  <Step title="Upgrade intentionally">
+    ```bash
+    elizaos upgrade --check
+    elizaos upgrade
+    ```
+  </Step>
+</Steps>
+
+## Generated Structure
+
+```bash
+my-agent-app/
+├── apps/
+│   └── app/                  # Project app: branded shell and platform config
+│       ├── app.config.ts     # Identity, bundle IDs, env prefix, branding
+│       ├── src/main.tsx      # App boot and app-surface registration
+│       ├── capacitor.config.ts
+│       └── electrobun/
+├── eliza/                    # Local elizaOS checkout used by the workspace
+│   ├── packages/
+│   │   ├── agent/            # Backend agent server package
+│   │   └── app-core/         # Shared app shell and platform package
+│   └── plugins/
+│       └── app-*/            # eliza repo app plugins
+├── .elizaos/template.json    # Template metadata for upgrades
+├── package.json              # Project scripts
+└── .env.example
+```
+
+<Note>
+  In the eliza repo, top-level app plugins live under `plugins/app-*` and keep package names such as `@elizaos/app-companion`. Generated projects may still have their own `apps/app` folder; that folder is the project app, not a plugin.
+</Note>
+
+## Key Files
+
+### `package.json`
+
+The root package owns workspace scripts:
+
+```bash
+bun run dev
+bun run build
+bun run test
+bun run typecheck
+bun run lint
+```
+
+Generated projects can add desktop and mobile scripts such as:
+
+```bash
+bun run build:desktop
+bun run build:ios
+bun run build:android
+bun run dev:desktop
+```
+
+### `apps/app/app.config.ts`
+
+This is the single source of truth for product identity:
+
+- `appName`: display name.
+- `appId`: mobile and desktop bundle identifier.
+- `orgName` and `repoName`: repository metadata and generated URLs.
+- `cliName`: local command/name used by scripts and tooling.
+- `envPrefix`: project-specific environment variable prefix.
+- `namespace`: storage, runtime, and platform namespace.
+- `defaultApps`: app plugins enabled by default.
+- `desktop`, `web`, `android`, `aosp`: platform-specific config.
+- `branding`: product URLs, bug report URL, package scope, and file extension.
+
+See [Customize a Generated Project](/projects/customize-generated-project) for a focused checklist.
+
+### `apps/app/src/main.tsx`
+
+The project app bootstraps `@elizaos/app-core`, imports styles, registers app plugin surfaces, wires platform bridges, and passes branding into `AppProvider`.
+
+Add or remove default app plugin imports here when your product surface changes. Keep runtime plugin capability changes in plugin packages or agent configuration.
+
+### `.elizaos/template.json`
+
+The CLI uses this file to determine which template created the workspace and which files are managed by `elizaos upgrade`.
+
+## Project Definition
+
+Projects coordinate agents and plugins. A project can be a single-agent product, a multi-agent app, or a branded shell that exposes a larger set of app surfaces.
+
+```typescript
+import type { Project, ProjectAgent } from "@elizaos/core";
+import { character } from "./character";
+
+export const projectAgent: ProjectAgent = {
+  character,
+  init: async (runtime) => {
+    runtime.logger.info(`Initializing ${character.name}`);
+  },
+};
+
+const project: Project = {
+  agents: [projectAgent],
+};
+
+export default project;
+```
+
+## Environment Configuration
+
+Put shared local secrets in the generated root `.env` file, and app-specific values in the app-level env files when the template provides them.
+
+```bash
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+DATABASE_URL=postgresql://localhost/eliza
+LOG_LEVEL=info
+```
+
+Project-specific environment variables should use your configured `envPrefix`. For example, Milady uses `MILADY_*` in addition to compatibility aliases where needed.
+
+## Testing Projects
+
+Use generated package scripts:
+
+```bash
+bun run test
+bun run typecheck
+bun run lint
+```
+
+Some generated apps also expose focused scripts under `apps/app/package.json`, such as UI smoke tests, desktop packaged tests, or platform-specific checks.
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="What is the difference between a project, plugin, and app plugin?">
+    A project is the deployable product workspace. A plugin is a runtime extension. An app plugin is a plugin that also contributes an app surface. See [Project Taxonomy](/projects/taxonomy).
+  </Accordion>
+  <Accordion title="Do I run projects with the elizaOS CLI?">
+    No. The CLI creates and upgrades generated workspaces. Run generated projects with their package scripts, such as `bun run dev`, `bun run build`, and `bun run test`.
+  </Accordion>
+  <Accordion title="Can I develop custom plugins in a project?">
+    Yes. You can add local plugins as workspace packages, install published plugins, or create a standalone plugin with `elizaos create --template plugin`.
+  </Accordion>
+  <Accordion title="Do I need the full elizaOS monorepo?">
+    Generated projects include or initialize the local `eliza` checkout they need. You only work directly in the eliza repo when contributing to core packages or top-level app plugins.
+  </Accordion>
+</AccordionGroup>
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="play" href="/quickstart">
+    Create and run a generated project.
+  </Card>
+  <Card title="Customize a Generated Project" icon="sliders" href="/projects/customize-generated-project">
+    Configure identity, branding, app plugins, and platform targets.
+  </Card>
+  <Card title="Package Boundaries" icon="boxes-stacked" href="/runtime/package-boundaries">
+    Understand `@elizaos/agent` and `@elizaos/app-core`.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+    Review the simplified CLI.
+  </Card>
+</CardGroup>

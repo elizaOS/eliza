@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
+      "@elizaos/app-elizamaker": [
+        "../../plugins/app-elizamaker/dist/index.d.ts"
+      ],
+      "@elizaos/app-task-coordinator": [
+        "../../plugins/app-task-coordinator/dist/index.d.ts"
+      ],
+      "@elizaos/app-companion": [
+        "../../plugins/app-companion/dist/index.d.ts"
+      ],
+      "@elizaos/app-lifeops": [
+        "../../plugins/app-lifeops/dist/index.d.ts"
+      ],
+      "@elizaos/app-phone": [
+        "../../plugins/app-phone/dist/index.d.ts"
+      ],
+      "@elizaos/app-shopify": [
+        "../../plugins/app-shopify/dist/index.d.ts"
+      ],
+      "@elizaos/app-steward": [
+        "../../plugins/app-steward/dist/index.d.ts"
+      ],
+      "@elizaos/app-training": [
+        "../../plugins/app-training/dist/index.d.ts"
+      ],
+      "@elizaos/app-vincent": [
+        "../../plugins/app-vincent/dist/index.d.ts"
+      ],
+      "@elizaos/app-wallet": [
+        "../../plugins/app-wallet/dist/index.d.ts"
+      ],
+      "@elizaos/app-babylon": [
+        "./src/types/side-effect-app-modules.d.ts"
+      ],
+      "@elizaos/app-scape": [
+        "./src/types/side-effect-app-modules.d.ts"
+      ],
+      "@elizaos/app-hyperscape": [
+        "./src/types/side-effect-app-modules.d.ts"
+      ],
+      "@elizaos/app-2004scape": [
+        "./src/types/side-effect-app-modules.d.ts"
+      ],
+      "@elizaos/app-defense-of-the-agents": [
+        "./src/types/side-effect-app-modules.d.ts"
+      ],
+      "@elizaos/app-trajectory-logger": [
+        "./src/types/side-effect-app-modules.d.ts"
+      ],
+      "@elizaos/plugin-wallet": [
+        "../../plugins/plugin-wallet/dist/index.d.mts"
+      ],
+      "@elizaos/plugin-sql": [
+        "../../plugins/plugin-sql/src/dist/index.node.d.ts"
+      ],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/plugin-video": [
+        "../../plugins/plugin-video/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/dist/src/index.d.ts"
+      ],
+      "@elizaos/plugin-signal": [
+        "../../plugins/plugin-signal/src/index.ts"
+      ],
+      "@elizaos/plugin-google": [
+        "../../plugins/plugin-google/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/dist/index"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/dist/index"
+      ],
+      "@elizaos/core": ["../core/dist/index.d.ts"],
+      "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/capacitor-agent": [
+        "../native-plugins/agent/src/index.ts"
+      ],
+      "@elizaos/capacitor-desktop": [
+        "../native-plugins/desktop/src/index.ts"
+      ],
+      "@elizaos/capacitor-llama": [
+        "../native-plugins/llama/src/index.ts"
+      ],
+      "@elizaos/native-activity-tracker": [
+        "../native-plugins/activity-tracker/src/index.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar": [
+        "../native-plugins/calendar/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../native-plugins/mobile-signals/src/index.ts"
+      ],
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../ui/dist/*"],
+      "react": ["../../node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../../node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../../node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ],
+      "react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
+      "react-dom/client": [
+        "../../node_modules/@types/react-dom/client.d.ts"
+      ],
+      "@elizaos/app-clawville": ["../../plugins/app-clawville/src/index.ts"]
+    }
+  }
+}

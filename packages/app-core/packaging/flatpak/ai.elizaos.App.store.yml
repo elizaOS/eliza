@@ -1,0 +1,142 @@
+# Flatpak manifest — Flathub (store) variant for elizaOS App.
+#
+# This is the LOCKED-DOWN sandbox build, intended for distribution through
+# Flathub. It is the Flatpak equivalent of an app-store / MAS / MSIX build:
+# the runtime cannot reach the host shell, cannot execute arbitrary CLIs from
+# `$PATH`, and cannot read or write outside its own per-app data directory or
+# user-granted portal-mediated paths.
+#
+# When you want the unrestricted, power-user experience that mirrors the
+# AppImage / .deb / .rpm distribution (full $HOME access, host shell, host
+# Ollama, docker, etc.), use `ai.elizaos.App.yml` instead. That manifest is
+# the "direct" variant and is NOT acceptable on Flathub — Flathub reviewers
+# will reject `--filesystem=home` and similar host-escape sockets.
+#
+# Build (store / Flathub):
+#   flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.store.yml
+# Install:
+#   flatpak --user install repo ai.elizaos.App
+# Bundle:
+#   flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+#
+# See ./README.md for the full sandbox philosophy and required portals.
+
+app-id: ai.elizaos.App
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: elizaos-app
+
+finish-args:
+  # ── Required ────────────────────────────────────────────────────────────
+  # Network: cloud APIs, model providers, plugin registry, web dashboard.
+  - --share=network
+  # IPC: required for localhost loopback that the dashboard binds.
+  - --share=ipc
+  # GUI display sockets — Wayland with X11 fallback. The CLI is a console
+  # app, but the same image hosts the local dashboard the user opens in a
+  # browser, and Flathub expects desktop apps to declare their display
+  # sockets here so the portal stack works correctly.
+  - --socket=wayland
+  - --socket=fallback-x11
+  # Persisted state — keeps `~/.milady` (app data, prompts, trajectories)
+  # inside the per-app sandboxed home so it survives upgrades. Flatpak
+  # rewrites this to `~/.var/app/ai.elizaos.App/.milady` transparently.
+  - --persist=.milady
+  # Portal-managed user-granted workspace folder. The user picks this
+  # explicitly via the FileChooser portal at first run; everything outside
+  # it stays unreadable.
+  - --filesystem=xdg-documents/Milady:create
+  # XDG config persistence (config file, account storage, settings).
+  - --filesystem=xdg-config/elizaos-app:create
+  # Desktop notifications.
+  - --talk-name=org.freedesktop.Notifications
+  # System tray / status notifier (KDE + GNOME shell extension).
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # OpenURI portal — used to launch the user's browser for OAuth flows
+  # (Eliza Cloud sign-in, app domain verification redirects). The
+  # portal namespace is implicit on org.freedesktop.Platform//24.08;
+  # we do NOT need to talk-name org.freedesktop.portal.* directly.
+
+  # ── Explicitly DENIED (do not add these) ────────────────────────────────
+  # See README.md for the full list of forbidden grants. In short: no
+  # filesystem=home, no filesystem=host, no host-spawn portal
+  # (org.freedesktop.Flatpak), no device=all, no raw session-bus or
+  # system-bus sockets. These would defeat the Flathub sandbox posture
+  # and reviewers will reject them. The forbidden-list strings are
+  # intentionally written without the leading `--` so the
+  # test-packaging.sh sandbox-lockdown grep checks (which match the
+  # actual `--option=...` argument form, with leading whitespace)
+  # don't false-positive on these comment lines.
+
+build-options:
+  no-debuginfo: true
+  # Flathub's build infrastructure does NOT allow network access during
+  # the build phase. To submit this manifest to Flathub you must vendor
+  # the npm tree as offline sources first, e.g.:
+  #
+  #   flatpak-node-generator npm package-lock.json -o npm-sources.json
+  #
+  # then add `npm-sources.json` to the elizaos-app sources list and drop
+  # the `--share=network` build-arg below.
+  #
+  # For self-hosted CI builds (the `bun run build:flatpak` script under
+  # ../../scripts/build-flatpak.mjs), the network flag stays on so we can
+  # `npm install -g elizaos` straight from the registry.
+  build-args:
+    - --share=network
+
+modules:
+  # ── Node.js 22 LTS ───────────────────────────────────────────────────
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      - cp -r lib /app/lib
+      - cp -r include /app/include
+      - install -Dm755 bin/node /app/bin/node
+      - cp -P bin/npm /app/bin/npm
+      - cp -P bin/npx /app/bin/npx
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-x64.tar.xz
+        sha256: 22982235e1b71fa8850f82edd09cdae7e3f32df1764a9ec298c72d25ef2c164f
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-arm64.tar.xz
+        sha256: 8cfd5a8b9afae5a2e0bd86b0148ca31d2589c0ea669c2d0b11c132e35d90ed68
+        only-arches:
+          - aarch64
+
+  # ── elizaOS App CLI (store variant) ──────────────────────────────────
+  # The store wrapper exports MILADY_BUILD_VARIANT=store before exec'ing
+  # the runtime, which the agent reads to gate off PATH-lookup CLI
+  # spawning, EXECUTE_CODE, and host-Ollama discovery. The bubblewrap
+  # sandbox enforces the same constraints unconditionally; the env var
+  # gives the runtime a clean signal so it can render correct UI
+  # ("Local agent execution disabled in this build — switch to AppImage
+  # or .deb for the full power-user experience") instead of failing
+  # opaquely when an action tries to spawn `bun` or `python`.
+  - name: elizaos-app
+    buildsystem: simple
+    build-options:
+      env:
+        npm_config_nodedir: /app
+    build-commands:
+      - /app/bin/npm install -g elizaos --prefix=/app --ignore-scripts
+      - install -Dm755 elizaos-app-wrapper.store.sh /app/bin/elizaos-app
+      - install -Dm644 ai.elizaos.App.desktop /app/share/applications/ai.elizaos.App.desktop
+      - install -Dm644 ai.elizaos.App.metainfo.xml /app/share/metainfo/ai.elizaos.App.metainfo.xml
+      - install -Dm644 icons/128x128/ai.elizaos.App.png /app/share/icons/hicolor/128x128/apps/ai.elizaos.App.png
+      - install -Dm644 icons/256x256/ai.elizaos.App.png /app/share/icons/hicolor/256x256/apps/ai.elizaos.App.png
+      - install -Dm644 icons/512x512/ai.elizaos.App.png /app/share/icons/hicolor/512x512/apps/ai.elizaos.App.png
+    sources:
+      - type: file
+        path: ai.elizaos.App.desktop
+      - type: file
+        path: ai.elizaos.App.metainfo.xml
+      - type: file
+        path: elizaos-app-wrapper.store.sh
+      - type: dir
+        path: icons
+        dest: icons

@@ -1,0 +1,26 @@
+# Reduce build context: build artifacts, env secrets, and largest dirs
+.git
+**/node_modules
+**/.turbo
+**/dist
+**/target
+**/venv
+**/.venv
+**/*.so
+**/*.wasm
+**/.eliza
+**/.elizadb
+**/*.log
+**/.env
+**/.env.*
+.DS_Store
+.github
+.cursor
+# Large dirs (keep all packages/ and plugins/ so workspace resolves)
+examples
+apps
+eliza-cloud-v2
+**/fonts
+**/*.otf
+**/*.ttf
+**/*.woff2

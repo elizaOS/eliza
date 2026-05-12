@@ -1,0 +1,81 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191814Z_fcb8e4f6/visualwebbench__visualwebbench/run_visualwebbench_20260511T191814Z_1_8c822c6b/output"
+  ],
+  "benchmark_directory": "visualwebbench",
+  "benchmark_id": "visualwebbench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "average_latency_ms": 5027.975797653198,
+    "bbox_accuracy": 0,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "canonical_entries": 0,
+    "choice_accuracy": 0,
+    "exact_accuracy": 0,
+    "overall_accuracy": 0.0,
+    "performance_metrics": {
+      "duration_seconds": 13.50907245799317,
+      "mean_latency_ms": 5027.975797653198,
+      "p95_latency_ms": 5027.975797653198,
+      "throughput_per_second": 0.14804865442975856
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 2,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_tasks": 1,
+    "trajectory_summary": {
+      "files": 2,
+      "prompt_chars": 38,
+      "repeated_prefixes": [],
+      "turns": 2
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 13.50907245799317,
+    "mean_latency_ms": 5027.975797653198,
+    "p95_latency_ms": 5027.975797653198,
+    "throughput_per_second": 0.14804865442975856
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191814Z_fcb8e4f6/visualwebbench__visualwebbench/run_visualwebbench_20260511T191814Z_1_8c822c6b/output/visualwebbench-results.json",
+  "run_group_id": "rg_20260511T191814Z_fcb8e4f6",
+  "run_id": "run_visualwebbench_20260511T191814Z_1_8c822c6b",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 2,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "prompt_chars": 38,
+    "repeated_prefixes": [],
+    "turns": 2
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:34:00Z"
+}

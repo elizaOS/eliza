@@ -1,0 +1,162 @@
+[project]
+name = "milady-training"
+version = "0.1.0"
+description = "Fine-tuning pipeline for Eliza-1 on Eliza-native Vercel AI SDK trajectory rows."
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+
+dependencies = [
+  "huggingface-hub>=0.27.0",
+  "datasets>=3.2.0",
+  "pandas>=2.2.0",
+  "pyyaml>=6.0.2",
+  "jinja2>=3.1.0",
+  "pyarrow>=18.0.0",
+  # NB: anthropic is also a top-level dep because data-synth scripts call
+  # the Claude API. The reward-fn AI judge is gated by an env var, so the
+  # scripts/eliza_reward_fn.py path never imports anthropic unless asked.
+  "anthropic>=0.40.0",
+  "tiktoken>=0.8.0",
+  "argostranslate>=1.11.0",
+  "httpx>=0.27.0",
+  # Property-based testing for the privacy filter contract. Lightweight
+  # pure-Python dep; pinned only at the floor to match the rest of the
+  # test stack (pytest>=8).
+  "hypothesis>=6.100.0",
+]
+
+[project.optional-dependencies]
+train = [
+  # torch>=2.5,<2.12 — uv picks the wheel matching whatever vllm 0.20.x
+  # resolves to (torch 2.11+cu130 in practice) when --extra serve is
+  # also selected (smoke), and 2.10+cu126 when train is alone (Vast
+  # SFT path). Both wheels run on Vast Blackwell driver 570.x.
+  "torch>=2.5.0,<2.12",
+  "transformers>=4.46.0",
+  "accelerate>=1.1.0",
+  "peft>=0.14.0",
+  "trl>=0.13.0",
+  "bitsandbytes>=0.45.0",
+  "datasets>=3.2.0",
+  "wandb>=0.18.0",
+  "apollo-torch>=1.0.3",
+  # TurboQuant (arXiv:2504.19874) — runtime KV-cache compression.
+  # PyPI distribution name is `turbokv`; the import name is `turboquant`.
+  # This is the pure-PyTorch reference path (slow but architecture-portable).
+  "turbokv>=0.1.0",
+  # fused-turboquant — Triton-kernel implementation of the same TurboQuant
+  # scheme. Same memory win as turbokv 0.1.0; meant to recover the ~5x
+  # throughput regression from the pure-PyTorch encode/decode loop. Requires
+  # head_dim ∈ {64, 128, 256}; auto-falls-through to turbokv on architectures
+  # the patcher rejects. JIT compile of Triton's CUDA helper needs system
+  # `python3.x-dev` headers — see scripts/quantization/README.md.
+  "fused-turboquant>=0.1.0",
+  # QJL kernel build deps. The kernel itself is *vendored* under
+  # scripts/quantization/qjl/ from
+  # https://github.com/amirzandieh/QJL @648b3641 (Apache 2.0). It is NOT
+  # pip-installable — the user must run
+  #   `cd scripts/quantization/qjl && python setup.py build_ext --inplace`
+  # after installing nvcc + python-dev system packages
+  # (`sudo apt install nvidia-cuda-toolkit python3.12-dev`). pybind11
+  # is needed at C++ template-binding time. There is no pyqjl package
+  # on PyPI; do not add one.
+  "pybind11>=2.12.0",
+  # Liger kernel — fused chunked cross-entropy + RMSNorm/SwiGLU/RoPE
+  # kernels. Cuts the fp32-logits transient at training time (Qwen3.5/3.6
+  # vocab=248k makes this dominant) so we can push local training seq_len
+  # from ~2k to ~8k on the same 16 GB budget.
+  "liger-kernel>=0.5.0",
+  # GGUF Q4_K_M quantization (scripts/quantization/gguf-q4_k_m_apply.py).
+  # The wrapper uses the in-repo llama.cpp fork submodule at
+  # packages/inference/llama.cpp (its convert_hf_to_gguf.py + a one-shot
+  # CPU cmake build of llama-quantize/llama-cli — see the script's
+  # _VENDOR_HINT), but the llama-cpp-python wheel also ships a usable
+  # `gguf` python module so the HF→f16 GGUF convert step works even
+  # without that build. The Q4_K_M *quantize* step still needs a real
+  # `llama-quantize` binary. NOTE: the custom GGML types Q4_POLAR/QJL1_256/
+  # TurboQuant are only in the fork — same submodule, or $LLAMA_CPP_DIR.
+  "llama-cpp-python>=0.3.0",
+  # convert_hf_to_gguf.py imports `gguf` AND `mistral_common` at module
+  # load — both must be installed or the HF→GGUF convert step dies on
+  # import. The fork's requirements/requirements-convert_hf_to_gguf.txt
+  # also installs these, but pin them here so `uv run --extra train`
+  # works standalone.
+  "gguf>=0.10.0",
+  "mistral_common>=1.8.3",
+  # pytest is consumed by the pre-flight gate (scripts/preflight.sh) and
+  # by the CPU-only unit tests it sweeps.
+  "pytest>=8.0.0",
+]
+rl = [
+  # ByteDance verl — GRPO trainer with bundled vLLM/SGLang rollout server,
+  # FSDP+Megatron training backends, and verifiable-reward registry. Stage 2
+  # of RL_STRATEGY.md uses the python-callable reward path
+  # (`custom_reward_function`) to invoke scripts/eliza_reward_fn.py:compute_score
+  # per rollout. Pin a known-good window — the 0.5.x → 0.7.x line introduced
+  # `custom_reward_function` as a top-level config field; older releases used
+  # `reward_score.compute_score` registry imports. Both still work with the
+  # script we ship; the upper bound is just paranoid.
+  "verl>=0.5.0,<0.8.0",
+  # GRPO trainer needs vLLM for rollouts; pin separately so users running RL
+  # without serving don't have to install the full `serve` extra (which has
+  # an incompatible torch ABI). vllm>=0.6 is what verl 0.5+ requires.
+  "vllm>=0.6.0",
+]
+reward = [
+  # AI-judge path inside scripts/eliza_reward_fn.py (gated on
+  # ELIZA_REWARD_USE_AI_JUDGE=1). Listed separately so a slim RL worker that
+  # only runs verifiable rewards doesn't need to ship the SDK.
+  "anthropic>=0.40.0",
+]
+# vastai and heretic-llm are installed separately (not in train extra) —
+# vastai (provisioning CLI) lives on the local dev box and pulls in an
+# ancient python-dateutil pin; heretic-llm (refusal-direction abliteration)
+# wants psutil>=7.1 which clashes with vastai. Keep them out of the
+# resolution graph; install with `uv tool install vastai` and
+# `pip install heretic-llm` on the abliteration box.
+serve = [
+  # vLLM 0.18+ ships EAGLE-3 speculative decoding (PR #38280 era), the
+  # TurboQuant K/V quantization plugin, FP8 KV cache via FlashAttention 3
+  # on sm_90, and continuous-batching expert parallelism for the
+  # Qwen3_5MoeForConditionalGeneration class. Pin a minor floor that
+  # captures all of these. See scripts/inference/serve_vllm.py for the
+  # canonical flag set per model + GPU target.
+  "vllm>=0.20.0",
+  # `vllm-flash-attn` is bundled with vLLM 0.20+; add explicitly so the
+  # constraint solver doesn't pull a stale wheel from a transitive dep.
+  "transformers>=4.46.0",
+  # OpenAI client used by scripts/inference/test_apc_dflash_tool_calls.py to
+  # speak vLLM's OpenAI-compatible chat completions endpoint. The harness
+  # is the production gate that unlocks `MILADY_APC_DRAFTER_VERIFIED=1` on
+  # any new vLLM build for the Qwen3.5/3.6 hybrid path (omlx#825).
+  "openai>=1.50.0",
+]
+
+[tool.pytest.ini_options]
+# Tests reach into the repo via `from scripts.training.memory_calc import …`.
+# That requires the repo root on sys.path; pytest's `rootdir` autodiscovery
+# alone is not enough. `pythonpath = ["."]` makes the repo importable from
+# every test invocation, including the pre-flight gate (scripts/preflight.sh).
+pythonpath = ["."]
+testpaths = ["scripts", "benchmarks"]
+addopts = "-q"
+
+[tool.uv]
+package = false
+# `rl` (verl) pulls a vllm whose torch pin window conflicts with both
+# `train` and `serve`, so keep `rl` isolated. `train` and `serve` are
+# NOT declared as conflicting — they share a single torch 2.11+cu130
+# wheel in practice (vllm 0.20.x ships that, train deps float to it).
+# The local end-to-end smoke (smoke_full_stack.sh) needs both extras
+# in one venv; declaring them conflicting breaks that. The Vast SFT
+# path installs only `--extra train` and is unaffected.
+conflicts = [
+  [
+    { extra = "train" },
+    { extra = "rl" },
+  ],
+  [
+    { extra = "serve" },
+    { extra = "rl" },
+  ],
+]

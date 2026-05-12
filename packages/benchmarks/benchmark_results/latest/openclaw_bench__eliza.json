@@ -1,0 +1,77 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131934Z_5f4666d8/openclaw-benchmark__openclaw_bench/run_openclaw_bench_20260511T131935Z_1_542f6546/output"
+  ],
+  "benchmark_directory": "openclaw-benchmark",
+  "benchmark_id": "openclaw_bench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "mode": "conceptual",
+    "overall_score": 1.0,
+    "performance_metrics": {
+      "duration_seconds": 23.88682054099627,
+      "mean_latency_ms": 7276.195049285889,
+      "p95_latency_ms": 7276.195049285889,
+      "throughput_per_second": 0.04186408979310279
+    },
+    "return_code": 0,
+    "tasks_completed": 1,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "trajectory_summary": {
+      "files": 1,
+      "prompt_chars": 170,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 23.88682054099627,
+    "mean_latency_ms": 7276.195049285889,
+    "p95_latency_ms": 7276.195049285889,
+    "throughput_per_second": 0.04186408979310279
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131934Z_5f4666d8/openclaw-benchmark__openclaw_bench/run_openclaw_bench_20260511T131935Z_1_542f6546/output/openclaw_setup_concept_1778505598.json",
+  "run_group_id": "rg_20260511T131934Z_5f4666d8",
+  "run_id": "run_openclaw_bench_20260511T131935Z_1_542f6546",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "prompt_chars": 170,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

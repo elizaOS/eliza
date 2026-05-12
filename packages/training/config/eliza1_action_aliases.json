@@ -1,0 +1,81 @@
+{
+  "schema": "eliza.eliza1_action_aliases.v1",
+  "description": "Removed/renamed action name -> current canonical action name. Applied during Eliza-1 trajectory SFT preparation (scripts/prepare_eliza1_trajectory_dataset.py) to every action / tool-call name, including eliza_native_v1 response.toolCalls[].toolName. Exact aliases are applied before prefix aliases. The canonical action catalog is packages/core/src/generated/action-docs.ts; see packages/training/docs/dataset/CANONICAL_RECORD.md for the two-layer corpus-record / training-example model.",
+  "aliases": {
+    "RUN_COMMAND": "SHELL",
+    "EXECUTE_COMMAND": "SHELL",
+    "RUN_IN_TERMINAL": "SHELL",
+    "TERMINAL_ACTION": "SHELL",
+    "TERMINAL": "SHELL",
+    "RUN_SHELL": "SHELL",
+    "EXEC": "SHELL",
+    "RUN_SKILL_SCRIPT": "USE_SKILL",
+    "GET_SKILL_GUIDANCE": "USE_SKILL",
+    "RUN_SKILL": "USE_SKILL",
+    "INVOKE_SKILL": "USE_SKILL",
+    "SPAWN_AGENT": "TASKS",
+    "SEND_TO_AGENT": "TASKS",
+    "STOP_AGENT": "TASKS",
+    "TASK_CONTROL": "TASKS",
+    "TASK_HISTORY": "TASKS",
+    "TASK_SHARE": "TASKS",
+    "TASK_CALL": "TASKS",
+    "RESPOND": "REPLY",
+    "RESPONSE": "REPLY",
+    "GREET": "REPLY",
+    "PAYMENTS": "PAYMENT",
+    "SUBSCRIPTION": "OWNER_FINANCES",
+    "ROCKET_MONEY": "OWNER_FINANCES",
+    "AUDIT_SUBSCRIPTIONS": "OWNER_FINANCES_SUBSCRIPTION_AUDIT",
+    "MANAGE_SUBSCRIPTIONS": "OWNER_FINANCES_SUBSCRIPTION_AUDIT",
+    "APP_BLOCKER": "BLOCK",
+    "SET_APP_BLOCK": "BLOCK",
+    "PHONE_SET_APP_BLOCK": "BLOCK",
+    "PHONE_BLOCK_APPS": "BLOCK",
+    "BLOCK_APPS": "BLOCK",
+    "WEBSITE_BLOCKER": "BLOCK",
+    "BLOCK_WEBSITE": "BLOCK",
+    "SITE_BLOCKER": "BLOCK",
+    "HOSTS_BLOCK": "BLOCK",
+    "FOCUS_BLOCK": "BLOCK",
+    "AUTOMATION_FOCUS_BLOCK": "BLOCK"
+  },
+  "prefixAliases": [
+    {
+      "from": "RUN_COMMAND_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "EXECUTE_COMMAND_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "RUN_SHELL_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "TERMINAL_ACTION_",
+      "to": "SHELL_"
+    },
+    {
+      "from": "PAYMENTS_",
+      "to": "MONEY_"
+    },
+    {
+      "from": "SUBSCRIPTIONS_",
+      "to": "MONEY_SUBSCRIPTION_"
+    },
+    {
+      "from": "SUBSCRIPTION_",
+      "to": "MONEY_SUBSCRIPTION_"
+    },
+    {
+      "from": "APP_BLOCK_",
+      "to": "BLOCK_"
+    },
+    {
+      "from": "WEBSITE_BLOCK_",
+      "to": "BLOCK_"
+    }
+  ]
+}

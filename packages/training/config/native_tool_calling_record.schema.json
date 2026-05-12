@@ -1,0 +1,255 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.github.io/schemas/native-tool-calling-record.schema.json",
+  "title": "Eliza native tool-calling training record",
+  "$comment": "NOT the canonical Eliza-1 corpus record. The canonical corpus record is eliza_native_v1 (one row per Vercel AI SDK model boundary) — see packages/training/docs/dataset/CANONICAL_RECORD.md. This schema describes the per-stage native tool-calling SFT record used by scripts/prepare_native_tool_calling_data.py; its plannerOutput.planner mirrors the live plannerSchema in packages/core/src/prompts/planner.ts, and messageHandlerOutput mirrors the messageHandlerTemplate in packages/prompts/src/index.ts.",
+  "type": "object",
+  "required": ["schema", "id", "stage", "source", "output", "quality"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "eliza.native_tool_calling.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 8
+    },
+    "stage": {
+      "enum": ["message_handler", "planner", "sub_planner", "evaluator", "trajectory"]
+    },
+    "source": {
+      "type": "object",
+      "required": ["dataset", "normalizer", "license", "split", "conversion"],
+      "additionalProperties": true,
+      "properties": {
+        "dataset": {"type": "string", "minLength": 1},
+        "normalizer": {"type": "string"},
+        "license": {"type": "string"},
+        "split": {"type": "string"},
+        "originalId": {"type": "string"},
+        "conversion": {
+          "enum": [
+            "native_direct",
+            "legacy_non_json",
+            "legacy_xml_compat",
+            "inferred",
+            "synthetic"
+          ]
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/chatMessage"},
+      "default": []
+    },
+    "contexts": {
+      "type": "array",
+      "items": {"type": "string"},
+      "default": []
+    },
+    "tools": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/toolDefinition"},
+      "default": []
+    },
+    "input": {
+      "type": "object",
+      "additionalProperties": true,
+      "default": {}
+    },
+    "output": {
+      "oneOf": [
+        {"$ref": "#/$defs/messageHandlerOutput"},
+        {"$ref": "#/$defs/plannerOutput"},
+        {"$ref": "#/$defs/evaluatorOutput"},
+        {"$ref": "#/$defs/trajectoryOutput"}
+      ]
+    },
+    "quality": {
+      "type": "object",
+      "required": ["rating", "strengths", "weaknesses", "recommendedWeight", "requiresReview"],
+      "additionalProperties": true,
+      "properties": {
+        "rating": {"enum": ["gold", "silver", "bronze", "quarantine"]},
+        "strengths": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "weaknesses": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "recommendedWeight": {"type": "number", "minimum": 0},
+        "requiresReview": {"type": "boolean"}
+      }
+    }
+  },
+  "$defs": {
+    "chatMessage": {
+      "type": "object",
+      "required": ["role", "content"],
+      "additionalProperties": true,
+      "properties": {
+        "role": {
+          "enum": ["system", "developer", "user", "assistant", "tool"]
+        },
+        "content": {"type": "string"},
+        "tool_call_id": {"type": "string"},
+        "name": {"type": "string"}
+      }
+    },
+    "toolDefinition": {
+      "type": "object",
+      "required": ["type", "function"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {"const": "function"},
+        "function": {
+          "type": "object",
+          "required": ["name", "parameters"],
+          "additionalProperties": true,
+          "properties": {
+            "name": {"type": "string", "minLength": 1},
+            "description": {"type": "string"},
+            "parameters": {
+              "type": "object",
+              "required": ["type"],
+              "additionalProperties": true,
+              "properties": {
+                "type": {"const": "object"},
+                "properties": {"type": "object"},
+                "required": {
+                  "type": "array",
+                  "items": {"type": "string"}
+                },
+                "additionalProperties": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "plannedToolCall": {
+      "type": "object",
+      "required": ["id", "name", "args", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string", "minLength": 1},
+        "args": {"type": "object"},
+        "sourceStageId": {"type": "string"},
+        "contextScope": {"type": "string"},
+        "parentToolCallId": {"type": "string"},
+        "status": {
+          "enum": ["queued", "running", "completed", "skipped", "failed"]
+        }
+      }
+    },
+    "messageHandlerOutput": {
+      "$comment": "Mirrors the messageHandlerTemplate in packages/prompts/src/index.ts. `action` is the shouldRespond decision (RESPOND|IGNORE|STOP) and is omitted on the direct-message path where it is hardcoded to RESPOND. `reply` is a legacy alias of `replyText` (older traces emitted `reply`).",
+      "type": "object",
+      "required": ["messageHandler"],
+      "additionalProperties": false,
+      "properties": {
+        "messageHandler": {
+          "type": "object",
+          "required": ["contexts", "thought"],
+          "additionalProperties": true,
+          "properties": {
+            "action": {"enum": ["RESPOND", "IGNORE", "STOP"]},
+            "replyText": {"type": "string"},
+            "reply": {"type": "string", "$comment": "legacy alias of replyText"},
+            "contexts": {
+              "type": "array",
+              "items": {"type": "string"}
+            },
+            "requiresTool": {"type": "boolean"},
+            "simple": {"type": "boolean", "$comment": "legacy: superseded by contexts=[\"simple\"]"},
+            "thought": {"type": "string"}
+          }
+        }
+      }
+    },
+    "plannerOutput": {
+      "$comment": "Mirrors plannerSchema in packages/core/src/prompts/planner.ts exactly: required thought + toolCalls; messageToUser optional; tool args are an arbitrary per-tool object.",
+      "type": "object",
+      "required": ["planner"],
+      "additionalProperties": false,
+      "properties": {
+        "planner": {
+          "type": "object",
+          "required": ["thought", "toolCalls"],
+          "additionalProperties": false,
+          "properties": {
+            "thought": {"type": "string"},
+            "toolCalls": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["name"],
+                "properties": {
+                  "id": {"type": "string"},
+                  "name": {"type": "string", "minLength": 1},
+                  "args": {"type": "object"}
+                }
+              }
+            },
+            "messageToUser": {"type": "string"}
+          }
+        }
+      }
+    },
+    "evaluatorOutput": {
+      "type": "object",
+      "required": ["evaluation"],
+      "additionalProperties": false,
+      "properties": {
+        "evaluation": {
+          "type": "object",
+          "required": ["success", "decision", "thought"],
+          "additionalProperties": true,
+          "properties": {
+            "success": {"type": "boolean"},
+            "decision": {"enum": ["FINISH", "NEXT_RECOMMENDED", "CONTINUE"]},
+            "thought": {"type": "string"},
+            "messageToUser": {"type": "string"},
+            "copyToClipboard": {
+              "type": "object",
+              "required": ["title", "content"],
+              "additionalProperties": true,
+              "properties": {
+                "title": {"type": "string"},
+                "content": {"type": "string"},
+                "tags": {
+                  "type": "array",
+                  "items": {"type": "string"}
+                }
+              }
+            },
+            "recommendedToolCallId": {"type": "string"}
+          }
+        }
+      }
+    },
+    "trajectoryOutput": {
+      "type": "object",
+      "required": ["trajectory"],
+      "additionalProperties": false,
+      "properties": {
+        "trajectory": {
+          "type": "object",
+          "required": ["contextObjectVersion", "events"],
+          "additionalProperties": true,
+          "properties": {
+            "contextObjectVersion": {"const": 5},
+            "trajectoryId": {"type": "string"},
+            "events": {"type": "array"},
+            "metrics": {"type": "object"}
+          }
+        }
+      }
+    }
+  }
+}

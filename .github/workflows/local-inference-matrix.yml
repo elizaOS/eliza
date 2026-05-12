@@ -1,0 +1,298 @@
+name: Local Inference Matrix
+
+# Builds the bun-llama-cpp fork on each runner class, runs the ablation
+# variant suite, and gates regressions against per-(backend, variant) tok/s
+# floors in scripts/local-inference-thresholds.json.
+#
+# Triggers:
+#   - workflow_dispatch (always; needed for macOS/CUDA cost control)
+#   - pull_request when source paths under the local-inference subsystem,
+#     the fork build script, or the ablation runner change.
+#
+# Matrix gating:
+#   - ubuntu-latest CPU always runs.
+#   - ubuntu-latest CUDA only runs when the PR carries the `gpu` label
+#     (and a self-hosted GPU runner with the `gpu` runner labels is online).
+#   - macos-14 Metal only runs on workflow_dispatch (Apple Silicon cost).
+# CUDA and Metal entries are continue-on-error until self-hosted runners
+# are wired up so the workflow stays green on CPU only.
+#
+# Note: Job-level `if:` cannot reference `matrix` (GitHub Actions limitation).
+# Optional legs are added by `prepare-matrix` via JSON so only requested
+# combinations are scheduled.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_metal:
+        description: "Run macOS-14 Metal job (Apple Silicon)"
+        required: false
+        type: boolean
+        default: true
+      run_cuda:
+        description: "Run self-hosted CUDA job (requires `gpu` runner)"
+        required: false
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - "packages/app-core/src/services/local-inference/**"
+      - "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
+      - "scripts/local-inference-ablation.mjs"
+      - "scripts/local-inference-ablation.config.json"
+      - "scripts/local-inference-thresholds.json"
+      - "scripts/local-inference-smoke.mjs"
+      - ".github/workflows/local-inference-matrix.yml"
+
+concurrency:
+  group: local-inference-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "24"
+  ELIZA_STATE_DIR: ${{ github.workspace }}/.eliza-state
+  # Smoke model: small enough to download and run on a CPU runner in seconds.
+  SMOKE_MODEL_REPO: "bartowski/SmolLM2-360M-Instruct-GGUF"
+  SMOKE_MODEL_FILE: "SmolLM2-360M-Instruct-Q4_K_M.gguf"
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/github-script@v7
+        id: set
+        with:
+          script: |
+            const ev = context.eventName;
+            const pr = context.payload.pull_request;
+            const inputs = context.payload.inputs ?? {};
+
+            const hasGpuLabel =
+              ev === "pull_request" &&
+              Array.isArray(pr?.labels) &&
+              pr.labels.some((label) => label?.name === "gpu");
+
+            const runCudaDispatch =
+              ev === "workflow_dispatch" &&
+              (inputs.run_cuda === true ||
+                inputs.run_cuda === "true");
+
+            const runMetalDispatch =
+              ev === "workflow_dispatch" &&
+              inputs.run_metal !== false &&
+              inputs.run_metal !== "false";
+
+            const include = [
+              {
+                label: "ubuntu-latest cpu",
+                "runs-on": "ubuntu-latest",
+                backend: "cpu",
+                target: "linux-x64-cpu",
+                timeout: 90,
+                "continue-on-error": false,
+                build_only: false,
+              },
+              {
+                label: "ubuntu-latest vulkan (build-only)",
+                "runs-on": "ubuntu-latest",
+                backend: "vulkan",
+                target: "linux-x64-vulkan",
+                timeout: 90,
+                "continue-on-error": true,
+                build_only: true,
+              },
+            ];
+
+            if (hasGpuLabel || runCudaDispatch) {
+              include.push({
+                label: "ubuntu-latest cuda (self-hosted)",
+                "runs-on": ["self-hosted", "gpu", "cuda"],
+                backend: "cuda",
+                target: "linux-x64-cuda",
+                timeout: 120,
+                "continue-on-error": true,
+                build_only: false,
+              });
+            }
+
+            if (runMetalDispatch) {
+              include.push({
+                label: "macos-14 metal",
+                "runs-on": "macos-14",
+                backend: "metal",
+                target: "darwin-arm64-metal",
+                timeout: 120,
+                "continue-on-error": true,
+                build_only: false,
+              });
+            }
+
+            core.setOutput("matrix", JSON.stringify({ include }));
+
+  matrix:
+    name: ${{ matrix.label }}
+    needs: prepare-matrix
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: ${{ matrix.timeout }}
+    continue-on-error: ${{ matrix.continue-on-error }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install Linux build deps
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          set -euo pipefail
+          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          # Vulkan target additionally needs libvulkan-dev (loader headers
+          # path) and glslang-tools (provides glslc for the
+          # Vulkan_GLSLC_EXECUTABLE flag the build script passes).
+          # The build script's prepareVulkanHeaders() fetches Khronos
+          # vulkan.hpp + spirv.hpp regardless, so the only "extra" packages
+          # CI needs from apt are libvulkan-dev + glslang-tools.
+          EXTRA_PKGS=""
+          if [[ "${{ matrix.backend }}" == "vulkan" ]]; then
+            EXTRA_PKGS="libvulkan-dev glslang-tools"
+          fi
+          for attempt in 1 2 3; do
+            if sudo apt-get "${APT_ARGS[@]}" update && \
+               sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
+                 cmake ninja-build build-essential ccache git python3 python3-pip $EXTRA_PKGS; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "apt install failed after ${attempt} attempts"
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          cmake --version
+          if [[ "${{ matrix.backend }}" == "vulkan" ]]; then
+            glslc --version || true
+          fi
+
+      - name: Install macOS build deps
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          set -euo pipefail
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          cmake --version
+
+      - name: Install Hugging Face CLI
+        run: |
+          python3 -m pip install --user --upgrade "huggingface_hub[cli]"
+          if ! command -v huggingface-cli >/dev/null 2>&1; then
+            export PATH="$HOME/.local/bin:$PATH"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+          huggingface-cli --help >/dev/null
+
+      - name: Cache buun-llama-cpp checkout + build
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/eliza-dflash/buun-llama-cpp
+          key: dflash-${{ matrix.target }}-${{ hashFiles('packages/app-core/scripts/build-llama-cpp-dflash.mjs') }}
+          restore-keys: |
+            dflash-${{ matrix.target }}-
+
+      - name: Cache local-inference state (binaries + models)
+        uses: actions/cache@v5
+        with:
+          path: ${{ env.ELIZA_STATE_DIR }}/local-inference
+          key: local-inference-${{ matrix.target }}-${{ env.SMOKE_MODEL_FILE }}-${{ hashFiles('packages/app-core/scripts/build-llama-cpp-dflash.mjs') }}
+          restore-keys: |
+            local-inference-${{ matrix.target }}-${{ env.SMOKE_MODEL_FILE }}-
+            local-inference-${{ matrix.target }}-
+
+      - name: Build llama-cpp fork (${{ matrix.backend }})
+        env:
+          ELIZA_DFLASH_BACKEND: ${{ matrix.backend }}
+        run: |
+          node packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend ${{ matrix.backend }}
+
+      - name: Smoke probe binaries
+        run: |
+          bun ./scripts/local-inference-smoke.mjs
+
+      - name: Download smoke GGUF (cached)
+        if: ${{ !matrix.build_only }}
+        run: |
+          set -euo pipefail
+          MODEL_DIR="${ELIZA_STATE_DIR}/local-inference/models"
+          mkdir -p "$MODEL_DIR"
+          if [ -f "$MODEL_DIR/${SMOKE_MODEL_FILE}" ]; then
+            echo "model already cached: $MODEL_DIR/${SMOKE_MODEL_FILE}"
+            ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"
+            exit 0
+          fi
+          huggingface-cli download "${SMOKE_MODEL_REPO}" "${SMOKE_MODEL_FILE}" \
+            --local-dir "$MODEL_DIR" \
+            --local-dir-use-symlinks False
+          ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"
+
+      - name: Run ablation (--quick, gated)
+        if: ${{ !matrix.build_only }}
+        env:
+          ELIZA_DFLASH_BACKEND: ${{ matrix.backend }}
+        run: |
+          set -euo pipefail
+          MODEL_PATH="${ELIZA_STATE_DIR}/local-inference/models/${SMOKE_MODEL_FILE}"
+          node ./scripts/local-inference-ablation.mjs \
+            --backend ${{ matrix.backend }} \
+            --model "$MODEL_PATH" \
+            --quick \
+            --gate scripts/local-inference-thresholds.json \
+            --out-dir artifacts/local-inference-ablation
+
+      - name: Verify CAPABILITIES.json (build-only)
+        if: ${{ matrix.build_only }}
+        run: |
+          set -euo pipefail
+          CAPS="${ELIZA_STATE_DIR}/local-inference/bin/dflash/${{ matrix.target }}/CAPABILITIES.json"
+          test -f "$CAPS" || { echo "missing CAPABILITIES.json: $CAPS"; exit 1; }
+          cat "$CAPS"
+          # Sanity: make sure the build emitted at least dflash and the
+          # platform-default cache type kernels are reported truthfully.
+          node -e "
+            const c = require(process.argv[1]);
+            const required = ['dflash', 'lookahead', 'ngramDraft'];
+            const missing = required.filter(k => c.kernels[k] !== true);
+            if (missing.length) {
+              console.error('CAPABILITIES.json missing kernels:', missing.join(', '));
+              process.exit(1);
+            }
+          " "$CAPS"
+
+      - name: Upload ablation artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-inference-ablation-${{ matrix.target }}
+          path: artifacts/local-inference-ablation/*.json
+          if-no-files-found: warn
+          retention-days: 30

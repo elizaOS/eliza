@@ -1,0 +1,451 @@
+{
+  "schemaVersion": 1,
+  "manifestKernelNames": [
+    "turboquant_q3",
+    "turboquant_q4",
+    "qjl",
+    "polarquant",
+    "dflash",
+    "turbo3_tcq"
+  ],
+  "requiredRuntimeCapabilityKeys": [
+    "dflash",
+    "turbo3",
+    "turbo4",
+    "turbo3_tcq",
+    "qjl_full",
+    "polarquant"
+  ],
+  "latestReports": [
+    "reports/porting/2026-05-10/platform-verification-performance-grid.md",
+    "reports/porting/2026-05-11/remaining-work-ledger.md",
+    "verify/HARDWARE_VERIFICATION.md",
+    "verify/CUDA_VERIFICATION.md"
+  ],
+  "hardwareEvidence": {
+    "schemaVersion": 1,
+    "requiredForRuntimeReady": true,
+    "requiredFields": [
+      "schemaVersion",
+      "runner",
+      "status",
+      "passRecordable",
+      "exitCode",
+      "host",
+      "target",
+      "requirements",
+      "evidence"
+    ],
+    "passCriteria": {
+      "status": "pass",
+      "passRecordable": true,
+      "graphSmoke": "required",
+      "exitCode": 0
+    },
+    "failClosedHosts": [
+      "Darwin CUDA/ROCm/GH200",
+      "non-Windows Windows runner",
+      "Linux CUDA without nvcc/nvidia-smi/NVIDIA GPU",
+      "Linux ROCm without hipcc/rocminfo/gfx GPU agent",
+      "GH200 without aarch64 Linux plus Hopper/compute-capability-9.x GPU"
+    ],
+    "reportOptions": {
+      "cuda": "verify/cuda_runner.sh --report <path>",
+      "gh200": "verify/gh200_runner.sh --report <path>",
+      "rocm": "verify/rocm_runner.sh --report <path>",
+      "windows": "verify/windows_runner.ps1 -Report <path>"
+    }
+  },
+  "runtimeSmoke": {
+    "vulkanBuiltForkGraph": {
+      "makeTarget": "vulkan-dispatch-smoke",
+      "source": "verify/vulkan_dispatch_smoke.cpp",
+      "status": "needs-hardware",
+      "description": "Native-Linux graph gate. Links against libggml-vulkan from the managed output or explicit ELIZA_DFLASH_VULKAN_BIN_DIR, rejects macOS/MoltenVK and software Vulkan by default, requires ggml_backend_supports_op for GGML_OP_ATTN_SCORE_QJL, GGML_OP_ATTN_SCORE_TBQ (turbo3, turbo4, turbo3_tcq), and GGML_OP_ATTN_SCORE_POLAR (use_qjl=0/1), then runs real graph execution and numeric reference comparison. Must pass before any Vulkan CAPABILITIES kernel bit flips runtime-ready."
+    },
+    "linuxNativeVulkan": {
+      "makeTarget": "vulkan-native-smoke",
+      "script": "verify/linux_vulkan_smoke.sh",
+      "status": "needs-hardware",
+      "fixtures": [
+        "verify/fixtures/turbo3.json",
+        "verify/fixtures/turbo4.json",
+        "verify/fixtures/turbo3_tcq.json",
+        "verify/fixtures/qjl.json",
+        "verify/fixtures/polar.json",
+        "verify/fixtures/polar_qjl.json"
+      ],
+      "description": "Rejects non-Linux/MoltenVK and software ICDs by default, writes hardware-results evidence, runs standalone Vulkan fixtures, builds linux-x64-vulkan, dumps CAPABILITIES diagnostics, then runs the built-fork graph gate against the managed output directory. Build failure or symbol-only staging exits non-zero."
+    },
+    "androidVulkan": {
+      "makeTarget": "android-vulkan-smoke",
+      "script": "verify/android_vulkan_smoke.sh",
+      "status": "needs-hardware",
+      "fixtures": [
+        "verify/fixtures/turbo3.json",
+        "verify/fixtures/turbo4.json",
+        "verify/fixtures/turbo3_tcq.json",
+        "verify/fixtures/qjl.json",
+        "verify/fixtures/polar.json",
+        "verify/fixtures/polar_qjl.json"
+      ],
+      "description": "Cross-compiles vulkan_verify with the Android NDK, pushes verifier/SPIR-V/fixtures through adb, records physical-device evidence, and runs on Adreno/Mali hardware. Standalone fixture success exits non-zero unless ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE proves Android Vulkan graph dispatch for all six graph routes or all five runtime capability keys."
+    }
+  },
+  "fusedAttn": {
+    "capabilityKey": "fused_attn",
+    "description": "Fused attention forward (QJL-K score -> online softmax -> quantized-V mix, score vector never materialized). C reference: eliza_fused_attn_qjl_tbq3 (bit-exact to the fork's GGML_OP_FUSED_ATTN_QJL_TBQ CPU op) and eliza_fused_attn_qjl_polar in packages/inference/verify/qjl_polar_ref.{h,c}. This is an optimization on top of the existing five score/softmax/V-mix kernels (AGENTS.md §3) — a backend that cannot dispatch the fused op routes through the standalone path, it does not silently degrade. NOT in requiredRuntimeCapabilityKeys / manifestKernelNames yet: only Vulkan has verified a fused graph dispatch, so the capability is not part of the build-script required-kernel gate. Promote it (and add a manifest kernel name) only once the target backend reports a runtime-ready fused smoke.",
+    "contractDocs": [
+      "reports/porting/2026-05-11/fused-attn-op-contract.md",
+      "reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md"
+    ],
+    "fixtures": [
+      {
+        "path": "verify/fixtures/fused_attn_qjl_tbq.json",
+        "kernelField": "fused_attn_qjl_tbq",
+        "shape": "cases",
+        "requiredFields": ["head_dim", "proj_dim", "v_blocks_per_token", "sm_scale", "cases"],
+        "caseRequiredFields": ["n_heads", "n_kv_heads", "n_kv", "q_sketch", "k_blocks", "v_blocks", "expected_out"]
+      },
+      {
+        "path": "verify/fixtures/fused_attn_qjl_polar.json",
+        "kernelField": "fused_attn_qjl_polar",
+        "shape": "cases",
+        "requiredFields": ["head_dim", "proj_dim", "v_blocks_per_token", "use_qjl", "sm_scale", "cases"],
+        "caseRequiredFields": ["n_heads", "n_kv_heads", "n_kv", "q_sketch", "k_blocks", "v_blocks", "expected_out"]
+      },
+      {
+        "path": "verify/fixtures/polar_preht.json",
+        "kernelField": "polar_preht",
+        "shape": "scores",
+        "requiredFields": ["head_dim", "n_rows", "block_bytes", "hadamard_inv_scale", "q", "k_blocks", "expected_scores"]
+      }
+    ],
+    "selfTest": {
+      "makeTarget": "reference-test",
+      "note": "gen_fixture --self-test recomputes fused == score->softmax->V-decode->mix independently (tol 1e-3) and round-trips the TBQ V-cache blocks."
+    },
+    "verifyTargets": {
+      "metal": "metal-verify-fused",
+      "vulkan": "vulkan-verify-fused",
+      "cuda": "cuda-verify"
+    },
+    "runtimeStatus": {
+      "metal": "needs-runtime-smoke",
+      "vulkan": "runtime-ready",
+      "cuda": "needs-hardware",
+      "cpu": "reference-only"
+    },
+    "runtimeEvidence": {
+      "vulkan": {
+        "key": "fusedAttn",
+        "smokeTarget": "vulkan-dispatch-smoke",
+        "evidenceFile": "verify/vulkan-runtime-dispatch-evidence.json"
+      }
+    },
+    "nextGate": "Vulkan fused dispatch is verified on real Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). Metal standalone fused-attn + polar_preht are hardware-verified on Apple M4 Max via metal-verify-fused, but Metal still needs a built-fork graph-dispatch smoke before fusedAttn.runtimeStatus.metal can flip runtime-ready. CUDA still needs cuda-verify-fused on an NVIDIA host (cuda_verify already parses fused_attn_qjl_tbq.json; cuda/fused-attn-qjl-tbq.cu authored). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames — it is an optimization on top of the five required kernels (AGENTS.md §3), not a required kernel — until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
+  },
+  "kernels": [
+    {
+      "id": "turbo3",
+      "family": "TurboQuant",
+      "manifestKernelNames": ["turboquant_q3"],
+      "runtimeCapabilityKeys": ["turbo3"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/turbo3.json",
+          "kernelField": "turbo3",
+          "requiredFields": ["head_dim", "n_kv", "blocks_per_kv", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/turbo3.metal",
+        "verifySymbol": "kernel_turbo3_dot",
+        "multiBlockSymbol": "kernel_turbo3_dot_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/turbo3.comp",
+        "spirv": "vulkan/turbo3.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "runtime-ready",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "turbo4",
+      "family": "TurboQuant",
+      "manifestKernelNames": ["turboquant_q4"],
+      "runtimeCapabilityKeys": ["turbo4"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/turbo4.json",
+          "kernelField": "turbo4",
+          "requiredFields": ["head_dim", "n_kv", "blocks_per_kv", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/turbo4.metal",
+        "verifySymbol": "kernel_turbo4_dot",
+        "multiBlockSymbol": "kernel_turbo4_dot_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/turbo4.comp",
+        "spirv": "vulkan/turbo4.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "runtime-ready",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "turbo3_tcq",
+      "family": "TurboQuant",
+      "manifestKernelNames": ["turbo3_tcq"],
+      "runtimeCapabilityKeys": ["turbo3_tcq"],
+      "requiredWhen": "ctx > 65536",
+      "fixtures": [
+        {
+          "path": "verify/fixtures/turbo3_tcq.json",
+          "kernelField": "turbo3_tcq",
+          "requiredFields": ["head_dim", "n_kv", "blocks_per_kv", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/turbo3_tcq.metal",
+        "verifySymbol": "kernel_turbo3_tcq_dot",
+        "multiBlockSymbol": "kernel_turbo3_tcq_dot_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/turbo3_tcq.comp",
+        "spirv": "vulkan/turbo3_tcq.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "runtime-ready",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "qjl",
+      "family": "QJL",
+      "manifestKernelNames": ["qjl"],
+      "runtimeCapabilityKeys": ["qjl_full"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/qjl.json",
+          "kernelField": "qjl",
+          "requiredFields": ["proj_dim", "n_heads", "n_kv_heads", "n_tokens", "q_sketch", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/qjl.metal",
+        "verifySymbol": "kernel_attn_score_qjl1_256",
+        "multiBlockSymbol": "kernel_attn_score_qjl1_256_multi"
+      },
+      "vulkan": {
+        "source": "vulkan/qjl.comp",
+        "spirv": "vulkan/qjl.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "runtime-ready",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "polar",
+      "family": "PolarQuant",
+      "manifestKernelNames": ["polarquant"],
+      "runtimeCapabilityKeys": ["polarquant"],
+      "fixtures": [
+        {
+          "path": "verify/fixtures/polar.json",
+          "kernelField": "polar",
+          "requiredFields": ["head_dim", "n_rows", "use_qjl", "q", "k_blocks", "expected_scores"]
+        },
+        {
+          "path": "verify/fixtures/polar_qjl.json",
+          "kernelField": "polar",
+          "requiredFields": ["head_dim", "n_rows", "use_qjl", "q", "k_blocks", "expected_scores"]
+        }
+      ],
+      "metal": {
+        "source": "metal/polar.metal",
+        "verifySymbol": "kernel_mul_mv_q4_polar_f32"
+      },
+      "vulkan": {
+        "source": "vulkan/polar.comp",
+        "spirv": "vulkan/polar.spv"
+      },
+      "cuda": {
+        "fixtureGate": true
+      },
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "runtime-ready",
+        "cuda": "needs-hardware",
+        "cpu": "reference-only"
+      }
+    },
+    {
+      "id": "dflash",
+      "family": "DFlash",
+      "manifestKernelNames": ["dflash"],
+      "runtimeCapabilityKeys": ["dflash"],
+      "fixtures": [],
+      "runtimeStatus": {
+        "metal": "runtime-ready",
+        "vulkan": "runtime-ready",
+        "cuda": "runtime-ready",
+        "cpu": "runtime-ready"
+      }
+    }
+  ],
+  "platformTargets": {
+    "linux-x64-cpu": {
+      "kernelVerification": "reference-only",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run native CPU backend smoke for QJL/Polar SIMD paths and DFlash lifecycle."
+    },
+    "linux-x64-cuda": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh on an NVIDIA host."
+    },
+    "linux-x64-rocm": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./rocm_runner.sh on an AMD ROCm host."
+    },
+    "linux-x64-vulkan": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run native Intel/AMD/NVIDIA built-fork graph smoke, not only standalone SPIR-V or MoltenVK."
+    },
+    "linux-aarch64-cpu": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run on an arm64 Linux host and collect CPU backend parity."
+    },
+    "linux-aarch64-cuda": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./gh200_runner.sh on a GH200/H100/H200 aarch64 CUDA host."
+    },
+    "android-arm64-cpu": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run CPU/NEON parity on a physical Android device."
+    },
+    "android-arm64-vulkan": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Cross-compile vulkan_verify and run all fixtures on Adreno and Mali devices."
+    },
+    "darwin-arm64-metal": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "verified",
+      "deviceRun": "verified",
+      "nextGate": "Run fused Metal smoke against a full Eliza-1 bundle after graph-dispatch smoke."
+    },
+    "ios-arm64-metal": {
+      "kernelVerification": "symbol-shipped",
+      "runtimeDispatch": "symbol-shipped",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run physical-device XCTest/Capacitor smoke against the embedded metallib and GGML_OP_ATTN_SCORE_TBQ Turbo4 route."
+    },
+    "ios-arm64-simulator-metal": {
+      "kernelVerification": "symbol-shipped",
+      "runtimeDispatch": "symbol-shipped",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run simulator smoke against the embedded metallib and GGML_OP_ATTN_SCORE_TBQ Turbo4 route."
+    },
+    "windows-x64-cpu": {
+      "kernelVerification": "compile-only",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run native Windows CPU binary and AVX2 QJL/Polar smoke."
+    },
+    "windows-x64-cuda": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\models\\eliza-1-smoke.gguf on NVIDIA hardware."
+    },
+    "windows-x64-vulkan": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run pwsh -File packages/inference/verify/windows_runner.ps1 -Backend vulkan -Model C:\\models\\eliza-1-smoke.gguf on native Windows Vulkan."
+    },
+    "windows-arm64-cpu": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run Snapdragon X native CPU smoke."
+    },
+    "windows-arm64-vulkan": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run Snapdragon X native Vulkan smoke."
+    },
+    "linux-x64-cpu-fused": {
+      "kernelVerification": "reference-only",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused libelizainference CPU smoke with voice off/on regions."
+    },
+    "linux-x64-cuda-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run CUDA hardware runner first, then fused CUDA voice/runtime smoke on the same host."
+    },
+    "linux-x64-vulkan-fused": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused Vulkan smoke after the non-fused Vulkan graph smoke passes on native hardware."
+    },
+    "darwin-arm64-metal-fused": {
+      "kernelVerification": "standalone-verified",
+      "runtimeDispatch": "needs-runtime-smoke",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run fused Metal smoke after full kernel dispatch lands."
+    },
+    "windows-x64-cuda-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run Windows CUDA hardware runner first, then fused Windows CUDA voice/runtime smoke."
+    }
+  }
+}

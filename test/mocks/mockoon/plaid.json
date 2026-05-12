@@ -1,0 +1,524 @@
+{
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200b2",
+  "lastMigration": 33,
+  "name": "lifeops-plaid-mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 18809,
+  "hostname": "0.0.0.0",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200a3",
+      "type": "http",
+      "documentation": "POST v1/eliza/plaid/link-token",
+      "method": "post",
+      "endpoint": "v1/eliza/plaid/link-token",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200a4",
+          "body": "{\n  \"linkToken\": \"link-sandbox-mock-2026-05-09\",\n  \"expiration\": \"2026-05-09T22:00:00.000Z\",\n  \"environment\": \"sandbox\"\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200a5",
+          "body": "{\n  \"error_type\": \"RATE_LIMIT_EXCEEDED\",\n  \"error_code\": \"RATE_LIMIT\",\n  \"error_message\": \"rate limit exceeded for client_id\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200a6",
+          "body": "{\n  \"error_type\": \"INVALID_INPUT\",\n  \"error_code\": \"INVALID_ACCESS_TOKEN\",\n  \"error_message\": \"the provided access token is invalid\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200a7",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200a8",
+      "type": "http",
+      "documentation": "POST v1/eliza/plaid/exchange",
+      "method": "post",
+      "endpoint": "v1/eliza/plaid/exchange",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200a9",
+          "body": "{\n  \"accessToken\": \"access-sandbox-mock-shaw-2026\",\n  \"itemId\": \"item-sandbox-1234\",\n  \"institution\": {\n    \"institutionId\": \"ins_109508\",\n    \"institutionName\": \"First Platypus Credit Union\",\n    \"primaryAccountMask\": \"0000\",\n    \"accounts\": [\n      {\n        \"accountId\": \"acct_001\",\n        \"name\": \"Plaid Checking\",\n        \"mask\": \"0000\",\n        \"type\": \"depository\",\n        \"subtype\": \"checking\"\n      },\n      {\n        \"accountId\": \"acct_002\",\n        \"name\": \"Plaid Saving\",\n        \"mask\": \"1111\",\n        \"type\": \"depository\",\n        \"subtype\": \"savings\"\n      }\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200aa",
+          "body": "{\n  \"error_type\": \"RATE_LIMIT_EXCEEDED\",\n  \"error_code\": \"RATE_LIMIT\",\n  \"error_message\": \"rate limit exceeded for client_id\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ab",
+          "body": "{\n  \"error_type\": \"INVALID_INPUT\",\n  \"error_code\": \"INVALID_ACCESS_TOKEN\",\n  \"error_message\": \"the provided access token is invalid\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ac",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ad",
+      "type": "http",
+      "documentation": "POST v1/eliza/plaid/sync",
+      "method": "post",
+      "endpoint": "v1/eliza/plaid/sync",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ae",
+          "body": "{\n  \"added\": [\n    {\n      \"transactionId\": \"txn_2026_05_09_a\",\n      \"accountId\": \"acct_001\",\n      \"amount\": 4.75,\n      \"isoCurrencyCode\": \"USD\",\n      \"date\": \"2026-05-09\",\n      \"name\": \"Sightglass Coffee\",\n      \"merchantName\": \"Sightglass\",\n      \"pending\": false,\n      \"category\": {\n        \"primary\": \"FOOD_AND_DRINK\",\n        \"detailed\": \"FOOD_AND_DRINK_COFFEE\"\n      }\n    },\n    {\n      \"transactionId\": \"txn_2026_05_09_b\",\n      \"accountId\": \"acct_001\",\n      \"amount\": 18.42,\n      \"isoCurrencyCode\": \"USD\",\n      \"date\": \"2026-05-09\",\n      \"name\": \"Lyft *Ride 18:14\",\n      \"merchantName\": \"Lyft\",\n      \"pending\": true,\n      \"category\": {\n        \"primary\": \"TRANSPORTATION\",\n        \"detailed\": \"TRANSPORTATION_RIDESHARE\"\n      }\n    },\n    {\n      \"transactionId\": \"txn_2026_05_09_c\",\n      \"accountId\": \"acct_002\",\n      \"amount\": -2500,\n      \"isoCurrencyCode\": \"USD\",\n      \"date\": \"2026-05-09\",\n      \"name\": \"Direct Deposit BLUEPINE LABS\",\n      \"merchantName\": \"BluePine Labs\",\n      \"pending\": false,\n      \"category\": {\n        \"primary\": \"INCOME\",\n        \"detailed\": \"INCOME_WAGES\"\n      }\n    }\n  ],\n  \"modified\": [],\n  \"removed\": [],\n  \"nextCursor\": \"cursor-2026-05-09-end\",\n  \"hasMore\": false\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200af",
+          "body": "{\n  \"error_type\": \"RATE_LIMIT_EXCEEDED\",\n  \"error_code\": \"RATE_LIMIT\",\n  \"error_message\": \"rate limit exceeded for client_id\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200b0",
+          "body": "{\n  \"error_type\": \"INVALID_INPUT\",\n  \"error_code\": \"INVALID_ACCESS_TOKEN\",\n  \"error_message\": \"the provided access token is invalid\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200b1",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200a3"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200a8"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ad"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    {
+      "key": "Content-Type",
+      "value": "application/json"
+    }
+  ],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

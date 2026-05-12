@@ -1,0 +1,26 @@
+__pycache__/
+*.pyc
+.venv/
+data/
+checkpoints/
+# Generated benchmark outputs (parquet datasets, ablation dumps) are
+# ignored, but the checked-in gate definition + engine + tests are tracked —
+# the publish orchestrator reads `benchmarks/eliza1_gates.yaml` (Eliza-1
+# publish-blocking eval gates) and `benchmarks/eliza1_gates.py` (the gate
+# engine that turns measured eval blobs into a publish-blocking verdict).
+benchmarks/*
+!benchmarks/eliza1_gates.yaml
+!benchmarks/eliza1_gates.py
+!benchmarks/__init__.py
+!benchmarks/test_eliza1_gates.py
+!benchmarks/THROUGHPUT.md
+!benchmarks/OPTIMIZATION_INVENTORY.md
+previews/
+local-corpora/
+wandb/
+*.parquet
+.vast_instance_id
+.preflight.ok
+.cloud_instance.json
+.DS_Store
+scripts/synth/scenarios/*.jsonl

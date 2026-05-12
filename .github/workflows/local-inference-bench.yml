@@ -1,0 +1,642 @@
+name: Local Inference Bench
+
+# Nightly benchmark for the on-device chat agent. The harness is host-
+# agnostic — it just talks HTTP to whatever agent is reachable at
+# --target — so we run it in two layers:
+#
+#   1. PR + nightly: stub harness validation. Boots
+#      `scripts/benchmark/stub-agent-server.mjs` on a free port and runs
+#      the matrix against it. Cheap, deterministic, catches harness
+#      regressions before nightly.
+#   2. Nightly only: real agent profile. Boots `bun run dev`, points the
+#      harness at the dev server, writes the report under
+#      `reports/porting/<YYYY-MM-DD>/profile.{json,md}`, uploads the
+#      directory as a workflow artifact, and opens/updates a tracking
+#      issue with the markdown summary.
+#
+# Cuttlefish AVD profiling (job 3) is dispatch-only — it shares
+# infrastructure with `elizaos-cuttlefish.yml`, so we don't duplicate
+# that setup; instead we document the dispatch entrypoint and let the
+# operator chain the two workflows.
+
+on:
+  schedule:
+    # 05:00 UTC — runs after the nightly publish job at 04:00 UTC so
+    # the dev server gets the latest packages.
+    - cron: "0 5 * * *"
+    # 04:30 UTC Sunday — weekly eliza-1 model publish window.
+    - cron: "30 4 * * 0"
+  pull_request:
+    paths:
+      - "scripts/benchmark/**"
+      - ".github/workflows/local-inference-bench.yml"
+      - "plugins/plugin-local-embedding/**"
+      - "packages/app-core/scripts/build-llama-cpp-dflash.mjs"
+      - "packages/training/scripts/publish_eliza1_model.py"
+      - "packages/training/scripts/sync_catalog_from_hf.py"
+      - "scripts/verify-phone-download.mjs"
+  workflow_dispatch:
+    inputs:
+      run_real_agent:
+        description: "Run real-agent profile (nightly path) on-demand."
+        required: false
+        type: boolean
+        default: false
+      run_cuttlefish:
+        description: "Run cuttlefish AVD profile (job 3). Coordinates with elizaos-cuttlefish.yml."
+        required: false
+        type: boolean
+        default: false
+      run_windows_cross_build:
+        description: "Run Windows x86_64 cross-build (job 4) on-demand. Always runs on PR + nightly anyway; this just lets you trigger it without rebuilding the whole bench matrix."
+        required: false
+        type: boolean
+        default: false
+      run_publish_models:
+        description: "Run the eliza-1 model publish + catalog-sync job on-demand (gated by secrets.MILADY_HF_TOKEN)."
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: local-inference-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "24"
+  STUB_PORT: "31338"
+
+jobs:
+  stub-validation:
+    name: Harness regression (stub)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Boot stub agent server
+        run: |
+          set -euo pipefail
+          node scripts/benchmark/stub-agent-server.mjs --port "${STUB_PORT}" &
+          echo $! > /tmp/stub.pid
+          # Wait for the stub to bind (health endpoint becomes 200).
+          for _ in $(seq 1 50); do
+            if curl --silent --fail "http://127.0.0.1:${STUB_PORT}/api/health" >/dev/null; then
+              break
+            fi
+            sleep 0.2
+          done
+          curl --silent --fail "http://127.0.0.1:${STUB_PORT}/api/health"
+
+      - name: Run profile harness against stub (host-cpu config)
+        run: |
+          set -euo pipefail
+          mkdir -p reports/porting/stub
+          node scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:${STUB_PORT}" \
+            --config scripts/benchmark/configs/host-cpu.json \
+            --label "stub-validation-$GITHUB_SHA" \
+            --out reports/porting/stub
+
+      - name: Tear down stub
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/stub.pid ]; then
+            kill "$(cat /tmp/stub.pid)" || true
+          fi
+
+      - name: Upload stub profile artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-stub-${{ github.run_id }}
+          path: reports/porting/stub
+          if-no-files-found: error
+          retention-days: 14
+
+  nightly-real-agent:
+    name: Nightly real-agent profile
+    needs: stub-validation
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_real_agent == true) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Boot dev agent
+        env:
+          MILADY_API_PORT: "31337"
+          MILADY_PORT: "2138"
+          NODE_ENV: "test"
+          ELIZA_DISABLE_TRAJECTORY_LOGGING: "1"
+        run: |
+          set -euo pipefail
+          mkdir -p .ci-logs
+          # Run the dev server in the background. The orchestrator
+          # already auto-shifts ports if the defaults are busy and writes
+          # a `.milady/desktop-dev-console.log` we can tail if needed.
+          bun run dev > .ci-logs/dev.log 2>&1 &
+          echo $! > /tmp/dev.pid
+          # Health probe — give the agent up to 120s to come up.
+          for _ in $(seq 1 60); do
+            if curl --silent --fail "http://127.0.0.1:31337/api/health" >/dev/null 2>&1; then
+              echo "agent ready"
+              break
+            fi
+            sleep 2
+          done
+          curl --silent --fail "http://127.0.0.1:31337/api/health"
+
+      - name: Run profile harness (host-cpu config)
+        env:
+          MILADY_API_TOKEN: ${{ secrets.MILADY_CI_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%d)"
+          OUT_DIR="reports/porting/${DATE}"
+          mkdir -p "$OUT_DIR"
+          node scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:31337" \
+            --config scripts/benchmark/configs/host-cpu.json \
+            --label "ci-${GITHUB_SHA}-${GITHUB_RUN_ID}" \
+            --out "$OUT_DIR"
+          echo "REPORT_DIR=$OUT_DIR" >> "$GITHUB_ENV"
+
+      - name: Tear down dev agent
+        if: ${{ always() }}
+        run: |
+          if [ -f /tmp/dev.pid ]; then
+            kill "$(cat /tmp/dev.pid)" || true
+          fi
+
+      - name: Upload report artifact
+        if: ${{ always() && env.REPORT_DIR != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-nightly-${{ github.run_id }}
+          path: ${{ env.REPORT_DIR }}
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Upload dev server log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-log-nightly-${{ github.run_id }}
+          path: .ci-logs/dev.log
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Open / update tracking issue
+        if: ${{ env.REPORT_DIR != '' }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("node:fs");
+            const path = require("node:path");
+            const reportDir = process.env.REPORT_DIR;
+            const mdPath = path.join(reportDir, "profile.md");
+            if (!fs.existsSync(mdPath)) {
+              core.warning(`profile.md not found at ${mdPath}; skipping issue update`);
+              return;
+            }
+            const md = fs.readFileSync(mdPath, "utf8");
+            const today = new Date().toISOString().slice(0, 10);
+            const title = `Nightly local-inference profile — ${today}`;
+            const artifactUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `Workflow run: ${artifactUrl}`,
+              "",
+              `Report directory: \`${reportDir}\`.`,
+              "",
+              md,
+            ].join("\n");
+            const { data: existing } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: "nightly-local-inference",
+              state: "open",
+              per_page: 5,
+            });
+            if (existing.length === 0) {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["nightly-local-inference"],
+              });
+              core.info(`Opened tracking issue #${created.data.number}`);
+            } else {
+              const issue = existing[0];
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                title,
+                body,
+              });
+              core.info(`Updated tracking issue #${issue.number}`);
+            }
+
+  cuttlefish-bench:
+    # Manual-only path. Cuttlefish AVD provisioning is owned by
+    # elizaos-cuttlefish.yml; this job runs the bench against the AVD
+    # forward port once the operator has the AVD reachable at
+    # 127.0.0.1:31337. Keeping it here (rather than duplicating AVD
+    # setup) makes the dispatch surface obvious without doubling the CI
+    # cost.
+    name: Cuttlefish AVD profile (manual)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_cuttlefish == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Reminder — boot cuttlefish first
+        run: |
+          echo "::warning ::This job assumes elizaos-cuttlefish.yml has booted the AVD"
+          echo "::warning ::and forwarded 31337 to 127.0.0.1. Run that workflow first."
+          echo "Probing /api/health on 127.0.0.1:31337 ..."
+          curl --silent --fail "http://127.0.0.1:31337/api/health" || {
+            echo "::error ::No agent reachable at 127.0.0.1:31337. Run elizaos-cuttlefish.yml first."
+            exit 1
+          }
+
+      - name: Run profile harness (aosp-arm64 config)
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%d)"
+          OUT_DIR="reports/porting/${DATE}-cuttlefish"
+          mkdir -p "$OUT_DIR"
+          node scripts/benchmark/profile-inference.mjs \
+            --target "http://127.0.0.1:31337" \
+            --config scripts/benchmark/configs/aosp-arm64.json \
+            --label "cuttlefish-${GITHUB_RUN_ID}" \
+            --out "$OUT_DIR"
+
+      - name: Upload cuttlefish report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-cuttlefish-${{ github.run_id }}
+          path: reports/porting/
+          if-no-files-found: warn
+          retention-days: 90
+
+  windows-cross-build:
+    # Cross-build the Windows x86_64 DLLs + llama-server.exe from a Linux
+    # host using x86_64-w64-mingw32. This is the same code path
+    # `packages/app-core/scripts/build-llama-cpp-dflash.mjs --target
+    # windows-x64-cpu` runs locally; CI exercises it so a elizaOS/llama.cpp
+    # fork bump (or an Ubuntu mingw-w64 update) doesn't silently break the
+    # Windows distribution shape.
+    #
+    # We build, verify the expected ggml + TBQ + QJL + Polar exports, and
+    # upload the artifact dir for download. Smoke-running llama-server.exe
+    # under wine is opt-in (see ELIZA_DFLASH_RUN_WINE_SMOKE=1) because
+    # ubuntu-24.04 doesn't ship wine-stable by default and we don't want
+    # the harness install to dominate the job runtime; CI just produces
+    # the binaries for downstream consumers.
+    name: Windows x64 cross-build (mingw-w64)
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && (inputs.run_windows_cross_build == true || inputs.run_real_agent == true)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install x86_64-w64-mingw32 cross-toolchain
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            cmake \
+            ninja-build \
+            mingw-w64 \
+            mingw-w64-tools \
+            g++-mingw-w64-x86-64 \
+            binutils-mingw-w64-x86-64
+          x86_64-w64-mingw32-gcc --version | head -1
+          x86_64-w64-mingw32-g++ --version | head -1
+          x86_64-w64-mingw32-objdump --version | head -1
+          x86_64-w64-mingw32-nm --version | head -1
+
+      - name: Cross-build windows-x64-cpu
+        env:
+          # Override the dflash fork to elizaOS/llama.cpp v1.0.0-eliza so
+          # CI exercises the symbols downstream consumers actually expect.
+          # Operators that want to test against the spiritbuun upstream can
+          # leave this unset.
+          ELIZA_DFLASH_LLAMA_CPP_REMOTE: "https://github.com/elizaOS/llama.cpp.git"
+        run: |
+          set -euo pipefail
+          node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
+            --target windows-x64-cpu \
+            --ref v1.0.0-eliza \
+            --cache-dir "$RUNNER_TEMP/llama-cpp-cross-cache" \
+            --out-dir "$GITHUB_WORKSPACE/build-output/windows-x64-cpu"
+
+      - name: Verify exported symbols
+        run: |
+          set -euo pipefail
+          OUT="$GITHUB_WORKSPACE/build-output/windows-x64-cpu"
+          echo "=== Built artifacts ==="
+          ls -la "$OUT/"
+          echo
+          echo "=== File types ==="
+          file "$OUT"/*.dll "$OUT"/*.exe
+          echo
+          echo "=== Symbol verification (objdump -p exports) ==="
+          missing=0
+          check() {
+            local f="$1"; local sym="$2"
+            if x86_64-w64-mingw32-objdump -p "$OUT/$f" | grep -qE "^\s+\[\s*[0-9]+\] ${sym}$"; then
+              echo "  [OK] $sym in $f"
+            else
+              echo "  [MISSING] $sym in $f"
+              missing=$((missing + 1))
+            fi
+          }
+          # Standard ggml.
+          check ggml-base.dll ggml_init
+          check ggml-base.dll ggml_new_tensor
+          check ggml-base.dll ggml_new_tensor_1d
+          check ggml-base.dll ggml_new_tensor_2d
+          check ggml-base.dll ggml_new_tensor_3d
+          check ggml-base.dll ggml_new_tensor_4d
+          # TBQ (TurboQuant V-cache).
+          check ggml-base.dll quantize_row_tbq3_0_ref
+          check ggml-base.dll quantize_row_tbq4_0_ref
+          check ggml-base.dll dequantize_row_tbq3_0
+          check ggml-base.dll dequantize_row_tbq4_0
+          check ggml-base.dll quantize_tbq3_0
+          check ggml-base.dll quantize_tbq4_0
+          # QJL (1-bit JL-transform K-cache); main entries in ggml-base
+          # because of the Windows DLL boundary patch, kernel funcs in
+          # ggml-cpu (AVX2 path; NEON guarded out for x86_64 cross).
+          check ggml-base.dll quantize_row_qjl1_256_ref
+          check ggml-base.dll dequantize_row_qjl1_256
+          check ggml-base.dll quantize_qjl1_256
+          check ggml-cpu.dll qjl_quantize_row_avx2
+          check ggml-cpu.dll qjl_score_qk_avx2
+          check ggml-cpu.dll ggml_compute_forward_attn_score_qjl
+          # PolarQuant (4-bit weight quant).
+          check ggml-base.dll quantize_row_q4_polar_ref
+          check ggml-base.dll dequantize_row_q4_polar
+          check ggml-base.dll quantize_q4_polar
+          check ggml-cpu.dll ggml_vec_dot_q4_polar_q8_0
+          echo
+          if [ "$missing" -gt 0 ]; then
+            echo "::error ::$missing required symbols missing from Windows cross-build"
+            exit 1
+          fi
+          echo "All required symbols present."
+          # Print export counts for the report.
+          echo
+          echo "=== Export counts ==="
+          for dll in "$OUT"/*.dll; do
+            count=$(x86_64-w64-mingw32-objdump -p "$dll" | grep -cE '^\s+\[\s*[0-9]+\] [a-zA-Z_]')
+            size=$(stat -c %s "$dll")
+            printf "  %-30s %6d exports  %10d bytes\n" "$(basename $dll)" "$count" "$size"
+          done
+
+      - name: Optional wine smoke (--help)
+        if: ${{ env.ELIZA_DFLASH_RUN_WINE_SMOKE == '1' }}
+        env:
+          OUT: ${{ github.workspace }}/build-output/windows-x64-cpu
+        run: |
+          set -euo pipefail
+          # Skip silently if wine isn't installed; CI runners don't ship it
+          # by default and this step is opt-in.
+          if ! command -v wine64 >/dev/null 2>&1; then
+            echo "::warning ::wine64 not installed; skipping smoke run"
+            exit 0
+          fi
+          # llama-server's --help just touches argument parsing; it doesn't
+          # need a model file. We're only proving the EXE loads, the import
+          # table resolves, and stdio works under wine.
+          wine64 "$OUT/llama-server.exe" --help | head -20 || {
+            echo "::error ::wine smoke failed"
+            exit 1
+          }
+
+      - name: Upload windows-x64-cpu artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dflash-windows-x64-cpu-${{ github.run_id }}
+          path: build-output/windows-x64-cpu
+          if-no-files-found: error
+          retention-days: 14
+
+  publish-models-nightly:
+    # Weekly nightly publish to the elizaos HF org. Walks W5-Pipeline's
+    # output, calls publish_eliza1_model.py for each fused-kernel GGUF,
+    # then runs sync_catalog_from_hf.py to produce the catalog diff and
+    # opens a PR with the update.
+    #
+    # Gated behind secrets.MILADY_HF_TOKEN. When the secret is unset
+    # (forks, dry-test branches), the job no-ops with an explicit
+    # warning so unrelated workflow runs don't fail.
+    name: Publish eliza-1 models (weekly)
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '30 4 * * 0') ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_publish_models == true)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      # W5-Pipeline drops finished checkpoints under this path. The
+      # nightly publish step expects each subdirectory to be a complete
+      # `<base>-optimized` (or `-drafter`) bundle —
+      # i.e. a single .gguf + manifest.json + README.md.
+      W5_PIPELINE_OUTPUT_ROOT: ${{ vars.W5_PIPELINE_OUTPUT_ROOT || '/mnt/w5-pipeline-output' }}
+      HF_TOKEN: ${{ secrets.MILADY_HF_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Guard — require MILADY_HF_TOKEN
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN:-}" ]; then
+            echo "::warning ::secrets.MILADY_HF_TOKEN not configured; publish job will no-op."
+            echo "PUBLISH_SKIPPED=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "PUBLISH_SKIPPED=0" >> "$GITHUB_ENV"
+
+      - name: Setup Python
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install huggingface_hub
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install "huggingface_hub[cli]>=0.24"
+
+      - name: Setup Node.js
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Probe W5-Pipeline output
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        run: |
+          set -euo pipefail
+          if [ ! -d "$W5_PIPELINE_OUTPUT_ROOT" ]; then
+            echo "::warning ::no W5-Pipeline output at $W5_PIPELINE_OUTPUT_ROOT; nothing to publish"
+            echo "NO_PIPELINE_OUTPUT=1" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo "Pipeline output:"
+          ls -la "$W5_PIPELINE_OUTPUT_ROOT"
+
+      - name: Publish each fused-kernel bundle
+        if: ${{ env.PUBLISH_SKIPPED != '1' && env.NO_PIPELINE_OUTPUT != '1' }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          FAILURES=0
+          for dir in "$W5_PIPELINE_OUTPUT_ROOT"/*/; do
+            name=$(basename "$dir")
+            # Bundle naming: <base>-optimized or <base>-drafter.
+            # Anything else is rejected — these repos are for fused builds only.
+            if [[ "$name" != *-optimized && "$name" != *-drafter ]]; then
+              echo "::warning ::skipping $name (not a fused-kernel bundle name)"
+              continue
+            fi
+            repo_id="elizaos/$name"
+            echo "::group::publish $repo_id"
+            if ! python packages/training/scripts/publish_eliza1_model.py \
+                --model-dir "$dir" \
+                --repo-id "$repo_id"; then
+              echo "::error ::publish failed for $name"
+              FAILURES=$((FAILURES + 1))
+            fi
+            echo "::endgroup::"
+          done
+          if [ "$FAILURES" -gt 0 ]; then
+            echo "::error ::$FAILURES bundle(s) failed to publish"
+            exit 1
+          fi
+
+      - name: Sync catalog diff from elizaos
+        if: ${{ env.PUBLISH_SKIPPED != '1' }}
+        run: |
+          set -euo pipefail
+          DATE="$(date -u +%Y-%m-%d)"
+          OUT_DIR="reports/porting/${DATE}"
+          mkdir -p "$OUT_DIR"
+          python packages/training/scripts/sync_catalog_from_hf.py \
+            --org elizaos \
+            --out "$OUT_DIR/catalog-diff.json"
+          echo "DIFF_PATH=$OUT_DIR/catalog-diff.json" >> "$GITHUB_ENV"
+
+      - name: Verify a sample download (round-trip from HF)
+        if: ${{ env.PUBLISH_SKIPPED != '1' && env.DIFF_PATH != '' }}
+        run: |
+          set -euo pipefail
+          # Pick the first published id from the diff and round-trip it
+          # through the phone-equivalent Downloader.
+          SAMPLE_ID=$(python -c 'import json,os,sys; d=json.load(open(os.environ["DIFF_PATH"])); ids=[e["id"] for e in d.get("entries",[])]; print(ids[0] if ids else "")')
+          if [ -z "${SAMPLE_ID:-}" ]; then
+            echo "::warning ::diff has no published entries; skipping verify-phone-download"
+            exit 0
+          fi
+          bun install --frozen-lockfile
+          node scripts/verify-phone-download.mjs \
+            --model-id "$SAMPLE_ID" \
+            --catalog-diff "$DIFF_PATH"
+
+      - name: Open catalog-update PR
+        if: ${{ env.PUBLISH_SKIPPED != '1' && env.DIFF_PATH != '' }}
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: ci/eliza-1-catalog-${{ github.run_id }}
+          base: develop
+          commit-message: "chore(catalog): refresh eliza-1 pointers (auto)"
+          title: "chore(catalog): refresh eliza-1 pointers"
+          body: |
+            Auto-generated catalog diff from `sync_catalog_from_hf.py`.
+
+            - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            - Diff path: `${{ env.DIFF_PATH }}`
+
+            W5-Catalog: please apply the diff to `packages/app-core/src/services/local-inference/catalog.ts`.
+          add-paths: |
+            reports/porting/**/catalog-diff.json
+          delete-branch: true
+          labels: |
+            eliza-1
+            local-inference
+            automated

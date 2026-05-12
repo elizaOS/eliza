@@ -1,0 +1,29 @@
+{
+  "name": "@elizaos/interrupt-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "InterruptBench — TypeScript benchmark for interruption handling in the Milady/elizaOS agent runtime (Stage-1 response-handler field evaluators, turn controller, room queue, cleanup scope).",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./scorer": "./src/scorer.ts",
+    "./runner": "./src/runner.ts"
+  },
+  "scripts": {
+    "bench": "bun run src/runner.ts",
+    "bench:smoke": "bun run scripts/cerebras-smoke.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  }
+}

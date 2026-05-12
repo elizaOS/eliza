@@ -1,0 +1,43 @@
+{
+  "kind": "omnivoice-metal-codec-fallback",
+  "target": "darwin-arm64-metal-fused",
+  "generatedAt": "2026-05-11T09:22:47Z",
+  "build": {
+    "command": "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal-fused --jobs 10",
+    "status": "pass",
+    "builtAt": "2026-05-11T09:22:10.415Z",
+    "forkCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
+    "omnivoiceCommit": "38f824023d12b21a7c324651b18bd90f16d8bb86"
+  },
+  "runtime": {
+    "command": "out=/tmp/omnivoice-metal-fused-codec-cpu-fallback.wav; rm -f \"$out\"; printf 'Hi.' | env DYLD_LIBRARY_PATH=/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused /Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-omnivoice-server --model /Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/tts/omnivoice-base-Q4_K_M.gguf --codec /Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf --seed 1 -o \"$out\"; shasum -a 256 \"$out\"; wc -c \"$out\"; file \"$out\"",
+    "status": "pass",
+    "inputText": "Hi.",
+    "observedLogLines": [
+      "[Load] LM backend: MTL0 (CPU threads: 8)",
+      "[PipelineCodec] Metal codec fallback: requested=MTL0 selected=CPU reason=merged-ggml-dac-decode-stall",
+      "[PipelineCodec] Loaded codec: sr=24000 hop=960 backend=CPU",
+      "[MaskGIT] Total LM forward: 565.32 ms across 32 steps (avg 17.67 ms/step)",
+      "[TTS] Decode: K=8 T=22 expected_samples=21120",
+      "[WAV] Wrote /tmp/omnivoice-metal-fused-codec-cpu-fallback.wav: 25920 samples, 24000 Hz, mono S16"
+    ],
+    "output": {
+      "path": "/tmp/omnivoice-metal-fused-codec-cpu-fallback.wav",
+      "sha256": "98f0cfef6539ffe410193799efb72787e6223676883f662ff7f8c52fafdd0182",
+      "bytes": 51884,
+      "fileType": "RIFF (little-endian) data, WAVE audio, Microsoft PCM, 16 bit, mono 24000 Hz",
+      "samples": 25920,
+      "sampleRateHz": 24000
+    }
+  },
+  "artifacts": {
+    "llamaOmnivoiceServer": {
+      "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-omnivoice-server",
+      "sha256": "cda62c7ae3fd7c48e3d760443a30a7cc516b3b9b746ea335e36d9d74b69cc5bb"
+    },
+    "libElizaInference": {
+      "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
+      "sha256": "066c184969a42a0f8c4882e10a23b63dbc287f68510ac3b812e4d81a965030fe"
+    }
+  }
+}

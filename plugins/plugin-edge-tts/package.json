@@ -1,0 +1,154 @@
+{
+  "name": "@elizaos/plugin-edge-tts",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "browser": "dist/browser/index.browser.js",
+  "sideEffects": false,
+  "description": "Free text-to-speech using Microsoft Edge TTS - no API key required",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/browser/index.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-to-speech"
+      ]
+    }
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "node-edge-tts": "^1.0.7"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/bun": "^1.2.22",
+    "@types/node": "^24.5.2",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "test": "vitest run --config ./vitest.config.ts",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:live": "bun run test:e2e"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "EDGE_TTS_VOICE": {
+        "type": "string",
+        "description": "Voice ID to use for synthesis (e.g., en-US-MichelleNeural, en-GB-SoniaNeural)",
+        "required": false,
+        "default": "en-US-MichelleNeural",
+        "sensitive": false
+      },
+      "EDGE_TTS_LANG": {
+        "type": "string",
+        "description": "Language code for synthesis (e.g., en-US, en-GB, de-DE)",
+        "required": false,
+        "default": "en-US",
+        "sensitive": false
+      },
+      "EDGE_TTS_OUTPUT_FORMAT": {
+        "type": "string",
+        "description": "Output format for audio (e.g., audio-24khz-48kbitrate-mono-mp3, audio-48khz-96kbitrate-mono-mp3)",
+        "required": false,
+        "default": "audio-24khz-48kbitrate-mono-mp3",
+        "sensitive": false
+      },
+      "EDGE_TTS_RATE": {
+        "type": "string",
+        "description": "Speech rate adjustment (e.g., +0%, -10%, +20%)",
+        "required": false,
+        "sensitive": false
+      },
+      "EDGE_TTS_PITCH": {
+        "type": "string",
+        "description": "Voice pitch adjustment (e.g., +0Hz, -10Hz, +5Hz)",
+        "required": false,
+        "sensitive": false
+      },
+      "EDGE_TTS_VOLUME": {
+        "type": "string",
+        "description": "Volume adjustment (e.g., +0%, -10%, +20%)",
+        "required": false,
+        "sensitive": false
+      },
+      "EDGE_TTS_PROXY": {
+        "type": "string",
+        "description": "HTTP proxy URL for requests",
+        "required": false,
+        "sensitive": false
+      },
+      "EDGE_TTS_TIMEOUT_MS": {
+        "type": "number",
+        "description": "Request timeout in milliseconds",
+        "required": false,
+        "default": "30000",
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

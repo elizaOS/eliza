@@ -1,0 +1,37 @@
+total 63032
+drwxrwxr-x 2 shaw shaw    4096 May  9 22:00 .
+drwxrwxr-x 9 shaw shaw    4096 May  9 21:59 ..
+lrwxrwxrwx 1 shaw shaw      17 May  9 21:59 libggml-base.so -> libggml-base.so.0
+lrwxrwxrwx 1 shaw shaw      21 May  9 21:59 libggml-base.so.0 -> libggml-base.so.0.9.7
+-rwxrwxr-x 1 shaw shaw  776144 May  9 21:59 libggml-base.so.0.9.7
+lrwxrwxrwx 1 shaw shaw      16 May  9 21:59 libggml-cpu.so -> libggml-cpu.so.0
+lrwxrwxrwx 1 shaw shaw      20 May  9 21:59 libggml-cpu.so.0 -> libggml-cpu.so.0.9.7
+-rwxrwxr-x 1 shaw shaw 1138592 May  9 21:59 libggml-cpu.so.0.9.7
+lrwxrwxrwx 1 shaw shaw      12 May  9 21:59 libggml.so -> libggml.so.0
+lrwxrwxrwx 1 shaw shaw      16 May  9 21:59 libggml.so.0 -> libggml.so.0.9.7
+-rwxrwxr-x 1 shaw shaw   60624 May  9 21:59 libggml.so.0.9.7
+lrwxrwxrwx 1 shaw shaw      13 May  9 22:00 libllama.so -> libllama.so.0
+lrwxrwxrwx 1 shaw shaw      18 May  9 22:00 libllama.so.0 -> libllama.so.0.0.72
+-rwxrwxr-x 1 shaw shaw 3358712 May  9 22:00 libllama.so.0.0.72
+lrwxrwxrwx 1 shaw shaw      12 May  9 22:00 libmtmd.so -> libmtmd.so.0
+lrwxrwxrwx 1 shaw shaw      17 May  9 22:00 libmtmd.so.0 -> libmtmd.so.0.0.72
+-rwxrwxr-x 1 shaw shaw  995584 May  9 22:00 libmtmd.so.0.0.72
+-rwxrwxr-x 1 shaw shaw 4725248 May  9 22:00 llama-batched-bench
+-rwxrwxr-x 1 shaw shaw  600240 May  9 22:00 llama-bench
+-rwxrwxr-x 1 shaw shaw 5927768 May  9 22:00 llama-cli
+-rwxrwxr-x 1 shaw shaw 4779784 May  9 22:00 llama-completion
+-rwxrwxr-x 1 shaw shaw 4758368 May  9 22:00 llama-cvector-generator
+-rwxrwxr-x 1 shaw shaw 4763160 May  9 22:00 llama-export-lora
+-rwxrwxr-x 1 shaw shaw 4720776 May  9 22:00 llama-fit-params
+-rwxrwxr-x 1 shaw shaw   17008 May  9 21:59 llama-gemma3-cli
+-rwxrwxr-x 1 shaw shaw   53272 May  9 22:00 llama-gguf-split
+-rwxrwxr-x 1 shaw shaw 4810616 May  9 22:00 llama-imatrix
+-rwxrwxr-x 1 shaw shaw   17008 May  9 21:59 llama-llava-cli
+-rwxrwxr-x 1 shaw shaw   17008 May  9 21:59 llama-minicpmv-cli
+-rwxrwxr-x 1 shaw shaw 4801680 May  9 22:00 llama-mtmd-cli
+-rwxrwxr-x 1 shaw shaw 4818528 May  9 22:00 llama-perplexity
+-rwxrwxr-x 1 shaw shaw  457736 May  9 22:00 llama-quantize
+-rwxrwxr-x 1 shaw shaw   17008 May  9 21:59 llama-qwen2vl-cli
+-rwxrwxr-x 1 shaw shaw 7625080 May  9 22:00 llama-server
+-rwxrwxr-x 1 shaw shaw  404296 May  9 22:00 llama-tokenize
+-rwxrwxr-x 1 shaw shaw 4842824 May  9 22:00 llama-tts

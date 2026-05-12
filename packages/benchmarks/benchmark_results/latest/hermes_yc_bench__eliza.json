@@ -1,0 +1,92 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T184453Z_f342e981/hermes-adapter__hermes_yc_bench/run_hermes_yc_bench_20260511T184454Z_6_f77036b7/output"
+  ],
+  "benchmark_directory": "hermes-adapter",
+  "benchmark_id": "hermes_yc_bench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "avg_composite_score": 0.0,
+    "avg_score_fast_test": 0.0,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "canonical_entries": 0,
+    "duration_s": 8.402072708006017,
+    "env_id": "yc_bench",
+    "eval/avg_composite_score": 0.0,
+    "eval/avg_score_fast_test": 0.0,
+    "eval/evaluation_time_seconds": 0.4180450439453125,
+    "eval/survival_rate": 0.0,
+    "eval/survival_rate_fast_test": 0.0,
+    "eval/survived_runs": 0,
+    "eval/total_runs": 1,
+    "evaluation_time_seconds": 0.4180450439453125,
+    "performance_metrics": {
+      "duration_seconds": 8.51203699997859,
+      "mean_latency_ms": 386.0480785369873,
+      "p95_latency_ms": 386.0480785369873,
+      "throughput_per_second": 0.11748069234221083
+    },
+    "return_code": 0,
+    "survival_rate": 0.0,
+    "survival_rate_fast_test": 0.0,
+    "survived_runs": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_evaluation_time_seconds": "0.4180450439453125",
+    "total_runs": 1,
+    "trajectory_summary": {
+      "files": 3,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 8.51203699997859,
+    "mean_latency_ms": 386.0480785369873,
+    "p95_latency_ms": 386.0480785369873,
+    "throughput_per_second": 0.11748069234221083
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T184453Z_f342e981/hermes-adapter__hermes_yc_bench/run_hermes_yc_bench_20260511T184454Z_6_f77036b7/output/hermes_yc_bench_20260511T184502Z.json",
+  "run_group_id": "rg_20260511T184453Z_f342e981",
+  "run_id": "run_hermes_yc_bench_20260511T184454Z_6_f77036b7",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 3,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

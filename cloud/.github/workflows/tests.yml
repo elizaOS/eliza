@@ -1,0 +1,218 @@
+name: Tests
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+concurrency:
+  group: tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+  TEST_DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
+  CACHE_BACKEND: wadis
+  CACHE_ENABLED: "false"
+  NODE_OPTIONS: --max-old-space-size=4096
+
+jobs:
+  lint-and-types:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+      - name: Check migration journal
+        run: bun run db:check-migrations
+      - name: Lint, circular deps, and typecheck
+        run: bun run verify
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+      - name: Run unit tests
+        run: |
+          bun run test:repo-unit:bulk
+          bun run test:repo-unit:special
+          for test_file in \
+            packages/tests/unit/auth-pair-route.test.ts \
+            packages/tests/unit/steward-user-migration.test.ts \
+            packages/tests/unit/discord-automation-oauth.test.ts \
+            packages/tests/unit/docker-infrastructure.test.ts \
+            packages/tests/unit/oauth/secrets-adapter-utils.test.ts \
+            packages/tests/unit/market-price-preview-route.test.ts; do
+            if [ -f "$test_file" ]; then
+              SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts "./$test_file"
+            fi
+          done
+
+  unit-db-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run DB-backed unit tests
+        run: bun run test:repo-unit:db
+
+  integration-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run integration tests
+        run: bun run test:integration
+
+  property-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run property tests
+        run: bun run test:properties
+
+  runtime-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run runtime tests
+        run: bun run test:runtime
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NODE_ENV: production
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+      - name: Run build
+        run: bun run build
+
+  e2e-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint-and-types, build]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run API e2e tests
+        run: bun run test:e2e:api
+
+  e2e-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint-and-types, build]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run auth e2e tests
+        run: bun run test:e2e:auth
+
+  e2e-cron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [lint-and-types, build]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run cron e2e tests
+        run: bun run test:e2e:cron
+
+  e2e-v1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint-and-types, build]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run V1 e2e tests
+        run: bun run test:e2e:v1
+
+  e2e-miniapp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: [lint-and-types, build]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run miniapp e2e tests
+        run: bun run test:e2e:miniapp
+
+  e2e-worker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: [lint-and-types, build]
+    env:
+      NODE_ENV: test
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Run Worker e2e tests
+        run: bun run test:e2e:worker
+
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    needs: [lint-and-types, build]
+    env:
+      NODE_ENV: test
+      PLAYWRIGHT_WORKERS: "1"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: ./.github/actions/setup-test-env
+        with:
+          setup-db: "true"
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+      - name: Run Playwright tests
+        run: bun run test:playwright

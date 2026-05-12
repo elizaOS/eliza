@@ -1,0 +1,79 @@
+{
+  "agent": "hermes",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T135326Z_2ade52f0/compactbench__compactbench/run_compactbench_20260511T135326Z_2_235b5925/output"
+  ],
+  "benchmark_directory": "compactbench",
+  "benchmark_id": "compactbench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "compression_ratio": 4.279591195762988,
+    "constraint_retention": 0.8,
+    "contradiction_rate": 0.0,
+    "drift_resistance": 1.0,
+    "overall_score": 0.775,
+    "performance_metrics": {
+      "duration_seconds": 9.644054292002693,
+      "mean_latency_ms": 3708.25,
+      "p95_latency_ms": 5730.0,
+      "throughput_per_second": 1.3479807979492833
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 730.8461538461538,
+      "avg_prompt_tokens": 1941.4615384615386,
+      "completion_tokens": 9501,
+      "llm_call_count": 13,
+      "prompt_tokens": 25239,
+      "total_tokens": 34740
+    },
+    "trajectory_summary": {
+      "files": 1,
+      "prompt_chars": 224,
+      "repeated_prefixes": [],
+      "turns": 13
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 9.644054292002693,
+    "mean_latency_ms": 3708.25,
+    "p95_latency_ms": 5730.0,
+    "throughput_per_second": 1.3479807979492833
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T135326Z_2ade52f0/compactbench__compactbench/run_compactbench_20260511T135326Z_2_235b5925/output/compactbench-results.jsonl",
+  "run_group_id": "rg_20260511T135326Z_2ade52f0",
+  "run_id": "run_compactbench_20260511T135326Z_2_235b5925",
+  "score": 0.775,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 730.8461538461538,
+    "avg_prompt_tokens": 1941.4615384615386,
+    "completion_tokens": 9501,
+    "llm_call_count": 13,
+    "prompt_tokens": 25239,
+    "total_tokens": 34740
+  },
+  "trajectory_summary": {
+    "files": 1,
+    "prompt_chars": 224,
+    "repeated_prefixes": [],
+    "turns": 13
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

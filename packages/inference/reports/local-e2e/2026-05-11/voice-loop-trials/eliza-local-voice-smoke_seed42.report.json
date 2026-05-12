@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-11T14:11:16.721Z",
+  "phrase": "Eliza local voice smoke.",
+  "hypothesis": "Eliza local voice smoke.",
+  "normalizedPhrase": "eliza local voice smoke",
+  "normalizedHypothesis": "eliza local voice smoke",
+  "wer": 0,
+  "passed": true,
+  "knobs": {
+    "seed": 42,
+    "durationSec": null,
+    "instruct": null,
+    "denoise": true
+  },
+  "notes": [
+    "Reference phrase is fixed before ASR and is the user-requested phrase.",
+    "Default duration estimation passed; no style instruction or reference sample was needed.",
+    "WER normalization lowercases, strips punctuation, and collapses whitespace. Raw ASR text also matched the reference phrase."
+  ],
+  "paths": {
+    "ttsCli": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-omnivoice-server",
+    "bundle": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+    "model": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/tts/omnivoice-base-Q4_K_M.gguf",
+    "codec": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle/tts/omnivoice-tokenizer-Q4_K_M.gguf",
+    "wav": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/reports/local-e2e/2026-05-11/voice-loop-trials/eliza-local-voice-smoke_seed42.wav",
+    "asrJson": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/reports/local-e2e/2026-05-11/voice-loop-trials/eliza-local-voice-smoke_seed42.asr.json",
+    "ttsLog": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/reports/local-e2e/2026-05-11/voice-loop-trials/eliza-local-voice-smoke_seed42.tts.log",
+    "report": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/reports/local-e2e/2026-05-11/voice-loop-trials/eliza-local-voice-smoke_seed42.report.json"
+  },
+  "asr": {
+    "wavPath": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/reports/local-e2e/2026-05-11/voice-loop-trials/eliza-local-voice-smoke_seed42.wav",
+    "sourceSampleRateHz": 24000,
+    "asrSampleRateHz": 16000,
+    "model": "openai-whisper tiny.en",
+    "text": "Eliza local voice smoke.",
+    "segments": [
+      {
+        "id": 0,
+        "seek": 0,
+        "start": 0,
+        "end": 2,
+        "text": " Eliza local voice smoke.",
+        "tokens": [
+          50363,
+          2574,
+          23638,
+          1957,
+          3809,
+          7523,
+          13,
+          50463
+        ],
+        "temperature": 0,
+        "avg_logprob": -0.5284337997436523,
+        "compression_ratio": 0.75,
+        "no_speech_prob": 0.1733500361442566
+      }
+    ]
+  }
+}

@@ -1,0 +1,119 @@
+---
+title: "Configurar un proveedor"
+sidebarTitle: "Configuración de proveedor"
+description: "Elige un proveedor para Eliza y conéctalo."
+---
+
+Un proveedor es el servicio de modelo que responde los mensajes de tu agente.
+
+<div id="choose-a-route">
+
+## Elige una ruta
+
+</div>
+
+| Ruta | Cuándo usarla |
+|------|---------------|
+| `Cloud API` | ya tienes una clave API y quieres la configuración más rápida |
+| `Ollama` | quieres Eliza completamente local |
+| `Eliza Cloud` | quieres un backend gestionado |
+
+Proveedores cloud comunes:
+
+- OpenAI
+- Anthropic
+- OpenRouter
+- Gemini
+- Groq
+- xAI
+
+<div id="connect-it-in-eliza">
+
+## Conéctalo en Eliza
+
+</div>
+
+1. Abre `Settings`.
+2. Abre la sección de proveedor o modelo de IA.
+3. Elige el proveedor.
+4. Pega la clave API, inicia sesión o ingresa la URL del servidor local.
+5. Ejecuta la prueba de conexión.
+6. Elige un modelo si es necesario.
+
+<div id="ollama">
+
+## Ollama
+
+</div>
+
+Asegúrate de que Ollama esté en ejecución antes de probarlo. Si el modelo aún no se ha descargado, descárgalo primero.
+
+```bash
+ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
+```
+
+<div id="remote-backends">
+
+## Backends remotos
+
+</div>
+
+Si estás conectado a un backend remoto de Eliza, ese backend puede ya controlar el enrutamiento del proveedor. En ese caso, cambiar una clave local puede no hacer nada. Consulta [Conectar de forma remota](/es/user/connect-remotely).
+
+<div id="switching-later">
+
+## Cambiar después
+
+</div>
+
+Puedes cambiar de proveedor después si necesitas un balance diferente de:
+
+- costo
+- velocidad
+- privacidad
+- calidad del modelo
+
+Eliza mantiene los mismos chats y estado del agente mientras la ruta cambia.
+
+<div id="common-problems">
+
+## Problemas comunes
+
+</div>
+
+<div id="messages-hang">
+
+### Los mensajes se quedan colgados
+
+</div>
+
+Verifica:
+
+- la clave API
+- el estado del proveedor
+- el estado del proceso de Ollama
+- el nombre del modelo seleccionado
+
+<div id="voice-works-but-chat-does-not">
+
+### La voz funciona pero el chat no
+
+</div>
+
+El chat y la voz pueden usar proveedores diferentes. Corrige la ruta del chat por separado.
+
+<div id="a-remote-or-cloud-backend-ignores-your-local-key">
+
+### Un backend remoto o cloud ignora tu clave local
+
+</div>
+
+Confirma qué máquina controla el enrutamiento del proveedor.
+
+<div id="next">
+
+## Siguiente
+
+</div>
+
+[Cambiar tu personaje](/es/user/change-character)

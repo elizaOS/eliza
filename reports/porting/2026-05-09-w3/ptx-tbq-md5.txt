@@ -1,0 +1,16 @@
+b9c96ab2497a3d630a4e5d050ce7539a  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq3_0-sm80.ptx
+e8ee5c704046f4812e6a87b3f5693014  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq3_0-sm86.ptx
+792c5f66ab313236b5c84acb1125414e  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq3_0-sm89.ptx
+09f41cf5368e3433060066d99c04649f  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq3_0-sm90.ptx
+86acd01184af3e532067dc93700b54bd  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq4_0-sm80.ptx
+77c2b3d713550c2bcd44e06917689c64  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq4_0-sm86.ptx
+96b8c3931b7c1df6776cee1781095440  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq4_0-sm89.ptx
+efc4036befee69e13bfc7d563ebfce6a  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq3_0-tbq4_0-sm90.ptx
+722e1c7e1ce999c30027b56e92cdb6b4  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq3_0-sm80.ptx
+41ea5495dd841e8a9f957584bae88c23  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq3_0-sm86.ptx
+476ffaa16bf42d22821871e62fa56b3d  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq3_0-sm89.ptx
+84077e6e74837bb2d6b9a5947bf3709e  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq3_0-sm90.ptx
+b6961fb506d70a6d0d327f85a475a2b1  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq4_0-sm80.ptx
+53478d3bfddb1625981fe62f345b060f  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq4_0-sm86.ptx
+3505632ab4412238abeb3bfd777941a8  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq4_0-sm89.ptx
+951596ac5fdcc2f1ba458975f578c27e  /home/shaw/milady/eliza/.claude/worktrees/agent-a4af68887afcc1b30/reports/porting/2026-05-09-w3/ptx-tbq/fattn-vec-instance-tbq4_0-tbq4_0-sm90.ptx

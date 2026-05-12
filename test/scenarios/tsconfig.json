@@ -1,0 +1,29 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.d.ts",
+    "../../packages/agent/src/**/*.ts",
+    "../../packages/core/src/**/*.ts",
+    "../../packages/shared/src/**/*.ts",
+    "../../packages/ui/src/**/*.ts",
+    "../../packages/ui/src/**/*.tsx",
+    "../../packages/scenario-runner/src/**/*.ts",
+    "../../packages/app-core/src/**/*.ts",
+    "../../plugins/app-lifeops/src/**/*.ts",
+    "../../plugins/app-lifeops/test/helpers/**/*.ts",
+    "../mocks/**/*.ts",
+    "../helpers/**/*.ts"
+  ],
+  "exclude": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/*.test.ts",
+    "**/__tests__/**",
+    "**/*.cy.ts",
+    "**/*.cy.tsx"
+  ]
+}

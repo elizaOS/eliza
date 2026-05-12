@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-rest
+  namespace: eliza-infra
+  labels:
+    app: redis-rest
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis-rest
+  template:
+    metadata:
+      labels:
+        app: redis-rest
+    spec:
+      containers:
+        - name: redis-rest
+          image: hiett/serverless-redis-http:latest
+          ports:
+            - containerPort: 80
+          env:
+            - name: SRH_MODE
+              value: env
+            - name: SRH_TOKEN
+              value: local_dev_token
+            - name: SRH_CONNECTION_STRING
+              value: redis://redis-master.eliza-infra.svc:6379
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-rest
+  namespace: eliza-infra
+  labels:
+    app: redis-rest
+spec:
+  selector:
+    app: redis-rest
+  ports:
+    - port: 8079
+      targetPort: 80

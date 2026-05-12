@@ -1,0 +1,18 @@
+{
+  "benchmarkName": "voicebench",
+  "defaultIterations": 3,
+  "responsePrompt": "You are running in voicebench. Respond in one brief conversational sentence under 140 characters.",
+  "responseMaxChars": 140,
+  "modes": [
+    {
+      "id": "simple",
+      "description": "Simple reply path (REPLY with no providers)",
+      "benchmarkContext": ""
+    },
+    {
+      "id": "non-simple",
+      "description": "Non-simple action path forced by CONTEXT_BENCH",
+      "benchmarkContext": "Voicebench non-simple path. Use providers and return REPLY action output."
+    }
+  ]
+}

@@ -1,0 +1,636 @@
+---
+title: System Architecture
+sidebarTitle: Architecture
+description: High-level overview of the Eliza AI system architecture, layers, plugin system, and cross-platform delivery.
+---
+
+Eliza is a cross-platform AI agent runtime built on top of [elizaOS](https://elizaos.ai). It delivers the same backend across CLI, web, desktop (Electrobun), and mobile (Capacitor) through a layered architecture. This page covers the full system from entry points through runtime lifecycle, plugin loading, API surface, and build tooling.
+
+<Info>
+Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live in the `eliza/` git submodule. Initialize it with `bun run setup:upstreams` or `git submodule update --init --recursive` to browse these files locally.
+</Info>
+
+## High-Level Diagram
+
+```
++---------------------------------------------------------------+
+|                        Frontend Layer                          |
+|  React SPA (Vite) + Capacitor (iOS/Android) + Electrobun (Desktop) |
+|  Tabs: Chat, Character, Wallets, Knowledge, Social, Apps,     |
+|         Settings, Advanced (Plugins, Skills, Triggers, DB, ...) |
++----------------------------+----------------------------------+
+                             | HTTP + WebSocket
+                             v
++---------------------------------------------------------------+
+|                       CLI Layer                                |
+|  Commander-based CLI (entry.ts -> run-main.ts)                |
+|  Commands: start, setup, configure, config, update, ...       |
+|  Profile system, dotenv loading, log-level control            |
++----------------------------+----------------------------------+
+                             |
+                             v
++---------------------------------------------------------------+
+|                    Runtime Layer (elizaOS)                     |
+|  AgentRuntime + Plugin system                                 |
+|  12 core plugins + optional plugins + Eliza plugin           |
+|  Providers, Actions, Services, Evaluators                     |
++----------------------------+----------------------------------+
+                             |
+                             v
++---------------------------------------------------------------+
+|                     API Server Layer                           |
+|  Node.js HTTP server                                          |
+|  Dev: port 31337 (ELIZA_API_PORT)                            |
+|  Prod: port 2138 (ELIZA_PORT, shared with dashboard)         |
+|  REST endpoints (/api/*) + WebSocket (/ws)                    |
+|  SSE log streaming, static UI assets                          |
++---------------------------------------------------------------+
+                             |
+                             v
++---------------------------------------------------------------+
+|                    Storage & Config Layer                      |
+|  ~/.eliza/eliza.json  (primary runtime config)            |
+|  PGLite (default) or PostgreSQL (database)                    |
+|  ~/.eliza/workspace/ (agent files, skills)               |
+|  ~/.eliza/plugins/  (custom, ejected, installed)            |
++---------------------------------------------------------------+
+```
+
+## Entry Points and Boot Sequence
+
+> **Note:** Source paths like `packages/app-core/src/...` and `packages/agent/src/...` referenced throughout this page live in the elizaOS submodule at `eliza/`. Run `bun run setup:upstreams` to populate the submodule for local inspection.
+
+Eliza has two primary entry points, plus a dev-server variant:
+
+### CLI Entry (`eliza/packages/app-core/src/entry.ts`)
+
+The CLI entry point is the bootstrap for all Eliza operations. Built by `tsdown` into `dist/entry.js` and invoked by the `eliza.mjs` wrapper script.
+
+The boot sequence is:
+
+1. **Set process title** to `eliza` (visible in `ps` output)
+2. **Normalize environment** -- honor `--no-color`, `--debug`, `--verbose` flags by setting `NO_COLOR`, `FORCE_COLOR`, and `LOG_LEVEL` in `process.env`
+3. **Suppress native logging** -- set `NODE_LLAMA_CPP_LOG_LEVEL` to match the chosen log level, suppressing noisy tokenizer warnings at default verbosity
+4. **Parse CLI profiles** -- extract `--profile <name>` from `process.argv` via `parseCliProfileArgs()`, apply the profile environment via `applyCliProfileEnv()`
+5. **Delegate to Commander** -- dynamically import `./cli/run-main.ts` and call `runCli(process.argv)`
+
+```typescript
+// eliza/packages/app-core/src/entry.ts — simplified bootstrap
+process.title = "eliza";
+const parsed = parseCliProfileArgs(process.argv);
+if (parsed.profile) applyCliProfileEnv({ profile: parsed.profile });
+import("./cli/run-main")
+  .then(({ runCli }) => runCli(process.argv))
+```
+
+`run-main.ts` continues by loading `.env` files via dotenv, normalizing API key environment variables (e.g., `Z_AI_API_KEY` to `ZAI_API_KEY`), building the Commander program tree, and dispatching to the requested subcommand.
+
+### Library Entry (`eliza/packages/app-core/src/index.ts`)
+
+The public API surface exported by the `elizaai` npm package. It re-exports:
+
+- **Config types** from `eliza/packages/app-core/src/config/types.ts` -- the full `ElizaConfig` type and its nested schemas
+- **Restart infrastructure** -- `RESTART_EXIT_CODE`, `requestRestart()`, `setRestartHandler()`, and the `RestartHandler` type
+
+This allows other packages (e.g., the Electrobun app, the dev-server) to programmatically control the runtime without importing internal modules.
+
+### Dev-Server Entry (`eliza/packages/app-core/src/runtime/dev-server.ts`)
+
+A combined dev server that starts the elizaOS runtime in headless mode and wires it into the API server. Used during development (`bun run dev`):
+
+1. Loads `.env` files for parity with CLI mode
+2. Creates the runtime via `startEliza({ headless: true })`
+3. Starts the API server and connects the runtime
+4. Registers a restart handler that stops the old runtime, creates a new one, and hot-swaps references
+5. Includes exponential backoff retry logic (1s, 2s, 4s, ..., 30s cap) for runtime bootstrap failures
+
+## Runtime Lifecycle
+
+The `startEliza()` function in `eliza/packages/app-core/src/runtime/eliza.ts` orchestrates the full lifecycle from config loading through agent operation.
+
+### Initialization Phase
+
+<Steps>
+  <Step title="Load Configuration">
+    Read the config file (defaults to `~/.eliza/eliza.json` in this product) via `loadElizaConfig()`. If no config exists, fall back to an empty `ElizaConfig` object with all-optional fields.
+  </Step>
+  <Step title="Startup / First-Run Selection">
+    If no server target has been established yet, the app surfaces a chooser-first startup flow: create a local server, connect to a discovered LAN server, connect to Eliza Cloud, or manually connect to a remote server. Provider routing happens after server selection rather than being implied by hosting mode.
+  </Step>
+  <Step title="Environment Propagation">
+    Push connector secrets (`DISCORD_API_TOKEN`, `TELEGRAM_BOT_TOKEN`, etc.) from config into `process.env`. Auto-resolve Discord Application ID from bot token via the Discord API. Propagate cloud, x402, and database config into env vars.
+  </Step>
+  <Step title="Build Character">
+    Construct an elizaOS `Character` object from the Eliza config: agent name, bio, system prompt, style, adjectives, topics, message examples, and API key secrets.
+  </Step>
+  <Step title="Prepare Workspace">
+    Ensure `~/.eliza/workspace/` exists with bootstrap files. Create the `~/.eliza/plugins/custom/` directory for drop-in plugins.
+  </Step>
+  <Step title="Create Eliza Plugin">
+    Instantiate the bridge plugin via `createElizaPlugin()` that provides workspace context, session keys, custom actions, trigger tasks, and lifecycle actions to the elizaOS runtime.
+  </Step>
+  <Step title="Resolve and Load Plugins">
+    Run the full plugin resolution pipeline (detailed below). Plugins are loaded in parallel for faster startup.
+  </Step>
+  <Step title="Create AgentRuntime">
+    Instantiate `AgentRuntime` with the character, Eliza plugin, and all resolved plugins. Pre-register `plugin-sql` (with PGLite recovery) and `plugin-local-embedding` before other plugins to avoid race conditions.
+  </Step>
+  <Step title="Initialize Runtime">
+    Call `runtime.initialize()` which registers all remaining plugins in parallel, starts services, and sets up the agent loop. Enable trajectory logging. Warm up the AgentSkillsService asynchronously.
+  </Step>
+  <Step title="Start API Server">
+    Launch the HTTP/WebSocket API server on port 31337 (default `ELIZA_API_PORT`). Register the restart handler for hot-reload support.
+  </Step>
+  <Step title="Load Hooks System">
+    Load webhook and hook configurations from the workspace. Fire the `gateway.startup` hook event.
+  </Step>
+</Steps>
+
+### Running Phase
+
+During normal operation, the runtime:
+
+- Processes incoming messages from all connected channels (web UI, Discord, Telegram, etc.)
+- Runs the agent loop: evaluate message, select action, execute action, store memory
+- Broadcasts status updates to WebSocket clients every 5 seconds
+- Streams agent events (autonomy loop iterations, heartbeats) in real time
+- Executes scheduled jobs via the cron plugin
+- Manages the knowledge base and RAG pipeline
+
+### Shutdown Phase
+
+Graceful shutdown is triggered by `SIGINT` or `SIGTERM`:
+
+1. Stop the sandbox manager (if active)
+2. Call `runtime.stop()` to close database connections, cancel timers, and clean up
+3. Exit the process with code 0
+
+### Restart Mechanism
+
+Restart is pluggable via `setRestartHandler()`:
+
+| Environment | Handler | Behavior |
+|-------------|---------|----------|
+| CLI (default) | Exit with code 75 | The runner script (`eliza/packages/app-core/scripts/run-node.mjs`) catches exit code 75, optionally rebuilds if sources changed, and relaunches |
+| Dev-server / API | Hot-swap | Stops the current runtime, reloads config from disk, creates a new `AgentRuntime`, and swaps the reference in the API server |
+| Electrobun | `AgentManager.restart()` | Uses the Electrobun app's native restart mechanism |
+
+## elizaOS Integration Layer
+
+Eliza extends elizaOS through several integration points:
+
+### Plugin System Bridge
+
+The `createElizaPlugin()` function (`eliza/packages/app-core/src/runtime/eliza-plugin.ts`) creates a standard elizaOS `Plugin` that bridges Eliza-specific functionality into the runtime:
+
+**Providers** (injected into every LLM context):
+- `channelProfileProvider` -- channel-specific personality profiles
+- `workspaceProvider` -- workspace file context
+- `adminTrustProvider` -- admin trust level for privileged operations
+- `autonomousStateProvider` -- current autonomous agent state
+- `sessionKeyProvider` -- session bridge for cross-channel continuity
+- `uiCatalogProvider` -- available UI components the agent can render
+- `customActionsProvider` -- user-defined custom action descriptions
+
+**Actions** (agent-invokable operations):
+- `restartAction` -- trigger a runtime restart
+- `sendMessageAction` -- send a proactive message to a channel
+- `triggerTaskAction` -- execute a trigger task
+- `emoteAction` -- play an emote animation on the 3D avatar
+- Custom actions loaded from `~/.eliza/workspace/custom-actions/`
+
+**Init hooks**:
+- Register trigger task workers
+- Start autonomous state tracking
+- Bind custom action runtime references
+- Remove `PLAY_EMOTE` action when `character.settings.DISABLE_EMOTES` is set
+
+### Error Boundaries
+
+Every plugin is wrapped with error boundaries before registration (`wrapPluginWithErrorBoundary()`):
+
+- **`init()` wrapper** -- catches crashes during plugin initialization, logs the error, and allows the agent to continue in degraded mode
+- **Provider wrappers** -- catches crashes in provider `get()` calls (invoked every conversation turn), returns an error marker instead of crashing the agent
+
+Actions are not wrapped because elizaOS's own action dispatch already has error boundaries.
+
+### Method Binding Fixes
+
+The runtime applies compatibility patches after creation:
+- `installRuntimeMethodBindings()` -- binds `getConversationLength()` to the runtime instance, fixing private-field access errors when plugins store and later invoke the method without a receiver
+- `installActionAliases()` -- adds backward-compatible action aliases (e.g., `CODE_TASK` maps to `START_CODING_TASK`)
+
+## Plugin Loading Pipeline
+
+Plugin resolution (`resolvePlugins()`) handles three tiers of plugins through a multi-stage pipeline:
+
+### Stage 1: Collect Plugin Names
+
+`collectPluginNames()` builds a `Set<string>` of package names to load:
+
+1. Start with all 12 **core plugins** (`CORE_PLUGINS`)
+2. Add plugins from the **allow list** (`config.plugins.allow`) -- these are additive, not exclusive
+3. Add **connector plugins** for any configured channels (Discord, Telegram, Slack, etc.) using the `CHANNEL_PLUGIN_MAP`
+4. Add **model-provider plugins** when their API key environment variables are detected (e.g., `ANTHROPIC_API_KEY` triggers `@elizaos/plugin-anthropic`)
+5. Handle **Eliza Cloud mode** -- when cloud is active, remove direct AI provider plugins since the cloud plugin handles all model calls
+6. Add plugins from **`config.plugins.entries`** with `enabled !== false`
+7. Add plugins from **feature flags** (`config.features`)
+8. Add **user-installed plugins** from `config.plugins.installs`
+9. Enforce the **shell feature gate** -- remove `plugin-shell` if `config.features.shellEnabled === false`
+
+### Stage 2: Discover Drop-In Plugins
+
+Scan filesystem directories for additional plugins:
+
+- **Ejected plugins** (`~/.eliza/plugins/ejected/`) -- override npm/core versions
+- **Custom plugins** (`~/.eliza/plugins/custom/`) -- user-created plugins
+- **Extra paths** from `config.plugins.load.paths` -- additional directories
+
+Each immediate subdirectory is treated as a plugin package. The plugin name comes from `package.json` or the directory name. Deny-list and core-collision filtering is applied.
+
+### Stage 3: Resolve and Import
+
+All plugins are loaded in parallel via `Promise.all()`. For each plugin:
+
+1. Check for **ejected plugin** at its install path (highest priority)
+2. Check for **workspace plugin override** (for development)
+3. Check for **installed plugin** at its recorded install path, with fallback to `node_modules`
+4. Fall back to **npm `import()`** by package name
+
+The `findRuntimePluginExport()` function handles multiple export patterns:
+- `export default plugin` (preferred)
+- `export const plugin = ...`
+- Named exports ending in `Plugin`
+- CJS compatibility (`module.exports = { name, description }`)
+
+### Stage 4: Post-Processing
+
+After loading, the pipeline:
+- Wraps each plugin with error boundaries
+- Repairs broken install records (stale paths) and persists the fix
+- Runs version-skew diagnostics (`diagnoseNoAIProvider()`)
+- Logs a summary: loaded count, failed count, and failure reasons
+
+### Pre-Registration Order
+
+Two plugins require special ordering to avoid race conditions:
+
+1. **`plugin-sql`** -- registered first so the database adapter is ready before other plugins call `runtime.db`. Includes PGLite corruption recovery (backs up corrupt data, resets, retries once).
+2. **`plugin-local-embedding`** -- registered second so its `TEXT_EMBEDDING` handler (priority 10) is available before the cloud plugin's handler (priority 0), preventing unintended paid API calls during startup.
+
+## Action, Provider, and Evaluator System
+
+Eliza inherits elizaOS's three-part extension model:
+
+### Providers
+
+Providers inject context into every LLM prompt. Each provider returns a `ProviderResult` containing text that the agent sees when composing responses.
+
+```typescript
+interface Provider {
+  name: string;
+  description: string;
+  get(runtime: IAgentRuntime, message: Memory, state: State): Promise<ProviderResult>;
+}
+```
+
+Eliza registers 7+ providers through the Eliza plugin, plus any providers from loaded plugins.
+
+### Actions
+
+Actions are operations the agent can invoke based on conversation context. Each action defines:
+- `name` -- unique identifier (e.g., `RESTART`, `MESSAGE`, `PLAY_EMOTE`)
+- `similes` -- alternative names the agent can use
+- `validate()` -- whether the action can run in the current context
+- `handler()` -- the execution logic
+- `examples` -- few-shot examples for the LLM
+
+### Evaluators
+
+Evaluators run after each conversation turn to assess agent performance and update state. They are defined by plugins and can trigger actions, update memory, or modify agent behavior.
+
+## Memory and State Management
+
+### Database Layer
+
+Eliza uses `@elizaos/plugin-sql` as the database adapter with two backend options:
+
+| Backend | Config | Use Case |
+|---------|--------|----------|
+| **PGLite** (default) | `database.provider: "pglite"` | Zero-config embedded PostgreSQL. Data stored in `~/.eliza/workspace/.eliza/.elizadb/` |
+| **PostgreSQL** | `database.provider: "postgres"` | External PostgreSQL server for production deployments |
+
+PGLite includes automatic corruption recovery: if initialization fails with a known error pattern (WASM abort, migration schema failure), the data directory is backed up and recreated.
+
+### Embedding System
+
+Local embeddings for memory search use `@elizaos/plugin-local-embedding` with configurable parameters:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `embedding.model` | `nomic-embed-text-v1.5.Q5_K_M.gguf` | GGUF model file name |
+| `embedding.gpuLayers` | `auto` (Apple Silicon), `0` (others) | GPU acceleration layers |
+| `embedding.dimensions` | `768` | Embedding vector dimensions |
+| `embedding.contextSize` | Auto-detected | Maximum input token context |
+
+On macOS with Apple Silicon, Metal GPU acceleration is enabled by default with `mmap` disabled to prevent known compatibility issues.
+
+### Trajectory Logging
+
+The trajectory logger (`trajectories`) records agent decision paths for debugging and reinforcement learning. The runtime waits up to 3 seconds for the service to register, then enables it by default.
+
+## API Server Architecture
+
+The API server (`eliza/packages/app-core/src/api/server.ts`) is a raw Node.js `http.createServer()` instance -- no Express or framework overhead.
+
+### Server State
+
+The server maintains a `ServerState` object tracking:
+- Active `AgentRuntime` reference (swappable on restart)
+- Agent lifecycle state: `not_started | starting | running | paused | stopped | restarting | error`
+- Plugin and skill registries
+- Log and event ring buffers
+- Chat room/user connections
+- Cloud, sandbox, training, and registry service handles
+- WebSocket broadcast functions
+
+### Route Architecture
+
+Routes are organized into domain-specific handler modules:
+
+| Module | Prefix | Purpose |
+|--------|--------|---------|
+| `agent-admin-routes.ts` | `/api/agent/*` | Agent name, bio, system prompt, style, examples |
+| `agent-lifecycle-routes.ts` | `/api/agent/*` | Start, stop, restart, status, export/import |
+| `auth-routes.ts` | `/api/auth/*` | Token validation, pairing flow |
+| `autonomy-routes.ts` | `/api/agent/autonomy` | Autonomous mode state |
+| `character-routes.ts` | `/api/character/*` | Character CRUD, AI-assisted generation |
+| `cloud-routes.ts` | `/api/cloud/*` | Eliza Cloud integration, billing, agents |
+| `cloud-compat-routes.ts` | `/api/cloud/compat/*`, `/api/cloud/v1/*` | Cloud backend proxy |
+| `connector-routes.ts` | `/api/connectors/*` | Messaging connector configuration |
+| `conversation-routes.ts` | `/api/conversations/*` | Web-chat conversations and messaging |
+| `inbox-routes.ts` | `/api/inbox/*` | Unified cross-channel inbox |
+| `knowledge-routes.ts` | `/api/documents/*` | Document upload, search, RAG management |
+| `memory-routes.ts` | `/api/memory/*`, `/api/context/*` | Memory persistence and context search |
+| `models-routes.ts` | `/api/models/*` | Model provider discovery and selection |
+| `onboarding-routes.ts` | `/api/onboarding/*` | First-run setup flow |
+| `plugin-routes.ts` | `/api/plugins/*` | Plugin management and installation |
+| `registry-routes.ts` | `/api/registry/*` | Plugin registry browsing |
+| `sandbox-routes.ts` | `/api/sandbox/*` | Container-based code execution |
+| `secrets-routes.ts` | `/api/secrets/*` | API key and credential management |
+| `skills-routes.ts` | `/api/skills/*` | Skill catalog and marketplace |
+| `training-routes.ts` | `/api/training/*` | Fine-tuning orchestration |
+| `trigger-routes.ts` | `/api/triggers/*` | Trigger task management |
+| `workbench-routes.ts` | `/api/workbench/*` | Tasks, todos, unified dashboard |
+| `automations-routes.ts` | `/api/automations/*`, `/api/workflow/*` | Unified automations and workflows |
+| `wallet-routes.ts` | `/api/wallet/*` | Wallet addresses, balances, trading |
+| `apps-routes.ts` | `/api/apps/*` | elizaOS app marketplace |
+
+### Authentication
+
+When `ELIZA_API_TOKEN` is set (or auto-generated for non-loopback binds), all API requests must include a valid bearer token:
+
+```
+Authorization: Bearer <token>
+```
+
+If the API is bound to a non-loopback address (`ELIZA_API_BIND` is not `127.0.0.1` or `localhost`) and no token is set, the server auto-generates a temporary token and logs it to stderr.
+
+## WebSocket Event System
+
+The API server exposes a WebSocket endpoint at `/ws` on the same port as the API (31337 by default, configurable via `ELIZA_API_PORT`).
+
+### Event Types
+
+| Event Type | Direction | Description |
+|------------|-----------|-------------|
+| `status` | Server -> Client | Agent status broadcast (every 5 seconds) |
+| `agent_event` | Server -> Client | Runtime autonomy loop events with run/seq tracking |
+| `heartbeat_event` | Server -> Client | Agent heartbeat with status, duration, channel info |
+| `training_event` | Server -> Client | Fine-tuning progress updates |
+| `proactive-message` | Server -> Client | Agent-initiated messages |
+| `conversation-updated` | Server -> Client | Conversation metadata changed |
+| `ping` / `pong` | Bidirectional | Keepalive mechanism |
+| `active-conversation` | Client -> Server | Tell the server which conversation the UI is viewing |
+
+### Event Envelope
+
+All server-sent events use a standard envelope:
+
+```typescript
+{
+  type: "agent_event" | "heartbeat_event" | "training_event",
+  version: 1,
+  eventId: string,
+  ts: number,
+  runId?: string,
+  seq?: number,
+  stream?: string,
+  sessionKey?: string,
+  agentId?: string,
+  roomId?: UUID,
+  payload: object
+}
+```
+
+Events are buffered in a ring buffer on the server so newly connected clients can receive recent history.
+
+## Service Architecture
+
+Eliza's `eliza/packages/app-core/src/services/` directory contains standalone service modules:
+
+| Service | File | Purpose |
+|---------|------|---------|
+| **Plugin Installer** | `plugin-installer.ts` | Install, uninstall, and manage plugins from npm and git |
+| **Self-Updater** | `self-updater.ts` | Detect install method and run the appropriate upgrade command |
+| **Update Checker** | `update-checker.ts` | Query npm registry for new versions on the configured channel |
+| **Update Notifier** | `update-notifier.ts` | Fire-and-forget background check that prints a one-line notice |
+| **App Manager** | `app-manager.ts` | Launch and manage elizaOS marketplace apps |
+| **Sandbox Engine** | `sandbox-engine.ts` | Container-based code execution sandboxing |
+| **Sandbox Manager** | `sandbox-manager.ts` | Docker container lifecycle for sandboxed execution |
+| **Registry Client** | `registry-client.ts` | elizaOS plugin registry API client |
+| **Skill Marketplace** | `skill-marketplace.ts` | Search, install, and manage skills from the marketplace |
+| **Training Service** | `training-service.ts` | Fine-tuning orchestration with Ollama integration |
+| **Agent Export** | `agent-export.ts` | Export agent state (character, knowledge, config) as portable archives |
+| **Version Compat** | `version-compat.ts` | Detect version skew between `@elizaos/core` and plugins |
+| **Core Eject** | `core-eject.ts` | Eject core plugins for local modification |
+| **Plugin Eject** | `plugin-eject.ts` | Eject installed plugins for local overrides |
+| **Skill Catalog** | `skill-catalog-client.ts` | Skills registry API client for browsing and installing |
+| **MCP Marketplace** | `mcp-marketplace.ts` | MCP server discovery and marketplace integration |
+
+## Configuration Cascade
+
+Eliza resolves configuration through a priority cascade:
+
+```
+Highest priority
+  1. CLI flags (--debug, --verbose, --no-color, --profile)
+  2. Environment variables (ELIZA_*, ANTHROPIC_API_KEY, etc.)
+  3. .env file (loaded by dotenv in run-main.ts)
+  4. Config file (~/.eliza/eliza.json)
+  5. Profile-specific overrides (--profile <name>)
+  6. Built-in defaults (hardcoded in Zod schemas)
+Lowest priority
+```
+
+### State Directory Resolution
+
+The state directory (`~/.eliza/`) is resolved via:
+
+1. `ELIZA_STATE_DIR` environment variable (if set)
+2. Default: `~/.eliza/` (`$HOME/.eliza/`)
+
+The config file path follows a similar pattern:
+1. `ELIZA_CONFIG_PATH` environment variable (if set)
+2. Default: `<stateDir>/eliza.json`
+
+### Config File Structure
+
+Eliza uses a Zod-validated JSON configuration file (`eliza.json`):
+
+<Tabs>
+  <Tab title="Structure">
+    The config is organized into typed sections:
+    - `agent` / `agents` -- Agent identity, model, personality, sandbox settings
+    - `env` -- Environment variable overrides (persisted API keys, wallet keys)
+    - `gateway` -- Gateway ports, bind mode, TLS, auth
+    - `plugins` -- Plugin allow/deny lists, install records, load paths
+    - `connectors` -- Messaging connectors (Discord, Telegram, Slack, etc.)
+    - `tools` -- Tool profiles, exec config, media understanding
+    - `hooks` -- Webhook mappings, Gmail integration
+    - `messages` -- TTS, queue, broadcast, response prefix
+    - `database` -- Provider selection (PGLite/Postgres), connection config
+    - `cloud` -- Eliza Cloud integration settings
+    - `models` -- Custom model providers, Bedrock discovery
+    - `update` -- Release channel, check intervals
+    - `embedding` -- Local embedding model, GPU layers, dimensions
+    - `features` -- Feature flags (shell, vision, browser, etc.)
+    - `skills` -- Bundled skill allow/deny lists, extra directories
+    - `logging` -- Log level configuration
+  </Tab>
+  <Tab title="Validation">
+    All config sections are validated against Zod schemas at load time. Invalid fields produce warnings but do not prevent startup. The config file includes metadata tracking the last Eliza version that wrote it and when.
+  </Tab>
+</Tabs>
+
+## Security Boundaries
+
+### API Authentication
+
+- Token-based auth via `ELIZA_API_TOKEN` (bearer token on all `/api/*` requests)
+- Auto-generated token when binding to non-loopback addresses
+- WebSocket connections authenticated via an `auth` message after connection (or via a bearer token in the upgrade handshake header)
+
+### Sandbox System
+
+Three sandbox modes control code execution isolation:
+
+| Mode | Description |
+|------|-------------|
+| `off` | No sandboxing |
+| `non-main` | Sandbox all sessions except the main session (default when enabled) |
+| `all` | Sandbox all sessions including main |
+
+The sandbox uses Docker container isolation with configurable image, memory limits, CPU caps, and network restrictions. Sandbox events are recorded to a `SandboxAuditLog` for security review.
+
+### Plugin Security
+
+- **Deny list** (`config.plugins.deny`) blocks specific plugins from loading
+- **Core collision detection** prevents custom plugins from shadowing core plugins
+- **Error boundaries** isolate plugin crashes from the main runtime
+- **Config allowlist** prevents API endpoints from writing sensitive env vars (e.g., `ELIZA_API_TOKEN` is stripped from config patches)
+
+### Secret Management
+
+- API keys and wallet private keys stored in `config.env` are hydrated into `process.env` at startup
+- Sensitive values in plugin parameters are masked in API responses (`****` or `sk-a...z123`)
+- The built-in **`@elizaos/core`** secrets stack (`ENABLE_SECRETS_MANAGER` / `SECRETS` service) provides runtime secret storage and scoping
+
+## Cross-Platform Delivery
+
+The same backend serves all platforms:
+
+| Platform | Delivery | Notes |
+|----------|----------|-------|
+| CLI | `eliza start` | Direct Node.js process, runner script handles restart exit codes |
+| Web | Browser at `http://localhost:2138` (UI port) | Vite dev proxy forwards API calls to port 31337 |
+| Desktop | Electrobun wrapper | Bundles the API server + UI, uses the Electrobun updater for native updates |
+| iOS | Capacitor | Connects to local/remote API |
+| Android | Capacitor | Connects to local/remote API |
+
+The frontend API client (`apps/app/src/api-client.ts`) is a thin fetch wrapper plus WebSocket for real-time chat and events.
+
+## Gateway
+
+The Gateway runs on port **18789** (default) and provides:
+- Multiplexed WebSocket + HTTP on a single port
+- TLS support (auto-generated or custom certificates)
+- Authentication (token or password mode)
+- mDNS/Bonjour discovery for local network agent discovery
+- Tailscale integration (serve/funnel modes)
+- OpenAI-compatible HTTP endpoints (`/v1/chat/completions`, `/v1/responses`)
+
+## Build System
+
+### Tooling
+
+| Tool | Purpose |
+|------|---------|
+| **tsdown** | TypeScript bundler (builds `src/` into `dist/`) |
+| **Vite** | Frontend dev server and production bundler |
+| **Biome** | Linter and formatter (`lint`, `format` scripts) |
+| **Vitest** | Unit and integration testing |
+| **TypeScript** | Type checking (`tsc --noEmit`) |
+
+### Workspace Structure
+
+The monorepo uses Bun workspaces. Core runtime packages live inside the `eliza/` git submodule:
+
+```
+eliza/
+  eliza/                # elizaOS submodule (core runtime packages)
+    packages/
+      app-core/         # Core runtime, CLI, API, services (source of truth)
+        src/
+          cli/          # Commander CLI commands
+          api/          # Dashboard API server
+          runtime/      # Agent loader, plugin system
+          config/       # Plugin auto-enable, config schemas
+          connectors/   # Connector integration code
+          services/     # Business logic (plugin installer, updater, etc.)
+      agent/            # Upstream elizaOS agent (core plugins, auto-enable maps)
+      ui/               # Shared UI component library
+      shared/           # Shared utilities
+    plugins/            # elizaOS plugins (git submodules)
+  apps/
+    app/                # React SPA frontend (Vite)
+      electrobun/       # Electrobun desktop wrapper
+    browser-bridge/     # Browser extension bridge
+    homepage/           # Marketing site
+  deploy/
+    systemd/            # Bare-metal systemd deployment
+  docs/                 # Mintlify documentation
+  scripts/              # Build, dev, and utility scripts
+  skills/               # Agent skills directory
+  test/                 # E2E and integration tests
+```
+
+### Build Pipeline
+
+```bash
+# Full build: TypeScript + build info + frontend
+bun run build
+# → tsdown (src/ → dist/)
+# → scripts/write-build-info.ts (version metadata)
+# → cd apps/app && bun run build (Vite frontend)
+```
+
+The `eliza/packages/app-core/scripts/rt.mjs` helper resolves the best available runtime (bun or Node.js with tsx) for running TypeScript files directly during development.
+
+### Engine Requirements
+
+Eliza requires **Node.js 22+** (specified in `package.json` `engines` field). The `node-llama-cpp` dependency for local embeddings benefits from native compilation on the target platform.
+
+<Tip>
+See the [Configuration Schema Reference](/config-schema) for a complete field-by-field breakdown of every config section.
+</Tip>

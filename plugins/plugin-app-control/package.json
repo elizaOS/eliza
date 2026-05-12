@@ -1,0 +1,57 @@
+{
+	"name": "@elizaos/plugin-app-control",
+	"version": "2.0.0-beta.1",
+	"description": "App control plugin for Eliza agents — launch, close, and list running apps via the local dashboard API.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./*.css": "./dist/*.css",
+		"./*": {
+			"import": "./dist/*.js",
+			"default": "./dist/*.js",
+			"types": "./dist/*.d.ts"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --clean",
+		"dev": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --watch",
+		"test": "vitest run",
+		"clean": "rm -rf dist .turbo",
+		"lint": "bunx @biomejs/biome check --write --unsafe .",
+		"lint:check": "bunx @biomejs/biome check .",
+		"format": "bunx @biomejs/biome format --write .",
+		"format:check": "bunx @biomejs/biome format .",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@elizaos/core": "2.0.0-beta.1"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "2.0.0-beta.1",
+		"puppeteer-core": "^24.39.1"
+	},
+	"peerDependenciesMeta": {
+		"puppeteer-core": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@types/node": "24.12.2",
+		"tsup": "8.5.1",
+		"typescript": "^6.0.3",
+		"vitest": "4.1.5"
+	},
+	"publishConfig": {
+		"access": "public"
+	}
+}

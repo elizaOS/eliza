@@ -1,0 +1,30 @@
+{
+  "id": "documents",
+  "name": "Knowledge",
+  "description": "Character Knowledge documents, fragments, and search routes for the agent.",
+  "npmName": "@elizaos/app-documents",
+  "source": "bundled",
+  "tags": ["documents", "documents"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "card",
+    "icon": "BookOpen",
+    "group": "Curated",
+    "groupOrder": 100,
+    "actions": []
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": ["documents"],
+    "routePlugin": {
+      "specifier": "@elizaos/app-documents",
+      "exportName": "documentsPlugin"
+    }
+  }
+}

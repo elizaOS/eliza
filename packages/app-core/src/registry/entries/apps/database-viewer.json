@@ -1,0 +1,27 @@
+{
+  "id": "database-viewer",
+  "name": "Database Viewer",
+  "description": "Inspect tables, media, vectors, and ad-hoc SQL.",
+  "npmName": "@elizaos/app-database-viewer",
+  "source": "bundled",
+  "tags": ["database", "sql", "viewer"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Server",
+    "group": "Apps",
+    "groupOrder": 7,
+    "actions": ["launch"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "internal-tab",
+    "target": "database",
+    "capabilities": ["database", "sql", "viewer"]
+  }
+}

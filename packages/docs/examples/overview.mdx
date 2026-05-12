@@ -1,0 +1,112 @@
+---
+title: "Examples Overview"
+description: "Learn elizaOS through working TypeScript examples"
+---
+
+elizaOS ships a collection of examples under `packages/examples/`. Each example is TypeScript-first and runnable with Bun from the repository root.
+
+## Quick Reference
+
+| Example                            | Path / entry                         | Description                    |
+| ---------------------------------- | ------------------------------------ | ------------------------------ |
+| [CLI Chat](/examples/chat)         | `examples/chat/chat.ts`            | Interactive terminal chat      |
+| [REST API](/examples/rest-api)     | `examples/rest-api/` (Express, etc.) | HTTP APIs                      |
+| [Browser](/examples/browser)       | `examples/html/`, `examples/next/`   | Client-side agents             |
+| [Serverless](/examples/serverless) | `examples/aws/`, `examples/gcp/`, … | Cloud functions and workers     |
+| [Games](/examples/game)            | `examples/text-adventure/game.ts`, … | AI and agentic game demos       |
+
+---
+
+## Running Examples
+
+Examples live in `packages/examples/` (documented here as `examples/<name>/` relative to the elizaOS repo root).
+
+```bash
+git clone https://github.com/elizaos/eliza.git
+cd eliza
+
+bun install
+export OPENAI_API_KEY="your-api-key-here"
+
+# CLI chat
+bun run examples/chat/chat.ts
+```
+
+---
+
+## Environment Setup
+
+Most examples require an OpenAI API key:
+
+```bash
+export OPENAI_API_KEY="your-api-key-here"
+```
+
+Or create a `.env` file in the repository root:
+
+```bash
+OPENAI_API_KEY=your-api-key-here
+```
+
+| Variable             | Default                     | Description                      |
+| -------------------- | --------------------------- | -------------------------------- |
+| `OPENAI_API_KEY`     | (required for LLM examples) | OpenAI API key                   |
+| `OPENAI_BASE_URL`    | `https://api.openai.com/v1` | API base URL                     |
+| `OPENAI_SMALL_MODEL` | `gpt-5-mini`                | Model for TEXT_SMALL             |
+| `OPENAI_LARGE_MODEL` | `gpt-5`                     | Model for TEXT_LARGE             |
+| `LOG_LEVEL`          | `info`                      | Set to `fatal` to suppress logs  |
+| `PGLITE_DATA_DIR`    | `memory://`                 | PGLite storage                   |
+
+---
+
+## Example Categories
+
+<CardGroup cols={2}>
+  <Card title="Chat Applications" icon="comments" href="/examples/chat">
+    Interactive CLI chat: message handling, streaming responses, and memory.
+  </Card>
+
+  <Card title="REST APIs" icon="server" href="/examples/rest-api">
+    HTTP servers with Express, Hono, and Elysia.
+  </Card>
+
+  <Card title="Browser Apps" icon="browser" href="/examples/browser">
+    Client-side agents with React, Next.js, and static HTML.
+  </Card>
+
+  <Card title="Serverless" icon="cloud" href="/examples/serverless">
+    AWS Lambda, GCP Cloud Functions, Vercel, Cloudflare Workers, Supabase Edge.
+  </Card>
+
+  <Card title="Games" icon="gamepad" href="/examples/game">
+    Text adventure, tic-tac-toe, and agentic simulations.
+  </Card>
+</CardGroup>
+
+---
+
+## TypeScript quick pattern
+
+```typescript
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+const runtime = new AgentRuntime({
+  character: { name: "Eliza", bio: "A helpful AI." },
+  plugins: [openaiPlugin],
+});
+
+await runtime.initialize();
+```
+
+---
+
+## Contributing Examples
+
+When contributing:
+
+1. Add or extend a folder under `packages/examples/` with a `README.md` and runnable entry.
+2. Match existing layout (flat TypeScript at the example root unless a monorepo-style sample needs subfolders).
+3. Run `bun run typecheck` / tests for any package you touch.
+
+See [Contributing to Core](/guides/contribute-to-core) for the full guide.

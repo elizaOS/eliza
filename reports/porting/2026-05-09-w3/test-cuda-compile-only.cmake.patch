@@ -1,0 +1,96 @@
+# Patch: add `test-cuda-compile-only` target to elizaOS/llama.cpp
+#
+# Apply to: ggml/src/ggml-cuda/CMakeLists.txt on milady/main
+# Purpose: gate every PR with a per-.cu-file standalone PTX compile that
+#          exercises every CUDA arch in CMAKE_CUDA_ARCHITECTURES (default
+#          80;86;89;90 in this fork) without linking. Catches kernel-syntax
+#          errors and target-incompatible code paths that the full link-time
+#          build masks if the failing .cu happens to be in a backend variant
+#          disabled by the current configure flags.
+#
+# After applying:
+#   cmake -B build-cuda -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES="80;86;89;90"
+#   cmake --build build-cuda --target test-cuda-compile-only -j$(nproc)
+#
+# Status: not yet pushed to elizaOS/llama.cpp; this is the documented
+# patch the next agent should land along with the CI matrix in
+# .github/workflows/local-inference-bench.yml fork-build-cuda job. A
+# pull-request-grade equivalent of this gate already runs ad-hoc via
+# probe-cuda-compile-only.sh in this report directory; the CMake target
+# is the durable, in-tree version.
+
+--- a/ggml/src/ggml-cuda/CMakeLists.txt
++++ b/ggml/src/ggml-cuda/CMakeLists.txt
+@@ -end-of-file
++
++# ---------------------------------------------------------------------------
++# test-cuda-compile-only
++#
++# Standalone-compile every *.cu source under ggml/src/ggml-cuda/ for every
++# CUDA arch in CMAKE_CUDA_ARCHITECTURES, producing PTX (no link). A failure
++# in any .cu file fails the target. Use this as the PR gate so a kernel
++# touched in a feature branch cannot ship if it fails to compile for any
++# supported arch.
++#
++# This is an EARLY-SIGNAL gate. The full build still has to pass, but
++# this target catches CUDA-side syntax / instruction-set errors faster
++# and without requiring a link-able libggml-cuda.so (so it works even
++# when downstream changes broke the link path).
++# ---------------------------------------------------------------------------
++if (CUDAToolkit_FOUND)
++    file(GLOB_RECURSE _ALL_CU_SOURCES
++        "${CMAKE_CURRENT_SOURCE_DIR}/*.cu"
++        "${CMAKE_CURRENT_SOURCE_DIR}/template-instances/*.cu"
++    )
++
++    set(_PTX_PROBE_DIR "${CMAKE_CURRENT_BINARY_DIR}/cuda-compile-only-ptx")
++    file(MAKE_DIRECTORY "${_PTX_PROBE_DIR}")
++
++    set(_PTX_OUTPUTS "")
++    foreach(_cu IN LISTS _ALL_CU_SOURCES)
++        get_filename_component(_cu_name "${_cu}" NAME_WE)
++        file(RELATIVE_PATH _rel "${CMAKE_CURRENT_SOURCE_DIR}" "${_cu}")
++        get_filename_component(_rel_dir "${_rel}" DIRECTORY)
++        string(REPLACE "/" "_" _flat "${_rel_dir}_${_cu_name}")
++        set(_ptx "${_PTX_PROBE_DIR}/${_flat}.ptx")
++
++        # Build a -gencode flag per requested arch. Use code=compute_NN to
++        # emit virtual PTX only (no SASS), which is the "compile-only"
++        # gate we want — fast, and works even when the host has no GPU.
++        set(_gencode_flags "")
++        foreach(_arch IN LISTS CMAKE_CUDA_ARCHITECTURES)
++            string(REGEX REPLACE "^([0-9]+).*" "\\1" _arch_num "${_arch}")
++            list(APPEND _gencode_flags
++                "--generate-code=arch=compute_${_arch_num},code=compute_${_arch_num}")
++        endforeach()
++
++        add_custom_command(
++            OUTPUT  "${_ptx}"
++            COMMAND "${CMAKE_CUDA_COMPILER}"
++                    -ptx
++                    --options-file "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/ggml-cuda.dir/includes_CUDA.rsp"
++                    -DGGML_CUDA_FA_ALL_QUANTS
++                    -DGGML_CUDA_PEER_MAX_BATCH_SIZE=128
++                    -DGGML_CUDA_USE_GRAPHS
++                    -DGGML_SCHED_MAX_COPIES=4
++                    -O3 -DNDEBUG -std=c++17
++                    ${_gencode_flags}
++                    -Xcompiler=-fPIC
++                    -use_fast_math
++                    -extended-lambda
++                    -Wno-deprecated-gpu-targets
++                    -x cu
++                    "${_cu}"
++                    -o "${_ptx}"
++            DEPENDS "${_cu}"
++            COMMENT "[compile-only] ${_rel}"
++            VERBATIM
++        )
++        list(APPEND _PTX_OUTPUTS "${_ptx}")
++    endforeach()
++
++    add_custom_target(test-cuda-compile-only
++        DEPENDS ${_PTX_OUTPUTS}
++        COMMENT "Standalone-compiling every .cu file to PTX (no link)."
++    )
++endif()

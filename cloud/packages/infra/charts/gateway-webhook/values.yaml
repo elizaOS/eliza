@@ -1,0 +1,157 @@
+# Default values for gateway-webhook Helm chart
+
+# Override the name of the chart
+nameOverride: ""
+fullnameOverride: "gateway-webhook"
+
+# Namespace configuration
+# Note: Use helm upgrade --install --create-namespace to create the namespace
+namespace: "gateway-webhook"
+
+# Image configuration
+image:
+  repository: ghcr.io/elizaos/cloud/gateway-webhook
+  tag: latest
+  # Digest takes precedence over tag when set (e.g., sha256:abc123...)
+  digest: ""
+  pullPolicy: IfNotPresent
+
+# Image pull secrets for private registries
+imagePullSecrets:
+  - name: ghcr-credentials
+
+# Number of replicas (base value, HPA will manage scaling)
+replicaCount: 1
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 3000
+  targetPort: 3000
+
+# Container port
+containerPort: 3000
+
+# Resource requests and limits (lighter than gateway-discord — no persistent WS connections)
+resources:
+  requests:
+    memory: "128Mi"
+    cpu: "50m"
+  limits:
+    memory: "512Mi"
+    cpu: "250m"
+
+# Gateway configuration (environment variables)
+config:
+  nodeEnv: "production"
+  port: "3000"
+  # Public URL for Twilio signature verification (behind ingress/proxy)
+  twilioPublicUrl: ""
+
+# Secrets configuration
+secrets:
+  # Name of the existing secret containing sensitive data
+  name: "gateway-webhook-secrets"
+  # Keys in the secret
+  keys:
+    gatewayBootstrapSecret: "gateway-bootstrap-secret"
+    kvRestApiUrl: "kv-rest-api-url"
+    kvRestApiToken: "kv-rest-api-token"
+    elizaCloudUrl: "eliza-cloud-url"
+    elizaAppTelegramBotToken: "eliza-app-telegram-bot-token"
+    elizaAppTelegramWebhookSecret: "eliza-app-telegram-webhook-secret"
+    elizaAppBlooioApiKey: "eliza-app-blooio-api-key"
+    elizaAppBlooioWebhookSecret: "eliza-app-blooio-webhook-secret"
+    elizaAppBlooioPhoneNumber: "eliza-app-blooio-phone-number"
+    elizaAppTwilioAccountSid: "eliza-app-twilio-account-sid"
+    elizaAppTwilioAuthToken: "eliza-app-twilio-auth-token"
+    elizaAppTwilioPhoneNumber: "eliza-app-twilio-phone-number"
+    elizaAppWhatsappAccessToken: "eliza-app-whatsapp-access-token"
+    elizaAppWhatsappPhoneNumberId: "eliza-app-whatsapp-phone-number-id"
+    elizaAppWhatsappAppSecret: "eliza-app-whatsapp-app-secret"
+    elizaAppWhatsappVerifyToken: "eliza-app-whatsapp-verify-token"
+    elizaAppWhatsappPhoneNumber: "eliza-app-whatsapp-phone-number"
+    elizaAppDefaultAgentId: "eliza-app-default-agent-id"
+    gatewayInternalSecret: "gateway-internal-secret"
+
+# Graceful shutdown configuration (shorter than discord — no persistent connections)
+terminationGracePeriodSeconds: 30
+preStopDrainSleepSeconds: 10
+
+# Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /health
+    port: 3000
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+# Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: 3000
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Horizontal Pod Autoscaler configuration
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+    cpu:
+      enabled: true
+      averageUtilization: 70
+    memory:
+      enabled: true
+      averageUtilization: 80
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+      maxPods: 5
+      periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      maxPods: 1
+      periodSeconds: 120
+
+# Pod Disruption Budget configuration
+pdb:
+  enabled: true
+  maxUnavailable: 1
+
+# Prometheus monitoring configuration
+prometheus:
+  # Enable ServiceMonitor and PrometheusRule (requires Prometheus Operator)
+  enabled: false
+  serviceMonitor:
+    interval: 30s
+    path: /metrics
+  alerts:
+    enabled: true
+
+# Pod annotations (add prometheus.io/scrape when /metrics is instrumented)
+podAnnotations: {}
+
+# Service account configuration
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# KEDA cooldown for scale-to-zero (seconds of inactivity before scaling down)
+kedaCooldownSeconds: 900
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity rules
+affinity: {}

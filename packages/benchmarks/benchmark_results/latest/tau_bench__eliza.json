@@ -1,0 +1,77 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132340Z_26bf40d2/tau-bench__tau_bench/run_tau_bench_20260511T132340Z_1_4ca0c220/output"
+  ],
+  "benchmark_directory": "tau-bench",
+  "benchmark_id": "tau_bench",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "overall_policy_compliance": 1.0,
+    "overall_success_rate": 1.0,
+    "overall_tool_accuracy": 0.5416666666666666,
+    "performance_metrics": {
+      "duration_seconds": 122.65635241701966,
+      "mean_latency_ms": 61193.77815723419,
+      "p95_latency_ms": 88386.52420043945,
+      "throughput_per_second": 0.024458578303391022
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 3,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "trajectory_summary": {
+      "files": 2,
+      "prompt_chars": 21,
+      "repeated_prefixes": [],
+      "turns": 3
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 122.65635241701966,
+    "mean_latency_ms": 61193.77815723419,
+    "p95_latency_ms": 88386.52420043945,
+    "throughput_per_second": 0.024458578303391022
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132340Z_26bf40d2/tau-bench__tau_bench/run_tau_bench_20260511T132340Z_1_4ca0c220/output/tau-bench-results.json",
+  "run_group_id": "rg_20260511T132340Z_26bf40d2",
+  "run_id": "run_tau_bench_20260511T132340Z_1_4ca0c220",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 3,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "prompt_chars": 21,
+    "repeated_prefixes": [],
+    "turns": 3
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:34:00Z"
+}

@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <!-- Polyfill for three.js TSL WebGPU enum access.
+       Three.js assumes self.GPUShaderStage exists when self is defined,
+       but many browsers have self without WebGPU support. -->
+  <script>
+    if (typeof self !== 'undefined' && !self.GPUShaderStage) {
+      self.GPUShaderStage = Object.freeze({ VERTEX: 1, FRAGMENT: 2, COMPUTE: 4 });
+    }
+    if (typeof self !== 'undefined' && !self.GPUBufferUsage) {
+      self.GPUBufferUsage = Object.freeze({
+        MAP_READ: 1, MAP_WRITE: 2, COPY_SRC: 4, COPY_DST: 8,
+        INDEX: 16, VERTEX: 32, UNIFORM: 64, STORAGE: 128,
+        INDIRECT: 256, QUERY_RESOLVE: 512
+      });
+    }
+    if (typeof self !== 'undefined' && !self.GPUTextureUsage) {
+      self.GPUTextureUsage = Object.freeze({
+        COPY_SRC: 1, COPY_DST: 2, TEXTURE_BINDING: 4,
+        STORAGE_BINDING: 8, RENDER_ATTACHMENT: 16
+      });
+    }
+    if (typeof self !== 'undefined' && !self.GPUColorWrite) {
+      self.GPUColorWrite = Object.freeze({
+        RED: 1, GREEN: 2, BLUE: 4, ALPHA: 8, ALL: 15
+      });
+    }
+    if (typeof self !== 'undefined' && !self.GPUMapMode) {
+      self.GPUMapMode = Object.freeze({ READ: 1, WRITE: 2 });
+    }
+  </script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#08080a" />
+  <meta name="color-scheme" content="dark light" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' electrobun://* https://* http://localhost:* http://127.0.0.1:*;
+               script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' http://localhost:* http://127.0.0.1:* https://*;
+               style-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:* https://*;
+               connect-src 'self' blob: data: http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:* https://* wss://*;
+               img-src 'self' data: blob: http://localhost:* http://127.0.0.1:* https://*;
+               media-src 'self' blob: http://localhost:* http://127.0.0.1:* https://*;
+               frame-src 'self' http://localhost:* http://127.0.0.1:* https://*;
+               worker-src 'self' blob:;
+               font-src 'self' data: http://localhost:* http://127.0.0.1:* https://*;" />
+  <title>__APP_NAME__</title>
+  <meta name="description" content="Your AI Companion" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="__APP_URL__/" />
+  <meta property="og:title" content="__APP_NAME__" />
+  <meta property="og:description" content="Your AI Companion" />
+
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:url" content="__APP_URL__/" />
+  <meta property="twitter:title" content="__APP_NAME__" />
+  <meta property="twitter:description" content="Your AI Companion" />
+
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <style>
+    /* Prevent flash of unstyled content */
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: #08080a;
+      color: #e8e8ec;
+      font-family: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Safe area insets for notched devices */
+    body {
+      padding-top: env(safe-area-inset-top);
+      padding-bottom: env(safe-area-inset-bottom);
+      padding-left: env(safe-area-inset-left);
+      padding-right: env(safe-area-inset-right);
+    }
+  </style>
+</head>
+
+<body>
+  <div id="root"></div>
+  <!-- Node polyfills — inline sync script ensures they're available before any ESM module evaluates -->
+  <script>
+    if (typeof globalThis.process === "undefined") {
+      globalThis.process = {
+        env: { NODE_ENV: "development" },
+        cwd: () => "/",
+        platform: "browser",
+        version: "v0.0.0",
+        versions: {},
+        nextTick: (cb) => { Promise.resolve().then(cb); },
+        stdout: { write: () => {} },
+        stderr: { write: () => {} },
+        argv: [],
+        pid: 0,
+        exit: () => {},
+        on: function() { return this; },
+        off: function() { return this; },
+        emit: () => {},
+        browser: true,
+      };
+    }
+    if (typeof globalThis.Buffer === "undefined") {
+      globalThis.Buffer = {
+        alloc: (n) => new Uint8Array(n),
+        from: (a, enc) => {
+          if (typeof a === "string") {
+            if (enc === "base64") {
+              const b = atob(a);
+              const u = new Uint8Array(b.length);
+              for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+              return u;
+            }
+            return new TextEncoder().encode(a);
+          }
+          return new Uint8Array(a);
+        },
+        isBuffer: () => false,
+        concat: (bufs) => {
+          const total = bufs.reduce((s, b) => s + b.length, 0);
+          const result = new Uint8Array(total);
+          let offset = 0;
+          bufs.forEach((b) => { result.set(b, offset); offset += b.length; });
+          return result;
+        },
+        byteLength: (s) => new TextEncoder().encode(s).length,
+      };
+    }
+  </script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

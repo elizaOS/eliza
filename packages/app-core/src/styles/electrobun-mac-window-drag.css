@@ -1,0 +1,66 @@
+/**
+ * macOS Electrobun main window uses titleBarStyle "hiddenInset" (no native title bar).
+ *
+ * WHY this file exists:
+ * - Chromium honors -webkit-app-region for drag/no-drag regions.
+ * - System WKWebView often does not — actual move/resize chrome lives in
+ *   apps/app/electrobun/native/macos/window-effects.mm (see docs/guides/electrobun-mac-window-chrome.md).
+ * - We still ship these rules so CEF or future web engines get sensible defaults
+ *   without duplicating policy only in native code.
+ *
+ * html.eliza-electrobun-frameless is toggled from apps/app/src/main.tsx
+ * (main macOS Electrobun shell only; detached shells skip it).
+ */
+html.eliza-electrobun-frameless {
+  /**
+   * The app-provided titlebar sits on the same vertical row as the macOS
+   * traffic lights. The native layer handles the button placement.
+   */
+  --eliza-macos-frame-top-inset: 0px;
+}
+
+html.eliza-electrobun-frameless body {
+  -webkit-app-region: drag;
+}
+
+html.eliza-electrobun-frameless a,
+html.eliza-electrobun-frameless button,
+html.eliza-electrobun-frameless input,
+html.eliza-electrobun-frameless textarea,
+html.eliza-electrobun-frameless select,
+html.eliza-electrobun-frameless option,
+html.eliza-electrobun-frameless label,
+html.eliza-electrobun-frameless summary,
+html.eliza-electrobun-frameless iframe,
+html.eliza-electrobun-frameless canvas,
+html.eliza-electrobun-frameless video,
+html.eliza-electrobun-frameless audio,
+html.eliza-electrobun-frameless electrobun-wgpu,
+html.eliza-electrobun-frameless [role="button"],
+html.eliza-electrobun-frameless [role="link"],
+html.eliza-electrobun-frameless [role="menuitem"],
+html.eliza-electrobun-frameless [role="menuitemcheckbox"],
+html.eliza-electrobun-frameless [role="menuitemradio"],
+html.eliza-electrobun-frameless [role="option"],
+html.eliza-electrobun-frameless [role="radio"],
+html.eliza-electrobun-frameless [role="checkbox"],
+html.eliza-electrobun-frameless [role="switch"],
+html.eliza-electrobun-frameless [role="tab"],
+html.eliza-electrobun-frameless [role="slider"],
+html.eliza-electrobun-frameless [role="listbox"],
+html.eliza-electrobun-frameless [role="combobox"],
+html.eliza-electrobun-frameless [role="spinbutton"],
+html.eliza-electrobun-frameless [role="textbox"],
+html.eliza-electrobun-frameless [role="searchbox"],
+html.eliza-electrobun-frameless [contenteditable="true"],
+html.eliza-electrobun-frameless [aria-haspopup],
+html.eliza-electrobun-frameless [data-shell-scroll-region="true"],
+html.eliza-electrobun-frameless [data-no-window-drag="true"],
+html.eliza-electrobun-frameless [data-no-camera-drag="true"] {
+  -webkit-app-region: no-drag;
+}
+
+/* Onboarding full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
+html.eliza-electrobun-frameless .onboarding-screen canvas {
+  -webkit-app-region: drag;
+}

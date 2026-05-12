@@ -1,0 +1,27 @@
+{
+  "name": "__ELECTROBUN_PACKAGE_NAME__",
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun dev",
+    "build": "bun run build:preload && PATH=\"$PWD/scripts/bin:$PATH\" bunx electrobun build",
+    "typecheck": "tsc --noEmit",
+    "test": "bunx vitest run --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src",
+    "build:preload": "node ../../../scripts/build-electrobun-preload.mjs",
+    "build:whisper": "bash scripts/build-whisper.sh",
+    "build:whisper:universal": "bash scripts/build-whisper-universal.sh",
+    "build:native-effects": "bash scripts/build-macos-effects.sh"
+  },
+  "dependencies": {
+    "@elizaos/shared": "beta",
+    "bonjour-service": "1.3.0",
+    "electrobun": "^1.16.0"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.3",
+    "@types/bun": "^1.3.8",
+    "vitest": "^4.0.18",
+    "@biomejs/biome": "^2.4.14"
+  }
+}

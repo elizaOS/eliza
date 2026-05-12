@@ -1,0 +1,80 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020849Z_e2094f60/bfcl__bfcl/run_bfcl_20260512T021008Z_1_32a9417d/output"
+  ],
+  "benchmark_directory": "bfcl",
+  "benchmark_id": "bfcl",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "ast_accuracy": 1.0,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "canonical_entries": 0,
+    "exec_accuracy": 0,
+    "overall_score": 1.0,
+    "performance_metrics": {
+      "duration_seconds": 27.29377370799193,
+      "mean_latency_ms": 26808.528184890747,
+      "p95_latency_ms": 26808.528184890747,
+      "throughput_per_second": 0.0366383927227765
+    },
+    "relevance_accuracy": 1.0,
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_tests": 1,
+    "trajectory_summary": {
+      "files": 2,
+      "prompt_chars": 0,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 27.29377370799193,
+    "mean_latency_ms": 26808.528184890747,
+    "p95_latency_ms": 26808.528184890747,
+    "throughput_per_second": 0.0366383927227765
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T020849Z_e2094f60/bfcl__bfcl/run_bfcl_20260512T021008Z_1_32a9417d/output/bfcl_results_gpt-oss-120b_20260511_191035.json",
+  "run_group_id": "rg_20260512T020849Z_e2094f60",
+  "run_id": "run_bfcl_20260512T021008Z_1_32a9417d",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "prompt_chars": 0,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T02:10:35.680171+00:00"
+}

@@ -1,0 +1,490 @@
+name: Apple Store Build & Publish
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: false
+        type: string
+        default: both
+      track:
+        description: "Release track"
+        required: false
+        type: string
+        default: testflight
+      version:
+        description: "Version override (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+    secrets:
+      APPLE_ID:
+        required: true
+      APPLE_TEAM_ID:
+        required: true
+      ITC_TEAM_ID:
+        required: false
+      APP_STORE_APP_ID:
+        required: false
+      MATCH_PASSWORD:
+        required: false
+      MATCH_GIT_URL:
+        required: false
+      MATCH_GIT_BASIC_AUTHORIZATION:
+        required: false
+      APPLE_APP_SPECIFIC_PASSWORD:
+        required: true
+      MAS_CSC_LINK:
+        required: false
+      MAS_CSC_KEY_PASSWORD:
+        required: false
+      MAS_INSTALLER_CERT:
+        required: false
+      MAS_INSTALLER_KEY_PASSWORD:
+        required: false
+      APP_STORE_API_KEY_ID:
+        required: false
+      APP_STORE_API_ISSUER_ID:
+        required: false
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        type: choice
+        options:
+          - both
+          - ios
+          - macos
+        default: both
+      track:
+        description: "Release track"
+        type: choice
+        options:
+          - testflight
+          - app-store
+        default: testflight
+      version:
+        description: "Version override (e.g. 2.0.0-beta.0)"
+        required: false
+        type: string
+
+concurrency:
+  group: apple-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "22"
+  LANG: en_US.UTF-8
+  LC_ALL: en_US.UTF-8
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+      build_number: ${{ steps.ver.outputs.build_number }}
+      build_ios: ${{ steps.targets.outputs.ios }}
+      build_macos: ${{ steps.targets.outputs.macos }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Determine version
+        id: ver
+        run: |
+          if [[ -n "${{ inputs.version }}" ]]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=$(node -p "require('./package.json').version")
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "build_number=$(date +%s)" >> "$GITHUB_OUTPUT"
+          echo "Version: $VERSION"
+
+      - name: Determine build targets
+        id: targets
+        run: |
+          PLATFORM="${{ inputs.platform || 'both' }}"
+          if [[ "$PLATFORM" == "both" || "$PLATFORM" == "ios" ]]; then
+            echo "ios=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ios=false" >> "$GITHUB_OUTPUT"
+          fi
+          if [[ "$PLATFORM" == "both" || "$PLATFORM" == "macos" ]]; then
+            echo "macos=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "macos=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ── iOS App Store ────────────────────────────────────────────────────
+  build-ios:
+    name: Build & Submit iOS
+    needs: prepare
+    if: needs.prepare.outputs.build_ios == 'true'
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ITC_TEAM_ID: ${{ secrets.ITC_TEAM_ID }}
+      APP_STORE_APP_ID: ${{ secrets.APP_STORE_APP_ID }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      FASTLANE_APPLE_APPLICATION_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --ignore-scripts || bun install --ignore-scripts
+
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
+
+      - name: Set version
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const v = process.env.RELEASE_VERSION;
+            for (const f of ['package.json', 'packages/app/package.json']) {
+              const pkg = JSON.parse(fs.readFileSync(f, 'utf8'));
+              pkg.version = v;
+              fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
+            }
+          "
+
+      - name: Build web assets
+        working-directory: packages/app
+        run: bun run build
+
+      - name: Validate iOS secrets
+        run: |
+          # Secrets required for signing the IPA. Without these the build
+          # itself cannot produce a signed artifact.
+          missing=()
+          [[ -z "$MATCH_GIT_URL" ]] && missing+=("MATCH_GIT_URL")
+          [[ -z "$MATCH_PASSWORD" ]] && missing+=("MATCH_PASSWORD")
+          [[ -z "$MATCH_GIT_BASIC_AUTHORIZATION" ]] && missing+=("MATCH_GIT_BASIC_AUTHORIZATION")
+          [[ -z "$ITC_TEAM_ID" ]] && missing+=("ITC_TEAM_ID")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required iOS signing secrets: ${missing[*]}"
+            echo "Configure these secrets in the repo settings to enable iOS App Store builds."
+            exit 1
+          fi
+
+          if [[ -z "$APP_STORE_APP_ID" ]]; then
+            echo "::error::APP_STORE_APP_ID is required for TestFlight/App Store delivery."
+            exit 1
+          fi
+
+      - name: Prepare CocoaPods trunk repo
+        run: bash packages/app-core/scripts/prepare-ios-cocoapods.sh
+        env:
+          LANG: en_US.UTF-8
+
+      - name: Sync Capacitor iOS
+        working-directory: packages/app
+        run: bun run cap:sync:ios
+        env:
+          LANG: en_US.UTF-8
+
+      - name: Overlay iOS native files (Fastlane, AppDelegate, entitlements)
+        run: node packages/app-core/scripts/run-mobile-build.mjs ios-overlay
+        env:
+          LANG: en_US.UTF-8
+
+      - name: Update Xcode project version
+        working-directory: packages/app/ios/App/App.xcodeproj
+        run: |
+          VERSION="${{ needs.prepare.outputs.version }}"
+          BUILD="${{ needs.prepare.outputs.build_number }}"
+          sed -i '' "s/MARKETING_VERSION = .*/MARKETING_VERSION = $VERSION;/" project.pbxproj
+          sed -i '' "s/CURRENT_PROJECT_VERSION = .*/CURRENT_PROJECT_VERSION = $BUILD;/" project.pbxproj
+
+      - name: Install CocoaPods
+        working-directory: packages/app/ios/App
+        run: pod install
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "4.0.3"
+          bundler-cache: true
+          working-directory: packages/app/ios
+
+      - name: Resolve app identifiers
+        working-directory: packages/app
+        run: |
+          # Read the runtime bundle id straight from pbxproj (the overlay step
+          # has already rewritten it to the elizaOS-specific id).
+          APP_ID=$(grep -m1 -E 'PRODUCT_BUNDLE_IDENTIFIER = [^.]+\.' ios/App/App.xcodeproj/project.pbxproj \
+            | grep -v WebsiteBlockerContentExtension \
+            | awk '{print $3}' | tr -d ';')
+          if [[ -z "$APP_ID" ]]; then
+            echo "::error::Could not resolve iOS bundle id from pbxproj"
+            exit 1
+          fi
+          APP_ID_EXTRA="${APP_ID}.WebsiteBlockerContentExtension"
+          echo "APP_IDENTIFIER=$APP_ID" >> "$GITHUB_ENV"
+          echo "APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA" >> "$GITHUB_ENV"
+          echo "Resolved: APP_IDENTIFIER=$APP_ID, APP_IDENTIFIER_EXTRA=$APP_ID_EXTRA"
+
+      - name: Build and upload
+        working-directory: packages/app/ios
+        env:
+          APP_IDENTIFIER: ${{ env.APP_IDENTIFIER }}
+          APP_IDENTIFIER_EXTRA: ${{ env.APP_IDENTIFIER_EXTRA }}
+        run: |
+          if [[ ! -f fastlane/Fastfile ]]; then
+            echo "::error::fastlane/Fastfile missing at packages/app/ios/. cap:sync:ios or run-mobile-build.mjs should have copied it."
+            ls -la fastlane/ || true
+            exit 1
+          fi
+          TRACK="${{ inputs.track || 'testflight' }}"
+          if [[ "$TRACK" == "app-store" ]]; then
+            bundle exec fastlane release
+          else
+            bundle exec fastlane beta
+          fi
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-ipa
+          path: packages/app/ios/build/Eliza.ipa
+          retention-days: 90
+          if-no-files-found: error
+
+  # ── Mac App Store ────────────────────────────────────────────────────
+  build-macos:
+    name: Build & Submit macOS
+    needs: prepare
+    if: needs.prepare.outputs.build_macos == 'true'
+    runs-on: macos-15
+    timeout-minutes: 75
+    env:
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.MAS_CSC_KEY_PASSWORD }}
+      MAS_INSTALLER_CERT: ${{ secrets.MAS_INSTALLER_CERT }}
+      MAS_INSTALLER_KEY_PASSWORD: ${{ secrets.MAS_INSTALLER_KEY_PASSWORD }}
+      APP_STORE_API_KEY_ID: ${{ secrets.APP_STORE_API_KEY_ID }}
+      APP_STORE_API_ISSUER_ID: ${{ secrets.APP_STORE_API_ISSUER_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --ignore-scripts || bun install --ignore-scripts
+
+      - name: Materialize bun npm package binary
+        run: if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
+
+      - name: Set version
+        env:
+          RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          node -e "
+            const fs = require('fs');
+            const v = process.env.RELEASE_VERSION;
+            for (const f of ['package.json', 'packages/app/package.json', 'packages/app-core/platforms/electrobun/package.json']) {
+              try {
+                const pkg = JSON.parse(fs.readFileSync(f, 'utf8'));
+                pkg.version = v;
+                fs.writeFileSync(f, JSON.stringify(pkg, null, 2) + '\n');
+              } catch(e) {}
+            }
+            const cfgPath = 'packages/app-core/platforms/electrobun/electrobun.config.ts';
+            let cfg = fs.readFileSync(cfgPath, 'utf8');
+            cfg = cfg.replace(/version:\s*\"[^\"]+\"/, 'version: \"' + v + '\"');
+            fs.writeFileSync(cfgPath, cfg);
+          "
+
+      - name: Build core dist
+        run: |
+          bunx tsdown
+          echo '{"type":"module"}' > dist/package.json
+          node --import tsx scripts/write-build-info.ts
+
+      - name: Build renderer
+        working-directory: packages/app
+        run: |
+          bun install --ignore-scripts
+          if [ -f node_modules/bun/install.js ]; then (cd node_modules/bun && node install.js); fi
+          bun run build:web
+
+      - name: Stage renderer
+        run: |
+          rm -rf packages/app-core/platforms/electrobun/renderer
+          cp -r packages/app/dist packages/app-core/platforms/electrobun/renderer
+
+      - name: Build native macOS effects
+        working-directory: packages/app-core/platforms/electrobun
+        run: bun run build:native-effects
+
+      - name: Build webview preload
+        working-directory: packages/app-core/platforms/electrobun
+        run: bun run build:preload
+
+      - name: Validate signing secrets
+        run: |
+          missing=()
+          [[ -z "$CSC_LINK" ]] && missing+=("MAS_CSC_LINK")
+          [[ -z "$CSC_KEY_PASSWORD" ]] && missing+=("MAS_CSC_KEY_PASSWORD")
+          [[ -z "$MAS_INSTALLER_CERT" ]] && missing+=("MAS_INSTALLER_CERT")
+          [[ -z "$MAS_INSTALLER_KEY_PASSWORD" ]] && missing+=("MAS_INSTALLER_KEY_PASSWORD")
+          [[ -z "$APP_STORE_API_KEY_ID" ]] && missing+=("APP_STORE_API_KEY_ID")
+          [[ -z "$APP_STORE_API_ISSUER_ID" ]] && missing+=("APP_STORE_API_ISSUER_ID")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "::error::Missing required signing secrets: ${missing[*]}"
+            echo "Configure these secrets in the repo settings to enable Mac App Store builds."
+            exit 1
+          fi
+
+      - name: Import signing certificates
+        run: |
+          KEYCHAIN="build-mas.keychain"
+          KEYCHAIN_PASS="$(openssl rand -hex 16)"
+          security create-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security default-keychain -s "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASS" "$KEYCHAIN"
+          security set-keychain-settings -t 3600 "$KEYCHAIN"
+
+          echo "$CSC_LINK" | base64 -d > /tmp/mas-app.p12
+          security import /tmp/mas-app.p12 -k "$KEYCHAIN" -P "$CSC_KEY_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/productbuild
+          rm -f /tmp/mas-app.p12
+
+          echo "$MAS_INSTALLER_CERT" | base64 -d > /tmp/mas-installer.p12
+          security import /tmp/mas-installer.p12 -k "$KEYCHAIN" -P "$MAS_INSTALLER_KEY_PASSWORD" \
+            -T /usr/bin/productbuild
+          rm -f /tmp/mas-installer.p12
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASS" "$KEYCHAIN"
+
+          MAS_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" | grep "Apple Distribution" | head -1 | awk -F'"' '{print $2}')
+          INSTALLER_IDENTITY=$(security find-identity -v "$KEYCHAIN" | grep "3rd Party Mac Developer Installer" | head -1 | awk -F'"' '{print $2}')
+          echo "MAS_IDENTITY=$MAS_IDENTITY" >> "$GITHUB_ENV"
+          echo "INSTALLER_IDENTITY=$INSTALLER_IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Build Electrobun app
+        working-directory: packages/app-core/platforms/electrobun
+        run: ELECTROBUN_SKIP_CODESIGN=1 bun run build
+        env:
+          ELECTROBUN_BUILD_ENV: "stable"
+
+      - name: Re-sign for Mac App Store
+        working-directory: packages/app-core/platforms/electrobun
+        run: |
+          APP_PATH=$(find build -name "*.app" -maxdepth 2 | head -1)
+          ENTITLEMENTS="${GITHUB_WORKSPACE}/packages/app-core/platforms/electrobun/entitlements/mas.entitlements"
+          CHILD_ENTITLEMENTS="${GITHUB_WORKSPACE}/packages/app-core/platforms/electrobun/entitlements/mas-child.entitlements"
+
+          # Sign frameworks and dylibs with child entitlements
+          find "$APP_PATH" -name "*.dylib" -o -name "*.framework" | while read -r lib; do
+            codesign --force --options runtime --sign "$MAS_IDENTITY" \
+              --entitlements "$CHILD_ENTITLEMENTS" "$lib"
+          done
+
+          # Sign helper apps
+          find "$APP_PATH/Contents/Frameworks" -name "*.app" 2>/dev/null | while read -r helper; do
+            codesign --force --deep --options runtime --sign "$MAS_IDENTITY" \
+              --entitlements "$CHILD_ENTITLEMENTS" "$helper"
+          done
+
+          # Sign main app bundle
+          codesign --force --deep --options runtime --sign "$MAS_IDENTITY" \
+            --entitlements "$ENTITLEMENTS" "$APP_PATH"
+
+          codesign --verify --deep --strict "$APP_PATH"
+
+      - name: Create installer pkg
+        working-directory: packages/app-core/platforms/electrobun
+        run: |
+          APP_PATH=$(find build -name "*.app" -maxdepth 2 | head -1)
+          VERSION="${{ needs.prepare.outputs.version }}"
+          PKG_NAME="Eliza-${VERSION}-mas.pkg"
+
+          productbuild --sign "$INSTALLER_IDENTITY" \
+            --component "$APP_PATH" /Applications \
+            "build/$PKG_NAME"
+
+          echo "PKG_PATH=packages/app-core/platforms/electrobun/build/$PKG_NAME" >> "$GITHUB_ENV"
+
+      - name: Upload to App Store Connect
+        run: |
+          xcrun altool --upload-app \
+            --file "$PKG_PATH" \
+            --type macos \
+            --apiKey "${{ secrets.APP_STORE_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APP_STORE_API_ISSUER_ID }}" \
+            --show-progress
+
+      - name: Upload pkg artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-mas-pkg
+          path: ${{ env.PKG_PATH }}
+          retention-days: 90
+          if-no-files-found: error
+
+  # ── Summary ──────────────────────────────────────────────────────────
+  summary:
+    name: Release Summary
+    needs: [prepare, build-ios, build-macos]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Summary
+        run: |
+          {
+            echo "## Apple Store Release Summary"
+            echo ""
+            echo "**Version:** ${{ needs.prepare.outputs.version }}"
+            echo "**Build:** ${{ needs.prepare.outputs.build_number }}"
+            echo ""
+            echo "| Platform | Status |"
+            echo "|----------|--------|"
+            echo "| iOS App Store | ${{ needs.build-ios.result || 'skipped' }} |"
+            echo "| Mac App Store | ${{ needs.build-macos.result || 'skipped' }} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require enabled Apple releases succeeded
+        run: |
+          failed=0
+          if [[ "${{ needs.prepare.outputs.build_ios }}" == "true" && "${{ needs.build-ios.result }}" != "success" ]]; then
+            echo "::error::iOS release result was '${{ needs.build-ios.result }}', expected success"
+            failed=1
+          fi
+          if [[ "${{ needs.prepare.outputs.build_macos }}" == "true" && "${{ needs.build-macos.result }}" != "success" ]]; then
+            echo "::error::Mac App Store release result was '${{ needs.build-macos.result }}', expected success"
+            failed=1
+          fi
+          exit "$failed"

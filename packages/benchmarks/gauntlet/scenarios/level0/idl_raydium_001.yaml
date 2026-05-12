@@ -1,0 +1,20 @@
+id: idl_raydium_001
+level: 0
+name: Raydium AMM IDL
+description: 'Level 0 foundational test: Raydium AMM IDL'
+category: idl
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 1.0
+tasks:
+- id: task_idl_raydium_001
+  type: query
+  parameters:
+    program: 675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8
+    action: parse_idl
+  timeout_ms: 10000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

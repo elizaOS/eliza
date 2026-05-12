@@ -1,0 +1,104 @@
+// Multi-block-per-workgroup variant of turbo3_tcq.comp. Identical decode math
+// (9-bit sliding-window TCQ + Q·K); one workgroup processes BLOCKS_PER_WG
+// consecutive KV indices serially in a 32-thread loop. BLOCKS_PER_WG is a
+// SPIR-V specialization constant (constant_id = 0); default 1 == turbo3_tcq.comp.
+// local_size stays 32 (portable shared-memory tree reduction).
+//
+// Dispatch: grid_x = ceil(n_kv / BLOCKS_PER_WG), tg_x = 32. The 512-entry
+// codebook is binding=3 (same as turbo3_tcq.comp).
+
+#version 450
+#extension GL_EXT_shader_16bit_storage  : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(constant_id = 0) const uint BLOCKS_PER_WG = 1u;
+
+layout(std430, binding = 0) readonly buffer QBuf { float q[]; };
+layout(std430, binding = 1) readonly buffer KBuf { uint k_packed[]; };
+layout(std430, binding = 2) writeonly buffer OutBuf { float scores[]; };
+layout(std430, binding = 3) readonly buffer CodebookBuf { float codebook[512]; };
+
+layout(push_constant) uniform Push {
+    uint head_dim;          // must be 128
+    uint n_kv;
+    uint kv_stride_blocks;  // 1 for d=128
+    uint q_head;
+    uint head_offset_bytes;
+} push;
+
+float fp16_to_fp32(uint h16) {
+    uint sign = (h16 & 0x8000u) << 16;
+    uint exp  = (h16 >> 10) & 0x1Fu;
+    uint mant = h16 & 0x3FFu;
+    uint u;
+    if (exp == 0u) {
+        if (mant == 0u) { u = sign; }
+        else {
+            uint e = 1u;
+            while ((mant & 0x400u) == 0u) { mant <<= 1; e += 1u; }
+            mant &= 0x3FFu;
+            u = sign | ((127u - 15u - e + 1u) << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        u = sign | 0x7F800000u | (mant << 13);
+    } else {
+        u = sign | ((exp + 127u - 15u) << 23) | (mant << 13);
+    }
+    return uintBitsToFloat(u);
+}
+
+uint read_byte(uint b) {
+    uint w = k_packed[b >> 2];
+    return (w >> ((b & 3u) * 8u)) & 0xFFu;
+}
+
+shared float partials[32];
+
+float reduce_sum_32(float v, uint tid) {
+    partials[tid] = v;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1) {
+        if (tid < stride) {
+            partials[tid] += partials[tid + stride];
+        }
+        barrier();
+    }
+    return partials[0];
+}
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint bit_pos0 = tid * 12u;             // (tid * 4) * 3
+    uint byte_idx0 = bit_pos0 >> 3;
+    uint bit_off0 = bit_pos0 & 7u;
+    uint q_base = push.q_head * push.head_dim + tid * 4u;
+
+    uint kv_base = gl_WorkGroupID.x * BLOCKS_PER_WG;
+    for (uint b = 0u; b < BLOCKS_PER_WG; ++b) {
+        uint kv_idx = kv_base + b;
+        if (kv_idx >= push.n_kv) return;
+
+        uint blk_off = push.head_offset_bytes + kv_idx * 52u;
+        uint norm16 = read_byte(blk_off + 0u) | (read_byte(blk_off + 1u) << 8u);
+        float norm = fp16_to_fp32(norm16);
+
+        uint raw24 =
+            read_byte(blk_off + 2u + byte_idx0) |
+            (read_byte(blk_off + 2u + byte_idx0 + 1u) << 8u) |
+            (read_byte(blk_off + 2u + byte_idx0 + 2u) << 16u);
+
+        float acc = 0.0;
+        for (uint local = 0u; local < 4u; local += 1u) {
+            uint state = (raw24 >> (bit_off0 + local * 3u)) & 0x1FFu;
+            acc += q[q_base + local] * (codebook[state] * norm);
+        }
+
+        float sum = reduce_sum_32(acc, tid);
+        if (tid == 0u) {
+            scores[push.q_head * push.n_kv + kv_idx] = sum;
+        }
+    }
+}

@@ -1,0 +1,174 @@
+import type { Plugin } from "@elizaos/core";
+import { ExecApprovalService } from "./approvals";
+import { shellHistoryProvider } from "./providers";
+import { ShellService } from "./services/shellService";
+
+function terminalSupportedByEnv(env: Record<string, string | undefined>): boolean {
+  const variant = (env.MILADY_BUILD_VARIANT ?? env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
+  if (variant === "store") return false;
+  const platform = env.ELIZA_PLATFORM?.trim().toLowerCase();
+  const mobile =
+    platform === "android" || platform === "ios" || Boolean(env.ANDROID_ROOT || env.ANDROID_DATA);
+  if (!mobile) return true;
+  const mode = (env.ELIZA_RUNTIME_MODE ?? env.RUNTIME_MODE ?? env.LOCAL_RUNTIME_MODE ?? "")
+    .trim()
+    .toLowerCase();
+  const aosp = ["1", "true", "yes", "on"].includes(
+    (env.ELIZA_AOSP_BUILD ?? "").trim().toLowerCase()
+  );
+  return platform === "android" && aosp && mode === "local-yolo";
+}
+
+export const shellPlugin: Plugin = {
+  name: "shell",
+  description: "Shell observability and history management providers",
+  services: [ShellService, ExecApprovalService],
+  actions: [],
+  providers: [shellHistoryProvider],
+  // Self-declared auto-enable: activate when features.shell is enabled.
+  autoEnable: {
+    shouldEnable: (env, config) => {
+      const f = (config?.features as Record<string, unknown> | undefined)?.shell;
+      return (
+        (f === true ||
+          (typeof f === "object" &&
+            f !== null &&
+            (f as { enabled?: unknown }).enabled !== false)) &&
+        terminalSupportedByEnv(env as Record<string, string | undefined>)
+      );
+    },
+  },
+};
+
+export default shellPlugin;
+
+// Approvals
+export {
+  addAllowlistEntry,
+  analyzeShellCommand,
+  type CommandCheckResult,
+  type CommandResolution,
+  DEFAULT_SAFE_BINS,
+  EXEC_APPROVAL_DEFAULTS,
+  type ExecAllowlistAnalysis,
+  type ExecAllowlistEntry,
+  type ExecAllowlistEvaluation,
+  type ExecApprovalDecision,
+  type ExecApprovalRequest,
+  type ExecApprovalResult,
+  ExecApprovalService,
+  type ExecApprovalsAgent,
+  type ExecApprovalsDefaults,
+  type ExecApprovalsFile,
+  type ExecApprovalsResolved,
+  type ExecApprovalsSnapshot,
+  type ExecAsk,
+  type ExecCommandAnalysis,
+  type ExecCommandSegment,
+  type ExecHost,
+  type ExecSecurity,
+  ensureApprovals,
+  evaluateExecAllowlist,
+  evaluateShellAllowlist,
+  getApprovalFilePath,
+  getApprovalSocketPath,
+  isSafeBinUsage,
+  loadApprovals,
+  matchAllowlist,
+  maxAsk,
+  minSecurity,
+  normalizeApprovals,
+  normalizeSafeBins,
+  readApprovalsSnapshot,
+  recordAllowlistUse,
+  requiresExecApproval,
+  resolveApprovals,
+  resolveApprovalsFromFile,
+  resolveCommandFromArgv,
+  resolveCommandResolution,
+  resolveSafeBins,
+  saveApprovals,
+} from "./approvals";
+export { shellHistoryProvider } from "./providers/shellHistoryProvider";
+export {
+  addSession,
+  appendOutput,
+  clearFinished,
+  createSessionSlug,
+  deleteSession,
+  drainSession,
+  getFinishedSession,
+  getSession,
+  listFinishedSessions,
+  listRunningSessions,
+  markBackgrounded,
+  markExited,
+  resetProcessRegistryForTests,
+  setJobTtlMs,
+  tail,
+  trimWithCap,
+} from "./services/processRegistry";
+// Services
+export { ShellService } from "./services/shellService";
+
+// Types
+export type {
+  CommandHistoryEntry,
+  CommandResult,
+  ExecResult,
+  ExecuteOptions,
+  FileOperation,
+  FileOperationType,
+  FinishedSession,
+  ProcessAction,
+  ProcessActionParams,
+  ProcessSession,
+  ProcessStatus,
+  PtyExitEvent,
+  PtyHandle,
+  PtyListener,
+  PtySpawn,
+  SessionStdin,
+  ShellConfig,
+} from "./types";
+
+// Utilities
+export {
+  DEFAULT_FORBIDDEN_COMMANDS,
+  extractBaseCommand,
+  isForbiddenCommand,
+  isSafeCommand,
+  loadShellConfig,
+  validatePath,
+} from "./utils";
+export {
+  BRACKETED_PASTE_END,
+  BRACKETED_PASTE_START,
+  buildCursorPositionResponse,
+  encodeKeySequence,
+  encodePaste,
+  type KeyEncodingRequest,
+  type KeyEncodingResult,
+  stripDsrRequests,
+} from "./utils/ptyKeys";
+export {
+  chunkString,
+  clampNumber,
+  coerceEnv,
+  deriveSessionName,
+  formatDuration,
+  formatSpawnError,
+  getShellConfig,
+  killProcessTree,
+  killSession,
+  pad,
+  readEnvInt,
+  resolveWorkdir,
+  type SpawnFallback,
+  type SpawnWithFallbackResult,
+  sanitizeBinaryOutput,
+  sliceLogLines,
+  sliceUtf16Safe,
+  spawnWithFallback,
+  truncateMiddle,
+} from "./utils/shellUtils";

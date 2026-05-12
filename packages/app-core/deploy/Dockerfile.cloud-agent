@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1.23
+# ─────────────────────────────────────────────────────────────────────────────
+# elizaOS Cloud Agent Container
+# ─────────────────────────────────────────────────────────────────────────────
+
+ARG APP_PORT=2138
+ARG APP_BRIDGE_PORT=18790
+
+FROM node:24-bookworm-slim
+
+ARG APP_PORT
+ARG APP_BRIDGE_PORT
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy the entrypoint (standalone Node.js script, no build step needed)
+COPY eliza/packages/app-core/deploy/cloud-agent-entrypoint.ts ./entrypoint.ts
+
+# Install tsx for running TypeScript directly
+RUN npm install -g tsx@4
+
+ENV NODE_ENV=production
+ENV PORT=${APP_PORT}
+ENV BRIDGE_PORT=${APP_BRIDGE_PORT}
+
+# Health check endpoint
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/health || exit 1
+
+EXPOSE ${APP_PORT}
+EXPOSE ${APP_BRIDGE_PORT}
+
+# Security: run as non-root
+RUN useradd -m agent
+USER agent
+
+CMD ["tsx", "entrypoint.ts"]

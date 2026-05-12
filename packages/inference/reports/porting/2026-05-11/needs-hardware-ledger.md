@@ -1,0 +1,58 @@
+# Eliza-1 Local Inference — "Needs Hardware" Ledger - 2026-05-11
+
+This is the canonical "what hardware does someone need to plug in" doc. It lists
+every backend × device that is **source-complete but unverified on real
+hardware**, with the exact runner command and the remaining blocker. It is
+deliberately narrow: things that already have a hardware run live in
+`remaining-work-ledger.md`'s "Current Runtime Truth" table, not here.
+
+Three states (same vocabulary as `remaining-work-ledger.md`):
+
+- **shader-verified** — a standalone shader matches a JSON fixture (possibly on
+  real hardware).
+- **symbol-shipped** — the patched fork artifact contains the kernel symbol.
+- **runtime-ready** — llama.cpp graph execution can select the kernel and a
+  built-fork smoke numerically matches the reference, on real hardware.
+
+Only **runtime-ready** satisfies the Eliza-1 publish contract.
+
+Wherever a row says "verified here", it means an actual hardware run on the box
+this ledger was written from (Intel Arrow Lake / Mesa ANV 25.2.8 Linux for
+Vulkan/CPU; Apple M4 Max for Metal/MoltenVK; iPhone 15 Pro / iOS 26.3.1 for the
+iOS device smoke). "needs-hardware" rows have **no** such run.
+
+## Already verified on hardware (NOT in this ledger — context only)
+
+| Backend | Device class verified | How |
+| --- | --- | --- |
+| Metal standalone + built-fork graph dispatch | Apple M4 Max | `make -C packages/inference/verify metal-verify metal-verify-multiblock dispatch-smoke` |
+| Vulkan standalone (score + fallback + fused-attn) | Intel Arrow Lake Mesa ANV 25.2.8; turbo* also lavapipe; QJL/Polar/turbo* also Apple M4 Max via MoltenVK 1.4.1 | `make -C packages/inference/verify vulkan-verify vulkan-verify-fallbacks vulkan-verify-fused` |
+| Vulkan built-fork graph dispatch | Intel Arc/Xe Mesa ANV (single device class) | `make -C packages/inference/verify vulkan-native-smoke` / `vulkan-dispatch-smoke`; evidence `verify/vulkan-runtime-dispatch-evidence.json` + `verify/hardware-results/linux-vulkan-smoke-*.log` |
+| Android Vulkan standalone fixtures | Pixel 6a / Mali-G78 | `make -C packages/inference/verify android-vulkan-smoke`; evidence `verify/hardware-results/android-vulkan-smoke-*.log` |
+| iOS device runtime smoke (Metal availability + runtime symbol resolution + `libelizainference` ABI v1 shape smoke) | iPhone 15 Pro / iOS 26.3.1 — 3/3 XCTest cases | `node packages/app-core/scripts/ios-xcframework/run-physical-device-smoke.mjs`; evidence `verify/hardware-results/ios-device-smoke-2026-05-11.json` → `reports/porting/2026-05-11/ios-physical-device-smoke-latest.json` → `ios-physical-device-smoke.md` |
+| CPU SIMD self-tests | Intel Arrow Lake (AVX2 + AVX-VNNI) | `qjl_int8_smoke` / `qjl_avxvnni_smoke`; `ctest --test-dir build` in `polarquant-cpu` (5/5) |
+
+## Needs-hardware matrix
+
+| # | Backend × device | State today | Runner command | Blocker / what's still needed |
+| --- | --- | --- | --- | --- |
+| 1 | **Vulkan native graph-dispatch — Intel** *(Linux desktop, beyond Mesa ANV)* | runtime-ready on Mesa ANV (Arrow Lake) only | `make -C packages/inference/verify vulkan-native-smoke` (set `ELIZA_DFLASH_TARGET=linux-x64-vulkan`) | Other Intel ICDs/Mesa versions untested. Low priority — ANV class is covered. |
+| 2 | **Vulkan native graph-dispatch — AMD** *(RDNA2/RDNA3, RADV)* | symbol-shipped; SPIR-V shader-verified on other ICDs | `make -C packages/inference/verify vulkan-native-smoke` on an AMD Linux box; or `ELIZA_DFLASH_VULKAN_BIN_DIR=<bin> make -C packages/inference/verify vulkan-dispatch-smoke` | Needs a physical AMD GPU + RADV. Fail-closed: software ICDs rejected unless `ELIZA_ALLOW_SOFTWARE_VULKAN=1` (which does not produce recordable evidence). |
+| 3 | **Vulkan native graph-dispatch — NVIDIA** *(proprietary or NVK)* | symbol-shipped; SPIR-V shader-verified on other ICDs | `make -C packages/inference/verify vulkan-native-smoke` on an NVIDIA Linux box | Needs a physical NVIDIA GPU. MoltenVK and Intel-ANV do not count. |
+| 4 | **Vulkan graph-dispatch — Android Adreno** *(Adreno 6xx+)* | standalone fixtures NOT yet run on Adreno; built-fork graph-dispatch evidence open | `ADB=<adb> make -C packages/inference/verify android-vulkan-smoke` with `ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE=<built-fork/app graph-dispatch report>` | Needs a physical Adreno handset (unlocked, Developer Mode, USB-trusted). Emulators/software Vulkan are refused. Standalone fixture success alone exits non-zero. |
+| 5 | **Vulkan graph-dispatch — Android Mali** *(built-fork)* | standalone fixtures verified on Pixel 6a / Mali-G78; built-fork/app graph-dispatch evidence open | `ADB=<adb> make -C packages/inference/verify android-vulkan-smoke` with `ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE=<report>` | Needs a physical Mali handset for the graph-dispatch step (the standalone fixture step is done). |
+| 6 | **CUDA — desktop NVIDIA** *(Ampere/Ada/Blackwell: RTX, A100, H100)* | API/preprocessor surface checked; `cuda_verify.cu` is a self-contained fixture-parity harness (parses `fused_attn_qjl_tbq.json`); no hardware run | `cd packages/inference/verify && ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./cuda_runner.sh --report <path>` (or `CUDA_REMOTE=user@host CUDA_REMOTE_DIR=~/eliza ./cuda_runner.sh`) | Needs a Linux box with `nvcc` + `nvidia-smi` + a GGUF smoke model. Skip modes (`CUDA_SKIP_GRAPH_SMOKE=1`) exit non-zero and are not recordable; the JSON must show `passRecordable: true`. Build arch list already pins `sm_80;86;89;90;100;120`. |
+| 7 | **CUDA — GH200 / Hopper aarch64** *(GH200, H200, H100 on arm64 Linux)* | same as #6 but for the `27b-256k` / `27b-1m` tiers; arch pin `sm_90a;90;100` exists | `cd packages/inference/verify && ELIZA_DFLASH_SMOKE_MODEL=<gguf> ./gh200_runner.sh --report <path>` | Needs an arm64 Linux host with a compute-capability 9.x NVIDIA GPU. Delegates to `cuda_runner.sh` after pinning the aarch64 target. `27b-1m` `defaultEligible` is blocked on this run. |
+| 8 | **ROCm / HIP — AMD MI250 / MI300** | built-fork routes the configured KV cache types through a HIP-backed `llama-cli`; **no standalone HIP fixture harness exists** (no `cuda_verify.cu` equivalent) | `cd packages/inference/verify && ELIZA_DFLASH_SMOKE_MODEL=<gguf> ./rocm_runner.sh --report <path>` | Needs an AMD GPU with `hipcc` + `rocminfo` reporting a `gfx*` agent + a GGUF smoke model. **Open decision**: write a `hip_verify.cu`-style fixture-parity harness (mirror `cuda_verify.cu` into HIP) so ROCm gets the same standalone numeric gate the other backends have — currently ROCm has only the model-backed graph smoke, no fixture-level parity check. |
+| 9 | **Windows x64 — CPU / CUDA / Vulkan** | targets `windows-x64-{cpu,cuda,vulkan}` have cmake plumbing; no native Windows run | `pwsh -File packages/inference/verify/windows_runner.ps1 -Backend <cpu\|cuda\|vulkan> -Model C:\models\eliza-1-smoke.gguf -Report <path>` | Needs a native Windows x64 host with the matching backend toolchain + driver + GGUF model. Cross-built `.exe` execution is not counted. `WINDOWS_SKIP_GRAPH_SMOKE=1` exits non-zero. AVX2 + driver validation also pending. |
+| 10 | **Windows arm64 — CPU / Vulkan** *(Snapdragon X)* | targets `windows-arm64-{cpu,vulkan}` have cmake plumbing; no native run | `pwsh -File packages/inference/verify/windows_runner.ps1 -Backend <cpu\|vulkan> -Model <gguf> -Report <path>` on a Snapdragon X device | Needs a Windows-on-ARM device. Snapdragon X build + CPU/Vulkan smoke required. |
+| 11 | **iOS — weight-backed Capacitor bundle smoke** | 3/3 XCTest cases PASS on iPhone 15 Pro / iOS 26.3.1 (Metal availability + runtime symbol resolution + `libelizainference` ABI v1 shape smoke against an empty bundle) — evidence `verify/hardware-results/ios-device-smoke-2026-05-11.json`, mirrored to `reports/porting/2026-05-11/ios-physical-device-smoke-latest.json`, rendered as `ios-physical-device-smoke.md`; **no weight-backed run** | Capacitor app shell on a physical iPhone/iPad, loading the exact release `eliza-1-*.bundle` | Needs a real Eliza-1 bundle on device measuring **first token latency**, **first audio latency**, **peak RSS**, **thermal state**, a minimal text response, a minimal TTS/voice response, and voice-off mode proving the TTS/ASR mmap regions stay unmapped. The current iOS path is fail-closed and symbol-ready; it is not a complete mobile text/voice generation path until real context + OmniVoice loading are wired and exercised. |
+| 12 | **CPU SIMD — ARM (NEON / dotprod)** | `packages/native-plugins/{qjl-cpu,polarquant-cpu}` are real libraries with NEON + dotprod TUs; build clean and self-tests pass on **x86_64 (AVX2 + AVX-VNNI)** here; **not benched or self-tested on ARM** | On an aarch64 host: `cmake -S packages/native-plugins/qjl-cpu -B build && cmake --build build` then `./build/qjl_int8_smoke` / `./build/qjl_avxvnni_smoke` (no-ops on ARM) and `qjl_bench --throughput`; `cmake -S packages/native-plugins/polarquant-cpu -B build && cmake --build build && ctest --test-dir build` (5/5 here) | Needs an ARM host (Apple Silicon, Snapdragon, Graviton, …) to exercise the NEON/dotprot code paths and produce a throughput number. Parity tests are bit-exact reference-vs-SIMD; the gap is ARM execution + a benched throughput figure, not correctness. Also: `qjl_fork_parity` needs a built fork `libggml-cpu.so` (`./build/qjl_fork_parity <path-to-fork-libggml-cpu.so>`), which is itself a built-fork dependency. |
+| 13 | **CUDA — this box's mobile dGPU** | dGPU in D3cold; no kmod/nvcc loaded; pending-evidence stub at `verify/hardware-results/cuda-linux-thismachine-2026-05-11.pending.json` | `ELIZA_DFLASH_CMAKE_FLAGS='-DCMAKE_CUDA_ARCHITECTURES=120;90' node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda` then `cd packages/inference/verify && ./cuda_runner.sh` | Needs the dGPU powered up with the proprietary kmod + `nvcc` installed on this machine (or just use a real CUDA box per #6). |
+
+## Notes / open decisions
+
+- **ROCm fixture harness (row 8).** Recommendation: write `packages/inference/verify/hip_verify.cu` (compiled with `hipcc`) that mirrors `cuda_verify.cu` — same fixture byte images, same reference algorithm ported to HIP `__device__` kernels, linking the same `qjl_polar_ref.o`. That gives ROCm a backend-local numeric gate that does not require a GGUF model. Until then, ROCm's only check is the model-backed `rocm_runner.sh` graph smoke.
+- **No `if (!available) return baseline()`.** Per `packages/inference/AGENTS.md` §3, none of the runners above degrade to an unoptimized kernel when hardware is missing — they fail closed. Missing required kernels are a hard error, not a quiet fallback.
+- **`elizaOS/llama.cpp` fork ref.** Repo references point at `elizaOS/llama.cpp`; the GitHub org transfer of the fork repo is complete. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` overrides the clone URL when needed.
+- **Verification matrix source of truth.** `packages/inference/README.md` ("Verification matrix") and `packages/inference/verify/kernel-contract.json` (checked by `make -C packages/inference/verify kernel-contract`) are the executable record of which kernel × backend × device combinations actually passed. This ledger is the prose index of the gaps; if it disagrees with the contract gate, the contract gate wins.

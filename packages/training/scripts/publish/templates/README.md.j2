@@ -1,0 +1,126 @@
+---
+license: apache-2.0
+tags:
+  - eliza
+  - elizaos
+  - eliza-1
+  - on-device
+  - voice
+  - {{ tier }}
+---
+
+# {{ manifest.id }}
+
+{{ tagline }}
+
+This bundle is the on-device Eliza-1 fused model for the **{{ tier }}** device
+tier. One download, one progress bar, one bundle on disk: text, voice
+(TTS + ASR), drafter, and (where applicable) vision in a single
+manifest-described release.
+
+## Bundle ID
+
+```
+{{ manifest.id }}
+version: {{ manifest.version }}
+publishedAt: {{ manifest.publishedAt }}
+defaultEligible: {{ default_eligible_str }}
+```
+
+## Lineage
+
+| Slot    | Base                        | License                   |
+|---------|-----------------------------|---------------------------|
+{% for slot in lineage_slots -%}
+| {{ slot.name }} | {{ slot.base }} | {{ slot.license }} |
+{% endfor %}
+
+## Kernel verification matrix
+
+The bundle ships with the optimizations in
+`packages/inference/AGENTS.md` §3 and was verified end-to-end before
+publish. The runtime refuses to load a bundle whose required kernels do
+not match the device's verified backends.
+
+| Backend | Status   | At commit | Report           |
+|---------|----------|-----------|------------------|
+{% for row in kernel_rows -%}
+| {{ row.backend }} | {{ row.status }} | {{ row.at_commit }} | {{ row.report }} |
+{% endfor %}
+
+Required kernels: `{{ kernels_required_str }}`
+Optional kernels: `{{ kernels_optional_str }}`
+
+## Release evidence
+
+The bundle includes `evidence/release.json` and
+`checksums/SHA256SUMS`. The publish orchestrator validates those files
+before upload: final weights, checksum coverage, eval outputs, license
+blobs, graph-dispatch reports, platform evidence, and the
+`elizaos/eliza-1-{{ tier }}` destination must all match the bytes in
+this repo.
+
+## Voice
+
+| Field | Value |
+|-------|-------|
+| Frozen voice section | v{{ manifest.voice.version }} |
+| Capabilities | {{ voice_capabilities_str }} |
+| Speaker preset | `{{ voice_cache.speakerPreset }}` |
+| Phrase cache seed | `{{ voice_cache.phraseCacheSeed }}` |
+
+## Eval gates
+
+Every required gate for tier `{{ tier }}` was applied via
+`packages/training/benchmarks/eliza1_gates.py` and passed before
+publish.
+
+| Gate                       | Result    |
+|----------------------------|-----------|
+| textEval.score             | {{ "%.3f"|format(manifest.evals.textEval.score) }} |
+| textEval.passed            | {{ "yes" if manifest.evals.textEval.passed else "no" }} |
+| voiceRtf.rtf               | {{ "%.3f"|format(manifest.evals.voiceRtf.rtf) }} |
+| voiceRtf.passed            | {{ "yes" if manifest.evals.voiceRtf.passed else "no" }} |
+| expressive.tagFaithfulness | {{ "%.3f"|format(manifest.evals.expressive.tagFaithfulness) }} |
+| expressive.mosExpressive   | {{ "%.3f"|format(manifest.evals.expressive.mosExpressive) }} |
+| expressive.tagLeakage      | {{ "%.3f"|format(manifest.evals.expressive.tagLeakage) }} |
+| expressive.passed          | {{ "yes" if manifest.evals.expressive.passed else "no" }} |
+| e2eLoopOk                  | {{ "yes" if manifest.evals.e2eLoopOk else "no" }} |
+| thirtyTurnOk               | {{ "yes" if manifest.evals.thirtyTurnOk else "no" }} |
+
+## RAM budget
+
+| Field        | MB     |
+|--------------|--------|
+| min          | {{ manifest.ramBudgetMb.min }} |
+| recommended  | {{ manifest.ramBudgetMb.recommended }} |
+
+## How to install
+
+This bundle is loaded by the Eliza desktop app and the Eliza mobile
+clients. From the Eliza desktop app: open the **Models** panel, pick
+the on-device tier matching this bundle (`{{ tier }}`), and press
+install. The downloader resolves the manifest, fetches each file, and
+verifies each `sha256` before activating the bundle.
+
+The runtime activates this bundle iff every required kernel listed in
+the manifest has a `pass` status on the user's verified backend. There
+is no fallback to an unoptimized build — a bundle whose kernels do not
+match the device is reported as incompatible.
+
+## Files
+
+```
+{% for kind, entries in file_groups -%}
+{{ kind }}/
+{% for entry in entries -%}
+  {{ entry.path }}{% if entry.ctx %}  (ctx={{ entry.ctx }}){% endif %}
+{% endfor -%}
+{% endfor -%}
+```
+
+## License
+
+This bundle inherits the upstream lineage licenses listed above. The
+Eliza-1 fine-tune itself is Apache-2.0. See the `licenses/` folder for
+the per-component LICENSE blobs.

@@ -1,0 +1,77 @@
+{
+  "id": "goals",
+  "name": "Goals",
+  "description": "Goals for your agent",
+  "npmName": "@elizaos/plugin-goals",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["goals", "objectives", "task-management"],
+  "config": {
+    "GOAL_BATCH_SIZE": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Batch Size",
+      "help": "Batch processing size",
+      "advanced": false
+    },
+    "GOAL_CHECK_INTERVAL": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Check Interval",
+      "help": "Check interval",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "GOAL_MAX_CONCURRENT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Max Concurrent",
+      "help": "Maximum concurrent operations",
+      "advanced": false
+    },
+    "GOAL_ENABLE_MONITORING": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enable Monitoring",
+      "help": "Enable monitoring",
+      "advanced": false
+    },
+    "GOAL_REMINDER_COOLDOWN": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Reminder Cooldown",
+      "help": "Cooldown period",
+      "advanced": false
+    },
+    "GOAL_ENABLE_SMART_REMINDERS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enable Smart Reminders",
+      "help": "Enable smart reminder features",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Target",
+    "group": "agents",
+    "groupOrder": 7,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

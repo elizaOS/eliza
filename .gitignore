@@ -1,0 +1,500 @@
+node_modules
+/out
+
+.next/
+**/.next/**
+
+.env
+.env.production
+.env.local
+.env.bak
+.env_main
+
+.idea
+.zed
+.DS_Store
+.art
+art_venv
+
+# Xcode (user data)
+xcuserdata/
+*.xcuserstate
+
+# Tauri-generated Xcode project
+examples/browser-extension/safari/
+
+# Safari browser-extension example Xcode project — regenerates UUIDs +
+# timestamps on every Xcode open/build, creating large pure-churn diffs.
+# The Swift sources, assets, and Resources/ subtree stay tracked; only
+# the generated *.xcodeproj/ pbxproj is ignored.
+packages/examples/browser-extension/safari/**/*.xcodeproj/project.pbxproj
+
+# Generated app platform shells; canonical templates live under packages/app-core/platforms.
+packages/app/android/
+packages/app/ios/
+packages/app/electrobun/
+
+dist/
+
+# Stray declaration emit (canonical declarations live under dist/)
+plugins/**/auto-enable.d.ts
+plugins/**/auto-enable.d.ts.map
+**/vitest.config.d.ts
+**/vitest.config.d.ts.map
+
+# Stray declaration emit next to TS in plugin-discord (canonical declarations live under dist/)
+plugins/plugin-discord/**/*.d.ts
+plugins/plugin-discord/**/*.d.ts.map
+
+# Accidental JS/sourcemap emit next to TS in @elizaos/core (build output is dist/)
+packages/core/src/**/*.js
+packages/core/src/**/*.js.map
+
+*.gguf
+*.onnx
+*.wav
+*.mp3
+
+logs/
+tokencache/
+
+# Character configurations
+characters/**/secrets.json
+characters/**/*.env
+characters/**/*.key
+characters/**/private/
+
+cache/*
+models/*
+
+tsup.config.bundled_*.mjs
+
+.turbo
+instructions.md
+wallet_data.txt
+
+coverage
+.eslintcache
+
+eliza.manifest
+eliza.manifest.sgx
+eliza.sig
+
+# Configuration to exclude the extra and local_docs directories
+extra
+**/dist/**
+
+packages/docs/api/*
+
+**/dist/**
+
+**/.docusaurus/**
+**/docs/build/**
+
+lerna-debug.log
+
+tsdoc_cache/
+tsdoc_comments/
+
+**/elizadb/**
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Org-mode
+.org-id-locations
+*_archive
+
+# flymake-mode
+*_flymake.*
+
+# eshell files
+/eshell/history
+/eshell/lastdir
+
+# elpa packages
+/elpa/
+
+# reftex files
+*.rel
+
+# AUCTeX auto folder
+/auto/
+
+# cask packages
+.cask/
+dist/
+
+# Flycheck
+flycheck_*.el
+
+# server auth directory
+/server/
+
+# projectiles files
+.projectile
+
+# directory configuration
+.dir-locals.el
+
+# network security
+/network-security.data
+
+packages/autodoc/text_objects/*
+/env
+**elizadb**
+**/.eliza/
+
+# UI Test related files
+screenshots/
+packages/client/ui-tests/screenshots/
+**/ui-tests/screenshots/**
+test-results/
+**/test-results*/
+playwright-report/
+**/playwright-report/
+**/test-results/
+**/playwright/.cache/
+.playwright/
+**/tests/*.log
+**/tests/artifacts/
+**/tests/logs/
+**/tests/temp/
+**/test-report*.json
+**/.nyc_output/
+
+# Local git worktrees of the cloud submodule (parallel CI/test branches)
+/cloud-ci-playwright/
+/cloud-develop-playwright-ci/
+/cloud-develop-fix/
+
+# Local OmniVoice source checkout used for pin audits; fused builds clone the
+# pinned source into a cache and strip OmniVoice's nested ggml submodule.
+packages/inference/omnivoice.cpp/
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# Temporary files
+*.tmp
+*.temp
+temp/
+tmp/
+
+# Added by Task Master AI
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+# Dependency directories
+node_modules/
+# Environment variables
+# Editor directories and files
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific
+# Task files
+tasks.json
+tasks/
+!packages/benchmarks/app-eval/tasks/
+!packages/benchmarks/app-eval/tasks/__init__.py
+!packages/benchmarks/app-eval/tasks/*-tasks.json
+!packages/benchmarks/app-eval/tasks/*_evaluator.py
+!plugins/plugin-agent-skills/src/tasks/
+
+# Development database and tool directories
+**/data/
+# But cloud's frontend uses src/lib/data/ as legitimate source — un-ignore it
+!cloud/apps/frontend/src/lib/data/
+!cloud/apps/frontend/src/lib/data/**
+# plugin-mysticism ships data/*.json fixtures alongside the engines —
+# tarot, iching, and astrology all import their data tables from those JSONs.
+!plugins/plugin-mysticism/src/engines/*/data/
+!plugins/plugin-mysticism/src/engines/*/data/**
+**/.roo/
+**/.roomodes/
+**/.taskmaster/
+**/.windsurfrules/
+.roomodes
+/.kiro
+# TypeScript incremental compilation cache
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Rust build artifacts
+**/target/
+**/*.rs.bk
+
+# Python build artifacts
+**/__pycache__/
+**/*.py[cod]
+**/*$py.class
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.coverage
+**/.coverage.*
+**/*.egg-info/
+**/.venv/
+**/venv/
+**/env/
+**/ENV/
+
+test-data/
+standalone.ts
+/.claude
+
+# Continuous Claude cache (local only)
+.claude/cache/
+
+# i18n keyword codegen (regenerated from keywords/*.keywords.json)
+packages/shared/src/i18n/generated/
+packages/core/src/i18n/generated/
+
+tsconfig.test.json
+# But cloud has a real source-tracked tsconfig.test.json — un-ignore it
+!cloud/tsconfig.test.json
+
+# Migration status docs (temporary)
+MIGRATION_*.md
+TYPE_AND_LINT_STATUS.md
+
+# Test output files
+test-output.txt
+
+# Generated training datasets (large, regenerated by benchmark runs)
+apps/app-training/datasets/
+
+# Vitest type compatibility shims
+packages/core/src/types/vitest-*.d.ts
+
+# Accidental tsc output next to .ts sources (declarations and JS ship from dist/, not src/)
+# Hand-written ambient .d.ts files are excluded from this rule via negation below.
+packages/core/src/**/*.d.ts
+packages/core/src/**/*.d.ts.map
+packages/agent/src/**/*.js
+packages/agent/src/**/*.js.map
+packages/agent/src/**/*.d.ts
+packages/agent/src/**/*.d.ts.map
+!packages/agent/src/external-modules.d.ts
+!packages/agent/src/types/elizaos-action-augments.d.ts
+packages/shared/src/**/*.js
+packages/shared/src/**/*.js.map
+packages/shared/src/**/*.d.ts
+packages/shared/src/**/*.d.ts.map
+!packages/shared/src/elizaos-core-roles.d.ts
+apps/*/src/**/*.js
+apps/*/src/**/*.js.map
+apps/*/src/**/*.d.ts
+apps/*/src/**/*.d.ts.map
+!apps/app-companion/src/three-subpath.d.ts
+plugins/*/src/**/*.d.ts
+plugins/*/src/**/*.d.ts.map
+!apps/app-companion/src/types/three-vrm-shim.d.ts
+!apps/app-lifeops/src/website-blocker/elizaos-core-roles.ts
+
+# Migration scripts (temporary)
+scripts/migrate-tests-to-vitest.ts
+scripts/migrate-all-tests.sh
+
+# Plugin-specific ignores
+# Test environment files (anywhere in repo)
+.env.test
+**/.env.test
+
+# Cargo.lock for library crates (plugins are libraries)
+plugins/**/rust/Cargo.lock
+
+# Python poetry lock files (if not needed)
+**/poetry.lock
+
+# Build-generated examples copy (source is /examples/)
+packages/elizaos/examples/
+
+.next/
+:memory:
+:memory:*
+**:memory:**
+
+# Local benchmark run outputs (generated)
+# Note: benchmark baselines under benchmarks/** may still be tracked intentionally.
+/benchmark_results/**
+
+# Keep a small set of curated benchmark outputs
+!/benchmark_results/bfcl/bfcl_best_results.json
+!/benchmark_results/mint/MINT-BENCHMARK-REPORT.md
+!/benchmark_results/mint/mint-benchmark-results.json
+
+# Benchmarks/** local run outputs (generated)
+/benchmarks/**/benchmark_results*/
+/benchmarks/**/test_output/
+
+# Benchmarks/** trajectory exports (generated)
+/benchmarks/**/trajectories/
+/benchmarks/**/trajectories/**
+/benchmarks/**/trajectories.art.jsonl
+/benchmarks/**/trajectories.grpo.groups.json
+/benchmarks/**/*.art.jsonl
+/benchmarks/**/*.grpo.groups.json
+
+# Native-tool-calling v5 run-cerebras / trajectory CLI output
+/trajectories/
+
+# AgentBench: generated local run folders (do not commit)
+/benchmarks/agentbench/benchmark_results/
+/benchmarks/agentbench/canonical_*/
+/benchmarks/agentbench/final_benchmark_results/
+/benchmarks/agentbench/full_eliza_*/
+/benchmarks/agentbench/eliza_run_db*/
+/benchmarks/agentbench/full_eliza_db*/
+/benchmarks/agentbench/smoke_*/
+/benchmarks/agentbench/traj_*/
+/benchmarks/agentbench/verified_*/
+/benchmarks/agentbench/ws_test*/
+/benchmarks/agentbench/lateral_test*/
+/benchmarks/agentbench/post_delete_smoke/
+
+# AgentBench: ad-hoc run outputs (generated, do not commit)
+/benchmarks/agentbench/post_b_*/
+/benchmarks/agentbench/post_b_*/**
+/benchmarks/agentbench/real_db/
+/benchmarks/agentbench/real_db/**
+
+# Context-bench: ad-hoc run outputs (generated, do not commit)
+/benchmarks/context-bench/post_b_*/
+/benchmarks/context-bench/post_b_*/**
+/benchmarks/context-bench/real_eliza_agent/
+/benchmarks/context-bench/real_eliza_agent/**
+/benchmarks/context-bench/traj_ctx_smoke/
+/benchmarks/context-bench/traj_ctx_smoke/**
+
+# Local workspaces / sandboxes
+/swe-bench-workspace/
+/3DAvatarChatbot/
+/tmp-live/
+
+# Handoff notes (local only, do not commit)
+*handoff*.md
+
+# Vendor / external example code (do not commit)
+/dnd5e/
+/rlm/
+/rlm-minimal/
+/the-org/
+/rs-sdk/
+/openclaw-classic/
+/examples/runescape2004/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Cache directories (local)
+skills/.cache/
+**/skills/.cache/
+.cache/
+
+# Local vendored experiments (do not commit)
+/plugins/plugin-local-ai/rust/vendor/llama_cpp_rs/
+/vendor/llama_cpp_rs/
+
+# Ad-hoc benchmark output folders (generated during local runs)
+/benchmarks/tau-bench/benchmark_results/
+/benchmarks/vending-bench/benchmark_results/
+
+# Context-bench: ignore additional quick-run output folders
+/benchmarks/context-bench/python/benchmark_results_eliza_agent_quick*/
+
+# Terminal-bench: ignore newly generated timestamped runs under terminal-bench/
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/sessions-*/
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/terminal-bench-*.json
+/benchmarks/terminal-bench/python/benchmark_results/terminal-bench/terminal-bench-*.md
+
+# AgentBench: local smoke-run artifacts
+/benchmarks/agentbench/python/traj_smoke/
+
+# Terminal-bench: local test output artifacts
+/benchmarks/terminal-bench/python/test_output/terminal-bench-*.json
+/benchmarks/terminal-bench/python/test_output/terminal-bench-*.md
+# prr state file (auto-generated)
+.pr-resolver-state.json
+
+# Android Gradle build intermediates (regenerated by Gradle)
+packages/native-plugins/*/android/build/
+packages/app-core/platforms/android/**/build/
+
+# Storybook static exports (generated by `build-storybook`)
+apps/app-companion/storybook-static/
+
+# Foundry contract build outputs (regenerated by `forge build`)
+packages/app-core/test/contracts/out/
+packages/app-core/test/contracts/cache/
+
+# Electrobun build outputs and packaged artifacts (large binaries)
+packages/app-core/platforms/electrobun/build/
+packages/app-core/platforms/electrobun/artifacts/
+
+# Compiled native dylibs (rebuild from source)
+packages/app-core/platforms/electrobun/src/*.dylib
+benchmark_results/
+
+# Phase D mobile bundle outputs (regenerated by build-mobile-bundle.mjs).
+# The Android APK staging step copies these into apps/app/android/app/
+# src/main/assets/agent/ at build time; committing the 33 MB bundle
+# blob and 5 MB pglite.data into the repo is wrong.
+packages/agent/dist-mobile/
+packages/benchmarks/benchmark_results/
+packages/benchmarks/benchmark_results
+packages/swe-bench-workspace/
+
+# HyperliquidBench run artifacts (auto-generated by the benchmark harness;
+# regenerated on every run, no need to track in git).
+packages/benchmarks/HyperliquidBench/runs/
+packages/benchmarks/benchmark_results/
+# Build artifacts: js.map files in test directories and app-core test helpers
+packages/app-core/test/**/*.js.map
+packages/app-core/test/**/*.d.ts.map
+test/**/*.js.map
+test/**/*.d.ts.map
+
+# Compiled build output in test directories (next to .ts sources)
+packages/app-core/test/**/*.js
+packages/app-core/test/**/*.d.ts
+test/**/*.js
+test/**/*.d.ts
+test_output/
+trajectories-eliza-cerebras/
+action-benchmark-report/
+artifacts/
+research/native-tool-calling
+test/mocks/mockoon/.mockoon-pids/
+lifeops_bench_results/
+reports/ai-qa/
+scripts/ai-qa/.static-stack.json
+
+# omnivoice-fuse stub library — a build artifact of `make -C
+# packages/app-core/scripts/omnivoice-fuse`, not source. The fused-ABI
+# tests (`voice/ffi-bindings.test.ts`) skip when it is absent.
+packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.so
+packages/app-core/scripts/omnivoice-fuse/libelizainference_stub.dylib

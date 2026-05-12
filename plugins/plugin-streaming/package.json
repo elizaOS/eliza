@@ -1,0 +1,112 @@
+{
+  "name": "@elizaos/plugin-streaming",
+  "description": "Unified RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@elizaos/cloud-routing": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-browser": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.22.0",
+    "@typescript-eslint/parser": "^8.22.0",
+    "eslint": "^10.0.0",
+    "prettier": "^3.8.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "lint": "bunx @biomejs/biome check --write --unsafe src",
+    "lint:check": "bunx @biomejs/biome check src",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-streaming.git"
+  },
+  "keywords": [
+    "elizaos",
+    "elizaos-plugin",
+    "streaming",
+    "rtmp"
+  ],
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "TWITCH_STREAM_KEY": {
+        "type": "string",
+        "description": "Twitch RTMP stream key",
+        "required": false
+      },
+      "YOUTUBE_STREAM_KEY": {
+        "type": "string",
+        "description": "YouTube Live stream key",
+        "required": false
+      },
+      "YOUTUBE_RTMP_URL": {
+        "type": "string",
+        "description": "Optional YouTube RTMP ingest URL override",
+        "required": false
+      },
+      "X_STREAM_KEY": {
+        "type": "string",
+        "required": false
+      },
+      "X_RTMP_URL": {
+        "type": "string",
+        "required": false
+      },
+      "PUMPFUN_STREAM_KEY": {
+        "type": "string",
+        "required": false
+      },
+      "PUMPFUN_RTMP_URL": {
+        "type": "string",
+        "required": false
+      },
+      "CUSTOM_RTMP_URL": {
+        "type": "string",
+        "required": false
+      },
+      "CUSTOM_RTMP_KEY": {
+        "type": "string",
+        "required": false
+      }
+    }
+  }
+}

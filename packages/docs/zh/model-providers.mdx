@@ -1,0 +1,352 @@
+---
+title: "模型提供商"
+sidebarTitle: "模型提供商"
+description: "支持的推理后端及其在 Eliza server-target-first 路由模型中的作用。"
+---
+
+Eliza 开箱即支持 **19 个推理后端**。提供商插件仍提供具体的模型实现，但活跃后端通过连接服务器上的规范化运行时路由选择，而非客户端中的临时环境变量开关。
+
+---
+
+<div id="provider-reference">
+## 提供商参考
+</div>
+
+下表是完整的受支持提供商插件列表，数据来源于 Eliza 的提供商目录。
+
+<Note>
+标记为**内置**（预装，即时加载）的提供商随每次 Eliza 安装一同分发。其他提供商为**按需**（首次需要时自动安装）——无需手动安装插件。
+</Note>
+
+| 提供商 | 插件包 | 环境变量 | 安装方式 | 备注 |
+|--------|--------|----------|------|------|
+| [Anthropic](https://anthropic.com) | `@elizaos/plugin-anthropic` | `ANTHROPIC_API_KEY` 或 `CLAUDE_API_KEY` | 按需 | **推荐。** Claude 模型（Opus、Sonnet、Haiku）。 |
+| [OpenAI](https://openai.com) | `@elizaos/plugin-openai` | `OPENAI_API_KEY` | 内置 | GPT-4o、o1、o3、GPT-4.1。 |
+| [Google Gemini](https://ai.google.dev) | `@elizaos/plugin-google-genai` | `GOOGLE_API_KEY` 或 `GOOGLE_GENERATIVE_AI_API_KEY` | 按需 | Gemini Pro、Flash、Ultra。 |
+| [Google Antigravity](https://cloud.google.com/vertex-ai) | `@elizaos/plugin-google-antigravity` | `GOOGLE_CLOUD_API_KEY` | 按需 | Google Cloud / Vertex AI 模型。 |
+| [Vercel AI Gateway](https://sdk.vercel.ai) | `@elizaos/plugin-vercel-ai-gateway` | `AI_GATEWAY_API_KEY` 或 `AIGATEWAY_API_KEY` | 按需 | 统一网关，接入多个提供商。 |
+| [OpenRouter](https://openrouter.ai) | `@elizaos/plugin-openrouter` | `OPENROUTER_API_KEY` | 内置 | 一个 API 密钥访问 100+ 模型。 |
+| [Groq](https://groq.com) | `@elizaos/plugin-groq` | `GROQ_API_KEY` | 内置 | 超快推理（LPU）。 |
+| [xAI](https://x.ai) | `@elizaos/plugin-xai` | `XAI_API_KEY` 或 `GROK_API_KEY` | 按需 | Grok 模型。 |
+| [DeepSeek](https://deepseek.com) | `@elizaos/plugin-deepseek` | `DEEPSEEK_API_KEY` | 按需 | 推理和代码模型。 |
+| [Ollama](https://ollama.com) | `@elizaos/plugin-ollama` | `OLLAMA_BASE_URL` | 内置 | **本地模型。** 无需 API 密钥。需要运行中的 [Ollama](https://ollama.com) 服务器。 |
+| [Local AI](https://github.com/elizaos-plugins/plugin-local-ai) | `@elizaos/plugin-local-ai` | — | 按需 | **进程内本地模型。** 直接运行 GGUF 模型，无需外部服务器。 |
+| [MiniMax](https://minimaxi.com) | `@elizaos/plugin-minimax` | — | 按需 | MiniMax 语言模型。通过插件配置项进行设置。 |
+| [Together AI](https://together.ai) | `@elizaos/plugin-together` | `TOGETHER_API_KEY` | 按需 | 开源模型托管。 |
+| [Mistral](https://mistral.ai) | `@elizaos/plugin-mistral` | `MISTRAL_API_KEY` | 按需 | Mistral 和 Mixtral 模型。 |
+| [Cohere](https://cohere.com) | `@elizaos/plugin-cohere` | `COHERE_API_KEY` | 按需 | Command R+ 和嵌入模型。 |
+| [Perplexity](https://perplexity.ai) | `@elizaos/plugin-perplexity` | `PERPLEXITY_API_KEY` | 按需 | 搜索增强生成。 |
+| [Zai](https://z.ai) | `@elizaos/plugin-zai` | `ZAI_API_KEY` | 按需 | z.ai 模型。 |
+| [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | 内置 | 云端管理的推理路由。可独立于 Eliza 运行位置进行选择。 |
+
+---
+
+<div id="how-provider-selection-works">
+## 提供商选择机制
+</div>
+
+Eliza 使用 **server-target-first** 模型：
+
+1. 选择要使用的服务器：本地、Eliza Cloud 或远程后端。
+2. 链接服务器可能需要的帐户，例如 Eliza Cloud 或 OpenAI。
+3. 选择 `llmText` 的活跃推理路由。
+
+连接的服务器从规范化运行时配置中解析有效提供商：
+
+- `deploymentTarget` 决定服务器运行位置
+- `linkedAccounts` 决定哪些帐户可用
+- `serviceRouting.llmText` 决定由谁处理推理
+
+提供商插件在适当时仍会从服务器环境自动启用，但面向客户端的真实数据源是服务器的运行时路由配置，而非单独的原始环境变量。
+
+<div id="explicit-plugin-configuration">
+### 显式插件配置
+</div>
+
+您也可以在 `~/.eliza/eliza.json` 的 `plugins` 键下手动启用提供商：
+
+```json5
+{
+  plugins: {
+    allow: ["anthropic", "openai", "ollama"],
+  },
+}
+```
+
+要**禁用**自动启用的提供商，请将其条目设置为 `enabled: false`：
+
+```json5
+{
+  plugins: {
+    entries: {
+      anthropic: { enabled: false },
+    },
+  },
+}
+```
+
+<div id="auth-profiles">
+### 认证配置文件
+</div>
+
+提供商也可以通过配置中的认证配置文件来激活：
+
+```json5
+{
+  auth: {
+    profiles: {
+      main: {
+        provider: "anthropic",
+      },
+      backup: {
+        provider: "openrouter",
+      },
+    },
+  },
+}
+```
+
+---
+
+<div id="setting-up-providers">
+## 设置提供商
+</div>
+
+<div id="option-1-environment-file-recommended">
+### 方式一：环境文件（推荐）
+</div>
+
+创建或编辑 `~/.eliza/.env`：
+
+```bash
+# Primary provider
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Additional providers
+OPENAI_API_KEY=sk-...
+OPENROUTER_API_KEY=sk-or-v1-...
+GROQ_API_KEY=gsk_...
+```
+
+<div id="option-2-config-file">
+### 方式二：配置文件
+</div>
+
+在 `~/.eliza/eliza.json` 中直接添加密钥：
+
+```json5
+{
+  env: {
+    ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+    OPENAI_API_KEY: "<OPENAI_API_KEY>",
+  },
+}
+```
+
+<div id="option-3-interactive-setup">
+### 方式三：交互式设置
+</div>
+
+```bash
+eliza configure
+```
+
+该命令将引导您设置常用环境变量，包括首选的模型提供商。
+
+<Warning>
+使用配置文件方式时，您的 API 密钥将以明文形式存储在 `eliza.json` 中。`.env` 文件方式将密钥与配置分离，更便于从版本控制中排除。
+</Warning>
+
+---
+
+<div id="cli-commands">
+## CLI 命令
+</div>
+
+```bash
+eliza models             # 列出已配置的模型提供商及其状态
+eliza configure          # 显示提供商状态和环境变量指南（只读）
+```
+
+<div id="setting-the-default-model">
+### 设置默认模型
+</div>
+
+在 `~/.eliza/eliza.json` 中，使用 `provider/model` 格式指定模型：
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+      },
+    },
+  },
+}
+```
+
+或在会话中使用 `/model` 聊天命令切换：
+
+```
+/model openai/gpt-4o
+```
+
+---
+
+<div id="model-fallbacks">
+## 模型回退
+</div>
+
+Eliza 支持有序的回退链。如果主模型失败（速率限制、服务中断、计费问题），系统将自动尝试列表中的下一个模型。
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+        fallbacks: [
+          "openai/gpt-4o",
+          "groq/openai/gpt-oss-120b",
+        ],
+      },
+    },
+  },
+}
+```
+
+回退按顺序尝试。回退链中的每个提供商都必须配置好其 API 密钥。
+
+---
+
+<div id="using-multiple-providers">
+## 使用多个提供商
+</div>
+
+您可以同时激活多个提供商。每个检测到 API 密钥的提供商都会被自动启用并可供选择。
+
+常见配置：
+
+```bash
+# ~/.eliza/.env
+
+# Primary — high-quality reasoning
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Fast inference for simple tasks
+GROQ_API_KEY=gsk_...
+
+# Fallback — wide model selection
+OPENROUTER_API_KEY=sk-or-v1-...
+
+# Local — offline / privacy-sensitive work
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+```
+
+通过此配置，四个提供商全部可用。您可以为不同用途设置不同的模型：
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+        fallbacks: ["openrouter/anthropic/claude-sonnet-4.6"],
+      },
+      imageModel: {
+        primary: "openai/gpt-4o",
+      },
+    },
+  },
+}
+```
+
+---
+
+<div id="local-models-with-ollama">
+## 使用 Ollama 运行本地模型
+</div>
+
+Ollama 让您在本地运行模型，无需 API 密钥，完全保护隐私。它是唯一不需要 API 密钥的提供商——只需一个正在运行的 Ollama 服务器。
+
+<div id="setup">
+### 设置
+</div>
+
+<Steps>
+  <Step title="安装 Ollama">
+    ```bash
+    curl -fsSL https://ollama.com/install.sh | sh
+    ```
+  </Step>
+  <Step title="拉取模型">
+    ```bash
+    ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
+    ```
+  </Step>
+  <Step title="设置基础 URL">
+    添加到 `~/.eliza/.env`：
+    ```bash
+    OLLAMA_BASE_URL=http://127.0.0.1:11434
+    ```
+  </Step>
+  <Step title="选择模型">
+    在 `~/.eliza/eliza.json` 中：
+    ```json5
+    {
+      agents: {
+        defaults: {
+          model: {
+            primary: "ollama/eliza-1-9b",
+          },
+        },
+      },
+    }
+    ```
+  </Step>
+</Steps>
+
+设置 `OLLAMA_BASE_URL` 后，Ollama 会自动启用。如果您在本地默认端口上运行 Ollama，只需设置：
+
+```bash
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+```
+
+对于远程 Ollama 实例，请将地址指向您的服务器地址。
+
+---
+
+<div id="env-variable-quick-reference">
+## 环境变量快速参考
+</div>
+
+每个触发自动启用的环境变量，按提供商分组：
+
+| 环境变量 | 激活的提供商 |
+|----------|-------------|
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `CLAUDE_API_KEY` | Anthropic |
+| `OPENAI_API_KEY` | OpenAI |
+| `GOOGLE_API_KEY` | Google Gemini |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Google Gemini |
+| `GOOGLE_CLOUD_API_KEY` | Google Antigravity (Vertex AI) |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway |
+| `AIGATEWAY_API_KEY` | Vercel AI Gateway |
+| `GROQ_API_KEY` | Groq |
+| `XAI_API_KEY` | xAI |
+| `GROK_API_KEY` | xAI |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `OLLAMA_BASE_URL` | Ollama |
+| `DEEPSEEK_API_KEY` | DeepSeek |
+| `TOGETHER_API_KEY` | Together AI |
+| `MISTRAL_API_KEY` | Mistral |
+| `COHERE_API_KEY` | Cohere |
+| `PERPLEXITY_API_KEY` | Perplexity |
+| `ZAI_API_KEY` | Zai |
+| `ELIZAOS_CLOUD_API_KEY` | Eliza Cloud |
+| `ELIZAOS_CLOUD_ENABLED` | Eliza Cloud |
+
+<Tip>
+部分提供商为方便起见接受多个环境变量名称（例如，`ANTHROPIC_API_KEY` 和 `CLAUDE_API_KEY` 都可激活 Anthropic）。您只需设置其中一个。
+</Tip>
