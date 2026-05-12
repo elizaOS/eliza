@@ -113,6 +113,23 @@ const STUB_PCM_STREAM_CHUNKS = 4;
 export { VoiceStartupError };
 
 /**
+ * Native verifier callbacks report rejected token ranges as half-open
+ * `[from, to)` intervals. The scheduler rollback queue uses inclusive
+ * token indexes, so convert in exactly one place.
+ */
+export function nativeRejectedRangeToRollbackRange(
+  event: Pick<NativeVerifierEvent, "rejectedFrom" | "rejectedTo">,
+): RejectedTokenRange | null {
+  if (event.rejectedFrom < 0 || event.rejectedTo <= event.rejectedFrom) {
+    return null;
+  }
+  return {
+    fromIndex: event.rejectedFrom,
+    toIndex: event.rejectedTo - 1,
+  };
+}
+
+/**
  * One PCM segment delivered to a `StreamingTtsBackend.synthesizeStream`
  * consumer (W9's scheduler) as TTS decodes it. `isFinal` marks the
  * zero-length tail chunk that closes the phrase.
@@ -904,11 +921,9 @@ export class EngineVoiceBridge {
         })();
     return this.ffi.setVerifierCallback(ctx, (event) => {
       onEvent?.(event);
-      if (event.rejectedFrom >= 0 && event.rejectedTo >= event.rejectedFrom) {
-        void this.pushRejectedRange({
-          fromIndex: event.rejectedFrom,
-          toIndex: event.rejectedTo,
-        });
+      const rollback = nativeRejectedRangeToRollbackRange(event);
+      if (rollback) {
+        void this.pushRejectedRange(rollback);
       }
     });
   }
@@ -971,8 +986,8 @@ export class EngineVoiceBridge {
    * voice turn controller (W9) feeds mic frames into and the barge-in
    * word-confirm gate (W1) listens to. Resolves the adapter chain:
    *   fused `libelizainference` streaming ASR (final path, gated on a
-   *   working decoder AND a bundled ASR model) → whisper.cpp interim
-   *   adapter → `AsrUnavailableError`.
+   *   working decoder AND a bundled ASR model) → fused batch ASR over the
+   *   same bundled model → whisper.cpp legacy adapter → `AsrUnavailableError`.
    *
    * Pass W1's `vad` event stream to gate decoding to active speech
    * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).

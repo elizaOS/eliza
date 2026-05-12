@@ -2,9 +2,8 @@
  * tailscaleStatus provider — injects the current tunnel status into the LLM
  * context as compact JSON.
  *
- * Replaces the previous GET_TAILSCALE_STATUS action: status is now passively
- * available every turn so the planner does not need to dispatch a dedicated
- * action just to read tunnel state.
+ * Status is available every turn through provider state; active status
+ * requests go through the canonical TUNNEL action with action=status.
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";

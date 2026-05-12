@@ -30,9 +30,9 @@ any resolution that escapes the workspace root.
 ## FILE integration
 
 This package owns only the device filesystem bridge. It does not register
-`DEVICE_FILE_READ`, `DEVICE_FILE_WRITE`, or `DEVICE_LIST_DIR` as leaf actions.
-The `@elizaos/plugin-coding-tools` `FILE` action discovers the bridge by the
-`device_filesystem` service type and delegates device operations to it.
+planner-facing file actions. The `@elizaos/plugin-coding-tools` `FILE` action
+discovers the bridge by the `device_filesystem` service type and delegates
+`target=device` operations to it.
 
 ## iOS Info.plist (apply in the milady parent repo)
 

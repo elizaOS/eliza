@@ -14,7 +14,13 @@ import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { MOBILE_RUNTIME_MODE_STORAGE_KEY } from "../onboarding/mobile-runtime-mode";
 
-const isNative = Capacitor.isNativePlatform();
+function isNativePlatform(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
 
 // Keys that should be synced to Capacitor Preferences.
 // On iOS, WKWebView localStorage can be purged under memory pressure.
@@ -56,7 +62,7 @@ export async function initializeStorageBridge(): Promise<void> {
     return;
   }
 
-  if (!isNative) {
+  if (!isNativePlatform()) {
     initialized = true;
     return;
   }
@@ -85,7 +91,7 @@ export async function initializeStorageBridge(): Promise<void> {
  * Set up a proxy to intercept localStorage operations
  */
 function setupStorageProxy(): void {
-  if (!isNative) {
+  if (!isNativePlatform()) {
     return;
   }
 
@@ -136,7 +142,7 @@ function setupStorageProxy(): void {
  * Get a value from storage (works on both native and web)
  */
 export async function getStorageValue(key: string): Promise<string | null> {
-  if (isNative && SYNCED_KEYS.has(key)) {
+  if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     const result = await Preferences.get({ key });
     return result.value;
   }
@@ -152,7 +158,7 @@ export async function setStorageValue(
 ): Promise<void> {
   window.localStorage.setItem(key, value);
 
-  if (isNative && SYNCED_KEYS.has(key)) {
+  if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     await Preferences.set({ key, value });
   }
 }
@@ -163,7 +169,7 @@ export async function setStorageValue(
 export async function removeStorageValue(key: string): Promise<void> {
   window.localStorage.removeItem(key);
 
-  if (isNative && SYNCED_KEYS.has(key)) {
+  if (isNativePlatform() && SYNCED_KEYS.has(key)) {
     await Preferences.remove({ key });
   }
 }
