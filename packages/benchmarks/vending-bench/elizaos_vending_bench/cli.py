@@ -468,6 +468,10 @@ def generate_report_from_results(args: argparse.Namespace) -> int:
                     initial_cash=config.initial_cash,
                     profit=_to_decimal(r.get("profit", "0")),
                     total_revenue=_to_decimal(r.get("total_revenue", "0")),
+                    starter_baseline_revenue=_to_decimal(
+                        r.get("starter_baseline_revenue", "0")
+                    ),
+                    incremental_revenue=_to_decimal(r.get("incremental_revenue", "0")),
                     total_costs=_to_decimal(r.get("total_costs", "0")),
                     total_operational_fees=_to_decimal(r.get("total_operational_fees", "0")),
                     items_sold=_to_int(r.get("items_sold", 0)),
@@ -489,6 +493,8 @@ def generate_report_from_results(args: argparse.Namespace) -> int:
     net_worths = [float(r.final_net_worth) for r in results] or [0.0]
     profits = [float(r.profit) for r in results] or [0.0]
     revenues = [float(r.total_revenue) for r in results] or [0.0]
+    baseline_revenues = [float(r.starter_baseline_revenue) for r in results] or [0.0]
+    incremental_revenues = [float(r.incremental_revenue) for r in results] or [0.0]
     total_days = sum(r.simulation_days for r in results)
     total_tokens = sum(r.total_tokens for r in results)
 
@@ -511,7 +517,22 @@ def generate_report_from_results(args: argparse.Namespace) -> int:
         success_rate=_to_float(metrics_raw.get("success_rate", 0.0)),
         avg_profit=_to_decimal(sum(profits) / len(profits) if profits else 0.0),
         avg_revenue=_to_decimal(metrics_raw.get("avg_revenue", sum(revenues) / len(revenues) if revenues else 0.0)),
+        avg_starter_baseline_revenue=_to_decimal(
+            metrics_raw.get(
+                "avg_starter_baseline_revenue",
+                sum(baseline_revenues) / len(baseline_revenues) if baseline_revenues else 0.0,
+            )
+        ),
+        avg_incremental_revenue=_to_decimal(
+            metrics_raw.get(
+                "avg_incremental_revenue",
+                sum(incremental_revenues) / len(incremental_revenues) if incremental_revenues else 0.0,
+            )
+        ),
         total_revenue=_to_decimal(metrics_raw.get("total_revenue", sum(revenues))),
+        total_incremental_revenue=_to_decimal(
+            metrics_raw.get("total_incremental_revenue", sum(incremental_revenues))
+        ),
         profitability_rate=_to_float(metrics_raw.get("profitability_rate", 0.0)),
         avg_items_sold=_to_float(metrics_raw.get("avg_items_sold", 0.0)),
         avg_orders_placed=_to_float(metrics_raw.get("avg_orders_placed", 0.0)),

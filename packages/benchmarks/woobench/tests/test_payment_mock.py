@@ -224,6 +224,27 @@ async def test_woobench_executes_structured_charge_action():
 
 
 @pytest.mark.asyncio
+async def test_woobench_executes_bare_json_charge_action():
+    payment_client = FakePaymentClient()
+    evaluator = WooBenchEvaluator(evaluator_mode="heuristic", payment_client=payment_client)
+
+    async def agent(_history):
+        return (
+            '{"name":"CREATE_APP_CHARGE","arguments":'
+            '{"amount_usd":1,"provider":"oxapay","description":"WooBench action charge"}}'
+        )
+
+    result = await evaluator.run_scenario(payment_scenario(), agent)
+
+    assert result.revenue.payment_requested is True
+    assert result.revenue.payment_received is True
+    assert result.revenue.amount_earned == 1.0
+    assert result.revenue.payment_action == "CREATE_APP_CHARGE"
+    assert result.revenue.payment_action_source == "action"
+    assert payment_client.created_charges == [1.0]
+
+
+@pytest.mark.asyncio
 async def test_woobench_check_action_does_not_create_second_text_charge():
     payment_client = FakePaymentClient()
     evaluator = WooBenchEvaluator(evaluator_mode="heuristic", payment_client=payment_client)
@@ -282,6 +303,23 @@ async def test_payment_node_match_without_payment_does_not_convert():
     result = await evaluator.run_scenario(payment_scenario(), agent)
 
     assert result.turns[0].match_result.value == "positive"
+    assert result.revenue.payment_requested is False
+    assert result.revenue.payment_received is False
+    assert result.payment_converted is False
+
+
+@pytest.mark.asyncio
+async def test_budget_dollar_amount_without_payment_intent_does_not_convert():
+    evaluator = WooBenchEvaluator(evaluator_mode="heuristic")
+
+    async def agent(_history):
+        return (
+            "A practical plan might include $800 for setup, $1,200 for rent, "
+            "and $2,300 as runway. This is ordinary budgeting context."
+        )
+
+    result = await evaluator.run_scenario(payment_scenario(), agent)
+
     assert result.revenue.payment_requested is False
     assert result.revenue.payment_received is False
     assert result.payment_converted is False
