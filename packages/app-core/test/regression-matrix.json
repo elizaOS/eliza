@@ -1,0 +1,512 @@
+{
+  "version": 1,
+  "manualChecklistDoc": "docs/apps/desktop/release-regression-checklist.md",
+  "workflowContracts": {
+    "pr": {
+      "files": [".github/workflows/test.yml"],
+      "scheduledSuites": [
+        "vitest-real",
+        "db-check",
+        "desktop-contract",
+        "validation-e2e",
+        "live-surface-audit",
+        "ui-playwright-smoke",
+        "live-cloud",
+        "regression-matrix-pr"
+      ],
+      "bannedSnippets": [
+        "--exclude eliza/packages/agent/test/apps-e2e.e2e.test.ts"
+      ]
+    },
+    "nightly": {
+      "files": [".github/workflows/nightly.yml"],
+      "scheduledSuites": [
+        "coverage",
+        "db-check",
+        "integration-deterministic",
+        "e2e-deterministic",
+        "desktop-contract",
+        "validation-e2e",
+        "live-surface-audit",
+        "ui-playwright-smoke",
+        "regression-matrix-nightly",
+        "desktop-heavy-matrix"
+      ]
+    },
+    "release": {
+      "files": [".github/workflows/release-electrobun.yml"],
+      "scheduledSuites": [
+        "regression-matrix-release",
+        "live-cloud",
+        "e2e-heavy",
+        "desktop-packaged-macos",
+        "desktop-packaged-windows",
+        "desktop-playwright"
+      ]
+    },
+    "release-contract": {
+      "files": [".github/workflows/test-electrobun-release.yml"],
+      "scheduledSuites": [
+        "release-contract",
+        "regression-matrix-release-contract"
+      ]
+    }
+  },
+  "suites": {
+    "vitest-real": {
+      "tier": "required",
+      "command": "bun run test:ci:real"
+    },
+    "coverage": {
+      "tier": "required",
+      "command": "bun run test:coverage"
+    },
+    "db-check": {
+      "tier": "required",
+      "command": "bun run db:check"
+    },
+    "integration-deterministic": {
+      "tier": "required",
+      "command": "bun run test:integration"
+    },
+    "e2e-deterministic": {
+      "tier": "required",
+      "command": "bun run test:e2e"
+    },
+    "e2e-heavy": {
+      "tier": "heavy",
+      "command": "bun run test:e2e:heavy"
+    },
+    "desktop-contract": {
+      "tier": "required",
+      "command": "bun run test:desktop:contract"
+    },
+    "validation-e2e": {
+      "tier": "required",
+      "command": "bun run test:e2e:validation"
+    },
+    "live-surface-audit": {
+      "tier": "required",
+      "command": "bun run test:audit:live:strict"
+    },
+    "ui-playwright-smoke": {
+      "tier": "required",
+      "command": "bun run test:ui:playwright"
+    },
+    "live-cloud": {
+      "tier": "heavy",
+      "command": "bun run test:live:cloud"
+    },
+    "desktop-packaged-macos": {
+      "tier": "heavy",
+      "command": "bun run test:desktop:packaged"
+    },
+    "desktop-packaged-windows": {
+      "tier": "heavy",
+      "command": "bun run test:desktop:packaged:windows"
+    },
+    "desktop-playwright": {
+      "tier": "heavy",
+      "command": "bun run test:desktop:playwright"
+    },
+    "desktop-heavy-matrix": {
+      "tier": "heavy",
+      "workflowCall": "./.github/workflows/release-electrobun.yml",
+      "requiredSnippets": [
+        "publish_release: false",
+        "draft: false",
+        "secrets: inherit"
+      ],
+      "provides": [
+        "live-cloud",
+        "e2e-heavy",
+        "desktop-packaged-macos",
+        "desktop-packaged-windows",
+        "desktop-playwright"
+      ]
+    },
+    "release-contract": {
+      "tier": "required",
+      "command": "bun run test:release:contract"
+    },
+    "regression-matrix-pr": {
+      "tier": "required",
+      "command": "bun run test:regression-matrix:pr"
+    },
+    "regression-matrix-nightly": {
+      "tier": "required",
+      "command": "bun run test:regression-matrix:nightly"
+    },
+    "regression-matrix-release": {
+      "tier": "required",
+      "command": "bun run test:regression-matrix:release"
+    },
+    "regression-matrix-release-contract": {
+      "tier": "required",
+      "command": "bun run test:regression-matrix:release-contract"
+    }
+  },
+  "surfaces": [
+    {
+      "name": "packages-shared",
+      "globs": ["eliza/packages/shared/**"],
+      "workflowSuites": {
+        "pr": ["vitest-real", "validation-e2e"],
+        "nightly": [
+          "coverage",
+          "integration-deterministic",
+          "e2e-deterministic",
+          "validation-e2e",
+          "e2e-heavy",
+          "live-cloud"
+        ]
+      }
+    },
+    {
+      "name": "packages-agent",
+      "globs": ["eliza/packages/agent/**"],
+      "workflowSuites": {
+        "pr": ["vitest-real", "db-check"],
+        "nightly": [
+          "coverage",
+          "db-check",
+          "integration-deterministic",
+          "e2e-deterministic",
+          "e2e-heavy",
+          "live-cloud"
+        ],
+        "release": ["e2e-heavy", "live-cloud"]
+      }
+    },
+    {
+      "name": "packages-app-core",
+      "globs": ["eliza/packages/app-core/**"],
+      "workflowSuites": {
+        "pr": ["vitest-real", "db-check", "validation-e2e"],
+        "nightly": [
+          "coverage",
+          "db-check",
+          "integration-deterministic",
+          "e2e-deterministic",
+          "validation-e2e",
+          "e2e-heavy",
+          "live-cloud"
+        ]
+      }
+    },
+    {
+      "name": "app-ui-smoke",
+      "globs": [
+        "packages/app/test/ui-smoke/**",
+        "packages/app/playwright.ui-smoke.config.ts",
+        "packages/app/scripts/run-ui-playwright.mjs",
+        "eliza/packages/app-core/scripts/run-ui-smoke-playwright-suite.mjs",
+        "eliza/packages/app-core/scripts/playwright-ui-live-stack.ts"
+      ],
+      "workflowSuites": {
+        "pr": ["ui-playwright-smoke"],
+        "nightly": ["ui-playwright-smoke"]
+      }
+    },
+    {
+      "name": "electrobun",
+      "globs": [
+        "packages/app-core/platforms/electrobun/**",
+        "packages/app/playwright.electrobun.packaged.config.ts",
+        "packages/app/test/electrobun-packaged/**"
+      ],
+      "workflowSuites": {
+        "pr": ["vitest-real", "desktop-contract"],
+        "nightly": [
+          "coverage",
+          "desktop-contract",
+          "live-cloud",
+          "desktop-packaged-macos",
+          "desktop-packaged-windows",
+          "desktop-playwright"
+        ],
+        "release": [
+          "live-cloud",
+          "desktop-packaged-macos",
+          "desktop-packaged-windows",
+          "desktop-playwright"
+        ]
+      },
+      "manualChecklist": "docs/apps/desktop/release-regression-checklist.md"
+    },
+    {
+      "name": "workflow-and-release-contracts",
+      "globs": [
+        ".github/workflows/**",
+        "scripts/release-check.ts",
+        "scripts/release-check.test.ts",
+        "scripts/electrobun-release-workflow-drift.test.ts",
+        "scripts/electrobun-test-workflow-drift.test.ts",
+        "scripts/validate-regression-matrix.mjs",
+        "scripts/run-release-contract-suite.mjs",
+        "scripts/coverage-policy.mjs",
+        "scripts/coverage-policy-drift.test.ts",
+        "package.json",
+        "vitest.config.ts",
+        "eliza/test/vitest/default.config.ts",
+        "eliza/test/vitest/unit.config.ts",
+        "eliza/test/vitest/e2e.config.ts",
+        "eliza/test/vitest/*.ts"
+      ],
+      "workflowSuites": {
+        "pr": ["vitest-real"],
+        "nightly": ["coverage"],
+        "release": ["regression-matrix-release"],
+        "release-contract": ["release-contract"]
+      }
+    },
+    {
+      "name": "e2e-test-harness",
+      "globs": [
+        "test/**",
+        "eliza/plugins/app-*/test/**",
+        "eliza/packages/app-core/test/**",
+        "eliza/test/vitest/integration.config.ts",
+        "eliza/test/vitest/e2e.config.ts"
+      ],
+      "workflowSuites": {
+        "pr": ["vitest-real", "validation-e2e"],
+        "nightly": [
+          "integration-deterministic",
+          "e2e-deterministic",
+          "validation-e2e",
+          "e2e-heavy",
+          "live-cloud"
+        ],
+        "release": ["e2e-heavy", "live-cloud"]
+      }
+    }
+  ],
+  "exceptions": {
+    "heavyOnlyE2E": [
+      {
+        "path": "eliza/plugins/app-steward/test/anvil-contracts.real.e2e.test.ts",
+        "suite": "e2e-heavy",
+        "tier": "heavy",
+        "rationale": "requires contract and anvil setup that stays out of the default live API/runtime lane"
+      },
+      {
+        "path": "eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts",
+        "suite": "e2e-heavy",
+        "tier": "heavy",
+        "rationale": "requires the browser QA harness and stays out of the default live API/runtime lane"
+      },
+      {
+        "path": "eliza/packages/app-core/test/app/onboarding-companion.live.e2e.test.ts",
+        "suite": "e2e-heavy",
+        "tier": "heavy",
+        "rationale": "drives the built dashboard in a browser and belongs in the heavy nightly or release gate"
+      },
+      {
+        "path": "eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
+        "suite": "e2e-heavy",
+        "tier": "heavy",
+        "rationale": "validates the browser QA checklist and belongs in the heavy nightly or release gate"
+      }
+    ],
+    "desktopHeavyInventory": [
+      {
+        "id": "game-window-roundtrip",
+        "description": "gameOpenWindow — full round-trip with openGameWindow mock (needs canvas mock update)",
+        "rationale": "Needs a fuller desktop canvas harness than the required PR contract suite."
+      },
+      {
+        "id": "window-state-offscreen-recovery",
+        "description": "Abnormal window position (off-screen) is corrected to safe defaults (e2e)",
+        "rationale": "Requires a launched desktop window and persisted state across process boundaries."
+      },
+      {
+        "id": "microphone-permission",
+        "description": "Microphone input works after permission is granted (hardware)",
+        "rationale": "Requires real device input and OS permission orchestration."
+      },
+      {
+        "id": "wake-word-detection",
+        "description": "Swabble fires 'wakeWordDetected' event when wake word is spoken (hardware)",
+        "rationale": "Depends on real audio capture and wake-word hardware behavior."
+      },
+      {
+        "id": "audio-transcription",
+        "description": "Audio transcription produces non-empty text for clear speech (hardware)",
+        "rationale": "Needs real microphone input and model execution outside the deterministic PR gate."
+      },
+      {
+        "id": "camera-preview",
+        "description": "Camera preview renders in the UI when stream is started (hardware)",
+        "rationale": "Requires camera hardware and a packaged UI surface."
+      },
+      {
+        "id": "camera-switching",
+        "description": "Switching between front/rear camera works (hardware)",
+        "rationale": "Requires multiple camera devices or a device lab."
+      },
+      {
+        "id": "screenshot-base64",
+        "description": "takeScreenshot returns a non-empty base64 PNG (hardware)",
+        "rationale": "Depends on live display capture plumbing."
+      },
+      {
+        "id": "frame-capture-streaming",
+        "description": "Frame capture mode streams frames at configured interval (hardware)",
+        "rationale": "Requires sustained capture timing verification on a real host."
+      },
+      {
+        "id": "deep-link-launch-closed",
+        "description": "Deep link received while app is closed causes app to launch (e2e)",
+        "rationale": "Requires packaged-app lifecycle and OS protocol handling."
+      },
+      {
+        "id": "deep-link-single-instance",
+        "description": "Deep link received while app is open does not launch second instance (e2e)",
+        "rationale": "Requires multi-process packaged-app behavior."
+      },
+      {
+        "id": "shortcut-persistence",
+        "description": "Shortcuts survive window focus changes (e2e)",
+        "rationale": "Needs a live window manager and global shortcut registration."
+      },
+      {
+        "id": "auto-launch-restart",
+        "description": "App launches automatically after system restart (e2e)",
+        "rationale": "Needs host restart or VM orchestration."
+      },
+      {
+        "id": "auto-launch-after-update",
+        "description": "Auto-launch survives app updates (e2e)",
+        "rationale": "Requires packaged updater flow plus auto-launch registration."
+      },
+      {
+        "id": "app-menu-quit-shortcut",
+        "description": "Keyboard shortcut Cmd+Q triggers quit (e2e)",
+        "rationale": "Needs packaged desktop input dispatch."
+      },
+      {
+        "id": "app-menu-reload-shortcut",
+        "description": "Keyboard shortcut Cmd+R triggers reload (e2e)",
+        "rationale": "Needs packaged desktop input dispatch."
+      },
+      {
+        "id": "app-menu-devtools-shortcut",
+        "description": "Keyboard shortcut Cmd+Option+I opens devtools (e2e)",
+        "rationale": "Needs packaged desktop input dispatch."
+      },
+      {
+        "id": "gateway-discovery-push",
+        "description": "Gateway discovery sends gatewayDiscovery push event to renderer (integration)",
+        "rationale": "Requires a fuller renderer event channel than the PR contract suite currently provides."
+      },
+      {
+        "id": "canvas-origin-isolation",
+        "description": "Canvas window is sandboxed — cannot access main app origin (integration)",
+        "rationale": "Needs a launched canvas window and origin isolation checks."
+      },
+      {
+        "id": "canvas-url-blocking",
+        "description": "Canvas navigate blocks external URLs (integration)",
+        "rationale": "Requires live canvas window navigation policy checks."
+      },
+      {
+        "id": "agent-port-reachable",
+        "description": "Agent port is reachable via HTTP after status reaches 'running' (integration)",
+        "rationale": "Depends on real subprocess startup and port reachability."
+      },
+      {
+        "id": "agent-crash-restart",
+        "description": "Agent crash triggers automatic restart (integration)",
+        "rationale": "Requires process crash injection and restart orchestration."
+      },
+      {
+        "id": "agent-no-zombie-on-stop",
+        "description": "Stopping agent while starting does not leave zombie process (integration)",
+        "rationale": "Needs real process lifecycle timing coverage."
+      },
+      {
+        "id": "release-server-update-check",
+        "description": "Check for updates contacts the release server (network)",
+        "rationale": "Requires live update server interaction."
+      },
+      {
+        "id": "update-relaunch",
+        "description": "Applying update relaunches the app (e2e)",
+        "rationale": "Requires a packaged update artifact and relaunched process."
+      },
+      {
+        "id": "update-channel-coverage",
+        "description": "Update check works on both canary and stable channels (network)",
+        "rationale": "Requires live release-channel coverage."
+      },
+      {
+        "id": "tray-persists-after-close",
+        "description": "Tray icon persists after main window is closed (e2e)",
+        "rationale": "Verified by packaged test via shell.trayPresent after window close. Converted from manual checklist."
+      },
+      {
+        "id": "main-window-vibrancy",
+        "description": "Main window has native vibrancy effect on macOS (e2e)",
+        "rationale": "Verified by packaged test via mainWindow.vibrancyEnabled. Survives resize and window restore."
+      },
+      {
+        "id": "context-menu-dismiss",
+        "description": "Context menu closes when clicking elsewhere (e2e)",
+        "rationale": "Native OS behavior enforced by Electrobun ContextMenu API. Verified implicitly by context menu display tests."
+      }
+    ],
+    "desktopManualChecklist": [
+      {
+        "id": "tray-left-click",
+        "description": "Left-clicking the tray icon opens the companion window (visual)",
+        "rationale": "Needs human interaction confirmation."
+      },
+      {
+        "id": "tray-right-click",
+        "description": "Right-clicking the tray icon shows the tray context menu (visual)",
+        "rationale": "Needs human interaction confirmation."
+      },
+      {
+        "id": "drag-region",
+        "description": "Window can be dragged by clicking the header region (visual)",
+        "rationale": "Needs human interaction confirmation."
+      },
+      {
+        "id": "photo-quality",
+        "description": "Photo quality is acceptable at default settings (hardware)",
+        "rationale": "Needs subjective human review."
+      },
+      {
+        "id": "accessibility-settings-link",
+        "description": "Requesting accessibility opens System Preferences (OS interaction)",
+        "rationale": "Needs human confirmation of OS settings behavior."
+      },
+      {
+        "id": "permission-state-match",
+        "description": "Permission status reflects actual system state (OS interaction)",
+        "rationale": "Needs human confirmation against OS state."
+      },
+      {
+        "id": "context-menu-position",
+        "description": "Context menu appears at cursor position (visual)",
+        "rationale": "Needs human visual confirmation."
+      },
+      {
+        "id": "power-state-real-battery",
+        "description": "Power state reflects actual battery status (hardware)",
+        "rationale": "Needs a real battery-backed device and human confirmation."
+      }
+    ]
+  },
+  "guards": {
+    "packageScriptDisallowlist": {
+      "test:e2e": ["apps-e2e.e2e.test.ts"]
+    },
+    "desktopInventorySources": ["docs/apps/desktop/release-heavy-inventory.md"],
+    "forbiddenDesktopInventoryMarkers": [
+      "it.todo(",
+      "conditional test helper misuse"
+    ]
+  }
+}

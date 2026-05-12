@@ -1,0 +1,75 @@
+{
+  "id": "browser",
+  "name": "Browser",
+  "description": "Web scraping and content extraction with Playwright",
+  "npmName": "@elizaos/plugin-browser",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["browser", "automation", "stagehand", "playwright", "web-scraping"],
+  "config": {
+    "OPENAI_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "OpenAI API key for AI-powered browser interactions",
+      "advanced": false
+    },
+    "BROWSER_HEADLESS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Headless",
+      "help": "Run browser in headless mode (default: true)",
+      "advanced": false
+    },
+    "ANTHROPIC_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "Anthropic API key for Claude-powered interactions",
+      "advanced": false
+    },
+    "CAPSOLVER_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "CapSolver API key for automated CAPTCHA solving",
+      "advanced": false
+    },
+    "BROWSERBASE_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Browserbase cloud browser service",
+      "advanced": false
+    },
+    "BROWSERBASE_PROJECT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Project Id",
+      "help": "Project ID for Browserbase",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Globe",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

@@ -1,0 +1,10 @@
+{
+	"version": "1.0.0",
+	"providers": [
+		{
+			"name": "farcasterProfile",
+			"description": "Provides information about the agent",
+			"dynamic": true
+		}
+	]
+}

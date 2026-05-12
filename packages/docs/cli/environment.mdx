@@ -1,0 +1,55 @@
+---
+title: "CLI environment variables"
+description: "Environment variables that affect the eliza CLI and embedded runtime."
+---
+
+# CLI environment variables
+
+These variables are read by the CLI wrapper (`run-node.mjs`) and the embedded runtime. They are **not** a complete list of every model or connector secret -- see [Configuration](/configuration) and [Plugin setup](/plugin-setup-guide) for provider keys.
+
+`ELIZA_*` variables are aliased to their `ELIZA_*` equivalents at startup (e.g. `ELIZA_API_PORT` maps to `ELIZA_API_PORT`). Either form works; the `ELIZA_` prefix is the canonical user-facing name.
+
+## State and config
+
+| Variable | Purpose |
+|----------|---------|
+| `ELIZA_STATE_DIR` | Override state directory (config, credentials, caches). Default `~/.eliza/`. |
+| `ELIZA_CONFIG_PATH` | Explicit path to `eliza.json`. |
+| `ELIZA_NAMESPACE` | Namespace segment for default paths (`eliza` produces `~/.eliza/`). |
+| `ELIZA_WORKSPACE_DIR` | Default agent workspace root. |
+
+## Ports and networking
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `ELIZA_PORT` / `ELIZA_UI_PORT` | 2138 | Server-only port (`eliza start`) and UI port in dev mode. |
+| `ELIZA_API_PORT` | 31337 | API port in dev mode (when API and UI run on separate ports). |
+| `ELIZA_API_TOKEN` | (none) | API authentication token. When set, all API requests require `Authorization: Bearer <token>`. |
+| `ELIZA_API_BIND` | `127.0.0.1` | API server bind address. Non-loopback addresses auto-generate a connection key if no token is set. |
+| `ELIZA_GATEWAY_PORT` | 18789 | Gateway port (local services). |
+| `ELIZA_HOME_PORT` | 2142 | Home app port. |
+
+In dev mode (`bun run dev`), the dev orchestrator auto-shifts to the next free port when defaults are busy, and syncs env vars.
+
+## Development
+
+| Variable | Purpose |
+|----------|---------|
+| `ELIZA_SKIP_LOCAL_UPSTREAMS` | Prefer npm `@elizaos/*` over repo-linked `./eliza` packages. |
+| `NODE_PATH` | Must include the repo `node_modules` root for dynamic plugin imports -- set by supported launchers. |
+
+Run `eliza doctor` after changing ports or state paths to catch mismatches before you start the server.
+
+## Runtime behavior
+
+| Variable | Purpose |
+|----------|---------|
+| `ELIZA_DISABLE_EDGE_TTS` | Set to `1` to prevent auto-loading `@elizaos/plugin-edge-tts`. When the agent orchestrator is loaded, Eliza adds Edge TTS by default so swarm/PTY paths have a TTS handler -- this makes outbound calls to Microsoft's cloud. Disable if you want no network TTS. |
+| `ELIZA_DISABLE_AUTO_BOOTSTRAP` | Set to `1` to skip the one-shot native optimization bootstrap at runtime boot. |
+| `ELIZA_DISABLE_TRAJECTORY_LOGGING` | Set to `1` to opt out of trajectory persistence. Also disabled when `NODE_ENV=test`. |
+| `ELIZA_ENABLE_CHILD_SKILL_CALLBACK` | Set to `0` to disable the child→parent `USE_SKILL` bridge for spawned coding agents. Default: enabled. |
+
+## Related
+
+- [Installation](/installation)
+- [Plugin resolution and NODE_PATH](/plugin-resolution-and-node-path)

@@ -1,0 +1,99 @@
+{
+  "id": "bluebubbles",
+  "name": "Bluebubbles",
+  "description": "BlueBubbles connector for sending and receiving iMessage through a local BlueBubbles server.",
+  "npmName": "@elizaos/plugin-bluebubbles",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "social-chat", "messaging", "bluebubbles"],
+  "config": {
+    "BLUEBUBBLES_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "BLUEBUBBLES_PASSWORD": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Password",
+      "help": "Password for Bluebubbles",
+      "advanced": false
+    },
+    "BLUEBUBBLES_DM_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Dm Policy",
+      "help": "DM policy (e.g. allow, deny, allowlist)",
+      "advanced": false
+    },
+    "BLUEBUBBLES_ALLOW_FROM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allow From",
+      "help": "Comma-separated allowed user list",
+      "advanced": false
+    },
+    "BLUEBUBBLES_SERVER_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Server Url",
+      "help": "Server URL",
+      "advanced": false
+    },
+    "BLUEBUBBLES_GROUP_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Group Policy",
+      "help": "Group message policy (e.g. allow, deny)",
+      "advanced": false
+    },
+    "BLUEBUBBLES_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "BLUEBUBBLES_GROUP_ALLOW_FROM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Group Allow From",
+      "help": "Comma-separated allowed user list",
+      "advanced": false
+    },
+    "BLUEBUBBLES_SEND_READ_RECEIPTS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Send Read Receipts",
+      "help": "Send read receipts",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

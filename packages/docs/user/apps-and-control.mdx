@@ -1,0 +1,52 @@
+---
+title: "Launch, Run, and Turn Off Eliza"
+sidebarTitle: "Apps and Control"
+description: "Understand Eliza's desktop, dashboard, mobile, and CLI surfaces."
+---
+
+Eliza has multiple surfaces. The runtime does the work; the app is the surface you use to talk to it.
+
+## Common surfaces
+
+| Surface | Use it for | Launch |
+|---------|------------|--------|
+| Desktop app | day-to-day local use | open the installed app |
+| Browser dashboard | browser-based control | open the dashboard URL or desktop shell |
+| Mobile app | remote check-ins | open the iOS or Android app |
+| CLI runtime | servers, terminals, headless use | `eliza start` |
+
+## Desktop app
+
+- Open it from your app launcher
+- Chat and dashboard live in the same app
+- Quit it normally from the app menu or window controls
+
+## CLI runtime
+
+```bash
+eliza start       # start the API server
+```
+
+Stop the CLI runtime with `Ctrl-C` in the terminal, or quit the desktop app normally. See the [CLI overview](/cli/overview) for the full command list.
+
+## Browser dashboard
+
+If the runtime is local, the desktop app usually embeds the dashboard. If you installed the CLI, you can also open the dashboard from a terminal:
+
+```bash
+eliza dashboard
+```
+
+## Remote and cloud instances
+
+Closing the local app does not necessarily stop a remote or cloud backend. It only disconnects your client from it.
+
+## Turn off one part without stopping everything
+
+- disable a connector to stop Discord or Telegram traffic
+- turn voice off for silent chat
+- disconnect from a remote instance without deleting it
+
+## Next
+
+[Connect Remotely](/user/connect-remotely)

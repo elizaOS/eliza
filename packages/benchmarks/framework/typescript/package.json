@@ -1,0 +1,15 @@
+{
+  "name": "@elizaos/benchmark-framework",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "bench": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts",
+    "bench:quick": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --scenarios=single-message,startup-cold",
+    "bench:full": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --all",
+    "bench:real-llm": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --real-llm",
+    "bench:real-llm:quick": "LOG_LEVEL=${LOG_LEVEL:-fatal} bun run src/bench.ts --real-llm --scenarios=single-message,conversation-10",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  }
+}

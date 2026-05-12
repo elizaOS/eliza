@@ -1,0 +1,23 @@
+{
+  "name": "@elizaos/bun-ios-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Build and validation harness for the full Bun engine on iOS",
+  "license": "MIT",
+  "scripts": {
+    "check": "node scripts/check-upstream-support.mjs",
+    "check:strict": "node scripts/check-upstream-support.mjs --strict",
+    "build:sim": "node scripts/build-ios-bun-engine.mjs --target=simulator",
+    "build:device": "node scripts/build-ios-bun-engine.mjs --target=device",
+    "smoke:sim": "node scripts/smoke-ios-bun-engine.mjs --target=simulator",
+    "smoke:device": "node scripts/smoke-ios-bun-engine.mjs --target=device"
+  },
+  "files": [
+    "ElizaBunEngine.podspec",
+    "README.md",
+    "BRIDGE_CONTRACT.md",
+    "Sources/",
+    "scripts/"
+  ]
+}

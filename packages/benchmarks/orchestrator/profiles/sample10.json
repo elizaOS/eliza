@@ -1,0 +1,131 @@
+{
+  "per_benchmark": {
+    "adhdbench": {
+      "mode": "quick"
+    },
+    "agentbench": {
+      "elizaos": true,
+      "max_tasks": 1,
+      "env": ["os"],
+      "no_docker": true
+    },
+    "app-eval": {
+      "task": "research-001"
+    },
+    "bfcl": {
+      "sample": 10
+    },
+    "context_bench": {
+      "quick": true
+    },
+    "clawbench": {
+      "scenario": "inbox_triage",
+      "start_server": true
+    },
+    "eliza_replay": {
+      "capture_path": "packages/benchmarks/eliza-adapter/fixtures/replay"
+    },
+    "evm": {
+      "max_messages": 5
+    },
+    "experience": {
+      "mode": "eliza-agent",
+      "experiences": 10,
+      "queries": 2,
+      "learning_cycles": 1
+    },
+    "framework": {
+      "flags": "--scenarios=single-message,conversation-10,startup-cold"
+    },
+    "gaia": {
+      "max_questions": 1,
+      "quick_test": true
+    },
+    "gauntlet": {
+      "seed": 42
+    },
+    "hyperliquid_bench": {
+      "max_steps": 3
+    },
+    "hyperliquidbench": {
+      "max_steps": 3
+    },
+    "mind2web": {
+      "sample": true,
+      "max_tasks": 2
+    },
+    "mint": {
+      "max_tasks": 1
+    },
+    "osworld": {
+      "max_tasks": 1,
+      "max_steps": 10,
+      "dry_run": true
+    },
+    "openclaw_bench": {
+      "mode": "conceptual",
+      "task": "setup",
+      "start_server": true
+    },
+    "realm": {
+      "max_tasks": 1
+    },
+    "rlm_bench": {
+      "mode": "stub",
+      "tasks_per_config": 1,
+      "context_lengths": [1000, 10000],
+      "max_iterations": 5,
+      "max_depth": 3
+    },
+    "social_alpha": {
+      "suites": ["detect"]
+    },
+    "solana": {
+      "max_messages": 2,
+      "environment_config": "voyager/environments/basic_env.json"
+    },
+    "swe_bench": {
+      "max_instances": 1,
+      "no_docker": true
+    },
+    "swe_bench_orchestrated": {
+      "max_instances": 1,
+      "no_docker": true,
+      "execution_mode": "orchestrated",
+      "providers": ["claude-code", "swe-agent", "codex"],
+      "strict_capabilities": true
+    },
+    "tau_bench": {
+      "sample": true,
+      "max_tasks": 2
+    },
+    "terminal_bench": {
+      "sample": true,
+      "max_tasks": 2
+    },
+    "trust": {
+      "handler": "eliza",
+      "categories": ["prompt_injection"],
+      "difficulty": ["easy"],
+      "threshold": 0.0
+    },
+    "vending_bench": {
+      "runs": 1
+    },
+    "webshop": {
+      "max_tasks": 1,
+      "sample": true
+    },
+    "gaia_orchestrated": {
+      "dataset": "sample",
+      "max_questions": 1,
+      "execution_mode": "orchestrated",
+      "providers": ["claude-code", "swe-agent", "codex"],
+      "strict_capabilities": true
+    },
+    "orchestrator_lifecycle": {
+      "max_scenarios": 12,
+      "strict": true
+    }
+  }
+}

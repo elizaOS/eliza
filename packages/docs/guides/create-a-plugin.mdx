@@ -1,0 +1,203 @@
+---
+title: "Create a Plugin"
+description: "Build a reusable elizaOS runtime extension"
+---
+
+A plugin is a runtime extension. It can add actions, providers, evaluators, services, routes, models, events, or app surfaces. App plugins are still plugins; they keep package names such as `@elizaos/app-companion`.
+
+<Note>
+  The `elizaos` CLI scaffolds plugin workspaces. Build, test, and local development commands come from the generated `package.json`.
+</Note>
+
+## Create the Plugin
+
+```bash
+elizaos create plugin-fal-ai --template plugin
+cd plugin-fal-ai
+bun install
+bun run build
+bun run test
+```
+
+Use `elizaos info --template plugin` to inspect the template shipped in your CLI build.
+
+## What the Template Provides
+
+```bash
+plugin-fal-ai/
+├── src/
+│   ├── index.ts          # Plugin export
+│   ├── plugin.ts         # Starter plugin implementation
+│   ├── __tests__/        # Component tests
+│   └── e2e/              # End-to-end tests when present
+├── package.json
+├── build.ts
+├── tsconfig.json
+└── README.md
+```
+
+The generated scripts are the source of truth:
+
+```bash
+bun run build
+bun run test
+bun run test:component
+bun run test:e2e
+bun run typecheck
+bun run lint:check
+```
+
+## Build an Action
+
+This example turns the starter plugin into a fal.ai text-to-video integration.
+
+Install the API client:
+
+```bash
+bun add @fal-ai/client
+```
+
+Create `src/actions/generateVideo.ts`:
+
+```typescript
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { fal } from "@fal-ai/client";
+
+export const generateVideoAction: Action = {
+  name: "TEXT_TO_VIDEO",
+  similes: ["CREATE_VIDEO", "MAKE_VIDEO", "GENERATE_MEDIA", "VIDEO_FROM_TEXT"],
+  description: "Generate a video from text using fal.ai",
+
+  validate: async (runtime: IAgentRuntime) => {
+    const falKey = runtime.getSetting("FAL_KEY");
+    if (!falKey) {
+      logger.error("FAL_KEY is not configured");
+      return false;
+    }
+    return true;
+  },
+
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    _options?: HandlerOptions,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    try {
+      fal.config({ credentials: runtime.getSetting("FAL_KEY") });
+
+      const text = message.content.text ?? "";
+      const prompt = text.replace(/^(create video:|make video:)/i, "").trim();
+      if (!prompt) {
+        return { success: false, text: "I need a video description." };
+      }
+
+      const result = await fal.subscribe(
+        "fal-ai/minimax/hailuo-02/standard/text-to-video",
+        {
+          input: { prompt, duration: "6" },
+          logs: true,
+        },
+      );
+
+      const videoUrl = result.data.video.url;
+      await callback?.({ text: `Video ready: ${videoUrl}` });
+      return { success: true, text: "Video generated.", data: { videoUrl, prompt } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { success: false, text: `Video generation failed: ${message}` };
+    }
+  },
+
+  examples: [
+    [
+      { name: "{{user}}", content: { text: "Create video: dolphins jumping" } },
+      {
+        name: "{{agent}}",
+        content: { text: "Creating video.", actions: ["TEXT_TO_VIDEO"] },
+      },
+    ],
+  ],
+};
+```
+
+Update `src/index.ts`:
+
+```typescript
+import type { Plugin } from "@elizaos/core";
+import { generateVideoAction } from "./actions/generateVideo";
+
+export const falAiPlugin: Plugin = {
+  name: "fal-ai",
+  description: "Generate videos using fal.ai",
+  actions: [generateVideoAction],
+  providers: [],
+  services: [],
+};
+
+export default falAiPlugin;
+export { generateVideoAction };
+```
+
+Add local configuration:
+
+```bash
+FAL_KEY=your-fal-key
+```
+
+## Use the Plugin in a Project
+
+Build the plugin first:
+
+```bash
+bun run build
+```
+
+Then add it to your generated project as a dependency or workspace package and include it in the relevant character or project configuration. For local development, many projects keep custom plugins beside the app workspace or under a workspace package directory, then reference the package normally.
+
+## App Plugin Notes
+
+Some plugins also contribute app surfaces. In the eliza repo, top-level app plugins live under `plugins/app-*` and keep package names like `@elizaos/app-companion`, `@elizaos/app-screenshare`, and `@elizaos/app-workflow-builder`.
+
+Generated projects may also contain `apps/app`; that is the branded project app. Keep this distinction clear:
+
+- `plugins/app-*`: app plugins in the eliza repo.
+- `apps/app`: the product shell inside a generated project.
+
+## Upgrade the Plugin Template
+
+Generated plugins include `.elizaos/template.json`. From the plugin root:
+
+```bash
+elizaos upgrade --check
+elizaos upgrade
+```
+
+The upgrade command updates managed template files and reports conflicts for files you changed locally.
+
+## See Also
+
+<CardGroup cols={2}>
+  <Card title="Plugin Architecture" icon="puzzle-piece" href="/plugins/architecture">
+    Learn plugin lifecycle and hook points.
+  </Card>
+  <Card title="Plugin Components" icon="boxes-stacked" href="/plugins/components">
+    Actions, providers, evaluators, services, routes, and events.
+  </Card>
+  <Card title="Project Taxonomy" icon="sitemap" href="/projects/taxonomy">
+    Clarify project, plugin, app plugin, project app, and Cloud app terms.
+  </Card>
+  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+    Review `create`, `upgrade`, `info`, and `version`.
+  </Card>
+</CardGroup>

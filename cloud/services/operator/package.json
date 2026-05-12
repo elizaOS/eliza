@@ -1,0 +1,51 @@
+{
+  "name": "@elizaos/operator",
+  "version": "0.0.1",
+  "description": "elizaOS Server Operator",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "pepr": {
+    "uuid": "eliza-operator",
+    "onError": "reject",
+    "webhookTimeout": 10,
+    "customLabels": {
+      "namespace": {
+        "pepr.dev": ""
+      }
+    },
+    "alwaysIgnore": {
+      "namespaces": []
+    },
+    "admission": {
+      "alwaysIgnore": {
+        "namespaces": []
+      }
+    },
+    "watch": {
+      "alwaysIgnore": {
+        "namespaces": []
+      }
+    },
+    "includedFiles": [],
+    "env": {}
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "build": "bunx pepr build",
+    "dev": "bunx pepr dev",
+    "deploy:local": "bunx pepr build && ./scripts/deploy-local.sh"
+  },
+  "dependencies": {
+    "ioredis": "^5.10.1",
+    "kubernetes-fluent-client": "^3.11.7",
+    "pepr": "^1.1.7"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.13",
+    "typescript": "^6.0.3"
+  }
+}

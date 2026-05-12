@@ -1,0 +1,1745 @@
+---
+title: Référence du schéma de configuration
+sidebarTitle: Schéma de config
+description: Référence complète du fichier de configuration eliza.json, organisée par section avec tous les champs documentés.
+---
+
+Eliza est configuré via un fichier `eliza.json` stocké dans le répertoire
+d'état (par défaut : `~/.eliza/eliza.json`). Toutes les sections sont optionnelles ; Eliza
+utilise des valeurs par défaut raisonnables lorsque des champs sont omis.
+
+Le routage canonique d'exécution est persisté séparément des champs de
+compatibilité hérités. La source de vérité de niveau supérieur à l'exécution est :
+
+- `deploymentTarget`
+- `linkedAccounts`
+- `serviceRouting`
+
+La configuration est validée par rapport aux schémas Zod au chargement. Les champs invalides produisent des avertissements mais ne bloquent pas le démarrage.
+
+---
+
+<div id="top-level-structure">
+## Structure de niveau supérieur
+</div>
+
+Le type `ElizaConfig` définit chaque section disponible dans `eliza.json`. Voici la liste complète des clés de niveau supérieur :
+
+| Section | Type | Description |
+|---------|------|-------------|
+| [`meta`](#meta) | `object` | Métadonnées du fichier de configuration (dernière version/horodatage de modification) |
+| [`auth`](#auth) | `AuthConfig` | Profils d'authentification, ordre des fournisseurs et délais de récupération |
+| [`env`](#env) | `object` | Injection de variables d'environnement et importation d'env shell |
+| [`wizard`](#wizard) | `object` | État de l'assistant d'intégration |
+| [`diagnostics`](#diagnostics) | `DiagnosticsConfig` | Indicateurs de diagnostics, OpenTelemetry et traçage du cache |
+| [`logging`](#logging) | `LoggingConfig` | Niveaux de journalisation, sortie fichier et style de console |
+| [`update`](#update) | `UpdateConfig` | Canal de mise à jour automatique et intervalles de vérification |
+| [`browser`](#browser) | `BrowserConfig` | Configuration du navigateur/CDP et profils |
+| [`ui`](#ui) | `object` | Thème de l'interface, couleur d'accentuation et apparence de l'assistant |
+| [`skills`](#skills) | `SkillsConfig` | Gestion des compétences, chargement et configuration par compétence |
+| [`plugins`](#plugins) | `PluginsConfig` | Chargement des plugins, listes d'autorisation/refus et registres d'installation |
+| [`models`](#models) | `ModelsConfig` | Fournisseurs de modèles personnalisés, découverte Bedrock, sélection de modèle |
+| [`nodeHost`](#nodehost) | `NodeHostConfig` | Paramètres de proxy navigateur de l'hôte Node |
+| [`agents`](#agents) | `AgentsConfig` | Liste des agents, valeurs par défaut et configuration par agent |
+| `deploymentTarget` | `DeploymentTargetConfig` | Cible d'hébergement canonique pour le serveur actif |
+| `linkedAccounts` | `LinkedAccountsConfig` | Inventaire canonique des comptes liés |
+| `serviceRouting` | `ServiceRoutingConfig` | Routage canonique par capacité |
+| [`tools`](#tools) | `ToolsConfig` | Profils d'outils, exec, web, médias, liens, politiques de bac à sable |
+| [`bindings`](#bindings) | `AgentBinding[]` | Liaisons de routage agent-vers-canal |
+| [`broadcast`](#broadcast) | `BroadcastConfig` | Stratégie de routage de diffusion par pair |
+| [`audio`](#audio) | `AudioConfig` | Paramètres audio (réservé pour utilisation future) |
+| [`messages`](#messages) | `MessagesConfig` | File d'attente de messages, TTS, préfixe de réponse, réactions d'accusé de réception |
+| [`commands`](#commands) | `CommandsConfig` | Enregistrement des commandes et contrôle d'accès |
+| [`approvals`](#approvals) | `ApprovalsConfig` | Transfert des approbations d'exécution vers les canaux de discussion |
+| [`session`](#session) | `SessionConfig` | Portée de session, délai d'inactivité, déclencheurs de réinitialisation |
+| [`web`](#web) | `WebConfig` | Paramètres du fournisseur web WhatsApp |
+| [`connectors`](#connectors) | `Record<string, ConnectorConfig>` | Connecteurs de messagerie (Telegram, Discord, Slack, etc.) |
+| [`channels`](#connectors) | `Record<string, ConnectorConfig>` | **Obsolète** -- utilisez `connectors` à la place |
+| [`cron`](#cron) | `CronConfig` | Configuration des tâches planifiées |
+| [`hooks`](#hooks) | `HooksConfig` | Hooks webhook, intégration Gmail, hooks d'événements internes |
+| [`discovery`](#discovery) | `DiscoveryConfig` | Découverte réseau mDNS et DNS-SD à zone étendue |
+| [`talk`](#talk) | `TalkConfig` | Paramètres vocaux du mode Talk ElevenLabs |
+| [`gateway`](#gateway) | `GatewayConfig` | Serveur passerelle : port, liaison, TLS, auth, HTTP, nœuds |
+| [`memory`](#memory) | `MemoryConfig` | Backend de mémoire (intégré ou QMD) |
+| [`embedding`](#embedding) | `EmbeddingConfig` | Modèle d'embedding local (GGUF, couches GPU, déchargement au repos) |
+| [`database`](#database) | `DatabaseConfig` | Fournisseur de base de données et paramètres de connexion |
+| [`cloud`](#cloud) | `CloudConfig` | Intégration Eliza Cloud, pont, sauvegarde, conteneurs |
+| [`x402`](#x402) | `X402Config` | Protocole de paiement HTTP x402 |
+| [`media`](#media) | `MediaConfig` | Fournisseurs de génération de médias (image, vidéo, audio, vision) |
+| [`mcp`](#mcp) | `object` | Définitions de serveurs MCP (Model Context Protocol) |
+| [`registry`](#registry) | `object` | Registre d'agents ERC-8004 et configuration NFT ElizaMaker |
+| [`features`](#features) | `Record<string, boolean \| object>` | Indicateurs de fonctionnalités pour l'activation automatique des plugins |
+| [`customActions`](#customactions) | `CustomActionDef[]` | Actions personnalisées définies par l'utilisateur |
+
+```json
+{
+  "meta": {},
+  "auth": {},
+  "env": {},
+  "wizard": {},
+  "diagnostics": {},
+  "logging": {},
+  "update": {},
+  "browser": {},
+  "ui": {},
+  "skills": {},
+  "plugins": {},
+  "models": {},
+  "nodeHost": {},
+  "agents": {},
+  "deploymentTarget": {},
+  "linkedAccounts": {},
+  "serviceRouting": {},
+  "tools": {},
+  "bindings": [],
+  "broadcast": {},
+  "audio": {},
+  "messages": {},
+  "commands": {},
+  "approvals": {},
+  "session": {},
+  "web": {},
+  "connectors": {},
+  "cron": {},
+  "hooks": {},
+  "discovery": {},
+  "talk": {},
+  "gateway": {},
+  "memory": {},
+  "embedding": {},
+  "database": {},
+  "cloud": {},
+  "x402": {},
+  "media": {},
+  "mcp": {},
+  "registry": {},
+  "features": {},
+  "customActions": []
+}
+```
+
+<div id="canonical-runtime-routing">
+## Routage canonique d'exécution
+</div>
+
+Ces trois champs définissent la topologie active à l'exécution :
+
+| Champ | Description |
+|------|-------------|
+| `deploymentTarget` | Où le serveur actif s'exécute : `local`, `cloud` ou `remote` |
+| `linkedAccounts` | Quels comptes fournisseur ou cloud sont liés |
+| `serviceRouting` | Quel backend gère `llmText`, `tts`, `media`, `embeddings` et `rpc` |
+
+```json5
+{
+  deploymentTarget: {
+    runtime: "remote",
+    provider: "remote",
+    remoteApiBase: "https://eliza.example.com",
+  },
+  linkedAccounts: {
+    elizacloud: {
+      status: "linked",
+      source: "oauth",
+    },
+  },
+  serviceRouting: {
+    llmText: {
+      backend: "openrouter",
+      transport: "direct",
+      primaryModel: "openrouter/anthropic/claude-sonnet-4.6",
+    },
+  },
+}
+```
+
+---
+
+<div id="meta">
+## `meta`
+</div>
+
+Métadonnées concernant le fichier de configuration lui-même.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `lastTouchedVersion` | `string` | -- | Dernière version de Eliza ayant écrit cette configuration |
+| `lastTouchedAt` | `string` | -- | Horodatage ISO de la dernière écriture de la configuration |
+
+---
+
+<div id="auth">
+## `auth`
+</div>
+
+Profils d'authentification et ordre des fournisseurs pour les configurations multi-comptes.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `profiles` | `Record<string, AuthProfileConfig>` | -- | Profils d'authentification nommés (voir sous-table) |
+| `order` | `Record<string, string[]>` | -- | Ordre fournisseur-vers-profil pour la sélection de profil |
+| `cooldowns.billingBackoffHours` | `number` | `5` | Délai de récupération de facturation par défaut (heures) |
+| `cooldowns.billingBackoffHoursByProvider` | `Record<string, number>` | -- | Surcharges de délai de récupération de facturation par fournisseur (heures) |
+| `cooldowns.billingMaxHours` | `number` | `24` | Plafond du délai de récupération de facturation (heures) |
+| `cooldowns.failureWindowHours` | `number` | `24` | Fenêtre d'échec pour la réinitialisation du compteur de récupération (heures) |
+
+<div id="authprofileconfig">
+### AuthProfileConfig
+</div>
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `provider` | `string` | Identifiant du fournisseur |
+| `mode` | `"api_key" \| "oauth" \| "token"` | Type d'identifiant : clé API statique, OAuth renouvelable, ou jeton porteur statique |
+| `email` | `string` | E-mail optionnel associé au profil |
+
+---
+
+<div id="env">
+## `env`
+</div>
+
+Injection de variables d'environnement et importation d'env shell.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `shellEnv.enabled` | `boolean` | -- | Importer les secrets manquants depuis un shell de connexion (`$SHELL -l -c 'env -0'`) |
+| `shellEnv.timeoutMs` | `number` | `15000` | Délai d'attente pour l'exécution du shell de connexion (ms) |
+| `vars` | `Record<string, string>` | -- | Variables d'environnement en ligne appliquées lorsqu'elles ne sont pas déjà présentes dans l'env du processus |
+| `[key]` | `string` | -- | Raccourci : les valeurs chaîne placées directement sous `env` sont traitées comme des surcharges de variables d'environnement |
+
+<Info>
+Les valeurs chaîne placées directement sous la clé `env` sont traitées comme des surcharges de variables d'environnement. Par exemple, `"env": { "OPENAI_API_KEY": "<OPENAI_API_KEY>" }` définit la clé lorsqu'elle n'est pas déjà présente dans l'environnement du processus.
+</Info>
+
+---
+
+<div id="wizard">
+## `wizard`
+</div>
+
+Suivi de l'état de l'assistant d'intégration.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `lastRunAt` | `string` | -- | Horodatage ISO de la dernière exécution de l'assistant |
+| `lastRunVersion` | `string` | -- | Version de Eliza de la dernière exécution de l'assistant |
+| `lastRunCommit` | `string` | -- | Commit Git de la dernière exécution de l'assistant |
+| `lastRunCommand` | `string` | -- | Commande utilisée lors de la dernière exécution de l'assistant |
+| `lastRunMode` | `"local" \| "remote"` | -- | Si l'assistant a été exécuté localement ou à distance |
+
+---
+
+<div id="diagnostics">
+## `diagnostics`
+</div>
+
+Diagnostics d'exécution, OpenTelemetry et traçage du cache.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer le sous-système de diagnostics |
+| `flags` | `string[]` | -- | Indicateurs de diagnostics ad hoc (ex. `"telegram.http"`) |
+
+<div id="diagnostics.otel">
+### `diagnostics.otel`
+</div>
+
+Configuration de l'export OpenTelemetry.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer l'export OTEL |
+| `endpoint` | `string` | -- | URL du point de terminaison du collecteur OTEL |
+| `protocol` | `"http/protobuf" \| "grpc"` | -- | Protocole de transport |
+| `headers` | `Record<string, string>` | -- | En-têtes envoyés avec les requêtes OTEL |
+| `serviceName` | `string` | -- | Nom du service pour les traces OTEL |
+| `traces` | `boolean` | -- | Exporter les traces |
+| `metrics` | `boolean` | -- | Exporter les métriques |
+| `logs` | `boolean` | -- | Exporter les logs |
+| `sampleRate` | `number` | -- | Taux d'échantillonnage des traces (0.0 -- 1.0) |
+| `flushIntervalMs` | `number` | -- | Intervalle d'export des métriques (ms) |
+
+<div id="diagnostics.cacheTrace">
+### `diagnostics.cacheTrace`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la journalisation du traçage du cache |
+| `filePath` | `string` | -- | Fichier de sortie du traçage du cache |
+| `includeMessages` | `boolean` | -- | Inclure les messages dans le traçage |
+| `includePrompt` | `boolean` | -- | Inclure le prompt dans le traçage |
+| `includeSystem` | `boolean` | -- | Inclure le prompt système dans le traçage |
+
+---
+
+<div id="logging">
+## `logging`
+</div>
+
+Niveau de journalisation, sortie fichier et style de console.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `level` | `"silent" \| "fatal" \| "error" \| "warn" \| "info" \| "debug" \| "trace"` | -- | Niveau de journalisation fichier |
+| `file` | `string` | -- | Chemin du fichier de log |
+| `consoleLevel` | `"silent" \| "fatal" \| "error" \| "warn" \| "info" \| "debug" \| "trace"` | -- | Niveau de journalisation console |
+| `consoleStyle` | `"pretty" \| "compact" \| "json"` | -- | Format de sortie console |
+| `redactSensitive` | `"off" \| "tools"` | `"tools"` | Masquer les jetons sensibles dans les résumés d'outils |
+| `redactPatterns` | `string[]` | -- | Motifs regex utilisés pour masquer les jetons sensibles (valeurs par défaut appliquées si non défini) |
+
+---
+
+<div id="update">
+## `update`
+</div>
+
+Configuration de la mise à jour automatique.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `channel` | `"stable" \| "beta" \| "nightly"` | `"stable"` | Canal de publication |
+| `checkOnStart` | `boolean` | `true` | Vérifier les mises à jour au démarrage |
+| `checkIntervalSeconds` | `number` | `14400` (4h) | Secondes entre les vérifications automatiques |
+| `lastCheckAt` | `string` | -- | Horodatage ISO de la dernière vérification |
+| `lastCheckVersion` | `string` | -- | Version trouvée lors de la dernière vérification |
+
+---
+
+<div id="browser">
+## `browser`
+</div>
+
+Automatisation du navigateur et configuration du Chrome DevTools Protocol (CDP).
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer l'intégration du navigateur |
+| `evaluateEnabled` | `boolean` | `true` | Autoriser `act:evaluate` (exécution de JS arbitraire) |
+| `cdpUrl` | `string` | -- | URL de base du point de terminaison CDP (pour les navigateurs distants) |
+| `remoteCdpTimeoutMs` | `number` | `1500` | Délai d'attente HTTP du CDP distant (ms) |
+| `remoteCdpHandshakeTimeoutMs` | `number` | `max(remoteCdpTimeoutMs * 2, 2000)` | Délai d'attente de la poignée de main WebSocket du CDP distant (ms) |
+| `color` | `string` | `#FF4500` | Couleur d'accentuation pour le profil navigateur Eliza (hex) |
+| `executablePath` | `string` | -- | Chemin d'exécutable du navigateur personnalisé (toutes plateformes) |
+| `headless` | `boolean` | `false` | Démarrer Chrome en mode headless |
+| `noSandbox` | `boolean` | `false` | Passer `--no-sandbox` à Chrome (conteneurs Linux) |
+| `attachOnly` | `boolean` | `false` | Ne jamais lancer ; se connecter uniquement à un navigateur existant |
+| `defaultProfile` | `string` | `"chrome"` | Profil par défaut lorsque le paramètre profil est omis |
+| `profiles` | `Record<string, BrowserProfileConfig>` | -- | Profils de navigateur nommés (voir sous-table) |
+| `snapshotDefaults.mode` | `"efficient"` | -- | Mode de capture par défaut |
+
+<div id="browserprofileconfig">
+### BrowserProfileConfig
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `cdpPort` | `number` | -- | Port CDP pour ce profil (alloué une fois, persisté) |
+| `cdpUrl` | `string` | -- | URL CDP pour ce profil (pour Chrome distant) |
+| `driver` | `"eliza" \| "extension"` | `"eliza"` | Pilote du profil |
+| `color` | `string` | -- | Couleur du profil (hex, attribuée automatiquement à la création) |
+
+---
+
+<div id="ui">
+## `ui`
+</div>
+
+Configuration de l'apparence de l'interface utilisateur.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `seamColor` | `string` | -- | Couleur d'accentuation pour l'interface Eliza (hex) |
+| `theme` | `"eliza" \| "qt314" \| "web2000" \| "programmer" \| "haxor" \| "psycho"` | -- | Thème d'interface préféré de l'utilisateur (défini lors de l'intégration) |
+| `assistant.name` | `string` | -- | Nom d'affichage de l'assistant pour les surfaces de l'interface |
+| `assistant.avatar` | `string` | -- | Emoji d'avatar, texte court, ou URL/URI de données d'image |
+
+---
+
+<div id="skills">
+## `skills`
+</div>
+
+Gestion des compétences, chargement et configuration par compétence.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `allowBundled` | `string[]` | -- | Liste d'autorisation des compétences intégrées (seules celles-ci sont chargées ; omettre pour toutes) |
+| `denyBundled` | `string[]` | -- | Liste de refus des compétences intégrées (prioritaire sur la liste d'autorisation) |
+| `load.extraDirs` | `string[]` | -- | Répertoires de compétences supplémentaires à analyser (priorité la plus basse) |
+| `load.watch` | `boolean` | -- | Surveiller les dossiers de compétences pour les changements et actualiser l'instantané |
+| `load.watchDebounceMs` | `number` | -- | Anti-rebond pour le surveillant de compétences (ms) |
+| `install.preferBrew` | `boolean` | -- | Préférer Homebrew pour l'installation des compétences |
+| `install.nodeManager` | `"npm" \| "yarn" \| "bun"` | -- | Gestionnaire de paquets pour l'installation des compétences |
+| `entries` | `Record<string, SkillConfig>` | -- | Configuration par compétence (voir sous-table) |
+
+<div id="skillconfig-per-entry">
+### SkillConfig (par entrée)
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer ou désactiver cette compétence |
+| `apiKey` | `string` | -- | Clé API pour cette compétence |
+| `env` | `Record<string, string>` | -- | Variables d'environnement pour cette compétence |
+| `config` | `Record<string, unknown>` | -- | Configuration arbitraire transmise à cette compétence |
+
+---
+
+<div id="plugins">
+## `plugins`
+</div>
+
+Chargement des plugins, listes d'autorisation/refus et registres d'installation.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer ou désactiver le chargement des plugins |
+| `allow` | `string[]` | -- | Liste d'autorisation des plugins (IDs de plugins) |
+| `deny` | `string[]` | -- | Liste de refus des plugins (IDs de plugins) |
+| `load.paths` | `string[]` | -- | Chemins supplémentaires de plugins/extensions à charger |
+| `slots.memory` | `string` | -- | Sélectionner quel plugin possède le slot mémoire (`"none"` désactive) |
+| `entries` | `Record<string, PluginEntryConfig>` | -- | Surcharges de configuration par plugin |
+| `installs` | `Record<string, PluginInstallRecord>` | -- | Registres des plugins installés |
+
+<div id="pluginentryconfig">
+### PluginEntryConfig
+</div>
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Activer ou désactiver ce plugin |
+| `config` | `Record<string, unknown>` | Configuration arbitraire transmise à ce plugin |
+
+<div id="plugininstallrecord">
+### PluginInstallRecord
+</div>
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `source` | `"npm" \| "archive" \| "path"` | Source d'installation |
+| `spec` | `string` | Spécification npm ou URL d'archive |
+| `sourcePath` | `string` | Chemin source d'origine |
+| `installPath` | `string` | Chemin d'installation local |
+| `version` | `string` | Version installée |
+| `installedAt` | `string` | Horodatage ISO de l'installation |
+
+---
+
+<div id="models">
+## `models`
+</div>
+
+Configuration des fournisseurs de modèles personnalisés.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `mode` | `"merge" \| "replace"` | -- | Comment les fournisseurs personnalisés interagissent avec les valeurs par défaut intégrées |
+| `small` | `string` | -- | ID du petit modèle sélectionné pour les tâches rapides (défini lors de l'intégration) |
+| `large` | `string` | -- | ID du grand modèle sélectionné pour le raisonnement complexe (défini lors de l'intégration) |
+| `providers` | `Record<string, ModelProviderConfig>` | -- | Fournisseurs de modèles nommés |
+| `bedrockDiscovery` | `BedrockDiscoveryConfig` | -- | Paramètres de découverte automatique AWS Bedrock |
+
+<div id="modelproviderconfig">
+### ModelProviderConfig
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `baseUrl` | `string` | -- | URL de base de l'API du fournisseur |
+| `apiKey` | `string` | -- | Clé API |
+| `auth` | `"api-key" \| "aws-sdk" \| "oauth" \| "token"` | -- | Mode d'authentification |
+| `api` | `ModelApi` | -- | Format d'API : `openai-completions`, `openai-responses`, `anthropic-messages`, `google-generative-ai`, `bedrock-converse-stream` |
+| `headers` | `Record<string, string>` | -- | En-têtes de requête supplémentaires |
+| `authHeader` | `boolean` | -- | Inclure l'en-tête d'authentification |
+| `models` | `ModelDefinitionConfig[]` | -- | Définitions de modèles pour ce fournisseur |
+
+<div id="modeldefinitionconfig">
+### ModelDefinitionConfig
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | Identifiant du modèle |
+| `name` | `string` | -- | Nom d'affichage |
+| `api` | `ModelApi` | -- | Surcharge du format d'API |
+| `reasoning` | `boolean` | -- | Si ce modèle prend en charge le raisonnement |
+| `input` | `Array<"text" \| "image">` | -- | Modalités d'entrée prises en charge |
+| `cost.input` | `number` | -- | Coût d'entrée par jeton |
+| `cost.output` | `number` | -- | Coût de sortie par jeton |
+| `cost.cacheRead` | `number` | -- | Coût de lecture du cache par jeton |
+| `cost.cacheWrite` | `number` | -- | Coût d'écriture du cache par jeton |
+| `contextWindow` | `number` | -- | Taille de la fenêtre de contexte (jetons) |
+| `maxTokens` | `number` | -- | Nombre maximum de jetons en sortie |
+| `headers` | `Record<string, string>` | -- | En-têtes supplémentaires pour ce modèle |
+| `compat` | `ModelCompatConfig` | -- | Indicateurs de compatibilité (`supportsStore`, `supportsDeveloperRole`, `supportsReasoningEffort`, `maxTokensField`) |
+
+<div id="bedrockdiscoveryconfig">
+### BedrockDiscoveryConfig
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la découverte automatique des modèles Bedrock |
+| `region` | `string` | -- | Région AWS |
+| `providerFilter` | `string[]` | -- | Filtrer par noms de fournisseurs |
+| `refreshInterval` | `number` | -- | Intervalle de rafraîchissement (ms) |
+| `defaultContextWindow` | `number` | -- | Fenêtre de contexte par défaut pour les modèles découverts |
+| `defaultMaxTokens` | `number` | -- | Nombre maximum de jetons par défaut pour les modèles découverts |
+
+---
+
+<div id="nodehost">
+## `nodeHost`
+</div>
+
+Configuration de l'hôte Node pour le routage du proxy navigateur distant.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `browserProxy.enabled` | `boolean` | `true` | Activer le proxy navigateur sur l'hôte Node |
+| `browserProxy.allowProfiles` | `string[]` | -- | Liste d'autorisation des noms de profils exposés via le proxy |
+
+---
+
+<div id="agents">
+## `agents`
+</div>
+
+Configuration multi-agents.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `defaults` | `AgentDefaultsConfig` | Paramètres par défaut appliqués à tous les agents sauf surcharge par agent |
+| `list` | `AgentConfig[]` | Tableau des configurations individuelles d'agents |
+
+<div id="agents.defaults">
+### `agents.defaults`
+</div>
+
+Valeurs par défaut globales des agents. Chaque agent en hérite sauf surcharge.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `model.primary` | `string` | -- | Modèle principal (fournisseur/modèle) |
+| `model.fallbacks` | `string[]` | -- | Chaîne de modèles de repli |
+| `imageModel.primary` | `string` | -- | Modèle capable de traiter les images |
+| `imageModel.fallbacks` | `string[]` | -- | Chaîne de repli du modèle d'images |
+| `models` | `Record<string, AgentModelEntryConfig>` | -- | Catalogue de modèles avec alias optionnels |
+| `workspace` | `string` | -- | Répertoire de travail par défaut pour les exécutions d'agents |
+| `adminEntityId` | `string` | -- | ID d'entité stable du propriétaire/administrateur pour la propriété du chat de contrôle |
+| `repoRoot` | `string` | -- | Surcharge de la racine du dépôt pour le prompt système |
+| `userTimezone` | `string` | -- | Fuseau horaire IANA de l'utilisateur (par défaut : fuseau de l'hôte) |
+| `timeFormat` | `"auto" \| "12" \| "24"` | -- | Format horaire dans le prompt système |
+| `envelopeTimezone` | `string` | `"utc"` | Fuseau horaire de l'horodatage d'enveloppe (`"utc"`, `"local"`, `"user"`, ou TZ IANA) |
+| `envelopeTimestamp` | `"on" \| "off"` | `"on"` | Inclure les horodatages absolus dans les enveloppes de messages |
+| `envelopeElapsed` | `"on" \| "off"` | `"on"` | Inclure le temps écoulé dans les enveloppes de messages |
+| `contextTokens` | `number` | -- | Plafond de la fenêtre de contexte (pour les estimations d'exécution) |
+| `cliBackends` | `Record<string, CliBackendConfig>` | -- | Backends CLI pour le repli en mode texte uniquement (claude-cli, etc.) |
+| `contextPruning` | `AgentContextPruningConfig` | -- | Élaguer les anciens résultats d'outils du contexte LLM |
+| `compaction` | `AgentCompactionConfig` | -- | Réglage de la compaction et vidage mémoire pré-compaction |
+| `memorySearch` | `MemorySearchConfig` | -- | Configuration de la recherche mémoire vectorielle |
+| `thinkingDefault` | `"off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh"` | -- | Niveau de réflexion par défaut |
+| `verboseDefault` | `"off" \| "on" \| "full"` | -- | Niveau de verbosité par défaut |
+| `elevatedDefault` | `"off" \| "on" \| "ask" \| "full"` | -- | Niveau d'élévation par défaut |
+| `blockStreamingDefault` | `"off" \| "on"` | -- | Niveau de diffusion par blocs par défaut |
+| `blockStreamingBreak` | `"text_end" \| "message_end"` | -- | Limite de la diffusion par blocs |
+| `blockStreamingChunk` | `object` | -- | Découpage souple en blocs pour les réponses en streaming |
+| `blockStreamingCoalesce` | `object` | -- | Coalescence des réponses par blocs (fusion des morceaux en streaming) |
+| `humanDelay` | `HumanDelayConfig` | -- | Délai de type humain entre les réponses par blocs |
+| `timeoutSeconds` | `number` | -- | Délai d'expiration de l'exécution de l'agent |
+| `mediaMaxMb` | `number` | -- | Taille maximale des médias entrants en Mo |
+| `typingIntervalSeconds` | `number` | -- | Intervalle de l'indicateur de saisie |
+| `typingMode` | `TypingMode` | -- | Mode de démarrage de l'indicateur de saisie (`never`, `instant`, `thinking`, `message`) |
+| `maxConcurrent` | `number` | `1` | Nombre maximal d'exécutions d'agents simultanées toutes conversations confondues |
+
+<div id="agents.defaults.heartbeat">
+#### `agents.defaults.heartbeat`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `every` | `string` | `"30m"` | Intervalle de battement de cœur (chaîne de durée, unité par défaut : minutes) |
+| `activeHours.start` | `string` | -- | Heure de début (24h HH:MM, incluse) |
+| `activeHours.end` | `string` | -- | Heure de fin (24h HH:MM, exclue ; utiliser `"24:00"` pour la fin de journée) |
+| `activeHours.timezone` | `string` | `"user"` | Fuseau horaire (`"user"`, `"local"`, ou TZ IANA) |
+| `model` | `string` | -- | Surcharge de modèle pour les exécutions de battement de cœur (fournisseur/modèle) |
+| `session` | `string` | -- | Clé de session (`"main"` ou explicite) |
+| `target` | `"last" \| "none" \| string` | -- | Cible de livraison |
+| `to` | `string` | -- | Surcharge de livraison (E.164 pour WhatsApp, ID de chat pour Telegram) |
+| `prompt` | `string` | -- | Remplacer le corps du prompt de battement de cœur |
+| `ackMaxChars` | `number` | `30` | Nombre maximal de caractères après HEARTBEAT_OK avant la livraison |
+| `includeReasoning` | `boolean` | `false` | Livrer le contenu de raisonnement du modèle pour les exécutions de battement de cœur |
+
+<div id="agents.defaults.subagents">
+#### `agents.defaults.subagents`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `maxConcurrent` | `number` | `1` | Nombre maximal d'exécutions simultanées de sous-agents |
+| `archiveAfterMinutes` | `number` | `60` | Archiver automatiquement les sessions de sous-agents après N minutes |
+| `model` | `string \| { primary?, fallbacks? }` | -- | Modèle par défaut pour les sous-agents créés |
+| `thinking` | `string` | -- | Niveau de réflexion par défaut pour les sous-agents créés |
+
+<div id="agents.defaults.sandbox">
+#### `agents.defaults.sandbox`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `mode` | `"off" \| "non-main" \| "all"` | -- | Mode bac à sable pour les sessions |
+| `workspaceAccess` | `"none" \| "ro" \| "rw"` | -- | Accès de l'agent à l'espace de travail dans le bac à sable |
+| `sessionToolsVisibility` | `"spawned" \| "all"` | `"spawned"` | Visibilité des outils de session pour les sessions en bac à sable |
+| `scope` | `"session" \| "agent" \| "shared"` | -- | Portée du conteneur/espace de travail |
+| `perSession` | `boolean` | -- | Alias hérité pour scope |
+| `workspaceRoot` | `string` | -- | Répertoire racine pour les espaces de travail du bac à sable |
+| `docker` | `SandboxDockerSettings` | -- | Paramètres de bac à sable spécifiques à Docker |
+| `browser` | `SandboxBrowserSettings` | -- | Paramètres du navigateur en bac à sable |
+| `prune` | `SandboxPruneSettings` | -- | Paramètres de nettoyage automatique |
+
+<div id="agents.list">
+### `agents.list[]`
+</div>
+
+Tableau des configurations individuelles d'agents :
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | **Requis.** Identifiant unique de l'agent |
+| `default` | `boolean` | -- | Si cet agent est l'agent par défaut |
+| `name` | `string` | -- | Nom d'affichage de l'agent |
+| `workspace` | `string` | -- | Répertoire de l'espace de travail de l'agent |
+| `agentDir` | `string` | -- | Répertoire de données spécifique à l'agent |
+| `model` | `string \| { primary?, fallbacks? }` | -- | Sélection du modèle |
+| `skills` | `string[]` | -- | Liste d'autorisation des compétences (omettre = toutes, vide = aucune) |
+| `memorySearch` | `MemorySearchConfig` | -- | Surcharges de recherche mémoire par agent |
+| `humanDelay` | `HumanDelayConfig` | -- | Délai de type humain entre les réponses par blocs |
+| `heartbeat` | `object` | -- | Surcharges de battement de cœur par agent (même structure que `agents.defaults.heartbeat`) |
+| `identity` | `IdentityConfig` | -- | Configuration de l'identité de l'agent |
+| `groupChat` | `GroupChatConfig` | -- | Comportement en discussion de groupe |
+| `bio` | `string[]` | -- | Lignes de bio de l'agent (définies lors de l'intégration à partir du préréglage de style) |
+| `system` | `string` | -- | Prompt système |
+| `style` | `{ all?, chat?, post? }` | -- | Règles de style de communication (tableaux de chaînes) |
+| `adjectives` | `string[]` | -- | Adjectifs de personnalité |
+| `topics` | `string[]` | -- | Sujets avec lesquels l'agent interagit |
+| `postExamples` | `string[]` | -- | Exemples de publications sur les réseaux sociaux démontrant la voix de l'agent |
+| `messageExamples` | `array` | -- | Exemples de conversations démontrant la voix de l'agent |
+| `subagents.allowAgents` | `string[]` | -- | Autoriser la création de sous-agents sous d'autres IDs d'agents (`"*"` = tout) |
+| `subagents.model` | `string \| { primary?, fallbacks? }` | -- | Modèle par défaut par agent pour les sous-agents créés |
+| `sandbox` | `object` | -- | Paramètres d'isolation en bac à sable par agent (même structure que `agents.defaults.sandbox`) |
+| `tools` | `AgentToolsConfig` | -- | Politique d'outils par agent (voir la [section outils](#tools) pour les champs) |
+| `cloud.cloudAgentId` | `string` | -- | ID d'enregistrement de l'agent Eliza Cloud |
+| `cloud.lastStatus` | `string` | -- | Dernier statut connu du bac à sable |
+| `cloud.lastProvisionedAt` | `string` | -- | Horodatage ISO du dernier provisionnement |
+
+---
+
+<div id="tools">
+## `tools`
+</div>
+
+Profils d'outils, exec, recherche/récupération web, compréhension des médias, liens et politiques de bac à sable.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `profile` | `ToolProfileId` | -- | Profil d'outils de base appliqué avant les listes d'autorisation/refus |
+| `allow` | `string[]` | -- | Liste d'autorisation des outils |
+| `alsoAllow` | `string[]` | -- | Entrées supplémentaires de la liste d'autorisation fusionnées avec le profil |
+| `deny` | `string[]` | -- | Liste de refus des outils |
+| `byProvider` | `Record<string, ToolPolicyConfig>` | -- | Surcharges de politique d'outils par fournisseur ou par modèle |
+
+<div id="tools.exec">
+### `tools.exec`
+</div>
+
+Configuration de l'outil d'exécution de commandes shell.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `host` | `"sandbox" \| "gateway" \| "node"` | `"sandbox"` | Routage de l'hôte d'exécution |
+| `security` | `"deny" \| "allowlist" \| "full"` | `"deny"` | Mode de sécurité d'exécution |
+| `ask` | `"off" \| "on-miss" \| "always"` | `"on-miss"` | Demande d'approbation |
+| `node` | `string` | -- | Liaison de nœud par défaut pour `host=node` |
+| `pathPrepend` | `string[]` | -- | Répertoires ajoutés en début de PATH |
+| `safeBins` | `string[]` | -- | Binaires sûrs en stdin uniquement qui s'exécutent sans entrées dans la liste d'autorisation |
+| `backgroundMs` | `number` | -- | Temps par défaut (ms) avant la mise en arrière-plan automatique |
+| `timeoutSec` | `number` | -- | Délai d'attente par défaut (secondes) avant l'arrêt automatique |
+| `approvalRunningNoticeMs` | `number` | `10000` | Intervalle de notification d'exécution pour l'exec avec approbation (0 = désactivé) |
+| `cleanupMs` | `number` | -- | Durée de conservation des sessions terminées en mémoire (ms) |
+| `notifyOnExit` | `boolean` | -- | Émettre un événement système + battement de cœur lorsqu'un exec en arrière-plan se termine |
+| `applyPatch.enabled` | `boolean` | `false` | Activer `apply_patch` pour les modèles OpenAI |
+| `applyPatch.allowModels` | `string[]` | -- | Liste d'autorisation des IDs de modèles pouvant utiliser `apply_patch` |
+
+<div id="tools.web">
+### `tools.web`
+</div>
+
+Configuration des outils de recherche et de récupération web.
+
+<div id="tools.web.search">
+#### `tools.web.search`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer l'outil de recherche web (par défaut : `true` lorsqu'une clé API est présente) |
+| `provider` | `"brave" \| "perplexity"` | -- | Fournisseur de recherche |
+| `apiKey` | `string` | -- | Clé API Brave Search (par défaut : variable d'env `BRAVE_API_KEY`) |
+| `maxResults` | `number` | -- | Nombre de résultats de recherche par défaut (1--10) |
+| `timeoutSeconds` | `number` | -- | Délai d'attente de la requête de recherche |
+| `cacheTtlMinutes` | `number` | -- | TTL du cache pour les résultats de recherche |
+| `perplexity.apiKey` | `string` | -- | Clé API Perplexity/OpenRouter |
+| `perplexity.baseUrl` | `string` | `https://openrouter.ai/api/v1` | URL de base pour les requêtes API |
+| `perplexity.model` | `string` | `"perplexity/sonar-pro"` | Modèle à utiliser |
+
+<div id="tools.web.fetch">
+#### `tools.web.fetch`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | Activer l'outil de récupération web |
+| `maxChars` | `number` | -- | Nombre maximal de caractères retournés du contenu récupéré |
+| `maxCharsCap` | `number` | `50000` | Plafond strict pour maxChars |
+| `timeoutSeconds` | `number` | -- | Délai d'attente de la requête de récupération |
+| `cacheTtlMinutes` | `number` | -- | TTL du cache pour le contenu récupéré |
+| `maxRedirects` | `number` | `3` | Nombre maximal de redirections à suivre |
+| `userAgent` | `string` | -- | Surcharge de l'en-tête User-Agent |
+| `readability` | `boolean` | `true` | Utiliser Readability pour extraire le contenu principal |
+| `firecrawl.enabled` | `boolean` | -- | Activer le repli Firecrawl (par défaut : `true` lorsque apiKey est définie) |
+| `firecrawl.apiKey` | `string` | -- | Clé API Firecrawl |
+| `firecrawl.baseUrl` | `string` | `https://api.firecrawl.dev` | URL de base Firecrawl |
+| `firecrawl.onlyMainContent` | `boolean` | `true` | Conserver uniquement le contenu principal |
+| `firecrawl.maxAgeMs` | `number` | -- | Âge maximal du contenu Firecrawl en cache (ms) |
+| `firecrawl.timeoutSeconds` | `number` | -- | Délai d'attente de la requête Firecrawl |
+
+<div id="tools.media">
+### `tools.media`
+</div>
+
+Outils de compréhension des médias (image, audio, vidéo) avec chaînes de repli de modèles et filtrage par portée.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `models` | `MediaUnderstandingModelConfig[]` | -- | Liste de modèles partagée appliquée à image/audio/vidéo |
+| `concurrency` | `number` | -- | Nombre maximal d'exécutions simultanées de compréhension des médias |
+| `image` | `MediaUnderstandingConfig` | -- | Configuration de la compréhension d'images |
+| `audio` | `MediaUnderstandingConfig` | -- | Configuration de la compréhension audio |
+| `video` | `MediaUnderstandingConfig` | -- | Configuration de la compréhension vidéo |
+
+<div id="mediaunderstandingconfig-per-modality">
+#### MediaUnderstandingConfig (par modalité)
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la compréhension pour cette modalité |
+| `scope` | `MediaUnderstandingScopeConfig` | -- | Filtrage par portée (action par défaut + règles) |
+| `maxBytes` | `number` | -- | Nombre maximal d'octets à envoyer |
+| `maxChars` | `number` | -- | Nombre maximal de caractères en sortie |
+| `prompt` | `string` | -- | Prompt par défaut |
+| `timeoutSeconds` | `number` | -- | Délai d'attente (secondes) |
+| `language` | `string` | -- | Indication de langue (audio) |
+| `providerOptions` | `Record<string, Record<string, string \| number \| boolean>>` | -- | Paramètres de requête spécifiques au fournisseur |
+| `baseUrl` | `string` | -- | Surcharge de l'URL de base |
+| `headers` | `Record<string, string>` | -- | En-têtes fusionnés dans les requêtes |
+| `attachments.mode` | `"first" \| "all"` | -- | Sélectionner le premier ou traiter plusieurs pièces jointes |
+| `attachments.maxAttachments` | `number` | `1` | Nombre maximal de pièces jointes à traiter |
+| `attachments.prefer` | `"first" \| "last" \| "path" \| "url"` | -- | Préférence d'ordre des pièces jointes |
+| `models` | `MediaUnderstandingModelConfig[]` | -- | Liste ordonnée de modèles (replis dans l'ordre) |
+
+<div id="tools.links">
+### `tools.links`
+</div>
+
+Configuration de l'outil de compréhension des liens.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la compréhension des liens |
+| `scope` | `MediaUnderstandingScopeConfig` | -- | Filtrage par portée |
+| `maxLinks` | `number` | -- | Nombre maximal de liens à traiter par message |
+| `timeoutSeconds` | `number` | -- | Délai d'attente par défaut (secondes) |
+| `models` | `LinkModelConfig[]` | -- | Liste ordonnée de modèles (replis dans l'ordre) |
+
+<div id="tools.message">
+### `tools.message`
+</div>
+
+Configuration de l'outil de message pour les envois inter-contextes et la diffusion.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `crossContext.allowWithinProvider` | `boolean` | `true` | Autoriser les envois vers d'autres canaux au sein du même fournisseur |
+| `crossContext.allowAcrossProviders` | `boolean` | `false` | Autoriser les envois entre différents fournisseurs |
+| `crossContext.marker.enabled` | `boolean` | `true` | Activer les marqueurs d'origine pour les envois inter-contextes |
+| `crossContext.marker.prefix` | `string` | -- | Modèle de préfixe textuel (supporte `{channel}`) |
+| `crossContext.marker.suffix` | `string` | -- | Modèle de suffixe textuel (supporte `{channel}`) |
+| `broadcast.enabled` | `boolean` | `true` | Activer l'action de diffusion |
+
+<div id="tools.agentToAgent">
+### `tools.agentToAgent`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Activer les outils de messagerie agent-à-agent |
+| `allow` | `string[]` | -- | Liste d'autorisation des IDs ou motifs d'agents |
+
+<div id="tools.elevated">
+### `tools.elevated`
+</div>
+
+Permissions d'exécution élevées pour la machine hôte.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | Activer ou désactiver le mode élevé |
+| `allowFrom` | `AgentElevatedAllowFromConfig` | -- | Expéditeurs approuvés pour `/elevated` (listes d'autorisation par fournisseur) |
+
+<div id="tools.subagents">
+### `tools.subagents`
+</div>
+
+Valeurs par défaut de la politique d'outils des sous-agents.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `model` | `string \| { primary?, fallbacks? }` | -- | Modèle par défaut pour les sous-agents créés |
+| `tools.allow` | `string[]` | -- | Liste d'autorisation des outils pour les sous-agents |
+| `tools.deny` | `string[]` | -- | Liste de refus des outils pour les sous-agents |
+
+<div id="tools.sandbox">
+### `tools.sandbox`
+</div>
+
+Valeurs par défaut de la politique d'outils du bac à sable (le refus l'emporte).
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `tools.allow` | `string[]` | -- | Liste d'autorisation des outils pour les sessions en bac à sable |
+| `tools.deny` | `string[]` | -- | Liste de refus des outils pour les sessions en bac à sable |
+
+---
+
+<div id="bindings">
+## `bindings`
+</div>
+
+Liaisons de routage agent-vers-canal. Tableau d'objets `AgentBinding`.
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `agentId` | `string` | ID de l'agent vers lequel router |
+| `match.channel` | `string` | Identifiant du canal (ex. `"telegram"`, `"discord"`) |
+| `match.accountId` | `string` | ID de compte optionnel |
+| `match.peer.kind` | `"dm" \| "group" \| "channel"` | Type de pair |
+| `match.peer.id` | `string` | Identifiant du pair |
+| `match.guildId` | `string` | ID de guilde Discord optionnel |
+| `match.teamId` | `string` | ID d'équipe Slack optionnel |
+
+---
+
+<div id="broadcast">
+## `broadcast`
+</div>
+
+Stratégie de routage de diffusion par pair.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `strategy` | `"parallel" \| "sequential"` | -- | Stratégie de traitement par défaut pour les pairs de diffusion |
+| `[peerId]` | `string[]` | -- | Associer des IDs de pairs à des tableaux d'IDs d'agents qui doivent tous traiter les messages |
+
+---
+
+<div id="audio">
+## `audio`
+</div>
+
+Configuration audio. Actuellement un espace réservé pour de futurs paramètres spécifiques à l'audio. Accepte des paires clé-valeur arbitraires.
+
+---
+
+<div id="messages">
+## `messages`
+</div>
+
+Configuration du traitement des messages.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `responsePrefix` | `string` | -- | Préfixe pour toutes les réponses sortantes. `"auto"` dérive `[{identity.name}]`. Supporte les modèles `{model}`, `{modelFull}`, `{provider}`, `{thinkingLevel}`, `{identity.name}` |
+| `groupChat` | `GroupChatConfig` | -- | Configuration du comportement en discussion de groupe |
+| `ackReaction` | `string` | -- | Réaction emoji pour accuser réception des messages entrants (vide = désactivé) |
+| `ackReactionScope` | `"group-mentions" \| "group-all" \| "direct" \| "all"` | `"group-mentions"` | Quand envoyer les réactions d'accusé de réception |
+| `removeAckAfterReply` | `boolean` | `false` | Supprimer la réaction d'accusé de réception après l'envoi de la réponse |
+
+<div id="messages.queue">
+### `messages.queue`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `mode` | `QueueMode` | -- | Mode de file d'attente : `steer`, `followup`, `collect`, `steer-backlog`, `steer+backlog`, `queue`, `interrupt` |
+| `byChannel` | `Record<string, QueueMode>` | -- | Surcharges du mode de file d'attente par canal (clés : `whatsapp`, `telegram`, `discord`, `googlechat`, `slack`, `signal`, `imessage`, `msteams`, `webchat`) |
+| `debounceMs` | `number` | -- | Délai anti-rebond pour les messages rapides |
+| `debounceMsByChannel` | `Record<string, number>` | -- | Surcharges anti-rebond par canal (ms) |
+| `cap` | `number` | -- | Taille maximale de la file d'attente |
+| `drop` | `"old" \| "new" \| "summarize"` | -- | Politique de suppression lorsque le plafond est atteint |
+
+<div id="messages.inbound">
+### `messages.inbound`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `debounceMs` | `number` | -- | Anti-rebond des messages entrants rapides par expéditeur |
+| `byChannel` | `Record<string, number>` | -- | Surcharges anti-rebond par canal |
+
+<div id="messages.tts">
+### `messages.tts`
+</div>
+
+Configuration de la synthèse vocale.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `auto` | `"off" \| "always" \| "inbound" \| "tagged"` | -- | Mode TTS automatique (préféré à `enabled`) |
+| `enabled` | `boolean` | -- | Hérité : activer le TTS automatique lorsque `auto` n'est pas défini |
+| `mode` | `"final" \| "all"` | -- | Appliquer le TTS aux réponses finales uniquement ou à toutes les réponses |
+| `provider` | `"elevenlabs" \| "openai" \| "edge"` | -- | Fournisseur TTS principal |
+| `summaryModel` | `string` | -- | Surcharge de modèle pour le résumé automatique TTS (fournisseur/modèle ou alias) |
+| `maxTextLength` | `number` | -- | Plafond strict du texte envoyé au TTS (caractères) |
+| `timeoutMs` | `number` | -- | Délai d'attente de la requête API (ms) |
+| `prefsPath` | `string` | -- | Chemin du fichier JSON de préférences TTS locales |
+
+<div id="messages.tts.modelOverrides">
+#### `messages.tts.modelOverrides`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer les surcharges fournies par le modèle pour le TTS |
+| `allowText` | `boolean` | -- | Autoriser les blocs de texte TTS fournis par le modèle |
+| `allowProvider` | `boolean` | -- | Autoriser la surcharge de fournisseur fournie par le modèle |
+| `allowVoice` | `boolean` | -- | Autoriser la surcharge de voix/voiceId fournie par le modèle |
+| `allowModelId` | `boolean` | -- | Autoriser la surcharge de modelId fournie par le modèle |
+| `allowVoiceSettings` | `boolean` | -- | Autoriser la surcharge des paramètres de voix fournie par le modèle |
+| `allowNormalization` | `boolean` | -- | Autoriser les surcharges de normalisation ou de langue fournies par le modèle |
+| `allowSeed` | `boolean` | -- | Autoriser la surcharge de seed fournie par le modèle |
+
+<div id="messages.tts.elevenlabs">
+#### `messages.tts.elevenlabs`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `apiKey` | `string` | -- | Clé API ElevenLabs |
+| `baseUrl` | `string` | -- | URL de base ElevenLabs |
+| `voiceId` | `string` | -- | ID de voix |
+| `modelId` | `string` | -- | ID de modèle |
+| `seed` | `number` | -- | Seed pour la génération déterministe |
+| `applyTextNormalization` | `"auto" \| "on" \| "off"` | -- | Normalisation du texte |
+| `languageCode` | `string` | -- | Code de langue |
+| `voiceSettings.stability` | `number` | -- | Stabilité de la voix |
+| `voiceSettings.similarityBoost` | `number` | -- | Amplification de la similarité |
+| `voiceSettings.style` | `number` | -- | Style |
+| `voiceSettings.useSpeakerBoost` | `boolean` | -- | Utiliser l'amplification du locuteur |
+| `voiceSettings.speed` | `number` | -- | Vitesse |
+
+<div id="messages.tts.openai">
+#### `messages.tts.openai`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `apiKey` | `string` | -- | Clé API OpenAI |
+| `model` | `string` | -- | Modèle TTS |
+| `voice` | `string` | -- | Identifiant de voix |
+
+<div id="messages.tts.edge">
+#### `messages.tts.edge`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Autoriser explicitement Edge TTS (aucune clé API requise) |
+| `voice` | `string` | -- | Identifiant de voix |
+| `lang` | `string` | -- | Langue |
+| `outputFormat` | `string` | -- | Format de sortie |
+| `pitch` | `string` | -- | Hauteur |
+| `rate` | `string` | -- | Débit |
+| `volume` | `string` | -- | Volume |
+| `saveSubtitles` | `boolean` | -- | Enregistrer les sous-titres |
+| `proxy` | `string` | -- | URL du proxy |
+| `timeoutMs` | `number` | -- | Délai d'attente (ms) |
+
+---
+
+<div id="commands">
+## `commands`
+</div>
+
+Enregistrement des commandes et contrôle d'accès.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `native` | `NativeCommandsSetting` | `"auto"` | Activer l'enregistrement des commandes natives |
+| `nativeSkills` | `NativeCommandsSetting` | `"auto"` | Activer l'enregistrement des commandes natives de compétences |
+| `text` | `boolean` | `true` | Activer l'analyse des commandes textuelles |
+| `bash` | `boolean` | `false` | Autoriser la commande de chat bash (`!` / alias `/bash`) |
+| `bashForegroundMs` | `number` | `2000` | Durée d'attente de bash avant la mise en arrière-plan (0 = immédiatement) |
+| `config` | `boolean` | `false` | Autoriser la commande `/config` |
+| `debug` | `boolean` | `false` | Autoriser la commande `/debug` |
+| `restart` | `boolean` | `false` | Autoriser les commandes/outils de redémarrage |
+| `useAccessGroups` | `boolean` | `true` | Appliquer les listes d'autorisation/politiques des groupes d'accès pour les commandes |
+
+---
+
+<div id="approvals">
+## `approvals`
+</div>
+
+Transfert des approbations d'exécution vers les canaux de discussion.
+
+<div id="approvals.exec">
+### `approvals.exec`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Activer le transfert des approbations d'exécution vers les canaux de discussion |
+| `mode` | `"session" \| "targets" \| "both"` | `"session"` | Mode de livraison |
+| `agentFilter` | `string[]` | -- | Transférer uniquement pour ces IDs d'agents (omettre = tous) |
+| `sessionFilter` | `string[]` | -- | Transférer uniquement pour ces motifs de clés de session (sous-chaîne ou regex) |
+| `targets` | `ExecApprovalForwardTarget[]` | -- | Cibles de livraison explicites (utilisées lorsque le mode inclut `"targets"`) |
+
+<div id="execapprovalforwardtarget">
+#### ExecApprovalForwardTarget
+</div>
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `channel` | `string` | ID du canal (ex. `"discord"`, `"slack"`) |
+| `to` | `string` | ID de destination (ID de canal/utilisateur selon le canal) |
+| `accountId` | `string` | ID de compte optionnel pour les canaux multi-comptes |
+| `threadId` | `string \| number` | ID de fil optionnel |
+
+---
+
+<div id="session">
+## `session`
+</div>
+
+Portée de session, délai d'inactivité et configuration de réinitialisation.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `scope` | `SessionScope` | -- | Stratégie de portée de session |
+| `dmScope` | `DmScope` | `"main"` | Portée de session des messages directs |
+| `identityLinks` | `Record<string, string[]>` | -- | Associer des identités préfixées par plateforme aux pairs DM canoniques |
+| `resetTriggers` | `string[]` | -- | Motifs de messages qui déclenchent une réinitialisation de session |
+| `idleMinutes` | `number` | -- | Minutes d'inactivité avant la réinitialisation de session |
+| `reset` | `SessionResetConfig` | -- | Configuration globale de réinitialisation de session |
+| `resetByType` | `SessionResetByTypeConfig` | -- | Surcharges de réinitialisation par type (dm, group, thread) |
+| `resetByChannel` | `Record<string, SessionResetConfig>` | -- | Surcharges de réinitialisation par canal |
+| `store` | `string` | -- | Chemin du stockage de session |
+| `typingIntervalSeconds` | `number` | -- | Intervalle de l'indicateur de saisie |
+| `typingMode` | `TypingMode` | -- | Mode de l'indicateur de saisie |
+| `mainKey` | `string` | -- | Clé de session principale |
+| `sendPolicy` | `SessionSendPolicyConfig` | -- | Politique d'envoi de session |
+| `agentToAgent.maxPingPongTurns` | `number` | `5` | Nombre maximal d'échanges ping-pong entre demandeur/cible (0--5) |
+
+---
+
+<div id="web">
+## `web`
+</div>
+
+Configuration du fournisseur web WhatsApp.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | Activer le fournisseur web WhatsApp |
+| `heartbeatSeconds` | `number` | -- | Intervalle de battement de cœur |
+| `reconnect.initialMs` | `number` | -- | Délai initial de reconnexion (ms) |
+| `reconnect.maxMs` | `number` | -- | Délai maximal de reconnexion (ms) |
+| `reconnect.factor` | `number` | -- | Facteur d'attente exponentielle |
+| `reconnect.jitter` | `number` | -- | Facteur de gigue |
+| `reconnect.maxAttempts` | `number` | -- | Nombre maximal de tentatives de reconnexion (0 = illimité) |
+
+---
+
+<div id="connectors">
+## `connectors`
+</div>
+
+Configuration des connecteurs de messagerie. Chaque clé est un ID de connecteur (ex. `telegram`, `discord`, `slack`). La clé `channels` est obsolète en faveur de `connectors`.
+
+```json
+{
+  "connectors": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "123456:ABC..."
+    },
+    "discord": {
+      "enabled": true,
+      "token": "Bot ..."
+    }
+  }
+}
+```
+
+Champs communs par connecteur :
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `enabled` | `boolean` | Activer/désactiver sans supprimer la configuration |
+| `botToken` / `token` / `apiKey` | `string` | Identifiant d'authentification |
+| `dmPolicy` | `"open" \| "pairing" \| "closed"` | Contrôle d'accès des messages directs |
+| `configWrites` | `boolean` | Autoriser le connecteur à écrire la configuration lors d'événements |
+
+<Warning>
+La clé `channels` est obsolète. Migrez vers `connectors` pour la compatibilité future.
+</Warning>
+
+---
+
+<div id="cron">
+## `cron`
+</div>
+
+Configuration des tâches planifiées.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer les tâches cron |
+| `store` | `string` | -- | Chemin de persistance de l'état cron |
+| `maxConcurrentRuns` | `number` | -- | Nombre maximal d'exécutions cron simultanées |
+
+---
+
+<div id="hooks">
+## `hooks`
+</div>
+
+Système de hooks événementiels : webhooks, intégration Gmail et hooks d'événements internes de l'agent.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer le système de hooks |
+| `path` | `string` | -- | Chemin du point de terminaison webhook |
+| `token` | `string` | -- | Jeton d'authentification webhook |
+| `maxBodyBytes` | `number` | -- | Taille maximale du corps webhook |
+| `presets` | `string[]` | -- | Préréglages de hooks à charger |
+| `transformsDir` | `string` | -- | Répertoire des modules de transformation de hooks |
+| `mappings` | `HookMappingConfig[]` | -- | Tableau des règles de mappage de hooks |
+
+<div id="hook-mapping-config">
+### Hook Mapping Config (`hooks.mappings[]`)
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | Identifiant du mappage |
+| `match.path` | `string` | -- | Motif de chemin URL à correspondre |
+| `match.source` | `string` | -- | Filtre de source |
+| `action` | `"wake" \| "agent"` | -- | Type d'action du hook |
+| `wakeMode` | `"now" \| "next-heartbeat"` | -- | Quand réveiller l'agent |
+| `name` | `string` | -- | Nom du hook |
+| `sessionKey` | `string` | -- | Surcharge de la clé de session |
+| `messageTemplate` | `string` | -- | Modèle pour le contenu du message |
+| `textTemplate` | `string` | -- | Modèle pour le contenu textuel |
+| `deliver` | `boolean` | -- | Livrer ou non le résultat |
+| `allowUnsafeExternalContent` | `boolean` | -- | **Dangereux :** Désactiver l'encapsulation de sécurité du contenu externe |
+| `channel` | `string` | -- | Canal cible : `"last"`, `"whatsapp"`, `"telegram"`, `"discord"`, `"googlechat"`, `"slack"`, `"signal"`, `"imessage"`, `"msteams"` |
+| `to` | `string` | -- | ID de destination |
+| `model` | `string` | -- | Surcharge de modèle pour ce hook (fournisseur/modèle) |
+| `thinking` | `string` | -- | Surcharge du niveau de réflexion |
+| `timeoutSeconds` | `number` | -- | Délai d'attente du traitement du hook |
+| `transform.module` | `string` | -- | Chemin du module de transformation |
+| `transform.export` | `string` | -- | Nom de l'export du module de transformation |
+
+<div id="hooks.gmail">
+### `hooks.gmail`
+</div>
+
+Intégration webhook Gmail via Google Pub/Sub.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `account` | `string` | -- | Compte Gmail |
+| `label` | `string` | -- | Libellé Gmail à surveiller |
+| `topic` | `string` | -- | Sujet Pub/Sub |
+| `subscription` | `string` | -- | Abonnement Pub/Sub |
+| `pushToken` | `string` | -- | Jeton de notification push |
+| `hookUrl` | `string` | -- | URL du webhook |
+| `includeBody` | `boolean` | -- | Inclure le corps de l'e-mail |
+| `maxBytes` | `number` | -- | Nombre maximal d'octets du corps de l'e-mail |
+| `renewEveryMinutes` | `number` | -- | Intervalle de renouvellement de la surveillance (minutes) |
+| `allowUnsafeExternalContent` | `boolean` | -- | **Dangereux :** Désactiver l'encapsulation de sécurité du contenu externe |
+| `serve.bind` | `string` | -- | Adresse de liaison du serveur local |
+| `serve.port` | `number` | -- | Port du serveur local |
+| `serve.path` | `string` | -- | Chemin du serveur local |
+| `tailscale.mode` | `"off" \| "serve" \| "funnel"` | -- | Mode d'exposition Tailscale |
+| `tailscale.path` | `string` | -- | Chemin Tailscale |
+| `tailscale.target` | `string` | -- | Cible serve/funnel Tailscale (port, host:port, ou URL complète) |
+| `model` | `string` | -- | Surcharge de modèle pour le traitement du hook Gmail |
+| `thinking` | `"off" \| "minimal" \| "low" \| "medium" \| "high"` | -- | Surcharge du niveau de réflexion |
+
+<div id="hooks.internal">
+### `hooks.internal`
+</div>
+
+Hooks d'événements internes de l'agent.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer le système de hooks internes |
+| `handlers` | `InternalHookHandlerConfig[]` | -- | Liste héritée de gestionnaires |
+| `entries` | `Record<string, HookConfig>` | -- | Surcharges de configuration par hook (`enabled`, `env` et clés arbitraires) |
+| `load.extraDirs` | `string[]` | -- | Répertoires supplémentaires de hooks à analyser |
+| `installs` | `Record<string, HookInstallRecord>` | -- | Packs de hooks installés |
+
+<div id="internalhookhandlerconfig">
+#### InternalHookHandlerConfig
+</div>
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `event` | `string` | Clé d'événement à écouter (ex. `"command:new"`, `"session:start"`) |
+| `module` | `string` | Chemin du module gestionnaire |
+| `export` | `string` | Nom de l'export du module (par défaut : `"default"`) |
+
+<div id="hookinstallrecord">
+#### HookInstallRecord
+</div>
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `source` | `"npm" \| "archive" \| "path"` | Source d'installation |
+| `spec` | `string` | Spécification npm ou URL d'archive |
+| `sourcePath` | `string` | Chemin source d'origine |
+| `installPath` | `string` | Chemin d'installation local |
+| `version` | `string` | Version installée |
+| `installedAt` | `string` | Horodatage ISO de l'installation |
+| `hooks` | `string[]` | Noms de hooks fournis par ce pack |
+
+---
+
+<div id="discovery">
+## `discovery`
+</div>
+
+Configuration de la découverte réseau (mDNS et DNS-SD à zone étendue).
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `wideArea.enabled` | `boolean` | -- | Activer la découverte DNS-SD à zone étendue |
+| `wideArea.domain` | `string` | -- | Domaine DNS-SD unicast (ex. `"eliza.internal"`) |
+| `mdns.mode` | `"off" \| "minimal" \| "full"` | `"minimal"` | Mode de diffusion mDNS (`off` = désactivé, `minimal` = omettre cliPath/sshPort, `full` = inclure tout) |
+
+---
+
+<div id="talk">
+## `talk`
+</div>
+
+Paramètres vocaux du mode Talk ElevenLabs.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `voiceId` | `string` | -- | ID de voix ElevenLabs par défaut |
+| `voiceAliases` | `Record<string, string>` | -- | Correspondance nom de voix vers ID de voix ElevenLabs |
+| `modelId` | `string` | -- | ID de modèle ElevenLabs par défaut |
+| `outputFormat` | `string` | -- | Format de sortie par défaut (ex. `mp3_44100_128`) |
+| `apiKey` | `string` | -- | Clé API ElevenLabs (repli sur `ELEVENLABS_API_KEY`) |
+| `interruptOnSpeech` | `boolean` | `true` | Arrêter de parler lorsque l'utilisateur commence à parler |
+
+---
+
+<div id="gateway">
+## `gateway`
+</div>
+
+Configuration du serveur passerelle : port, adresse de liaison, TLS, auth, points de terminaison HTTP et routage de nœuds.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `port` | `number` | `18789` | Port WS + HTTP de la passerelle |
+| `mode` | `"local" \| "remote"` | -- | Mode passerelle (`"remote"` désactive le démarrage local) |
+| `bind` | `"auto" \| "lan" \| "loopback" \| "tailnet" \| "custom"` | `"loopback"` | Politique d'adresse de liaison |
+| `customBindHost` | `string` | -- | IP personnalisée pour `bind="custom"` (repli : `0.0.0.0`) |
+| `trustedProxies` | `string[]` | -- | IPs des proxys inverses de confiance pour `x-forwarded-for` |
+
+<div id="gateway.tls">
+### `gateway.tls`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer TLS pour le serveur passerelle |
+| `autoGenerate` | `boolean` | `true` | Générer automatiquement un certificat auto-signé si cert/clé sont manquants |
+| `certPath` | `string` | -- | Chemin du certificat PEM |
+| `keyPath` | `string` | -- | Chemin de la clé privée PEM |
+| `caPath` | `string` | -- | Chemin du bundle CA pour mTLS ou racines personnalisées |
+
+<div id="gateway.auth">
+### `gateway.auth`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `mode` | `"token" \| "password"` | `"token"` | Mode d'authentification |
+| `token` | `string` | -- | Jeton partagé pour le mode jeton |
+| `password` | `string` | -- | Mot de passe partagé pour le mode mot de passe |
+| `allowTailscale` | `boolean` | -- | Autoriser les en-têtes d'identité Tailscale lorsque le mode serve est activé |
+
+<div id="gateway.controlUi">
+### `gateway.controlUi`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Servir l'interface de contrôle (par défaut : `/`) |
+| `basePath` | `string` | -- | Préfixe du chemin de base (ex. `"/eliza"`) |
+| `root` | `string` | -- | Racine du système de fichiers pour les ressources de l'interface de contrôle (par défaut : `dist/control-ui`) |
+| `allowedOrigins` | `string[]` | -- | Origines navigateur autorisées pour les connexions WebSocket |
+| `allowInsecureAuth` | `boolean` | `false` | Autoriser l'auth par jeton seul sur HTTP non sécurisé |
+| `dangerouslyDisableDeviceAuth` | `boolean` | `false` | **Dangereux :** Désactiver les vérifications d'identité d'appareil |
+
+<div id="gateway.tailscale">
+### `gateway.tailscale`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `mode` | `"off" \| "serve" \| "funnel"` | -- | Mode d'exposition Tailscale |
+| `resetOnExit` | `boolean` | -- | Réinitialiser la configuration serve/funnel à l'arrêt |
+
+<div id="gateway.remote">
+### `gateway.remote`
+</div>
+
+Paramètres de connexion à la passerelle distante.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `url` | `string` | -- | URL WebSocket de la passerelle distante (`ws://` ou `wss://`) |
+| `transport` | `"ssh" \| "direct"` | -- | Transport pour les connexions distantes macOS |
+| `token` | `string` | -- | Jeton pour l'authentification distante |
+| `password` | `string` | -- | Mot de passe pour l'authentification distante |
+| `tlsFingerprint` | `string` | -- | Empreinte de certificat TLS attendue (SHA-256) |
+| `sshTarget` | `string` | -- | Cible SSH pour le tunneling (`user@host`) |
+| `sshIdentity` | `string` | -- | Chemin du fichier d'identité SSH |
+
+<div id="gateway.reload">
+### `gateway.reload`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `mode` | `"off" \| "restart" \| "hot" \| "hybrid"` | `"hybrid"` | Stratégie de rechargement pour les changements de configuration |
+| `debounceMs` | `number` | `300` | Fenêtre anti-rebond pour les rechargements de configuration (ms) |
+
+<div id="gateway.http">
+### `gateway.http`
+</div>
+
+Configuration des points de terminaison de l'API HTTP.
+
+<div id="gateway.http.endpoints.chatCompletions">
+#### `gateway.http.endpoints.chatCompletions`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Servir `POST /v1/chat/completions` |
+
+<div id="gateway.http.endpoints.responses">
+#### `gateway.http.endpoints.responses`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Servir `POST /v1/responses` (API OpenResponses) |
+| `maxBodyBytes` | `number` | 20 Mo | Taille maximale du corps de requête (octets) |
+| `files.allowUrl` | `boolean` | `true` | Autoriser les récupérations d'URL pour `input_file` |
+| `files.allowedMimes` | `string[]` | -- | Types MIME autorisés (insensible à la casse) |
+| `files.maxBytes` | `number` | 5 Mo | Nombre maximal d'octets par fichier |
+| `files.maxChars` | `number` | 200k | Nombre maximal de caractères décodés par fichier |
+| `files.maxRedirects` | `number` | `3` | Nombre maximal de redirections lors de la récupération d'une URL |
+| `files.timeoutMs` | `number` | 10s | Délai d'attente de récupération (ms) |
+| `files.pdf.maxPages` | `number` | `4` | Nombre maximal de pages à analyser/rendre |
+| `files.pdf.maxPixels` | `number` | 4M | Nombre maximal de pixels par page rendue |
+| `files.pdf.minTextChars` | `number` | `200` | Longueur minimale de texte pour ignorer la rastérisation (caractères) |
+| `images.allowUrl` | `boolean` | `true` | Autoriser les récupérations d'URL pour `input_image` |
+| `images.allowedMimes` | `string[]` | -- | Types MIME autorisés (insensible à la casse) |
+| `images.maxBytes` | `number` | 10 Mo | Nombre maximal d'octets par image |
+| `images.maxRedirects` | `number` | `3` | Nombre maximal de redirections |
+| `images.timeoutMs` | `number` | 10s | Délai d'attente de récupération (ms) |
+
+<div id="gateway.nodes">
+### `gateway.nodes`
+</div>
+
+Configuration du routage de nœuds.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `browser.mode` | `"auto" \| "manual" \| "off"` | `"auto"` | Politique de routage du navigateur pour les proxys navigateur hébergés sur nœud |
+| `browser.node` | `string` | -- | Épingler sur un ID/nom de nœud spécifique |
+| `allowCommands` | `string[]` | -- | Commandes `node.invoke` supplémentaires à autoriser |
+| `denyCommands` | `string[]` | -- | Commandes à refuser même si dans les valeurs par défaut ou les déclarations du nœud |
+
+---
+
+<div id="memory">
+## `memory`
+</div>
+
+Configuration du backend de mémoire.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `backend` | `"builtin" \| "qmd"` | `"builtin"` | Backend de mémoire |
+| `citations` | `"auto" \| "on" \| "off"` | -- | Mode de citation |
+| `qmd` | `MemoryQmdConfig` | -- | Configuration du backend de mémoire QMD |
+
+<div id="memory.qmd">
+### `memory.qmd`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `command` | `string` | -- | Commande binaire QMD |
+| `includeDefaultMemory` | `boolean` | -- | Inclure le chemin mémoire par défaut |
+| `paths` | `MemoryQmdIndexPath[]` | -- | Chemins d'index (chacun : `{ path, name?, pattern? }`) |
+| `sessions.enabled` | `boolean` | -- | Activer l'indexation des sessions |
+| `sessions.exportDir` | `string` | -- | Répertoire d'export des sessions |
+| `sessions.retentionDays` | `number` | -- | Rétention des sessions (jours) |
+| `update.interval` | `string` | -- | Intervalle de mise à jour |
+| `update.debounceMs` | `number` | -- | Anti-rebond de mise à jour (ms) |
+| `update.onBoot` | `boolean` | -- | Exécuter la mise à jour au démarrage |
+| `update.embedInterval` | `string` | -- | Intervalle de mise à jour des embeddings |
+| `limits.maxResults` | `number` | -- | Nombre maximal de résultats de recherche |
+| `limits.maxSnippetChars` | `number` | -- | Nombre maximal de caractères par extrait |
+| `limits.maxInjectedChars` | `number` | -- | Nombre maximal de caractères injectés |
+| `limits.timeoutMs` | `number` | -- | Délai d'attente de recherche (ms) |
+| `scope` | `SessionSendPolicyConfig` | -- | Politique de portée |
+
+---
+
+<div id="embedding">
+## `embedding`
+</div>
+
+Configuration du modèle d'embedding local (modèles GGUF avec support GPU Metal).
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `model` | `string` | -- | Nom de fichier du modèle GGUF (ex. `"nomic-embed-text-v1.5.Q5_K_M.gguf"`) |
+| `modelRepo` | `string` | -- | Dépôt/source Hugging Face pour la résolution du modèle |
+| `dimensions` | `number` | `768` | Dimension du vecteur d'embedding |
+| `contextSize` | `number` | -- | Taille de la fenêtre de contexte d'embedding (doit correspondre au modèle) |
+| `gpuLayers` | `number \| "auto" \| "max"` | -- | Couches GPU pour le chargement du modèle |
+| `idleTimeoutMinutes` | `number` | `30` | Minutes d'inactivité avant le déchargement du modèle de la mémoire (0 = jamais) |
+
+---
+
+<div id="database">
+## `database`
+</div>
+
+Fournisseur de base de données et configuration de connexion.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `provider` | `"pglite" \| "postgres"` | `"pglite"` | Fournisseur de base de données actif |
+
+<div id="database.pglite">
+### `database.pglite`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `dataDir` | `string` | `~/.eliza/workspace/.eliza/.elizadb` | Répertoire de données PGLite |
+
+<div id="database.postgres">
+### `database.postgres`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `connectionString` | `string` | -- | Chaîne de connexion PostgreSQL complète (prioritaire sur les champs individuels) |
+| `host` | `string` | `localhost` | Hôte PostgreSQL |
+| `port` | `number` | `5432` | Port PostgreSQL |
+| `database` | `string` | -- | Nom de la base de données |
+| `user` | `string` | -- | Utilisateur de la base de données |
+| `password` | `string` | -- | Mot de passe de la base de données |
+| `ssl` | `boolean` | `false` | Activer la connexion SSL |
+
+---
+
+<div id="cloud">
+## `cloud`
+</div>
+
+Intégration Eliza Cloud pour le provisionnement d'agents distants, le proxying d'inférence et la sauvegarde d'état.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | Activer l'intégration Eliza Cloud |
+| `provider` | `string` | -- | ID du fournisseur cloud (ex. `"elizacloud"` ; défini lors de l'intégration) |
+| `baseUrl` | `string` | `https://elizacloud.ai/api/v1` | URL de base de l'API |
+| `apiKey` | `string` | -- | Clé API en cache (stockée chiffrée via l'auth de la passerelle) |
+| `inferenceMode` | `"cloud" \| "byok" \| "local"` | -- | Routage d'inférence : `cloud` (proxié), `byok` (clés utilisateur), `local` (sans cloud) |
+| `autoProvision` | `boolean` | `false` | Déployer automatiquement les agents dans le cloud à la création |
+
+<div id="cloud.bridge">
+### `cloud.bridge`
+</div>
+
+Paramètres de communication WebSocket pour les agents cloud.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `reconnectIntervalMs` | `number` | `3000` | Base de l'intervalle de reconnexion (ms) |
+| `maxReconnectAttempts` | `number` | `20` | Nombre maximal de tentatives de reconnexion |
+| `heartbeatIntervalMs` | `number` | `30000` | Intervalle de battement de cœur (ms) |
+
+<div id="cloud.backup">
+### `cloud.backup`
+</div>
+
+Paramètres d'instantané de l'état de l'agent.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `autoBackupIntervalMs` | `number` | `3600000` (1 heure) | Intervalle de sauvegarde automatique (ms) |
+| `maxSnapshots` | `number` | `10` | Nombre maximal d'instantanés automatiques à conserver |
+
+<div id="cloud.container">
+### `cloud.container`
+</div>
+
+Paramètres de conteneur par défaut pour les nouveaux déploiements cloud.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `defaultImage` | `string` | -- | URI d'image ECR par défaut pour les conteneurs d'agents |
+| `defaultArchitecture` | `"arm64" \| "x86_64"` | `"arm64"` | Architecture CPU par défaut |
+| `defaultCpu` | `number` | `1792` | Unités CPU par défaut |
+| `defaultMemory` | `number` | `1792` | Mémoire par défaut (Mo) |
+| `defaultPort` | `number` | `2138` | Port de conteneur par défaut |
+
+---
+
+<div id="x402">
+## `x402`
+</div>
+
+Configuration du protocole de paiement HTTP x402.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer les paiements x402 |
+| `privateKey` | `string` | -- | Clé privée du portefeuille |
+| `network` | `string` | -- | Identifiant du réseau |
+| `payTo` | `string` | -- | Adresse du destinataire du paiement |
+| `facilitatorUrl` | `string` | -- | URL du service facilitateur |
+| `maxPaymentUsd` | `number` | -- | Paiement unique maximal (USD) |
+| `maxTotalUsd` | `number` | -- | Total maximal des paiements (USD) |
+| `dbPath` | `string` | -- | Chemin de la base de données des paiements |
+
+---
+
+<div id="media">
+## `media`
+</div>
+
+Configuration de la génération de médias (fournisseurs d'image, vidéo, audio, vision).
+
+<div id="media.image">
+### `media.image`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la génération d'images |
+| `mode` | `"cloud" \| "own-key"` | -- | Cloud (proxié) ou clé API propre |
+| `provider` | `"cloud" \| "fal" \| "openai" \| "google" \| "xai"` | -- | Fournisseur d'images |
+| `defaultSize` | `string` | -- | Taille d'image par défaut |
+| `fal` | `{ apiKey?, model?, baseUrl? }` | -- | Configuration Fal.ai |
+| `openai` | `{ apiKey?, model?, quality?, style? }` | -- | Configuration OpenAI (`quality` : `"standard"` ou `"hd"`, `style` : `"natural"` ou `"vivid"`) |
+| `google` | `{ apiKey?, model?, aspectRatio? }` | -- | Configuration Google |
+| `xai` | `{ apiKey?, model? }` | -- | Configuration xAI |
+
+<div id="media.video">
+### `media.video`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la génération vidéo |
+| `mode` | `"cloud" \| "own-key"` | -- | Cloud (proxié) ou clé API propre |
+| `provider` | `"cloud" \| "fal" \| "openai" \| "google"` | -- | Fournisseur vidéo |
+| `defaultDuration` | `number` | -- | Durée vidéo par défaut |
+| `fal` | `{ apiKey?, model?, baseUrl? }` | -- | Configuration Fal.ai |
+| `openai` | `{ apiKey?, model? }` | -- | Configuration OpenAI |
+| `google` | `{ apiKey?, model? }` | -- | Configuration Google |
+
+<div id="media.audio">
+### `media.audio`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la génération audio |
+| `mode` | `"cloud" \| "own-key"` | -- | Cloud (proxié) ou clé API propre |
+| `provider` | `"cloud" \| "suno" \| "elevenlabs"` | -- | Fournisseur audio |
+| `suno` | `{ apiKey?, model?, baseUrl? }` | -- | Configuration Suno |
+| `elevenlabs` | `{ apiKey?, duration? }` | -- | Configuration ElevenLabs SFX |
+
+<div id="media.vision">
+### `media.vision`
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | Activer la vision (compréhension d'images) |
+| `mode` | `"cloud" \| "own-key"` | -- | Cloud (proxié) ou clé API propre |
+| `provider` | `"cloud" \| "openai" \| "google" \| "anthropic" \| "xai" \| "ollama"` | -- | Fournisseur de vision |
+| `openai` | `{ apiKey?, model?, maxTokens? }` | -- | Configuration OpenAI |
+| `google` | `{ apiKey?, model? }` | -- | Configuration Google |
+| `anthropic` | `{ apiKey?, model? }` | -- | Configuration Anthropic |
+| `xai` | `{ apiKey?, model? }` | -- | Configuration xAI |
+| `ollama` | `{ baseUrl?, model?, maxTokens?, autoDownload? }` | -- | Configuration Ollama |
+
+---
+
+<div id="mcp">
+## `mcp`
+</div>
+
+Définitions de serveurs MCP (Model Context Protocol).
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "my-server": {
+        "type": "stdio",
+        "command": "bunx",
+        "args": ["-y", "@some/mcp-server"],
+        "env": { "API_KEY": "..." }
+      },
+      "remote-server": {
+        "type": "sse",
+        "url": "https://mcp.example.com/sse",
+        "headers": { "Authorization": "Bearer ..." }
+      }
+    }
+  }
+}
+```
+
+<div id="mcp-server-entry">
+### Entrée de serveur MCP
+</div>
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `type` | `string` | -- | Type de serveur (ex. `"stdio"`, `"sse"`) |
+| `command` | `string` | -- | Commande à exécuter (pour le type `stdio`) |
+| `args` | `string[]` | -- | Arguments de la commande |
+| `url` | `string` | -- | URL du serveur (pour les types `sse` ou distants) |
+| `env` | `Record<string, string>` | -- | Variables d'environnement pour le processus serveur |
+| `headers` | `Record<string, string>` | -- | En-têtes HTTP pour les connexions distantes |
+| `cwd` | `string` | -- | Répertoire de travail pour le processus serveur |
+| `timeoutInMillis` | `number` | -- | Délai d'attente de connexion (ms) |
+
+---
+
+<div id="registry">
+## `registry`
+</div>
+
+Configuration du registre d'agents ERC-8004 et de la collection NFT ElizaMaker.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `mainnetRpc` | `string` | -- | URL RPC du mainnet Ethereum (ou Anvil local) |
+| `registryAddress` | `string` | -- | Adresse du contrat ElizaAgentRegistry |
+| `collectionAddress` | `string` | -- | Adresse du contrat de collection ElizaMaker |
+
+---
+
+<div id="features">
+## `features`
+</div>
+
+Indicateurs de fonctionnalités pour l'activation automatique des plugins et les bascules de fonctionnalités. Chaque clé correspond soit à un booléen, soit à un objet avec `enabled` et des options supplémentaires.
+
+```json
+{
+  "features": {
+    "shellEnabled": true,
+    "someFeature": { "enabled": true, "option": "value" }
+  }
+}
+```
+
+---
+
+<div id="customactions">
+## `customActions`
+</div>
+
+Actions personnalisées définies par l'utilisateur pour l'agent. Tableau d'objets `CustomActionDef`.
+
+| Champ | Type | Défaut | Description |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | **Requis.** Identifiant unique de l'action |
+| `name` | `string` | -- | **Requis.** Nom d'affichage de l'action |
+| `description` | `string` | -- | **Requis.** Description de l'action |
+| `similes` | `string[]` | -- | Phrases de déclenchement alternatives |
+| `parameters` | `Array<{ name, description, required }>` | -- | **Requis.** Paramètres de l'action |
+| `handler` | `CustomActionHandler` | -- | **Requis.** Définition du gestionnaire (voir sous-table) |
+| `enabled` | `boolean` | -- | **Requis.** Si l'action est activée |
+| `createdAt` | `string` | -- | **Requis.** Horodatage ISO de création |
+| `updatedAt` | `string` | -- | **Requis.** Horodatage ISO de dernière mise à jour |
+
+<div id="customactionhandler">
+### CustomActionHandler
+</div>
+
+Le gestionnaire est l'un des trois types :
+
+**Gestionnaire HTTP :**
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `type` | `"http"` | Type de gestionnaire |
+| `method` | `string` | Méthode HTTP |
+| `url` | `string` | URL de la requête |
+| `headers` | `Record<string, string>` | En-têtes de requête optionnels |
+| `bodyTemplate` | `string` | Modèle de corps de requête optionnel |
+
+**Gestionnaire shell :**
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `type` | `"shell"` | Type de gestionnaire |
+| `command` | `string` | Commande shell à exécuter |
+
+**Gestionnaire code :**
+
+| Champ | Type | Description |
+|-------|------|-------------|
+| `type` | `"code"` | Type de gestionnaire |
+| `code` | `string` | Code JavaScript à exécuter |

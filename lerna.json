@@ -1,0 +1,47 @@
+{
+  "version": "2.0.0-beta.1",
+  "packages": [
+    "packages/*",
+    "packages/native-plugins/*",
+    "packages/app-core/platforms/*",
+    "plugins/*",
+    "cloud/packages/sdk"
+  ],
+  "npmClient": "bun",
+  "command": {
+    "publish": {
+      "message": "chore(release): publish beta",
+      "registry": "https://registry.npmjs.org",
+      "allowBranch": [
+        "main",
+        "develop",
+        "v2.0.0",
+        "release/*",
+        "new-beginnings",
+        "beta"
+      ],
+      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
+      "verifyAccess": false
+    },
+    "version": {
+      "allowBranch": [
+        "main",
+        "develop",
+        "v2.0.0",
+        "release/*",
+        "new-beginnings",
+        "beta"
+      ],
+      "message": "chore(release): publish %s",
+      "push": true,
+      "gitTagVersion": true,
+      "tagVersionPrefix": "v",
+      "signGitTag": false,
+      "signGitCommit": false,
+      "forcePublish": "*",
+      "exact": true
+    }
+  },
+  "stream": true,
+  "concurrency": 1
+}

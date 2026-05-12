@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "trust-marketplace-benchmark"
+version = "0.1.0"
+description = "Benchmark suite for Social Alpha trust-scoring systems on the Trenches Chat dataset"
+requires-python = ">=3.10"
+dependencies = [
+    "eliza-adapter",
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-learn>=1.3",
+    "rich>=13.0",
+    "click>=8.1",
+    "python-dotenv>=1.0",
+]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
+
+[project.optional-dependencies]
+dev = ["pytest>=7.4", "pytest-cov", "ruff"]
+viz = ["matplotlib>=3.7", "seaborn>=0.12"]
+eliza = ["aiohttp>=3.9"]
+
+[project.scripts]
+benchmark = "benchmark.harness:main"
+
+[tool.setuptools.packages.find]
+include = ["benchmark*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

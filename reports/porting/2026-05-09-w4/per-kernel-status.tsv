@@ -1,0 +1,13 @@
+file	arch	status	ptx_bytes	device_kernels
+qjl.cu	sm_80	OK	131272	3
+qjl.cu	sm_86	OK	131272	3
+qjl.cu	sm_89	OK	131272	3
+qjl.cu	sm_90	OK	131272	3
+polarquant.cu	sm_80	OK	237368	5
+polarquant.cu	sm_86	OK	237368	5
+polarquant.cu	sm_89	OK	237368	5
+polarquant.cu	sm_90	OK	237368	5
+turbo-tcq.cu	sm_80	OK	119634	2
+turbo-tcq.cu	sm_86	OK	119634	2
+turbo-tcq.cu	sm_89	OK	119634	2
+turbo-tcq.cu	sm_90	OK	119634	2

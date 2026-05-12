@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "allowJs": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@elizaos/cloud-ui": ["./src/index.ts"],
+      "@/*": ["./src/*"],
+      "@/lib/*": ["../lib/*"],
+      "@/db/*": ["../db/*"],
+      "@/types/*": ["../types/*"]
+    }
+  },
+  "include": ["src", "../types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist", "**/*.stories.ts", "**/*.stories.tsx"]
+}

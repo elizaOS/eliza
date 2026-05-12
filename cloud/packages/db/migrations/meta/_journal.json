@@ -1,0 +1,790 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1770081931615,
+      "tag": "0000_last_reavers",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1770081931616,
+      "tag": "0001_certain_stellaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770081931617,
+      "tag": "0002_material_karen_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1770081931618,
+      "tag": "0003_easy_molten_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1770081931619,
+      "tag": "0004_sweet_the_enforcers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1770081931620,
+      "tag": "0005_add_project_name_to_alb_priorities",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1770081931621,
+      "tag": "0006_add-unique-username-constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1770081931622,
+      "tag": "0007_add_deployment_status_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1770081931623,
+      "tag": "0008_add_twitter_automation_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1770081931624,
+      "tag": "0009_add_linked_characters_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1770081931625,
+      "tag": "0010_add_telegram_automation_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1770081931626,
+      "tag": "0011_add_telegram_chats",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1770081931627,
+      "tag": "0012_add_discord_guilds",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1770081931628,
+      "tag": "0013_add_discord_channels",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1770081931629,
+      "tag": "0014_add_discord_automation_to_apps",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1770081931630,
+      "tag": "0015_add_container_billing_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1770081931631,
+      "tag": "0016_update_payout_threshold",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1764259200000,
+      "tag": "0017_add_organization_encryption_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1770081931632,
+      "tag": "0017_fix_earnings_precision",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1770081931633,
+      "tag": "0018_add_earnings_metadata_gin_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1770081931634,
+      "tag": "0019_add_user_database_provisioning",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1770081931635,
+      "tag": "0020_add_sandbox_template_snapshots",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1770081931636,
+      "tag": "0021_add_agent_phone_numbers",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1770081931637,
+      "tag": "0022_add_idempotency_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1770081931638,
+      "tag": "0023_add_discord_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1770081931639,
+      "tag": "0024_add_eliza_app_identity_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1770081931640,
+      "tag": "0025_add_oauth_platform_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1770305969232,
+      "tag": "0026_add_missing_columns_and_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1770312080517,
+      "tag": "0027_add_discord_identity_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1770317800000,
+      "tag": "0028_add_user_platform_oauth_constraint",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1770372642065,
+      "tag": "0029_add_missing_apps_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1770518468000,
+      "tag": "0030_add_eliza_sandboxes",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1770600000000,
+      "tag": "0031_add_n8n_credential_mappings",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1770600100000,
+      "tag": "0032_add_microsoft_platform_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1771424653235,
+      "tag": "0033_add_engagement_metrics_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1772590927728,
+      "tag": "0034_short_penance",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1772591000000,
+      "tag": "0035_signup_code_bonus_one_per_org",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1772770320058,
+      "tag": "0036_users_wallet_address_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1772773672986,
+      "tag": "0038_agent_server_wallets_client_address_unique",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1772775000000,
+      "tag": "0039_add_service_billing_and_entity_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1772775100000,
+      "tag": "0040_improve_service_pricing_audit",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1772775200000,
+      "tag": "0041_seed_market_data_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1772775300000,
+      "tag": "0042_seed_evm_rpc_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1772869800550,
+      "tag": "0043_add_missing_referral_context_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1772775400000,
+      "tag": "0044_seed_chain_data_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1772873400000,
+      "tag": "0045_add_whatsapp_identity_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1772969400000,
+      "tag": "0046_add_redeemable_earnings_breakdown_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1773060000000,
+      "tag": "0047_docker_nodes",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1771275600000,
+      "tag": "0048_00_elite_rumiko_fujikawa_drops",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1771275601000,
+      "tag": "0048_01_elite_rumiko_fujikawa_creates",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1771275602000,
+      "tag": "0048_02_elite_rumiko_fujikawa_alters",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1771275603000,
+      "tag": "0048_03_elite_rumiko_fujikawa_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "7",
+      "when": 1773061000000,
+      "tag": "0048_add_token_agent_linkage",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "7",
+      "when": 1773199471391,
+      "tag": "0049_elite_rumiko_fujikawa",
+      "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "7",
+      "when": 1773269349581,
+      "tag": "0050_repair_existing_user_identity_privy_claims",
+      "breakpoints": true
+    },
+    {
+      "idx": 55,
+      "version": "7",
+      "when": 1773269349582,
+      "tag": "0051_backfill_user_identities_from_users",
+      "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "7",
+      "when": 1773570000000,
+      "tag": "0052_add_eliza_pairing_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "7",
+      "when": 1773868800000,
+      "tag": "0053_add_eliza_billing_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1774300000000,
+      "tag": "0056_add_billing_status_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1774300100000,
+      "tag": "0057_update_eliza_hourly_rate_default",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1774800000000,
+      "tag": "0058_add_steward_wallet_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1775644290084,
+      "tag": "0059_add_vertex_tuning_registry",
+      "breakpoints": true
+    },
+    {
+      "idx": 62,
+      "version": "7",
+      "when": 1775695200000,
+      "tag": "0060_add_steward_tenant_columns_to_organizations",
+      "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1775788338243,
+      "tag": "0061_add_steward_user_identity_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1775866779597,
+      "tag": "0062_add_llm_trajectories_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 65,
+      "version": "7",
+      "when": 1776195064097,
+      "tag": "0063_zippy_joshua_kane",
+      "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1776200216619,
+      "tag": "0064_add_ai_pricing_catalog",
+      "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1776209920939,
+      "tag": "0065_add_device_bus_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1776209920938,
+      "tag": "0065_add_generations_is_public",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1776299320000,
+      "tag": "0066_add_twilio_inbound_calls",
+      "breakpoints": true
+    },
+    {
+      "idx": 70,
+      "version": "7",
+      "when": 1776499320000,
+      "tag": "0067_allow_multiple_oauth_connections_per_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1776586320000,
+      "tag": "0068_add_remote_sessions",
+      "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1776838881611,
+      "tag": "0069_seed_x_service_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1777000000000,
+      "tag": "0070_add_earnings_auto_fund",
+      "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1777000060000,
+      "tag": "0071_add_credit_conversion_ledger_type",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1777100000000,
+      "tag": "0072_drop_earnings_auto_fund_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1777200000000,
+      "tag": "0073_add_pay_as_you_go_toggle",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1777300000000,
+      "tag": "0074_containers_drop_aws_add_volume",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1777400000000,
+      "tag": "0075_containers_add_public_hostname",
+      "breakpoints": true
+    },
+    {
+      "idx": 79,
+      "version": "7",
+      "when": 1777500000000,
+      "tag": "0076_containers_unique_active_project",
+      "breakpoints": true
+    },
+    {
+      "idx": 80,
+      "version": "7",
+      "when": 1777600000000,
+      "tag": "0077_containers_hetzner_volumes",
+      "breakpoints": true
+    },
+    {
+      "idx": 81,
+      "version": "7",
+      "when": 1777650000000,
+      "tag": "0081_db_optimization_and_r2_trajectories",
+      "breakpoints": true
+    },
+    {
+      "idx": 82,
+      "version": "7",
+      "when": 1777700000000,
+      "tag": "0082_revenue_floor_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 83,
+      "version": "7",
+      "when": 1777800000000,
+      "tag": "0083_usage_records_org_created_desc_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 84,
+      "version": "7",
+      "when": 1777800100000,
+      "tag": "0084_credit_transactions_org_created_desc_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 85,
+      "version": "7",
+      "when": 1777800200000,
+      "tag": "0085_apps_org_updated_desc_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 86,
+      "version": "7",
+      "when": 1777800300000,
+      "tag": "0086_anonymous_sessions_active_expires_partial_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 87,
+      "version": "7",
+      "when": 1777800400000,
+      "tag": "0087_conv_messages_seq_desc_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 88,
+      "version": "7",
+      "when": 1777800500000,
+      "tag": "0088_user_sessions_active_user_partial_idx",
+      "breakpoints": true
+    },
+    {
+      "idx": 89,
+      "version": "7",
+      "when": 1777800600000,
+      "tag": "0089_drop_unused_embeddings_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 90,
+      "version": "7",
+      "when": 1777800700000,
+      "tag": "0090_advanced_memory_vector_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 91,
+      "version": "7",
+      "when": 1777800800000,
+      "tag": "0091_advanced_memory_backfill_vectors",
+      "breakpoints": true
+    },
+    {
+      "idx": 92,
+      "version": "7",
+      "when": 1777800900000,
+      "tag": "0092_advanced_memory_hnsw_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 93,
+      "version": "7",
+      "when": 1777801000000,
+      "tag": "0093_jobs_indexed_payload_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 94,
+      "version": "7",
+      "when": 1777801100000,
+      "tag": "0094_more_static_payload_storage",
+      "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1777801200000,
+      "tag": "0095_rename_agent_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 96,
+      "version": "7",
+      "when": 1777801300000,
+      "tag": "0096_steward_embedded_schema",
+      "breakpoints": true
+    },
+    {
+      "idx": 97,
+      "version": "7",
+      "when": 1777801400000,
+      "tag": "0097_restore_eliza_embeddings_table",
+      "breakpoints": true
+    },
+    {
+      "idx": 98,
+      "version": "7",
+      "when": 1777801500000,
+      "tag": "0098_drop_vercel_artifacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 99,
+      "version": "7",
+      "when": 1777801600000,
+      "tag": "0103_market_data_streaming_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1777801700000,
+      "tag": "0104_dexscreener_proxy_pricing",
+      "breakpoints": true
+    },
+    {
+      "idx": 101,
+      "version": "7",
+      "when": 1777801800000,
+      "tag": "0105_managed_domains_cloudflare_provider",
+      "breakpoints": true
+    },
+    {
+      "idx": 102,
+      "version": "7",
+      "when": 1778109900000,
+      "tag": "0106_ensure_agent_sandbox_backups",
+      "breakpoints": true
+    },
+    {
+      "idx": 103,
+      "version": "7",
+      "when": 1778110000000,
+      "tag": "0107_warm_pool_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 104,
+      "version": "7",
+      "when": 1778110100000,
+      "tag": "0108_ensure_agent_pairing_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 105,
+      "version": "7",
+      "when": 1778110200000,
+      "tag": "0109_verify_steward_user_id_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 106,
+      "version": "7",
+      "when": 1778110300000,
+      "tag": "0110_finalize_steward_user_id_drop_privy",
+      "breakpoints": true
+    },
+    {
+      "idx": 107,
+      "version": "7",
+      "when": 1778110400000,
+      "tag": "0111_drop_legacy_privy_wallet_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 108,
+      "version": "7",
+      "when": 1778142780000,
+      "tag": "0112_ensure_agent_sandbox_pool_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 109,
+      "version": "7",
+      "when": 1778143000000,
+      "tag": "0113_ensure_agent_sandbox_backups",
+      "breakpoints": true
+    },
+    {
+      "idx": 110,
+      "version": "7",
+      "when": 1778143400000,
+      "tag": "0114_backfill_app_databases_drop_legacy_app_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 111,
+      "version": "7",
+      "when": 1778143600000,
+      "tag": "0115_ensure_agent_pairing_tokens_runtime_repair",
+      "breakpoints": true
+    }
+  ]
+}

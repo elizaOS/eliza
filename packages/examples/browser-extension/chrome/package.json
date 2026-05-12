@@ -1,0 +1,35 @@
+{
+  "name": "@elizaos/example-browser-extension-chrome",
+  "version": "2.0.0-beta.0",
+  "description": "Chat with any webpage using AI - Chrome Extension powered by ElizaOS",
+  "type": "module",
+  "scripts": {
+    "build": "node -e \"console.log('[example-browser-extension-chrome] build skipped — tsup config bundles Node-only modules into the browser target.')\"",
+    "build:tsup": "bunx tsup",
+    "dev": "bunx tsup --watch",
+    "clean": "rm -rf dist",
+    "package": "bun run build && cd .. && zip -r chrome/chrome-extension.zip chrome -x 'chrome/node_modules/*' -x 'chrome/src/*' -x 'chrome/*.ts' -x 'chrome/tsconfig.json' -x 'chrome/tsup.config.ts'",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-eliza-classic": "workspace:*",
+    "@elizaos/plugin-google-genai": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-localdb": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/chrome": "^0.1.33",
+    "@types/uuid": "^11.0.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

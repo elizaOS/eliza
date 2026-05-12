@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "types": ["node", "bun"],
+    "paths": {
+      "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
+      "react/jsx-runtime": [
+        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
+      ],
+      "react/jsx-dev-runtime": [
+        "../../packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
+      ]
+    }
+  },
+  "include": ["src"]
+}

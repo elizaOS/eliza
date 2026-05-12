@@ -1,0 +1,1742 @@
+---
+title: 配置模式参考
+sidebarTitle: 配置模式
+description: eliza.json 配置文件的完整参考，按部分组织并记录所有字段。
+---
+
+Eliza 通过存储在状态目录（默认：`~/.eliza/eliza.json`）中的 `eliza.json` 文件进行配置。所有部分均为可选；省略字段时 Eliza 会使用合理的默认值。
+
+规范的运行时路由与旧版兼容性字段分开持久化。顶层运行时真实来源为：
+
+- `deploymentTarget`
+- `linkedAccounts`
+- `serviceRouting`
+
+配置在加载时会通过 Zod 模式进行验证。无效字段会产生警告，但不会阻止启动。
+
+---
+
+<div id="top-level-structure">
+## 顶层结构
+</div>
+
+`ElizaConfig` 类型定义了 `eliza.json` 中可用的每个部分。以下是顶层键的完整列表：
+
+| 部分 | 类型 | 描述 |
+|---------|------|-------------|
+| [`meta`](#meta) | `object` | 配置文件元数据（最后修改的版本/时间戳） |
+| [`auth`](#auth) | `AuthConfig` | 认证配置文件、提供商排序和冷却时间 |
+| [`env`](#env) | `object` | 环境变量注入和 shell 环境导入 |
+| [`wizard`](#wizard) | `object` | 引导向导状态 |
+| [`diagnostics`](#diagnostics) | `DiagnosticsConfig` | 诊断标志、OpenTelemetry 和缓存跟踪 |
+| [`logging`](#logging) | `LoggingConfig` | 日志级别、文件输出和控制台样式 |
+| [`update`](#update) | `UpdateConfig` | 自更新频道和检查间隔 |
+| [`browser`](#browser) | `BrowserConfig` | 浏览器/CDP 配置和配置文件 |
+| [`ui`](#ui) | `object` | UI 主题、强调色和助手外观 |
+| [`skills`](#skills) | `SkillsConfig` | 技能管理、加载和每个技能的配置 |
+| [`plugins`](#plugins) | `PluginsConfig` | 插件加载、允许/拒绝列表和安装记录 |
+| [`models`](#models) | `ModelsConfig` | 自定义模型提供商、Bedrock 发现、模型选择 |
+| [`nodeHost`](#nodehost) | `NodeHostConfig` | Node 主机浏览器代理设置 |
+| [`agents`](#agents) | `AgentsConfig` | 代理列表、默认值和每个代理的配置 |
+| `deploymentTarget` | `DeploymentTargetConfig` | 活动服务器的规范托管目标 |
+| `linkedAccounts` | `LinkedAccountsConfig` | 规范的关联账户清单 |
+| `serviceRouting` | `ServiceRoutingConfig` | 规范的按能力路由 |
+| [`tools`](#tools) | `ToolsConfig` | 工具配置文件、执行、Web、媒体、链接、沙箱策略 |
+| [`bindings`](#bindings) | `AgentBinding[]` | 代理到频道的路由绑定 |
+| [`broadcast`](#broadcast) | `BroadcastConfig` | 广播对等路由策略 |
+| [`audio`](#audio) | `AudioConfig` | 音频设置（为将来使用预留） |
+| [`messages`](#messages) | `MessagesConfig` | 消息队列、TTS、响应前缀、确认反应 |
+| [`commands`](#commands) | `CommandsConfig` | 命令注册和访问控制 |
+| [`approvals`](#approvals) | `ApprovalsConfig` | 执行审批转发到聊天频道 |
+| [`session`](#session) | `SessionConfig` | 会话作用域、空闲超时、重置触发器 |
+| [`web`](#web) | `WebConfig` | WhatsApp Web 提供商设置 |
+| [`connectors`](#connectors) | `Record<string, ConnectorConfig>` | 消息连接器（Telegram、Discord、Slack 等） |
+| [`channels`](#connectors) | `Record<string, ConnectorConfig>` | **已弃用** -- 请使用 `connectors` 代替 |
+| [`cron`](#cron) | `CronConfig` | 定时任务配置 |
+| [`hooks`](#hooks) | `HooksConfig` | Webhook 钩子、Gmail 集成、内部事件钩子 |
+| [`discovery`](#discovery) | `DiscoveryConfig` | mDNS 和广域 DNS-SD 网络发现 |
+| [`talk`](#talk) | `TalkConfig` | ElevenLabs Talk 模式语音设置 |
+| [`gateway`](#gateway) | `GatewayConfig` | 网关服务器：端口、绑定、TLS、认证、HTTP、节点 |
+| [`memory`](#memory) | `MemoryConfig` | 记忆后端（内置或 QMD） |
+| [`embedding`](#embedding) | `EmbeddingConfig` | 本地嵌入模型（GGUF、GPU 层数、空闲卸载） |
+| [`database`](#database) | `DatabaseConfig` | 数据库提供商和连接设置 |
+| [`cloud`](#cloud) | `CloudConfig` | Eliza Cloud 集成、桥接、备份、容器 |
+| [`x402`](#x402) | `X402Config` | x402 HTTP 支付协议 |
+| [`media`](#media) | `MediaConfig` | 媒体生成提供商（图像、视频、音频、视觉） |
+| [`mcp`](#mcp) | `object` | MCP（模型上下文协议）服务器定义 |
+| [`registry`](#registry) | `object` | ERC-8004 代理注册表和 ElizaMaker NFT 配置 |
+| [`features`](#features) | `Record<string, boolean \| object>` | 插件自动启用的功能标志 |
+| [`customActions`](#customactions) | `CustomActionDef[]` | 用户定义的自定义操作 |
+
+```json
+{
+  "meta": {},
+  "auth": {},
+  "env": {},
+  "wizard": {},
+  "diagnostics": {},
+  "logging": {},
+  "update": {},
+  "browser": {},
+  "ui": {},
+  "skills": {},
+  "plugins": {},
+  "models": {},
+  "nodeHost": {},
+  "agents": {},
+  "deploymentTarget": {},
+  "linkedAccounts": {},
+  "serviceRouting": {},
+  "tools": {},
+  "bindings": [],
+  "broadcast": {},
+  "audio": {},
+  "messages": {},
+  "commands": {},
+  "approvals": {},
+  "session": {},
+  "web": {},
+  "connectors": {},
+  "cron": {},
+  "hooks": {},
+  "discovery": {},
+  "talk": {},
+  "gateway": {},
+  "memory": {},
+  "embedding": {},
+  "database": {},
+  "cloud": {},
+  "x402": {},
+  "media": {},
+  "mcp": {},
+  "registry": {},
+  "features": {},
+  "customActions": []
+}
+```
+
+<div id="canonical-runtime-routing">
+## 规范运行时路由
+</div>
+
+这三个字段定义了活动运行时拓扑：
+
+| 字段 | 描述 |
+|------|-------------|
+| `deploymentTarget` | 活动服务器运行位置：`local`、`cloud` 或 `remote` |
+| `linkedAccounts` | 哪些提供商或云账户已关联 |
+| `serviceRouting` | 哪个后端处理 `llmText`、`tts`、`media`、`embeddings` 和 `rpc` |
+
+```json5
+{
+  deploymentTarget: {
+    runtime: "remote",
+    provider: "remote",
+    remoteApiBase: "https://eliza.example.com",
+  },
+  linkedAccounts: {
+    elizacloud: {
+      status: "linked",
+      source: "oauth",
+    },
+  },
+  serviceRouting: {
+    llmText: {
+      backend: "openrouter",
+      transport: "direct",
+      primaryModel: "openrouter/anthropic/claude-sonnet-4.6",
+    },
+  },
+}
+```
+
+---
+
+<div id="meta">
+## `meta`
+</div>
+
+关于配置文件本身的元数据。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `lastTouchedVersion` | `string` | -- | 最后写入此配置的 Eliza 版本 |
+| `lastTouchedAt` | `string` | -- | 配置最后写入时的 ISO 时间戳 |
+
+---
+
+<div id="auth">
+## `auth`
+</div>
+
+用于多账户设置的认证配置文件和提供商排序。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `profiles` | `Record<string, AuthProfileConfig>` | -- | 命名的认证配置文件（见子表） |
+| `order` | `Record<string, string[]>` | -- | 用于配置文件选择的提供商到配置文件排序 |
+| `cooldowns.billingBackoffHours` | `number` | `5` | 默认计费退避时间（小时） |
+| `cooldowns.billingBackoffHoursByProvider` | `Record<string, number>` | -- | 每个提供商的计费退避覆盖（小时） |
+| `cooldowns.billingMaxHours` | `number` | `24` | 计费退避上限（小时） |
+| `cooldowns.failureWindowHours` | `number` | `24` | 退避计数器重置的失败窗口（小时） |
+
+<div id="authprofileconfig">
+### AuthProfileConfig
+</div>
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `provider` | `string` | 提供商标识符 |
+| `mode` | `"api_key" \| "oauth" \| "token"` | 凭证类型：静态 API 密钥、可刷新的 OAuth 或静态 Bearer 令牌 |
+| `email` | `string` | 与配置文件关联的可选电子邮件 |
+
+---
+
+<div id="env">
+## `env`
+</div>
+
+环境变量注入和 shell 环境导入。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `shellEnv.enabled` | `boolean` | -- | 从登录 shell 导入缺失的密钥（`$SHELL -l -c 'env -0'`） |
+| `shellEnv.timeoutMs` | `number` | `15000` | 登录 shell 执行超时时间（毫秒） |
+| `vars` | `Record<string, string>` | -- | 当进程环境中不存在时应用的内联环境变量 |
+| `[key]` | `string` | -- | 语法糖：直接放在 `env` 下的字符串值被视为环境变量覆盖 |
+
+<Info>
+直接放在 `env` 键下的字符串值被视为环境变量覆盖。例如，`"env": { "OPENAI_API_KEY": "<OPENAI_API_KEY>" }` 会在进程环境中不存在时设置该密钥。
+</Info>
+
+---
+
+<div id="wizard">
+## `wizard`
+</div>
+
+引导向导状态跟踪。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `lastRunAt` | `string` | -- | 最后一次运行向导的 ISO 时间戳 |
+| `lastRunVersion` | `string` | -- | 最后一次运行向导时的 Eliza 版本 |
+| `lastRunCommit` | `string` | -- | 最后一次运行向导时的 Git 提交 |
+| `lastRunCommand` | `string` | -- | 最后一次运行向导时使用的命令 |
+| `lastRunMode` | `"local" \| "remote"` | -- | 向导是在本地还是远程运行 |
+
+---
+
+<div id="diagnostics">
+## `diagnostics`
+</div>
+
+运行时诊断、OpenTelemetry 和缓存跟踪。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用诊断子系统 |
+| `flags` | `string[]` | -- | 临时诊断标志（例如 `"telegram.http"`） |
+
+<div id="diagnostics.otel">
+### `diagnostics.otel`
+</div>
+
+OpenTelemetry 导出配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用 OTEL 导出 |
+| `endpoint` | `string` | -- | OTEL 收集器端点 URL |
+| `protocol` | `"http/protobuf" \| "grpc"` | -- | 传输协议 |
+| `headers` | `Record<string, string>` | -- | 随 OTEL 请求发送的头部 |
+| `serviceName` | `string` | -- | OTEL 跨度的服务名称 |
+| `traces` | `boolean` | -- | 导出跟踪 |
+| `metrics` | `boolean` | -- | 导出指标 |
+| `logs` | `boolean` | -- | 导出日志 |
+| `sampleRate` | `number` | -- | 跟踪采样率（0.0 -- 1.0） |
+| `flushIntervalMs` | `number` | -- | 指标导出间隔（毫秒） |
+
+<div id="diagnostics.cacheTrace">
+### `diagnostics.cacheTrace`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用缓存跟踪日志 |
+| `filePath` | `string` | -- | 缓存跟踪输出文件 |
+| `includeMessages` | `boolean` | -- | 在跟踪中包含消息 |
+| `includePrompt` | `boolean` | -- | 在跟踪中包含提示词 |
+| `includeSystem` | `boolean` | -- | 在跟踪中包含系统提示词 |
+
+---
+
+<div id="logging">
+## `logging`
+</div>
+
+日志级别、文件输出和控制台样式。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `level` | `"silent" \| "fatal" \| "error" \| "warn" \| "info" \| "debug" \| "trace"` | -- | 文件日志级别 |
+| `file` | `string` | -- | 日志文件路径 |
+| `consoleLevel` | `"silent" \| "fatal" \| "error" \| "warn" \| "info" \| "debug" \| "trace"` | -- | 控制台日志级别 |
+| `consoleStyle` | `"pretty" \| "compact" \| "json"` | -- | 控制台输出格式 |
+| `redactSensitive` | `"off" \| "tools"` | `"tools"` | 在工具摘要中隐藏敏感令牌 |
+| `redactPatterns` | `string[]` | -- | 用于隐藏敏感令牌的正则表达式模式（未设置时使用默认值） |
+
+---
+
+<div id="update">
+## `update`
+</div>
+
+自更新配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `channel` | `"stable" \| "beta" \| "nightly"` | `"stable"` | 发布频道 |
+| `checkOnStart` | `boolean` | `true` | 启动时检查更新 |
+| `checkIntervalSeconds` | `number` | `14400` (4h) | 自动检查之间的秒数 |
+| `lastCheckAt` | `string` | -- | 最后一次检查的 ISO 时间戳 |
+| `lastCheckVersion` | `string` | -- | 最后一次检查时发现的版本 |
+
+---
+
+<div id="browser">
+## `browser`
+</div>
+
+浏览器自动化和 Chrome DevTools Protocol (CDP) 配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用浏览器集成 |
+| `evaluateEnabled` | `boolean` | `true` | 允许 `act:evaluate`（任意 JS 执行） |
+| `cdpUrl` | `string` | -- | 基础 CDP 端点 URL（用于远程浏览器） |
+| `remoteCdpTimeoutMs` | `number` | `1500` | 远程 CDP HTTP 超时（毫秒） |
+| `remoteCdpHandshakeTimeoutMs` | `number` | `max(remoteCdpTimeoutMs * 2, 2000)` | 远程 CDP WebSocket 握手超时（毫秒） |
+| `color` | `string` | `#FF4500` | Eliza 浏览器配置文件的强调色（十六进制） |
+| `executablePath` | `string` | -- | 覆盖浏览器可执行文件路径（所有平台） |
+| `headless` | `boolean` | `false` | 以无头模式启动 Chrome |
+| `noSandbox` | `boolean` | `false` | 向 Chrome 传递 `--no-sandbox`（Linux 容器） |
+| `attachOnly` | `boolean` | `false` | 不启动浏览器；仅附加到现有浏览器 |
+| `defaultProfile` | `string` | `"chrome"` | 省略 profile 参数时的默认配置文件 |
+| `profiles` | `Record<string, BrowserProfileConfig>` | -- | 命名的浏览器配置文件（见子表） |
+| `snapshotDefaults.mode` | `"efficient"` | -- | 默认快照模式 |
+
+<div id="browserprofileconfig">
+### BrowserProfileConfig
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `cdpPort` | `number` | -- | 此配置文件的 CDP 端口（分配一次后持久化） |
+| `cdpUrl` | `string` | -- | 此配置文件的 CDP URL（用于远程 Chrome） |
+| `driver` | `"eliza" \| "extension"` | `"eliza"` | 配置文件驱动程序 |
+| `color` | `string` | -- | 配置文件颜色（十六进制，创建时自动分配） |
+
+---
+
+<div id="ui">
+## `ui`
+</div>
+
+UI 外观配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `seamColor` | `string` | -- | Eliza UI 界面的强调色（十六进制） |
+| `theme` | `"eliza" \| "qt314" \| "web2000" \| "programmer" \| "haxor" \| "psycho"` | -- | 用户首选的 UI 主题（在引导时设置） |
+| `assistant.name` | `string` | -- | UI 界面显示的助手名称 |
+| `assistant.avatar` | `string` | -- | 头像表情符号、短文本或图片 URL/data URI |
+
+---
+
+<div id="skills">
+## `skills`
+</div>
+
+技能管理、加载和每个技能的配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `allowBundled` | `string[]` | -- | 内置技能允许列表（仅加载这些；省略则加载全部） |
+| `denyBundled` | `string[]` | -- | 内置技能拒绝列表（优先于允许列表） |
+| `load.extraDirs` | `string[]` | -- | 要扫描的额外技能目录（最低优先级） |
+| `load.watch` | `boolean` | -- | 监视技能文件夹的变化并刷新快照 |
+| `load.watchDebounceMs` | `number` | -- | 技能监视器的防抖时间（毫秒） |
+| `install.preferBrew` | `boolean` | -- | 技能安装优先使用 Homebrew |
+| `install.nodeManager` | `"npm" \| "yarn" \| "bun"` | -- | 技能安装使用的包管理器 |
+| `entries` | `Record<string, SkillConfig>` | -- | 每个技能的配置（见子表） |
+
+<div id="skillconfig-per-entry">
+### SkillConfig（每个条目）
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用或禁用此技能 |
+| `apiKey` | `string` | -- | 此技能的 API 密钥 |
+| `env` | `Record<string, string>` | -- | 此技能的环境变量 |
+| `config` | `Record<string, unknown>` | -- | 传递给此技能的任意配置 |
+
+---
+
+<div id="plugins">
+## `plugins`
+</div>
+
+插件加载、允许/拒绝列表和安装记录。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用或禁用插件加载 |
+| `allow` | `string[]` | -- | 插件允许列表（插件 ID） |
+| `deny` | `string[]` | -- | 插件拒绝列表（插件 ID） |
+| `load.paths` | `string[]` | -- | 要加载的额外插件/扩展路径 |
+| `slots.memory` | `string` | -- | 选择哪个插件拥有记忆槽位（`"none"` 表示禁用） |
+| `entries` | `Record<string, PluginEntryConfig>` | -- | 每个插件的配置覆盖 |
+| `installs` | `Record<string, PluginInstallRecord>` | -- | 已安装的插件记录 |
+
+<div id="pluginentryconfig">
+### PluginEntryConfig
+</div>
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `enabled` | `boolean` | 启用或禁用此插件 |
+| `config` | `Record<string, unknown>` | 传递给此插件的任意配置 |
+
+<div id="plugininstallrecord">
+### PluginInstallRecord
+</div>
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `source` | `"npm" \| "archive" \| "path"` | 安装来源 |
+| `spec` | `string` | npm 规范或归档 URL |
+| `sourcePath` | `string` | 原始源路径 |
+| `installPath` | `string` | 本地安装路径 |
+| `version` | `string` | 已安装版本 |
+| `installedAt` | `string` | 安装时的 ISO 时间戳 |
+
+---
+
+<div id="models">
+## `models`
+</div>
+
+自定义模型提供商配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `mode` | `"merge" \| "replace"` | -- | 自定义提供商与内置默认值的交互方式 |
+| `small` | `string` | -- | 为快速任务选择的小模型 ID（在引导时设置） |
+| `large` | `string` | -- | 为复杂推理选择的大模型 ID（在引导时设置） |
+| `providers` | `Record<string, ModelProviderConfig>` | -- | 命名的模型提供商 |
+| `bedrockDiscovery` | `BedrockDiscoveryConfig` | -- | AWS Bedrock 自动发现设置 |
+
+<div id="modelproviderconfig">
+### ModelProviderConfig
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `baseUrl` | `string` | -- | 提供商 API 基础 URL |
+| `apiKey` | `string` | -- | API 密钥 |
+| `auth` | `"api-key" \| "aws-sdk" \| "oauth" \| "token"` | -- | 认证模式 |
+| `api` | `ModelApi` | -- | API 格式：`openai-completions`、`openai-responses`、`anthropic-messages`、`google-generative-ai`、`bedrock-converse-stream` |
+| `headers` | `Record<string, string>` | -- | 额外请求头 |
+| `authHeader` | `boolean` | -- | 包含认证头 |
+| `models` | `ModelDefinitionConfig[]` | -- | 此提供商的模型定义 |
+
+<div id="modeldefinitionconfig">
+### ModelDefinitionConfig
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | 模型标识符 |
+| `name` | `string` | -- | 显示名称 |
+| `api` | `ModelApi` | -- | API 格式覆盖 |
+| `reasoning` | `boolean` | -- | 此模型是否支持推理 |
+| `input` | `Array<"text" \| "image">` | -- | 支持的输入模态 |
+| `cost.input` | `number` | -- | 每个令牌的输入成本 |
+| `cost.output` | `number` | -- | 每个令牌的输出成本 |
+| `cost.cacheRead` | `number` | -- | 每个令牌的缓存读取成本 |
+| `cost.cacheWrite` | `number` | -- | 每个令牌的缓存写入成本 |
+| `contextWindow` | `number` | -- | 上下文窗口大小（令牌数） |
+| `maxTokens` | `number` | -- | 最大输出令牌数 |
+| `headers` | `Record<string, string>` | -- | 此模型的额外头部 |
+| `compat` | `ModelCompatConfig` | -- | 兼容性标志（`supportsStore`、`supportsDeveloperRole`、`supportsReasoningEffort`、`maxTokensField`） |
+
+<div id="bedrockdiscoveryconfig">
+### BedrockDiscoveryConfig
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用 Bedrock 模型自动发现 |
+| `region` | `string` | -- | AWS 区域 |
+| `providerFilter` | `string[]` | -- | 按提供商名称过滤 |
+| `refreshInterval` | `number` | -- | 刷新间隔（毫秒） |
+| `defaultContextWindow` | `number` | -- | 发现的模型的默认上下文窗口 |
+| `defaultMaxTokens` | `number` | -- | 发现的模型的默认最大令牌数 |
+
+---
+
+<div id="nodehost">
+## `nodeHost`
+</div>
+
+用于远程浏览器代理路由的 Node 主机配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `browserProxy.enabled` | `boolean` | `true` | 在 Node 主机上启用浏览器代理 |
+| `browserProxy.allowProfiles` | `string[]` | -- | 通过代理公开的配置文件名称允许列表 |
+
+---
+
+<div id="agents">
+## `agents`
+</div>
+
+多代理配置。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `defaults` | `AgentDefaultsConfig` | 应用于所有代理的默认设置，除非在每个代理中覆盖 |
+| `list` | `AgentConfig[]` | 单个代理配置的数组 |
+
+<div id="agents.defaults">
+### `agents.defaults`
+</div>
+
+全局代理默认值。每个代理都会继承这些设置，除非被覆盖。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `model.primary` | `string` | -- | 主模型（提供商/模型） |
+| `model.fallbacks` | `string[]` | -- | 模型回退链 |
+| `imageModel.primary` | `string` | -- | 图像能力模型 |
+| `imageModel.fallbacks` | `string[]` | -- | 图像模型回退链 |
+| `models` | `Record<string, AgentModelEntryConfig>` | -- | 带可选别名的模型目录 |
+| `workspace` | `string` | -- | 代理运行的默认工作目录 |
+| `adminEntityId` | `string` | -- | 用于控制聊天所有权的稳定所有者/管理员实体 ID |
+| `repoRoot` | `string` | -- | 系统提示词的仓库根目录覆盖 |
+| `userTimezone` | `string` | -- | 用户的 IANA 时区（默认为主机时区） |
+| `timeFormat` | `"auto" \| "12" \| "24"` | -- | 系统提示词中的时间格式 |
+| `envelopeTimezone` | `string` | `"utc"` | 信封时间戳时区（`"utc"`、`"local"`、`"user"` 或 IANA 时区） |
+| `envelopeTimestamp` | `"on" \| "off"` | `"on"` | 在消息信封中包含绝对时间戳 |
+| `envelopeElapsed` | `"on" \| "off"` | `"on"` | 在消息信封中包含已用时间 |
+| `contextTokens` | `number` | -- | 上下文窗口上限（用于运行时估算） |
+| `cliBackends` | `Record<string, CliBackendConfig>` | -- | 用于纯文本回退的 CLI 后端（claude-cli 等） |
+| `contextPruning` | `AgentContextPruningConfig` | -- | 从 LLM 上下文中修剪旧的工具结果 |
+| `compaction` | `AgentCompactionConfig` | -- | 压缩调优和压缩前记忆刷新 |
+| `memorySearch` | `MemorySearchConfig` | -- | 向量记忆搜索配置 |
+| `thinkingDefault` | `"off" \| "minimal" \| "low" \| "medium" \| "high" \| "xhigh"` | -- | 默认思考级别 |
+| `verboseDefault` | `"off" \| "on" \| "full"` | -- | 默认详细级别 |
+| `elevatedDefault` | `"off" \| "on" \| "ask" \| "full"` | -- | 默认提权级别 |
+| `blockStreamingDefault` | `"off" \| "on"` | -- | 默认块流级别 |
+| `blockStreamingBreak` | `"text_end" \| "message_end"` | -- | 块流边界 |
+| `blockStreamingChunk` | `object` | -- | 流式回复的软块分块 |
+| `blockStreamingCoalesce` | `object` | -- | 块回复合并（合并流式块） |
+| `humanDelay` | `HumanDelayConfig` | -- | 块回复之间的拟人化延迟 |
+| `timeoutSeconds` | `number` | -- | 代理运行超时 |
+| `mediaMaxMb` | `number` | -- | 入站媒体最大大小（MB） |
+| `typingIntervalSeconds` | `number` | -- | 输入指示器间隔 |
+| `typingMode` | `TypingMode` | -- | 输入指示器启动模式（`never`、`instant`、`thinking`、`message`） |
+| `maxConcurrent` | `number` | `1` | 所有对话中的最大并发代理运行数 |
+
+<div id="agents.defaults.heartbeat">
+#### `agents.defaults.heartbeat`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `every` | `string` | `"30m"` | 心跳间隔（持续时间字符串，默认单位：分钟） |
+| `activeHours.start` | `string` | -- | 开始时间（24 小时制 HH:MM，包含） |
+| `activeHours.end` | `string` | -- | 结束时间（24 小时制 HH:MM，不包含；使用 `"24:00"` 表示当天结束） |
+| `activeHours.timezone` | `string` | `"user"` | 时区（`"user"`、`"local"` 或 IANA 时区） |
+| `model` | `string` | -- | 心跳运行的模型覆盖（提供商/模型） |
+| `session` | `string` | -- | 会话键（`"main"` 或显式指定） |
+| `target` | `"last" \| "none" \| string` | -- | 投递目标 |
+| `to` | `string` | -- | 投递覆盖（WhatsApp 用 E.164 格式，Telegram 用聊天 ID） |
+| `prompt` | `string` | -- | 覆盖心跳提示词正文 |
+| `ackMaxChars` | `number` | `30` | 投递前 HEARTBEAT_OK 后的最大字符数 |
+| `includeReasoning` | `boolean` | `false` | 为心跳运行投递模型的推理有效载荷 |
+
+<div id="agents.defaults.subagents">
+#### `agents.defaults.subagents`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `maxConcurrent` | `number` | `1` | 最大并发子代理运行数 |
+| `archiveAfterMinutes` | `number` | `60` | N 分钟后自动归档子代理会话 |
+| `model` | `string \| { primary?, fallbacks? }` | -- | 生成的子代理的默认模型 |
+| `thinking` | `string` | -- | 生成的子代理的默认思考级别 |
+
+<div id="agents.defaults.sandbox">
+#### `agents.defaults.sandbox`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `mode` | `"off" \| "non-main" \| "all"` | -- | 会话的沙箱模式 |
+| `workspaceAccess` | `"none" \| "ro" \| "rw"` | -- | 沙箱内的代理工作区访问权限 |
+| `sessionToolsVisibility` | `"spawned" \| "all"` | `"spawned"` | 沙箱会话的会话工具可见性 |
+| `scope` | `"session" \| "agent" \| "shared"` | -- | 容器/工作区作用域 |
+| `perSession` | `boolean` | -- | scope 的旧版别名 |
+| `workspaceRoot` | `string` | -- | 沙箱工作区的根目录 |
+| `docker` | `SandboxDockerSettings` | -- | Docker 特定的沙箱设置 |
+| `browser` | `SandboxBrowserSettings` | -- | 沙箱化的浏览器设置 |
+| `prune` | `SandboxPruneSettings` | -- | 自动清理设置 |
+
+<div id="agents.list">
+### `agents.list[]`
+</div>
+
+单个代理配置的数组：
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | **必需。** 唯一代理标识符 |
+| `default` | `boolean` | -- | 是否为默认代理 |
+| `name` | `string` | -- | 代理显示名称 |
+| `workspace` | `string` | -- | 代理工作区目录 |
+| `agentDir` | `string` | -- | 代理特定的数据目录 |
+| `model` | `string \| { primary?, fallbacks? }` | -- | 模型选择 |
+| `skills` | `string[]` | -- | 技能允许列表（省略 = 全部，空 = 无） |
+| `memorySearch` | `MemorySearchConfig` | -- | 每个代理的记忆搜索覆盖 |
+| `humanDelay` | `HumanDelayConfig` | -- | 块回复之间的拟人化延迟 |
+| `heartbeat` | `object` | -- | 每个代理的心跳覆盖（与 `agents.defaults.heartbeat` 相同结构） |
+| `identity` | `IdentityConfig` | -- | 代理身份配置 |
+| `groupChat` | `GroupChatConfig` | -- | 群聊行为 |
+| `bio` | `string[]` | -- | 代理简介行（在引导时从风格预设设置） |
+| `system` | `string` | -- | 系统提示词 |
+| `style` | `{ all?, chat?, post? }` | -- | 通信风格规则（字符串数组） |
+| `adjectives` | `string[]` | -- | 个性形容词 |
+| `topics` | `string[]` | -- | 代理参与的主题 |
+| `postExamples` | `string[]` | -- | 展示代理声音的社交媒体帖子示例 |
+| `messageExamples` | `array` | -- | 展示代理声音的对话示例 |
+| `subagents.allowAgents` | `string[]` | -- | 允许在其他代理 ID 下生成子代理（`"*"` = 任意） |
+| `subagents.model` | `string \| { primary?, fallbacks? }` | -- | 每个代理的生成子代理默认模型 |
+| `sandbox` | `object` | -- | 每个代理的沙箱隔离设置（与 `agents.defaults.sandbox` 相同结构） |
+| `tools` | `AgentToolsConfig` | -- | 每个代理的工具策略（字段见[工具部分](#tools)） |
+| `cloud.cloudAgentId` | `string` | -- | Eliza Cloud 代理记录 ID |
+| `cloud.lastStatus` | `string` | -- | 最后已知的沙箱状态 |
+| `cloud.lastProvisionedAt` | `string` | -- | 最后一次配置的 ISO 时间戳 |
+
+---
+
+<div id="tools">
+## `tools`
+</div>
+
+工具配置文件、执行、Web 搜索/获取、媒体理解、链接和沙箱策略。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `profile` | `ToolProfileId` | -- | 在允许/拒绝列表之前应用的基础工具配置文件 |
+| `allow` | `string[]` | -- | 工具允许列表 |
+| `alsoAllow` | `string[]` | -- | 与配置文件合并的额外允许列表条目 |
+| `deny` | `string[]` | -- | 工具拒绝列表 |
+| `byProvider` | `Record<string, ToolPolicyConfig>` | -- | 每个提供商或每个模型的工具策略覆盖 |
+
+<div id="tools.exec">
+### `tools.exec`
+</div>
+
+Shell 命令执行工具配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `host` | `"sandbox" \| "gateway" \| "node"` | `"sandbox"` | 执行主机路由 |
+| `security` | `"deny" \| "allowlist" \| "full"` | `"deny"` | 执行安全模式 |
+| `ask` | `"off" \| "on-miss" \| "always"` | `"on-miss"` | 审批提示 |
+| `node` | `string` | -- | `host=node` 的默认节点绑定 |
+| `pathPrepend` | `string[]` | -- | 添加到 PATH 前面的目录 |
+| `safeBins` | `string[]` | -- | 无需允许列表条目即可运行的安全纯 stdin 二进制文件 |
+| `backgroundMs` | `number` | -- | 自动后台运行前的默认时间（毫秒） |
+| `timeoutSec` | `number` | -- | 自动终止前的默认超时（秒） |
+| `approvalRunningNoticeMs` | `number` | `10000` | 审批支持的执行的运行通知间隔（0 = 关闭） |
+| `cleanupMs` | `number` | -- | 已完成会话在内存中保留的时间（毫秒） |
+| `notifyOnExit` | `boolean` | -- | 后台执行退出时发出系统事件 + 心跳 |
+| `applyPatch.enabled` | `boolean` | `false` | 为 OpenAI 模型启用 `apply_patch` |
+| `applyPatch.allowModels` | `string[]` | -- | 可以使用 `apply_patch` 的模型 ID 允许列表 |
+
+<div id="tools.web">
+### `tools.web`
+</div>
+
+Web 搜索和获取工具配置。
+
+<div id="tools.web.search">
+#### `tools.web.search`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用 Web 搜索工具（默认：存在 API 密钥时为 `true`） |
+| `provider` | `"brave" \| "perplexity"` | -- | 搜索提供商 |
+| `apiKey` | `string` | -- | Brave Search API 密钥（默认使用 `BRAVE_API_KEY` 环境变量） |
+| `maxResults` | `number` | -- | 默认搜索结果数量（1--10） |
+| `timeoutSeconds` | `number` | -- | 搜索请求超时 |
+| `cacheTtlMinutes` | `number` | -- | 搜索结果的缓存 TTL |
+| `perplexity.apiKey` | `string` | -- | Perplexity/OpenRouter API 密钥 |
+| `perplexity.baseUrl` | `string` | `https://openrouter.ai/api/v1` | API 请求的基础 URL |
+| `perplexity.model` | `string` | `"perplexity/sonar-pro"` | 使用的模型 |
+
+<div id="tools.web.fetch">
+#### `tools.web.fetch`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | 启用 Web 获取工具 |
+| `maxChars` | `number` | -- | 从获取内容中返回的最大字符数 |
+| `maxCharsCap` | `number` | `50000` | maxChars 的硬上限 |
+| `timeoutSeconds` | `number` | -- | 获取请求超时 |
+| `cacheTtlMinutes` | `number` | -- | 获取内容的缓存 TTL |
+| `maxRedirects` | `number` | `3` | 最大重定向跟随次数 |
+| `userAgent` | `string` | -- | 覆盖 User-Agent 头 |
+| `readability` | `boolean` | `true` | 使用 Readability 提取主要内容 |
+| `firecrawl.enabled` | `boolean` | -- | 启用 Firecrawl 回退（默认：设置 apiKey 时为 `true`） |
+| `firecrawl.apiKey` | `string` | -- | Firecrawl API 密钥 |
+| `firecrawl.baseUrl` | `string` | `https://api.firecrawl.dev` | Firecrawl 基础 URL |
+| `firecrawl.onlyMainContent` | `boolean` | `true` | 仅保留主要内容 |
+| `firecrawl.maxAgeMs` | `number` | -- | Firecrawl 缓存内容的最大年龄（毫秒） |
+| `firecrawl.timeoutSeconds` | `number` | -- | Firecrawl 请求超时 |
+
+<div id="tools.media">
+### `tools.media`
+</div>
+
+媒体理解工具（图像、音频、视频），带有模型回退链和作用域门控。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `models` | `MediaUnderstandingModelConfig[]` | -- | 跨图像/音频/视频应用的共享模型列表 |
+| `concurrency` | `number` | -- | 最大并发媒体理解运行数 |
+| `image` | `MediaUnderstandingConfig` | -- | 图像理解配置 |
+| `audio` | `MediaUnderstandingConfig` | -- | 音频理解配置 |
+| `video` | `MediaUnderstandingConfig` | -- | 视频理解配置 |
+
+<div id="mediaunderstandingconfig-per-modality">
+#### MediaUnderstandingConfig（每种模态）
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用此模态的理解 |
+| `scope` | `MediaUnderstandingScopeConfig` | -- | 作用域门控（默认操作 + 规则） |
+| `maxBytes` | `number` | -- | 发送的最大字节数 |
+| `maxChars` | `number` | -- | 最大输出字符数 |
+| `prompt` | `string` | -- | 默认提示词 |
+| `timeoutSeconds` | `number` | -- | 超时（秒） |
+| `language` | `string` | -- | 语言提示（音频） |
+| `providerOptions` | `Record<string, Record<string, string \| number \| boolean>>` | -- | 提供商特定的查询参数 |
+| `baseUrl` | `string` | -- | 基础 URL 覆盖 |
+| `headers` | `Record<string, string>` | -- | 合并到请求中的头部 |
+| `attachments.mode` | `"first" \| "all"` | -- | 选择第一个或处理多个附件 |
+| `attachments.maxAttachments` | `number` | `1` | 处理的最大附件数 |
+| `attachments.prefer` | `"first" \| "last" \| "path" \| "url"` | -- | 附件排序偏好 |
+| `models` | `MediaUnderstandingModelConfig[]` | -- | 有序模型列表（按顺序回退） |
+
+<div id="tools.links">
+### `tools.links`
+</div>
+
+链接理解工具配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用链接理解 |
+| `scope` | `MediaUnderstandingScopeConfig` | -- | 作用域门控 |
+| `maxLinks` | `number` | -- | 每条消息处理的最大链接数 |
+| `timeoutSeconds` | `number` | -- | 默认超时（秒） |
+| `models` | `LinkModelConfig[]` | -- | 有序模型列表（按顺序回退） |
+
+<div id="tools.message">
+### `tools.message`
+</div>
+
+用于跨上下文发送和广播的消息工具配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `crossContext.allowWithinProvider` | `boolean` | `true` | 允许向同一提供商内的其他频道发送 |
+| `crossContext.allowAcrossProviders` | `boolean` | `false` | 允许跨不同提供商发送 |
+| `crossContext.marker.enabled` | `boolean` | `true` | 为跨上下文发送启用来源标记 |
+| `crossContext.marker.prefix` | `string` | -- | 文本前缀模板（支持 `{channel}`） |
+| `crossContext.marker.suffix` | `string` | -- | 文本后缀模板（支持 `{channel}`） |
+| `broadcast.enabled` | `boolean` | `true` | 启用广播操作 |
+
+<div id="tools.agentToAgent">
+### `tools.agentToAgent`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | 启用代理间消息工具 |
+| `allow` | `string[]` | -- | 代理 ID 或模式的允许列表 |
+
+<div id="tools.elevated">
+### `tools.elevated`
+</div>
+
+主机的提权执行权限。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | 启用或禁用提权模式 |
+| `allowFrom` | `AgentElevatedAllowFromConfig` | -- | `/elevated` 的已批准发送者（每个提供商的允许列表） |
+
+<div id="tools.subagents">
+### `tools.subagents`
+</div>
+
+子代理工具策略默认值。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `model` | `string \| { primary?, fallbacks? }` | -- | 生成的子代理的默认模型 |
+| `tools.allow` | `string[]` | -- | 子代理的工具允许列表 |
+| `tools.deny` | `string[]` | -- | 子代理的工具拒绝列表 |
+
+<div id="tools.sandbox">
+### `tools.sandbox`
+</div>
+
+沙箱工具策略默认值（拒绝优先）。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `tools.allow` | `string[]` | -- | 沙箱会话的工具允许列表 |
+| `tools.deny` | `string[]` | -- | 沙箱会话的工具拒绝列表 |
+
+---
+
+<div id="bindings">
+## `bindings`
+</div>
+
+代理到频道的路由绑定。`AgentBinding` 对象的数组。
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `agentId` | `string` | 要路由到的代理 ID |
+| `match.channel` | `string` | 频道标识符（例如 `"telegram"`、`"discord"`） |
+| `match.accountId` | `string` | 可选的账户 ID |
+| `match.peer.kind` | `"dm" \| "group" \| "channel"` | 对等类型 |
+| `match.peer.id` | `string` | 对等标识符 |
+| `match.guildId` | `string` | 可选的 Discord 公会 ID |
+| `match.teamId` | `string` | 可选的 Slack 团队 ID |
+
+---
+
+<div id="broadcast">
+## `broadcast`
+</div>
+
+广播对等路由策略。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `strategy` | `"parallel" \| "sequential"` | -- | 广播对等的默认处理策略 |
+| `[peerId]` | `string[]` | -- | 将对等 ID 映射到应处理所有消息的代理 ID 数组 |
+
+---
+
+<div id="audio">
+## `audio`
+</div>
+
+音频配置。目前是为未来音频特定设置预留的占位符。接受任意键值对。
+
+---
+
+<div id="messages">
+## `messages`
+</div>
+
+消息处理配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `responsePrefix` | `string` | -- | 所有出站回复的前缀。`"auto"` 派生 `[{identity.name}]`。支持 `{model}`、`{modelFull}`、`{provider}`、`{thinkingLevel}`、`{identity.name}` 模板 |
+| `groupChat` | `GroupChatConfig` | -- | 群聊行为配置 |
+| `ackReaction` | `string` | -- | 确认入站消息的表情反应（空值禁用） |
+| `ackReactionScope` | `"group-mentions" \| "group-all" \| "direct" \| "all"` | `"group-mentions"` | 何时发送确认反应 |
+| `removeAckAfterReply` | `boolean` | `false` | 回复发送后移除确认反应 |
+
+<div id="messages.queue">
+### `messages.queue`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `mode` | `QueueMode` | -- | 队列模式：`steer`、`followup`、`collect`、`steer-backlog`、`steer+backlog`、`queue`、`interrupt` |
+| `byChannel` | `Record<string, QueueMode>` | -- | 每个频道的队列模式覆盖（键：`whatsapp`、`telegram`、`discord`、`googlechat`、`slack`、`signal`、`imessage`、`msteams`、`webchat`） |
+| `debounceMs` | `number` | -- | 快速消息的防抖延迟 |
+| `debounceMsByChannel` | `Record<string, number>` | -- | 每个频道的防抖覆盖（毫秒） |
+| `cap` | `number` | -- | 最大队列大小 |
+| `drop` | `"old" \| "new" \| "summarize"` | -- | 达到上限时的丢弃策略 |
+
+<div id="messages.inbound">
+### `messages.inbound`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `debounceMs` | `number` | -- | 每个发送者的快速入站消息防抖 |
+| `byChannel` | `Record<string, number>` | -- | 每个频道的防抖覆盖 |
+
+<div id="messages.tts">
+### `messages.tts`
+</div>
+
+文本转语音配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `auto` | `"off" \| "always" \| "inbound" \| "tagged"` | -- | 自动 TTS 模式（优先于 `enabled`） |
+| `enabled` | `boolean` | -- | 旧版：当 `auto` 未设置时启用自动 TTS |
+| `mode` | `"final" \| "all"` | -- | 仅对最终回复还是所有回复应用 TTS |
+| `provider` | `"elevenlabs" \| "openai" \| "edge"` | -- | 主 TTS 提供商 |
+| `summaryModel` | `string` | -- | TTS 自动摘要的模型覆盖（提供商/模型或别名） |
+| `maxTextLength` | `number` | -- | 发送到 TTS 的文本硬上限（字符） |
+| `timeoutMs` | `number` | -- | API 请求超时（毫秒） |
+| `prefsPath` | `string` | -- | 本地 TTS 用户偏好 JSON 的路径 |
+
+<div id="messages.tts.modelOverrides">
+#### `messages.tts.modelOverrides`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用模型提供的 TTS 覆盖 |
+| `allowText` | `boolean` | -- | 允许模型提供的 TTS 文本块 |
+| `allowProvider` | `boolean` | -- | 允许模型提供的提供商覆盖 |
+| `allowVoice` | `boolean` | -- | 允许模型提供的 voice/voiceId 覆盖 |
+| `allowModelId` | `boolean` | -- | 允许模型提供的 modelId 覆盖 |
+| `allowVoiceSettings` | `boolean` | -- | 允许模型提供的语音设置覆盖 |
+| `allowNormalization` | `boolean` | -- | 允许模型提供的规范化或语言覆盖 |
+| `allowSeed` | `boolean` | -- | 允许模型提供的 seed 覆盖 |
+
+<div id="messages.tts.elevenlabs">
+#### `messages.tts.elevenlabs`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `apiKey` | `string` | -- | ElevenLabs API 密钥 |
+| `baseUrl` | `string` | -- | ElevenLabs 基础 URL |
+| `voiceId` | `string` | -- | 语音 ID |
+| `modelId` | `string` | -- | 模型 ID |
+| `seed` | `number` | -- | 确定性生成的种子 |
+| `applyTextNormalization` | `"auto" \| "on" \| "off"` | -- | 文本规范化 |
+| `languageCode` | `string` | -- | 语言代码 |
+| `voiceSettings.stability` | `number` | -- | 语音稳定性 |
+| `voiceSettings.similarityBoost` | `number` | -- | 相似度增强 |
+| `voiceSettings.style` | `number` | -- | 风格 |
+| `voiceSettings.useSpeakerBoost` | `boolean` | -- | 使用说话人增强 |
+| `voiceSettings.speed` | `number` | -- | 速度 |
+
+<div id="messages.tts.openai">
+#### `messages.tts.openai`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `apiKey` | `string` | -- | OpenAI API 密钥 |
+| `model` | `string` | -- | TTS 模型 |
+| `voice` | `string` | -- | 语音标识符 |
+
+<div id="messages.tts.edge">
+#### `messages.tts.edge`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 明确允许 Edge TTS（无需 API 密钥） |
+| `voice` | `string` | -- | 语音标识符 |
+| `lang` | `string` | -- | 语言 |
+| `outputFormat` | `string` | -- | 输出格式 |
+| `pitch` | `string` | -- | 音调 |
+| `rate` | `string` | -- | 语速 |
+| `volume` | `string` | -- | 音量 |
+| `saveSubtitles` | `boolean` | -- | 保存字幕 |
+| `proxy` | `string` | -- | 代理 URL |
+| `timeoutMs` | `number` | -- | 超时（毫秒） |
+
+---
+
+<div id="commands">
+## `commands`
+</div>
+
+命令注册和访问控制。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `native` | `NativeCommandsSetting` | `"auto"` | 启用原生命令注册 |
+| `nativeSkills` | `NativeCommandsSetting` | `"auto"` | 启用原生技能命令注册 |
+| `text` | `boolean` | `true` | 启用文本命令解析 |
+| `bash` | `boolean` | `false` | 允许 bash 聊天命令（`!` / `/bash` 别名） |
+| `bashForegroundMs` | `number` | `2000` | bash 后台运行前的等待时间（0 = 立即） |
+| `config` | `boolean` | `false` | 允许 `/config` 命令 |
+| `debug` | `boolean` | `false` | 允许 `/debug` 命令 |
+| `restart` | `boolean` | `false` | 允许重启命令/工具 |
+| `useAccessGroups` | `boolean` | `true` | 对命令执行访问组允许列表/策略 |
+
+---
+
+<div id="approvals">
+## `approvals`
+</div>
+
+执行审批转发到聊天频道。
+
+<div id="approvals.exec">
+### `approvals.exec`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | 启用将执行审批转发到聊天频道 |
+| `mode` | `"session" \| "targets" \| "both"` | `"session"` | 投递模式 |
+| `agentFilter` | `string[]` | -- | 仅为这些代理 ID 转发（省略 = 全部） |
+| `sessionFilter` | `string[]` | -- | 仅为这些会话键模式转发（子字符串或正则表达式） |
+| `targets` | `ExecApprovalForwardTarget[]` | -- | 显式投递目标（当模式包含 `"targets"` 时使用） |
+
+<div id="execapprovalforwardtarget">
+#### ExecApprovalForwardTarget
+</div>
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `channel` | `string` | 频道 ID（例如 `"discord"`、`"slack"`） |
+| `to` | `string` | 目标 ID（根据频道为频道/用户 ID） |
+| `accountId` | `string` | 多账户频道的可选账户 ID |
+| `threadId` | `string \| number` | 可选的线程 ID |
+
+---
+
+<div id="session">
+## `session`
+</div>
+
+会话作用域、空闲超时和重置配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `scope` | `SessionScope` | -- | 会话作用域策略 |
+| `dmScope` | `DmScope` | `"main"` | 私信会话作用域 |
+| `identityLinks` | `Record<string, string[]>` | -- | 将平台前缀的身份映射到规范的私信对等 |
+| `resetTriggers` | `string[]` | -- | 触发会话重置的消息模式 |
+| `idleMinutes` | `number` | -- | 空闲多少分钟后重置会话 |
+| `reset` | `SessionResetConfig` | -- | 全局会话重置配置 |
+| `resetByType` | `SessionResetByTypeConfig` | -- | 按类型的重置覆盖（dm、group、thread） |
+| `resetByChannel` | `Record<string, SessionResetConfig>` | -- | 按频道的重置覆盖 |
+| `store` | `string` | -- | 会话存储路径 |
+| `typingIntervalSeconds` | `number` | -- | 输入指示器间隔 |
+| `typingMode` | `TypingMode` | -- | 输入指示器模式 |
+| `mainKey` | `string` | -- | 主会话键 |
+| `sendPolicy` | `SessionSendPolicyConfig` | -- | 会话发送策略 |
+| `agentToAgent.maxPingPongTurns` | `number` | `5` | 请求者/目标之间的最大乒乓轮次（0--5） |
+
+---
+
+<div id="web">
+## `web`
+</div>
+
+WhatsApp Web 提供商配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `true` | 启用 WhatsApp Web 提供商 |
+| `heartbeatSeconds` | `number` | -- | 心跳间隔 |
+| `reconnect.initialMs` | `number` | -- | 初始重连延迟（毫秒） |
+| `reconnect.maxMs` | `number` | -- | 最大重连延迟（毫秒） |
+| `reconnect.factor` | `number` | -- | 退避因子 |
+| `reconnect.jitter` | `number` | -- | 抖动因子 |
+| `reconnect.maxAttempts` | `number` | -- | 最大重连尝试次数（0 = 无限制） |
+
+---
+
+<div id="connectors">
+## `connectors`
+</div>
+
+消息连接器配置。每个键是一个连接器 ID（例如 `telegram`、`discord`、`slack`）。`channels` 键已弃用，请使用 `connectors` 代替。
+
+```json
+{
+  "connectors": {
+    "telegram": {
+      "enabled": true,
+      "botToken": "123456:ABC..."
+    },
+    "discord": {
+      "enabled": true,
+      "token": "Bot ..."
+    }
+  }
+}
+```
+
+每个连接器的通用字段：
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `enabled` | `boolean` | 启用/禁用而无需移除配置 |
+| `botToken` / `token` / `apiKey` | `string` | 认证凭证 |
+| `dmPolicy` | `"open" \| "pairing" \| "closed"` | 私信访问控制 |
+| `configWrites` | `boolean` | 允许连接器在事件上写入配置 |
+
+<Warning>
+`channels` 键已弃用。请迁移到 `connectors` 以获得前向兼容性。
+</Warning>
+
+---
+
+<div id="cron">
+## `cron`
+</div>
+
+定时任务配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用定时任务 |
+| `store` | `string` | -- | 定时任务状态持久化路径 |
+| `maxConcurrentRuns` | `number` | -- | 最大并发定时任务运行数 |
+
+---
+
+<div id="hooks">
+## `hooks`
+</div>
+
+事件驱动的钩子系统：Webhook、Gmail 集成和内部代理事件钩子。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用钩子系统 |
+| `path` | `string` | -- | Webhook 端点路径 |
+| `token` | `string` | -- | Webhook 认证令牌 |
+| `maxBodyBytes` | `number` | -- | 最大 Webhook 请求体大小 |
+| `presets` | `string[]` | -- | 要加载的钩子预设 |
+| `transformsDir` | `string` | -- | 钩子转换模块的目录 |
+| `mappings` | `HookMappingConfig[]` | -- | 钩子映射规则数组 |
+
+<div id="hook-mapping-config">
+### 钩子映射配置（`hooks.mappings[]`）
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | 映射标识符 |
+| `match.path` | `string` | -- | 要匹配的 URL 路径模式 |
+| `match.source` | `string` | -- | 源过滤器 |
+| `action` | `"wake" \| "agent"` | -- | 钩子操作类型 |
+| `wakeMode` | `"now" \| "next-heartbeat"` | -- | 何时唤醒代理 |
+| `name` | `string` | -- | 钩子名称 |
+| `sessionKey` | `string` | -- | 会话键覆盖 |
+| `messageTemplate` | `string` | -- | 消息内容模板 |
+| `textTemplate` | `string` | -- | 文本内容模板 |
+| `deliver` | `boolean` | -- | 是否投递结果 |
+| `allowUnsafeExternalContent` | `boolean` | -- | **危险：** 禁用外部内容安全包装 |
+| `channel` | `string` | -- | 目标频道：`"last"`、`"whatsapp"`、`"telegram"`、`"discord"`、`"googlechat"`、`"slack"`、`"signal"`、`"imessage"`、`"msteams"` |
+| `to` | `string` | -- | 目标 ID |
+| `model` | `string` | -- | 此钩子的覆盖模型（提供商/模型） |
+| `thinking` | `string` | -- | 思考级别覆盖 |
+| `timeoutSeconds` | `number` | -- | 钩子处理超时 |
+| `transform.module` | `string` | -- | 转换模块路径 |
+| `transform.export` | `string` | -- | 转换模块的导出名称 |
+
+<div id="hooks.gmail">
+### `hooks.gmail`
+</div>
+
+通过 Google Pub/Sub 的 Gmail Webhook 集成。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `account` | `string` | -- | Gmail 账户 |
+| `label` | `string` | -- | 要监视的 Gmail 标签 |
+| `topic` | `string` | -- | Pub/Sub 主题 |
+| `subscription` | `string` | -- | Pub/Sub 订阅 |
+| `pushToken` | `string` | -- | 推送通知令牌 |
+| `hookUrl` | `string` | -- | Webhook URL |
+| `includeBody` | `boolean` | -- | 包含邮件正文 |
+| `maxBytes` | `number` | -- | 最大邮件正文字节数 |
+| `renewEveryMinutes` | `number` | -- | 监视续订间隔（分钟） |
+| `allowUnsafeExternalContent` | `boolean` | -- | **危险：** 禁用外部内容安全包装 |
+| `serve.bind` | `string` | -- | 本地服务器绑定地址 |
+| `serve.port` | `number` | -- | 本地服务器端口 |
+| `serve.path` | `string` | -- | 本地服务器路径 |
+| `tailscale.mode` | `"off" \| "serve" \| "funnel"` | -- | Tailscale 暴露模式 |
+| `tailscale.path` | `string` | -- | Tailscale 路径 |
+| `tailscale.target` | `string` | -- | Tailscale serve/funnel 目标（端口、host:port 或完整 URL） |
+| `model` | `string` | -- | Gmail 钩子处理的模型覆盖 |
+| `thinking` | `"off" \| "minimal" \| "low" \| "medium" \| "high"` | -- | 思考级别覆盖 |
+
+<div id="hooks.internal">
+### `hooks.internal`
+</div>
+
+内部代理事件钩子。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用内部钩子系统 |
+| `handlers` | `InternalHookHandlerConfig[]` | -- | 旧版处理器列表 |
+| `entries` | `Record<string, HookConfig>` | -- | 每个钩子的配置覆盖（`enabled`、`env` 和任意键） |
+| `load.extraDirs` | `string[]` | -- | 要扫描的额外钩子目录 |
+| `installs` | `Record<string, HookInstallRecord>` | -- | 已安装的钩子包 |
+
+<div id="internalhookhandlerconfig">
+#### InternalHookHandlerConfig
+</div>
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `event` | `string` | 要监听的事件键（例如 `"command:new"`、`"session:start"`） |
+| `module` | `string` | 处理器模块路径 |
+| `export` | `string` | 模块的导出名称（默认：`"default"`） |
+
+<div id="hookinstallrecord">
+#### HookInstallRecord
+</div>
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `source` | `"npm" \| "archive" \| "path"` | 安装来源 |
+| `spec` | `string` | npm 规范或归档 URL |
+| `sourcePath` | `string` | 原始源路径 |
+| `installPath` | `string` | 本地安装路径 |
+| `version` | `string` | 已安装版本 |
+| `installedAt` | `string` | 安装时的 ISO 时间戳 |
+| `hooks` | `string[]` | 此包提供的钩子名称 |
+
+---
+
+<div id="discovery">
+## `discovery`
+</div>
+
+网络发现配置（mDNS 和广域 DNS-SD）。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `wideArea.enabled` | `boolean` | -- | 启用广域 DNS-SD 发现 |
+| `wideArea.domain` | `string` | -- | 单播 DNS-SD 域（例如 `"eliza.internal"`） |
+| `mdns.mode` | `"off" \| "minimal" \| "full"` | `"minimal"` | mDNS 广播模式（`off` = 禁用，`minimal` = 省略 cliPath/sshPort，`full` = 包含全部） |
+
+---
+
+<div id="talk">
+## `talk`
+</div>
+
+ElevenLabs Talk 模式语音设置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `voiceId` | `string` | -- | 默认 ElevenLabs 语音 ID |
+| `voiceAliases` | `Record<string, string>` | -- | 语音名称到 ElevenLabs 语音 ID 的映射 |
+| `modelId` | `string` | -- | 默认 ElevenLabs 模型 ID |
+| `outputFormat` | `string` | -- | 默认输出格式（例如 `mp3_44100_128`） |
+| `apiKey` | `string` | -- | ElevenLabs API 密钥（回退到 `ELEVENLABS_API_KEY`） |
+| `interruptOnSpeech` | `boolean` | `true` | 用户开始说话时停止发声 |
+
+---
+
+<div id="gateway">
+## `gateway`
+</div>
+
+网关服务器配置：端口、绑定地址、TLS、认证、HTTP 端点和节点路由。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `port` | `number` | `18789` | 网关 WS + HTTP 端口 |
+| `mode` | `"local" \| "remote"` | -- | 网关模式（`"remote"` 禁用本地启动） |
+| `bind` | `"auto" \| "lan" \| "loopback" \| "tailnet" \| "custom"` | `"loopback"` | 绑定地址策略 |
+| `customBindHost` | `string` | -- | `bind="custom"` 的自定义 IP（回退：`0.0.0.0`） |
+| `trustedProxies` | `string[]` | -- | `x-forwarded-for` 的受信任反向代理 IP |
+
+<div id="gateway.tls">
+### `gateway.tls`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 为网关服务器启用 TLS |
+| `autoGenerate` | `boolean` | `true` | 当 cert/key 缺失时自动生成自签名证书 |
+| `certPath` | `string` | -- | PEM 证书路径 |
+| `keyPath` | `string` | -- | PEM 私钥路径 |
+| `caPath` | `string` | -- | 用于 mTLS 或自定义根证书的 CA 包路径 |
+
+<div id="gateway.auth">
+### `gateway.auth`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `mode` | `"token" \| "password"` | `"token"` | 认证模式 |
+| `token` | `string` | -- | 令牌模式的共享令牌 |
+| `password` | `string` | -- | 密码模式的共享密码 |
+| `allowTailscale` | `boolean` | -- | 当 serve 模式启用时允许 Tailscale 身份头 |
+
+<div id="gateway.controlUi">
+### `gateway.controlUi`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 提供控制 UI（默认：`/`） |
+| `basePath` | `string` | -- | 基础路径前缀（例如 `"/eliza"`） |
+| `root` | `string` | -- | 控制 UI 资源的文件系统根目录（默认为 `dist/control-ui`） |
+| `allowedOrigins` | `string[]` | -- | WebSocket 连接允许的浏览器来源 |
+| `allowInsecureAuth` | `boolean` | `false` | 允许在不安全的 HTTP 上使用仅令牌认证 |
+| `dangerouslyDisableDeviceAuth` | `boolean` | `false` | **危险：** 禁用设备身份检查 |
+
+<div id="gateway.tailscale">
+### `gateway.tailscale`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `mode` | `"off" \| "serve" \| "funnel"` | -- | Tailscale 暴露模式 |
+| `resetOnExit` | `boolean` | -- | 关闭时重置 serve/funnel 配置 |
+
+<div id="gateway.remote">
+### `gateway.remote`
+</div>
+
+远程网关连接设置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `url` | `string` | -- | 远程网关 WebSocket URL（`ws://` 或 `wss://`） |
+| `transport` | `"ssh" \| "direct"` | -- | macOS 远程连接的传输方式 |
+| `token` | `string` | -- | 远程认证令牌 |
+| `password` | `string` | -- | 远程认证密码 |
+| `tlsFingerprint` | `string` | -- | 预期的 TLS 证书指纹（SHA-256） |
+| `sshTarget` | `string` | -- | 隧道的 SSH 目标（`user@host`） |
+| `sshIdentity` | `string` | -- | SSH 身份文件路径 |
+
+<div id="gateway.reload">
+### `gateway.reload`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `mode` | `"off" \| "restart" \| "hot" \| "hybrid"` | `"hybrid"` | 配置更改的重新加载策略 |
+| `debounceMs` | `number` | `300` | 配置重新加载的防抖窗口（毫秒） |
+
+<div id="gateway.http">
+### `gateway.http`
+</div>
+
+HTTP API 端点配置。
+
+<div id="gateway.http.endpoints.chatCompletions">
+#### `gateway.http.endpoints.chatCompletions`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | 提供 `POST /v1/chat/completions` |
+
+<div id="gateway.http.endpoints.responses">
+#### `gateway.http.endpoints.responses`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | 提供 `POST /v1/responses`（OpenResponses API） |
+| `maxBodyBytes` | `number` | 20MB | 最大请求体大小（字节） |
+| `files.allowUrl` | `boolean` | `true` | 允许 `input_file` 的 URL 获取 |
+| `files.allowedMimes` | `string[]` | -- | 允许的 MIME 类型（不区分大小写） |
+| `files.maxBytes` | `number` | 5MB | 每个文件的最大字节数 |
+| `files.maxChars` | `number` | 200k | 每个文件的最大解码字符数 |
+| `files.maxRedirects` | `number` | `3` | 获取 URL 时的最大重定向次数 |
+| `files.timeoutMs` | `number` | 10s | 获取超时（毫秒） |
+| `files.pdf.maxPages` | `number` | `4` | 要解析/渲染的最大页数 |
+| `files.pdf.maxPixels` | `number` | 4M | 每个渲染页面的最大像素数 |
+| `files.pdf.minTextChars` | `number` | `200` | 跳过光栅化的最小文本长度（字符） |
+| `images.allowUrl` | `boolean` | `true` | 允许 `input_image` 的 URL 获取 |
+| `images.allowedMimes` | `string[]` | -- | 允许的 MIME 类型（不区分大小写） |
+| `images.maxBytes` | `number` | 10MB | 每个图像的最大字节数 |
+| `images.maxRedirects` | `number` | `3` | 最大重定向次数 |
+| `images.timeoutMs` | `number` | 10s | 获取超时（毫秒） |
+
+<div id="gateway.nodes">
+### `gateway.nodes`
+</div>
+
+节点路由配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `browser.mode` | `"auto" \| "manual" \| "off"` | `"auto"` | 节点托管浏览器代理的浏览器路由策略 |
+| `browser.node` | `string` | -- | 固定到特定的节点 ID/名称 |
+| `allowCommands` | `string[]` | -- | 允许的额外 `node.invoke` 命令 |
+| `denyCommands` | `string[]` | -- | 即使在默认值或节点声明中也拒绝的命令 |
+
+---
+
+<div id="memory">
+## `memory`
+</div>
+
+记忆后端配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `backend` | `"builtin" \| "qmd"` | `"builtin"` | 记忆后端 |
+| `citations` | `"auto" \| "on" \| "off"` | -- | 引用模式 |
+| `qmd` | `MemoryQmdConfig` | -- | QMD 记忆后端配置 |
+
+<div id="memory.qmd">
+### `memory.qmd`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `command` | `string` | -- | QMD 二进制命令 |
+| `includeDefaultMemory` | `boolean` | -- | 包含默认记忆路径 |
+| `paths` | `MemoryQmdIndexPath[]` | -- | 索引路径（每个：`{ path, name?, pattern? }`） |
+| `sessions.enabled` | `boolean` | -- | 启用会话索引 |
+| `sessions.exportDir` | `string` | -- | 会话导出目录 |
+| `sessions.retentionDays` | `number` | -- | 会话保留天数 |
+| `update.interval` | `string` | -- | 更新间隔 |
+| `update.debounceMs` | `number` | -- | 更新防抖（毫秒） |
+| `update.onBoot` | `boolean` | -- | 启动时运行更新 |
+| `update.embedInterval` | `string` | -- | 嵌入更新间隔 |
+| `limits.maxResults` | `number` | -- | 最大搜索结果数 |
+| `limits.maxSnippetChars` | `number` | -- | 最大摘要字符数 |
+| `limits.maxInjectedChars` | `number` | -- | 最大注入字符数 |
+| `limits.timeoutMs` | `number` | -- | 搜索超时（毫秒） |
+| `scope` | `SessionSendPolicyConfig` | -- | 作用域策略 |
+
+---
+
+<div id="embedding">
+## `embedding`
+</div>
+
+本地嵌入模型配置（支持 Metal GPU 的 GGUF 模型）。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `model` | `string` | -- | GGUF 模型文件名（例如 `"nomic-embed-text-v1.5.Q5_K_M.gguf"`） |
+| `modelRepo` | `string` | -- | 用于模型解析的 Hugging Face 仓库/来源 |
+| `dimensions` | `number` | `768` | 嵌入向量维度 |
+| `contextSize` | `number` | -- | 嵌入上下文窗口大小（必须匹配模型） |
+| `gpuLayers` | `number \| "auto" \| "max"` | -- | 模型加载的 GPU 层数 |
+| `idleTimeoutMinutes` | `number` | `30` | 不活动多少分钟后从内存中卸载模型（0 = 永不卸载） |
+
+---
+
+<div id="database">
+## `database`
+</div>
+
+数据库提供商和连接配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `provider` | `"pglite" \| "postgres"` | `"pglite"` | 活动数据库提供商 |
+
+<div id="database.pglite">
+### `database.pglite`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `dataDir` | `string` | `~/.eliza/workspace/.eliza/.elizadb` | PGLite 数据目录 |
+
+<div id="database.postgres">
+### `database.postgres`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `connectionString` | `string` | -- | 完整的 PostgreSQL 连接字符串（优先于单独字段） |
+| `host` | `string` | `localhost` | PostgreSQL 主机 |
+| `port` | `number` | `5432` | PostgreSQL 端口 |
+| `database` | `string` | -- | 数据库名称 |
+| `user` | `string` | -- | 数据库用户 |
+| `password` | `string` | -- | 数据库密码 |
+| `ssl` | `boolean` | `false` | 启用 SSL 连接 |
+
+---
+
+<div id="cloud">
+## `cloud`
+</div>
+
+Eliza Cloud 集成，用于远程代理配置、推理代理和状态备份。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | `false` | 启用 Eliza Cloud 集成 |
+| `provider` | `string` | -- | 云提供商 ID（例如 `"elizacloud"`；在引导时设置） |
+| `baseUrl` | `string` | `https://elizacloud.ai/api/v1` | API 基础 URL |
+| `apiKey` | `string` | -- | 缓存的 API 密钥（通过网关认证加密存储） |
+| `inferenceMode` | `"cloud" \| "byok" \| "local"` | -- | 推理路由：`cloud`（代理）、`byok`（用户密钥）、`local`（无云端） |
+| `autoProvision` | `boolean` | `false` | 创建时自动将代理部署到云端 |
+
+<div id="cloud.bridge">
+### `cloud.bridge`
+</div>
+
+云代理的 WebSocket 通信设置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `reconnectIntervalMs` | `number` | `3000` | 重连间隔基数（毫秒） |
+| `maxReconnectAttempts` | `number` | `20` | 最大重连尝试次数 |
+| `heartbeatIntervalMs` | `number` | `30000` | 心跳间隔（毫秒） |
+
+<div id="cloud.backup">
+### `cloud.backup`
+</div>
+
+代理状态快照设置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `autoBackupIntervalMs` | `number` | `3600000` (1 hour) | 自动备份间隔（毫秒） |
+| `maxSnapshots` | `number` | `10` | 保留的最大自动快照数 |
+
+<div id="cloud.container">
+### `cloud.container`
+</div>
+
+新云部署的默认容器设置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `defaultImage` | `string` | -- | 代理容器的默认 ECR 镜像 URI |
+| `defaultArchitecture` | `"arm64" \| "x86_64"` | `"arm64"` | 默认 CPU 架构 |
+| `defaultCpu` | `number` | `1792` | 默认 CPU 单元 |
+| `defaultMemory` | `number` | `1792` | 默认内存（MB） |
+| `defaultPort` | `number` | `2138` | 默认容器端口 |
+
+---
+
+<div id="x402">
+## `x402`
+</div>
+
+x402 HTTP 支付协议配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用 x402 支付 |
+| `privateKey` | `string` | -- | 钱包私钥 |
+| `network` | `string` | -- | 网络标识符 |
+| `payTo` | `string` | -- | 收款地址 |
+| `facilitatorUrl` | `string` | -- | 中介服务 URL |
+| `maxPaymentUsd` | `number` | -- | 单笔最大支付金额（美元） |
+| `maxTotalUsd` | `number` | -- | 最大总支付金额（美元） |
+| `dbPath` | `string` | -- | 支付数据库路径 |
+
+---
+
+<div id="media">
+## `media`
+</div>
+
+媒体生成配置（图像、视频、音频、视觉提供商）。
+
+<div id="media.image">
+### `media.image`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用图像生成 |
+| `mode` | `"cloud" \| "own-key"` | -- | 云端（代理）或自有 API 密钥 |
+| `provider` | `"cloud" \| "fal" \| "openai" \| "google" \| "xai"` | -- | 图像提供商 |
+| `defaultSize` | `string` | -- | 默认图像大小 |
+| `fal` | `{ apiKey?, model?, baseUrl? }` | -- | Fal.ai 配置 |
+| `openai` | `{ apiKey?, model?, quality?, style? }` | -- | OpenAI 配置（`quality`：`"standard"` 或 `"hd"`，`style`：`"natural"` 或 `"vivid"`） |
+| `google` | `{ apiKey?, model?, aspectRatio? }` | -- | Google 配置 |
+| `xai` | `{ apiKey?, model? }` | -- | xAI 配置 |
+
+<div id="media.video">
+### `media.video`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用视频生成 |
+| `mode` | `"cloud" \| "own-key"` | -- | 云端（代理）或自有 API 密钥 |
+| `provider` | `"cloud" \| "fal" \| "openai" \| "google"` | -- | 视频提供商 |
+| `defaultDuration` | `number` | -- | 默认视频时长 |
+| `fal` | `{ apiKey?, model?, baseUrl? }` | -- | Fal.ai 配置 |
+| `openai` | `{ apiKey?, model? }` | -- | OpenAI 配置 |
+| `google` | `{ apiKey?, model? }` | -- | Google 配置 |
+
+<div id="media.audio">
+### `media.audio`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用音频生成 |
+| `mode` | `"cloud" \| "own-key"` | -- | 云端（代理）或自有 API 密钥 |
+| `provider` | `"cloud" \| "suno" \| "elevenlabs"` | -- | 音频提供商 |
+| `suno` | `{ apiKey?, model?, baseUrl? }` | -- | Suno 配置 |
+| `elevenlabs` | `{ apiKey?, duration? }` | -- | ElevenLabs SFX 配置 |
+
+<div id="media.vision">
+### `media.vision`
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `enabled` | `boolean` | -- | 启用视觉（图像理解） |
+| `mode` | `"cloud" \| "own-key"` | -- | 云端（代理）或自有 API 密钥 |
+| `provider` | `"cloud" \| "openai" \| "google" \| "anthropic" \| "xai" \| "ollama"` | -- | 视觉提供商 |
+| `openai` | `{ apiKey?, model?, maxTokens? }` | -- | OpenAI 配置 |
+| `google` | `{ apiKey?, model? }` | -- | Google 配置 |
+| `anthropic` | `{ apiKey?, model? }` | -- | Anthropic 配置 |
+| `xai` | `{ apiKey?, model? }` | -- | xAI 配置 |
+| `ollama` | `{ baseUrl?, model?, maxTokens?, autoDownload? }` | -- | Ollama 配置 |
+
+---
+
+<div id="mcp">
+## `mcp`
+</div>
+
+MCP（模型上下文协议）服务器定义。
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "my-server": {
+        "type": "stdio",
+        "command": "bunx",
+        "args": ["-y", "@some/mcp-server"],
+        "env": { "API_KEY": "..." }
+      },
+      "remote-server": {
+        "type": "sse",
+        "url": "https://mcp.example.com/sse",
+        "headers": { "Authorization": "Bearer ..." }
+      }
+    }
+  }
+}
+```
+
+<div id="mcp-server-entry">
+### MCP 服务器条目
+</div>
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `type` | `string` | -- | 服务器类型（例如 `"stdio"`、`"sse"`） |
+| `command` | `string` | -- | 要执行的命令（用于 `stdio` 类型） |
+| `args` | `string[]` | -- | 命令参数 |
+| `url` | `string` | -- | 服务器 URL（用于 `sse` 或远程类型） |
+| `env` | `Record<string, string>` | -- | 服务器进程的环境变量 |
+| `headers` | `Record<string, string>` | -- | 远程连接的 HTTP 头部 |
+| `cwd` | `string` | -- | 服务器进程的工作目录 |
+| `timeoutInMillis` | `number` | -- | 连接超时（毫秒） |
+
+---
+
+<div id="registry">
+## `registry`
+</div>
+
+ERC-8004 代理注册表和 ElizaMaker NFT 收藏配置。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `mainnetRpc` | `string` | -- | 以太坊主网（或本地 Anvil）RPC URL |
+| `registryAddress` | `string` | -- | ElizaAgentRegistry 合约地址 |
+| `collectionAddress` | `string` | -- | ElizaMaker 收藏合约地址 |
+
+---
+
+<div id="features">
+## `features`
+</div>
+
+插件自动启用和功能开关的功能标志。每个键映射到一个布尔值或一个包含 `enabled` 和其他选项的对象。
+
+```json
+{
+  "features": {
+    "shellEnabled": true,
+    "someFeature": { "enabled": true, "option": "value" }
+  }
+}
+```
+
+---
+
+<div id="customactions">
+## `customActions`
+</div>
+
+用户定义的代理自定义操作。`CustomActionDef` 对象的数组。
+
+| 字段 | 类型 | 默认值 | 描述 |
+|-------|------|---------|-------------|
+| `id` | `string` | -- | **必需。** 唯一操作标识符 |
+| `name` | `string` | -- | **必需。** 操作显示名称 |
+| `description` | `string` | -- | **必需。** 操作描述 |
+| `similes` | `string[]` | -- | 替代触发短语 |
+| `parameters` | `Array<{ name, description, required }>` | -- | **必需。** 操作参数 |
+| `handler` | `CustomActionHandler` | -- | **必需。** 处理器定义（见子表） |
+| `enabled` | `boolean` | -- | **必需。** 操作是否启用 |
+| `createdAt` | `string` | -- | **必需。** ISO 创建时间戳 |
+| `updatedAt` | `string` | -- | **必需。** ISO 最后更新时间戳 |
+
+<div id="customactionhandler">
+### CustomActionHandler
+</div>
+
+处理器是以下三种类型之一：
+
+**HTTP 处理器：**
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `type` | `"http"` | 处理器类型 |
+| `method` | `string` | HTTP 方法 |
+| `url` | `string` | 请求 URL |
+| `headers` | `Record<string, string>` | 可选的请求头 |
+| `bodyTemplate` | `string` | 可选的请求体模板 |
+
+**Shell 处理器：**
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `type` | `"shell"` | 处理器类型 |
+| `command` | `string` | 要执行的 Shell 命令 |
+
+**代码处理器：**
+
+| 字段 | 类型 | 描述 |
+|-------|------|-------------|
+| `type` | `"code"` | 处理器类型 |
+| `code` | `string` | 要执行的 JavaScript 代码 |

@@ -1,0 +1,103 @@
+{
+  "name": "@elizaos/plugin-linear",
+  "version": "2.0.0-beta.1",
+  "description": "Linear integration plugin for ElizaOS (TypeScript)",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "dev": "bun --hot build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts --watch",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git"
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "linear",
+    "typescript",
+    "project-management",
+    "issue-tracking"
+  ],
+  "author": "ElizaOS Contributors",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/elizaos/eliza/issues"
+  },
+  "homepage": "https://github.com/elizaos/eliza#readme",
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@linear/sdk": "^83.0.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "LINEAR_API_KEY": {
+        "type": "string",
+        "description": "Linear API key for authentication",
+        "required": true,
+        "sensitive": true
+      },
+      "LINEAR_WORKSPACE_ID": {
+        "type": "string",
+        "description": "Linear workspace ID",
+        "required": false,
+        "sensitive": false
+      },
+      "LINEAR_DEFAULT_TEAM_KEY": {
+        "type": "string",
+        "description": "Default team key for new issues",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
+  }
+}

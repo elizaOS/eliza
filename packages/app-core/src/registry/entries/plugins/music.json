@@ -1,0 +1,155 @@
+{
+  "id": "music",
+  "name": "Music",
+  "description": "Unified music plugin: library & playlists, metadata APIs, playback engine, queue, HTTP streaming routes, and optional Discord voice.",
+  "npmName": "@elizaos/plugin-music",
+  "version": "1.0.0",
+  "source": "bundled",
+  "tags": [
+    "music",
+    "library",
+    "playlists",
+    "playback",
+    "streaming",
+    "audio",
+    "discord",
+    "music-player",
+    "music-library"
+  ],
+  "config": {
+    "MUSICBRAINZ_USER_AGENT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "User Agent",
+      "help": "Musicbrainz user agent",
+      "advanced": false
+    },
+    "LASTFM_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Lastfm",
+      "advanced": false
+    },
+    "GENIUS_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Genius",
+      "advanced": false
+    },
+    "THEAUDIODB_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Theaudiodb",
+      "advanced": false
+    },
+    "SPOTIFY_CLIENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Client Id",
+      "help": "Spotify client id",
+      "advanced": false
+    },
+    "SPOTIFY_CLIENT_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Client Secret",
+      "help": "Secret for Spotify Client",
+      "advanced": false
+    },
+    "MUSIC_STORAGE_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Storage Dir",
+      "help": "Directory/file path",
+      "advanced": false
+    },
+    "MUSIC_STORAGE_HIGH_QUALITY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Storage High Quality",
+      "help": "Music storage high quality",
+      "advanced": false
+    },
+    "AUDIO_CACHE_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Cache Dir",
+      "help": "Directory/file path",
+      "advanced": false
+    },
+    "AUDIO_CACHE_FORMAT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Cache Format",
+      "help": "Audio cache format",
+      "advanced": false
+    },
+    "YOUTUBE_COOKIES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Cookies",
+      "help": "Youtube cookies",
+      "advanced": false
+    },
+    "YTDLP_COOKIES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Cookies",
+      "help": "Ytdlp cookies",
+      "advanced": false
+    },
+    "YOUTUBE_PROXY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy",
+      "help": "Youtube proxy",
+      "advanced": false
+    },
+    "YTDLP_PROXY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy",
+      "help": "Ytdlp proxy",
+      "advanced": false
+    },
+    "SERVER_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Url",
+      "help": "URL for Server",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "repository": "https://github.com/elizaos-plugins/plugin-music"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "other"
+}

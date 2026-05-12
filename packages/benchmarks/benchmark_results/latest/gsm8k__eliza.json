@@ -1,0 +1,79 @@
+{
+  "agent": "eliza",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131604Z_bc5c0157/standard__gsm8k/run_gsm8k_20260511T131604Z_1_b2e67a88/output"
+  ],
+  "benchmark_directory": "standard",
+  "benchmark_id": "gsm8k",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "accuracy": 1.0,
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "correct": 1.0,
+    "format_ok": 1.0,
+    "n": 1.0,
+    "performance_metrics": {
+      "duration_seconds": 30.717742250009906,
+      "mean_latency_ms": 2263.659458985785,
+      "p95_latency_ms": 2263.659458985785,
+      "throughput_per_second": 0.03255447590715029
+    },
+    "return_code": 0,
+    "score": 1.0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "trajectory_summary": {
+      "files": 2,
+      "prompt_chars": 476,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 30.717742250009906,
+    "mean_latency_ms": 2263.659458985785,
+    "p95_latency_ms": 2263.659458985785,
+    "throughput_per_second": 0.03255447590715029
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131604Z_bc5c0157/standard__gsm8k/run_gsm8k_20260511T131604Z_1_b2e67a88/output/gsm8k-results.json",
+  "run_group_id": "rg_20260511T131604Z_bc5c0157",
+  "run_id": "run_gsm8k_20260511T131604Z_1_b2e67a88",
+  "score": 1.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 2,
+    "prompt_chars": 476,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

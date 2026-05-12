@@ -1,0 +1,74 @@
+{
+  "id": "computeruse",
+  "name": "Computeruse",
+  "description": "Computer automation plugin for ElizaOS - enables AI agents to control the local machine (when supported) or a remote ComputerUse MCP server",
+  "npmName": "@elizaos/plugin-computeruse",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["computeruse", "automation", "desktop", "gui", "mcp"],
+  "config": {
+    "COMPUTER_USE_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": false,
+      "label": "Use Enabled",
+      "help": "Enable computer use capabilities (desktop automation, screenshots, browser control)",
+      "advanced": false
+    },
+    "COMPUTER_USE_SCREENSHOT_AFTER_ACTION": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": true,
+      "label": "Use Screenshot After Action",
+      "help": "Automatically capture a screenshot after each desktop action",
+      "advanced": false
+    },
+    "COMPUTER_USE_ACTION_TIMEOUT_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": 10000,
+      "label": "Use Action Timeout Ms",
+      "help": "Maximum action execution timeout in milliseconds",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "COMPUTER_USE_APPROVAL_MODE": {
+      "type": "textarea",
+      "required": false,
+      "sensitive": false,
+      "default": "full_control",
+      "label": "Use Approval Mode",
+      "help": "Approval mode for computer-use commands: full_control auto-approves everything, smart_approve auto-approves safe read-only commands, approve_all requires approval for every command, off denies all commands.",
+      "advanced": false
+    },
+    "COMPUTER_USE_BROWSER_HEADLESS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": false,
+      "label": "Use Browser Headless",
+      "help": "Run browser automation headlessly. Useful for CI and test environments without a visible desktop session.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "MousePointer2",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

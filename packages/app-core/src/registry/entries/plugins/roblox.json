@@ -1,0 +1,88 @@
+{
+  "id": "roblox",
+  "name": "Roblox",
+  "description": "Roblox app integration for agent-driven gameplay and interactive experiences.",
+  "npmName": "@elizaos/plugin-roblox",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["app", "games", "roblox", "interactive"],
+  "config": {
+    "ROBLOX_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for authenticating with the Roblox Open Cloud API.",
+      "advanced": false
+    },
+    "ROBLOX_DRY_RUN": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Dry Run",
+      "help": "When true, operations are simulated but not executed.",
+      "advanced": false
+    },
+    "ROBLOX_PLACE_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Place Id",
+      "help": "The Place ID of the specific Roblox place within the universe.",
+      "advanced": false
+    },
+    "ROBLOX_UNIVERSE_ID": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Universe Id",
+      "help": "The Universe ID of the Roblox experience to interact with.",
+      "advanced": false
+    },
+    "ROBLOX_POLL_INTERVAL": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "30",
+      "label": "Poll Interval",
+      "help": "Polling interval in seconds for Roblox data store operations.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "ROBLOX_WEBHOOK_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Webhook Secret",
+      "help": "Secret key for validating incoming webhooks from Roblox.",
+      "advanced": false
+    },
+    "ROBLOX_MESSAGING_TOPIC": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "eliza-agent",
+      "label": "Messaging Topic",
+      "help": "The messaging service topic for cross-server communication.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "BrickWall",
+    "group": "gaming",
+    "groupOrder": 11,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-roblox#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-roblox"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "gaming"
+}

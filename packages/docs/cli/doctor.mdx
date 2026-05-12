@@ -1,0 +1,45 @@
+---
+title: "eliza doctor"
+description: "Diagnose environment, ports, and common misconfigurations."
+---
+
+# `eliza doctor`
+
+Runs health checks across four categories: System, Configuration, Storage, and Network. Reports pass/fail/warn status for each check with suggested fixes.
+
+## Options
+
+| Flag | Description |
+|------|-------------|
+| `--no-ports` | Skip port availability checks |
+| `--fix` | Automatically fix issues where possible (runs `eliza` sub-commands for auto-fixable checks) |
+| `--json` | Output results as JSON (CI-friendly). Exits with code 1 if any checks fail. |
+
+## Examples
+
+```bash
+eliza doctor
+eliza doctor --fix
+eliza doctor --json
+eliza doctor --no-ports
+```
+
+From a source checkout:
+
+```bash
+bun run eliza:doctor
+```
+
+## When to use it
+
+- After installing or updating Eliza
+- After changing ports or state directory paths
+- After moving `~/.eliza/` to a new location
+- When the agent fails to start or connectors do not load
+- When filing a bug report — include the doctor output
+
+## Related
+
+- [Developer diagnostics and workspace](/guides/developer-diagnostics-and-workspace)
+- [Known failure modes](/stability/known-failure-modes)
+- [CLI environment variables](/cli/environment)

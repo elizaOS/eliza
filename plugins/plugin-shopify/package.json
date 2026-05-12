@@ -1,0 +1,58 @@
+{
+  "name": "@elizaos/plugin-shopify",
+  "version": "2.0.0-beta.1",
+  "description": "Shopify Admin API plugin for elizaOS agents -- manage products, orders, inventory, and customers.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "dev": "tsup --config tsup.config.ts --watch",
+    "test": "vitest run",
+    "test:e2e": "node ../../packages/app-core/scripts/run-local-plugin-live-smoke.mjs",
+    "test:live": "bun run test:e2e"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SHOPIFY_STORE_DOMAIN": {
+        "type": "string",
+        "description": "Shopify store domain (e.g. mystore.myshopify.com)",
+        "required": true,
+        "sensitive": false
+      },
+      "SHOPIFY_ACCESS_TOKEN": {
+        "type": "string",
+        "description": "Shopify Admin API access token",
+        "required": true,
+        "sensitive": true
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "id": "webhooks",
+  "name": "Webhooks",
+  "description": "HTTP webhook ingress for external triggers (wake, agent, mapped hooks)",
+  "npmName": "@elizaos/plugin-webhooks",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["webhooks"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Webhook",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

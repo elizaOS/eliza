@@ -1,0 +1,20 @@
+# Safe Wrangler local-development template.
+# Do not put real credentials or private keys in this tracked file.
+# `bun run dev` runs packages/scripts/sync-api-dev-vars.ts and writes
+# apps/api/.dev.vars from .env/.env.local, dropping placeholder values.
+
+NODE_ENV="development"
+ENVIRONMENT="local"
+NEXT_PUBLIC_APP_URL="http://localhost:3000"
+NEXT_PUBLIC_API_URL="http://localhost:8787"
+ELIZA_CLOUD_URL="http://localhost:3000"
+CACHE_ENABLED="true"
+REDIS_RATE_LIMITING="false"
+FORCE_REDIS_EVENTS="false"
+PAYOUT_TESTNET="true"
+JWT_SIGNING_KEY_ID="local-dev"
+
+# Local-only JWT_SIGNING_PRIVATE_KEY and JWT_SIGNING_PUBLIC_KEY are generated
+# into ignored apps/api/.dev.vars when they are absent from .env/.env.local.
+#
+# Add real local secrets to ../../.env.local, not this file.

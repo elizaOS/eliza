@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/personality-bench",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "Layered judge (regex + LLM cross-check + embedding fallback) for the personality benchmark scenarios authored under W3-2.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "grade": "bun run src/runner.ts",
+    "calibrate": "bun x vitest run tests/judge.test.ts --reporter=verbose",
+    "test": "bun x vitest run",
+    "test:watch": "bun x vitest",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "bun-types": "1.3.13",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  }
+}

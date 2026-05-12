@@ -1,0 +1,46 @@
+{
+  "name": "@elizaos/cloud-frontend",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "bun --bun vite",
+    "build": "bun --bun vite build && bun run build:ssr && bun run prerender",
+    "build:client": "bun --bun vite build",
+    "build:ssr": "bun --bun vite build --ssr src/entry-server.tsx --outDir dist-ssr",
+    "prerender": "node scripts/prerender.mjs",
+    "preview": "bun --bun vite preview --port 3000 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write src",
+    "verify": "bun run lint && bun run typecheck && bun run build"
+  },
+  "dependencies": {
+    "@elizaos/cloud-ui": "workspace:*",
+    "@mdx-js/rollup": "^3.1.0",
+    "@stwd/react": "^0.7.2",
+    "@tailwindcss/vite": "^4.1.18",
+    "@types/mdx": "^2.0.13",
+    "@types/react": "^19.2.9",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.0",
+    "buffer": "^6.0.3",
+    "react": "19.2.5",
+    "react-dom": "19.2.5",
+    "react-helmet-async": "^3.0.0",
+    "react-router": "^7.0.0",
+    "react-router-dom": "^7.0.0",
+    "remark-frontmatter": "^5.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-mdx-frontmatter": "^5.0.0",
+    "vite": "^8.0.10"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "jsdom": "^29.1.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.5"
+  }
+}

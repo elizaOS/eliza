@@ -1,0 +1,47 @@
+{
+  "name": "@elizaos/cloud-sdk",
+  "version": "2.0.0-beta.1",
+  "description": "TypeScript SDK for Eliza Cloud API, auth, and agent management.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "audit:routes": "node scripts/audit-api-routes.mjs",
+    "prepublishOnly": "bun run build",
+    "build": "bun run build.ts",
+    "check:routes": "node scripts/generate-public-routes.mjs --check && node scripts/audit-api-routes.mjs",
+    "clean": "rm -rf dist tsconfig.tsbuildinfo",
+    "generate:routes": "node scripts/generate-public-routes.mjs",
+    "test": "vitest run",
+    "test:e2e": "vitest run src/live.e2e.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.5",
+    "@types/node": "^22.19.17",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

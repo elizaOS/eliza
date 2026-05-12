@@ -1,0 +1,117 @@
+{
+  "id": "scape",
+  "name": "'scape",
+  "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
+  "npmName": "@elizaos/app-scape",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": [
+    "game",
+    "runescape",
+    "xrsps",
+    "agents",
+    "autonomous",
+    "app",
+    "interactive",
+    "scape"
+  ],
+  "config": {
+    "SCAPE_BOT_SDK_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Bot Sdk Token",
+      "help": "Shared secret for the xRSPS bot-SDK endpoint. Must match the server's BOT_SDK_TOKEN env var. Without this set, the plugin will not connect and the agent will not enter the world.",
+      "advanced": false
+    },
+    "SCAPE_AGENT_PASSWORD": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Agent Password",
+      "help": "Password for the agent's xRSPS account. Leave blank to auto-generate a 24-char random password on first launch (persisted to ~/.eliza/scape-agent-identity.json and reused on every subsequent run). Only set this if you want to pin a specific existing account — and note that whatever value you set will be written to the identity file in plaintext, so do not reuse a production password.",
+      "advanced": false
+    },
+    "SCAPE_BOT_SDK_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "wss://scape-96cxt.sevalla.app/botsdk",
+      "label": "Bot Sdk Url",
+      "help": "WebSocket URL of the xRSPS bot-SDK endpoint. Defaults to the production 'scape deployment at wss://scape-96cxt.sevalla.app/botsdk (same host as the main game, path-routed, TLS-terminated by Sevalla's ingress). Override to ws://127.0.0.1:8080/botsdk for local dev against the shared-HTTP topology, or ws://127.0.0.1:43595 for legacy standalone BOT_SDK_PORT.",
+      "advanced": false
+    },
+    "SCAPE_CLIENT_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://scape-client-2sqyc.kinsta.page",
+      "label": "Client Url",
+      "help": "URL the /viewer iframe loads — the xRSPS React client. Defaults to the production 'scape deployment at https://scape-client-2sqyc.kinsta.page. Override to http://localhost:3000 for local dev against the craco server.",
+      "advanced": false
+    },
+    "SCAPE_AGENT_NAME": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "scape-agent",
+      "label": "Agent Name",
+      "help": "In-game display name for the agent. Becomes the account username (normalized, max 12 chars). Must not conflict with any human player's name.",
+      "advanced": false
+    },
+    "SCAPE_AGENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Agent Id",
+      "help": "Stable identifier across reconnects. Used as the journal filename. Defaults to 'scape-{SCAPE_AGENT_NAME}'.",
+      "advanced": false
+    },
+    "SCAPE_AGENT_PERSONA": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Agent Persona",
+      "help": "Optional persona string fed into the LLM's system prompt so the agent keeps a consistent voice across sessions.",
+      "advanced": false
+    },
+    "SCAPE_LOOP_INTERVAL_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "15000",
+      "label": "Loop Interval Ms",
+      "help": "Autonomous LLM step interval in milliseconds. Lower = more expensive, more responsive. Minimum 1000.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "SCAPE_MODEL_SIZE": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "TEXT_SMALL",
+      "label": "Model Size",
+      "help": "Which model tier the autonomous loop uses. Smaller = cheaper, larger = smarter.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Gamepad2",
+    "group": "Curated",
+    "groupOrder": 4,
+    "actions": ["launch", "configure", "uninstall"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "game",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [],
+    "curatedSlug": "scape"
+  }
+}

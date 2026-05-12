@@ -1,0 +1,105 @@
+---
+title: Messages
+description: Anthropic Messages API-compatible endpoint for Claude Code and Anthropic SDK clients.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Messages
+
+<div className="status-badge status-stable">Stable</div>
+
+Anthropic-compatible `POST /api/v1/messages` for Claude Code and other clients that expect the Anthropic Messages API.
+
+## Endpoint
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/messages</span>
+</div>
+
+## Authentication
+
+Use your Cloud API key with either `Authorization: Bearer ...` or `X-API-Key`.
+
+Claude Code and Anthropic SDK clients should also send:
+
+- `anthropic-version: 2023-06-01`
+- `Content-Type: application/json`
+
+## Example
+
+<Tabs items={['cURL', 'Claude Code']}>
+  <Tabs.Tab>
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/messages" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "anthropic-version: 2023-06-01" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "claude-sonnet-4-6",
+    "max_tokens": 512,
+    "messages": [
+      {
+        "role": "user",
+        "content": [
+          { "type": "text", "text": "summarize my priorities for today" }
+        ]
+      }
+    ]
+  }'
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```bash
+export ANTHROPIC_BASE_URL="https://elizacloud.ai/api/v1"
+export ANTHROPIC_API_KEY="YOUR_API_KEY"
+claude
+```
+  </Tabs.Tab>
+</Tabs>
+
+## Supported Fields
+
+| Field            | Type            | Required | Notes                                                       |
+| ---------------- | --------------- | -------- | ----------------------------------------------------------- |
+| `model`          | string          | yes      | Accepts Anthropic-style model ids such as `claude-sonnet-4-6` |
+| `max_tokens`     | integer         | yes      | Output token cap                                            |
+| `messages`       | array           | yes      | Anthropic message array                                     |
+| `system`         | string or array | no       | Anthropic system prompt format                              |
+| `stream`         | boolean         | no       | Emits Anthropic SSE events                                  |
+| `temperature`    | number          | no       | Passed through when supported                               |
+| `top_p`          | number          | no       | Passed through when supported                               |
+| `top_k`          | number          | no       | Passed through when supported                               |
+| `stop_sequences` | array           | no       | Anthropic stop sequences                                    |
+| `tools`          | array           | no       | Anthropic tool definitions                                  |
+| `tool_choice`    | object          | no       | `auto`, `any`, `none`, or a named tool                      |
+
+## Message Content
+
+Supported content blocks:
+
+- `{ "type": "text", "text": "..." }`
+- `{ "type": "image", "source": { "type": "url", "url": "..." } }`
+- `{ "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "..." } }`
+- `{ "type": "tool_use", "id": "...", "name": "...", "input": { ... } }`
+- `{ "type": "tool_result", "tool_use_id": "...", "content": "..." }`
+
+## Streaming
+
+When `stream: true`, the route emits Anthropic-style SSE events such as:
+
+- `message_start`
+- `content_block_start`
+- `content_block_delta`
+- `content_block_stop`
+- `message_delta`
+- `message_stop`
+- `error`
+
+Tool calls stream as Anthropic `tool_use` content blocks so Claude Code can continue multi-step workflows.
+
+<Callout type="info">
+  This route is intended as a compatibility layer. Billing, auth, moderation,
+  and credit enforcement still run through elizaOS Cloud.
+</Callout>

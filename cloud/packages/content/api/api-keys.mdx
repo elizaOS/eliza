@@ -1,0 +1,176 @@
+---
+title: API Keys
+description: Manage API keys for elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# API Keys
+
+<div className="status-badge status-stable">Stable</div>
+
+Create and manage API keys for authentication.
+
+<Callout type="info">
+  Listing and creating API keys require a Steward browser session. Updating,
+  deleting, and regenerating existing keys can use a Steward session or an API
+  key from the same organization; use a different key than the one you are
+  changing.
+</Callout>
+
+## List API Keys
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/api-keys</span>
+</div>
+
+Get all your API keys.
+
+### Response
+
+```json
+{
+  "keys": [
+    {
+      "id": "key_abc123",
+      "name": "Production Key",
+      "prefix": "eliza_abc...",
+      "permissions": ["chat", "embeddings"],
+      "createdAt": "2024-01-15T10:30:00Z",
+      "lastUsed": "2024-01-16T15:45:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Create API Key
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/api-keys</span>
+</div>
+
+Create a new API key.
+
+### Request
+
+```json
+{
+  "name": "Production Key",
+  "permissions": ["chat", "embeddings", "images"]
+}
+```
+
+### Available Permissions
+
+| Permission   | Description         |
+| ------------ | ------------------- |
+| `chat`       | Chat completions    |
+| `embeddings` | Generate embeddings |
+| `images`     | Image generation    |
+| `video`      | Video generation    |
+| `voice`      | Voice/TTS           |
+| `knowledge`  | Knowledge base      |
+| `agents`     | Agent management    |
+| `apps`       | App management      |
+
+### Response
+
+```json
+{
+  "apiKey": {
+    "id": "key_abc123",
+    "name": "Production Key",
+    "description": null,
+    "key_prefix": "eliza_abc...",
+    "created_at": "2024-01-15T10:30:00Z",
+    "permissions": ["chat", "embeddings", "images"],
+    "rate_limit": 1000,
+    "expires_at": null
+  },
+  "plainKey": "eliza_abc123xyz..."
+}
+```
+
+<Callout type="warning">
+  The `plainKey` field contains the full API key and is only returned once at
+  creation time. Store it securely.
+</Callout>
+
+---
+
+## Get API Key
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/api-keys/{"{id}"}</span>
+</div>
+
+Get API key details (without the secret).
+
+---
+
+## Update API Key
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-put">PUT</span>
+  <span className="path">/api/v1/api-keys/{"{id}"}</span>
+</div>
+
+Update API key name or permissions.
+
+### Request
+
+```json
+{
+  "name": "Updated Key Name",
+  "permissions": ["chat", "embeddings"]
+}
+```
+
+---
+
+## Revoke API Key
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/api-keys/{"{id}"}</span>
+</div>
+
+Revoke (delete) an API key.
+
+<Callout type="warning">Revoked keys stop working immediately.</Callout>
+
+---
+
+## Regenerate API Key
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/api-keys/{"{id}"}/regenerate</span>
+</div>
+
+Generate a new secret for an existing key.
+
+### Response
+
+```json
+{
+  "id": "key_abc123",
+  "key": "eliza_newkey789...",
+  "regeneratedAt": "2024-01-16T10:30:00Z"
+}
+```
+
+---
+
+## Best Practices
+
+1. **Use separate keys** for development and production
+2. **Limit permissions** to only what's needed
+3. **Rotate keys** regularly
+4. **Never commit keys** to version control
+5. **Use environment variables** to store keys

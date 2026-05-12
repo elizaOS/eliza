@@ -1,0 +1,44 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# Use bun if available (installed by CI), fallback to npm
+	if command -v bun >/dev/null 2>&1; then \
+		node scripts/init-submodules.mjs || true; \
+		node scripts/disable-local-eliza-workspace.mjs || true; \
+		ELIZAOS_APP_SKIP_LOCAL_UPSTREAMS=1 bun install --ignore-scripts; \
+		bun run build; \
+	else \
+		npm install --ignore-scripts; \
+		npm run build; \
+	fi
+
+override_dh_auto_install:
+	# Install the built distribution
+	install -d debian/elizaos-app/usr/lib/elizaos-app
+	cp -r dist/ debian/elizaos-app/usr/lib/elizaos-app/
+	cp elizaos-app.mjs debian/elizaos-app/usr/lib/elizaos-app/
+	cp package.json debian/elizaos-app/usr/lib/elizaos-app/
+	cp -r node_modules/ debian/elizaos-app/usr/lib/elizaos-app/ 2>/dev/null || true
+
+	# Install the plugins manifest
+	install -m 644 plugins.json debian/elizaos-app/usr/lib/elizaos-app/
+
+	# Create the CLI wrapper
+	install -d debian/elizaos-app/usr/bin
+	printf '#!/bin/sh\nexec /usr/bin/node /usr/lib/elizaos-app/elizaos-app.mjs "$$@"\n' \
+		> debian/elizaos-app/usr/bin/elizaos-app
+	chmod 755 debian/elizaos-app/usr/bin/elizaos-app
+
+	# Install systemd user service
+	install -m 644 packaging/debian/elizaos-app.service debian/elizaos-app/usr/lib/elizaos-app/elizaos-app.service
+
+override_dh_auto_test:
+	# Skip tests during package build
+	true
+
+override_dh_auto_clean:
+	rm -rf dist/ node_modules/
+	dh_auto_clean

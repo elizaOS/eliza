@@ -1,0 +1,144 @@
+{
+  "name": "@elizaos/plugin-xai",
+  "version": "2.0.0-beta.1",
+  "description": "elizaOS xAI plugin: Grok models for text generation and embeddings.",
+  "type": "module",
+  "main": "dist/node/index.node.js",
+  "module": "dist/node/index.node.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos-plugins/plugin-xai.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/browser/index.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/node/index.d.ts",
+        "import": "./dist/node/index.node.js",
+        "require": "./dist/cjs/index.node.cjs",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/node/index.d.ts",
+        "default": "./dist/node/index.node.js"
+      },
+      "require": "./dist/cjs/index.node.cjs",
+      "default": "./dist/node/index.node.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "text-large",
+        "text-small",
+        "tool-use",
+        "embedding"
+      ]
+    }
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "xai",
+    "grok",
+    "ai-provider"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf dist .turbo",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "echo \"Lint skipped for release\"",
+    "lint:check": "bun run lint",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "XAI_API_KEY": {
+        "type": "string",
+        "description": "xAI API key for Grok model access.",
+        "required": true,
+        "sensitive": true
+      },
+      "XAI_MODEL": {
+        "type": "string",
+        "description": "xAI Grok model for large/default text generation (e.g. grok-3).",
+        "required": false,
+        "default": "grok-3",
+        "sensitive": false
+      },
+      "XAI_SMALL_MODEL": {
+        "type": "string",
+        "description": "xAI Grok model for faster/smaller tasks (e.g. grok-3-mini).",
+        "required": false,
+        "default": "grok-3-mini",
+        "sensitive": false
+      },
+      "XAI_EMBEDDING_MODEL": {
+        "type": "string",
+        "description": "xAI model for text embeddings.",
+        "required": false,
+        "default": "grok-embedding",
+        "sensitive": false
+      },
+      "XAI_BASE_URL": {
+        "type": "string",
+        "description": "xAI API base URL.",
+        "required": false,
+        "default": "https://api.x.ai/v1",
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "browser",
+      "node"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Browser-compatible build available via exports.browser",
+      "node": "Node.js build available via exports.node"
+    }
+  }
+}

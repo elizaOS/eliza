@@ -1,0 +1,129 @@
+// Hardware-verified on Intel ARL (Mesa 25.2.8) + lavapipe (Mesa 25.2.8 LLVMpipe)
+// for the earlier single-block layout. This source now follows the current
+// fork block_tbq4_0 layout (four 32-element blocks per 128-row); re-run
+// `make -C packages/inference/verify vulkan-verify` on a Vulkan host after
+// regenerating fixtures.
+//
+// turbo4 KV cache dequant + Q·K dot product (Vulkan compute shader, GLSL 450).
+//
+// Ports the fork's block_tbq4_0 decode path.
+//
+// Block layout (matches block_tbq4_0 in ggml-common.h, 18 bytes):
+//     half  norm        // [0..1]   fp16 RMS after TBQ preconditioning
+//     u8    qs[16]      // [2..17]  first 16 low nibbles, last 16 high nibbles
+//
+// Four 32-element blocks form one 128-element attention row.
+//
+// Dispatch: one workgroup per (n_kv_block, n_head). 32 invocations cooperate.
+
+#version 450
+#extension GL_EXT_shader_16bit_storage  : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(std430, binding = 0) readonly buffer QBuf {
+    float q[];
+};
+
+layout(std430, binding = 1) readonly buffer KBuf {
+    uint k_packed[];        // each block_turbo4_0 = 18 bytes
+};
+
+layout(std430, binding = 2) writeonly buffer OutBuf {
+    float scores[];
+};
+
+layout(push_constant) uniform Push {
+    uint head_dim;          // must be 128
+    uint n_kv;
+    uint kv_stride_blocks;  // 4 for d=128
+    uint q_head;
+    uint head_offset_bytes;
+} push;
+
+const uint TURBO4_BLOCK_BYTES = 18u;
+
+const float TURBO_CENTROIDS_4BIT[16] = float[16](
+    -2.7321365, -2.0685055, -1.6175243, -1.2557391,
+    -0.9419147, -0.6564307, -0.3878412, -0.1283243,
+     0.1283243,  0.3878412,  0.6564307,  0.9419147,
+     1.2557391,  1.6175243,  2.0685055,  2.7321365
+);
+
+float fp16_to_fp32(uint h16) {
+    uint sign = (h16 & 0x8000u) << 16;
+    uint exp  = (h16 >> 10) & 0x1Fu;
+    uint mant = h16 & 0x3FFu;
+    uint u;
+    if (exp == 0u) {
+        if (mant == 0u) { u = sign; }
+        else {
+            uint e = 1u;
+            while ((mant & 0x400u) == 0u) { mant <<= 1; e += 1u; }
+            mant &= 0x3FFu;
+            u = sign | ((127u - 15u - e + 1u) << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        u = sign | 0x7F800000u | (mant << 13);
+    } else {
+        u = sign | ((exp + 127u - 15u) << 23) | (mant << 13);
+    }
+    return uintBitsToFloat(u);
+}
+
+uint read_byte(uint b) {
+    uint w = k_packed[b >> 2];
+    return (w >> ((b & 3u) * 8u)) & 0xFFu;
+}
+uint read_u16(uint b) {
+    return read_byte(b) | (read_byte(b + 1u) << 8u);
+}
+
+// 32-thread tree reduction over a workgroup-shared scratch. Driver-portable:
+// does NOT depend on any specific subgroup size, unlike subgroupAdd (which is
+// only correct when a single 32-lane subgroup covers the whole workgroup).
+shared float partials[32];
+
+float reduce_sum_32(float v, uint tid) {
+    partials[tid] = v;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1) {
+        if (tid < stride) {
+            partials[tid] += partials[tid + stride];
+        }
+        barrier();
+    }
+    return partials[0];
+}
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint kv_idx = gl_WorkGroupID.x;
+    if (kv_idx >= push.n_kv) return;
+
+    uint elem0 = tid * 4u;
+    uint blk_idx = elem0 >> 5;
+    uint within0 = elem0 & 31u;
+    uint group_off = push.head_offset_bytes +
+                     kv_idx * push.kv_stride_blocks * TURBO4_BLOCK_BYTES;
+    uint blk_off = group_off + blk_idx * TURBO4_BLOCK_BYTES;
+
+    uint norm16 = read_u16(blk_off + 0u);
+    float norm = fp16_to_fp32(norm16);
+
+    float acc = 0.0;
+    uint q_base = push.q_head * push.head_dim + elem0;
+    for (uint local = 0u; local < 4u; local += 1u) {
+        uint within = within0 + local;
+        uint qs_byte = read_byte(blk_off + 2u + (within & 15u));
+        uint idx = within < 16u ? (qs_byte & 0xFu) : (qs_byte >> 4);
+        acc = fma(q[q_base + local], TURBO_CENTROIDS_4BIT[idx] * norm, acc);
+    }
+
+    float sum = reduce_sum_32(acc, tid);
+    if (tid == 0u) {
+        scores[push.q_head * push.n_kv + kv_idx] = sum;
+    }
+}

@@ -1,0 +1,305 @@
+# =============================================================================
+# eliza-cloud-api — Cloudflare Worker config
+# =============================================================================
+# This file is committed; secrets live in `wrangler secret put` (push them via
+# packages/scripts/cf-secrets-migrate.mjs).  Anything marked REPLACE_ME must be filled
+# in by the operator after running packages/scripts/cf-bootstrap.sh.
+# =============================================================================
+
+name = "eliza-cloud-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+account_id = "23cf6feaeaa541f6a0675053c33da768"
+workers_dev = false
+minify = true
+
+# -----------------------------------------------------------------------------
+# Bundle-time aliases — swap Node-only / forbidden-top-level-IO modules for
+# Workers-friendly stubs. The agent runtime itself runs on the agent-server
+# sidecar, NOT on the Worker; the API only needs the schema *types* + *table
+# objects* so Drizzle queries against shared tables compile and execute.
+# -----------------------------------------------------------------------------
+[define]
+__dirname = '"/"'
+__filename = '"/worker.js"'
+
+[alias]
+"@elizaos/plugin-sql" = "./src/stubs/elizaos-plugin-sql.ts"
+"@elizaos/plugin-elevenlabs" = "./src/stubs/elizaos-plugin-elevenlabs.ts"
+"@elizaos/core" = "./src/stubs/elizaos-core.ts"
+"@elizaos/cloud-sdk" = "../../packages/sdk/src/index.ts"
+"@elizaos/billing" = "../../packages/billing/src/index.ts"
+# ssh2 is Node-only (.node native binding). Container/agent SSH lives on the
+# sidecar (cloud/INFRA.md). Stub at bundle time so the Worker compiles; any
+# accidental runtime instantiation throws a clear error.
+"ssh2" = "./src/stubs/ssh2.ts"
+# undici is Node's fetch impl; references node:net, MessagePort, perf_hooks
+# that don't exist on Workers. Re-export runtime globals + stub the
+# Agent/Pool/Dispatcher classes.
+"undici" = "./src/stubs/undici.ts"
+
+[observability]
+enabled = true
+
+# -----------------------------------------------------------------------------
+# Cron triggers — Cloudflare requires unique schedule strings. Multiple
+# handlers per schedule are fanned out by the dispatcher in `src/lib/cron.ts`
+# (CRON_FANOUT). See cloud/INFRA.md "Cron triggers" for the full mapping.
+# -----------------------------------------------------------------------------
+[triggers]
+crons = [
+  "* * * * *",      # deployment-monitor + health-check + process-provisioning-jobs
+  "*/5 * * * *",    # social-automation + sample-eliza-price + process-redemptions + cleanup-stuck-provisioning
+  "*/10 * * * *",   # cleanup-expired-crypto-payments
+  "*/15 * * * *",   # auto-top-up + agent-budgets + refresh-model-catalog
+  "0 * * * *",      # agent-billing
+  "0 */6 * * *",    # cleanup-anonymous-sessions
+  "0 0 * * *",      # container-billing + release-pending-earnings
+  "0 1 * * *",      # compute-metrics
+  "0 2 * * *",      # cleanup-webhook-events
+]
+
+# -----------------------------------------------------------------------------
+# Bindings
+# -----------------------------------------------------------------------------
+
+# R2 — primary blob/media storage. Use env.BLOB.put/get/etc.
+[[r2_buckets]]
+binding = "BLOB"
+bucket_name = "eliza-cloud-blob"
+
+# Cache + rate-limit storage runs through Upstash Redis REST in cloud (set
+# KV_REST_API_URL / KV_REST_API_TOKEN as Wrangler secrets). Local dev uses
+# embedded Wadis (CACHE_BACKEND=auto with no creds → wadis fallback).
+
+# Vectorize — embeddings (uncomment after `wrangler vectorize create`)
+# [[vectorize]]
+# binding = "EMBEDDINGS"
+# index_name = "eliza-cloud-embeddings"
+
+# -----------------------------------------------------------------------------
+# Queue: Stripe webhook fan-out runs on Redis (Upstash REST in cloud, embedded
+# Wadis locally), not Cloudflare Queues. The webhook route LPUSHes a JSON
+# envelope; the `* * * * *` cron fires `/api/cron/process-stripe-queue`
+# which drains a bounded batch via the queue helper in
+# `packages/lib/queue/redis-queue.ts`. Failed messages are retried with
+# attempts++ and demoted to a `:dlq` list after `maxAttempts`.
+# -----------------------------------------------------------------------------
+
+# -----------------------------------------------------------------------------
+# Vars (non-secret build/runtime config — the rest live as wrangler secrets)
+# -----------------------------------------------------------------------------
+[vars]
+NODE_ENV = "production"
+NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
+NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
+ELIZA_CLOUD_URL = "https://elizacloud.ai"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_APP_URL = "https://eliza.app"
+NEXT_PUBLIC_NETWORK = "base"
+NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+NEXT_PUBLIC_CREDITS_SSE_ENABLED = "true"
+GITHUB_ORG_NAME = "eliza-cloud-apps"
+GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
+ENVIRONMENT = "production"
+DATABASE_REGION = "na"
+PAYOUT_TESTNET = "false"
+ENABLE_X402_PAYMENTS = "true"
+X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
+X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+CACHE_ENABLED = "false"
+CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
+REDIS_RATE_LIMITING = "false"
+FORCE_REDIS_EVENTS = "false"
+R2_PUBLIC_HOST = "blob.elizacloud.ai"
+SQL_HEAVY_PAYLOAD_STORAGE = "r2"
+SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
+SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
+LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
+
+# -----------------------------------------------------------------------------
+# Required secrets — set via `wrangler secret put KEY` (or run
+# packages/scripts/cf-secrets-migrate.mjs which iterates a .env file).
+#
+# CANONICAL LIST (cross-reference cloud/packages/apps/api/MIGRATION_NOTES.md once Agent B
+# publishes it; if names diverge, Agent B's c.env.X usage wins — update this
+# file and leave a note in cloud/INFRA.md).
+#
+#   DATABASE_URL                       Neon Postgres
+#   STEWARD_API_URL                    Optional Steward base URL override;
+#       defaults to NEXT_PUBLIC_STEWARD_API_URL or NEXT_PUBLIC_API_URL + /steward
+#   STEWARD_SESSION_SECRET             HS256 secret for Steward JWT verify (jose); MUST match Steward host
+#   STEWARD_MASTER_PASSWORD            Steward vault encryption master password; required for wallet/key ops
+#   STEWARD_TENANT_ID                  Default tenant scope; verifier rejects other tenants
+#   STEWARD_DEFAULT_TENANT_ID          Embedded Steward default tenant id (optional; defaults to elizacloud)
+#   STEWARD_DEFAULT_TENANT_KEY         Embedded Steward default tenant API key hash/source
+#   STEWARD_PLATFORM_KEYS              Server-only platform key (server-wallets, tenant ops)
+#   STEWARD_TENANT_API_KEY             Server-only tenant API key
+#   STRIPE_SECRET_KEY                  Stripe billing
+#   STRIPE_WEBHOOK_SECRET              Stripe webhook signing
+#   STRIPE_SMALL_PACK_PRICE_ID         (and MEDIUM/LARGE *_PRICE_ID/_PRODUCT_ID)
+#   KV_REST_API_URL                    Upstash Redis (rate-limit/cache fallback)
+#   KV_REST_API_TOKEN                  Upstash auth
+#   KV_REST_API_READ_ONLY_TOKEN        Upstash read-only token
+#   ANTHROPIC_API_KEY                  Claude
+#   OPENAI_API_KEY                     OpenAI direct
+#   AI_GATEWAY_API_KEY
+#   GROQ_API_KEY                       Groq
+#   FAL_KEY                            Fal.ai video gen
+#   ELEVENLABS_API_KEY                 ElevenLabs TTS
+#   VAST_API_KEY                       Vast.ai Serverless endpoint API token (Bearer)
+#   VAST_BASE_URL                      Vast.ai Serverless endpoint URL (e.g.
+#       https://run.vast.ai/route/abc123). Provider strips trailing slash and
+#       appends /v1/chat/completions. Set both VAST_* secrets together — both
+#       are required to enable the vast/* model family.
+#   SENDGRID_API_KEY                   (or RESEND_API_KEY) — outbound mail
+#   AWS_KMS_KEY_ID / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  KMS-only;
+#       used by packages/lib/services/secrets/encryption.ts when AWS_KMS_KEY_ID
+#       is set. Optional — LocalKMSProvider is the default. Container backend
+#       has moved off AWS (see CONTAINERS_MIGRATION.md), so the rest of the
+#       AWS_* / ECS_* / ACM_* secrets are gone.
+#   GITHUB_APP_TOKEN  (or GIT_ACCESS_TOKEN)
+#   CRON_SECRET                        Scheduled-job auth
+#   CONTAINER_CONTROL_PLANE_URL        Node sidecar URL for container mutations + hot-pool image pre-pull
+#   CONTAINER_CONTROL_PLANE_TOKEN      Shared Worker↔sidecar secret
+#   HCLOUD_TOKEN                       Hetzner Cloud API token for elastic Docker node provisioning
+#       HETZNER_CLOUD_API_KEY is also accepted as an alias.
+#   CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY Public SSH key written to autoscaled nodes
+#   CONTAINERS_BOOTSTRAP_CALLBACK_URL  Optional docker_nodes self-registration callback URL
+#   CONTAINERS_BOOTSTRAP_SECRET        Optional docker_nodes self-registration shared secret
+#   CDP_API_KEY_ID / CDP_API_KEY_SECRET / CDP_WALLET_SECRET   x402
+#   DISCORD_BOT_TOKEN / DISCORD_CHANNEL_ID
+#   GATEWAY_BOOTSTRAP_SECRET / GATEWAY_INTERNAL_SECRET
+#   JWT_SIGNING_PRIVATE_KEY / JWT_SIGNING_PUBLIC_KEY
+#   COINGECKO_API_KEY / BRAVE_SEARCH_API_KEY
+#   TWITTER_BEARER_TOKEN / X_API_KEY / X_API_KEY_SECRET
+#   X402_RECIPIENT_ADDRESS / PINATA_JWT
+#   EVM_PAYOUT_PRIVATE_KEY / SOLANA_PAYOUT_PRIVATE_KEY
+#   SECRETS_MASTER_KEY                 Field encryption master key
+#   MICROSOFT_CLIENT_ID / MICROSOFT_CLIENT_SECRET
+#   ELIZA_APP_DISCORD_BOT_TOKEN / ELIZA_APP_DISCORD_CLIENT_SECRET
+#   ELIZA_APP_WHATSAPP_ACCESS_TOKEN / _APP_SECRET / _VERIFY_TOKEN
+#   NEON_API_KEY                       Per-app database provisioning
+#   CONTAINERS_SSH_KEY / AGENT_SSH_KEY Docker provider SSH private key for the Node sidecar
+#   HEADSCALE_API_KEY / HEADSCALE_INTERNAL_TOKEN
+#   TUNNEL_HOSTNAME_SIGNING_SECRET     Shared HMAC secret with tunnel-proxy
+#   AGENT_SERVER_SHARED_SECRET / WAIFU_SERVICE_KEY
+# -----------------------------------------------------------------------------
+
+# =============================================================================
+# Environments
+# =============================================================================
+
+[env.staging]
+name = "eliza-cloud-api-staging"
+workers_dev = false
+routes = [
+  { pattern = "api-staging.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+]
+
+[env.staging.define]
+__dirname = '"/"'
+__filename = '"/worker.js"'
+
+[env.staging.vars]
+NODE_ENV = "production"
+NEXT_PUBLIC_APP_URL = "https://staging.elizacloud.ai"
+NEXT_PUBLIC_API_URL = "https://api-staging.elizacloud.ai"
+ELIZA_CLOUD_URL = "https://staging.elizacloud.ai"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_APP_URL = "https://eliza.app"
+NEXT_PUBLIC_NETWORK = "base"
+NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+NEXT_PUBLIC_CREDITS_SSE_ENABLED = "true"
+GITHUB_ORG_NAME = "eliza-cloud-apps"
+GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
+ENVIRONMENT = "staging"
+DATABASE_REGION = "na"
+PAYOUT_TESTNET = "true"
+ENABLE_X402_PAYMENTS = "true"
+X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
+X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+CACHE_ENABLED = "false"
+CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
+REDIS_RATE_LIMITING = "false"
+FORCE_REDIS_EVENTS = "false"
+R2_PUBLIC_HOST = "blob.elizacloud.ai"
+SQL_HEAVY_PAYLOAD_STORAGE = "r2"
+SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
+SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
+LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale-staging.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale-staging.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel-staging.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.staging.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
+
+# Cloudflare Workers does NOT inherit top-level r2_buckets into environment
+# blocks — they must be re-declared per-env. Same physical resources.
+[[env.staging.r2_buckets]]
+binding = "BLOB"
+bucket_name = "eliza-cloud-blob"
+
+[env.production]
+name = "eliza-cloud-api-prod"
+workers_dev = false
+routes = [
+  { pattern = "api.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+  { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
+]
+
+[env.production.define]
+__dirname = '"/"'
+__filename = '"/worker.js"'
+
+[env.production.vars]
+NODE_ENV = "production"
+NEXT_PUBLIC_APP_URL = "https://elizacloud.ai"
+NEXT_PUBLIC_API_URL = "https://api.elizacloud.ai"
+ELIZA_CLOUD_URL = "https://elizacloud.ai"
+ELIZA_CLOUD_AGENT_BASE_DOMAIN = "waifu.fun"
+ELIZA_APP_URL = "https://eliza.app"
+NEXT_PUBLIC_NETWORK = "base"
+NEXT_PUBLIC_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com"
+NEXT_PUBLIC_CREDITS_SSE_ENABLED = "true"
+GITHUB_ORG_NAME = "eliza-cloud-apps"
+GITHUB_TEMPLATE_REPO = "eliza-cloud-apps/cloud-apps-template"
+ENVIRONMENT = "production"
+DATABASE_REGION = "na"
+PAYOUT_TESTNET = "false"
+ENABLE_X402_PAYMENTS = "true"
+X402_NETWORK = "base"
+X402_NETWORKS = "ethereum,sepolia,base-sepolia,base,bsc,bsc-testnet,solana-devnet,solana"
+X402_ETHEREUM_RPC_URL = "https://ethereum-rpc.publicnode.com"
+X402_BASE_RPC_URL = "https://base-rpc.publicnode.com"
+CACHE_ENABLED = "false"
+CACHE_DISABLE_REASON = "CF Workers cross-request I/O isolation: CacheClient module-level singleton is incompatible until refactored to per-request scope"
+REDIS_RATE_LIMITING = "false"
+FORCE_REDIS_EVENTS = "false"
+R2_PUBLIC_HOST = "blob.elizacloud.ai"
+SQL_HEAVY_PAYLOAD_STORAGE = "r2"
+SQL_HEAVY_PAYLOAD_MIN_BYTES = "0"
+SQL_HEAVY_PAYLOAD_INLINE_PREVIEW_BYTES = "512"
+LLM_TRAJECTORY_STORAGE = "r2"
+HEADSCALE_PUBLIC_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_API_URL = "https://headscale.elizacloud.ai"
+HEADSCALE_USER = "tunnel"
+TUNNEL_PROXY_HOST = "tunnel.elizacloud.ai"
+TUNNEL_TAILNET_DOMAIN = "tunnel.eliza.local"
+TUNNEL_AUTH_KEY_COST_USD = "0.01"
+
+[[env.production.r2_buckets]]
+binding = "BLOB"
+bucket_name = "eliza-cloud-blob"

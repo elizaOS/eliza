@@ -1,0 +1,14 @@
+dist
+node_modules
+.env
+.elizadb
+.turbo
+target/
+__pycache__
+*.pyc
+.venv
+*.egg-info
+.DS_Store
+package-lock.json
+typescript/trust-optimization-logs/optimization-data-*.json
+typescript/trust-optimization-logs/optimization-report-*.md

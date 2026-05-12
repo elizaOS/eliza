@@ -1,0 +1,54 @@
+QJL aarch64 NEON cross-validation (W2-A re-run on v0.3.0 build)
+Date: 2026-05-09
+
+1. Standalone NEON-vs-ref self parity (in-process):
+   /tmp/cross-tools/qemu-aarch64-static /tmp/qjl_neon_self_parity_aarch64
+   [qjl-neon-self-parity] 100/100 signs match, 100/100 norms match, 100/100 full match
+   [qjl-neon-self-parity] standalone SIMD path: neon
+   [qjl-neon-self-parity] PASS
+
+2. Fork dlopen parity against W2-A's pre-built v0.1.0 glibc lib (validated baseline):
+   QEMU + dlopen of /tmp/fork-parity-stage/libggml-cpu.so
+   [fork-parity-aarch64-qemu] 100/100 signs match, 100/100 norms match, 100/100 full match
+   [fork-parity-aarch64-qemu] PASS
+
+3. v0.3.0 musl arm64 cross-build symbol verification:
+   /tmp/cross-tools/aarch64-linux-gnu-nm -D --defined-only /tmp/w4d-arm64/arm64-v8a/libggml-cpu.so
+   0000000000079554 T quantize_row_tbq3_0
+   0000000000079558 T quantize_row_tbq4_0
+   000000000007af34 T ggml_vec_dot_tbq3_0_f32
+   000000000007b0c0 T ggml_vec_dot_tbq4_0_f32
+   000000000007de7c T quantize_row_q4_polar
+   000000000007de80 T ggml_vec_dot_q4_polar_q8_0
+   00000000000c19d8 T quantize_row_qjl1_256_ref
+   00000000000c1ab4 T quantize_row_qjl1_256
+   00000000000c1b70 T dequantize_row_qjl1_256
+   00000000000c1c4c T quantize_qjl1_256
+   00000000000c1c9c T ggml_compute_forward_attn_score_qjl
+   00000000000c1fb4 T qjl_quantize_rows
+   00000000000c1fb8 T qjl_score_qk
+   00000000000c1fbc T qjl_active_simd
+   00000000000c1fc8 T qjl_make_projection_mt
+   00000000000c21d4 T qjl_fp32_to_bf16
+   00000000000c2210 T qjl_bf16_to_fp32
+   00000000000c221c T qjl_quantize_row_ref
+   00000000000c2314 T qjl_quantize_rows_ref
+   00000000000c2450 T qjl_dequantize_row_ref
+   00000000000c25f0 T qjl_quantize_row_neon
+   00000000000c2848 T qjl_quantize_rows_neon
+   00000000000c2898 T qjl_dequantize_row_neon
+   00000000000c29b8 T qjl_score_qk_ref
+   00000000000c2c04 T qjl_score_qk_neon
+   00000000000c2d78 T ggml_vec_dot_q4_polar_q8_0_fused_ref
+   00000000000c37fc T ggml_vec_dot_q4_polar_q8_0_fused
+   00000000000c3898 T ggml_vec_dot_q4_polar_q8_0_fused_neon
+   00000000000c4930 T fused_attn_qjl_tbq_ref
+   00000000000c4c60 T ggml_compute_forward_fused_attn_qjl_tbq
+   00000000000c51e0 T qjl_score_one_neon
+   00000000000c5640 T ggml_vec_dot_q4_polar_q8_0_fused_hadamard_ref
+   00000000000c6658 T ggml_vec_dot_q4_polar_q8_0_fused_hadamard
+
+Symbol counts:
+   tbq: 6
+   qjl: 22
+   polar: 7

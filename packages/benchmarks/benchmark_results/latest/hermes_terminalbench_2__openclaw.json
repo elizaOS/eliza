@@ -1,0 +1,88 @@
+{
+  "agent": "openclaw",
+  "artifacts": [
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T184111Z_33dae013/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d/output"
+  ],
+  "benchmark_directory": "hermes-adapter",
+  "benchmark_id": "hermes_terminalbench_2",
+  "cache_metrics": {
+    "cache_creation_input_tokens": 0,
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
+  },
+  "error": null,
+  "higher_is_better": true,
+  "metrics": {
+    "cache_metrics": {
+      "cache_creation_input_tokens": 0,
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
+    },
+    "canonical_entries": 0,
+    "duration_s": 99.07869520797976,
+    "env_id": "terminalbench_2",
+    "eval/evaluation_time_seconds": 74.66774725914001,
+    "eval/pass_rate": 0.0,
+    "eval/pass_rate_software_engineering": 0.0,
+    "eval/passed_tasks": 0,
+    "eval/total_tasks": 1,
+    "evaluation_time_seconds": 74.66774725914001,
+    "pass_rate": 0.0,
+    "pass_rate_software_engineering": 0.0,
+    "passed_tasks": 0,
+    "performance_metrics": {
+      "duration_seconds": 99.33312108300743,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.010067135604894091
+    },
+    "return_code": 0,
+    "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
+      "llm_call_count": 1,
+      "prompt_tokens": 0,
+      "total_tokens": 0
+    },
+    "total_evaluation_time_seconds": "74.66774725914001",
+    "total_tasks": 1,
+    "trajectory_summary": {
+      "files": 3,
+      "prompt_chars": 7,
+      "repeated_prefixes": [],
+      "turns": 1
+    }
+  },
+  "model": "gpt-oss-120b",
+  "performance_metrics": {
+    "duration_seconds": 99.33312108300743,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.010067135604894091
+  },
+  "provider": "cerebras",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T184111Z_33dae013/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d/output/hermes_terminalbench_2_20260511T184343Z.json",
+  "run_group_id": "rg_20260511T184111Z_33dae013",
+  "run_id": "run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d",
+  "score": 0.0,
+  "status": "succeeded",
+  "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
+    "llm_call_count": 1,
+    "prompt_tokens": 0,
+    "total_tokens": 0
+  },
+  "trajectory_summary": {
+    "files": 3,
+    "prompt_chars": 7,
+    "repeated_prefixes": [],
+    "turns": 1
+  },
+  "unit": "ratio",
+  "updated_at": "2026-05-12T01:33:59Z"
+}

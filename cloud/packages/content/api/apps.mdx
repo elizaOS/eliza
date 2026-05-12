@@ -1,0 +1,269 @@
+---
+title: Apps
+description: Register, update, monetize, and route chat through Eliza Cloud apps.
+---
+
+import { Callout } from "@/docs/components";
+
+# Apps
+
+<div className="status-badge status-stable">Stable</div>
+
+Apps are Cloud records used for app identity, hosting metadata, marketplace/domain settings, chat routing, analytics, and monetization.
+
+## List Apps
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/apps</span>
+</div>
+
+Get all apps for your organization.
+
+### Response
+
+```json
+{
+  "success": true,
+  "apps": [
+    {
+      "id": "uuid-abc123",
+      "name": "Customer Portal",
+      "app_url": "https://customer.example.com",
+      "allowed_origins": ["https://customer.example.com"],
+      "monetization_enabled": true,
+      "inference_markup_percentage": "100.0000",
+      "purchase_share_percentage": "10.0000",
+      "created_at": "2026-05-05T10:30:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Create App
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/apps</span>
+</div>
+
+Create a new Cloud app. The response includes a one-time app API key for server-side app administration.
+
+### Request
+
+```json
+{
+  "name": "My App",
+  "app_url": "https://placeholder.invalid",
+  "description": "Customer support chatbot",
+  "website_url": "https://example.com",
+  "contact_email": "support@example.com",
+  "allowed_origins": ["https://placeholder.invalid"],
+  "logo_url": "https://example.com/logo.png",
+  "skipGitHubRepo": true
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "app": {
+    "id": "uuid-abc123",
+    "name": "My App",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "created_at": "2026-05-05T10:30:00Z"
+  },
+  "apiKey": {
+    "id": "key_abc123"
+  }
+}
+```
+
+<Callout type="warning">
+  Store the returned API key securely. Use user bearer tokens, not this admin key, for user-facing app-scoped chat.
+</Callout>
+
+---
+
+## Get App
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/apps/{"{id}"}</span>
+</div>
+
+Get app details.
+
+---
+
+## Update App
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-put">PUT</span>
+  <span className="path">/api/v1/apps/{"{id}"}</span>
+</div>
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-patch">PATCH</span>
+  <span className="path">/api/v1/apps/{"{id}"}</span>
+</div>
+
+Update all or part of an app record.
+
+### Request
+
+```json
+{
+  "app_url": "https://my-app.example.com",
+  "allowed_origins": ["https://my-app.example.com"],
+  "website_url": "https://example.com",
+  "contact_email": "support@example.com",
+  "is_active": true
+}
+```
+
+---
+
+## Delete App
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/apps/{"{id}"}</span>
+</div>
+
+Delete an app and run cleanup. Pass `?deleteGitHubRepo=false` to keep the associated repository when one exists.
+
+---
+
+## App Chat
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/apps/{"{id}"}/chat</span>
+</div>
+
+OpenAI-style chat completions scoped to a Cloud app. Monetized apps are public to authenticated users with credits; non-monetized apps are limited to the owning organization.
+
+### Headers
+
+| Header | Description |
+| ------ | ----------- |
+| `Authorization: Bearer <user-token>` | Required for user-facing chat. Charges the user's organization credit balance. |
+| `Content-Type: application/json` | Required. |
+
+### Request
+
+```json
+{
+  "model": "provider/model-id",
+  "messages": [{ "role": "user", "content": "Hello" }],
+  "stream": false
+}
+```
+
+If monetization is enabled, the app creator earns `inferenceMarkupPercentage` on the base inference cost.
+
+<Callout type="info">
+  `X-Affiliate-Code` is implemented on generic `/api/v1/chat/completions` and `/api/v1/messages` routes. The app-scoped chat route does not currently read that header.
+</Callout>
+
+---
+
+## App Monetization
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/apps/{"{id}"}/monetization</span>
+</div>
+
+Get monetization settings.
+
+### Response
+
+```json
+{
+  "success": true,
+  "monetization": {
+    "monetizationEnabled": true,
+    "inferenceMarkupPercentage": 100,
+    "purchaseSharePercentage": 10,
+    "platformOffsetAmount": 0,
+    "totalCreatorEarnings": 42.5
+  }
+}
+```
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-put">PUT</span>
+  <span className="path">/api/v1/apps/{"{id}"}/monetization</span>
+</div>
+
+Update monetization settings. All fields are optional.
+
+### Request
+
+```json
+{
+  "monetizationEnabled": true,
+  "inferenceMarkupPercentage": 100,
+  "purchaseSharePercentage": 10
+}
+```
+
+| Field | Range | Description |
+| ----- | ----- | ----------- |
+| `monetizationEnabled` | boolean | Enables creator earnings. |
+| `inferenceMarkupPercentage` | 0-1000 | Creator markup on inference calls. |
+| `purchaseSharePercentage` | 0-100 | Purchase share percentage. |
+
+Older `enabled` plus nested `pricing` request bodies are stale and should not be used.
+
+---
+
+## App Earnings
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/apps/{"{id}"}/earnings</span>
+</div>
+
+Get app earnings summary, breakdown, chart data, recent transactions, and monetization settings.
+
+### Query Parameters
+
+| Parameter | Description |
+| --------- | ----------- |
+| `days` | Chart range, 1-90 days. Default: 30. |
+
+---
+
+## Domain Management
+
+Manage custom domains for your multi-tenant applications. See the [App Domains](/docs/app-domains) guide for detailed configuration instructions.
+
+### List Domains
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/apps/{"{id}"}/domains</span>
+</div>
+
+Get all domains for an app including subdomain and custom domain status.
+
+### Add Custom Domain
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/apps/{"{id}"}/domains</span>
+</div>
+
+```json
+{
+  "domain": "myapp.example.com"
+}
+```

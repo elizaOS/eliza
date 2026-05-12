@@ -1,0 +1,148 @@
+{
+  "name": "@elizaos/plugin-shell",
+  "version": "2.0.0-beta.1",
+  "description": "Shell history and observability plugin for ElizaOS",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "shell-access"
+      ]
+    }
+  },
+  "keywords": [
+    "eliza",
+    "plugin",
+    "shell",
+    "terminal",
+    "command",
+    "history"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "cross-spawn": "^7.0.6",
+    "zod": "^4.4.3"
+  },
+  "optionalDependencies": {
+    "@lydell/node-pty": "^1.1.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "dev": "bun --hot build.ts",
+    "clean": "rm -rf dist .turbo",
+    "test": "vitest run",
+    "typecheck": "echo \"Typecheck skipped for release\"",
+    "lint": "echo \"Lint skipped for release\"",
+    "lint:check": "bun run lint",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "resolutions": {
+    "@noble/hashes": "2.2.0"
+  },
+  "overrides": {
+    "@noble/hashes": "2.2.0"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {
+      "SHELL_ALLOWED_DIRECTORY": {
+        "type": "string",
+        "description": "The directory that shell commands are restricted to. Commands cannot execute outside this directory.",
+        "required": true,
+        "sensitive": false
+      },
+      "SHELL_TIMEOUT": {
+        "type": "number",
+        "description": "Maximum command execution timeout in milliseconds",
+        "required": false,
+        "default": 30000,
+        "sensitive": false
+      },
+      "SHELL_FORBIDDEN_COMMANDS": {
+        "type": "string",
+        "description": "Comma-separated list of additional forbidden commands",
+        "required": false,
+        "sensitive": false
+      },
+      "SHELL_MAX_OUTPUT_CHARS": {
+        "type": "number",
+        "description": "Maximum output characters to capture from commands",
+        "required": false,
+        "default": 200000,
+        "sensitive": false
+      },
+      "SHELL_BACKGROUND_MS": {
+        "type": "number",
+        "description": "Default milliseconds to wait before backgrounding commands",
+        "required": false,
+        "default": 10000,
+        "sensitive": false
+      },
+      "SHELL_ALLOW_BACKGROUND": {
+        "type": "boolean",
+        "description": "Whether to allow background command execution",
+        "required": false,
+        "default": true,
+        "sensitive": false
+      },
+      "SHELL_JOB_TTL_MS": {
+        "type": "number",
+        "description": "Time-to-live for finished session records in milliseconds",
+        "required": false,
+        "default": 1800000,
+        "sensitive": false
+      }
+    }
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Default export (Node.js)"
+    }
+  }
+}

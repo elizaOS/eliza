@@ -1,0 +1,79 @@
+{
+  "id": "feishu",
+  "name": "Feishu",
+  "description": "Feishu connector for bots, chats, and workflow notifications on Lark/Feishu.",
+  "npmName": "@elizaos/plugin-feishu",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "messaging",
+    "feishu",
+    "productivity",
+    "social",
+    "social-chat"
+  ],
+  "config": {
+    "FEISHU_APP_ID": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "App Id",
+      "help": "Feishu/Lark application ID (cli_xxx format) for bot authentication.",
+      "advanced": false
+    },
+    "FEISHU_DOMAIN": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Domain",
+      "help": "Domain to use: 'feishu' for China or 'lark' for global.",
+      "advanced": false
+    },
+    "FEISHU_APP_SECRET": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "App Secret",
+      "help": "Feishu/Lark application secret for bot authentication.",
+      "advanced": false
+    },
+    "FEISHU_TEST_CHAT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Test Chat Id",
+      "help": "Chat ID used by the test suite for validation.",
+      "advanced": false
+    },
+    "FEISHU_ALLOWED_CHATS": {
+      "type": "json",
+      "required": false,
+      "sensitive": false,
+      "label": "Allowed Chats",
+      "help": "JSON-encoded array of chat IDs authorized to interact with the bot.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Feather",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#feishu-lark"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

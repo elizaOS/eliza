@@ -1,0 +1,405 @@
+/* CRT Monitor Container */
+.crt-monitor {
+  position: relative;
+  width: 100%;
+  max-width: 900px;
+  height: 90vh;
+  max-height: 720px;
+  background: linear-gradient(
+    145deg,
+    var(--bezel-light) 0%,
+    var(--bezel-dark) 50%,
+    #0f0f0f 100%
+  );
+  border-radius: 30px;
+  padding: 20px;
+  box-shadow:
+    0 0 0 4px #333,
+    0 0 0 8px #222,
+    0 0 60px rgba(0, 0, 0, 0.8),
+    inset 0 0 80px rgba(0, 0, 0, 0.5);
+}
+
+/* CRT Screen */
+.crt-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--crt-bg);
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 100px rgba(0, 0, 0, 0.5),
+    inset 0 0 10px rgba(57, 255, 20, 0.1);
+  opacity: 0;
+  transform: scaleY(0.01);
+  transition: none;
+}
+
+.crt-screen.booted {
+  animation: boot 0.6s ease-out forwards;
+}
+
+/* Scanlines effect */
+.scanlines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* Screen glow */
+.screen-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(57, 255, 20, 0.03) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+  z-index: 99;
+}
+
+/* Terminal container */
+.terminal {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 30px;
+  position: relative;
+}
+
+/* Header */
+.terminal-header {
+  text-align: center;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--phosphor-green-dim);
+}
+
+.terminal-header .title {
+  font-size: 2.8rem;
+  color: var(--phosphor-green);
+  text-shadow:
+    0 0 10px var(--phosphor-glow),
+    0 0 20px var(--phosphor-glow),
+    0 0 30px var(--phosphor-glow);
+  letter-spacing: 0.4em;
+  margin-bottom: 4px;
+  animation: flicker 8s infinite;
+}
+
+.terminal-header .subtitle {
+  font-size: 1rem;
+  color: var(--phosphor-green-dim);
+  letter-spacing: 0.15em;
+}
+
+.terminal-header .meta {
+  font-size: 1.1rem;
+  color: var(--phosphor-green);
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+/* Status bar */
+.status-bar {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--phosphor-green-dim);
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--phosphor-green-dim);
+  margin-bottom: 12px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--phosphor-green);
+  box-shadow: 0 0 6px var(--phosphor-glow);
+}
+
+.status-indicator.online {
+  animation: pulse 2s infinite;
+}
+
+.status-indicator.loading {
+  animation: blink 0.5s infinite;
+}
+
+/* Boot message */
+.boot-message {
+  text-align: center;
+  color: var(--phosphor-green-dim);
+  padding: 12px;
+  border: 1px dashed var(--phosphor-green-dim);
+  margin-bottom: 12px;
+  font-size: 0.95rem;
+  line-height: 1.8;
+}
+
+.boot-line {
+  opacity: 0.9;
+}
+
+/* Chat container */
+.chat-container {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 10px;
+  scroll-behavior: smooth;
+}
+
+.chat-container::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-container::-webkit-scrollbar-track {
+  background: var(--crt-bg-light);
+}
+
+.chat-container::-webkit-scrollbar-thumb {
+  background: var(--phosphor-green-dim);
+  border-radius: 3px;
+}
+
+.chat-container::-webkit-scrollbar-thumb:hover {
+  background: var(--phosphor-green);
+}
+
+/* Messages */
+.message {
+  margin-bottom: 14px;
+  line-height: 1.7;
+  font-size: 1.15rem;
+}
+
+.message-label {
+  color: var(--phosphor-green);
+  font-weight: 500;
+  margin-right: 8px;
+}
+
+.message-text {
+  color: var(--phosphor-green);
+  opacity: 0.9;
+}
+
+.message.user .message-label {
+  color: #7fff7f;
+}
+
+.message.eliza .message-text {
+  text-shadow: 0 0 5px rgba(57, 255, 20, 0.3);
+}
+
+/* Typing indicator */
+.message.typing .typing-dots {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.message.typing .typing-dots span {
+  animation: blink 1s infinite;
+}
+
+.message.typing .typing-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.message.typing .typing-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* Input area */
+.input-area {
+  display: flex;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--phosphor-green-dim);
+  margin-top: auto;
+}
+
+.prompt-symbol {
+  color: var(--phosphor-green);
+  font-size: 1.4rem;
+  line-height: 42px;
+  text-shadow: 0 0 5px var(--phosphor-glow);
+}
+
+.input-area input {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--phosphor-green-dim);
+  color: var(--phosphor-green);
+  font-family: inherit;
+  font-size: 1.15rem;
+  padding: 10px 14px;
+  outline: none;
+  caret-color: var(--phosphor-green);
+}
+
+.input-area input:focus {
+  border-color: var(--phosphor-green);
+  box-shadow: 0 0 10px rgba(57, 255, 20, 0.2);
+}
+
+.input-area input::placeholder {
+  color: var(--phosphor-green-dim);
+  opacity: 0.5;
+}
+
+.input-area input:disabled {
+  opacity: 0.5;
+}
+
+.input-area button {
+  background: transparent;
+  border: 1px solid var(--phosphor-green);
+  color: var(--phosphor-green);
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 10px 24px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+}
+
+.input-area button:hover:not(:disabled) {
+  background: var(--phosphor-green);
+  color: var(--crt-bg);
+  box-shadow: 0 0 15px var(--phosphor-glow);
+}
+
+.input-area button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Footer */
+.terminal-footer {
+  text-align: center;
+  padding-top: 10px;
+  font-size: 0.8rem;
+  color: var(--phosphor-green-dim);
+  opacity: 0.6;
+}
+
+/* LED indicators */
+.led-container {
+  position: absolute;
+  bottom: 8px;
+  right: 24px;
+  display: flex;
+  gap: 10px;
+}
+
+.led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #333;
+}
+
+.led.power {
+  background: #ff4444;
+  box-shadow: 0 0 5px #ff4444;
+}
+
+.led.activity {
+  background: var(--phosphor-green);
+  box-shadow: 0 0 5px var(--phosphor-glow);
+  animation: pulse 1.5s infinite;
+}
+
+.led.activity.blinking {
+  animation: blink 0.3s infinite;
+}
+
+/* Brand plate */
+.brand-plate {
+  position: absolute;
+  bottom: 8px;
+  left: 24px;
+  font-size: 0.75rem;
+  color: #555;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+}
+
+/* Mobile adjustments */
+@media (max-width: 640px) {
+  .crt-monitor {
+    border-radius: 16px;
+    padding: 12px;
+    height: 95vh;
+  }
+
+  .crt-screen {
+    border-radius: 12px;
+  }
+
+  .terminal {
+    padding: 16px;
+  }
+
+  .terminal-header .title {
+    font-size: 2rem;
+    letter-spacing: 0.2em;
+  }
+
+  .terminal-header .subtitle {
+    font-size: 0.85rem;
+  }
+
+  .status-bar {
+    font-size: 0.8rem;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .boot-message {
+    font-size: 0.85rem;
+    padding: 8px;
+  }
+
+  .message {
+    font-size: 1rem;
+  }
+
+  .input-area {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .prompt-symbol {
+    display: none;
+  }
+
+  .input-area button {
+    padding: 12px;
+  }
+}

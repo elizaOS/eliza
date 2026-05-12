@@ -1,0 +1,666 @@
+---
+title: WebSocket Real-Time Events
+sidebarTitle: WebSocket Events
+description: Reference for the Eliza WebSocket protocol, connection details, event types, and payloads.
+---
+
+Eliza uses WebSocket connections to deliver real-time updates from the agent runtime to connected clients, including the frontend UI, the Electrobun desktop app, and custom integrations.
+
+## Connection
+
+### API Server WebSocket
+
+<CodeGroup>
+```text Default
+ws://localhost:31337/ws
+```
+
+```text Gateway
+ws://localhost:18789/ws
+```
+</CodeGroup>
+
+The WebSocket endpoint is available at `/ws` on the API server. In development, this is port 31337 (`ELIZA_API_PORT`); in production, the API shares port 2138 (`ELIZA_PORT`) with the dashboard. The Gateway (port 18789 by default) also proxies WebSocket connections.
+
+### Authentication
+
+When `ELIZA_API_TOKEN` is configured, the WebSocket connection requires authentication. The client connects to the `/ws` endpoint without credentials in the URL, then authenticates by sending an `auth` message immediately after the connection opens:
+
+```json
+{ "type": "auth", "token": "YOUR_API_TOKEN" }
+```
+
+The server validates the token and responds with:
+
+```json
+{ "type": "auth-ok" }
+```
+
+If the token is valid, the server activates the connection and sends the initial `status` event and event replay. If the token is missing or invalid, the server closes the connection with status code `1008` (Policy Violation).
+
+<Note>
+Messages sent before authentication (other than the `auth` message itself) are rejected and the connection is closed.
+</Note>
+
+You can also authenticate during the HTTP upgrade handshake by including the token in an `Authorization: Bearer <token>` header. If the handshake includes a valid token, the connection is activated immediately without needing to send an `auth` message.
+
+<Warning>
+Passing the token as a `?token=` query parameter is **deprecated** and disabled by default. Query-parameter tokens are rejected with a `401 Unauthorized` response. To temporarily re-enable query-parameter authentication during migration, set the environment variable `ELIZA_ALLOW_WS_QUERY_TOKEN=1` (the legacy `ELIZA_ALLOW_WS_QUERY_TOKEN` also works). Requests to paths other than `/ws` receive a 404 rejection.
+</Warning>
+
+## Connection Lifecycle
+
+### On Connect
+
+When a WebSocket client connects and is authenticated (either via a handshake header or an `auth` message), the server immediately sends:
+
+1. A `status` event with the current agent state
+2. A replay of the last 120 buffered stream events (agent events + heartbeat events + training events)
+
+```json
+{
+  "type": "status",
+  "state": "running",
+  "agentName": "Eliza",
+  "model": "@elizaos/plugin-anthropic",
+  "startedAt": 1708000000000,
+  "uptime": 60000
+}
+```
+
+<Note>
+The initial `status` event omits `pendingRestart` and `pendingRestartReasons` fields. These are included only in the periodic broadcast version.
+</Note>
+
+### Periodic Broadcasts
+
+The server broadcasts a `status` event to all connected clients every **5 seconds**.
+
+### Keepalive
+
+Clients can send a `ping` message; the server responds with a `pong`:
+
+<Tabs>
+  <Tab title="Client sends">
+    ```json
+    { "type": "ping" }
+    ```
+  </Tab>
+  <Tab title="Server responds">
+    ```json
+    { "type": "pong" }
+    ```
+  </Tab>
+</Tabs>
+
+## Event Summary
+
+All WebSocket event types at a glance:
+
+| Event Type | Direction | Buffered | Description |
+|------------|-----------|----------|-------------|
+| `auth` | Client → Server | No | Authenticate the connection with an API token |
+| `auth-ok` | Server → Client | No | Confirms successful authentication |
+| `ping` | Client → Server | No | Keepalive ping |
+| `pong` | Server → Client | No | Keepalive response |
+| `active-conversation` | Client → Server | No | Set active conversation in the UI |
+| `status` | Server → Client | No | Agent state broadcast (every 5s) |
+| `restart-required` | Server → Client | No | Config change requires restart |
+| `agent_event` | Server → Client | Yes | Agent autonomy loop events |
+| `heartbeat_event` | Server → Client | Yes | Agent activity indicators |
+| `training_event` | Server → Client | Yes | Fine-tuning/training progress |
+| `proactive-message` | Server → Client | No | Agent-initiated conversation message |
+| `conversation-updated` | Server → Client | No | Conversation metadata changed |
+| `install-progress` | Server → Client | No | Plugin installation progress |
+| `terminal-output` | Server → Client | No | Shell command execution output |
+| `emote` | Server → Client | No | Avatar emote/animation trigger |
+
+## Client-to-Server Messages
+
+| Message Type | Payload | Description |
+|-------------|---------|-------------|
+| `auth` | `{ token: string }` | Authenticate the connection; server responds with `auth-ok` on success |
+| `ping` | `{}` | Keepalive ping; server responds with `pong` |
+| `active-conversation` | `{ conversationId: string }` | Inform the server which conversation is currently active in the UI |
+
+### Authentication
+
+When `ELIZA_API_TOKEN` is configured, the first message sent after connecting must be an `auth` message:
+
+```json
+{
+  "type": "auth",
+  "token": "your-api-token"
+}
+```
+
+On success, the server responds with `{ "type": "auth-ok" }` and activates the connection (sending the initial `status` event and event replay). On failure, the server closes the connection with code `1008`.
+
+### Active Conversation Tracking
+
+```json
+{
+  "type": "active-conversation",
+  "conversationId": "conv-abc-123"
+}
+```
+
+The server stores the `conversationId` on the connection state. It uses this to decide whether to deliver proactive messages inline (active conversation) or mark them as unread (non-active conversation). If `conversationId` is not a string, the active conversation is cleared (`null`).
+
+## Server-to-Client Events
+
+### `status`
+
+**Direction:** Server → Client | **Buffered:** No
+
+Broadcast every 5 seconds and on state changes.
+
+```json
+{
+  "type": "status",
+  "state": "running",
+  "agentName": "Eliza",
+  "model": "@elizaos/plugin-anthropic",
+  "startedAt": 1708000000000,
+  "pendingRestart": false,
+  "pendingRestartReasons": []
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `state` | `string` | One of: `not_started`, `starting`, `running`, `paused`, `stopped`, `restarting`, `error` |
+| `agentName` | `string` | Current agent display name |
+| `model` | `string \| undefined` | Detected AI model provider plugin name |
+| `startedAt` | `number \| undefined` | Epoch timestamp (ms) when the agent was started |
+| `pendingRestart` | `boolean` | Whether a restart is pending (periodic broadcast only) |
+| `pendingRestartReasons` | `string[]` | Human-readable reasons why a restart is needed (periodic broadcast only) |
+
+### `restart-required`
+
+**Direction:** Server → Client | **Buffered:** No
+
+Sent when the server detects that a configuration change requires a restart. Triggered by operations like enabling shell access, changing plugin configuration, or modifying environment variables.
+
+```json
+{
+  "type": "restart-required",
+  "reasons": ["Shell access enabled", "Plugin configuration changed"]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `reasons` | `string[]` | Array of human-readable reasons describing what changed |
+
+### `agent_event`
+
+**Direction:** Server → Client | **Buffered:** Yes
+
+Envelope for agent autonomy loop events streamed from the `AGENT_EVENT` service. The server subscribes to the runtime's agent event service and wraps each event in a `StreamEventEnvelope`.
+
+```json
+{
+  "type": "agent_event",
+  "version": 1,
+  "eventId": "evt-42",
+  "ts": 1708000000000,
+  "runId": "run-xyz",
+  "seq": 42,
+  "stream": "autonomy",
+  "sessionKey": "session-key",
+  "agentId": "agent-uuid",
+  "roomId": "room-uuid",
+  "payload": {}
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `"agent_event"` | Event type discriminator |
+| `version` | `1` | Envelope format version (always `1`) |
+| `eventId` | `string` | Unique event identifier (format: `evt-{N}`, monotonically increasing) |
+| `ts` | `number` | Epoch timestamp (milliseconds) |
+| `runId` | `string \| undefined` | Autonomy run identifier |
+| `seq` | `number \| undefined` | Sequence number within the run |
+| `stream` | `string \| undefined` | Event stream name (e.g., `"autonomy"`, `"assistant"`) |
+| `sessionKey` | `string \| undefined` | Session key |
+| `agentId` | `string \| undefined` | Agent UUID |
+| `roomId` | `string \| undefined` | Room UUID |
+| `payload` | `object` | Inner event data from the agent runtime |
+
+<Note>
+When `stream` is `"assistant"` and the payload contains a `text` field, the server also routes the text to the user's active conversation as a `proactive-message` event.
+</Note>
+
+### `heartbeat_event`
+
+**Direction:** Server → Client | **Buffered:** Yes
+
+Envelope for agent heartbeat events (activity indicators). The server subscribes to the runtime's heartbeat stream and wraps each event in a `StreamEventEnvelope`.
+
+```json
+{
+  "type": "heartbeat_event",
+  "version": 1,
+  "eventId": "evt-43",
+  "ts": 1708000000000,
+  "payload": {
+    "ts": 1708000000000,
+    "status": "thinking",
+    "to": "discord",
+    "preview": "Composing reply...",
+    "durationMs": 1500,
+    "hasMedia": false,
+    "channel": "discord",
+    "indicatorType": "typing"
+  }
+}
+```
+
+**Envelope fields** follow the same schema as `agent_event` (see above). The `payload` contains the heartbeat data:
+
+| Payload Field | Type | Description |
+|--------------|------|-------------|
+| `ts` | `number` | Heartbeat timestamp (milliseconds) |
+| `status` | `string` | Heartbeat status (e.g., `"thinking"`, `"replying"`) |
+| `to` | `string \| undefined` | Target channel/destination |
+| `preview` | `string \| undefined` | Short preview of what the agent is doing |
+| `durationMs` | `number \| undefined` | Duration of the current operation (milliseconds) |
+| `hasMedia` | `boolean \| undefined` | Whether the operation involves media |
+| `reason` | `string \| undefined` | Reason for the heartbeat |
+| `channel` | `string \| undefined` | Channel identifier |
+| `silent` | `boolean \| undefined` | Whether this is a silent heartbeat (no UI indicator) |
+| `indicatorType` | `string \| undefined` | UI indicator type (e.g., `"typing"`) |
+
+### `training_event`
+
+**Direction:** Server → Client | **Buffered:** Yes
+
+Envelope for fine-tuning/training progress events. The server subscribes to the training service's event stream and wraps each event in a `StreamEventEnvelope`. The payload structure depends on the training service implementation.
+
+```json
+{
+  "type": "training_event",
+  "version": 1,
+  "eventId": "evt-44",
+  "ts": 1708000000000,
+  "payload": {
+    "phase": "training",
+    "progress": 0.45,
+    "message": "Training epoch 5/10"
+  }
+}
+```
+
+**Envelope fields** follow the same schema as `agent_event` (see above). The `payload` contains training-specific data determined by the active training service. If the training service emits a non-object value, it is wrapped as `{ value: <emitted_value> }`.
+
+### `proactive-message`
+
+**Direction:** Server → Client | **Buffered:** No
+
+Sent when the agent autonomously generates a message in a conversation. This happens when the autonomy loop produces text output (via the `"assistant"` stream) that is routed to the user's active conversation. The message is persisted as a Memory in the conversation room before being broadcast.
+
+```json
+{
+  "type": "proactive-message",
+  "conversationId": "conv-abc-123",
+  "message": {
+    "id": "msg-uuid",
+    "role": "assistant",
+    "text": "I noticed something interesting...",
+    "timestamp": 1708000000000,
+    "source": "autonomy"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `conversationId` | `string` | The conversation this message belongs to |
+
+| Message Field | Type | Description |
+|--------------|------|-------------|
+| `id` | `string` | Message UUID (from the created Memory, or `auto-{timestamp}` fallback) |
+| `role` | `"assistant"` | Always `"assistant"` |
+| `text` | `string` | Message content |
+| `timestamp` | `number` | Epoch timestamp (milliseconds) |
+| `source` | `string` | Origin of the message (e.g., `"autonomy"`) |
+
+The frontend handles this by:
+- Appending the message in real-time if the conversation is active
+- Marking the conversation as unread if it is not active
+- Bumping the conversation to the top of the sidebar
+
+### `conversation-updated`
+
+**Direction:** Server → Client | **Buffered:** No
+
+Sent when conversation metadata changes. Currently triggered when the server auto-generates a title from the first message in a conversation (replacing the default `"New Chat"` title).
+
+```json
+{
+  "type": "conversation-updated",
+  "conversation": {
+    "id": "conv-abc-123",
+    "title": "Discussion about AI agents",
+    "roomId": "room-uuid",
+    "createdAt": "2024-02-15T10:00:00.000Z",
+    "updatedAt": "2024-02-15T10:30:00.000Z"
+  }
+}
+```
+
+| Conversation Field | Type | Description |
+|-------------------|------|-------------|
+| `id` | `string` | Conversation identifier |
+| `title` | `string` | Display title of the conversation |
+| `roomId` | `string` | Associated room UUID in the runtime |
+| `createdAt` | `string` | ISO 8601 timestamp of conversation creation |
+| `updatedAt` | `string` | ISO 8601 timestamp of last update |
+
+### `install-progress`
+
+**Direction:** Server → Client | **Buffered:** No
+
+Broadcast during plugin installation to report real-time progress. Sent from the `POST /api/plugins/install` handler as the plugin manager progresses through installation phases.
+
+```json
+{
+  "type": "install-progress",
+  "pluginName": "@elizaos/plugin-discord",
+  "phase": "downloading",
+  "message": "Downloading @elizaos/plugin-discord@1.2.0..."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `pluginName` | `string \| undefined` | Name of the plugin being installed |
+| `phase` | `string` | Current installation phase |
+| `message` | `string` | Human-readable progress message |
+
+The `phase` field is one of the following values:
+
+| Phase | Description |
+|-------|-------------|
+| `resolving` | Looking up the plugin in the registry |
+| `downloading` | Downloading the plugin package |
+| `installing-deps` | Installing npm dependencies |
+| `validating` | Validating the plugin structure |
+| `configuring` | Applying plugin configuration |
+| `restarting` | Restarting the runtime to load the plugin |
+| `complete` | Installation finished successfully |
+| `error` | Installation failed |
+
+### `terminal-output`
+
+**Direction:** Server → Client | **Buffered:** No
+
+Streams shell command execution output in real-time. Sent after a `POST /api/terminal/run` request when shell access is enabled. Each command run is identified by a unique `runId`. Multiple sub-events are emitted over the lifecycle of a single command.
+
+**Start event** (emitted immediately when the command spawns):
+
+```json
+{
+  "type": "terminal-output",
+  "runId": "run-1708000000000-a1b2c3",
+  "event": "start",
+  "command": "ls -la",
+  "maxDurationMs": 30000
+}
+```
+
+**stdout event** (emitted as stdout data arrives):
+
+```json
+{
+  "type": "terminal-output",
+  "runId": "run-1708000000000-a1b2c3",
+  "event": "stdout",
+  "data": "total 42\ndrwxr-xr-x  5 user  staff  160 Feb 15 10:00 .\n"
+}
+```
+
+**stderr event** (emitted as stderr data arrives):
+
+```json
+{
+  "type": "terminal-output",
+  "runId": "run-1708000000000-a1b2c3",
+  "event": "stderr",
+  "data": "Warning: something happened\n"
+}
+```
+
+**exit event** (emitted when the process exits normally):
+
+```json
+{
+  "type": "terminal-output",
+  "runId": "run-1708000000000-a1b2c3",
+  "event": "exit",
+  "code": 0
+}
+```
+
+**timeout event** (emitted when the process exceeds `maxDurationMs`):
+
+```json
+{
+  "type": "terminal-output",
+  "runId": "run-1708000000000-a1b2c3",
+  "event": "timeout",
+  "maxDurationMs": 30000
+}
+```
+
+**error event** (emitted when the process fails to spawn):
+
+```json
+{
+  "type": "terminal-output",
+  "runId": "run-1708000000000-a1b2c3",
+  "event": "error",
+  "data": "spawn ENOENT"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `runId` | `string` | Unique run identifier (format: `run-{timestamp}-{random}`) |
+| `event` | `string` | Sub-event type: `start`, `stdout`, `stderr`, `exit`, `timeout`, or `error` |
+| `command` | `string` | The shell command (only present on `start`) |
+| `maxDurationMs` | `number` | Maximum allowed execution time in ms (present on `start` and `timeout`) |
+| `data` | `string` | Output data (present on `stdout`, `stderr`, and `error`) |
+| `code` | `number` | Process exit code (present on `exit`; defaults to `1` if null) |
+
+### `emote`
+
+**Direction:** Server → Client | **Buffered:** No
+
+Broadcast when the `POST /api/emote` endpoint is called, triggering an avatar animation in the frontend. The emote must exist in the emote catalog (`GET /api/emotes`).
+
+```json
+{
+  "type": "emote",
+  "emoteId": "wave",
+  "glbPath": "/emotes/wave.glb",
+  "duration": 2.0,
+  "loop": false
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `emoteId` | `string` | Unique emote identifier from the catalog |
+| `glbPath` | `string` | Path to the GLB animation file |
+| `duration` | `number` | Animation duration in seconds |
+| `loop` | `boolean` | Whether the animation should loop |
+
+## SSE Streaming Events (HTTP, not WebSocket)
+
+<Warning>
+The following events are **not** sent over WebSocket. They are Server-Sent Events (SSE) delivered over HTTP on the `POST /v1/messages` endpoint (Anthropic-compatible streaming API). They are documented here for completeness since they are part of the real-time event surface.
+</Warning>
+
+The `/v1/messages` endpoint supports streaming via `"stream": true` in the request body or an `Accept: text/event-stream` header. When streaming is enabled, the response uses SSE with the following event sequence:
+
+### SSE Event Sequence
+
+```
+message_start → content_block_start → content_block_delta* → content_block_stop → message_delta → message_stop
+```
+
+### `message_start`
+
+Sent once at the beginning of the response.
+
+```json
+{
+  "type": "message_start",
+  "message": {
+    "id": "msg_a1b2c3d4e5f6",
+    "type": "message",
+    "role": "assistant",
+    "model": "Eliza",
+    "content": [],
+    "stop_reason": null,
+    "stop_sequence": null,
+    "usage": { "input_tokens": 0, "output_tokens": 0 }
+  }
+}
+```
+
+### `content_block_start`
+
+Marks the beginning of a content block.
+
+```json
+{
+  "type": "content_block_start",
+  "index": 0,
+  "content_block": { "type": "text", "text": "" }
+}
+```
+
+### `content_block_delta`
+
+Delivers incremental text chunks as the agent generates the response.
+
+```json
+{
+  "type": "content_block_delta",
+  "index": 0,
+  "delta": { "type": "text_delta", "text": "Hello! " }
+}
+```
+
+### `content_block_stop`
+
+Marks the end of a content block.
+
+```json
+{
+  "type": "content_block_stop",
+  "index": 0
+}
+```
+
+### `message_delta`
+
+Sent after all content blocks are complete, carrying the stop reason.
+
+```json
+{
+  "type": "message_delta",
+  "delta": { "stop_reason": "end_turn", "stop_sequence": null },
+  "usage": { "output_tokens": 0 }
+}
+```
+
+### `message_stop`
+
+Final event indicating the message is complete.
+
+```json
+{
+  "type": "message_stop"
+}
+```
+
+### `error` (SSE)
+
+Sent if the runtime is unavailable or an error occurs during generation.
+
+```json
+{
+  "type": "error",
+  "error": {
+    "type": "server_error",
+    "message": "Agent is not running"
+  }
+}
+```
+
+| Error Type | Description |
+|------------|-------------|
+| `service_unavailable` | Agent runtime is not running |
+| `server_error` | Generation failed or an unexpected error occurred |
+
+## Reconnection Behavior
+
+The frontend API client handles reconnection automatically. The reconnection strategy uses exponential backoff with these parameters:
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| Initial delay | 500ms | Delay before first reconnection attempt |
+| Backoff factor | 1.5x | Multiplier applied after each failed attempt |
+| Max delay | 10,000ms | Maximum delay between reconnection attempts |
+| Max attempts | 15 | Fast-backoff reconnection attempts |
+| Slow probe interval | 30,000ms | After max attempts are exhausted, the client continues probing every 30 seconds |
+
+On successful reconnect, the `backoffMs` resets to 500ms. After the initial 15 fast-backoff attempts are exhausted, the client switches to a low-frequency 30-second probe interval so the UI can recover automatically without requiring a full page refresh.
+
+<Tip>
+On reconnect, the server replays the last 120 buffered events, so clients can catch up on missed events without a full page refresh.
+</Tip>
+
+## Event Buffer
+
+The server maintains an in-memory event buffer for stream events. Key characteristics:
+
+- Only `agent_event`, `heartbeat_event`, and `training_event` types are buffered (via the `StreamEventEnvelope` wrapper)
+- Other event types (`status`, `proactive-message`, `install-progress`, `terminal-output`, `emote`, `conversation-updated`, `restart-required`) are broadcast live and **not** buffered
+- Last 120 events are replayed to newly connected clients
+- The buffer is capped at 1,500 events; older events are pruned automatically
+- Each buffered event receives a monotonically increasing `eventId` (format: `evt-{N}`)
+
+### StreamEventEnvelope Schema
+
+All buffered events share this envelope structure:
+
+```typescript
+interface StreamEventEnvelope {
+  type: "agent_event" | "heartbeat_event" | "training_event";
+  version: 1;
+  eventId: string;    // "evt-{N}", monotonically increasing
+  ts: number;         // Epoch timestamp (milliseconds)
+  runId?: string;     // Autonomy run identifier
+  seq?: number;       // Sequence number within the run
+  stream?: string;    // Event stream name
+  sessionKey?: string;
+  agentId?: string;
+  roomId?: string;    // UUID
+  payload: object;    // Inner event data
+}
+```
+
+## Client Send Queue
+
+The frontend API client maintains a send queue for messages that cannot be delivered while the WebSocket is disconnected:
+
+- Queue capacity: 32 messages
+- When full, the oldest message is dropped (a warning is logged with the dropped message type)
+- `active-conversation` messages are deduplicated (only the latest is kept)
+- The queue is flushed on successful reconnection

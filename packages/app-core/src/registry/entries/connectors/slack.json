@@ -1,0 +1,88 @@
+{
+  "id": "slack",
+  "name": "Slack",
+  "description": "Slack connector for elizaOS agents with Eliza Cloud OAuth and local Socket Mode support.",
+  "npmName": "@elizaos/plugin-slack",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["slack", "chat", "messaging", "connector", "social", "social-chat"],
+  "config": {
+    "SLACK_APP_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "App Token",
+      "help": "Slack App Token (xapp-...) for Socket Mode connections",
+      "advanced": false
+    },
+    "SLACK_BOT_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Bot Token",
+      "help": "Slack Bot Token (xoxb-...) for API authentication",
+      "advanced": false
+    },
+    "SLACK_USER_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "User Token",
+      "help": "Optional User Token (xoxp-...) for enhanced permissions",
+      "advanced": false
+    },
+    "SLACK_CHANNEL_IDS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Channel Ids",
+      "help": "Comma-separated list of channel IDs to restrict the bot to",
+      "advanced": false
+    },
+    "SLACK_SIGNING_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Signing Secret",
+      "help": "Slack Signing Secret for verifying requests",
+      "advanced": false
+    },
+    "SLACK_SHOULD_IGNORE_BOT_MESSAGES": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Should Ignore Bot Messages",
+      "help": "If true, the bot will ignore messages from other bots",
+      "advanced": false
+    },
+    "SLACK_SHOULD_RESPOND_ONLY_TO_MENTIONS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Should Respond Only To Mentions",
+      "help": "If true, the bot will only respond when mentioned",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Briefcase",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-slack#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-slack",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#slack"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "oauth",
+    "credentialKeys": ["SLACK_APP_TOKEN"]
+  }
+}

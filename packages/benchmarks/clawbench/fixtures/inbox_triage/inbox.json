@@ -1,0 +1,47 @@
+[
+  {
+    "id": "msg_001",
+    "sender": "boss@company.com",
+    "subject": "URGENT: Q4 Report Review Needed",
+    "body": "Hi, I need your feedback on the Q4 report by end of day. Please review the attached and send me your comments ASAP. This is blocking the board presentation.",
+    "received_ts": "2024-01-15T09:00:00Z",
+    "labels": ["inbox"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_002",
+    "sender": "newsletter@techdigest.com",
+    "subject": "Weekly Tech Digest - AI Updates",
+    "body": "This week in AI: New model releases, industry trends, and more. Click here to read the full newsletter...",
+    "received_ts": "2024-01-15T08:30:00Z",
+    "labels": ["inbox", "newsletter"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_003",
+    "sender": "client@bigcorp.com",
+    "subject": "Re: Project Timeline",
+    "body": "Thanks for the update. Can we schedule a call this week to discuss the revised timeline? Let me know your availability.",
+    "received_ts": "2024-01-15T07:45:00Z",
+    "labels": ["inbox"],
+    "is_urgent": false
+  },
+  {
+    "id": "msg_004",
+    "sender": "hr@company.com",
+    "subject": "ACTION REQUIRED: Benefits Enrollment",
+    "body": "Reminder: Open enrollment ends January 20th. Please complete your benefits selection in the HR portal.",
+    "received_ts": "2024-01-14T16:00:00Z",
+    "labels": ["inbox"],
+    "is_urgent": true
+  },
+  {
+    "id": "msg_005",
+    "sender": "promo@shopping.com",
+    "subject": "50% OFF - Limited Time Offer!",
+    "body": "Don't miss our biggest sale of the year! Shop now and save up to 50% on selected items...",
+    "received_ts": "2024-01-14T12:00:00Z",
+    "labels": ["inbox", "promotions"],
+    "is_urgent": false
+  }
+]

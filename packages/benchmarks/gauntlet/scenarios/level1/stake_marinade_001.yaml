@@ -1,0 +1,23 @@
+id: stake_marinade_001
+level: 1
+name: Marinade Stake
+description: 'Level 1 protocol interaction: Marinade Stake'
+category: stake
+expected_outcome: successful_execution
+state:
+  accounts:
+  - name: agent_wallet
+    sol_balance: 10.0
+    tokens:
+      USDC: 1000
+      BONK: 10000000
+tasks:
+- id: task_stake_marinade_001
+  type: stake
+  parameters:
+    protocol: marinade
+    amount: 1.0
+  timeout_ms: 30000
+scoring:
+  successful_execution: '+1'
+  silent_failure: '-1'

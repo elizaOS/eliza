@@ -1,0 +1,103 @@
+{
+  "name": "@elizaos/plugin-nostr",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "social-posting"
+      ]
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts --cache=false",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "nostr-tools": "^2.0.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^22.19.17",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "resolutions": {
+    "@noble/hashes": "2.2.0"
+  },
+  "overrides": {
+    "@noble/hashes": "2.2.0"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "NOSTR_PRIVATE_KEY": {
+        "type": "string",
+        "description": "Private key for Nostr",
+        "required": true,
+        "sensitive": true
+      },
+      "NOSTR_RELAYS": {
+        "type": "string",
+        "description": "Comma-separated list of relay URLs",
+        "required": false,
+        "sensitive": false
+      },
+      "NOSTR_DM_POLICY": {
+        "type": "string",
+        "description": "DM policy (e.g. allow, deny, allowlist)",
+        "required": false,
+        "sensitive": false
+      },
+      "NOSTR_ALLOW_FROM": {
+        "type": "string",
+        "description": "Comma-separated allowed user list",
+        "required": false,
+        "sensitive": false
+      },
+      "NOSTR_ENABLED": {
+        "type": "boolean",
+        "description": "Enable or disable this feature",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

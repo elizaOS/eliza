@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "allowSyntheticDefaultImports": true,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "esModuleInterop": true,
+    "lib": ["ES2022"],
+    "module": "es2022",
+    "moduleResolution": "bundler",
+    "outDir": "dist",
+    "resolveJsonModule": true,
+    "rootDir": ".",
+    "skipLibCheck": true,
+    "typeRoots": ["node_modules/@types"],
+    "strict": false,
+    "target": "ES2022",
+    "useUnknownInCatchVariables": false
+  },
+  "include": ["pepr.ts", "capabilities/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

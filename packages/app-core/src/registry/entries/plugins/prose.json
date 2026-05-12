@@ -1,0 +1,48 @@
+{
+  "id": "prose",
+  "name": "Prose",
+  "description": "OpenProse VM integration for ElizaOS - a programming language for AI sessions",
+  "npmName": "@elizaos/plugin-prose",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["openprose", "prose", "llm", "vm", "workflow", "orchestration"],
+  "config": {
+    "PROSE_SKILLS_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Skills Dir",
+      "help": "Directory containing prose skill files (prose.md, help.md, etc.)",
+      "advanced": false
+    },
+    "PROSE_STATE_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "State Mode",
+      "help": "Default state management mode (filesystem|in-context|sqlite|postgres)",
+      "advanced": false
+    },
+    "PROSE_WORKSPACE_DIR": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Workspace Dir",
+      "help": "Base directory for .prose workspace files",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "PenTool",
+    "group": "media",
+    "groupOrder": 8,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media"
+}

@@ -1,0 +1,79 @@
+{
+  "id": "minecraft",
+  "name": "Minecraft",
+  "description": "Minecraft automation app for driving Mineflayer bots from Eliza agents.",
+  "npmName": "@elizaos/plugin-minecraft",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["app", "games", "minecraft", "automation", "mineflayer"],
+  "config": {
+    "MC_AUTH": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Auth",
+      "help": "Minecraft auth mode (offline/microsoft)",
+      "advanced": false
+    },
+    "MC_HOST": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Host",
+      "help": "Server host address",
+      "advanced": false
+    },
+    "MC_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Port",
+      "help": "Minecraft server port",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    },
+    "MC_VERSION": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Version",
+      "help": "Minecraft version",
+      "advanced": false
+    },
+    "MC_USERNAME": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Username",
+      "help": "Minecraft username",
+      "advanced": false
+    },
+    "MC_SERVER_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Server Port",
+      "help": "Local server port",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Pickaxe",
+    "group": "gaming",
+    "groupOrder": 11,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "gaming"
+}

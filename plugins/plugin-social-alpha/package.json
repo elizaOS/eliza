@@ -1,0 +1,126 @@
+{
+	"name": "@elizaos/plugin-social-alpha",
+	"version": "2.0.0-beta.1",
+	"description": "Social Alpha Plugin — Tracks token recommendations (shills/FUD), builds trust scores based on P&L outcomes, and exposes a Social Alpha Provider with win rate, rank, and recommender analytics.",
+	"type": "module",
+	"main": "dist/index.js",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.js",
+			"default": "./dist/index.js"
+		},
+		"./*.css": "./dist/*.css",
+		"./*": {
+			"import": "./dist/*.js",
+			"default": "./dist/*.js",
+			"types": "./dist/*.d.ts"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "bun --bun vite build",
+		"dev": "bun --bun vite",
+		"test": "vitest run --passWithNoTests",
+		"clean": "rm -rf dist .turbo",
+		"lint": "echo \"Lint skipped for release\"",
+		"lint:check": "bun run lint",
+		"format": "echo \"Format skipped (source is gitignored vendor code)\"",
+		"format:check": "echo \"Format check skipped (source is gitignored vendor code)\"",
+		"typecheck": "echo \"Typecheck skipped for release\""
+	},
+	"dependencies": {
+		"@elizaos/core": "2.0.0-beta.1",
+		"bignumber.js": "^11.0.0",
+		"class-variance-authority": "^0.7.1",
+		"clsx": "^2.1.1",
+		"dotenv": "^17.0.0",
+		"fast-xml-parser": "^5.7.2",
+		"p-limit": "^5.0.0",
+		"tailwindcss-animate": "^1.0.7",
+		"uuid": "^14.0.0",
+		"zod": "^4.4.3"
+	},
+	"peerDependencies": {
+		"@elizaos/core": "2.0.0-beta.1"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.4.14",
+		"@cypress/react": "^9.0.2",
+		"@radix-ui/react-slot": "^1.0.0",
+		"@radix-ui/react-tabs": "^1.0.0",
+		"@tailwindcss/postcss": "4.2.4",
+		"@tanstack/react-query": "^5.62.0",
+		"@testing-library/cypress": "^10.0.0",
+		"@types/react": "^19.0.0",
+		"@types/react-dom": "^19.0.0",
+		"@vitejs/plugin-react-swc": "^4.0.0",
+		"autoprefixer": "^10.4.21",
+		"cypress": "^15.14.2",
+		"lucide-react": "^1.0.0",
+		"postcss": "^8.5.4",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"tailwind-merge": "^3.4.0",
+		"tailwindcss": "^4.0.0",
+		"tsconfig-paths": "^4.2.0",
+		"tsup": "^8.5.1",
+		"tsx": "4.21.0",
+		"typescript": "^6.0.3",
+		"vite": "^6.0.0",
+		"vitest": "^4.0.0"
+	},
+	"publishConfig": {
+		"access": "public"
+	},
+	"keywords": [
+		"plugin",
+		"elizaos",
+		"social-alpha",
+		"trust-score",
+		"shill-tracker"
+	],
+	"agentConfig": {
+		"pluginParameters": {
+			"BIRDEYE_API_KEY": {
+				"type": "string",
+				"description": "API key for Birdeye",
+				"required": true,
+				"sensitive": true
+			},
+			"DEXSCREENER_API_KEY": {
+				"type": "string",
+				"description": "API key for Dexscreener",
+				"required": true,
+				"sensitive": true
+			},
+			"JUPITER_API_KEY": {
+				"type": "string",
+				"description": "API key for Jupiter",
+				"required": true,
+				"sensitive": true
+			},
+			"HELIUS_API_KEY": {
+				"type": "string",
+				"description": "API key for Helius",
+				"required": true,
+				"sensitive": true
+			},
+			"COINGECKO_API_KEY": {
+				"type": "string",
+				"description": "API key for Coingecko",
+				"required": true,
+				"sensitive": true
+			},
+			"MORALIS_API_KEY": {
+				"type": "string",
+				"description": "API key for Moralis",
+				"required": true,
+				"sensitive": true
+			}
+		}
+	}
+}

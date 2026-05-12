@@ -1,0 +1,59 @@
+default_platform(:android)
+
+platform :android do
+
+  desc "Build a signed AAB for Play Store"
+  lane :build do
+    gradle(
+      project_dir: ".",
+      task: "bundle",
+      build_type: "Release",
+      print_command: true,
+      properties: {
+        "android.injected.signing.store.file" => ENV["ELIZAOS_KEYSTORE_PATH"],
+        "android.injected.signing.store.password" => ENV["ELIZAOS_KEYSTORE_PASSWORD"],
+        "android.injected.signing.key.alias" => ENV["ELIZAOS_KEY_ALIAS"],
+        "android.injected.signing.key.password" => ENV["ELIZAOS_KEY_PASSWORD"],
+      }
+    )
+  end
+
+  desc "Deploy to internal testing track"
+  lane :internal do
+    build
+    upload_to_play_store(
+      track: "internal",
+      aab: "app/build/outputs/bundle/release/app-release.aab",
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+
+  desc "Promote internal to closed beta"
+  lane :beta do
+    upload_to_play_store(
+      track: "internal",
+      track_promote_to: "beta",
+      skip_upload_changelogs: false
+    )
+  end
+
+  desc "Promote beta to production"
+  lane :production do
+    upload_to_play_store(
+      track: "beta",
+      track_promote_to: "production",
+      skip_upload_changelogs: false
+    )
+  end
+
+  desc "Upload metadata and screenshots only"
+  lane :metadata do
+    upload_to_play_store(
+      skip_upload_aab: true,
+      skip_upload_apk: true
+    )
+  end
+
+end

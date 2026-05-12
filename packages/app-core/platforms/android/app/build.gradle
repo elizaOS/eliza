@@ -1,0 +1,138 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "app.eliza"
+    compileSdk rootProject.ext.compileSdkVersion
+    // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
+    // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
+    // scripts/elizaos/build-aosp.mjs. AGP 8+ defaults this to false.
+    buildFeatures {
+        buildConfig true
+    }
+    defaultConfig {
+        applicationId "app.eliza"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
+        versionName System.getenv("ELIZAOS_VERSION_NAME") ?: "1.0.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        // AOSP-only build gate. The ElizaOS AOSP product build sets
+        // -PelizaAospBuild=true via scripts/elizaos/build-aosp.mjs; the
+        // Capacitor APK build path (`bun run build:android`) leaves it
+        // unset and the field stays false. ElizaAgentService reads this
+        // to decide whether to export ELIZA_LOCAL_LLAMA=1 to the bun
+        // process so the AOSP-only libllama.so loader takes over inference.
+        buildConfigField "boolean", "AOSP_BUILD", "${project.findProperty('elizaAospBuild') ?: 'false'}"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+
+    signingConfigs {
+        release {
+            // For Google Play App Signing: use an upload keystore.
+            // CI provides these via environment variables; local builds fall back to debug signing.
+            if (System.getenv("ELIZAOS_KEYSTORE_PATH")) {
+                storeFile file(System.getenv("ELIZAOS_KEYSTORE_PATH"))
+                storePassword System.getenv("ELIZAOS_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("ELIZAOS_KEY_ALIAS")
+                keyPassword System.getenv("ELIZAOS_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (signingConfigs.release.storeFile) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    bundle {
+        language {
+            enableSplit = true
+        }
+        density {
+            enableSplit = true
+        }
+        abi {
+            enableSplit = true
+        }
+    }
+
+    // Preserve .gguf / .so as-is in the packaged APK.
+    //
+    // .gguf is added so bundled chat + embedding models stay byte-identical
+    // for memory-mapped loading; .so already ships uncompressed but
+    // declaring it here matches AGP's recommended noCompress list and
+    // protects against future packaging-default changes.
+    //
+    // `tar.gz` / `tar` are NOT listed because aapt2 pre-processes
+    // `*.tar.gz` by stripping the `.gz` suffix at packaging time
+    // regardless of `noCompress` (which only controls ZIP-level
+    // compression of the entry, not the doubly-compressed-extension
+    // rewrite). ElizaAgentService.extractAssetsIfNeeded() compensates
+    // by reading the assets under the aapt2-rewritten `.tar` name and
+    // writing them to disk as `.tar.gz` so PGlite's runtime loader
+    // (`new URL("../vector.tar.gz", import.meta.url)`) finds them.
+    androidResources {
+        noCompress += ['gguf', 'so']
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+            keepDebugSymbols += ["**/libimage_processing_util_jni.so"]
+        }
+    }
+}
+
+repositories {
+    flatDir {
+        dirs '../../node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../node_modules/@capacitor-community/background-runner/android/src/main/libs',
+             '../../../../app/node_modules/@capacitor/background-runner/android/src/main/libs',
+             '../../../../app/node_modules/@capacitor-community/background-runner/android/src/main/libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    // WorkManager for periodic background refresh (see ElizaTasksWorker + ElizaBootReceiver).
+    // The Capacitor background-runner already pulls in work-runtime-ktx transitively;
+    // this explicit dep makes the worker classes resolvable from Java without relying on
+    // transitive resolution and pins us to the same version (2.11.0).
+    implementation "androidx.work:work-runtime:2.11.0"
+    implementation project(':capacitor-android')
+    implementation "com.google.code.gson:gson:2.14.0"
+    implementation "com.google.firebase:firebase-common-ktx:21.0.0"
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
