@@ -2697,17 +2697,13 @@ export const allActionsSpec = {
       "descriptionCompressed": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
       "similes": [
         "block out 2 hours for deep work",
-        "WEBSITE_BLOCKER",
         "SELFCONTROL",
         "SITE_BLOCKER",
         "HOSTS_BLOCK",
         "BLOCK_WEBSITE",
-        "APP_BLOCKER",
         "SHIELD_APPS",
         "FAMILY_CONTROLS",
         "PHONE_FOCUS",
-        "SET_APP_BLOCK",
-        "PHONE_SET_APP_BLOCK",
         "PHONE_BLOCK_APPS",
         "BLOCK_APPS"
       ],
@@ -4162,8 +4158,7 @@ export const allActionsSpec = {
         "ADD_PERSON",
         "MERGE_ENTITIES",
         "MERGE_CONTACTS",
-        "SET_IDENTITY",
-        "SET_RELATIONSHIP"
+        "SET_IDENTITY"
       ],
       "exampleCalls": [
         {
@@ -5429,6 +5424,18 @@ export const allActionsSpec = {
       ]
     },
     {
+      "name": "OWNER_ALARMS",
+      "description": "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+      "parameters": [],
+      "descriptionCompressed": "owner alarms: action=create|update|delete|complete|skip|snooze|review",
+      "similes": [
+        "ALARM",
+        "ALARMS",
+        "WAKE_ME",
+        "WAKE_UP"
+      ]
+    },
+    {
       "name": "OWNER_DOCUMENTS",
       "description": "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
       "parameters": [
@@ -5631,6 +5638,17 @@ export const allActionsSpec = {
       ]
     },
     {
+      "name": "OWNER_GOALS",
+      "description": "Owner goals: create, update, delete, or review long-term goals and progress.",
+      "parameters": [],
+      "descriptionCompressed": "owner goals: action=create|update|delete|review; backing kind=goal",
+      "similes": [
+        "GOAL",
+        "GOALS",
+        "LONG_TERM_GOAL"
+      ]
+    },
+    {
       "name": "OWNER_HEALTH",
       "description": "Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
       "parameters": [
@@ -5657,6 +5675,56 @@ export const allActionsSpec = {
           ],
           "params": {
             "OWNER_HEALTH": {
+              "action": "example"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "OWNER_REMINDERS",
+      "description": "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+      "parameters": [],
+      "descriptionCompressed": "owner reminders: action=create|update|delete|complete|skip|snooze|review",
+      "similes": [
+        "REMINDER",
+        "REMINDERS",
+        "SET_REMINDER",
+        "REMIND_ME",
+        "REMIND_ME_TO"
+      ]
+    },
+    {
+      "name": "OWNER_ROUTINES",
+      "description": "Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect."
+        }
+      ],
+      "descriptionCompressed": "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
+      "similes": [
+        "HABIT",
+        "HABITS",
+        "ROUTINE",
+        "ROUTINES",
+        "DAILY_TASK",
+        "WEEKLY_TASK"
+      ],
+      "exampleCalls": [
+        {
+          "user": "Use OWNER_ROUTINES with the provided parameters.",
+          "actions": [
+            "OWNER_ROUTINES"
+          ],
+          "params": {
+            "OWNER_ROUTINES": {
               "action": "example"
             }
           }
@@ -5694,6 +5762,18 @@ export const allActionsSpec = {
             }
           }
         }
+      ]
+    },
+    {
+      "name": "OWNER_TODOS",
+      "description": "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+      "parameters": [],
+      "descriptionCompressed": "owner todos: action=create|update|delete|complete|skip|snooze|review",
+      "similes": [
+        "OWNER_TODO",
+        "PERSONAL_TODO",
+        "PERSONAL_TODOS",
+        "PERSONAL_TASK"
       ]
     },
     {
@@ -6822,16 +6902,30 @@ export const allActionsSpec = {
     },
     {
       "name": "SHELL",
-      "description": "Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
+      "description": "Canonical shell action. action=run executes a shell command via the configured local shell. action=clear_history clears recorded shell command history for this conversation. action=view_history returns recent recorded shell commands. command is required only for action=run. Paths under the configured blocklist are off-limits as cwd.",
       "parameters": [
         {
+          "name": "action",
+          "description": "Shell operation: run | clear_history | view_history.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "run",
+              "clear_history",
+              "view_history"
+            ]
+          },
+          "descriptionCompressed": "Shell operation: run | clear_history | view_history."
+        },
+        {
           "name": "command",
-          "description": "Shell command to run; executed via /bin/bash -c <command>.",
-          "required": true,
+          "description": "Shell command to run for action=run; executed via /bin/bash -c <command>.",
+          "required": false,
           "schema": {
             "type": "string"
           },
-          "descriptionCompressed": "Shell command to run. executed via /bin/bash -c <command>."
+          "descriptionCompressed": "Shell command to run for action=run. executed via /bin/bash -c <command>."
         },
         {
           "name": "description",
@@ -6859,9 +6953,18 @@ export const allActionsSpec = {
             "type": "string"
           },
           "descriptionCompressed": "Absolute working directory. must not resolve under a blocked path. Defaults to the session cwd."
+        },
+        {
+          "name": "limit",
+          "description": "For action=view_history: maximum number of recorded commands to return.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "descriptionCompressed": "For action=view_history: max number of recorded commands to return."
         }
       ],
-      "descriptionCompressed": "Run a shell command synchronously.",
+      "descriptionCompressed": "Run shell commands or manage shell command history.",
       "similes": [
         "EXEC",
         "RUN_COMMAND"
@@ -6874,62 +6977,11 @@ export const allActionsSpec = {
           ],
           "params": {
             "SHELL": {
+              "action": "run",
               "command": "example",
               "description": "example",
               "timeout": 1,
-              "cwd": "example"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "name": "SHELL_HISTORY",
-      "description": "Shell command-history router. action=clear wipes the recorded history; action=view returns recent commands; action=disable is reserved for future use.",
-      "parameters": [
-        {
-          "name": "action",
-          "description": "Operation: clear | view | disable. Inferred from message text when omitted (defaults to clear).",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": [
-              "clear",
-              "view",
-              "disable"
-            ]
-          },
-          "descriptionCompressed": "Operation: clear | view | disable. Inferred from msg text when omitted (defaults to clear)."
-        },
-        {
-          "name": "limit",
-          "description": "For action=view: maximum number of history entries to return (default 20).",
-          "required": false,
-          "schema": {
-            "type": "number"
-          },
-          "descriptionCompressed": "For action=view: max number of history entries to return (default 20)."
-        }
-      ],
-      "descriptionCompressed": "Shell history: clear | view | disable.",
-      "similes": [
-        "CLEAR_SHELL_HISTORY",
-        "RESET_SHELL",
-        "CLEAR_TERMINAL",
-        "RESET_HISTORY",
-        "VIEW_SHELL_HISTORY",
-        "SHOW_SHELL_HISTORY",
-        "LIST_SHELL_HISTORY"
-      ],
-      "exampleCalls": [
-        {
-          "user": "Use SHELL_HISTORY with the provided parameters.",
-          "actions": [
-            "SHELL_HISTORY"
-          ],
-          "params": {
-            "SHELL_HISTORY": {
-              "action": "clear",
+              "cwd": "example",
               "limit": 1
             }
           }

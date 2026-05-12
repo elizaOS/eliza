@@ -333,7 +333,6 @@ export const browserAction: Action = {
     "CONTROL_BROWSER",
     "CONTROL_BROWSER_SESSION",
     "MANAGE_ELIZA_BROWSER_WORKSPACE",
-    "MANAGE_LIFEOPS_BROWSER",
     "NAVIGATE_SITE",
     "OPEN_SITE",
     "USE_BROWSER",

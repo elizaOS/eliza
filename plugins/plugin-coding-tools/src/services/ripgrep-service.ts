@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { statSync } from "node:fs";
+import * as path from "node:path";
 import { type IAgentRuntime, Service, logger as coreLogger } from "@elizaos/core";
 import { CODING_TOOLS_LOG_PREFIX, RIPGREP_SERVICE } from "../types.js";
 
@@ -92,9 +94,28 @@ export class RipgrepService extends Service {
     for (const dir of VCS_EXCLUDES) {
       args.push("-g", `!${dir}/**`);
     }
-    args.push("--", options.pattern, options.path);
+    const executionPath = resolveExecutionPath(options.path);
+    args.push("--", options.pattern, executionPath.searchPath);
 
-    return runRipgrep(this.binary(), args, mode);
+    return runRipgrep(this.binary(), args, mode, executionPath.cwd);
+  }
+}
+
+function resolveExecutionPath(targetPath: string): {
+  cwd?: string;
+  searchPath: string;
+} {
+  try {
+    const stat = statSync(targetPath);
+    if (stat.isDirectory()) {
+      return { cwd: targetPath, searchPath: "." };
+    }
+    return {
+      cwd: path.dirname(targetPath),
+      searchPath: path.basename(targetPath),
+    };
+  } catch {
+    return { searchPath: targetPath };
   }
 }
 
@@ -102,6 +123,7 @@ function runRipgrep(
   rg: string,
   args: string[],
   mode: RipgrepMode,
+  cwd: string | undefined,
 ): Promise<RipgrepResult> {
   return new Promise((resolve) => {
     const HARD_CAP_BYTES = 5_000_000;
@@ -113,6 +135,7 @@ function runRipgrep(
         encoding: "utf8",
         maxBuffer: HARD_CAP_BYTES,
         timeout: 30_000,
+        ...(cwd ? { cwd } : {}),
       },
       (error, stdout, stderr) => {
         const output = stdout || stderr;
