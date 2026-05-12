@@ -57,6 +57,12 @@ const CHUNK_BYTES =
 
 const ELEVENLABS_TIMEOUT_MS = 20_000;
 const OPENAI_TIMEOUT_MS = 20_000;
+const LOCAL_TTS_PROVIDER_IDS = [
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+  "eliza-aosp-llama",
+] as const;
 
 /** Resolved TTS configuration for a speak() call. */
 export interface ResolvedTtsConfig {
@@ -142,20 +148,23 @@ class TtsStreamBridge implements ITtsStreamBridge {
       return false;
     }
 
-    const speakableText = sanitizeSpeechText(text);
+    const speakableText =
+      config.provider === "local-inference"
+        ? sanitizeLocalInferenceSpeechText(text)
+        : sanitizeSpeechText(text);
     if (!speakableText) return false;
 
     try {
       logger.info(
         `${TAG} Generating TTS (${config.provider}, ${speakableText.length} chars)`,
       );
-      const mp3 = await this.generateTts(speakableText, config);
-      if (!mp3 || mp3.length === 0) {
+      const audio = await this.generateTts(speakableText, config);
+      if (!audio || audio.length === 0) {
         logger.warn(`${TAG} TTS returned empty audio`);
         return false;
       }
 
-      const pcm = await this.decodeMp3ToPcm(mp3);
+      const pcm = await this.decodeAudioToPcm(audio);
       if (!pcm || pcm.length === 0) {
         logger.warn(`${TAG} PCM decode returned empty buffer`);
         return false;
@@ -229,12 +238,12 @@ class TtsStreamBridge implements ITtsStreamBridge {
     config: ResolvedTtsConfig,
   ): Promise<Buffer> {
     const runtime = config.runtime;
-    if (!runtime?.getModel?.(ModelType.TEXT_TO_SPEECH)) {
+    if (!runtime) {
       throw new Error(
         "Local inference TEXT_TO_SPEECH handler is not available",
       );
     }
-    const audio = await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text });
+    const audio = await useLocalInferenceTts(runtime, text);
     if (audio instanceof Uint8Array) {
       return Buffer.from(audio.buffer, audio.byteOffset, audio.byteLength);
     }
@@ -350,10 +359,10 @@ class TtsStreamBridge implements ITtsStreamBridge {
     }
   }
 
-  // ── MP3 → PCM decode ──────────────────────────────────────────────────
+  // ── Encoded audio → PCM decode ─────────────────────────────────────────
 
-  /** Decode MP3 audio to raw s16le PCM using an FFmpeg subprocess. */
-  private decodeMp3ToPcm(mp3: Buffer): Promise<Buffer> {
+  /** Decode provider audio (WAV, MP3, etc.) to raw s16le PCM using FFmpeg. */
+  private decodeAudioToPcm(audio: Buffer): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const proc = spawn(
         "ffmpeg",
@@ -381,7 +390,7 @@ class TtsStreamBridge implements ITtsStreamBridge {
         }
       });
       proc.on("error", reject);
-      proc.stdin?.write(mp3);
+      proc.stdin?.write(audio);
       proc.stdin?.end();
     });
   }
@@ -399,6 +408,49 @@ function fetchWithTimeout(
   return fetch(url, { ...init, signal: controller.signal }).finally(() =>
     clearTimeout(timer),
   );
+}
+
+async function useLocalInferenceTts(
+  runtime: IAgentRuntime,
+  text: string,
+): Promise<Buffer | Uint8Array | ArrayBuffer> {
+  let lastError: unknown;
+  for (const provider of LOCAL_TTS_PROVIDER_IDS) {
+    try {
+      return await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text }, provider);
+    } catch (err) {
+      lastError = err;
+      if (!isMissingProviderError(err)) {
+        throw err;
+      }
+    }
+  }
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("No local-inference TEXT_TO_SPEECH provider is registered");
+}
+
+function isMissingProviderError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /No handler found for delegate type: TEXT_TO_SPEECH/.test(error.message)
+  );
+}
+
+function sanitizeLocalInferenceSpeechText(input: string): string {
+  let text = input.normalize("NFKC");
+  text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi, " ");
+  text = text.replace(
+    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+    " ",
+  );
+  text = text.replace(/```[\s\S]*?```/g, " ");
+  text = text.replace(/`([^`]+)`/g, "$1");
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  text = text.replace(/<[^>\n]+>/g, " ");
+  text = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  return text.replace(/\s+/g, " ").trim();
 }
 
 // ── Config resolution ─────────────────────────────────────────────────────
