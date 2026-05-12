@@ -73,6 +73,7 @@ import {
 } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
+import { ProvisioningChatView } from "./ProvisioningChatView";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import { Checkbox } from "../ui/checkbox";
@@ -231,6 +232,7 @@ type CloudStage =
   | "retry"
   | "creating"
   | "provisioning"
+  | "chat"
   | "connecting";
 
 type LocalStage = "provider" | "config";
@@ -424,6 +426,9 @@ export function RuntimeGate() {
   // Cloud sub-view
   const [cloudStage, setCloudStage] = React.useState<CloudStage>(
     elizaCloudConnected ? "loading" : "login",
+  );
+  const [currentAgentId, setCurrentAgentId] = React.useState<string | null>(
+    null,
   );
   const [error, setError] = React.useState<string | null>(null);
   const [provisionStatus, setProvisionStatus] = React.useState("");
@@ -1263,6 +1268,7 @@ export function RuntimeGate() {
           }
           const primaryApiBase = resolveCloudAgentApiBase(primary);
           if (primary.status !== "running" || !primaryApiBase) {
+            setCurrentAgentId(primary.agent_id);
             await provisionAndConnect(primary.agent_id);
             return;
           }
@@ -1272,6 +1278,7 @@ export function RuntimeGate() {
           );
           if (cancelled) return;
           if (!reachable) {
+            setCurrentAgentId(primary.agent_id);
             await provisionAndConnect(primary.agent_id);
             return;
           }
@@ -1301,6 +1308,11 @@ export function RuntimeGate() {
       // cancelled=true, and the post-await guard then bails before
       // provisionAndConnect runs.
       setCloudStage("auto-creating");
+      setCurrentAgentId(createRes.data.agentId);
+
+      // Show the provisioning chat while the container warms up, then
+      // kick off provisionAndConnect in the background (non-blocking).
+      setCloudStage("chat");
 
       // Compat create returns a jobId because the cloud queues provisioning
       // automatically. Pass it through so we skip the redundant provision call
