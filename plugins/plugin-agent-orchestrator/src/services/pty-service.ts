@@ -1766,24 +1766,23 @@ export class PTYService {
    * Precedence: config file (`eliza.json` env section, written by the UI)
    * > runtime/env setting > "claude" fallback.
    */
-  get defaultAgentType(): AdapterType {
+  get defaultAgentType(): CodingAgentType {
     return this.explicitDefaultAgentType ?? "claude";
   }
 
-  private get explicitDefaultAgentType(): AdapterType | null {
+  private get explicitDefaultAgentType(): CodingAgentType | null {
     const fromConfig = readConfigEnvKey("PARALLAX_DEFAULT_AGENT_TYPE");
     const fromRuntimeOrEnv =
       fromConfig ||
       (this.runtime.getSetting("PARALLAX_DEFAULT_AGENT_TYPE") as
         | string
         | undefined);
+    if (!fromRuntimeOrEnv) return null;
+    const lowered = fromRuntimeOrEnv.toLowerCase();
     if (
-      fromRuntimeOrEnv &&
-      ["claude", "gemini", "codex", "aider"].includes(
-        fromRuntimeOrEnv.toLowerCase(),
-      )
+      ["claude", "gemini", "codex", "aider", "opencode"].includes(lowered)
     ) {
-      return fromRuntimeOrEnv.toLowerCase() as AdapterType;
+      return lowered as CodingAgentType;
     }
     return null;
   }
