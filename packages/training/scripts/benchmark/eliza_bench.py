@@ -150,10 +150,22 @@ def classify(record: dict) -> str | None:
 
 
 def _message_handler_doc(doc: dict) -> dict | None:
+    """Return the message-handler-style should_respond document, if `doc` is one.
+
+    Two legacy shapes carry the should_respond decision through a
+    message-handler-style envelope: `{messageHandler: {action, contexts, ...}}`
+    and a flat `{action, contexts, ...}`. The current should_respond schema
+    (`name`, `reasoning`, `action`, `primaryContext`, `secondaryContexts`,
+    `evidenceTurnIds`) also has an `action` key but is NOT a message-handler
+    doc — distinguish on the `contexts` list, which only the envelope shape
+    carries.
+    """
     candidate = doc.get("messageHandler")
     if isinstance(candidate, dict):
         return candidate
-    if doc.get("action") in ("RESPOND", "IGNORE", "STOP"):
+    if doc.get("action") in ("RESPOND", "IGNORE", "STOP") and isinstance(
+        doc.get("contexts"), list
+    ):
         return doc
     return None
 
@@ -207,10 +219,24 @@ def score_message_handler(predicted: dict, expected: dict) -> tuple[bool, bool, 
     return fmt, content, fields
 
 
+def _toon_text(value: Any) -> str:
+    """Flatten a TOON scalar/inline-array value to a string.
+
+    `text: Got it, on my way.` parses as an inline array under TOON's
+    comma-array rule; reply scoring only cares about presence, so join the
+    parts back into a single string rather than crashing on `.strip()`.
+    """
+    if isinstance(value, list):
+        return ", ".join(_toon_text(v) for v in value).strip()
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
 def score_reply(predicted: dict, expected: dict) -> tuple[bool, bool, dict[str, bool]]:
     fmt = "thought" in predicted and "text" in predicted
-    pred_text = (predicted.get("text") or "").strip()
-    exp_text = (expected.get("text") or "").strip()
+    pred_text = _toon_text(predicted.get("text"))
+    exp_text = _toon_text(expected.get("text"))
     fields = {
         "text_present": bool(pred_text),
         "text_nonempty_match": bool(pred_text) and bool(exp_text),
