@@ -80,19 +80,23 @@ export const SILERO_VAD_BUNDLE_REL_PATH = path.join(
 );
 
 /**
- * Resolve the Silero model on disk. Search order:
- *   1. explicit `modelPath`
- *   2. `<bundleRoot>/vad/silero-vad-int8.onnx`
- *   3. `<state-dir>/local-inference/vad/silero-vad-int8.onnx` (shared cache)
- *   4. `$ELIZA_VAD_MODEL_PATH`
+ * Resolve the Silero model on disk. An explicit `modelPath` is honored
+ * exactly — if it is set but missing, the result is `null` (no silent
+ * substitution of a different model). When `modelPath` is not given the
+ * search order is:
+ *   1. `<bundleRoot>/vad/silero-vad-int8.onnx`
+ *   2. `<state-dir>/local-inference/vad/silero-vad-int8.onnx` (shared cache)
+ *   3. `$ELIZA_VAD_MODEL_PATH`
  * Returns `null` when none exist.
  */
 export function resolveSileroVadPath(opts: {
   modelPath?: string;
   bundleRoot?: string;
 }): string | null {
+  if (opts.modelPath) {
+    return existsSync(opts.modelPath) ? path.resolve(opts.modelPath) : null;
+  }
   const candidates: Array<string | undefined> = [
-    opts.modelPath,
     opts.bundleRoot
       ? path.join(opts.bundleRoot, SILERO_VAD_BUNDLE_REL_PATH)
       : undefined,

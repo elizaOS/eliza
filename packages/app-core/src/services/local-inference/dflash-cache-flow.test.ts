@@ -139,11 +139,9 @@ async function startMockServer(
       state.promptTokensProcessedTotal += freshTokens;
       const completionTokens = 10;
       state.predictedTokensTotal += completionTokens;
-      // Pretend speculative decoding ran when slot is warm.
-      if (cacheHitTokens > 0) {
-        state.draftedTotal += 16;
-        state.acceptedTotal += 12;
-      }
+      // DFlash drafts on every generation step; a warm slot just accepts more.
+      state.draftedTotal += 16;
+      state.acceptedTotal += cacheHitTokens > 0 ? 12 : 8;
       res.statusCode = 200;
       res.end(
         JSON.stringify({
