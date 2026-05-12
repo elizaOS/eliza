@@ -545,6 +545,18 @@ export interface AgentUpdateStatusSnapshot {
 	error: string | null;
 }
 
+export interface ExtensionStatusSnapshot {
+	relayReachable: boolean;
+	relayPort: number;
+	extensionPath: string | null;
+	chromeBuildPath?: string | null;
+	chromePackagePath?: string | null;
+	safariWebExtensionPath?: string | null;
+	safariAppPath?: string | null;
+	safariPackagePath?: string | null;
+	releaseManifest?: Record<string, unknown> | null;
+}
+
 export interface DesktopStartupDiagnostics {
 	state: "not_started" | "starting" | "running" | "stopped" | "error";
 	phase: string;
@@ -779,6 +791,10 @@ export type ElizaDesktopRPCSchema = {
 			getUpdateStatus: {
 				params: { force?: boolean } | undefined;
 				response: AgentUpdateStatusSnapshot;
+			};
+			getExtensionStatus: {
+				params: undefined;
+				response: ExtensionStatusSnapshot;
 			};
 			/**
 			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the

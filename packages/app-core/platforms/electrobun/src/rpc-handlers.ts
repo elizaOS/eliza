@@ -44,6 +44,10 @@ import {
 } from "./conversations-and-character-rpc";
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
+import {
+	composeExtensionStatusSnapshot,
+	readExtensionStatusViaHttp,
+} from "./extension-rpc";
 import { getFloatingChatManager } from "./floating-chat-window";
 import {
 	composeInboxChatsSnapshot,
@@ -298,6 +302,11 @@ export function buildBunRpcHandlers({
 				resolveRpcAgentPort(agent.getStatus().port),
 				params?.force ?? false,
 				readUpdateStatusViaHttp,
+			),
+		getExtensionStatus: async () =>
+			composeExtensionStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readExtensionStatusViaHttp,
 			),
 		/**
 		 * Aggregated boot snapshot — typed counterpart to renderer

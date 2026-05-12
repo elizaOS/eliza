@@ -20,7 +20,9 @@ export {
 } from "./permissions.js";
 export type {
   CarrotStorePaths,
+  CarrotStoreSnapshot,
   InstalledCarrot,
+  InstalledCarrotSnapshot,
   InstallPrebuiltCarrotOptions,
 } from "./store.js";
 export {
@@ -31,6 +33,7 @@ export {
   installPrebuiltCarrot,
   isCarrotSourceDirectory,
   listInstalledCarrotDirectories,
+  loadCarrotStoreSnapshot,
   loadInstalledCarrot,
   loadInstalledCarrots,
   readCarrotInstallRecord,
@@ -39,6 +42,7 @@ export {
   resolveCarrotPathInside,
   syncCarrotRegistry,
   toCarrotViewUrl,
+  toInstalledCarrotSnapshot,
   uninstallInstalledCarrot,
   writeCarrotInstallRecord,
   writeCarrotRegistry,
