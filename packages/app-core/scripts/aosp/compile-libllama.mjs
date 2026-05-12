@@ -34,14 +34,16 @@
 //
 // llama.cpp pin (matches plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts):
 //   fork:   https://github.com/elizaOS/llama.cpp
-//   tag:    v0.4.0-milady          (milady/integration HEAD)
+//   tag:    v1.0.0-eliza           (the kernel-complete v0.4.0-milady tree,
+//                                   re-tagged on the elizaOS org rename)
 //   commit: 08032d57e15574f2a7ca19fc3f29510c8673d590
 //
-//   v0.4.0-milady adds W4-B CUDA QJL + PolarQuant Q4 + TBQ3_TCQ kernels
-//   on top of v0.3.0-milady. The CUDA paths only matter for the
-//   linux-x64-cuda host target (the AOSP arm64 path stays CPU-only),
-//   but the pin is shared so both AOSP and host build paths land on
-//   identical kernel sources.
+//   This tree adds the W4-B CUDA QJL + PolarQuant Q4 + TBQ3_TCQ kernels
+//   on top of the earlier milady-lineage tags. The CUDA paths only matter
+//   for the linux-x64-cuda host target (the AOSP arm64 path stays
+//   CPU-only), but the pin is shared so both AOSP and host build paths
+//   land on identical kernel sources. A rebase onto a newer upstream is a
+//   deferred effort — see docs/porting/upstream-rebase-plan.md.
 //
 //   v0.2.0-milady (subset of this pin) added DFlash speculative decoding
 //   CLI surface (--spec-type dflash, --draft-min-prob alias, n_drafted_total

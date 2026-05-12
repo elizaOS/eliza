@@ -25,9 +25,12 @@ upstream b8198. Both build paths consume it: `build-llama-cpp-dflash.mjs`
 the submodule checkout. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `_REF` (or `--cache-dir`
 / `--src-dir`) still force a standalone clone for fork bisects. (`v1.0.0-eliza` is
 the same tree as the prior `v0.4.0-milady` tag, re-tagged on the elizaOS rename. A
-full rebase onto a recent upstream llama.cpp remains a follow-up — the
-conflict-prone files are the quant-slot enums in `ggml-common.h` / `ggml.h` and the
-`Q1_0` block layout, which upstream redefined incompatibly with the fork's.)
+full rebase onto a recent upstream llama.cpp remains a **deferred** follow-up — not
+a blocker for structured output (the b8198 base already has `grammar_lazy` /
+`json_schema` / `response_format` / `prefill_assistant`); the conflict-prone files
+are the quant-slot enums in `ggml-common.h` / `ggml.h` and the `Q1_0` block layout,
+which upstream redefined incompatibly with the fork's. Full cost / conflict surface
+/ trigger conditions: [`docs/porting/upstream-rebase-plan.md`](../../docs/porting/upstream-rebase-plan.md).)
 
 ---
 
