@@ -203,3 +203,57 @@ bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task tr
 VAST_API_KEY=<key> ELIZA_VAST_MAX_USD=30 \
 bash packages/training/scripts/train_vast.sh provision-and-train --registry-key qwen3-0.6b --epochs 3
 ```
+
+## 10. H200 run launched (2026-05-12 ~10:30 UTC) — `train_nebius.sh` rewritten
+
+The operator re-authenticated Nebius. `scripts/train_nebius.sh` was rewritten
+against the live `nebius` CLI v0.12 (`instance create` now wants `--parent-id`
+/ `--resources-platform gpu-h200-sxm` / `--resources-preset 1gpu-16vcpu-200gb`
+/ an *existing* boot disk created from the `mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8`
+public image / a real subnet / ssh keys via `--cloud-init-user-data`). A cheap
+CPU-instance smoke (`bash scripts/train_nebius.sh smoke`) verified the
+provision→ssh→teardown path. Then the 0_6b full-corpus run was launched:
+
+- VM: `eliza-train-h200-0_6b` (`computeinstance-e00zzb9z10n4jpr11z`), NVIDIA
+  H200 (141 GB), driver 570.211.01 / CUDA 12.8.
+- Corpus: `data/final-eliza1-fullcorpus/` rebuilt **on the H200** from the
+  current `datasets/eliza1-sft-0_6b/` (which now *does* contain the
+  `structured_decode` + `voice_emotion` envelope rows the `format_ok` gate
+  measures) + `data/final/`, with **`ELIZA1_FULLCORPUS_UPSAMPLE=8`** — the
+  benchmark-aligned slice (1257 valid train rows) is repeated 8× to fight the
+  ~49:1 dilution by the broad mix. Result: train 76 917 / val 3 909 / test
+  3 700 rows. The combined corpus mixes ChatML (`{"messages":[...]}`) rows,
+  which `validate_corpus.py` (a *native-record* schema validator) can't parse,
+  so the run uses `--allow-unvalidated-corpus` (the build-time
+  `format_for_training.format_record` gate vets every row). The in-flight
+  RTX-5080 run (§7, run `eliza-1-0_6b-apollo-fullcorpus-1778563093`) is **not**
+  using the upsampled corpus and lacks the envelope rows — so this H200 run is
+  the candidate to clear `format_ok ≥ 0.70`; the local run continues for now as
+  a fallback and is **superseded** if the H200 run clears the gate.
+- torch fix: the project pins torch 2.11+cu130, which needs driver ≥580 — too
+  new for the Nebius image's 570.x. `train_nebius.sh`'s remote runner detects
+  `torch.cuda.is_available()==False` and swaps to **torch 2.11.0+cu128**
+  (ABI-compatible with liger/bitsandbytes/apollo), removing the leftover cu13
+  nvidia stack and force-refreshing `nvidia-cusparselt-cu12`.
+- `run_pipeline.py` chain on the H200: corpus gate (warn-only) → base bench
+  (`native_tool_call_bench.py` + `eliza_bench.py`, 200/bucket — note: these
+  bench scripts run the 0.6B *on CPU* in this env, ~30 min) → APOLLO full-SFT
+  on the GPU (1 epoch, lr 1e-5, seq 4096, Liger) → `gate_report.json` → PolarQuant
+  + fused-TurboQuant + QJL quant → eliza1-typed GGUF bundle. Results fetched to
+  `checkpoints/<run>/` + `benchmarks/<run>/` + `reports/`, then VM+disk torn down.
+- Resume / monitor: `tmux attach -t elizatrain` on the VM (ssh `ubuntu@<vm-ip>`,
+  `bash scripts/train_nebius.sh ip`); log `/opt/training/run_<run-name>.log`.
+  Re-launch from scratch:
+  ```bash
+  NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf> HF_TOKEN=<hf> \
+  REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_PRESET=gpu-h200x1 SYNC_FULLCORPUS_SOURCES=1 \
+  ELIZA1_FULLCORPUS_UPSAMPLE=8 ALLOW_UNVALIDATED_CORPUS=1 \
+  TRAIN_FILE=data/final-eliza1-fullcorpus/train.jsonl VAL_FILE=data/final-eliza1-fullcorpus/val.jsonl TEST_FILE=data/final-eliza1-fullcorpus/test.jsonl \
+  RUN_NAME=eliza-1-0_6b-apollo-fullcorpus-h200-$(date +%s) NEBIUS_VM_NAME=eliza-train-h200-0_6b \
+  bash packages/training/scripts/train_nebius.sh full
+  ```
+  (or the granular `provision` / `sync` / `run` / `fetch` / `teardown` steps —
+  the corpus is ~1 GB and the Nebius eu-north1 uplink is ~3.4 Mbps, so prefer
+  `scp`-ing a `tar czf` of `data/final/{train,val,test}.jsonl` +
+  `datasets/eliza1-sft-0_6b/{train,val,test}.jsonl` into `/opt/training/` before
+  `sync`, which then matches & skips).
