@@ -28,7 +28,7 @@
 #                       only for log lines and the registration hook.
 #
 # CONTRACT — optional env:
-#   MILADY_VAST_MANIFEST    path to a per-size manifest JSON. Default:
+#   ELIZA_VAST_MANIFEST    path to a per-size manifest JSON. Default:
 #                           script-dir/eliza-1-${VLLM_REGISTRY_KEY##*-}.json
 #                           (so VLLM_REGISTRY_KEY=eliza-1-9b -> eliza-1-9b.json).
 #                           Override with an absolute path for custom manifests.
@@ -87,9 +87,9 @@ _default_manifest() {
     *)     printf '%s/eliza-1-2b.json'  "$SCRIPT_DIR" ;;
   esac
 }
-MILADY_VAST_MANIFEST="${MILADY_VAST_MANIFEST:-$(_default_manifest)}"
-if [ ! -f "$MILADY_VAST_MANIFEST" ]; then
-  echo "[onstart-vllm] manifest not found: $MILADY_VAST_MANIFEST" >&2
+ELIZA_VAST_MANIFEST="${ELIZA_VAST_MANIFEST:-$(_default_manifest)}"
+if [ ! -f "$ELIZA_VAST_MANIFEST" ]; then
+  echo "[onstart-vllm] manifest not found: $ELIZA_VAST_MANIFEST" >&2
   exit 1
 fi
 
@@ -109,7 +109,7 @@ export HF_HOME="$MODEL_DIR"
 # `image` field, e.g. "vllm/vllm-openai:v0.20.1" → "0.20.1"). This is the
 # only path-conditional behaviour in the script.
 if ! command -v vllm >/dev/null 2>&1; then
-  vllm_version="$(python3 - "$MILADY_VAST_MANIFEST" <<'PY'
+  vllm_version="$(python3 - "$ELIZA_VAST_MANIFEST" <<'PY'
 import json, sys, re
 m = json.load(open(sys.argv[1]))
 image = m.get("image", "")
@@ -149,7 +149,7 @@ pip install --no-cache-dir -r "$PYWORKER_DIR/services/vast-pyworker/requirements
 # Single source of truth: the manifest's `vllm_args` array. We strip the
 # leading ["vllm", "serve", ...] tokens because we exec vllm directly with
 # the rest as its argv.
-mapfile -t VLLM_ARGS < <(python3 - "$MILADY_VAST_MANIFEST" <<'PY'
+mapfile -t VLLM_ARGS < <(python3 - "$ELIZA_VAST_MANIFEST" <<'PY'
 import json, sys
 m = json.load(open(sys.argv[1]))
 args = list(m.get("vllm_args", []))

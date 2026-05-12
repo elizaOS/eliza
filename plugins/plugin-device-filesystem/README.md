@@ -34,10 +34,10 @@ planner-facing file actions. The `@elizaos/plugin-coding-tools` `FILE` action
 discovers the bridge by the `device_filesystem` service type and delegates
 `target=device` operations to it.
 
-## iOS Info.plist (apply in the milady parent repo)
+## iOS Info.plist (apply in the eliza parent repo)
 
 For iOS users to see files written into `Directory.Documents`, the host app's
-`apps/app/ios/App/App/Info.plist` (in the parent `milady` repo, outside this
+`apps/app/ios/App/App/Info.plist` (in the parent `eliza` repo, outside this
 worktree) needs the following keys added:
 
 ```xml
@@ -48,14 +48,14 @@ worktree) needs the following keys added:
 ```
 
 Without those keys, files still write — they just aren't browsable from the
-Files.app side. Add them in the milady repo's iOS shell before shipping.
+Files.app side. Add them in the eliza repo's iOS shell before shipping.
 
 ## Android
 
 No special manifest changes are required for Capacitor `Directory.Documents`
 (the Capacitor Filesystem plugin handles scoped storage and MediaStore on
 Android 10+). If a future feature needs cross-app sharing through
-`MediaStore.Downloads`, that goes in the milady parent repo's
+`MediaStore.Downloads`, that goes in the eliza parent repo's
 `apps/app/android/...` AndroidManifest, not here.
 
 ## Service type

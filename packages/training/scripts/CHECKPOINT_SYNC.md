@@ -26,7 +26,7 @@ progress_report.py       ── renders an HTML chart from _progress.jsonl
 
 Open two extra terminals after `bash scripts/train_vast.sh provision-and-train ...`
 has actually started training. The sync loop reads the same
-`MILADY_VAST_INSTANCE_ID` / `.vast_instance_id` that `train_vast.sh`
+`ELIZA_VAST_INSTANCE_ID` / `.vast_instance_id` that `train_vast.sh`
 provisioned, so no extra config is needed.
 
 ```bash
@@ -41,7 +41,7 @@ bash scripts/eval_loop.sh \
 
 Both loops trap `SIGTERM` and `SIGINT`, so a plain `kill <pid>` (or
 `Ctrl-C` in the foreground) exits cleanly between sweeps. They each log
-to `~/.milady/checkpoint-sync.log` and `~/.milady/checkpoint-eval.log`
+to `~/.eliza/checkpoint-sync.log` and `~/.eliza/checkpoint-eval.log`
 respectively, with 10 MB rotation.
 
 ### Useful flags
@@ -84,8 +84,8 @@ placeholder rather than crashing. That's intentional: it's safe to call
 | `training/checkpoints/<run>/checkpoint-<N>/_eval.json` | `eval_loop.sh` | per-checkpoint result; absence == "not yet evaluated" |
 | `training/checkpoints/<run>/_progress.jsonl` | `eval_loop.sh` | one JSON object per evaluated step (UI plots this) |
 | `training/checkpoints/<run>/_progress.html` | `progress_report.py` | self-contained HTML chart |
-| `~/.milady/checkpoint-sync.log` | `checkpoint_sync_loop.sh` | sweep log, 10 MB rotation |
-| `~/.milady/checkpoint-eval.log` | `eval_loop.sh` | scorer log, 10 MB rotation |
+| `~/.eliza/checkpoint-sync.log` | `checkpoint_sync_loop.sh` | sweep log, 10 MB rotation |
+| `~/.eliza/checkpoint-eval.log` | `eval_loop.sh` | scorer log, 10 MB rotation |
 
 ### `_pull-log.jsonl` schema
 
@@ -102,7 +102,7 @@ the rightmost X position on the progress curve.
 ```json
 {
   "step": 200,
-  "checkpoint_dir": "/home/shaw/milady/training/checkpoints/<run>/checkpoint-200",
+  "checkpoint_dir": "/home/shaw/eliza/training/checkpoints/<run>/checkpoint-200",
   "format_ok": 0.84,
   "content_ok": 0.61,
   "tokens_per_sec": 38.2,

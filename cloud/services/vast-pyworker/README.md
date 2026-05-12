@@ -142,7 +142,7 @@ training-repo paths at cold start.
 
 ```bash
 VAST_RUNTIME=vllm \
-MILADY_VAST_MANIFEST=eliza-1-27b.json \
+ELIZA_VAST_MANIFEST=eliza-1-27b.json \
 VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b-vllm \
 PYWORKER_REF=<commit-sha> \
 bun cloud/scripts/vast/upsert-template.ts
@@ -167,7 +167,7 @@ vLLM speculative decoding can be enabled with either raw
 
 ```bash
 DFLASH_MODEL=org/model-dflash \
-MILADY_VLLM_DFLASH=1 \
+ELIZA_VLLM_DFLASH=1 \
 SPECULATIVE_TOKENS=15 \
 DRAFT_TENSOR_PARALLEL_SIZE=1 \
 bun cloud/scripts/vast/upsert-template.ts

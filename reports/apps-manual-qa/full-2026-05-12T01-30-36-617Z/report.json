@@ -1,5 +1,5 @@
 {
-  "outDir": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z",
+  "outDir": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z",
   "generatedAt": "2026-05-12T01:36:30.401Z",
   "counts": {
     "scenarios": 78,
@@ -20,7 +20,7 @@
           "viewport": "desktop",
           "scenario": "apps-catalog",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-catalog-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-catalog-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps",
@@ -191,7 +191,7 @@
           "viewport": "desktop",
           "scenario": "apps-lifeops",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-lifeops-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-lifeops-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/lifeops",
@@ -408,7 +408,7 @@
           "viewport": "desktop",
           "scenario": "apps-companion",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-companion-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-companion-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/companion",
@@ -630,7 +630,7 @@
           "viewport": "desktop",
           "scenario": "apps-vincent",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-vincent-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-vincent-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/vincent",
@@ -861,7 +861,7 @@
           "viewport": "desktop",
           "scenario": "apps-plugins",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-plugins-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-plugins-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/plugins",
@@ -1006,7 +1006,7 @@
           "viewport": "desktop",
           "scenario": "apps-skills",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-skills-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-skills-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/skills",
@@ -1190,7 +1190,7 @@
           "viewport": "desktop",
           "scenario": "apps-training-details",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-training-details-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-training-details-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/training/details",
@@ -1350,7 +1350,7 @@
           "viewport": "desktop",
           "scenario": "apps-fine-tuning",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-fine-tuning-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-fine-tuning-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/fine-tuning",
@@ -1627,7 +1627,7 @@
           "viewport": "desktop",
           "scenario": "apps-trajectories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-trajectories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-trajectories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/trajectories",
@@ -1796,7 +1796,7 @@
           "viewport": "desktop",
           "scenario": "apps-relationships",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-relationships-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-relationships-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/relationships",
@@ -1927,7 +1927,7 @@
           "viewport": "desktop",
           "scenario": "apps-memories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-memories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-memories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/memories",
@@ -2084,7 +2084,7 @@
           "viewport": "desktop",
           "scenario": "apps-runtime",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-runtime-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-runtime-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/runtime",
@@ -2305,7 +2305,7 @@
           "viewport": "desktop",
           "scenario": "apps-database",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-database-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-database-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/database",
@@ -2495,7 +2495,7 @@
           "viewport": "desktop",
           "scenario": "apps-logs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-logs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-logs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/logs",
@@ -2642,7 +2642,7 @@
           "viewport": "desktop",
           "scenario": "apps-inventory",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-inventory-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-inventory-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/inventory",
@@ -2856,7 +2856,7 @@
           "viewport": "desktop",
           "scenario": "apps-elizamaker",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-elizamaker-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-elizamaker-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/elizamaker",
@@ -3058,7 +3058,7 @@
           "viewport": "desktop",
           "scenario": "apps-tasks",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-tasks-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-tasks-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/tasks",
@@ -3149,7 +3149,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops",
@@ -3247,7 +3247,7 @@
           "viewport": "desktop",
           "scenario": "win-companion",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-companion-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-companion-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/companion",
@@ -3320,7 +3320,7 @@
           "viewport": "desktop",
           "scenario": "win-vincent",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-vincent-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-vincent-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/vincent",
@@ -3422,7 +3422,7 @@
           "viewport": "desktop",
           "scenario": "win-shopify",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify",
@@ -3476,7 +3476,7 @@
           "viewport": "desktop",
           "scenario": "win-plugins",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-plugins-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-plugins-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/plugins",
@@ -3540,7 +3540,7 @@
           "viewport": "desktop",
           "scenario": "win-skills",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-skills-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-skills-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/skills",
@@ -3650,7 +3650,7 @@
           "viewport": "desktop",
           "scenario": "win-fine-tuning",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-fine-tuning-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-fine-tuning-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/fine-tuning",
@@ -3847,7 +3847,7 @@
           "viewport": "desktop",
           "scenario": "win-trajectories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-trajectories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-trajectories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/trajectories",
@@ -3942,7 +3942,7 @@
           "viewport": "desktop",
           "scenario": "win-relationships",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-relationships-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-relationships-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/relationships",
@@ -3992,7 +3992,7 @@
           "viewport": "desktop",
           "scenario": "win-memories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories",
@@ -4075,7 +4075,7 @@
           "viewport": "desktop",
           "scenario": "win-runtime",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-runtime-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-runtime-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/runtime",
@@ -4224,7 +4224,7 @@
           "viewport": "desktop",
           "scenario": "win-database",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
@@ -4340,7 +4340,7 @@
           "viewport": "desktop",
           "scenario": "win-logs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-logs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-logs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/logs",
@@ -4406,7 +4406,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory",
@@ -4577,7 +4577,7 @@
           "viewport": "desktop",
           "scenario": "win-elizamaker",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-elizamaker-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-elizamaker-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/elizamaker",
@@ -4624,7 +4624,7 @@
           "viewport": "desktop",
           "scenario": "win-tasks",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks",
@@ -4716,7 +4716,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops",
@@ -4802,7 +4802,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "01-sleep",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-01-sleep.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-01-sleep.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -4892,7 +4892,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "02-screen-time",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-02-screen-time.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-02-screen-time.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -4982,7 +4982,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "03-messages",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-03-messages.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-03-messages.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5072,7 +5072,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "04-mail",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-04-mail.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-04-mail.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5162,7 +5162,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "05-calendar",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-05-calendar.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-05-calendar.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5252,7 +5252,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "06-reminders",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-06-reminders.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-06-reminders.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5342,7 +5342,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "07-money",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-07-money.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-07-money.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5432,7 +5432,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "08-documents",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-08-documents.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-08-documents.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5522,7 +5522,7 @@
           "viewport": "desktop",
           "scenario": "win-lifeops-tabs",
           "state": "09-settings",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-09-settings.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-09-settings.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5624,7 +5624,7 @@
           "viewport": "desktop",
           "scenario": "win-database-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
@@ -5728,7 +5728,7 @@
           "viewport": "desktop",
           "scenario": "win-database-tabs",
           "state": "01-media",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-01-media.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-01-media.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -5846,7 +5846,7 @@
           "viewport": "desktop",
           "scenario": "win-database-tabs",
           "state": "02-vectors",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-02-vectors.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-02-vectors.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -6006,7 +6006,7 @@
           "viewport": "desktop",
           "scenario": "win-database-tabs",
           "state": "03-sql-editor",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-03-sql-editor.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-03-sql-editor.png",
           "actionResult": {
             "ok": false,
             "label": "SQL Editor",
@@ -6178,7 +6178,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory",
@@ -6337,7 +6337,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory-tabs",
           "state": "01-swap",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-01-swap.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-01-swap.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -6500,7 +6500,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory-tabs",
           "state": "02-send",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-02-send.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-02-send.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -6663,7 +6663,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory-tabs",
           "state": "03-receive",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-03-receive.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-03-receive.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -6826,7 +6826,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory-tabs",
           "state": "04-tokens",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-04-tokens.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-04-tokens.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -6989,7 +6989,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory-tabs",
           "state": "05-defi",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-05-defi.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-05-defi.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -7152,7 +7152,7 @@
           "viewport": "desktop",
           "scenario": "win-inventory-tabs",
           "state": "06-nfts",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-06-nfts.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-06-nfts.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -7327,7 +7327,7 @@
           "viewport": "desktop",
           "scenario": "win-tasks-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks",
@@ -7407,7 +7407,7 @@
           "viewport": "desktop",
           "scenario": "win-tasks-tabs",
           "state": "01-tasks",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-01-tasks.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-01-tasks.png",
           "actionResult": {
             "ok": false,
             "label": "Tasks",
@@ -7491,7 +7491,7 @@
           "viewport": "desktop",
           "scenario": "win-tasks-tabs",
           "state": "02-workflows",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-02-workflows.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-02-workflows.png",
           "actionResult": {
             "ok": false,
             "label": "Workflows",
@@ -7575,7 +7575,7 @@
           "viewport": "desktop",
           "scenario": "win-tasks-tabs",
           "state": "03-active",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-03-active.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-03-active.png",
           "actionResult": {
             "ok": false,
             "label": "Active",
@@ -7659,7 +7659,7 @@
           "viewport": "desktop",
           "scenario": "win-tasks-tabs",
           "state": "04-inactive",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-04-inactive.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-04-inactive.png",
           "actionResult": {
             "ok": false,
             "label": "Inactive",
@@ -7743,7 +7743,7 @@
           "viewport": "desktop",
           "scenario": "win-tasks-tabs",
           "state": "05-all",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-05-all.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-05-all.png",
           "actionResult": {
             "ok": false,
             "label": "All",
@@ -7839,7 +7839,7 @@
           "viewport": "desktop",
           "scenario": "win-memories-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories",
@@ -7910,7 +7910,7 @@
           "viewport": "desktop",
           "scenario": "win-memories-tabs",
           "state": "01-browse",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-01-browse.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-01-browse.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -7985,7 +7985,7 @@
           "viewport": "desktop",
           "scenario": "win-memories-tabs",
           "state": "02-feed",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-02-feed.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-02-feed.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -8072,7 +8072,7 @@
           "viewport": "desktop",
           "scenario": "win-shopify-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify",
@@ -8114,7 +8114,7 @@
           "viewport": "desktop",
           "scenario": "win-shopify-tabs",
           "state": "01-products",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-01-products.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-01-products.png",
           "actionResult": {
             "ok": false,
             "label": "Products",
@@ -8160,7 +8160,7 @@
           "viewport": "desktop",
           "scenario": "win-shopify-tabs",
           "state": "02-orders",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-02-orders.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-02-orders.png",
           "actionResult": {
             "ok": false,
             "label": "Orders",
@@ -8206,7 +8206,7 @@
           "viewport": "desktop",
           "scenario": "win-shopify-tabs",
           "state": "03-inventory",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-03-inventory.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-03-inventory.png",
           "actionResult": {
             "ok": false,
             "label": "Inventory",
@@ -8252,7 +8252,7 @@
           "viewport": "desktop",
           "scenario": "win-shopify-tabs",
           "state": "04-customers",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-04-customers.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-shopify-tabs-04-customers.png",
           "actionResult": {
             "ok": false,
             "label": "Customers",
@@ -8310,7 +8310,7 @@
           "viewport": "mobile",
           "scenario": "apps-catalog",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-catalog-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-catalog-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps",
@@ -8445,7 +8445,7 @@
           "viewport": "mobile",
           "scenario": "apps-lifeops",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-lifeops-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-lifeops-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/lifeops",
@@ -8579,7 +8579,7 @@
           "viewport": "mobile",
           "scenario": "apps-companion",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-companion-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-companion-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/companion",
@@ -8744,7 +8744,7 @@
           "viewport": "mobile",
           "scenario": "apps-vincent",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-vincent-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-vincent-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/vincent",
@@ -8957,7 +8957,7 @@
           "viewport": "mobile",
           "scenario": "apps-plugins",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-plugins-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-plugins-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/plugins",
@@ -9075,7 +9075,7 @@
           "viewport": "mobile",
           "scenario": "apps-skills",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-skills-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-skills-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/skills",
@@ -9220,7 +9220,7 @@
           "viewport": "mobile",
           "scenario": "apps-training-details",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-training-details-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-training-details-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/training/details",
@@ -9344,7 +9344,7 @@
           "viewport": "mobile",
           "scenario": "apps-fine-tuning",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-fine-tuning-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-fine-tuning-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/fine-tuning",
@@ -9594,7 +9594,7 @@
           "viewport": "mobile",
           "scenario": "apps-trajectories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-trajectories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-trajectories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/trajectories",
@@ -9694,7 +9694,7 @@
           "viewport": "mobile",
           "scenario": "apps-relationships",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-relationships-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-relationships-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/relationships",
@@ -9798,7 +9798,7 @@
           "viewport": "mobile",
           "scenario": "apps-memories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-memories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-memories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/memories",
@@ -9903,7 +9903,7 @@
           "viewport": "mobile",
           "scenario": "apps-runtime",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-runtime-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-runtime-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/runtime",
@@ -10039,7 +10039,7 @@
           "viewport": "mobile",
           "scenario": "apps-database",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-database-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-database-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/database",
@@ -10168,7 +10168,7 @@
           "viewport": "mobile",
           "scenario": "apps-logs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-logs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-logs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/logs",
@@ -10319,7 +10319,7 @@
           "viewport": "mobile",
           "scenario": "apps-inventory",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-inventory-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-inventory-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/inventory",
@@ -10495,7 +10495,7 @@
           "viewport": "mobile",
           "scenario": "apps-elizamaker",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-elizamaker-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-elizamaker-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/elizamaker",
@@ -10597,7 +10597,7 @@
           "viewport": "mobile",
           "scenario": "apps-tasks",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-tasks-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-tasks-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/apps/tasks",
@@ -10710,7 +10710,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops",
@@ -10757,7 +10757,7 @@
           "viewport": "mobile",
           "scenario": "win-companion",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-companion-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-companion-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/companion",
@@ -10829,7 +10829,7 @@
           "viewport": "mobile",
           "scenario": "win-vincent",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-vincent-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-vincent-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/vincent",
@@ -10955,7 +10955,7 @@
           "viewport": "mobile",
           "scenario": "win-shopify",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify",
@@ -11088,7 +11088,7 @@
           "viewport": "mobile",
           "scenario": "win-plugins",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-plugins-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-plugins-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/plugins",
@@ -11152,7 +11152,7 @@
           "viewport": "mobile",
           "scenario": "win-skills",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-skills-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-skills-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/skills",
@@ -11251,7 +11251,7 @@
           "viewport": "mobile",
           "scenario": "win-fine-tuning",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-fine-tuning-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-fine-tuning-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/fine-tuning",
@@ -11448,7 +11448,7 @@
           "viewport": "mobile",
           "scenario": "win-trajectories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-trajectories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-trajectories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/trajectories",
@@ -11495,7 +11495,7 @@
           "viewport": "mobile",
           "scenario": "win-relationships",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-relationships-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-relationships-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/relationships",
@@ -11546,7 +11546,7 @@
           "viewport": "mobile",
           "scenario": "win-memories",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories",
@@ -11598,7 +11598,7 @@
           "viewport": "mobile",
           "scenario": "win-runtime",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-runtime-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-runtime-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/runtime",
@@ -11681,7 +11681,7 @@
           "viewport": "mobile",
           "scenario": "win-database",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
@@ -11758,7 +11758,7 @@
           "viewport": "mobile",
           "scenario": "win-logs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-logs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-logs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/logs",
@@ -11862,7 +11862,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory",
@@ -11989,7 +11989,7 @@
           "viewport": "mobile",
           "scenario": "win-elizamaker",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-elizamaker-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-elizamaker-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/elizamaker",
@@ -12036,7 +12036,7 @@
           "viewport": "mobile",
           "scenario": "win-tasks",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks",
@@ -12128,7 +12128,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/lifeops",
@@ -12163,7 +12163,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "01-sleep",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-01-sleep.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-01-sleep.png",
           "actionResult": {
             "ok": false,
             "label": "Sleep",
@@ -12202,7 +12202,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "02-screen-time",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-02-screen-time.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-02-screen-time.png",
           "actionResult": {
             "ok": false,
             "label": "Screen Time",
@@ -12241,7 +12241,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "03-messages",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-03-messages.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-03-messages.png",
           "actionResult": {
             "ok": false,
             "label": "Messages",
@@ -12280,7 +12280,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "04-mail",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-04-mail.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-04-mail.png",
           "actionResult": {
             "ok": false,
             "label": "Mail",
@@ -12319,7 +12319,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "05-calendar",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-05-calendar.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-05-calendar.png",
           "actionResult": {
             "ok": false,
             "label": "Calendar",
@@ -12358,7 +12358,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "06-reminders",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-06-reminders.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-06-reminders.png",
           "actionResult": {
             "ok": false,
             "label": "Reminders",
@@ -12397,7 +12397,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "07-money",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-07-money.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-07-money.png",
           "actionResult": {
             "ok": false,
             "label": "Money",
@@ -12436,7 +12436,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "08-documents",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-08-documents.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-08-documents.png",
           "actionResult": {
             "ok": false,
             "label": "Documents",
@@ -12475,7 +12475,7 @@
           "viewport": "mobile",
           "scenario": "win-lifeops-tabs",
           "state": "09-settings",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-09-settings.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-lifeops-tabs-09-settings.png",
           "actionResult": {
             "ok": false,
             "label": "Settings",
@@ -12526,7 +12526,7 @@
           "viewport": "mobile",
           "scenario": "win-database-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/database",
@@ -12591,7 +12591,7 @@
           "viewport": "mobile",
           "scenario": "win-database-tabs",
           "state": "01-media",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-01-media.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-01-media.png",
           "actionResult": {
             "ok": false,
             "label": "Media",
@@ -12660,7 +12660,7 @@
           "viewport": "mobile",
           "scenario": "win-database-tabs",
           "state": "02-vectors",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-02-vectors.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-02-vectors.png",
           "actionResult": {
             "ok": false,
             "label": "Vectors",
@@ -12729,7 +12729,7 @@
           "viewport": "mobile",
           "scenario": "win-database-tabs",
           "state": "03-sql-editor",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-03-sql-editor.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-03-sql-editor.png",
           "actionResult": {
             "ok": false,
             "label": "SQL Editor",
@@ -12810,7 +12810,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/inventory",
@@ -12925,7 +12925,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory-tabs",
           "state": "01-swap",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-01-swap.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-01-swap.png",
           "actionResult": {
             "ok": false,
             "label": "Swap",
@@ -13044,7 +13044,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory-tabs",
           "state": "02-send",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-02-send.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-02-send.png",
           "actionResult": {
             "ok": false,
             "label": "Send",
@@ -13163,7 +13163,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory-tabs",
           "state": "03-receive",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-03-receive.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-03-receive.png",
           "actionResult": {
             "ok": false,
             "label": "Receive",
@@ -13282,7 +13282,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory-tabs",
           "state": "04-tokens",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-04-tokens.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-04-tokens.png",
           "actionResult": {
             "ok": false,
             "label": "Tokens",
@@ -13401,7 +13401,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory-tabs",
           "state": "05-defi",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-05-defi.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-05-defi.png",
           "actionResult": {
             "ok": false,
             "label": "DeFi",
@@ -13520,7 +13520,7 @@
           "viewport": "mobile",
           "scenario": "win-inventory-tabs",
           "state": "06-nfts",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-06-nfts.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-06-nfts.png",
           "actionResult": {
             "ok": false,
             "label": "NFTs",
@@ -13651,7 +13651,7 @@
           "viewport": "mobile",
           "scenario": "win-tasks-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/tasks",
@@ -13731,7 +13731,7 @@
           "viewport": "mobile",
           "scenario": "win-tasks-tabs",
           "state": "01-tasks",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-01-tasks.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-01-tasks.png",
           "actionResult": {
             "ok": false,
             "label": "Tasks",
@@ -13815,7 +13815,7 @@
           "viewport": "mobile",
           "scenario": "win-tasks-tabs",
           "state": "02-workflows",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-02-workflows.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-02-workflows.png",
           "actionResult": {
             "ok": false,
             "label": "Workflows",
@@ -13899,7 +13899,7 @@
           "viewport": "mobile",
           "scenario": "win-tasks-tabs",
           "state": "03-active",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-03-active.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-03-active.png",
           "actionResult": {
             "ok": false,
             "label": "Active",
@@ -13983,7 +13983,7 @@
           "viewport": "mobile",
           "scenario": "win-tasks-tabs",
           "state": "04-inactive",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-04-inactive.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-04-inactive.png",
           "actionResult": {
             "ok": false,
             "label": "Inactive",
@@ -14067,7 +14067,7 @@
           "viewport": "mobile",
           "scenario": "win-tasks-tabs",
           "state": "05-all",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-05-all.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-05-all.png",
           "actionResult": {
             "ok": false,
             "label": "All",
@@ -14163,7 +14163,7 @@
           "viewport": "mobile",
           "scenario": "win-memories-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/memories",
@@ -14203,7 +14203,7 @@
           "viewport": "mobile",
           "scenario": "win-memories-tabs",
           "state": "01-browse",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-tabs-01-browse.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-tabs-01-browse.png",
           "actionResult": {
             "ok": true,
             "method": "button",
@@ -14247,7 +14247,7 @@
           "viewport": "mobile",
           "scenario": "win-memories-tabs",
           "state": "02-feed",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-tabs-02-feed.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-memories-tabs-02-feed.png",
           "actionResult": {
             "ok": false,
             "label": "Feed",
@@ -14303,7 +14303,7 @@
           "viewport": "mobile",
           "scenario": "win-shopify-tabs",
           "state": "initial",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-initial.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-initial.png",
           "actionResult": null,
           "dom": {
             "url": "http://127.0.0.1:3145/?appWindow=1#/apps/shopify",
@@ -14424,7 +14424,7 @@
           "viewport": "mobile",
           "scenario": "win-shopify-tabs",
           "state": "01-products",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-01-products.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-01-products.png",
           "actionResult": {
             "ok": false,
             "label": "Products",
@@ -14549,7 +14549,7 @@
           "viewport": "mobile",
           "scenario": "win-shopify-tabs",
           "state": "02-orders",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-02-orders.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-02-orders.png",
           "actionResult": {
             "ok": false,
             "label": "Orders",
@@ -14674,7 +14674,7 @@
           "viewport": "mobile",
           "scenario": "win-shopify-tabs",
           "state": "03-inventory",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-03-inventory.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-03-inventory.png",
           "actionResult": {
             "ok": false,
             "label": "Inventory",
@@ -14799,7 +14799,7 @@
           "viewport": "mobile",
           "scenario": "win-shopify-tabs",
           "state": "04-customers",
-          "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-04-customers.png",
+          "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-04-customers.png",
           "actionResult": {
             "ok": false,
             "label": "Customers",
@@ -14929,7 +14929,7 @@
       "scenario": "apps-catalog",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-catalog-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-catalog-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -14952,7 +14952,7 @@
       "scenario": "apps-lifeops",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-lifeops-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-lifeops-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15002,7 +15002,7 @@
       "scenario": "apps-companion",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-companion-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-companion-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15025,7 +15025,7 @@
       "scenario": "apps-vincent",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-vincent-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-vincent-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15073,7 +15073,7 @@
       "scenario": "apps-plugins",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-plugins-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-plugins-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15105,7 +15105,7 @@
       "scenario": "apps-skills",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-skills-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-skills-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15155,7 +15155,7 @@
       "scenario": "apps-training-details",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-training-details-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-training-details-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15178,7 +15178,7 @@
       "scenario": "apps-fine-tuning",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-fine-tuning-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-fine-tuning-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15255,7 +15255,7 @@
       "scenario": "apps-trajectories",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-trajectories-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-trajectories-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15305,7 +15305,7 @@
       "scenario": "apps-relationships",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-relationships-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-relationships-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15337,7 +15337,7 @@
       "scenario": "apps-memories",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-memories-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-memories-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15378,7 +15378,7 @@
       "scenario": "apps-runtime",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-runtime-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-runtime-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15419,7 +15419,7 @@
       "scenario": "apps-database",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-database-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-database-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15475,7 +15475,7 @@
       "scenario": "apps-logs",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-logs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-logs-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15507,7 +15507,7 @@
       "scenario": "apps-inventory",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-inventory-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-inventory-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15565,7 +15565,7 @@
       "scenario": "apps-elizamaker",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-elizamaker-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-apps-elizamaker-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15631,7 +15631,7 @@
       "scenario": "win-lifeops",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15654,7 +15654,7 @@
       "scenario": "win-vincent",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-vincent-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-vincent-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15688,7 +15688,7 @@
       "scenario": "win-skills",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-skills-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-skills-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15720,7 +15720,7 @@
       "scenario": "win-fine-tuning",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-fine-tuning-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-fine-tuning-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15774,7 +15774,7 @@
       "scenario": "win-trajectories",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-trajectories-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-trajectories-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15806,7 +15806,7 @@
       "scenario": "win-memories",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15829,7 +15829,7 @@
       "scenario": "win-runtime",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-runtime-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-runtime-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -15852,7 +15852,7 @@
       "scenario": "win-database",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15890,7 +15890,7 @@
       "scenario": "win-inventory",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15948,7 +15948,7 @@
       "scenario": "win-tasks",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -15982,7 +15982,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16005,7 +16005,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "01-sleep",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-01-sleep.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-01-sleep.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16028,7 +16028,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "02-screen-time",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-02-screen-time.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-02-screen-time.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16051,7 +16051,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "03-messages",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-03-messages.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-03-messages.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16074,7 +16074,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "04-mail",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-04-mail.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-04-mail.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16097,7 +16097,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "05-calendar",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-05-calendar.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-05-calendar.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16120,7 +16120,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "06-reminders",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-06-reminders.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-06-reminders.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16143,7 +16143,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "07-money",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-07-money.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-07-money.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16166,7 +16166,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "08-documents",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-08-documents.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-08-documents.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16189,7 +16189,7 @@
       "scenario": "win-lifeops-tabs",
       "viewport": "desktop",
       "state": "09-settings",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-09-settings.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-lifeops-tabs-09-settings.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -16212,7 +16212,7 @@
       "scenario": "win-database-tabs",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16250,7 +16250,7 @@
       "scenario": "win-database-tabs",
       "viewport": "desktop",
       "state": "01-media",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-01-media.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-01-media.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16288,7 +16288,7 @@
       "scenario": "win-database-tabs",
       "viewport": "desktop",
       "state": "02-vectors",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-02-vectors.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-02-vectors.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16346,7 +16346,7 @@
       "scenario": "win-database-tabs",
       "viewport": "desktop",
       "state": "03-sql-editor",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-03-sql-editor.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-database-tabs-03-sql-editor.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16404,7 +16404,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16462,7 +16462,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "desktop",
       "state": "01-swap",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-01-swap.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-01-swap.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16520,7 +16520,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "desktop",
       "state": "02-send",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-02-send.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-02-send.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16578,7 +16578,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "desktop",
       "state": "03-receive",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-03-receive.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-03-receive.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16636,7 +16636,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "desktop",
       "state": "04-tokens",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-04-tokens.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-04-tokens.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16694,7 +16694,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "desktop",
       "state": "05-defi",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-05-defi.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-05-defi.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16752,7 +16752,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "desktop",
       "state": "06-nfts",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-06-nfts.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-inventory-tabs-06-nfts.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16810,7 +16810,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16844,7 +16844,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "desktop",
       "state": "01-tasks",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-01-tasks.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-01-tasks.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16878,7 +16878,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "desktop",
       "state": "02-workflows",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-02-workflows.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-02-workflows.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16912,7 +16912,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "desktop",
       "state": "03-active",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-03-active.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-03-active.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16946,7 +16946,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "desktop",
       "state": "04-inactive",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-04-inactive.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-04-inactive.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -16980,7 +16980,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "desktop",
       "state": "05-all",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-05-all.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-tasks-tabs-05-all.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17014,7 +17014,7 @@
       "scenario": "win-memories-tabs",
       "viewport": "desktop",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17037,7 +17037,7 @@
       "scenario": "win-memories-tabs",
       "viewport": "desktop",
       "state": "01-browse",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-01-browse.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-01-browse.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17060,7 +17060,7 @@
       "scenario": "win-memories-tabs",
       "viewport": "desktop",
       "state": "02-feed",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-02-feed.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/desktop-win-memories-tabs-02-feed.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17083,7 +17083,7 @@
       "scenario": "apps-catalog",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-catalog-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-catalog-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17106,7 +17106,7 @@
       "scenario": "apps-lifeops",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-lifeops-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-lifeops-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17129,7 +17129,7 @@
       "scenario": "apps-companion",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-companion-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-companion-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17152,7 +17152,7 @@
       "scenario": "apps-vincent",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-vincent-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-vincent-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17209,7 +17209,7 @@
       "scenario": "apps-plugins",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-plugins-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-plugins-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17232,7 +17232,7 @@
       "scenario": "apps-skills",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-skills-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-skills-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17273,7 +17273,7 @@
       "scenario": "apps-training-details",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-training-details-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-training-details-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17296,7 +17296,7 @@
       "scenario": "apps-fine-tuning",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-fine-tuning-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-fine-tuning-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17364,7 +17364,7 @@
       "scenario": "apps-trajectories",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-trajectories-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-trajectories-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17387,7 +17387,7 @@
       "scenario": "apps-relationships",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-relationships-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-relationships-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17410,7 +17410,7 @@
       "scenario": "apps-memories",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-memories-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-memories-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17433,7 +17433,7 @@
       "scenario": "apps-runtime",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-runtime-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-runtime-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17456,7 +17456,7 @@
       "scenario": "apps-database",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-database-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-database-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17494,7 +17494,7 @@
       "scenario": "apps-logs",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-logs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-logs-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17535,7 +17535,7 @@
       "scenario": "apps-inventory",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-inventory-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-inventory-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17593,7 +17593,7 @@
       "scenario": "apps-elizamaker",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-elizamaker-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-elizamaker-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17616,7 +17616,7 @@
       "scenario": "apps-tasks",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-tasks-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-apps-tasks-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17639,7 +17639,7 @@
       "scenario": "win-vincent",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-vincent-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-vincent-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17687,7 +17687,7 @@
       "scenario": "win-shopify",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17737,7 +17737,7 @@
       "scenario": "win-skills",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-skills-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-skills-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17769,7 +17769,7 @@
       "scenario": "win-fine-tuning",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-fine-tuning-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-fine-tuning-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17823,7 +17823,7 @@
       "scenario": "win-database",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17847,7 +17847,7 @@
       "scenario": "win-logs",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-logs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-logs-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -17879,7 +17879,7 @@
       "scenario": "win-inventory",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17923,7 +17923,7 @@
       "scenario": "win-tasks",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17957,7 +17957,7 @@
       "scenario": "win-database-tabs",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -17981,7 +17981,7 @@
       "scenario": "win-database-tabs",
       "viewport": "mobile",
       "state": "01-media",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-01-media.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-01-media.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18005,7 +18005,7 @@
       "scenario": "win-database-tabs",
       "viewport": "mobile",
       "state": "02-vectors",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-02-vectors.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-02-vectors.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18029,7 +18029,7 @@
       "scenario": "win-database-tabs",
       "viewport": "mobile",
       "state": "03-sql-editor",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-03-sql-editor.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-database-tabs-03-sql-editor.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18053,7 +18053,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18097,7 +18097,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "mobile",
       "state": "01-swap",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-01-swap.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-01-swap.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18141,7 +18141,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "mobile",
       "state": "02-send",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-02-send.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-02-send.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18185,7 +18185,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "mobile",
       "state": "03-receive",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-03-receive.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-03-receive.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18229,7 +18229,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "mobile",
       "state": "04-tokens",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-04-tokens.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-04-tokens.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18273,7 +18273,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "mobile",
       "state": "05-defi",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-05-defi.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-05-defi.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18317,7 +18317,7 @@
       "scenario": "win-inventory-tabs",
       "viewport": "mobile",
       "state": "06-nfts",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-06-nfts.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-inventory-tabs-06-nfts.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18361,7 +18361,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-initial.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18395,7 +18395,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "mobile",
       "state": "01-tasks",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-01-tasks.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-01-tasks.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18429,7 +18429,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "mobile",
       "state": "02-workflows",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-02-workflows.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-02-workflows.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18463,7 +18463,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "mobile",
       "state": "03-active",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-03-active.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-03-active.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18497,7 +18497,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "mobile",
       "state": "04-inactive",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-04-inactive.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-04-inactive.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18531,7 +18531,7 @@
       "scenario": "win-tasks-tabs",
       "viewport": "mobile",
       "state": "05-all",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-05-all.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-tasks-tabs-05-all.png",
       "issues": [
         {
           "type": "red-warning-copy",
@@ -18565,7 +18565,7 @@
       "scenario": "win-shopify-tabs",
       "viewport": "mobile",
       "state": "initial",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-initial.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-initial.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -18615,7 +18615,7 @@
       "scenario": "win-shopify-tabs",
       "viewport": "mobile",
       "state": "01-products",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-01-products.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-01-products.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -18665,7 +18665,7 @@
       "scenario": "win-shopify-tabs",
       "viewport": "mobile",
       "state": "02-orders",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-02-orders.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-02-orders.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -18715,7 +18715,7 @@
       "scenario": "win-shopify-tabs",
       "viewport": "mobile",
       "state": "03-inventory",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-03-inventory.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-03-inventory.png",
       "issues": [
         {
           "type": "visible-overflow",
@@ -18765,7 +18765,7 @@
       "scenario": "win-shopify-tabs",
       "viewport": "mobile",
       "state": "04-customers",
-      "screenshot": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-04-customers.png",
+      "screenshot": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/full-2026-05-12T01-30-36-617Z/mobile-win-shopify-tabs-04-customers.png",
       "issues": [
         {
           "type": "visible-overflow",

@@ -1,7 +1,7 @@
 # Releasing Eliza-1 v1 — the runbook
 
 > **v1 = the upstream BASE models, GGUF-converted via the elizaOS/llama.cpp
-> fork, and fully Milady-optimized (every quant/kernel trick) — NOT
+> fork, and fully Eliza-optimized (every quant/kernel trick) — NOT
 > fine-tuned.** Fine-tuning ships in v2. The v1 manifests/READMEs say so:
 > `releaseState=base-v1`, `provenance.finetuned=false`, and a
 > `provenance.sourceModels` map recording which upstream HF repo each
@@ -26,7 +26,7 @@ gates), `packages/training/AGENTS.md`, `ELIZA_1_GGUF_READINESS.md`,
 |---|---|---|---|---|
 | Text 0.6B | `Qwen/Qwen3-0.6B-GGUF` (`Qwen3-0.6B-Q8_0.gguf`) | `convert_hf_to_gguf.py` from the elizaOS/llama.cpp fork | TurboQuant Q3 (`turbo3`/`turbo4`) KV + QJL K-cache (`block_qjl1_256`) + PolarQuant V-cache (`block_q4_polar`) + fused-attn + DFlash | `Qwen3.5-0.6B` not published yet; uses `Qwen3-0.6B` until it is |
 | Text 1.7B | `Qwen/Qwen3-1.7B-GGUF` (`Qwen3-1.7B-Q8_0.gguf`) | same | TurboQuant Q3/Q4 + QJL + Polar + fused-attn + DFlash | `Qwen3.5-1.7B` not published; uses `Qwen3-1.7B` |
-| Text 9B | `unsloth/Qwen3.5-9B-GGUF` (`Qwen3.5-9B-Q4_K_M.gguf` source ref; reconvert from HF safetensors for Milady types) | same | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` (≥64k) + fused-attn + DFlash | mmproj vision component too |
+| Text 9B | `unsloth/Qwen3.5-9B-GGUF` (`Qwen3.5-9B-Q4_K_M.gguf` source ref; reconvert from HF safetensors for Eliza types) | same | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` (≥64k) + fused-attn + DFlash | mmproj vision component too |
 | Text 27B | `batiai/Qwen3.6-27B-GGUF` (`Qwen-Qwen3.6-27B-Q4_K_M.gguf` ref) | same | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` + fused-attn + DFlash | `27b-256k`, `27b-1m` are context variants of this tier |
 | Voice (TTS) | `Serveurperso/OmniVoice-GGUF` (`omnivoice-base-<quant>.gguf` + `omnivoice-tokenizer-<quant>.gguf`) | already GGUF | fused-omnivoice runtime; quant per `VOICE_QUANT_BY_TIER` (Q4_K_M on 0.6B/1.7B, Q8_0 on 9B+) | non-commercial CC-compatible licensing per inference/AGENTS.md §1 |
 | ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | already GGUF | tokenizer fused with the text backbone (zero re-tokenization) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` |
@@ -45,7 +45,7 @@ records all of this; it must agree with the tier's manifest
 ## 1. The fork is in-tree; build it
 
 The patched llama.cpp (`elizaOS/llama.cpp @ v1.0.0-eliza`, upstream base
-`b8198` — adds the Milady GGML types `TBQ3_0`, `TBQ4_0`, `QJL1_256`,
+`b8198` — adds the Eliza GGML types `TBQ3_0`, `TBQ4_0`, `QJL1_256`,
 `Q4_POLAR`, the fused attention/omnivoice patches, and the split
 `tools/server/server-{task,common,context,http}.cpp` with `grammar_lazy` /
 `json_schema` / `response_format` / structured output already present) ships
@@ -84,19 +84,19 @@ and the upstream text/vision GGUFs/safetensors into `source/`.
 
 ---
 
-## 3. Convert each base model to a Milady-typed GGUF (CPU-safe)
+## 3. Convert each base model to a Eliza-typed GGUF (CPU-safe)
 
 The converter is pure Python. For tiers where you have HF safetensors (9B/27B
 via `unsloth/Qwen3.5-9B-GGUF` / `batiai/Qwen3.6-27B-GGUF` companion repos, or
 the original Qwen safetensors), run the fork's `convert_hf_to_gguf.py` to
-produce the base GGUF, then apply the Milady metadata wrapper:
+produce the base GGUF, then apply the Eliza metadata wrapper:
 
 ```bash
 # Direct converter:
 uv run python packages/inference/llama.cpp/convert_hf_to_gguf.py <hf-checkpoint-dir> \
   --outtype q4_k_m --outfile out/eliza-1-9b/text/eliza-1-9b-64k.gguf
 
-# Or, with the Milady type wrapper + provenance recording (CPU-safe, idempotent):
+# Or, with the Eliza type wrapper + provenance recording (CPU-safe, idempotent):
 uv run python packages/training/scripts/quantization/gguf_eliza1_apply.py \
   --checkpoint <hf-checkpoint-dir-with-polarquant-codes> \
   --output     out/eliza-1-9b/text/eliza-1-9b-64k.gguf \
@@ -104,7 +104,7 @@ uv run python packages/training/scripts/quantization/gguf_eliza1_apply.py \
   --outtype q4_polar \
   --release-state base-v1 \
   --source-repo  unsloth/Qwen3.5-9B-GGUF
-# → writes <file>.milady.json (ext metadata) and <file>.provenance.json
+# → writes <file>.eliza.json (ext metadata) and <file>.provenance.json
 #   ({"releaseState":"base-v1","finetuned":false,"sourceRepo":...}).
 # Re-running is a no-op unless --force.
 ```
@@ -120,9 +120,9 @@ checkout.
 
 ---
 
-## 4. Apply the Milady quant recipes (GPU for calibration; sidecars CPU-safe)
+## 4. Apply the Eliza quant recipes (GPU for calibration; sidecars CPU-safe)
 
-The five Milady quant recipes live in
+The five Eliza quant recipes live in
 `packages/training/scripts/quantization/`. PolarQuant produces the int8
 weight codes that `gguf_eliza1_apply.py` packs as `Q4_POLAR` blocks;
 TurboQuant + QJL are runtime KV-cache compressors — they emit the

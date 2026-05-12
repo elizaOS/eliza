@@ -24,7 +24,7 @@
  *     ]
  *   }
  *
- * The default trajectory directory is ~/.milady/trajectories. Override with
+ * The default trajectory directory is ~/.eliza/trajectories. Override with
  * --dir <path> on any subcommand.
  *
  * No external dependencies — pure Node ESM.
@@ -161,7 +161,7 @@ export function compactModelPrompt(prompt) {
 // ---------------------------------------------------------------------------
 
 export function defaultTrajectoryDir() {
-  return path.join(os.homedir(), ".milady", "trajectories");
+  return path.join(os.homedir(), ".eliza", "trajectories");
 }
 
 function* walkJson(dir) {

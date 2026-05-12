@@ -16,7 +16,7 @@
  * Optional env:
  *   VAST_TEMPLATE_NAME — defaults to "eliza-cloud-eliza-1-27b".
  *   VAST_RUNTIME       — "llama" (default) or "vllm".
- *   MILADY_VAST_MANIFEST — vLLM manifest name/path. Defaults to
+ *   ELIZA_VAST_MANIFEST — vLLM manifest name/path. Defaults to
  *                        eliza-1-2b.json when VAST_RUNTIME=vllm.
  *   PYWORKER_REPO      — git URL for the PyWorker source (defaults to the
  *                        elizaOS/cloud repo).
@@ -98,7 +98,7 @@ function resolveManifestPath(manifest: string): string {
 }
 
 function readVllmManifest(): { name: string; json: string; manifest: VastManifest } {
-  const name = readEnv("MILADY_VAST_MANIFEST", "eliza-1-2b.json");
+  const name = readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json");
   const path = resolveManifestPath(name);
   const manifest = JSON.parse(readFileSync(path, "utf8")) as VastManifest;
   return { name, json: JSON.stringify(manifest), manifest };
@@ -160,9 +160,9 @@ async function main(): Promise<void> {
   };
 
   if (runtime === "vllm") {
-    env.MILADY_VAST_MANIFEST = manifest?.name ?? "eliza-1-2b.json";
+    env.ELIZA_VAST_MANIFEST = manifest?.name ?? "eliza-1-2b.json";
     if (manifest) {
-      env.MILADY_VAST_MANIFEST_JSON = manifest.json;
+      env.ELIZA_VAST_MANIFEST_JSON = manifest.json;
       for (const [key, value] of Object.entries(manifest.manifest.vast_template_env ?? {})) {
         if (value) env[key] = value;
       }
@@ -187,7 +187,7 @@ async function main(): Promise<void> {
       "VLLM_ENABLE_TURBOQUANT",
       "VLLM_TURBOQUANT_PRESET",
       "DFLASH_MODEL",
-      "MILADY_VLLM_DFLASH",
+      "ELIZA_VLLM_DFLASH",
       "SPECULATIVE_CONFIG_JSON",
       "SPECULATIVE_TOKENS",
       "DRAFT_TENSOR_PARALLEL_SIZE",

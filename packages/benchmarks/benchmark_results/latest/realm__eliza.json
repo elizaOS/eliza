@@ -1,7 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132811Z_565352a1/realm__realm/run_realm_20260511T132811Z_1_15179dce/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132811Z_565352a1/realm__realm/run_realm_20260511T132811Z_1_15179dce/output"
   ],
   "benchmark_directory": "realm",
   "benchmark_id": "realm",
@@ -55,7 +55,7 @@
     "throughput_per_second": 0.017725986181691387
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132811Z_565352a1/realm__realm/run_realm_20260511T132811Z_1_15179dce/output/realm-benchmark-20260511_063004.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132811Z_565352a1/realm__realm/run_realm_20260511T132811Z_1_15179dce/output/realm-benchmark-20260511_063004.json",
   "run_group_id": "rg_20260511T132811Z_565352a1",
   "run_id": "run_realm_20260511T132811Z_1_15179dce",
   "score": 1.0,

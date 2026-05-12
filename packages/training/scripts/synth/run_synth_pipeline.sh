@@ -7,7 +7,7 @@
 #   4. Export captured trajectories to JSONL
 #   5. Stop the server
 #
-# Outputs land in `~/.milady/training-datasets/<date>/{task}_trajectories.jsonl`
+# Outputs land in `~/.eliza/training-datasets/<date>/{task}_trajectories.jsonl`
 # matching the canonical nubilio shape.
 #
 # Required env:
@@ -97,7 +97,7 @@ curl -sf -X POST -H "Authorization: Bearer $ELIZA_BENCH_TOKEN" \
 
 # trajectory-export-cron flushes on a timer; give it a moment then list
 sleep 5
-TRAJ_DIR="$HOME/.milady/training-datasets"
+TRAJ_DIR="$HOME/.eliza/training-datasets"
 echo "[synth] trajectory output dir: $TRAJ_DIR"
 if [ -d "$TRAJ_DIR" ]; then
     find "$TRAJ_DIR" -name "*.jsonl" -newer "$SERVER_LOG" 2>/dev/null \

@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "InterruptBench — TypeScript benchmark for interruption handling in the Milady/elizaOS agent runtime (Stage-1 response-handler field evaluators, turn controller, room queue, cleanup scope).",
+  "description": "InterruptBench — TypeScript benchmark for interruption handling in the Eliza/elizaOS agent runtime (Stage-1 response-handler field evaluators, turn controller, room queue, cleanup scope).",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {

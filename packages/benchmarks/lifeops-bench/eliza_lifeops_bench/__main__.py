@@ -282,7 +282,7 @@ def _apply_eliza_one_bundle_override(
     """Honor ``ELIZA_1_MODEL_BUNDLE`` to point the harness at a GGUF bundle.
 
     When set, reads the bundle's manifest, propagates the pre-release flag
-    through ``MILADY_BENCH_PRE_RELEASE`` (read by ``scripts/aggregate-lifeops-run.mjs``
+    through ``ELIZA_BENCH_PRE_RELEASE`` (read by ``scripts/aggregate-lifeops-run.mjs``
     and the runner when it stamps ``RunMetrics.preRelease``), and rewrites the
     tier spec so downstream agent / client factories see the local-llama-cpp
     endpoint instead of the registry default.
@@ -298,10 +298,10 @@ def _apply_eliza_one_bundle_override(
         return None, base
     manifest = read_eliza_one_bundle(bundle_path)
     pre_release = bundle_is_pre_release(manifest)
-    # The aggregator reads MILADY_BENCH_PRE_RELEASE on every emitted report.
+    # The aggregator reads ELIZA_BENCH_PRE_RELEASE on every emitted report.
     # `1` is the only value the aggregator parses as truthy — keep that
     # explicit (no surrounding whitespace, no "true"/"yes" shortcut here).
-    os.environ["MILADY_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
+    os.environ["ELIZA_BENCH_PRE_RELEASE"] = "1" if pre_release else "0"
     # Spawn the dflash local-llama-cpp server pointing at the bundle weights.
     # We pass the weights path through MODEL_BUNDLE_OVERRIDE so downstream TS
     # readers (live-provider.ts, model-tiers.ts) see the same value, and we
@@ -442,7 +442,7 @@ async def _run(args: argparse.Namespace) -> None:
     # When ELIZA_1_MODEL_BUNDLE is set, override the resolved tier
     # so the harness boots the dflash local-llama-cpp server pointing at the
     # bundle's GGUF weights. The bundle manifest's pre-release flag is
-    # propagated through MILADY_BENCH_PRE_RELEASE so the aggregator stamps
+    # propagated through ELIZA_BENCH_PRE_RELEASE so the aggregator stamps
     # `preRelease: true` on every emitted RunMetrics + report.json.
     eliza_one_manifest, tier_spec = _apply_eliza_one_bundle_override(tier_spec)
     evaluator_model = args.evaluator_model or tier_spec.model_name

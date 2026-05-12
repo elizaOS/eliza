@@ -102,7 +102,7 @@ No breakpoints were moved. No cache-stability snapshots required updating.
 
 ## 4. Enum short-form completion
 
-Implemented behind `MILADY_SHORT_FORM_ENUMS=1`. The render path emits the
+Implemented behind `ELIZA_SHORT_FORM_ENUMS=1`. The render path emits the
 short-form hint after the parameter summary (`  short_form: <enum_value>` on
 a separate line) so the byte-stable parameter JSON shape stays intact when
 the flag is off. The dispatch path in `execute-planned-tool-call.ts`
@@ -120,7 +120,7 @@ If any condition fails, the call goes through unchanged.
 
 ## 5. Cerebras compress mode
 
-`MILADY_PROMPT_COMPRESS=1` (or `--compress` on the bench runner) is wired
+`ELIZA_PROMPT_COMPRESS=1` (or `--compress` on the bench runner) is wired
 through `optimized-prompt-resolver.ts` — when set AND the resolved tier maps
 to a Cerebras large model, the resolver drops `fewShotExamples` from the
 optimized-prompt output, leaving only the base optimized prompt. Routing

@@ -121,7 +121,7 @@ the installed `nvcc` accepts and appends `sm_100`/`sm_120` only when supported
 ## Step 4 — verify the Eliza-1 CUDA path
 
 ```bash
-cd /home/shaw/milady/eliza
+cd /home/shaw/eliza/eliza
 
 # Build the CUDA target of the llama.cpp fork (patchCudaKernels + the fused-attn
 # flag are wired in; retry once on a fork-cache clobber):

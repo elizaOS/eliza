@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output"
   ],
   "benchmark_directory": "woobench",
   "benchmark_id": "woobench",
@@ -54,7 +54,7 @@
     "throughput_per_second": 0.24889771183371018
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output/woobench_gpt-oss-120b_20260511_062113.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132037Z_22582b34/woobench__woobench/run_woobench_20260511T132037Z_1_abc19cf8/output/woobench_gpt-oss-120b_20260511_062113.json",
   "run_group_id": "rg_20260511T132037Z_22582b34",
   "run_id": "run_woobench_20260511T132037Z_1_abc19cf8",
   "score": 0.9999999999999999,

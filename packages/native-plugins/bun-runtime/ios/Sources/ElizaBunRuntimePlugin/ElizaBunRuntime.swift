@@ -92,7 +92,7 @@ public final class ElizaBunRuntime {
             self.bridges?.ui.handler(for: "__internal_on_exit__")?.callSync(args: [code])
             self.teardown()
             DispatchQueue.main.async {
-                self.plugin?.notifyListeners("milady:runtime-exit", data: ["code": code])
+                self.plugin?.notifyListeners("eliza:runtime-exit", data: ["code": code])
             }
         }
     }
@@ -317,18 +317,18 @@ public final class ElizaBunRuntime {
         if let override = override, !override.isEmpty {
             return try String(contentsOfFile: override, encoding: .utf8)
         }
-        if let url = Bundle.main.url(forResource: "milady-polyfill-prefix", withExtension: "js") {
+        if let url = Bundle.main.url(forResource: "eliza-polyfill-prefix", withExtension: "js") {
             return try String(contentsOf: url, encoding: .utf8)
         }
         // Minimal embedded fallback. Just exposes the bridge version + globals
         // so the agent code can detect the runtime even when the full
         // polyfill bundle isn't shipped yet.
         return """
-        if (typeof globalThis.__MILADY_BRIDGE__ !== "object") {
-          throw new Error("__MILADY_BRIDGE__ host not installed");
+        if (typeof globalThis.__ELIZA_BRIDGE__ !== "object") {
+          throw new Error("__ELIZA_BRIDGE__ host not installed");
         }
-        if (globalThis.__MILADY_BRIDGE_VERSION__ !== "v1") {
-          throw new Error("Bridge version mismatch: expected v1, got " + globalThis.__MILADY_BRIDGE_VERSION__);
+        if (globalThis.__ELIZA_BRIDGE_VERSION__ !== "v1") {
+          throw new Error("Bridge version mismatch: expected v1, got " + globalThis.__ELIZA_BRIDGE_VERSION__);
         }
         """
     }

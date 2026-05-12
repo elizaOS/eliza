@@ -89,7 +89,7 @@ describe("Discord message connector adapter", () => {
 		const runtime = createRuntime();
 		const guild: Record<string, unknown> = {
 			id: "111111111111111111",
-			name: "Milady",
+			name: "Eliza",
 		};
 		const channel = {
 			id: "222222222222222222",

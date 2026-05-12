@@ -1,7 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191117Z_994118d8/terminal-bench__terminal_bench/run_terminal_bench_20260511T191117Z_1_89640af6/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T191117Z_994118d8/terminal-bench__terminal_bench/run_terminal_bench_20260511T191117Z_1_89640af6/output"
   ],
   "benchmark_directory": "terminal-bench",
   "benchmark_id": "terminal_bench",
@@ -54,7 +54,7 @@
     "throughput_per_second": 0.032597770306438824
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T191117Z_994118d8/terminal-bench__terminal_bench/run_terminal_bench_20260511T191117Z_1_89640af6/output/terminal-bench-20260511_121148.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T191117Z_994118d8/terminal-bench__terminal_bench/run_terminal_bench_20260511T191117Z_1_89640af6/output/terminal-bench-20260511_121148.json",
   "run_group_id": "rg_20260511T191117Z_994118d8",
   "run_id": "run_terminal_bench_20260511T191117Z_1_89640af6",
   "score": 1.0,

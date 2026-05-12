@@ -7,7 +7,7 @@
  * Designed to be invoked from any elizaOS-based fork:
  *   node eliza/packages/app-core/scripts/build-native-plugins.mjs
  *
- * Forks that previously used `pkg.milady.platforms` should rename to
+ * Forks that previously used `pkg.eliza.platforms` should rename to
  * `pkg.elizaos.platforms`, or wrap this script with a 1-line preprocessor
  * that mirrors the field before invocation.
  */

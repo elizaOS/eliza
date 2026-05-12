@@ -20,7 +20,7 @@
 //      the global ARCH_FLAGS (e.g. -march=native) decide which bodies
 //      survive preprocessing.
 //
-// Idempotent: each mutation carries a `# MILADY-CPU-SIMD-PATCH-V1`
+// Idempotent: each mutation carries a `# ELIZA-CPU-SIMD-PATCH-V1`
 // sentinel; re-running the build is safe.
 //
 // Out of scope (documented in the agent report):
@@ -53,7 +53,7 @@ const QJL_CPU_SRC_DIR = path.resolve(
   "qjl-cpu",
 );
 
-const SENTINEL = "# MILADY-CPU-SIMD-PATCH-V1";
+const SENTINEL = "# ELIZA-CPU-SIMD-PATCH-V1";
 
 // The QJL kernel-library files mirrored into ggml-cpu/qjl/. quants-qjl.c is
 // deliberately NOT in this list — it is fork-only ggml ABI glue, not part of

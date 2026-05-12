@@ -9,7 +9,7 @@ import {
 } from "./packaged-app-helpers";
 
 /**
- * Cloud onboarding ends with a "Restart Milady" CTA whose path ultimately
+ * Cloud onboarding ends with a "Restart Eliza" CTA whose path ultimately
  * lands in `DesktopManager.relaunch()` (see
  * `eliza/packages/app-core/platforms/electrobun/src/native/desktop.ts:1439`).
  * That handler calls `Bun.spawn([process.execPath, ...process.argv.slice(1)])`
@@ -115,7 +115,7 @@ test.describe("Electrobun relaunch after cloud onboarding", () => {
       ).not.toBeNull();
 
       // The native `relaunch` menu action runs the exact same code path the
-      // cloud-provisioning "Restart Milady" CTA hits via `relaunchDesktop()`
+      // cloud-provisioning "Restart Eliza" CTA hits via `relaunchDesktop()`
       // → `desktopRelaunch` RPC → `DesktopManager.relaunch()`. Driving the
       // menu action directly is the cleanest way to exercise the native
       // handler without depending on the full cloud-provisioning UI flow,

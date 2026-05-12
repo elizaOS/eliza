@@ -10,7 +10,7 @@ well-formed `LlamaCpp.xcframework` consumed by the patched
 
 Pre-Wave-4-F, `run-mobile-build.mjs` built `LlamaCpp.xcframework` by
 shelling out to `cmake` against the **upstream npm package's bundled
-`ios/` source tree**. That source has none of the milady kernels —
+`ios/` source tree**. That source has none of the eliza kernels —
 TurboQuant, QJL, PolarQuant, DFlash — so every iOS Capacitor build
 silently shipped a stock llama.cpp framework, in violation of
 [`packages/inference/AGENTS.md`](../../../inference/AGENTS.md) §3
@@ -20,7 +20,7 @@ runtime MUST refuse to load a bundle missing any required kernel").
 `packages/inference/DEVICE_SUPPORT_GAP_2026-05-10.md` row 4 / 5 / blocker
 #1 / blocker #5 documented this disconnect: the
 `build-llama-cpp-dflash.mjs --target ios-arm64-{metal,simulator-metal}`
-build paths existed and produced milady-kernel-bearing archives, but
+build paths existed and produced eliza-kernel-bearing archives, but
 nothing consumed those archives — they were orphaned.
 
 Wave-4-F rewires `run-mobile-build.mjs` to delegate to the dflash
@@ -30,7 +30,7 @@ builder and pipes the produced archives through `build-xcframework.mjs`.
 
 ```
 build-llama-cpp-dflash.mjs --target ios-arm64-metal
-  ├─ checkout elizaOS/llama.cpp @ v0.4.0-milady (TBQ + QJL + Polar +
+  ├─ checkout elizaOS/llama.cpp @ v0.4.0-eliza (TBQ + QJL + Polar +
   │  DFlash + W4-B kernels onto upstream b8198)
   ├─ apply Metal kernel patches (kernel-patches/metal-kernels.mjs;
   │  EMBED-path is currently a documented gap — see "Known gaps" below)
@@ -54,7 +54,7 @@ ios-xcframework/build-xcframework.mjs
      parse the produced Info.plist for slice metadata. Hard-fail on any miss.
 
 run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()
-  ├─ guard: skip if ELIZA_IOS_INCLUDE_LLAMA / MILADY_IOS_INCLUDE_LLAMA is unset
+  ├─ guard: skip if ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA is unset
   ├─ ensureDflashIosTarget("ios-arm64-metal")
   ├─ ensureDflashIosTarget("ios-arm64-simulator-metal")
   ├─ build-xcframework.mjs --output node_modules/llama-cpp-capacitor/ios/
@@ -62,10 +62,10 @@ run-mobile-build.mjs ensureIosLlamaCppVendoredFramework()
   │                        --verify
   ├─ patchLlamaCppCapacitorPodspecForXcframework() (existing, unchanged)
   └─ archive npm-bundled stock LlamaCpp.framework / llama-cpp.framework out
-     of FRAMEWORK_SEARCH_PATHS so the linker resolves the milady xcframework
+     of FRAMEWORK_SEARCH_PATHS so the linker resolves the eliza xcframework
 
 xcodebuild -workspace App/App.xcworkspace … (CocoaPods picks up the
-patched podspec, links against the milady xcframework)
+patched podspec, links against the eliza xcframework)
 ```
 
 ## How to build the xcframework manually
@@ -138,7 +138,7 @@ T _llama_decode               # DFlash CLI / runtime entry surface
 The Capacitor app picks up the xcframework automatically via
 `ensureIosLlamaCppVendoredFramework()` whenever:
 
-- `ELIZA_IOS_INCLUDE_LLAMA=1` (or `MILADY_IOS_INCLUDE_LLAMA=1`) is set
+- `ELIZA_IOS_INCLUDE_LLAMA=1` (or `ELIZA_IOS_INCLUDE_LLAMA=1`) is set
   in the environment, AND
 - `node packages/app-core/scripts/run-mobile-build.mjs ios` (or
   `ios-overlay`) is invoked on a macOS host.
@@ -161,9 +161,9 @@ The wiring is end-to-end:
    into a `.{name}-stock-archive/` sibling so CocoaPods'
    `FRAMEWORK_SEARCH_PATHS` cannot resolve `-framework LlamaCpp` to the
    wrong (stock, kernel-less) framework.
-5. `pod install` + `xcodebuild` link against the milady xcframework.
+5. `pod install` + `xcodebuild` link against the eliza xcframework.
 
-To re-run from scratch (after a milady-llama.cpp fork bump or kernel
+To re-run from scratch (after a eliza-llama.cpp fork bump or kernel
 patch update):
 
 ```sh

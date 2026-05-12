@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132613Z_2b263755/gauntlet__gauntlet/run_gauntlet_20260511T132613Z_1_3d28700f/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132613Z_2b263755/gauntlet__gauntlet/run_gauntlet_20260511T132613Z_1_3d28700f/output"
   ],
   "benchmark_directory": "gauntlet",
   "benchmark_id": "gauntlet",
@@ -56,7 +56,7 @@
     "throughput_per_second": 0.19955807532944683
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132613Z_2b263755/gauntlet__gauntlet/run_gauntlet_20260511T132613Z_1_3d28700f/output/9792e77d-4c0d-4280-8332-5f2919dbab1c.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132613Z_2b263755/gauntlet__gauntlet/run_gauntlet_20260511T132613Z_1_3d28700f/output/9792e77d-4c0d-4280-8332-5f2919dbab1c.json",
   "run_group_id": "rg_20260511T132613Z_2b263755",
   "run_id": "run_gauntlet_20260511T132613Z_1_3d28700f",
   "score": 95.0,

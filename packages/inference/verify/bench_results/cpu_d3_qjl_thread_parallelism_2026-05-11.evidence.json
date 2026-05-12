@@ -2,7 +2,7 @@
   "what": "CPU thread-parallelism correctness gate for GGML_OP_ATTN_SCORE_QJL + GGML_OP_FUSED_ATTN_QJL_TBQ in the built dflash fork lib",
   "date": "2026-05-11",
   "host": "Intel Arrow Lake-HX, 24 cores, AVX2 + AVX-VNNI (no AVX-512), 30 GB RAM",
-  "fork": "elizaOS/llama.cpp@08032d57e15574f2a7ca19fc3f29510c8673d590 (v0.4.0-milady)",
+  "fork": "elizaOS/llama.cpp@08032d57e15574f2a7ca19fc3f29510c8673d590 (v0.4.0-eliza)",
   "build": {
     "cmd": "ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu",
     "result": "all CMake targets built + linked OK (libggml-cpu.so, libggml-base.so, llama-cli, llama-server, llama-speculative-simple); process exited non-zero ONLY on the documented probeKernels runtime-dispatch evidence gate (turbo3_tcq / qjl_full / polarquant), which is the same expected blocker as the Vulkan/CPU paths — the libs were still emitted",

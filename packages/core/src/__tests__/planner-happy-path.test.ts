@@ -171,8 +171,8 @@ let originalEnv: NodeJS.ProcessEnv;
 beforeEach(() => {
 	tempDir = mkdtempSync(join(tmpdir(), "v5-happy-path-"));
 	originalEnv = { ...process.env };
-	process.env.MILADY_TRAJECTORY_DIR = tempDir;
-	process.env.MILADY_TRAJECTORY_RECORDING = "1";
+	process.env.ELIZA_TRAJECTORY_DIR = tempDir;
+	process.env.ELIZA_TRAJECTORY_RECORDING = "1";
 });
 
 afterEach(() => {

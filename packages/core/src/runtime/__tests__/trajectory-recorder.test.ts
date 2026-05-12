@@ -14,30 +14,30 @@ import {
 } from "../trajectory-recorder";
 
 let tmpDir: string;
-const originalReviewMode = process.env.MILADY_TRAJECTORY_REVIEW_MODE;
-const originalMarkdownDir = process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+const originalReviewMode = process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
+const originalMarkdownDir = process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 const originalCerebrasKey = process.env.CEREBRAS_API_KEY;
 
 beforeEach(async () => {
 	tmpDir = await fs.mkdtemp(
 		path.join(os.tmpdir(), "trajectory-recorder-test-"),
 	);
-	delete process.env.MILADY_TRAJECTORY_REVIEW_MODE;
-	delete process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+	delete process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
+	delete process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 	delete process.env.CEREBRAS_API_KEY;
 });
 
 afterEach(async () => {
 	await fs.rm(tmpDir, { recursive: true, force: true });
 	if (originalReviewMode === undefined) {
-		delete process.env.MILADY_TRAJECTORY_REVIEW_MODE;
+		delete process.env.ELIZA_TRAJECTORY_REVIEW_MODE;
 	} else {
-		process.env.MILADY_TRAJECTORY_REVIEW_MODE = originalReviewMode;
+		process.env.ELIZA_TRAJECTORY_REVIEW_MODE = originalReviewMode;
 	}
 	if (originalMarkdownDir === undefined) {
-		delete process.env.MILADY_TRAJECTORY_MARKDOWN_DIR;
+		delete process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR;
 	} else {
-		process.env.MILADY_TRAJECTORY_MARKDOWN_DIR = originalMarkdownDir;
+		process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR = originalMarkdownDir;
 	}
 	if (originalCerebrasKey === undefined) {
 		delete process.env.CEREBRAS_API_KEY;
@@ -538,7 +538,7 @@ describe("JsonFileTrajectoryRecorder", () => {
 	});
 
 	it("writes redacted markdown review artifacts when review mode is enabled", async () => {
-		process.env.MILADY_TRAJECTORY_REVIEW_MODE = "1";
+		process.env.ELIZA_TRAJECTORY_REVIEW_MODE = "1";
 		process.env.CEREBRAS_API_KEY = "csk-secret-for-markdown-test";
 
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
@@ -632,30 +632,30 @@ describe("JsonFileTrajectoryRecorder", () => {
 });
 
 describe("action exec input/output/error capture (M12)", () => {
-	const originalCap = process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+	const originalCap = process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
 
 	afterEach(() => {
 		if (originalCap === undefined) {
-			delete process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+			delete process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
 		} else {
-			process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = originalCap;
+			process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = originalCap;
 		}
 	});
 
 	it("defaults to a 64KB per-field cap when the env var is unset", () => {
-		delete process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES;
+		delete process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES;
 		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
 	});
 
-	it("respects MILADY_TRAJECTORY_FIELD_CAP_BYTES when set to a sane value", () => {
-		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "8192";
+	it("respects ELIZA_TRAJECTORY_FIELD_CAP_BYTES when set to a sane value", () => {
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "8192";
 		expect(resolveTrajectoryFieldCapBytes()).toBe(8192);
 	});
 
 	it("ignores invalid or sub-1KB caps and falls back to the default", () => {
-		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "abc";
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "abc";
 		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
-		process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES = "100";
+		process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES = "100";
 		expect(resolveTrajectoryFieldCapBytes()).toBe(64 * 1024);
 	});
 

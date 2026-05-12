@@ -29,7 +29,7 @@ import path from "node:path";
 import { logger } from "@elizaos/core";
 
 const NATIVE_DYLIB_CANDIDATES = [
-  process.env.MILADY_NATIVE_PERMISSIONS_DYLIB ?? "",
+  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
   "../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
 ].filter(Boolean);
 

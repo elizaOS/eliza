@@ -63,7 +63,7 @@ the bigger tiers and for VRAM-constrained hosts.
   → faster `tg` for the bigger tiers. *Currently deferred* — the fork's
   `convert_hf_to_gguf.py` doesn't emit `q4_polar` yet (the runtime kernels
   exist; the converter side lags), so `gguf_eliza1_apply.py` falls back to
-  `q8_0` and records `weight_quant.deferred: true` in `<gguf>.milady.json`.
+  `q8_0` and records `weight_quant.deferred: true` in `<gguf>.eliza.json`.
   Closing that gap (add `Q4_POLAR` to the fork's `gguf-py` + a Python
   `quantize_q4_polar` packer) is the inference team's converter work.
 - **DFlash speculative decode** is the #1 model-level `tg` lever for the
@@ -98,7 +98,7 @@ the bigger tiers and for VRAM-constrained hosts.
   ~30–60 min compile against the system CUDA) speeds up SFT for the bigger
   tiers; marginal for 0.6 B.
 - **FP8 training** — `te_fp8.py` exists but only swaps on sm_90 unless
-  `MILADY_FP8_TRAIN=1`; `transformer_engine` is not installed. Blackwell
+  `ELIZA_FP8_TRAIN=1`; `transformer_engine` is not installed. Blackwell
   (sm_120) has native FP8/FP4 tensor cores, so FP8 SFT would be a real win for
   the bigger tiers — needs `transformer_engine[pytorch]` installed + the arch
   gate in `te_fp8.py` extended to include sm_120.

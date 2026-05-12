@@ -144,8 +144,8 @@ function makeFixtureJsonl(): string {
 
 describe("session-log-reader: path resolution", () => {
   it("encodes Claude Code project dir paths (/ and . → -)", () => {
-    expect(encodeClaudeCodeProjectDir("/Users/x/.milady/workspaces/abc")).toBe(
-      "-Users-x--milady-workspaces-abc",
+    expect(encodeClaudeCodeProjectDir("/Users/x/.eliza/workspaces/abc")).toBe(
+      "-Users-x--eliza-workspaces-abc",
     );
   });
 

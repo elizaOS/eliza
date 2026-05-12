@@ -51,7 +51,7 @@ const buildProfile =
 const variant =
   getArgValue(args, "variant") ?? process.env.VITE_APP_VARIANT ?? "base";
 const buildVariant = resolveBuildVariant(
-  getArgValue(args, "build-variant") ?? process.env.MILADY_BUILD_VARIANT,
+  getArgValue(args, "build-variant") ?? process.env.ELIZA_BUILD_VARIANT,
 );
 const buildEnv = getArgValue(args, "env") ?? process.env.BUILD_ENV ?? "";
 const buildWhisper = getBooleanArg(args, "build-whisper");
@@ -512,9 +512,9 @@ function stageDesktopBuild() {
     env: {
       ...process.env,
       VITE_APP_VARIANT: variant,
-      MILADY_BUILD_VARIANT: buildVariant,
+      ELIZA_BUILD_VARIANT: buildVariant,
     },
-    label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, MILADY_BUILD_VARIANT=${buildVariant})`,
+    label: `Building renderer bundle (VITE_APP_VARIANT=${variant}, ELIZA_BUILD_VARIANT=${buildVariant})`,
   });
 
   runDesktopPreflight();
@@ -721,7 +721,7 @@ function packageDesktopBuild() {
   const packageEnv = {
     ...process.env,
     ELIZA_ELECTROBUN_REPO_ROOT: process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? ROOT,
-    MILADY_BUILD_VARIANT: buildVariant,
+    ELIZA_BUILD_VARIANT: buildVariant,
     ...appIdentityEnv(APP_DIR),
     ...(stageMacosReleaseApp && process.platform === "darwin"
       ? { ELIZA_ELECTROBUN_NOTARIZE: "0" }
@@ -773,9 +773,9 @@ function packageDesktopBuild() {
       path.join(SCRIPT_DIR, "codesign-mas.mjs"),
       `--app=${appBundlePath}`,
     ];
-    if (process.env.MILADY_MAS_INSTALLER_IDENTITY) {
+    if (process.env.ELIZA_MAS_INSTALLER_IDENTITY) {
       codesignArgs.push(
-        `--installer-identity=${process.env.MILADY_MAS_INSTALLER_IDENTITY}`,
+        `--installer-identity=${process.env.ELIZA_MAS_INSTALLER_IDENTITY}`,
       );
     }
     run("node", codesignArgs, {

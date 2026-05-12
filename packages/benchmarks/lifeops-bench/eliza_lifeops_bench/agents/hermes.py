@@ -61,11 +61,36 @@ def build_hermes_agent(
         client_kwargs["api_key"] = api_key
     client = HermesClient(**client_kwargs)
 
+    # Allow operators to override the system prompt with an optimized one
+    # (e.g. the artifact produced by `bun run train --optimizer dspy-mipro`).
+    # The override is read from disk so we don't bake training output into
+    # source.
+    import json as _json
+    import os as _os
+
+    default_system_prompt = (
+        "You are running LifeOpsBench. Use the supplied tools exactly "
+        "when they are needed, and keep responses concise."
+    )
+    system_prompt = default_system_prompt
+    override_path = _os.environ.get("LIFEOPS_PLANNER_PROMPT_FILE")
+    if override_path and _os.path.exists(override_path):
+        try:
+            if override_path.endswith(".json"):
+                with open(override_path, "r", encoding="utf-8") as fh:
+                    obj = _json.load(fh)
+                if isinstance(obj, dict) and isinstance(obj.get("prompt"), str):
+                    system_prompt = obj["prompt"]
+            else:
+                with open(override_path, "r", encoding="utf-8") as fh:
+                    text = fh.read().strip()
+                if text:
+                    system_prompt = text
+        except OSError:
+            pass
+
     return build_lifeops_bench_agent_fn(
         client=client,
         model_name=model,
-        system_prompt=(
-            "You are running LifeOpsBench. Use the supplied tools exactly "
-            "when they are needed, and keep responses concise."
-        ),
+        system_prompt=system_prompt,
     )

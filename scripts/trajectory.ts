@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 /**
  * `trajectory` — read-only CLI for inspecting the per-trajectory JSON files
- * the runtime recorder writes to `${MILADY_TRAJECTORY_DIR}` (default
+ * the runtime recorder writes to `${ELIZA_TRAJECTORY_DIR}` (default
  * `./trajectories/`).
  *
  * Spec lives in `research/native-tool-calling/PLAN.md` §18.3.
@@ -157,7 +157,7 @@ interface RecordedTrajectory {
 // ---------------------------------------------------------------------------
 
 const TRAJECTORY_DIR =
-  process.env.MILADY_TRAJECTORY_DIR ??
+  process.env.ELIZA_TRAJECTORY_DIR ??
   path.resolve(process.cwd(), "trajectories");
 
 interface TrajectoryFile {
@@ -1227,7 +1227,7 @@ Commands:
   compare <idA> <idB> [--json]
   aggregate [--since <iso>] [--agent <id>]
 
-Trajectories are read from \${MILADY_TRAJECTORY_DIR} (default ./trajectories/).`);
+Trajectories are read from \${ELIZA_TRAJECTORY_DIR} (default ./trajectories/).`);
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ import type {
 } from "../../types.ts";
 import { judgeWithLlm } from "../checks/llm-judge.ts";
 import {
+  checkAllLowercase,
   checkHaiku,
   checkLimerick,
   checkNoEmojis,
@@ -42,7 +43,8 @@ type Style =
   | "no-emojis"
   | "limerick"
   | "shakespearean"
-  | "second_person_only";
+  | "second_person_only"
+  | "all_lowercase";
 
 type Language = "en" | "es" | "fr" | "de" | "zh";
 
@@ -208,6 +210,8 @@ function phraseLayerFor(
       return checkShakespearean(response);
     case "second_person_only":
       return checkSecondPersonOnly(response);
+    case "all_lowercase":
+      return checkAllLowercase(response);
     default:
       return {
         layer: "phrase",

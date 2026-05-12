@@ -1855,7 +1855,7 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
   agentId,
 ) {
   // Direct-cloud fallback for mobile/web clients that have no local
-  // Milady API server proxying `/api/cloud/compat/agents/...`. The
+  // Eliza API server proxying `/api/cloud/compat/agents/...`. The
   // direct cloud surface returns a richer agent record at
   // `/api/v1/eliza/agents/<id>`; we project it down to the
   // `CloudCompatAgentStatus` shape callers expect.

@@ -5,7 +5,7 @@ and where each component's bytes come from. This is the **status doc**. For the
 step-by-step "run these commands to ship v1" sequence see [`RELEASE_V1.md`](RELEASE_V1.md).
 
 > **v1 = the upstream BASE models, GGUF-converted via the `elizaOS/llama.cpp`
-> fork with every Milady kernel optimization (every quant/kernel trick in
+> fork with every Eliza kernel optimization (every quant/kernel trick in
 > [`packages/inference/AGENTS.md`](packages/inference/AGENTS.md) §3), NOT
 > fine-tuned.** The intended release shape is `releaseState=base-v1` with
 > `provenance.finetuned=false` and a `provenance.sourceModels` map (which
@@ -65,8 +65,8 @@ component.
 |---|---|---|---|
 | Text 0.6B | `Qwen/Qwen3-0.6B-GGUF` (until `Qwen3.5-0.6B` is published) | `text/eliza-1-0_6b-32k.gguf` | TurboQuant Q3 + QJL K-cache + PolarQuant V-cache + fused-attn + DFlash |
 | Text 1.7B | `Qwen/Qwen3-1.7B-GGUF` (until `Qwen3.5-1.7B` is published) | `text/eliza-1-1_7b-{32k,64k}.gguf` | TurboQuant Q3/Q4 + QJL + Polar + fused-attn + DFlash |
-| Text 9B | `unsloth/Qwen3.5-9B-GGUF` (reconvert from HF safetensors for Milady types) | `text/eliza-1-9b-{64k,128k}.gguf` + `vision/mmproj-9b.gguf` | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` (≥64k) + fused-attn + DFlash |
-| Text 27B (`27b`, `27b-256k`, `27b-1m`) | `batiai/Qwen3.6-27B-GGUF` (reconvert for Milady types) | `text/eliza-1-27b-{128k,256k,1m}.gguf` + `vision/mmproj-27b*.gguf` | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` + fused-attn + DFlash |
+| Text 9B | `unsloth/Qwen3.5-9B-GGUF` (reconvert from HF safetensors for Eliza types) | `text/eliza-1-9b-{64k,128k}.gguf` + `vision/mmproj-9b.gguf` | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` (≥64k) + fused-attn + DFlash |
+| Text 27B (`27b`, `27b-256k`, `27b-1m`) | `batiai/Qwen3.6-27B-GGUF` (reconvert for Eliza types) | `text/eliza-1-27b-{128k,256k,1m}.gguf` + `vision/mmproj-27b*.gguf` | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` + fused-attn + DFlash |
 | Voice (TTS) | `Serveurperso/OmniVoice-GGUF` | `tts/omnivoice-base-<quant>.gguf` + `tts/omnivoice-tokenizer-<quant>.gguf` | fused-omnivoice runtime; quant = `Q4_K_M` on 0.6B/1.7B, `Q8_0` on 9B+ (`VOICE_QUANT_BY_TIER`); non-commercial CC-compatible licensing per `packages/inference/AGENTS.md` §1 |
 | ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` | tokenizer fused with the text backbone (zero re-tokenization) |
 | VAD | Silero VAD v5.1.2 (MIT) | `vad/silero-vad-v5.1.2.ggml.bin` (native GGML; legacy bundles may also carry the `vad/silero-vad-int8.onnx` fallback — not the release path) | none |

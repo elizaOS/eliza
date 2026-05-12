@@ -199,7 +199,7 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["BENCHMARK_HARNESS"] = harness
     env["ELIZA_BENCH_HARNESS"] = harness
     env["BENCHMARK_AGENT"] = harness
-    env["MILADY_PROVIDER"] = provider or request.provider
+    env["ELIZA_PROVIDER"] = provider or request.provider
     env["MODEL_NAME"] = model_name
     env["OPENAI_MODEL"] = model_name
     env["ANTHROPIC_MODEL"] = model_name

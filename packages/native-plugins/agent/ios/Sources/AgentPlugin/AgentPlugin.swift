@@ -610,11 +610,11 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
                 "agentApiBase",
                 "ELIZA_AGENT_API_BASE",
                 "ELIZA_API_BASE",
-                "MILADY_IOS_API_BASE",
-                "MILADY_IOS_REMOTE_API_BASE",
-                "MILADY_MOBILE_API_BASE",
-                "VITE_MILADY_IOS_API_BASE",
-                "VITE_MILADY_MOBILE_API_BASE",
+                "ELIZA_IOS_API_BASE",
+                "ELIZA_IOS_REMOTE_API_BASE",
+                "ELIZA_MOBILE_API_BASE",
+                "VITE_ELIZA_IOS_API_BASE",
+                "VITE_ELIZA_MOBILE_API_BASE",
                 "VITE_ELIZA_IOS_API_BASE",
             ]
         ) else {
@@ -638,11 +638,11 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
                 "agentApiToken",
                 "ELIZA_AGENT_API_TOKEN",
                 "ELIZA_API_TOKEN",
-                "MILADY_IOS_API_TOKEN",
-                "MILADY_IOS_REMOTE_API_TOKEN",
-                "MILADY_MOBILE_API_TOKEN",
-                "VITE_MILADY_IOS_API_TOKEN",
-                "VITE_MILADY_MOBILE_API_TOKEN",
+                "ELIZA_IOS_API_TOKEN",
+                "ELIZA_IOS_REMOTE_API_TOKEN",
+                "ELIZA_MOBILE_API_TOKEN",
+                "VITE_ELIZA_IOS_API_TOKEN",
+                "VITE_ELIZA_MOBILE_API_TOKEN",
                 "VITE_ELIZA_IOS_API_TOKEN",
             ]
         )
@@ -702,12 +702,12 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
                 "agentRuntimeMode",
                 "ELIZA_IOS_RUNTIME_MODE",
                 "ELIZA_MOBILE_RUNTIME_MODE",
-                "MILADY_IOS_RUNTIME_MODE",
-                "MILADY_MOBILE_RUNTIME_MODE",
+                "ELIZA_IOS_RUNTIME_MODE",
+                "ELIZA_MOBILE_RUNTIME_MODE",
                 "VITE_ELIZA_IOS_RUNTIME_MODE",
                 "VITE_ELIZA_MOBILE_RUNTIME_MODE",
-                "VITE_MILADY_IOS_RUNTIME_MODE",
-                "VITE_MILADY_MOBILE_RUNTIME_MODE",
+                "VITE_ELIZA_IOS_RUNTIME_MODE",
+                "VITE_ELIZA_MOBILE_RUNTIME_MODE",
             ]
         ) else {
             return false
@@ -885,7 +885,7 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func missingEndpointMessage() -> String {
-        return "iOS Agent requires a configured HTTP endpoint for remote/cloud mode, or runtimeMode=local for dev/sideload local mode. Set Agent.apiBase in capacitor.config, an Info.plist/UserDefaults key such as MILADY_IOS_API_BASE or ELIZA_AGENT_API_BASE, or a simulator environment variable."
+        return "iOS Agent requires a configured HTTP endpoint for remote/cloud mode, or runtimeMode=local for dev/sideload local mode. Set Agent.apiBase in capacitor.config, an Info.plist/UserDefaults key such as ELIZA_IOS_API_BASE or ELIZA_AGENT_API_BASE, or a simulator environment variable."
     }
 
     private func localIttpOnlyMessage() -> String {

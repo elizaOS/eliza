@@ -15,7 +15,7 @@ contract from `packages/inference/AGENTS.md` §4.
 | ---------------- | ----------------------------------------------------- | ------------------------------------------------------------------ |
 | omnivoice.cpp    | `https://github.com/elizaOS/omnivoice.cpp` (fork of `https://github.com/ServeurpersoCom/omnivoice.cpp`) | `38f824023d12b21a7c324651b18bd90f16d8bb86` (upstream master HEAD 2026-05-10) |
 | omnivoice ggml   | `https://github.com/ServeurpersoCom/ggml.git`         | `0e3980ef205ea3639650f59e54cfeecd7d947700` (its `ggml` submodule)  |
-| milady llama.cpp | `https://github.com/elizaOS/llama.cpp.git`          | `v0.4.0-milady` (`08032d57`) — see `build-llama-cpp-dflash.mjs`    |
+| eliza llama.cpp | `https://github.com/elizaOS/llama.cpp.git`          | `v0.4.0-eliza` (`08032d57`) — see `build-llama-cpp-dflash.mjs`    |
 
 ## GGML pin reconciliation strategy
 
@@ -27,7 +27,7 @@ patches that the kernels in `packages/inference/{metal,vulkan}` are
 verified against.
 
 **Two ggml trees in one build tree is illegal.** The kernels in this
-repo are checked against the milady ggml only — the ServeurpersoCom ggml
+repo are checked against the eliza ggml only — the ServeurpersoCom ggml
 does not have TurboQuant centroids, QJL projections, PolarQuant
 centroids, or DFlash flash-attn entry points. Targeting both would
 either (a) link two different ggml libraries into the same process
@@ -61,7 +61,7 @@ fused checkout we:
      symbol families.
 6. (When required) apply patches from `omnivoice-fuse/patches/` to
    reconcile any compile-time API drift between omnivoice's expected
-   ggml surface (the ServeurpersoCom fork) and the milady ggml. Each
+   ggml surface (the ServeurpersoCom fork) and the eliza ggml. Each
    patch is documented at the top with the symbol/struct it touches and
    the upstream commit that introduced the drift.
 
@@ -73,12 +73,12 @@ ggml that ships inside `elizaOS/llama.cpp` (the
 `packages/inference/llama.cpp` submodule), then bump the omnivoice pin
 in this README.
 
-### Why not "swap omnivoice's ggml submodule for milady's ggml"?
+### Why not "swap omnivoice's ggml submodule for eliza's ggml"?
 
 That sounds equivalent but creates a sharper failure mode: omnivoice's
 CMakeLists.txt expects to be the parent of `ggml/` and configures it
 with its own option set (`OMNIVOICE_*`, GGML_MAX_NAME=128, etc.). If we
-let omnivoice's CMake reconfigure milady's ggml we lose the kernel-set
+let omnivoice's CMake reconfigure eliza's ggml we lose the kernel-set
 and patch hooks that `build-llama-cpp-dflash.mjs` already wires. The
 graft approach keeps llama.cpp's CMake as the single point of ggml
 configuration.
@@ -124,7 +124,7 @@ address space — same problem, masked.
    For each commit that touches the ggml C API used by omnivoice's
    `src/`, decide:
    - is it already in elizaOS/llama.cpp's vendored ggml? (skip)
-   - is it a kernel/quant change conflicting with milady's TurboQuant /
+   - is it a kernel/quant change conflicting with eliza's TurboQuant /
      QJL / PolarQuant work? (HARD STOP — escalate before bumping)
    - is it an additive API call omnivoice now uses? (cherry-pick into
      elizaOS/llama.cpp's `ggml/`, then bump that fork's tag, then

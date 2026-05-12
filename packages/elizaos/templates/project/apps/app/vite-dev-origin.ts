@@ -71,7 +71,7 @@ function withPublicClientPort(
 /**
  * Resolve the Vite dev-server origin/HMR runtime configuration from env.
  *
- * `brandedPrefix` is the per-app env prefix (e.g. `MILADY`, `MYAPP`). When
+ * `brandedPrefix` is the per-app env prefix (e.g. `ELIZA`, `MYAPP`). When
  * unset, only the generic `ELIZA_*` env vars are consulted.
  */
 export function resolveViteDevServerRuntime(

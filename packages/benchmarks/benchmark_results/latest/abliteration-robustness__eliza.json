@@ -1,7 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131636Z_e9cd2e89/abliteration-robustness__abliteration-robustness/run_abliteration-robustness_20260511T131636Z_1_a9cfb29d/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131636Z_e9cd2e89/abliteration-robustness__abliteration-robustness/run_abliteration-robustness_20260511T131636Z_1_a9cfb29d/output"
   ],
   "benchmark_directory": "abliteration-robustness",
   "benchmark_id": "abliteration-robustness",
@@ -54,7 +54,7 @@
     "throughput_per_second": 0.23512127817061249
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T131636Z_e9cd2e89/abliteration-robustness__abliteration-robustness/run_abliteration-robustness_20260511T131636Z_1_a9cfb29d/output/abliteration-robustness-results.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131636Z_e9cd2e89/abliteration-robustness__abliteration-robustness/run_abliteration-robustness_20260511T131636Z_1_a9cfb29d/output/abliteration-robustness-results.json",
   "run_group_id": "rg_20260511T131636Z_e9cd2e89",
   "run_id": "run_abliteration-robustness_20260511T131636Z_1_a9cfb29d",
   "score": 0.0,

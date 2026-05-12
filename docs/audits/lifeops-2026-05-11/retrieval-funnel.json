@@ -1,63 +1,63 @@
 {
   "stats": {
-    "filesScanned": 299,
-    "toolSearchStagesSeen": 256,
-    "stagesWithMeasurement": 0,
-    "stagesWithCorrectActions": 0,
-    "countedSamples": 0
+    "filesScanned": 481,
+    "toolSearchStagesSeen": 481,
+    "stagesWithMeasurement": 479,
+    "stagesWithCorrectActions": 479,
+    "countedSamples": 479
   },
   "recallSummary": {
     "exact": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.27783576896311757,
+      "3": 0.3905706332637439,
+      "5": 0.3905706332637439,
+      "10": 0.3905706332637439
     },
     "regex": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.29244954766875436,
+      "3": 0.3862212943632568,
+      "5": 0.3883089770354906,
+      "10": 0.3883089770354906
     },
     "keyword": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.025052192066805846,
+      "3": 0.14509394572025053,
+      "5": 0.15762004175365343,
+      "10": 0.15762004175365343
     },
     "bm25": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.447981906750174,
+      "3": 0.761482254697286,
+      "5": 0.9563326374391093,
+      "10": 0.9772094641614475
     },
     "embedding": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0,
+      "3": 0,
+      "5": 0,
+      "10": 0
     },
     "contextMatch": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0,
+      "3": 0,
+      "5": 0,
+      "10": 0
     },
     "fused": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.33837856645789843,
+      "3": 0.8947459986082116,
+      "5": 0.983472512178149,
+      "10": 0.9876478775226166
     }
   },
   "firstAppearHist": {
-    "exact": 0,
-    "regex": 0,
-    "keyword": 0,
-    "bm25": 0,
+    "exact": 155,
+    "regex": 197,
+    "keyword": 22,
+    "bm25": 133,
     "embedding": 0,
     "contextMatch": 0,
-    "fused": 0,
-    "never": 0
+    "fused": 4,
+    "never": 9
   }
 }

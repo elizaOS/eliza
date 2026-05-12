@@ -4,7 +4,7 @@ Last reviewed: 2026-05-11
 
 ## Goal
 
-Milady should expose the strongest agentic IDE capability each platform can
+Eliza should expose the strongest agentic IDE capability each platform can
 honestly support:
 
 - AOSP / ElizaOS Android: full on-device backend, terminal, file creation,

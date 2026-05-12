@@ -355,7 +355,7 @@ export const Eliza1RamBudgetSchema = z
 
 // Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
 // models — GGUF-converted via the elizaOS/llama.cpp fork and fully
-// Milady-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
+// Eliza-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
 // but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
 // state; `local-standin` is a non-publishable staging shape;
 // `upload-candidate` / `final` are the historical fine-tuned-v1 publish

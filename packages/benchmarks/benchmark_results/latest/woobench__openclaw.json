@@ -1,7 +1,7 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output"
   ],
   "benchmark_directory": "woobench",
   "benchmark_id": "woobench",
@@ -54,7 +54,7 @@
     "throughput_per_second": 1.652394112520037
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output/woobench_gpt-oss-120b_20260511_062119.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132113Z_1a836212/woobench__woobench/run_woobench_20260511T132113Z_1_94cbf416/output/woobench_gpt-oss-120b_20260511_062119.json",
   "run_group_id": "rg_20260511T132113Z_1a836212",
   "run_id": "run_woobench_20260511T132113Z_1_94cbf416",
   "score": 0.9999999999999999,

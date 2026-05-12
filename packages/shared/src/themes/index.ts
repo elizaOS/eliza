@@ -16,4 +16,4 @@ export {
   THEME_FONT_LINK_ID,
   validateThemeDefinition,
 } from "../contracts/theme.js";
-export { ELIZA_DEFAULT_THEME, MILADY_DEFAULT_THEME } from "./presets.js";
+export { ELIZA_DEFAULT_THEME, ELIZA_DEFAULT_THEME } from "./presets.js";

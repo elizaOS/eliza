@@ -44,7 +44,7 @@ nothing).
 ## Bundle artifacts (both real bundles, `~/.eliza/local-inference/models/`)
 
 `eliza-1-0_6b.bundle` and `eliza-1-1_7b.bundle` both carry real GGUFs:
-text (`eliza-1-{0_6b,1_7b}-…k.gguf`, base-v1 — converted + Milady-quantized,
+text (`eliza-1-{0_6b,1_7b}-…k.gguf`, base-v1 — converted + Eliza-quantized,
 NOT fine-tuned), DFlash drafter (`drafter-{0_6b,1_7b}.gguf`, a real GGUF that
 is currently a near-copy of the target → ~100% acceptance), OmniVoice
 TTS (`omnivoice-base-Q4_K_M.gguf` + `omnivoice-tokenizer-Q4_K_M.gguf`), ASR

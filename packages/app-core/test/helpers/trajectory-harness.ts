@@ -138,7 +138,7 @@ export interface RecordingHarnessOptions extends ConversationHarnessOptions {
 export function isTrajectoryCaptureEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
-  const raw = (env.ELIZA_DUMP_TRAJECTORIES ?? env.MILADY_TRAJECTORY_REVIEW_MODE)
+  const raw = (env.ELIZA_DUMP_TRAJECTORIES ?? env.ELIZA_TRAJECTORY_REVIEW_MODE)
     ?.trim()
     .toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
@@ -148,9 +148,9 @@ function isTrajectoryMarkdownReviewEnabled(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
   const raw = (
-    env.MILADY_TRAJECTORY_REVIEW_MODE ??
-    env.MILADY_TRAJECTORY_MARKDOWN ??
-    env.ELIZA_TRAJECTORY_MARKDOWN
+    env.ELIZA_TRAJECTORY_REVIEW_MODE ??
+    env.ELIZA_TRAJECTORY_MARKDOWN ??
+    env.MILADY_TRAJECTORY_MARKDOWN
   )
     ?.trim()
     .toLowerCase();
@@ -159,7 +159,7 @@ function isTrajectoryMarkdownReviewEnabled(
     raw === "true" ||
     raw === "yes" ||
     raw === "on" ||
-    Boolean(env.MILADY_TRAJECTORY_MARKDOWN_DIR?.trim())
+    Boolean(env.ELIZA_TRAJECTORY_MARKDOWN_DIR?.trim())
   );
 }
 
@@ -255,7 +255,7 @@ function wrapMarkdownLongLines(
 
 function redactMarkdownSecrets(text: string): string {
   const raw =
-    process.env.MILADY_TRAJECTORY_MARKDOWN_REDACT?.trim().toLowerCase();
+    process.env.ELIZA_TRAJECTORY_MARKDOWN_REDACT?.trim().toLowerCase();
   if (raw === "0" || raw === "false" || raw === "no" || raw === "off") {
     return text;
   }

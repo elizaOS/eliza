@@ -155,7 +155,7 @@ def deslop_record(rec: dict, stats: dict) -> dict:
             if not isinstance(m, dict):
                 continue
             role = (m.get("role") or "").lower()
-            if role not in ("assistant", "agent", "milady"):
+            if role not in ("assistant", "agent", "eliza"):
                 continue
             c = m.get("content")
             if not isinstance(c, str) or not c:

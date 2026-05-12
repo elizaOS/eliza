@@ -32,13 +32,13 @@
 >     `patchMetalKernels` implementation in
 >     `packages/app-core/scripts/kernel-patches/metal-kernels.mjs`. It
 >     copies the verified standalones from `packages/inference/metal/` into
->     the fork at `ggml/src/ggml-metal/milady-shipped/<name>.metal`, then
+>     the fork at `ggml/src/ggml-metal/eliza-shipped/<name>.metal`, then
 >     patches `ggml/src/ggml-metal/CMakeLists.txt` so each standalone is
 >     compiled into its own `.air` and merged into `default.metallib`
 >     alongside `ggml-metal.air`. The patch fires unconditionally on every
 >     Metal target — no env-var opt-in. The previous opt-in environment
 >     variables (`ELIZA_DFLASH_PATCH_METAL_*=1`) were decorative log toggles
->     and are removed. Idempotent via `# MILADY-KERNEL-PATCH-V1` sentinel.
+>     and are removed. Idempotent via `# ELIZA-KERNEL-PATCH-V1` sentinel.
 >
 >   * For Apple desktop targets the script now sets
 >     `-DGGML_METAL_EMBED_LIBRARY=OFF`, so the patched `add_custom_command`
@@ -59,15 +59,15 @@
 >
 >       1. `01-vulkan-shaders-gen.patch` — adds 9 `string_to_spv()` calls at
 >          the bottom of `process_shaders()` so the gen tool emits
->          `milady_<name>_data[]` + `milady_<name>_len` symbols into
+>          `eliza_<name>_data[]` + `eliza_<name>_len` symbols into
 >          `ggml-vulkan-shaders.hpp`.
 >       2. `02-ggml-vulkan-pipelines.patch` — extends `vk_device_struct` with
->          9 `vk_pipeline pipeline_milady_*` slots and adds 9
+>          9 `vk_pipeline pipeline_eliza_*` slots and adds 9
 >          `ggml_vk_create_pipeline()` calls at the bottom of
 >          `ggml_vk_load_shaders()` so each SPV blob is referenced at link
 >          time and surfaces in `nm libggml-vulkan.so`.
 >
->     Symbol audit (`nm libggml-vulkan.so | grep milady_`) is now expected to
+>     Symbol audit (`nm libggml-vulkan.so | grep eliza_`) is now expected to
 >     pass on a successful linux-x64-vulkan build. The source patch also adds
 >     conservative op-level dispatch for `GGML_OP_ATTN_SCORE_QJL`,
 >     `GGML_OP_ATTN_SCORE_TBQ`, and `GGML_OP_ATTN_SCORE_POLAR`. The remaining
@@ -397,7 +397,7 @@ bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend vulkan
 | `polar_preht.metal` (`kernel_attn_score_q4_polar_preht_f32` + `_multi`) | n/a | n/a | yes (`polar_preht.json`) | YES (`dot(H·x, q) == dot(x, H·q)`; mirrors `vulkan/polar_preht.comp` + `eliza_polar_mul_mv`) | yes (Apple Metal runtime JIT; ships in `default.metallib`) | YES — Apple M4 Max (`make metal-verify-fused`) | YES — 8/8 PASS for scalar + multi 2/3/4/8, both residual modes, max diff 5.8e-6 |
 | `cuda/fused-attn-qjl-tbq.cu` (`fused_attn_qjl_tbq3_kernel` + DP4A QJL; P0 shared-mem V-decode + P1 register Q-hoist optimized) | n/a | n/a | yes (`fused_attn_qjl_tbq.json`) | YES (mirrors `verify/cuda_verify.cu`'s fused kernel + the fork CPU op) | yes (nvcc, gated on `-DGGML_CUDA_FUSED_ATTN_QJL=ON`; compiles into the fork's `ggml-cuda/` via `patchCudaKernels`) | YES — verified on RTX 5080 (sm_90 PTX JIT to sm_120): `make cuda-verify-fused` 1920/1920 outputs PASS across 4 GQA/n_kv cases (n_kv 64/512/256/128, GQA 1/2/4) | YES — max diff 3.3e-7 |
 | `turbo3.metal`    | n/a                  | n/a             | yes               | YES (matches fork's `dequantize_turbo3_0_t4` byte-for-byte) | YES (Apple M4 Max, runtime JIT) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 3.3e-6 |
-| `turbo4.metal`    | n/a                  | n/a             | yes               | The fork's in-tree `milady-kernels/tbq4_0.metal` is an EARLIER draft (29-line diff, materially different inner loop). The standalone is the canonical FMA-tuned variant; the build script copies the standalone into `milady-shipped/` so the metallib uses it. | YES (Apple M4 Max, runtime JIT in verify harness) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 5.7e-6 |
+| `turbo4.metal`    | n/a                  | n/a             | yes               | The fork's in-tree `eliza-kernels/tbq4_0.metal` is an EARLIER draft (29-line diff, materially different inner loop). The standalone is the canonical FMA-tuned variant; the build script copies the standalone into `eliza-shipped/` so the metallib uses it. | YES (Apple M4 Max, runtime JIT in verify harness) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 5.7e-6 |
 | `turbo3_tcq.metal`| n/a                  | n/a             | yes               | YES (matches CUDA `dequantize_turbo3_tcq` 9-bit window decode) | YES (Apple M4 Max, runtime JIT) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 6.7e-6 |
 | `qjl.metal`       | n/a                  | n/a             | yes               | YES (matches `qjl_score_qk_ref` in qjl-cpu)                  | YES (Apple M4 Max, runtime JIT) after Wave-3 attribute-shape fix | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 1.1e-5 |
 | `polar.metal`     | n/a                  | n/a             | yes               | YES (matches `dequantize_row_q4_polar_ref` + `polar_dot_ref`) | YES (Apple M4 Max, runtime JIT) | YES — Apple M4 Max, Darwin 25.2.0 | YES — 8/8 PASS, max diff 7.6e-6 |
@@ -523,7 +523,7 @@ pristine submodule tree each run, then `git checkout -- . && git clean -fdx`
 discards those edits at the start of the next build — the submodule stays pinned
 to its gitlink commit. `ELIZA_DFLASH_LLAMA_CPP_REMOTE` / `ELIZA_DFLASH_LLAMA_CPP_REF`
 (or `--cache-dir` / `--src-dir`) still force a standalone clone for fork bisects.
-(`v1.0.0-eliza` is the same tree as the prior `v0.4.0-milady` tag, re-tagged on
+(`v1.0.0-eliza` is the same tree as the prior `v0.4.0-eliza` tag, re-tagged on
 the elizaOS rename; a full rebase onto a recent upstream llama.cpp is a follow-up.)
 
 ## How standalone shaders flow into the shipped binary
@@ -542,8 +542,8 @@ during `applyForkPatches()` and the helpers do the actual work:
    sidecar `default.metallib` next to `llama-server`.
 2. `patchMetalKernels()` copies the five standalones from
    `packages/inference/metal/{turbo3,turbo4,turbo3_tcq,qjl,polar}.metal`
-   into the fork at `ggml/src/ggml-metal/milady-shipped/<name>.metal`.
-   Files are copied verbatim; a `// # MILADY-KERNEL-PATCH-V1` comment is
+   into the fork at `ggml/src/ggml-metal/eliza-shipped/<name>.metal`.
+   Files are copied verbatim; a `// # ELIZA-KERNEL-PATCH-V1` comment is
    prepended so an audit can tell they came from the standalone.
 3. `patchMetalKernels()` patches
    `ggml/src/ggml-metal/CMakeLists.txt`'s non-EMBED `add_custom_command`
@@ -551,7 +551,7 @@ during `applyForkPatches()` and the helpers do the actual work:
    (`ggml-metal.metal` plus each of the five standalones), producing
    one `.air` file each, then merges all six `.air` files into
    `default.metallib` via a single `xcrun metallib` invocation. Sentinel
-   `# MILADY-KERNEL-PATCH-V1` makes the patch idempotent.
+   `# ELIZA-KERNEL-PATCH-V1` makes the patch idempotent.
 4. The build install loop copies `default.metallib` from the build's
    `bin/` directory into the install `outDir` next to `llama-server`.
    The Metal runtime locates it via dlopen-style `loader_path` resolution.
@@ -614,7 +614,7 @@ before it can satisfy AGENTS.md §3 in this workspace.
 | `MINGW_TOOLCHAIN_FILE`                   | Operator-supplied cmake toolchain file for windows-* targets. Required for `windows-arm64-*` cross builds; optional override for `windows-x64-*` (auto-detected mingw is used otherwise). | unset |
 
 The previous `ELIZA_DFLASH_PATCH_METAL_*` / `ELIZA_DFLASH_PATCH_VULKAN_KERNELS`
-environment knobs were decorative log toggles for the v0.4.0-milady-era
+environment knobs were decorative log toggles for the v0.4.0-eliza-era
 no-op patch hooks. They have been removed; both the Metal and Vulkan
 patch helpers now run unconditionally on every matching target — Metal
 copies the standalone shaders + patches the metallib `add_custom_command`,

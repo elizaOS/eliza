@@ -194,7 +194,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "bits_weights": "4",
         "bits_kv": "(unchanged: bf16 KV at runtime; pair with TurboQuant for 4-bit KV)",
         "paper": "[arXiv:2603.29078](https://arxiv.org/abs/2603.29078)",
-        "runtime": "milady local runtime, vLLM with custom kernel, scripts/quantization/polarquant_apply.py",
+        "runtime": "eliza local runtime, vLLM with custom kernel, scripts/quantization/polarquant_apply.py",
         "file_size": "~38% of bf16",
         "target_hw": "16 GB consumer GPU (RTX 5080 Laptop, RTX 4070 Ti)",
         "quality_delta": "<=0.3 PPL on the eliza-toon-v1-sft test split",
@@ -209,7 +209,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "bits_weights": "(unchanged: bf16 weights; pair with PolarQuant for 4-bit weights)",
         "bits_kv": "4 (online, calibration-free)",
         "paper": "[arXiv:2504.19874](https://arxiv.org/abs/2504.19874)",
-        "runtime": "milady local runtime, vLLM with custom kernel, scripts/quantization/turboquant_apply.py",
+        "runtime": "eliza local runtime, vLLM with custom kernel, scripts/quantization/turboquant_apply.py",
         "file_size": "~same as bf16 (KV-only quant; weights unchanged)",
         "target_hw": "24 GB workstation GPU (RTX 5090, RTX 4090, RTX A6000)",
         "quality_delta": "negligible at 144k context (per arXiv:2504.19874 fig 4)",
@@ -369,7 +369,7 @@ def _quant_inference_block(config: PushConfig) -> str:
             "# fp16 weights so AutoModelForCausalLM loads them directly) plus a\n"
             "# `polarquant_artifacts.safetensors` sidecar carrying the int8 codes\n"
             "# + fp16 norms that downstream INT4 kernels (torchao, llama.cpp,\n"
-            "# MLX, milady local) consume for the actual VRAM win.\n"
+            "# MLX, eliza local) consume for the actual VRAM win.\n"
             "from transformers import AutoModelForCausalLM, AutoTokenizer\n"
             "import torch\n"
             "\n"

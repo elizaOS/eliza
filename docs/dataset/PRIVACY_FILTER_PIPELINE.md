@@ -12,7 +12,7 @@ Run the filter before any trajectory JSON/JSONL becomes training data:
 
 ```bash
 python3 packages/training/scripts/privacy_filter_trajectories.py \
-  --input ~/.milady/trajectories \
+  --input ~/.eliza/trajectories \
   --output-jsonl data/private/redacted-trajectories.jsonl \
   --ledger-jsonl data/private/redaction-ledger.jsonl \
   --stats-json data/private/privacy-stats.json \

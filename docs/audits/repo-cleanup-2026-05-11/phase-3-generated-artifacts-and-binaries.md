@@ -1,6 +1,6 @@
 # Phase 3 - Generated Artifacts and Binaries Dry Run
 
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Mode: dry run only
 Write scope: this markdown report only
 

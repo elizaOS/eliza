@@ -341,7 +341,7 @@ def main() -> int:
     bench_is_hybrid = has_hybrid_layer_types(model)
     if bench_is_hybrid:
         log.info("hybrid Qwen3.5/3.6 detected — bench will rebuild a "
-                 "MiladyHybridCache(bf16) per generation call")
+                 "ElizaHybridCache(bf16) per generation call")
 
     log.info("loading test records (max %d per bucket)", args.max_per_bucket)
     buckets = load_test_records(Path(args.test_file), args.max_per_bucket)

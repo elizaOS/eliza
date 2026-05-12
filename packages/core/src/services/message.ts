@@ -936,7 +936,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
 
 /**
  * Returns true when the current turn was issued by a benchmark harness AND the
- * `MILADY_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
+ * `ELIZA_BENCH_FORCE_TOOL_CALL` env opt-in is set. Used to bias the planner
  * toward emitting structured tool calls instead of routing every turn through
  * `REPLY`, which is what LifeOpsBench and similar harnesses score against.
  *
@@ -950,7 +950,7 @@ function hasInboundBenchmarkContext(message: Memory): boolean {
  * bench-server metadata get the tool-call boost.
  */
 function isBenchmarkForcingToolCall(message: Memory): boolean {
-	if (process.env.MILADY_BENCH_FORCE_TOOL_CALL !== "1") return false;
+	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
 	if (content.source === "benchmark") return true;
@@ -1805,7 +1805,7 @@ function buildV5PlannerActionSurface(params: {
 
 	if (
 		params.actions.length === 0 ||
-		process.env.MILADY_TIERED_ACTION_SURFACE === "0"
+		process.env.ELIZA_TIERED_ACTION_SURFACE === "0"
 	) {
 		return buildFullV5PlannerActionSurface({
 			actions: params.actions,
@@ -1818,7 +1818,7 @@ function buildV5PlannerActionSurface(params: {
 	const catalog = buildActionCatalog([...params.actions], {
 		localizedExamples: params.localizedExamples,
 	});
-	const measurementMode = process.env.MILADY_RETRIEVAL_MEASUREMENT === "1";
+	const measurementMode = process.env.ELIZA_RETRIEVAL_MEASUREMENT === "1";
 	const retrieval = retrieveActions({
 		catalog,
 		messageText: getUserMessageText(params.message) ?? "",
@@ -4467,7 +4467,7 @@ export async function runV5MessageRuntimeStage1(args: {
 	});
 
 	// G10/G11: construct the per-trajectory recorder. No-op when disabled via
-	// MILADY_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
+	// ELIZA_TRAJECTORY_RECORDING=0. Failures inside the recorder must NEVER
 	// propagate up — the recorder is observability, not load-bearing.
 	const recordingEnabled = isTrajectoryRecordingEnabled();
 	const recorder: TrajectoryRecorder | undefined = recordingEnabled
@@ -4662,7 +4662,7 @@ export async function runV5MessageRuntimeStage1(args: {
 					availableContexts,
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
-		if (!messageHandler && process.env.MILADY_DEBUG_STAGE1 === "1") {
+		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
 			args.runtime.logger?.warn?.(
 				{
 					raw:
@@ -5381,6 +5381,60 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
 	}
 	return out;
+}
+
+/**
+ * Build the prompt sent to the fallback "failure reply" model when the
+ * planner trajectory errors out (rate limits, transient network failure,
+ * provider 5xx). The prompt forbids the model from emitting any
+ * substantive answer to the user's question — including answers that
+ * appear "obvious" from recent-conversation context — because the
+ * grounding trajectory never ran.
+ *
+ * Why a separate exported function: this prompt is load-bearing for
+ * correctness (a previous version's "if you can plausibly act, do it"
+ * escape hatch caused gpt-oss-120b on Cerebras to hallucinate a git
+ * SHA from prior chat context during a live battle test, even though
+ * no tool was actually called). Pinning the hard rules in tests means
+ * a future "let's make the failure reply more helpful" refactor can't
+ * silently re-introduce the hallucination vector.
+ *
+ * @param recentMessages Plain-text projection of the recent conversation
+ * (whatever the caller has at hand — typically `state.values.recentMessages`).
+ */
+export function buildFailureReplyPrompt(recentMessages: string): string {
+	return [
+		"You hit a transient model error and have to send a short user-facing reply.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Stay in character. Keep your usual voice and tone.",
+		"- NEVER mention internal mechanism words such as: planner, action_planner,",
+		"  XML, JSON, schema, structured output, model, retries, sonnet,",
+		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+		"  loop, runtime, dispatch, or hand off. The user does not know or care",
+		"  what those are.",
+		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+		"- Acknowledge that something went wrong and suggest a retry. Examples:",
+		'  "something flaked, try again in a sec",',
+		'  "weird hiccup, give me another shot in a moment",',
+		'  "got stuck on my end, retry that?"',
+		"- NEVER answer the user's question on the merits in this reply. Even",
+		"  if the answer looks obvious from context (a SHA, a count, a price,",
+		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
+		"  The trajectory that would have GROUNDED the answer failed, so any",
+		"  factual claim you make here is by definition ungrounded. The user",
+		"  will retry, the real run will produce the grounded answer, and",
+		"  meanwhile you must not invent one from recent-conversation context.",
+		"- Do not paraphrase or echo the user's question as if you were about",
+		"  to answer it. Just say something went wrong and invite a retry.",
+		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
+		"",
+		"Recent Conversation:",
+		recentMessages,
+		"",
+		"Reply:",
+	].join("\n");
 }
 
 /**
@@ -7923,7 +7977,7 @@ export class DefaultMessageService implements IMessageService {
 	): Promise<MessageProcessingResult> {
 		// Analysis-mode token detection runs BEFORE any planner work so the
 		// agent never hallucinates a "performing an analysis" reply. Gated by
-		// `MILADY_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
+		// `ELIZA_ENABLE_ANALYSIS_MODE` / `NODE_ENV=development`. See
 		// services/analysis-mode-handler.ts and review #15.
 		const analysisActivation = maybeHandleAnalysisActivation({
 			text: message.content?.text,
@@ -9905,31 +9959,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = [
-			"You hit a transient model error and have to send a short user-facing reply.",
-			"Write a one or two sentence reply in plain language.",
-			"",
-			"Hard rules:",
-			"- Stay in character. Keep your usual voice and tone.",
-			"- NEVER mention internal mechanism words such as: planner, action_planner,",
-			"  XML, JSON, schema, structured output, model, retries, sonnet,",
-			"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-			"  loop, runtime, dispatch, or hand off. The user does not know or care",
-			"  what those are.",
-			"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-			"- Just acknowledge that something went wrong and suggest a retry.",
-			'  Examples: "something flaked, try again in a sec",',
-			'  "weird hiccup, give me another shot in a moment",',
-			'  "got stuck on my end, retry that?"',
-			"- If the user already gave a clear command and you can plausibly act,",
-			"  acknowledge it and offer to take the action directly. Keep it short.",
-			"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-			"",
-			"Recent Conversation:",
-			recentMessages,
-			"",
-			"Reply:",
-		].join("\n");
+		const failurePrompt = buildFailureReplyPrompt(recentMessages);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,

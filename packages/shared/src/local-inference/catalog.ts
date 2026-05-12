@@ -102,7 +102,7 @@ function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
 
 /**
  * Per-tier "base, not fine-tuned" provenance — the upstream HuggingFace
- * repos each shipped bundle component is GGUF-converted + Milady-optimized
+ * repos each shipped bundle component is GGUF-converted + Eliza-optimized
  * from. Eliza-1 v1 = these exact base weights, optimized (every quant/kernel
  * trick in `packages/inference/AGENTS.md` §3), NOT fine-tuned. This must
  * agree with `provenance.sourceModels` in the tier's

@@ -1,5 +1,5 @@
 /**
- * Asserts the orchestrator's store-build gating: when MILADY_BUILD_VARIANT=store,
+ * Asserts the orchestrator's store-build gating: when ELIZA_BUILD_VARIANT=store,
  * the plugin must register zero spawn-bearing services and a single TASKS stub
  * action whose handler returns a structured "blocked" result without ever
  * touching PTY / ACP / workspace state.
@@ -20,7 +20,7 @@ const SLOW = 30_000;
 
 describe("agent-orchestrator sandbox gating", () => {
   const ENV_KEYS = [
-    "MILADY_BUILD_VARIANT",
+    "ELIZA_BUILD_VARIANT",
     "ELIZA_BUILD_VARIANT",
     "ELIZA_PLATFORM",
     "ELIZA_AOSP_BUILD",
@@ -51,7 +51,7 @@ describe("agent-orchestrator sandbox gating", () => {
   it("flags isLocalCodeExecutionAllowed=false under store variant", {
     timeout: SLOW,
   }, async () => {
-    process.env.MILADY_BUILD_VARIANT = "store";
+    process.env.ELIZA_BUILD_VARIANT = "store";
     _resetBuildVariantForTests();
     expect(getBuildVariant()).toBe("store");
     expect(isLocalCodeExecutionAllowed()).toBe(false);
@@ -60,7 +60,7 @@ describe("agent-orchestrator sandbox gating", () => {
   it("flags isLocalCodeExecutionAllowed=true under direct variant", {
     timeout: SLOW,
   }, async () => {
-    process.env.MILADY_BUILD_VARIANT = "direct";
+    process.env.ELIZA_BUILD_VARIANT = "direct";
     _resetBuildVariantForTests();
     expect(getBuildVariant()).toBe("direct");
     expect(isLocalCodeExecutionAllowed()).toBe(true);
@@ -69,7 +69,7 @@ describe("agent-orchestrator sandbox gating", () => {
   it("registers no spawn services and only a TASKS stub under store builds", {
     timeout: SLOW,
   }, async () => {
-    process.env.MILADY_BUILD_VARIANT = "store";
+    process.env.ELIZA_BUILD_VARIANT = "store";
     _resetBuildVariantForTests();
 
     const agentOrchestratorPlugin = createAgentOrchestratorPlugin();
@@ -83,7 +83,7 @@ describe("agent-orchestrator sandbox gating", () => {
   it("registers only a TASKS unsupported stub on vanilla Android", {
     timeout: SLOW,
   }, async () => {
-    process.env.MILADY_BUILD_VARIANT = "direct";
+    process.env.ELIZA_BUILD_VARIANT = "direct";
     process.env.ELIZA_PLATFORM = "android";
     process.env.ELIZA_RUNTIME_MODE = "local-yolo";
     _resetBuildVariantForTests();
@@ -110,7 +110,7 @@ describe("agent-orchestrator sandbox gating", () => {
   it("returns a structured STORE_BUILD_BLOCKED result from the stub handler", {
     timeout: SLOW,
   }, async () => {
-    process.env.MILADY_BUILD_VARIANT = "store";
+    process.env.ELIZA_BUILD_VARIANT = "store";
     _resetBuildVariantForTests();
     const result = await tasksSandboxStubAction.handler(
       {} as never,

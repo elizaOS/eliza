@@ -1,4 +1,4 @@
-# Milady eliza-1 training stack — GPU image.
+# Eliza eliza-1 training stack — GPU image.
 #
 # Builds the CUDA + Triton + QJL extension chain required by:
 #   - scripts/quantization/qjl/                   (vendored CUDA kernels, nvcc)

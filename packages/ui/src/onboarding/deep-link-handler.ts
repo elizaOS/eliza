@@ -1,7 +1,7 @@
 /**
  * Deep-link entry for the onboarding picker.
  *
- * iOS and Android wire `milady://onboard/step/<id>` URLs through Capacitor's
+ * iOS and Android wire `eliza://onboard/step/<id>` URLs through Capacitor's
  * `App.addListener("appUrlOpen", ...)`. The native shell hands the URL string
  * to the renderer; this module translates the onboarding-specific paths into
  * the URL-query contract that `RuntimeGate` already reads on mount
@@ -42,7 +42,7 @@ import {
   type RuntimePickerTarget,
 } from "./reload-into-runtime-picker";
 
-/** Path prefix expected after the scheme — `milady://onboard/step/<id>`. */
+/** Path prefix expected after the scheme — `eliza://onboard/step/<id>`. */
 const ONBOARD_HOST = "onboard";
 const STEP_SEGMENT = "step";
 
@@ -60,7 +60,7 @@ function isOnboardingStepId(value: string): value is OnboardingStepId {
 }
 
 /**
- * Parses `milady://onboard/step/<id>` (or any scheme matching `urlScheme`)
+ * Parses `eliza://onboard/step/<id>` (or any scheme matching `urlScheme`)
  * and writes the matching `?runtime=picker&runtimeTarget=<choice>` query
  * params to the current location. Returns `true` when the URL matched the
  * onboarding contract (so the caller can stop processing); returns `false`
@@ -69,7 +69,7 @@ function isOnboardingStepId(value: string): value is OnboardingStepId {
  * @param url        The raw URL string handed in by Capacitor's
  *                   `appUrlOpen` event.
  * @param urlScheme  The app's deep-link scheme without the trailing `:`
- *                   (e.g. `"milady"`).
+ *                   (e.g. `"eliza"`).
  */
 export function routeOnboardingDeepLink(
   url: string,

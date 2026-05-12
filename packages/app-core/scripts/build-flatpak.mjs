@@ -3,11 +3,11 @@
 // build-flatpak.mjs — Flatpak builder driver, store + direct variants.
 //
 // Usage:
-//   MILADY_BUILD_VARIANT=store bun run build:flatpak
-//   MILADY_BUILD_VARIANT=direct bun run build:flatpak
+//   ELIZA_BUILD_VARIANT=store bun run build:flatpak
+//   ELIZA_BUILD_VARIANT=direct bun run build:flatpak
 //   bun run build:flatpak --variant store
 //
-// Picks the correct manifest based on MILADY_BUILD_VARIANT (or --variant),
+// Picks the correct manifest based on ELIZA_BUILD_VARIANT (or --variant),
 // invokes flatpak-builder, and emits a bundle into ./dist-flatpak/.
 //
 // Defaults to `store` when the variant is unspecified. The store variant
@@ -35,11 +35,11 @@ const APP_ID = "ai.elizaos.App";
 function parseVariant() {
   const argIdx = process.argv.indexOf("--variant");
   const fromArg = argIdx >= 0 ? process.argv[argIdx + 1] : undefined;
-  const raw = fromArg || process.env.MILADY_BUILD_VARIANT || "store";
+  const raw = fromArg || process.env.ELIZA_BUILD_VARIANT || "store";
   const variant = raw.toLowerCase();
   if (variant !== "store" && variant !== "direct") {
     throw new Error(
-      `MILADY_BUILD_VARIANT must be 'store' or 'direct' (got '${raw}').`,
+      `ELIZA_BUILD_VARIANT must be 'store' or 'direct' (got '${raw}').`,
     );
   }
   return variant;

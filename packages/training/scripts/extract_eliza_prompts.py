@@ -39,7 +39,7 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]  # /home/shaw/milady
+ROOT = Path(__file__).resolve().parents[2]  # /home/shaw/eliza
 TRAIN_ROOT = Path(__file__).resolve().parents[1]
 ELIZA = ROOT / "eliza"
 CANONICAL_DIR = ELIZA / "packages" / "prompts" / "prompts"

@@ -5,7 +5,7 @@
 - **Target:** `http://localhost:31337`
 - **Streaming mode:** yes
 - **Label:** baseline-stub-2026-05-09
-- **Config:** `/home/shaw/milady/eliza/scripts/benchmark/configs/aosp-default.json`
+- **Config:** `/home/shaw/eliza/eliza/scripts/benchmark/configs/aosp-default.json`
 - **Iterations per combo:** 3 (+ 1 warmup)
 
 ## Summary table

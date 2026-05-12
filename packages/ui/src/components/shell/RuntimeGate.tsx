@@ -130,7 +130,7 @@ function resolveLocalAgentApiBase(): string {
 }
 
 /**
- * Branded native shells (AOSP/MiladyOS, where the device IS the on-device
+ * Branded native shells (AOSP/ElizaOS, where the device IS the on-device
  * agent) expose the agent's per-boot bearer through a synchronous
  * `window.ElizaNative.getLocalAgentToken()` JavascriptInterface. Reading
  * it during the local-mode wire-up means `/api/auth/status` can
@@ -2105,7 +2105,7 @@ function WelcomeChooser({
           }}
           className="text-2xl font-light uppercase tracking-tight text-white sm:text-3xl md:text-4xl"
         >
-          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Milady" })}
+          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Eliza" })}
         </h1>
         <p
           className="max-w-md text-sm leading-relaxed text-white/85"

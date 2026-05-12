@@ -1,7 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133611Z_ddcbd023/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133611Z_3_654904c4/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133611Z_ddcbd023/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133611Z_3_654904c4/output"
   ],
   "benchmark_directory": "lifeops-bench",
   "benchmark_id": "lifeops_bench",
@@ -59,7 +59,7 @@
     "throughput_per_second": 0.09070209849879758
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133611Z_ddcbd023/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133611Z_3_654904c4/output/lifeops_gpt-oss-120b_20260511_063739.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133611Z_ddcbd023/lifeops-bench__lifeops_bench/run_lifeops_bench_20260511T133611Z_3_654904c4/output/lifeops_gpt-oss-120b_20260511_063739.json",
   "run_group_id": "rg_20260511T133611Z_ddcbd023",
   "run_id": "run_lifeops_bench_20260511T133611Z_3_654904c4",
   "score": 0.0,

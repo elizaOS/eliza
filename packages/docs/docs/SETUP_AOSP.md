@@ -1,4 +1,4 @@
-# Milady Android — Dual-Build Map
+# Eliza Android — Dual-Build Map
 
 The same `apps/app/android/` Gradle module produces two distinct APK shapes
 from one source tree. They share the renderer, capacitor plugin set, agent
@@ -135,7 +135,7 @@ The resulting APK at
 `apps/app/android/app/build/outputs/apk/release/app-release-unsigned.apk`
 must then be platform-signed with `apksigner` and the AOSP platform key
 before it is pushed to `/system/priv-app/<Brand>/`. See
-`scripts/miladyos/build-aosp.mjs` and the post-build sign+push script.
+`scripts/elizaos/build-aosp.mjs` and the post-build sign+push script.
 
 ### Capacitor build
 
@@ -151,10 +151,10 @@ asset tree is excluded by the thinning hook above — the build log shows
 ## Cuttlefish smoke
 
 The cuttlefish smoke runner lives at
-`scripts/miladyos/smoke-cuttlefish.mjs`. It expects a running cvd on
-`0.0.0.0:6520`, a platform-signed Milady APK at
-`os/android/vendor/milady/apps/Milady/Milady.apk`, and an overlay-mounted
-`/system` so it can push the APK to `/system/priv-app/Milady/Milady.apk`
+`scripts/elizaos/smoke-cuttlefish.mjs`. It expects a running cvd on
+`0.0.0.0:6520`, a platform-signed Eliza APK at
+`os/android/vendor/eliza/apps/Eliza/Eliza.apk`, and an overlay-mounted
+`/system` so it can push the APK to `/system/priv-app/Eliza/Eliza.apk`
 without re-flashing.
 
 The smoke validates: APK install, ElizaAgentService start, bun process
@@ -181,8 +181,8 @@ end-to-end planner round-trip against the bundled GGUF.
   `ELIZA_LOCAL_LLAMA=1`.
 - `eliza/packages/native-plugins/agent/android/` — capacitor agent
   plugin used by the Capacitor build path.
-- `os/android/vendor/milady/sepolicy/milady_agent.te` — brand-specific
+- `os/android/vendor/eliza/sepolicy/eliza_agent.te` — brand-specific
   SELinux domain definition for the priv-app AOSP build.
-- `scripts/miladyos/smoke-cuttlefish.mjs` — cuttlefish smoke runner.
-- `scripts/miladyos/build-aosp.mjs` — orchestrator that drives the
+- `scripts/elizaos/smoke-cuttlefish.mjs` — cuttlefish smoke runner.
+- `scripts/elizaos/build-aosp.mjs` — orchestrator that drives the
   AOSP-side build (sourcetree overlay + sign + push to overlay).

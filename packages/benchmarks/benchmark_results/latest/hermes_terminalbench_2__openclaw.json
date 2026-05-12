@@ -1,7 +1,7 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T184111Z_33dae013/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T184111Z_33dae013/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d/output"
   ],
   "benchmark_directory": "hermes-adapter",
   "benchmark_id": "hermes_terminalbench_2",
@@ -64,7 +64,7 @@
     "throughput_per_second": 0.010067135604894091
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T184111Z_33dae013/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d/output/hermes_terminalbench_2_20260511T184343Z.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T184111Z_33dae013/hermes-adapter__hermes_terminalbench_2/run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d/output/hermes_terminalbench_2_20260511T184343Z.json",
   "run_group_id": "rg_20260511T184111Z_33dae013",
   "run_id": "run_hermes_terminalbench_2_20260511T184203Z_5_979a9c5d",
   "score": 0.0,

@@ -22,16 +22,16 @@ at the script's pinned ref.
 | Item                       | Value                                                                                  |
 | -------------------------- | -------------------------------------------------------------------------------------- |
 | Remote                     | `https://github.com/elizaOS/llama.cpp.git`                                           |
-| Pinned ref (script)        | `v0.4.0-milady` (annotated tag)                                                        |
+| Pinned ref (script)        | `v0.4.0-eliza` (annotated tag)                                                        |
 | Tag-object SHA             | `99ed5f0f93b42b87047b03dc5ef420d0dc2e9c27`                                             |
-| Commit the tag points to   | `08032d57e15574f2a7ca19fc3f29510c8673d590` (= current `milady/integration` HEAD)       |
-| Tag commit message         | `merge: W4-B CUDA QJL + Polar + TBQ3_TCQ kernels from milady/cuda-extra into milady/integration` |
+| Commit the tag points to   | `08032d57e15574f2a7ca19fc3f29510c8673d590` (= current `eliza/integration` HEAD)       |
+| Tag commit message         | `merge: W4-B CUDA QJL + Polar + TBQ3_TCQ kernels from eliza/cuda-extra into eliza/integration` |
 | Tag date                   | 2026-05-09 22:30:47 -0700                                                              |
-| Clone status               | shallow `git clone --depth 1 -b v0.4.0-milady` succeeded                               |
+| Clone status               | shallow `git clone --depth 1 -b v0.4.0-eliza` succeeded                               |
 
 The "verified pin" hash `99ed5f0f` from the original task brief is the
 **annotated tag object**, not the commit. The commit it dereferences to
-(`08032d57…`) matches `milady/integration` head exactly. There is no
+(`08032d57…`) matches `eliza/integration` head exactly. There is no
 divergence — both refs point at the same code.
 
 ## Build-script patch hook inventory
@@ -47,7 +47,7 @@ table below as historical context only; the current source and
 | Hook                          | Triggered when                                | Env gate                                  | What it does in the fork                                                                  | In-fork status                                              | Still needed? |
 | ----------------------------- | --------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ------------- |
 | `patchVulkanKernels`          | `backend === "vulkan"`                        | `ELIZA_DFLASH_PATCH_VULKAN_KERNELS != 0`  | Logs "fork kernels in sync"                                                               | **MISLEADING** — fork has ZERO `turbo*/qjl*/polar*` `.comp` shaders under `ggml/src/ggml-vulkan/` | Hook itself is no-op; log claim is false. See drift table.   |
-| `patchMetalTurbo4`            | `backend === "metal"`                         | `ELIZA_DFLASH_PATCH_METAL_TURBO4 == 1`    | Logs "kernels already present"                                                            | TRUE — `ggml/src/ggml-metal/milady-kernels/tbq4_0.metal` exists | No (no-op log).  |
+| `patchMetalTurbo4`            | `backend === "metal"`                         | `ELIZA_DFLASH_PATCH_METAL_TURBO4 == 1`    | Logs "kernels already present"                                                            | TRUE — `ggml/src/ggml-metal/eliza-kernels/tbq4_0.metal` exists | No (no-op log).  |
 | `patchMetalTurbo3Tcq`         | `backend === "metal"`                         | `ELIZA_DFLASH_PATCH_METAL_TURBO3 == 1`    | Logs "kernels already present"                                                            | TRUE — `tbq3_tcq.metal` (and `tbq3_0.metal`) present         | No (no-op log).  |
 | `patchMetalQjl`               | `backend === "metal"`                         | `ELIZA_DFLASH_PATCH_METAL_QJL == 1`       | Logs "kernels already present"                                                            | TRUE — `qjl.metal` present                                  | No (no-op log).  |
 | `patchMetalPolar`             | `backend === "metal"`                         | `ELIZA_DFLASH_PATCH_METAL_POLAR == 1`     | Logs "kernels already present"                                                            | TRUE — `polar.metal` present                                | No (no-op log).  |
@@ -65,11 +65,11 @@ are what `metal_verify` actually validated 8/8 PASS against.
 
 | Kernel        | Fork path (relative to fork root)                       | Standalone path (relative to repo root)                | Diff size (lines) | Substantive differences                                                                                                            | Canonical at runtime? | Notes                                                                                                                  |
 | ------------- | ------------------------------------------------------- | ------------------------------------------------------ | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| turbo3        | `ggml/src/ggml-metal/milady-kernels/tbq3_0.metal`        | `packages/inference/metal/turbo3.metal`                | ~58               | Standalone hoists per-block byte loads out of the inner loop and uses `fma`. Numerically identical centroid math, both `simd_sum`. | Fork                  | Standalone is faster; fork is what ships. Both pass the same fixture. README "byte-for-byte" overstated.                |
-| turbo4        | `ggml/src/ggml-metal/milady-kernels/tbq4_0.metal`        | `packages/inference/metal/turbo4.metal`                | ~38               | Standalone preloads two `qs[]` bytes and uses `fma`. Same `block_turbo4_0` layout (`half norm; uint8_t qs[64]`).                  | Fork                  | Layout claim in README is true; perf-tweak claim of equality is overstated.                                            |
-| turbo3_tcq    | `ggml/src/ggml-metal/milady-kernels/tbq3_tcq.metal`      | `packages/inference/metal/turbo3_tcq.metal`            | ~32               | Standalone removes a dead bounds branch and uses `fma`.                                                                            | Fork                  | Both decode the same 9-bit sliding window.                                                                              |
-| qjl           | `ggml/src/ggml-metal/milady-kernels/qjl.metal`           | `packages/inference/metal/qjl.metal`                   | ~58               | Standalone uses branchless ±1 sign + `fma`; promotes `tid`/`tg_pos` to `uint3` (Metal compiler attribute-shape requirement).      | Fork                  | The `uint3` attribute promotion was the W3 fix that made the kernel compile at all on Apple — fork shipped that.       |
-| polar         | `ggml/src/ggml-metal/milady-kernels/polar.metal`         | `packages/inference/metal/polar.metal`                 | ~190              | **Standalone has a parallel 32-thread Hadamard butterfly (`polar_hadamard_inplace_tg32`); fork still runs it sequentially on tid==0.** Also factors QJL residual sign-vector through threadgroup-shared scratch. | Fork                  | Real perf win unrealized in the fork. Numerically equivalent. See "Conclusions" — flagged for sync sign-off.            |
+| turbo3        | `ggml/src/ggml-metal/eliza-kernels/tbq3_0.metal`        | `packages/inference/metal/turbo3.metal`                | ~58               | Standalone hoists per-block byte loads out of the inner loop and uses `fma`. Numerically identical centroid math, both `simd_sum`. | Fork                  | Standalone is faster; fork is what ships. Both pass the same fixture. README "byte-for-byte" overstated.                |
+| turbo4        | `ggml/src/ggml-metal/eliza-kernels/tbq4_0.metal`        | `packages/inference/metal/turbo4.metal`                | ~38               | Standalone preloads two `qs[]` bytes and uses `fma`. Same `block_turbo4_0` layout (`half norm; uint8_t qs[64]`).                  | Fork                  | Layout claim in README is true; perf-tweak claim of equality is overstated.                                            |
+| turbo3_tcq    | `ggml/src/ggml-metal/eliza-kernels/tbq3_tcq.metal`      | `packages/inference/metal/turbo3_tcq.metal`            | ~32               | Standalone removes a dead bounds branch and uses `fma`.                                                                            | Fork                  | Both decode the same 9-bit sliding window.                                                                              |
+| qjl           | `ggml/src/ggml-metal/eliza-kernels/qjl.metal`           | `packages/inference/metal/qjl.metal`                   | ~58               | Standalone uses branchless ±1 sign + `fma`; promotes `tid`/`tg_pos` to `uint3` (Metal compiler attribute-shape requirement).      | Fork                  | The `uint3` attribute promotion was the W3 fix that made the kernel compile at all on Apple — fork shipped that.       |
+| polar         | `ggml/src/ggml-metal/eliza-kernels/polar.metal`         | `packages/inference/metal/polar.metal`                 | ~190              | **Standalone has a parallel 32-thread Hadamard butterfly (`polar_hadamard_inplace_tg32`); fork still runs it sequentially on tid==0.** Also factors QJL residual sign-vector through threadgroup-shared scratch. | Fork                  | Real perf win unrealized in the fork. Numerically equivalent. See "Conclusions" — flagged for sync sign-off.            |
 
 Per `packages/inference/AGENTS.md` §9 ("Mirror the references bit-for-bit"):
 the bit-for-bit mirror is the *C reference + JSON fixture*, not the
@@ -100,7 +100,7 @@ not been integrated into the fork's Vulkan backend at this pin.
 
 The unused `kernel-patches/vulkan-kernels.mjs` impl module already
 captures this state in its own header comment (verbatim audit at
-v0.4.0-milady commit 08032d57). The build script imports it but never
+v0.4.0-eliza commit 08032d57). The build script imports it but never
 calls it.
 
 ## DFlash patch state
@@ -152,17 +152,17 @@ The previous state was: `build-llama-cpp-dflash.mjs:60-66` imported
   have been removed; the impl modules use them internally only.
 - `patchMetalKernelsImpl` copies the five standalone `.metal` files
   from `packages/inference/metal/` into the fork at
-  `ggml/src/ggml-metal/milady-shipped/<name>.metal` and patches
+  `ggml/src/ggml-metal/eliza-shipped/<name>.metal` and patches
   `ggml/src/ggml-metal/CMakeLists.txt` so each standalone is compiled
   into its own `.air` and merged into `default.metallib` alongside
-  `ggml-metal.air`. Idempotent via `# MILADY-KERNEL-PATCH-V1`.
+  `ggml-metal.air`. Idempotent via `# ELIZA-KERNEL-PATCH-V1`.
 - `patchVulkanKernelsImpl` (re-evolved post-audit beyond the
   hard-throw model) now copies the eight `.comp` files into the fork
   at `ggml/src/ggml-vulkan/vulkan-shaders/<name>.comp` and applies two
   unified-anchor patches under `kernel-patches/vulkan-dispatch-patches/`
   to register the SPV blobs in `ggml-vulkan-shaders.hpp` and add
   pipeline-creation calls in `ggml_vk_load_shaders`. Idempotent via
-  `MILADY-VK-DISPATCH-PATCH-V1`.
+  `ELIZA-VK-DISPATCH-PATCH-V1`.
 - Both impls hard-throw on missing source files / missing CMakeLists
   anchors / fs failures — no fallbacks per AGENTS.md §3.
 
@@ -204,7 +204,7 @@ Operators targeting older cards override via
 
 `make -C packages/inference/verify verify-fork` re-runs `metal_verify`
 and `vulkan_verify` against the **fork's** in-tree shader paths
-(`~/.cache/eliza-dflash/eliza-llama-cpp/ggml/src/ggml-metal/milady-kernels/*.metal`
+(`~/.cache/eliza-dflash/eliza-llama-cpp/ggml/src/ggml-metal/eliza-kernels/*.metal`
 and `.../ggml-vulkan/vulkan-shaders/*.comp`) using the same
 `fixtures/*.json` the standalone reference runs use. Behavior:
 
@@ -223,7 +223,7 @@ fails to compile because its kernel signature mixes `uint` + `uint2`
 attribute params (the standalone fixed this by promoting both to
 `uint3` — the W3 fix that made qjl compile at all on Apple). Fork
 turbo3 / turbo4 / turbo3_tcq pass 8/8 against the standalone fixtures.
-This means the v0.4.0-milady fork's in-tree `qjl.metal` is shipping a
+This means the v0.4.0-eliza fork's in-tree `qjl.metal` is shipping a
 broken-on-Apple variant; the standalone (which is what the metallib
 patch ships into the build) is the one users actually get.
 
@@ -263,7 +263,7 @@ no-op logs):**
   parallel-Hadamard win the fork lacks. Per AGENTS.md the fork is
   canonical at runtime — but `metal_verify` validated the standalones,
   not the fork's in-tree variants. Recommend re-running `metal_verify`
-  against the fork's `ggml/src/ggml-metal/milady-kernels/*.metal`
+  against the fork's `ggml/src/ggml-metal/eliza-kernels/*.metal`
   files to confirm 8/8 PASS still holds before signing off the next
   bundle release.
 
@@ -277,9 +277,9 @@ no-op logs):**
 ## Verification
 
 - `git ls-remote` confirmed both refs pre-clone.
-- Shallow clone of `v0.4.0-milady` succeeded (exit 0).
-- `git rev-parse v0.4.0-milady^{}` resolved to `08032d57` (commit
-  identical to `milady/integration` head).
+- Shallow clone of `v0.4.0-eliza` succeeded (exit 0).
+- `git rev-parse v0.4.0-eliza^{}` resolved to `08032d57` (commit
+  identical to `eliza/integration` head).
 - `find ggml -iname '*turbo*' -o -iname '*qjl*' -o -iname '*polar*'`
   enumerated every in-fork kernel; no Vulkan `.comp` matches.
 - `diff -u` ran for each Metal pair. Counts recorded above.

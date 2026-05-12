@@ -53,7 +53,7 @@ updates behind a button that cannot work.
 | macOS direct desktop | DMG/zip/Homebrew cask | Electrobun updater, `ELIZA_RELEASE_URL`, `/Applications` eligibility guard | GitHub release feed or mirror | Yes |
 | Windows direct desktop | installer/portable | Electrobun updater | GitHub release feed or mirror | Yes |
 | Linux direct desktop | AppImage/deb/rpm/tar | Electrobun updater, future package feed | GitHub release feed or package manager | Yes for Electrobun artifacts; package manager for deb/rpm |
-| Mac App Store | MAS | `MILADY_BUILD_VARIANT=store` disables updater | Mac App Store | No |
+| Mac App Store | MAS | `ELIZA_BUILD_VARIANT=store` disables updater | Mac App Store | No |
 | Microsoft Store | MSIX/Win32 Store | store policy model needed per packaging target | Microsoft Store or publisher-owned Win32 channel | Usually store-managed unless published as direct Win32 |
 | Debian OS | apt/unattended-upgrades | CLI detects `apt` for agent package updates | Debian/Ubuntu apt repos and system administrator | No app-driven OS update |
 | Snap | Snap Store | CLI detects `snap` | `snapd` refresh | No app-driven updater |
@@ -145,7 +145,7 @@ or `~/Applications` because patching a translocated app bundle is unreliable.
 ### Store Desktop
 
 Mac App Store, Microsoft Store, Snap, and Flatpak builds should use
-`MILADY_BUILD_VARIANT=store` or a target-specific equivalent and disable the
+`ELIZA_BUILD_VARIANT=store` or a target-specific equivalent and disable the
 Electrobun feed. Settings should show "Managed by Store" and release notes.
 Win32 submitted through Microsoft Store needs a packaging decision: if Store
 owns the package, disable self-update; if Microsoft allows a publisher-managed

@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/osworld__osworld/run_osworld_20260511T132501Z_2_eec79ae0/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/osworld__osworld/run_osworld_20260511T132501Z_2_eec79ae0/output"
   ],
   "benchmark_directory": "OSWorld",
   "benchmark_id": "osworld",
@@ -57,7 +57,7 @@
     "throughput_per_second": 1.1640158843987884
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/osworld__osworld/run_osworld_20260511T132501Z_2_eec79ae0/output/osworld-eliza-results-20260511_062503.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/osworld__osworld/run_osworld_20260511T132501Z_2_eec79ae0/output/osworld-eliza-results-20260511_062503.json",
   "run_group_id": "rg_20260511T132427Z_fe2782c9",
   "run_id": "run_osworld_20260511T132501Z_2_eec79ae0",
   "score": 1.0,

@@ -292,7 +292,7 @@ function resolvePackDir(pkgDir, pkgJson) {
 async function packUpstreams() {
   if (!existsSync(path.join(ELIZA_ROOT, "package.json"))) {
     throw new Error(
-      `Could not find eliza workspace at ${ELIZA_ROOT}. Run this from a standalone eliza checkout or a Milady checkout with eliza/ present.`,
+      `Could not find eliza workspace at ${ELIZA_ROOT}. Run this from a standalone eliza checkout or a Eliza checkout with eliza/ present.`,
     );
   }
 

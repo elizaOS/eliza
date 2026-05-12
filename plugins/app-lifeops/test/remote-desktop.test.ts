@@ -47,9 +47,9 @@ function ownerMessage(agentId: UUID, text: string): Memory {
 
 describe("REMOTE_DESKTOP integration (local mode)", () => {
   beforeEach(() => {
-    priorStateDir = process.env.MILADY_STATE_DIR;
+    priorStateDir = process.env.ELIZA_STATE_DIR;
     priorLocalMode = process.env.ELIZA_REMOTE_LOCAL_MODE;
-    process.env.MILADY_STATE_DIR = mkdtempSync(
+    process.env.ELIZA_STATE_DIR = mkdtempSync(
       path.join(tmpdir(), "remote-desktop-test-"),
     );
     process.env.ELIZA_REMOTE_LOCAL_MODE = "1";
@@ -59,9 +59,9 @@ describe("REMOTE_DESKTOP integration (local mode)", () => {
   afterEach(() => {
     __resetRemoteSessionServiceForTests();
     if (priorStateDir === undefined) {
-      delete process.env.MILADY_STATE_DIR;
+      delete process.env.ELIZA_STATE_DIR;
     } else {
-      process.env.MILADY_STATE_DIR = priorStateDir;
+      process.env.ELIZA_STATE_DIR = priorStateDir;
     }
     if (priorLocalMode === undefined) {
       delete process.env.ELIZA_REMOTE_LOCAL_MODE;

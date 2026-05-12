@@ -2,7 +2,7 @@
 
 Date: 2026-05-11
 Worker: Phase 2 deep-dive worker 4
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 
 ## Scope
 

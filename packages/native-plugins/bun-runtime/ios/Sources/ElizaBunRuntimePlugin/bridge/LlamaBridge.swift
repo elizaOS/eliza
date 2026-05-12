@@ -215,14 +215,14 @@ public final class LlamaBridge {
         (function(){
           let resolveFn;
           const p = new Promise(function(res){ resolveFn = res; });
-          p.__milady_resolve = resolveFn;
+          p.__eliza_resolve = resolveFn;
           return p;
         })
         """
         guard let promise = ctx.evaluateScript(script)?.call(withArguments: []) else {
             return (NSNull(), nil)
         }
-        let resolver = promise.forProperty("__milady_resolve")
+        let resolver = promise.forProperty("__eliza_resolve")
         return (promise, resolver)
     }
 

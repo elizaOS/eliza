@@ -3,7 +3,7 @@
  * lifeops-prompt-review.
  *
  * Reads the manifest produced by `scripts/lifeops-prompt-inventory.mjs` and
- * the latest trajectories under `~/.milady/trajectories/` and emits one
+ * the latest trajectories under `~/.eliza/trajectories/` and emits one
  * Markdown page per prompt under
  * `docs/audits/lifeops-2026-05-11/prompts/<sanitized-id>.md`, plus an
  * `INDEX.md` linking all pages by token count and last-optimization score.
@@ -39,7 +39,7 @@ const PAGES_DIR = join(AUDIT_DIR, "prompts");
 
 const TRAJECTORIES_ROOT =
   process.env.LIFEOPS_TRAJECTORIES_DIR ??
-  join(process.env.HOME ?? "/Users/shawwalters", ".milady", "trajectories");
+  join(process.env.HOME ?? "/Users/shawwalters", ".eliza", "trajectories");
 const MAX_TRAJECTORIES = Number(process.env.LIFEOPS_REVIEW_MAX_TRAJ ?? "200");
 const MAX_FAILURE_SAMPLES = 3;
 

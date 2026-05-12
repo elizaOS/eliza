@@ -24,14 +24,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
 
-from ._retry import (
-    MAX_ATTEMPTS,
-    RetryExhaustedError,
-    backoff_seconds,
-    is_retryable_status,
-    parse_retry_after,
-)
-
 logger = logging.getLogger(__name__)
 
 
@@ -282,83 +274,6 @@ class OpenClawClient:
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
-
-
-def _post_with_retry(
-    *,
-    url: str,
-    body: dict[str, Any],
-    api_key: str,
-    timeout_s: float,
-) -> dict[str, Any]:
-    """POST ``body`` as JSON, retrying on 429/5xx/network errors.
-
-    On 4xx other than 429 the underlying ``HTTPError`` is re-wrapped as a
-    ``RuntimeError`` immediately. After ``MAX_ATTEMPTS`` exhausted retries a
-    :class:`RetryExhaustedError` is raised.
-    """
-    last_status: int | None = None
-    last_error_str = "no attempt completed"
-    for attempt in range(MAX_ATTEMPTS):
-        request = urllib.request.Request(
-            url,
-            data=json.dumps(body).encode("utf-8"),
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "Accept-Encoding": "identity",
-                "User-Agent": "eliza-openclaw-benchmark/1.0",
-            },
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout_s) as response:  # nosec B310
-                return json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            status = int(exc.code) if isinstance(exc.code, int) else None
-            detail = exc.read().decode("utf-8", errors="replace")
-            last_status = status
-            last_error_str = detail[:500]
-            if status is None or not is_retryable_status(status):
-                raise RuntimeError(
-                    f"OpenClaw-compatible completion failed (status={status}): {detail}"
-                ) from exc
-            retry_after_raw: str | None = None
-            try:
-                retry_after_raw = exc.headers.get("Retry-After") if exc.headers else None
-            except AttributeError:
-                retry_after_raw = None
-            delay = parse_retry_after(retry_after_raw) or backoff_seconds(attempt)
-        except urllib.error.URLError as exc:
-            last_status = None
-            last_error_str = f"{type(exc).__name__}: {exc.reason!r}"
-            delay = backoff_seconds(attempt)
-        except (TimeoutError, ConnectionError, OSError) as exc:
-            last_status = None
-            last_error_str = f"{type(exc).__name__}: {exc}"
-            delay = backoff_seconds(attempt)
-        if attempt == MAX_ATTEMPTS - 1:
-            raise RetryExhaustedError(
-                attempts=MAX_ATTEMPTS,
-                last_status=last_status,
-                last_error=last_error_str,
-            )
-        logger.warning(
-            "openclaw-adapter retrying POST (attempt %d/%d, status=%s) after %.2fs: %s",
-            attempt + 1,
-            MAX_ATTEMPTS,
-            "net" if last_status is None else last_status,
-            delay,
-            last_error_str[:200],
-        )
-        time.sleep(delay)
-    # Unreachable — the loop always either returns or raises.
-    raise RetryExhaustedError(  # pragma: no cover
-        attempts=MAX_ATTEMPTS,
-        last_status=last_status,
-        last_error=last_error_str,
-    )
 
 
 def _resolve_default_binary() -> Path:

@@ -19,7 +19,7 @@ identical.
 
 ## Verification run
 
-All commands were run from `/Users/shawwalters/eliza-workspace/milady/eliza`.
+All commands were run from `/Users/shawwalters/eliza-workspace/eliza/eliza`.
 
 ```bash
 make -C packages/inference/verify reference-test

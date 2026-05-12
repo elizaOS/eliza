@@ -5,18 +5,18 @@
 //
 //   1. Copies the required and optimization standalone Metal shaders from
 //      packages/inference/metal/ into the fork's tree at
-//      ggml/src/ggml-metal/milady-shipped/<kernel>.metal. The standalones are
+//      ggml/src/ggml-metal/eliza-shipped/<kernel>.metal. The standalones are
 //      self-contained TUs (only #include <metal_stdlib>; their own structs,
 //      constants, kernel symbols), so they compile as independent .air files.
 //
 //   2. Patches ggml/src/ggml-metal/CMakeLists.txt so both Metal packaging
 //      branches build each standalone shader into its own .air via
 //      `xcrun metal -c` and merge all .air files (the original ggml-metal.air
-//      plus the five milady .air files) into one default.metallib.
+//      plus the five eliza .air files) into one default.metallib.
 //
 //   The original CMake snippet pipes `xcrun metal | xcrun metallib`. We
 //   replace that with explicit per-source compilation + a final merge step,
-//   keyed by a `# MILADY-KERNEL-PATCH-V1` sentinel so the patch is idempotent.
+//   keyed by a `# ELIZA-KERNEL-PATCH-V1` sentinel so the patch is idempotent.
 //
 //   3. Hard-throws on any error — missing files, missing anchor in
 //      CMakeLists.txt, fs failures. Per AGENTS.md §3, the build must exit
@@ -109,14 +109,14 @@ export const METAL_RUNTIME_DISPATCH_GATES = {
   },
 };
 
-const SENTINEL = "# MILADY-KERNEL-PATCH-V1";
-const SENTINEL_EMBED = "# MILADY-KERNEL-EMBED-PATCH-V1";
-const SENTINEL_EMBED_LOADER = "// MILADY-EMBEDDED-METALLIB-LOADER-V1";
-const SENTINEL_QJL_ATTN = "// MILADY-QJL-ATTN-DISPATCH-V1";
-const SENTINEL_TBQ_POLAR_ATTN = "// MILADY-TBQ-POLAR-ATTN-DISPATCH-V1";
+const SENTINEL = "# ELIZA-KERNEL-PATCH-V1";
+const SENTINEL_EMBED = "# ELIZA-KERNEL-EMBED-PATCH-V1";
+const SENTINEL_EMBED_LOADER = "// ELIZA-EMBEDDED-METALLIB-LOADER-V1";
+const SENTINEL_QJL_ATTN = "// ELIZA-QJL-ATTN-DISPATCH-V1";
+const SENTINEL_TBQ_POLAR_ATTN = "// ELIZA-TBQ-POLAR-ATTN-DISPATCH-V1";
 
 function inForkRelpath(name) {
-  return path.posix.join("ggml", "src", "ggml-metal", "milady-shipped", name);
+  return path.posix.join("ggml", "src", "ggml-metal", "eliza-shipped", name);
 }
 
 // Verify all standalones exist and are non-empty before any fs writes — we
@@ -142,12 +142,12 @@ function assertStandalonesPresent() {
 }
 
 // Copy each standalone .metal into the fork at
-// ggml/src/ggml-metal/milady-shipped/<name>.metal, overwriting any prior copy
+// ggml/src/ggml-metal/eliza-shipped/<name>.metal, overwriting any prior copy
 // so the canonical source-of-truth is always the verified standalone.
 //
-// We deliberately overwrite the fork's stale ggml/src/ggml-metal/milady-kernels/
-// content if it exists, but we write into a sibling milady-shipped/ directory
-// so the patch is self-contained and the original (un-wired) milady-kernels/
+// We deliberately overwrite the fork's stale ggml/src/ggml-metal/eliza-kernels/
+// content if it exists, but we write into a sibling eliza-shipped/ directory
+// so the patch is self-contained and the original (un-wired) eliza-kernels/
 // drafts remain visible for diff-archaeology if a future agent wants them.
 function copyStandalonesIntoFork(cacheDir, { dryRun }) {
   const targetDir = path.join(
@@ -155,7 +155,7 @@ function copyStandalonesIntoFork(cacheDir, { dryRun }) {
     "ggml",
     "src",
     "ggml-metal",
-    "milady-shipped",
+    "eliza-shipped",
   );
   if (dryRun) {
     console.log(`[metal-kernels] (dry-run) mkdir -p ${targetDir}`);
@@ -206,17 +206,17 @@ function patchMetalCMakeLists(cacheDir, { dryRun }) {
   let patched = original;
   let changed = false;
 
-  const miladyAirLinesForSdk = (sdkExpr) =>
+  const elizaAirLinesForSdk = (sdkExpr) =>
     METAL_KERNEL_FILES.map((name) => {
       const stem = name.replace(/\.metal$/, "");
-      return `        COMMAND xcrun -sdk ${sdkExpr} metal \${XC_FLAGS} -c \${CMAKE_CURRENT_SOURCE_DIR}/milady-shipped/${name} -o \${CMAKE_CURRENT_BINARY_DIR}/${stem}.air`;
+      return `        COMMAND xcrun -sdk ${sdkExpr} metal \${XC_FLAGS} -c \${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/${name} -o \${CMAKE_CURRENT_BINARY_DIR}/${stem}.air`;
     }).join("\n");
-  const miladyAirInputs = METAL_KERNEL_FILES.map((name) => {
+  const elizaAirInputs = METAL_KERNEL_FILES.map((name) => {
     const stem = name.replace(/\.metal$/, "");
     return `\${CMAKE_CURRENT_BINARY_DIR}/${stem}.air`;
   }).join(" ");
-  const miladyDepends = METAL_KERNEL_FILES.map(
-    (name) => `\${CMAKE_CURRENT_SOURCE_DIR}/milady-shipped/${name}`,
+  const elizaDepends = METAL_KERNEL_FILES.map(
+    (name) => `\${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/${name}`,
   ).join(" ");
 
   if (!patched.includes(SENTINEL_EMBED)) {
@@ -236,11 +236,11 @@ function patchMetalCMakeLists(cacheDir, { dryRun }) {
           `the fork's GGML_METAL_EMBED_LIBRARY branch changed shape and the patch must be revisited.`,
       );
     }
-    const embedAirLines = miladyAirLinesForSdk("${METAL_SDK}");
+    const embedAirLines = elizaAirLinesForSdk("${METAL_SDK}");
     const embedReplacement = `    # ${SENTINEL_EMBED}
     # Build a compiled default.metallib for embedded-library targets (iOS).
     # The upstream path embedded concatenated Metal source and JIT-compiled it
-    # at runtime. That cannot include the milady standalones because the source
+    # at runtime. That cannot include the eliza standalones because the source
     # TUs intentionally redeclare block_* structs/constants that already exist
     # in ggml-common.h. Compile each TU separately, merge into one metallib,
     # and embed the binary metallib bytes instead.
@@ -264,19 +264,19 @@ function patchMetalCMakeLists(cacheDir, { dryRun }) {
 
     add_custom_command(
         OUTPUT "\${METALLIB_EMBED_ASM}"
-        COMMAND echo "Embedding Metal library (compiled metallib + milady-shipped kernels)"
+        COMMAND echo "Embedding Metal library (compiled metallib + eliza-shipped kernels)"
         COMMAND sed -e "/__embed_ggml-common.h__/r \${METALLIB_COMMON}"       -e "/__embed_ggml-common.h__/d"         < "\${METALLIB_SOURCE}"           > "\${METALLIB_SOURCE_EMBED_TMP}"
         COMMAND sed -e "/\\#include \\"ggml-metal-impl.h\\"/r \${METALLIB_IMPL}" -e "/\\#include \\"ggml-metal-impl.h\\"/d" < "\${METALLIB_SOURCE_EMBED_TMP}" > "\${METALLIB_SOURCE_EMBED}"
         COMMAND xcrun -sdk \${METAL_SDK} metal \${XC_FLAGS} -DGGML_METAL_EMBED_LIBRARY=1 -c "\${METALLIB_SOURCE_EMBED}" -o "\${METALLIB_EMBED_AIR}"
 ${embedAirLines}
-        COMMAND xcrun -sdk \${METAL_SDK} metallib "\${METALLIB_EMBED_AIR}" ${miladyAirInputs} -o "\${METALLIB_EMBED_BINARY}"
+        COMMAND xcrun -sdk \${METAL_SDK} metallib "\${METALLIB_EMBED_AIR}" ${elizaAirInputs} -o "\${METALLIB_EMBED_BINARY}"
         COMMAND echo ".section __DATA,__ggml_metallib"          >  "\${METALLIB_EMBED_ASM}"
         COMMAND echo ".globl _ggml_metallib_start"              >> "\${METALLIB_EMBED_ASM}"
         COMMAND echo "_ggml_metallib_start:"                    >> "\${METALLIB_EMBED_ASM}"
         COMMAND echo .incbin "\\"\${METALLIB_EMBED_BINARY}\\""    >> "\${METALLIB_EMBED_ASM}"
         COMMAND echo ".globl _ggml_metallib_end"                >> "\${METALLIB_EMBED_ASM}"
         COMMAND echo "_ggml_metallib_end:"                      >> "\${METALLIB_EMBED_ASM}"
-        DEPENDS ../ggml-common.h ggml-metal.metal ggml-metal-impl.h ${miladyDepends}
+        DEPENDS ../ggml-common.h ggml-metal.metal ggml-metal-impl.h ${elizaDepends}
         COMMENT "Generate assembly for embedded compiled Metal library"
         VERBATIM
     )`;
@@ -306,9 +306,9 @@ ${embedAirLines}
       );
     }
 
-    const miladyAirLines = miladyAirLinesForSdk("macosx");
+    const elizaAirLines = elizaAirLinesForSdk("macosx");
     const replacement = `    # ${SENTINEL}
-    # Build ggml-metal.metal AND each milady standalone shader into its own
+    # Build ggml-metal.metal AND each eliza standalone shader into its own
     # .air file, then merge all .air files into a single default.metallib.
     # The standalones are self-contained TUs (only #include <metal_stdlib>;
     # define their own block_*, constants, kernel functions) so they do not
@@ -316,12 +316,12 @@ ${embedAirLines}
     add_custom_command(
         OUTPUT \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
         COMMAND xcrun -sdk macosx metal \${XC_FLAGS} -c \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ggml-metal.metal -o \${CMAKE_CURRENT_BINARY_DIR}/ggml-metal.air
-${miladyAirLines}
-        COMMAND xcrun -sdk macosx metallib \${CMAKE_CURRENT_BINARY_DIR}/ggml-metal.air ${miladyAirInputs} -o \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
+${elizaAirLines}
+        COMMAND xcrun -sdk macosx metallib \${CMAKE_CURRENT_BINARY_DIR}/ggml-metal.air ${elizaAirInputs} -o \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/default.metallib
         COMMAND rm -f \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ggml-common.h
         COMMAND rm -f \${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/ggml-metal.metal
-        DEPENDS ggml-metal.metal \${METALLIB_COMMON} ${miladyDepends}
-        COMMENT "Compiling Metal kernels (ggml-metal + milady-shipped: ${METAL_KERNEL_FILES.join(", ")})"
+        DEPENDS ggml-metal.metal \${METALLIB_COMMON} ${elizaDepends}
+        COMMENT "Compiling Metal kernels (ggml-metal + eliza-shipped: ${METAL_KERNEL_FILES.join(", ")})"
         )`;
     patched = patched.replace(anchor, replacement);
     changed = true;
@@ -381,7 +381,7 @@ function patchEmbeddedMetallibLoader(cacheDir, { dryRun }) {
         // The build patch embeds compiled default.metallib bytes here, not
         // Metal source. Loading with newLibraryWithData keeps iOS on the same
         // multi-TU kernel set as desktop and avoids duplicate declarations
-        // between ggml-metal.metal and the milady standalone shaders.
+        // between ggml-metal.metal and the eliza standalone shaders.
         const NSUInteger metallib_len = (NSUInteger)(ggml_metallib_end - ggml_metallib_start);
         dispatch_data_t metallib_data = dispatch_data_create(ggml_metallib_start, metallib_len, nil, DISPATCH_DATA_DESTRUCTOR_DEFAULT);
         library = [device newLibraryWithData:metallib_data error:&error];
@@ -400,7 +400,7 @@ function patchEmbeddedMetallibLoader(cacheDir, { dryRun }) {
   return { changed: !dryRun, path: deviceMPath };
 }
 
-const SENTINEL_DISPATCH = "// MILADY-DISPATCH-V1";
+const SENTINEL_DISPATCH = "// ELIZA-DISPATCH-V1";
 
 function patchMetalQjlAttnHeader(cacheDir, { dryRun }) {
   const headerPath = path.join(
@@ -535,13 +535,13 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
       );
     }
     upgraded = upgraded.replace(
-      `struct milady_qjl_score_args {
+      `struct eliza_qjl_score_args {
     uint32_t n_heads;
     uint32_t n_kv_heads;
     uint32_t n_tokens;
     uint32_t proj_dim;
 };`,
-      `struct milady_qjl_score_args {
+      `struct eliza_qjl_score_args {
     uint32_t n_heads;
     uint32_t n_kv_heads;
     uint32_t n_tokens;
@@ -549,19 +549,19 @@ function patchMetalQjlAttnOpsCpp(cacheDir, { dryRun }) {
     uint32_t tokens_per_threadgroup;
 };`,
     );
-    if (!upgraded.includes("static inline uint32_t milady_env_u32")) {
+    if (!upgraded.includes("static inline uint32_t eliza_env_u32")) {
       upgraded = upgraded.replace(
-        `static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+        `static inline ggml_metal_buffer_id eliza_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
     id.offs += extra;
     return id;
 }
 `,
-        `static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+        `static inline ggml_metal_buffer_id eliza_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
     id.offs += extra;
     return id;
 }
 
-static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
+static inline uint32_t eliza_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
     const char * raw = std::getenv(name);
     if (raw == nullptr || raw[0] == '\\0') {
         return fallback;
@@ -587,7 +587,7 @@ static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
-        /* tokens_per_threadgroup = */ milady_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
+        /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
     };`,
     );
     upgraded = upgraded.replace(
@@ -616,7 +616,7 @@ static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint
     );
   }
   const opFunc = `${SENTINEL_QJL_ATTN}
-struct milady_qjl_score_args {
+struct eliza_qjl_score_args {
     uint32_t n_heads;
     uint32_t n_kv_heads;
     uint32_t n_tokens;
@@ -624,12 +624,12 @@ struct milady_qjl_score_args {
     uint32_t tokens_per_threadgroup;
 };
 
-static inline ggml_metal_buffer_id milady_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
+static inline ggml_metal_buffer_id eliza_metal_buffer_offset(ggml_metal_buffer_id id, size_t extra) {
     id.offs += extra;
     return id;
 }
 
-static inline uint32_t milady_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
+static inline uint32_t eliza_env_u32(const char * name, uint32_t fallback, uint32_t min_value, uint32_t max_value) {
     const char * raw = std::getenv(name);
     if (raw == nullptr || raw[0] == '\\0') {
         return fallback;
@@ -681,7 +681,7 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
     GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_QJL1_256, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    milady_qjl_score_args args = {
+    eliza_qjl_score_args args = {
         /* n_heads    = */ n_heads,
         /* n_kv_heads = */ n_kv_heads,
         /* n_tokens   = */ n_tokens,
@@ -689,7 +689,7 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
-        /* tokens_per_threadgroup = */ milady_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
+        /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
     };
 
     auto pipeline = ggml_metal_library_get_pipeline_attn_score_qjl(lib);
@@ -706,9 +706,9 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
         const size_t pk_i3 = (size_t) i3 * pk->nb[3];
         const size_t dst_i3 = (size_t) i3 * op->nb[3];
         for (int64_t ib = 0; ib < n_batch; ++ib) {
-            ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,  q_i3  + (size_t) ib * q->nb[2]),  0);
-            ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base, pk_i3),                          1);
-            ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2]), 2);
+            ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(q_base,  q_i3  + (size_t) ib * q->nb[2]),  0);
+            ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pk_base, pk_i3),                          1);
+            ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2]), 2);
             const int token_groups = (int) ((n_tokens + args.tokens_per_threadgroup - 1u) / args.tokens_per_threadgroup);
             ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_heads, token_groups, 1, 32, 1, 1);
         }
@@ -1114,7 +1114,7 @@ function patchMetalTbqPolarDeviceCpp(cacheDir, { dryRun }) {
     );
   }
   const helper = `${SENTINEL_TBQ_POLAR_ATTN}
-static const char * milady_metal_tbq_kernel_name(ggml_type type) {
+static const char * eliza_metal_tbq_kernel_name(ggml_type type) {
     switch (type) {
         case GGML_TYPE_TBQ3_0:   return "kernel_turbo3_dot_multi";
         case GGML_TYPE_TBQ4_0:   return "kernel_turbo4_dot_multi";
@@ -1124,7 +1124,7 @@ static const char * milady_metal_tbq_kernel_name(ggml_type type) {
 }
 
 ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_attn_score_tbq(ggml_metal_library_t lib, ggml_type type) {
-    const char * name = milady_metal_tbq_kernel_name(type);
+    const char * name = eliza_metal_tbq_kernel_name(type);
     ggml_metal_pipeline_with_params res = ggml_metal_library_get_pipeline(lib, name);
     if (!res.pipeline) {
         res = ggml_metal_library_compile_pipeline(lib, name, name, nullptr);
@@ -1224,9 +1224,9 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
       "case GGML_TYPE_TBQ4_0:   return 1u;",
       "case GGML_TYPE_TBQ4_0:   return 4u;",
     );
-    if (!patched.includes("milady_tbq_blocks_per_threadgroup")) {
+    if (!patched.includes("eliza_tbq_blocks_per_threadgroup")) {
       patched = patched.replace(
-        `static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
+        `static inline uint32_t eliza_tbq_blocks_per_row(ggml_type type) {
     switch (type) {
         case GGML_TYPE_TBQ3_0:   return 4u;
         case GGML_TYPE_TBQ4_0:   return 4u;
@@ -1235,7 +1235,7 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
     }
 }
 `,
-        `static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
+        `static inline uint32_t eliza_tbq_blocks_per_row(ggml_type type) {
     switch (type) {
         case GGML_TYPE_TBQ3_0:   return 4u;
         case GGML_TYPE_TBQ4_0:   return 4u;
@@ -1244,14 +1244,14 @@ function patchMetalTbqPolarOpsCpp(cacheDir, { dryRun }) {
     }
 }
 
-static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
+static inline uint32_t eliza_tbq_blocks_per_threadgroup(ggml_type type) {
     // M4 Max multiblock/autotune bench best medians (2026-05-12):
     //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
-        case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
-        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
+        case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1260,7 +1260,7 @@ static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
     }
     patched = patched.replace(
       "/* blocks_per_threadgroup = */ 8u,",
-      "/* blocks_per_threadgroup = */ milady_tbq_blocks_per_threadgroup(ktype),",
+      "/* blocks_per_threadgroup = */ eliza_tbq_blocks_per_threadgroup(ktype),",
     );
     if (patched !== original && !dryRun)
       fs.writeFileSync(opsPath, patched, "utf8");
@@ -1274,7 +1274,7 @@ static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
     );
   }
   const opFuncs = `${SENTINEL_TBQ_POLAR_ATTN}
-struct milady_tbq_score_args {
+struct eliza_tbq_score_args {
     uint32_t head_dim;
     uint32_t n_kv;
     uint32_t kv_stride_blocks;
@@ -1283,13 +1283,13 @@ struct milady_tbq_score_args {
     uint32_t blocks_per_threadgroup;
 };
 
-struct milady_polar_score_args {
+struct eliza_polar_score_args {
     uint32_t n_rows;
     uint32_t head_dim;
     uint32_t use_qjl;
 };
 
-struct milady_polar_preht_score_args {
+struct eliza_polar_preht_score_args {
     uint32_t head_dim;
     uint32_t n_kv;
     uint32_t kv_stride_blocks;
@@ -1298,11 +1298,11 @@ struct milady_polar_preht_score_args {
     uint32_t use_qjl;
 };
 
-static const float k_milady_tbq3_tcq_codebook[512] = {
+static const float k_eliza_tbq3_tcq_codebook[512] = {
 ${tcqCodebook}
 };
 
-static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
+static inline uint32_t eliza_tbq_blocks_per_row(ggml_type type) {
     switch (type) {
         case GGML_TYPE_TBQ3_0:   return 4u;
         case GGML_TYPE_TBQ4_0:   return 4u;
@@ -1311,14 +1311,14 @@ static inline uint32_t milady_tbq_blocks_per_row(ggml_type type) {
     }
 }
 
-static inline uint32_t milady_tbq_blocks_per_threadgroup(ggml_type type) {
+static inline uint32_t eliza_tbq_blocks_per_threadgroup(ggml_type type) {
     // M4 Max multiblock/autotune bench best medians (2026-05-12):
     //   TBQ3=8, TBQ4=32, TBQ3_TCQ=16. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return milady_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
-        case GGML_TYPE_TBQ4_0:   return milady_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
-        case GGML_TYPE_TBQ3_TCQ: return milady_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
+        case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
+        case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
+        case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1361,13 +1361,13 @@ int ggml_metal_op_attn_score_tbq(ggml_metal_op_t ctx, int idx) {
     GGML_ASSERT(pk->nb[1] == ggml_row_size(ktype, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    milady_tbq_score_args args = {
+    eliza_tbq_score_args args = {
         /* head_dim = */ 128u,
         /* n_kv = */ n_tokens,
-        /* kv_stride_blocks = */ milady_tbq_blocks_per_row(ktype),
+        /* kv_stride_blocks = */ eliza_tbq_blocks_per_row(ktype),
         /* q_head = */ 0u,
         /* head_offset_bytes = */ 0u,
-        /* blocks_per_threadgroup = */ milady_tbq_blocks_per_threadgroup(ktype),
+        /* blocks_per_threadgroup = */ eliza_tbq_blocks_per_threadgroup(ktype),
     };
 
     auto pipeline = ggml_metal_library_get_pipeline_attn_score_tbq(lib, ktype);
@@ -1379,7 +1379,7 @@ int ggml_metal_op_attn_score_tbq(ggml_metal_op_t ctx, int idx) {
 
     ggml_metal_encoder_set_pipeline(enc, pipeline);
     if (ktype == GGML_TYPE_TBQ3_TCQ) {
-        ggml_metal_encoder_set_bytes(enc, (void *) k_milady_tbq3_tcq_codebook, sizeof(k_milady_tbq3_tcq_codebook), 3);
+        ggml_metal_encoder_set_bytes(enc, (void *) k_eliza_tbq3_tcq_codebook, sizeof(k_eliza_tbq3_tcq_codebook), 3);
         ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 4);
     } else {
         ggml_metal_encoder_set_bytes(enc, &args, sizeof(args), 3);
@@ -1393,9 +1393,9 @@ int ggml_metal_op_attn_score_tbq(ggml_metal_op_t ctx, int idx) {
         for (int64_t ib = 0; ib < n_batch; ++ib) {
             for (uint32_t h = 0; h < n_heads; ++h) {
                 const uint32_t h_k = h / gqa;
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  0);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 1);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
+                ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  0);
+                ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 1);
+                ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
                 ggml_metal_encoder_dispatch_threadgroups(enc, token_groups, 1, 1, 32, 1, 1);
             }
         }
@@ -1458,12 +1458,12 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
             const size_t pk_i3  = (size_t) i3 * pk->nb[3];
             const size_t dst_i3 = (size_t) i3 * op->nb[3];
             for (int64_t ib = 0; ib < n_batch; ++ib) {
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]), 0);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3),                         1);
-                ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2]), 2);
+                ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]), 0);
+                ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pk_base,  pk_i3),                         1);
+                ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2]), 2);
                 for (uint32_t h = 0; h < n_heads; ++h) {
                     const uint32_t h_k = h / gqa;
-                    milady_polar_preht_score_args args = {
+                    eliza_polar_preht_score_args args = {
                         /* head_dim = */ 128u,
                         /* n_kv = */ n_tokens,
                         /* kv_stride_blocks = */ 1u,
@@ -1477,7 +1477,7 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
             }
         }
     } else {
-        milady_polar_score_args args = {
+        eliza_polar_score_args args = {
             /* n_rows = */ n_tokens,
             /* head_dim = */ 128u,
             /* use_qjl = */ use_qjl,
@@ -1495,9 +1495,9 @@ int ggml_metal_op_attn_score_polar(ggml_metal_op_t ctx, int idx) {
             for (int64_t ib = 0; ib < n_batch; ++ib) {
                 for (uint32_t h = 0; h < n_heads; ++h) {
                     const uint32_t h_k = h / gqa;
-                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 0);
-                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  1);
-                    ggml_metal_encoder_set_buffer(enc, milady_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
+                    ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(pk_base,  pk_i3 + (size_t) h_k * pk->nb[2]), 0);
+                    ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(q_base,   q_i3  + (size_t) ib * q->nb[2]  + (size_t) h   * q->nb[1]),  1);
+                    ggml_metal_encoder_set_buffer(enc, eliza_metal_buffer_offset(dst_base, dst_i3 + (size_t) ib * op->nb[2] + (size_t) h   * op->nb[1]), 2);
                     ggml_metal_encoder_dispatch_threadgroups(enc, (int) n_tokens, 1, 1, 32, 1, 1);
                 }
             }
@@ -1619,13 +1619,13 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
   });
 
   const message =
-    "[metal-dispatch] NOT wiring generic Metal GGML dispatch for milady " +
+    "[metal-dispatch] NOT wiring generic Metal GGML dispatch for eliza " +
     "QJL/Polar/TBQ kernels. The standalone kernels use bespoke attention/" +
     "projection contracts that do not match generic MUL_MAT/GET_ROWS. " +
     "Dedicated ATTN_SCORE graph ops are required for runtime-ready bits.";
   if (patchedFiles.length > 0) {
     const detail =
-      `${message} Found an older unsafe MILADY-DISPATCH-V1 patch in:\n` +
+      `${message} Found an older unsafe ELIZA-DISPATCH-V1 patch in:\n` +
       `  ${patchedFiles.join("\n  ")}\n` +
       "Use a clean eliza-llama-cpp checkout/cache before producing artifacts.";
     if (!dryRun) {

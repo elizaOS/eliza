@@ -11,7 +11,7 @@ node scripts/cache-hit-rate-harness.mjs --provider=elizacloud
 Live runs require an explicit guard plus the provider API key:
 
 ```bash
-MILADY_CACHE_LIVE=1 \
+ELIZA_CACHE_LIVE=1 \
 ELIZAOS_CLOUD_API_KEY=... \
 node scripts/cache-hit-rate-harness.mjs --provider=elizacloud --calls=3
 ```
@@ -29,7 +29,7 @@ Useful knobs:
 
 - `--model=<id>` overrides the default model.
 - `--calls=<n>` controls repeated calls; use at least `3` for cold/warm comparison.
-- `MILADY_CACHE_PROMPT_KEY=<key>` sets the stable prompt cache key included in OpenAI-compatible payloads.
+- `ELIZA_CACHE_PROMPT_KEY=<key>` sets the stable prompt cache key included in OpenAI-compatible payloads.
 
 Expected validation loop:
 

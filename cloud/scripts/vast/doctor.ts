@@ -119,7 +119,7 @@ function validateRuntimeScripts(): void {
     "upsert-template.ts must keep llama as default runtime",
   );
   assert(
-    upsert.includes("MILADY_VAST_MANIFEST_JSON"),
+    upsert.includes("ELIZA_VAST_MANIFEST_JSON"),
     "upsert-template.ts must inline vLLM manifest JSON",
   );
 }

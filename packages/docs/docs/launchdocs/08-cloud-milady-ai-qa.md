@@ -1,4 +1,4 @@
-# Launch Readiness 08: Cloud milady.ai QA
+# Launch Readiness 08: Cloud eliza.ai QA
 
 ## Second-Pass Status (2026-05-05)
 
@@ -12,7 +12,7 @@ Review timestamp: 2026-05-04 PDT. Scope was repo inspection plus public, non-mut
 
 The launch surface is split across several products:
 
-- `https://milady.ai` currently serves a GitHub Pages SPA titled `Milady | Local-First Control`, with copy about opening Milady locally, signing into Eliza Cloud, and controlling remote runtimes.
+- `https://eliza.ai` currently serves a GitHub Pages SPA titled `Eliza | Local-First Control`, with copy about opening Eliza locally, signing into Eliza Cloud, and controlling remote runtimes.
 - `packages/homepage` is a separate phone-first onboarding site with `/get-started`, `/login`, and `/connected` routes that link Telegram, iMessage, Discord, and WhatsApp identities to Eliza Cloud.
 - `cloud/apps/frontend` contains the authenticated Eliza Cloud dashboard, including login and managed agent list/detail/create flows.
 - `packages/app` and `packages/app-core` contain the desktop/mobile app migration path through Cloud login, direct Cloud API agents, mobile runtime modes, and one-time launch sessions.
@@ -21,11 +21,11 @@ The cloud API is publicly reachable at `https://api.elizacloud.ai` and `https://
 
 ## Evidence reviewed with file refs/URLs
 
-- Public root: `https://milady.ai` returned HTTP 200 from GitHub Pages, `content-length: 1651`, title `Milady | Local-First Control`, and bundle `/assets/index-CDqUh6p6.js`.
-- Public canonical redirect: `https://www.milady.ai` returned HTTP 301 to `https://milady.ai/`.
-- Public deep links: `https://milady.ai/login`, `/get-started`, `/connected`, `/terms`, `/privacy`, and `/help` returned HTTP 404 with a GitHub Pages redirect shim that rewrites to `/?p=<path>&q=<query>&h=<hash>`.
-- Public installer: `https://milady.ai/install.sh` returned a shell installer script.
-- Public API checks: `https://milady.ai/api/health` returned GitHub Pages 404; `https://api.elizacloud.ai/api/health` and `https://www.elizacloud.ai/api/health` returned HTTP 200 JSON health.
+- Public root: `https://eliza.ai` returned HTTP 200 from GitHub Pages, `content-length: 1651`, title `Eliza | Local-First Control`, and bundle `/assets/index-CDqUh6p6.js`.
+- Public canonical redirect: `https://www.eliza.ai` returned HTTP 301 to `https://eliza.ai/`.
+- Public deep links: `https://eliza.ai/login`, `/get-started`, `/connected`, `/terms`, `/privacy`, and `/help` returned HTTP 404 with a GitHub Pages redirect shim that rewrites to `/?p=<path>&q=<query>&h=<hash>`.
+- Public installer: `https://eliza.ai/install.sh` returned a shell installer script.
+- Public API checks: `https://eliza.ai/api/health` returned GitHub Pages 404; `https://api.elizacloud.ai/api/health` and `https://www.elizacloud.ai/api/health` returned HTTP 200 JSON health.
 - Homepage routes: `packages/homepage/src/App.tsx:26` defines only `/`, `/leaderboard`, `/login`, `/connected`, and `/get-started`.
 - Homepage Eliza Cloud API base: `packages/homepage/src/lib/api/client.ts:1` defaults to `https://www.elizacloud.ai`.
 - Homepage auth context: `packages/homepage/src/lib/context/auth-context.tsx:250` fetches `/api/eliza-app/user/me`; Telegram/Discord/WhatsApp auth starts at `:313`, `:385`, and `:461`.
@@ -48,8 +48,8 @@ The cloud API is publicly reachable at `https://api.elizacloud.ai` and `https://
 
 ## What I could validate
 
-- `milady.ai` root is online and serves a static SPA over HTTPS.
-- `www.milady.ai` canonicalizes to the apex domain.
+- `eliza.ai` root is online and serves a static SPA over HTTPS.
+- `www.eliza.ai` canonicalizes to the apex domain.
 - Public health for the Cloud API is online on both `api.elizacloud.ai` and `www.elizacloud.ai`.
 - Unauthenticated `/api/v1/eliza/agents` is protected and returns `authentication_required`.
 - The repo has code paths for Cloud login, dashboard agent create/list/detail/provision/open, and desktop/mobile Cloud launch-session handoff.
@@ -58,7 +58,7 @@ The cloud API is publicly reachable at `https://api.elizacloud.ai` and `https://
 ## What I could not validate
 
 - I could not validate authenticated login, create agent, provision agent, open Web UI, credits, billing, or migration from cloud agent to desktop/phone app without Cloud credentials and potential spend.
-- I could not confirm whether the deployed `milady.ai` bundle exactly matches any current repo source. The deployed index title/copy did not match `packages/homepage`, and source search found only partial related references.
+- I could not confirm whether the deployed `eliza.ai` bundle exactly matches any current repo source. The deployed index title/copy did not match `packages/homepage`, and source search found only partial related references.
 - I could not validate the GitHub Pages redirect shim in a real browser session with app-side route restoration. Curl sees HTTP 404 for deep links, then a JavaScript redirect body.
 - I could not validate Telegram, Discord, WhatsApp, or iMessage account linking end to end because that would require real accounts and message delivery.
 
@@ -76,8 +76,8 @@ The cloud API is publicly reachable at `https://api.elizacloud.ai` and `https://
 
 - Agent create type/custom Docker selection appears ignored by the API. The dialog sends a top-level `dockerImage`, but the API create schema strips unknown fields and does not accept `dockerImage`; custom/default flavor choice may silently deploy the default managed agent. Evidence: `cloud/packages/ui/src/components/containers/create-eliza-agent-dialog.tsx:315`; `cloud/apps/api/v1/eliza/agents/route.ts:27`.
 - Several Cloud dashboard components use raw `fetch` instead of the shared `api`/`apiFetch` wrapper. Cookie auth may still work, but localStorage `steward_session_token` auth will be skipped, causing inconsistent 401s in create/provision/suspend/delete/poll/open flows. Evidence: `cloud/apps/frontend/src/lib/api-client.ts:125`; raw fetch sites in create dialog, agent table, agent actions, Web UI open hook, sandbox poller, and job poller.
-- `milady.ai` direct routes return HTTP 404. The body is a redirect shim, but direct `/login`, `/get-started`, `/connected`, `/terms`, `/privacy`, and `/help` links have 404 status until JavaScript runs. This is risky for launch links, auth return URLs, previews, crawlers, and any client that blocks inline script.
-- The current deployed `milady.ai` bundle appears different from `packages/homepage`, so launch QA has an ownership risk: repo-side fixes to `packages/homepage` may not affect the deployed apex site.
+- `eliza.ai` direct routes return HTTP 404. The body is a redirect shim, but direct `/login`, `/get-started`, `/connected`, `/terms`, `/privacy`, and `/help` links have 404 status until JavaScript runs. This is risky for launch links, auth return URLs, previews, crawlers, and any client that blocks inline script.
+- The current deployed `eliza.ai` bundle appears different from `packages/homepage`, so launch QA has an ownership risk: repo-side fixes to `packages/homepage` may not affect the deployed apex site.
 
 ### P3
 
@@ -98,7 +98,7 @@ The cloud API is publicly reachable at `https://api.elizacloud.ai` and `https://
 
 ## Human/cloud credential QA needed
 
-- Login with a real Cloud account on `https://milady.ai` and `https://www.elizacloud.ai`; verify return URLs and session persistence after reload.
+- Login with a real Cloud account on `https://eliza.ai` and `https://www.elizacloud.ai`; verify return URLs and session persistence after reload.
 - Create a new managed agent with minimum credits; confirm the selected flavor/image matches the running sandbox.
 - Provision/start the agent, wait for async job completion, and confirm list/detail status transitions.
 - Open Web UI from a stopped/pending agent and from a running agent; confirm 202 retry UX, one-time token exchange, and no popup blocker failure.
@@ -109,15 +109,15 @@ The cloud API is publicly reachable at `https://api.elizacloud.ai` and `https://
 
 ## Recommended end-to-end test plan
 
-1. Public routing smoke: open `https://milady.ai`, `https://milady.ai/login`, `https://milady.ai/privacy`, and `https://milady.ai/install.sh` in a browser and confirm final route, HTTP status expectations, console errors, and visible CTA copy.
+1. Public routing smoke: open `https://eliza.ai`, `https://eliza.ai/login`, `https://eliza.ai/privacy`, and `https://eliza.ai/install.sh` in a browser and confirm final route, HTTP status expectations, console errors, and visible CTA copy.
 2. Auth smoke: sign in to Cloud from the public launch path and from `https://www.elizacloud.ai/login`; reload and confirm session survives.
 3. Agent lifecycle: create agent, confirm credit gate/cost notice, provision/start, observe job status, open detail, inspect logs, suspend, resume, and delete a disposable test agent.
 4. Web UI pairing: open Web UI for running and stopped agents; verify 202 retry, one-time pairing token consumption, and token cannot be reused.
-5. Desktop migration: from Cloud agent detail, launch/open in Milady desktop app; verify `cloudLaunchSession` is consumed once, Cloud API base/token are applied, and the app lands on the correct runtime.
+5. Desktop migration: from Cloud agent detail, launch/open in Eliza desktop app; verify `cloudLaunchSession` is consumed once, Cloud API base/token are applied, and the app lands on the correct runtime.
 6. Phone migration: repeat for iOS and Android using `cloud` and `cloud-hybrid` modes; verify bridge startup, background/foreground recovery, and reconnect after app restart.
 7. Messaging onboarding: link and unlink Telegram, Discord, WhatsApp, and iMessage identities with disposable accounts; verify connected page reflects each channel and deep links open the right native app.
 8. Negative paths: no credits, expired login, deleted agent, stopped sandbox, popup blocked, invalid launch session, reused launch session, offline mobile, and auth token revoked.
 
 ## Changed paths
 
-- `launchdocs/08-cloud-milady-ai-qa.md`
+- `launchdocs/08-cloud-eliza-ai-qa.md`
