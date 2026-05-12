@@ -41,6 +41,11 @@ gates:
     unit: "score 0..1"
     manifest_field: "evals.textEval"
     description: "Held-out text-quality eval (judge or benchmark suite)."
+  format_ok:
+    op: ">="
+    unit: "ratio 0..1"
+    manifest_field: "evals.formatOk"
+    description: "Structured-output / action-envelope parse success rate on held-out agent tasks."
   voice_rtf:
     op: "<="
     unit: "real-time factor"
@@ -159,7 +164,8 @@ dflash:
 # RSS gate is not required for the GH200-class `27b-1m` tier).
 # ---------------------------------------------------------------------------
 tiers:
-  0_6b:
+  0_8b:
+    format_ok: { threshold: 0.70, required: true, provisional: true }
     text_eval: { threshold: 0.55, required: true, provisional: true }
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
@@ -179,7 +185,8 @@ tiers:
     expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
     peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
-  1_7b:
+  2b:
+    format_ok: { threshold: 0.72, required: true, provisional: true }
     text_eval: { threshold: 0.60, required: true, provisional: true }
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
     asr_wer: { threshold: 0.08, required: true, provisional: true }
@@ -200,6 +207,7 @@ tiers:
     peak_rss_mb: { threshold: 4500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
   4b:
+    format_ok: { threshold: 0.74, required: true, provisional: true }
     text_eval: { threshold: 0.62, required: true, provisional: true }
     voice_rtf: { threshold: 0.42, required: true, provisional: true }
     asr_wer: { threshold: 0.07, required: true, provisional: true }
@@ -220,6 +228,7 @@ tiers:
     peak_rss_mb: { threshold: 8000, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 18, required: false, provisional: true, needs_hardware: true }
   9b:
+    format_ok: { threshold: 0.76, required: true, provisional: true }
     text_eval: { threshold: 0.65, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.06, required: true, provisional: true }
@@ -240,6 +249,7 @@ tiers:
     peak_rss_mb: { threshold: 9500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 15, required: false, provisional: true, needs_hardware: true }
   27b:
+    format_ok: { threshold: 0.78, required: true, provisional: true }
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
@@ -258,6 +268,7 @@ tiers:
     expressive_mos: { threshold: 4.1, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
   27b-256k:
+    format_ok: { threshold: 0.78, required: true, provisional: true }
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
@@ -276,6 +287,7 @@ tiers:
     expressive_mos: { threshold: 4.1, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
   27b-1m:
+    format_ok: { threshold: 0.78, required: true, provisional: true }
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
