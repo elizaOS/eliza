@@ -62,10 +62,54 @@ function mergeState<TState extends object>(previous: TState, updates: Partial<TS
   return { ...previous, ...updates };
 }
 
+type BadgeVariant = "default" | "destructive" | "outline" | "secondary";
+
 function formatLogLine(log: LogEntry): string {
   const timestamp = new Date(log.timestamp).toISOString();
   const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
   return `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
+}
+
+function getLevelColor(logLevel: string): string {
+  switch (logLevel) {
+    case "error":
+      return "text-red-500";
+    case "warn":
+      return "text-yellow-500";
+    case "info":
+      return "text-blue-500";
+    case "debug":
+      return "text-gray-500";
+    default:
+      return "text-foreground";
+  }
+}
+
+function getLevelBadgeVariant(logLevel: string): BadgeVariant {
+  switch (logLevel) {
+    case "error":
+      return "destructive";
+    case "info":
+      return "default";
+    case "debug":
+      return "secondary";
+    case "warn":
+    default:
+      return "outline";
+  }
+}
+
+function getLevelBorderColor(logLevel: string): string {
+  switch (logLevel) {
+    case "error":
+      return "#ef4444";
+    case "warn":
+      return "#eab308";
+    case "info":
+      return "#3b82f6";
+    default:
+      return "#6b7280";
+  }
 }
 
 export function ContainerLogsViewer({ containerId, containerName }: ContainerLogsViewerProps) {
@@ -175,20 +219,17 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
             return { ...prev, logs: updated.slice(0, 500) };
           });
         } else if (parsed.type === "error") {
-          console.error("Stream error:", parsed.message);
           updateLogs({ error: parsed.message });
         }
-      } catch (err) {
-        console.error("Error parsing stream data:", err);
+      } catch {
+        // Malformed SSE frame — ignore and wait for the next event.
       }
     };
 
-    eventSource.onerror = (err) => {
-      console.error("EventSource error:", err);
+    eventSource.onerror = () => {
       updateStreaming({ isStreaming: false });
       eventSource.close();
-
-      // Fallback to polling
+      // Fallback to polling when the SSE connection drops.
       if (streamingState.useStreaming) {
         updateStreaming({ useStreaming: false, autoRefresh: true });
       }
@@ -242,36 +283,6 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
     };
   }, [closeStreamingConnection]);
 
-  const getLevelColor = (logLevel: string) => {
-    switch (logLevel) {
-      case "error":
-        return "text-red-500";
-      case "warn":
-        return "text-yellow-500";
-      case "info":
-        return "text-blue-500";
-      case "debug":
-        return "text-gray-500";
-      default:
-        return "text-foreground";
-    }
-  };
-
-  const getLevelBadge = (logLevel: string) => {
-    switch (logLevel) {
-      case "error":
-        return "destructive";
-      case "warn":
-        return "outline";
-      case "info":
-        return "default";
-      case "debug":
-        return "secondary";
-      default:
-        return "outline";
-    }
-  };
-
   const downloadLogs = () => {
     const logsText = logsState.logs.map(formatLogLine).join("\n");
 
@@ -319,10 +330,7 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: "#FF5800" }}
-              />
+              <span className="inline-block w-2 h-2 rounded-full bg-[#FF5800]" />
               <h2
                 className="text-xl font-normal text-white"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -486,27 +494,11 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
                   <div
                     key={`${log.timestamp}-${index}`}
                     className={`group flex gap-3 p-2 hover:bg-white/5 rounded-none transition-colors border-l-2 ${getLevelColor(log.level)}`}
-                    style={{
-                      borderLeftColor:
-                        log.level === "error"
-                          ? "#ef4444"
-                          : log.level === "warn"
-                            ? "#eab308"
-                            : log.level === "info"
-                              ? "#3b82f6"
-                              : "#6b7280",
-                    }}
+                    style={{ borderLeftColor: getLevelBorderColor(log.level) }}
                   >
                     <Badge
-                      variant={
-                        getLevelBadge(log.level) as
-                          | "default"
-                          | "destructive"
-                          | "outline"
-                          | "secondary"
-                      }
-                      className="shrink-0 h-5 text-xs rounded-none"
-                      style={{ fontFamily: "var(--font-roboto-mono)" }}
+                      variant={getLevelBadgeVariant(log.level)}
+                      className="shrink-0 h-5 text-xs rounded-none font-mono"
                     >
                       {log.level.toUpperCase()}
                     </Badge>
