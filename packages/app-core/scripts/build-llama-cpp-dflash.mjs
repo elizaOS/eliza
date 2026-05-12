@@ -853,6 +853,45 @@ function patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun = false } = {}) {
   );
 }
 
+function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
+  const specPath = path.join(cacheDir, "common", "speculative.cpp");
+  if (!fs.existsSync(specPath)) {
+    throw new Error(
+      `[dflash-build] patchDflashSpeculativeDispatch: ${specPath} missing — fork layout broken`,
+    );
+  }
+  let content = fs.readFileSync(specPath, "utf8");
+  const original = content;
+  content = content.replace(
+    "        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT));\n",
+    "        bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));\n        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT)) || has_dflash;\n",
+  );
+  content = content.replace(
+    "        static_assert(COMMON_SPECULATIVE_TYPE_COUNT == 8);\n",
+    "        static_assert(COMMON_SPECULATIVE_TYPE_COUNT == 9);\n",
+  );
+  content = content.replace(
+    "            configs.push_back(common_speculative_config(COMMON_SPECULATIVE_TYPE_DRAFT, params));\n",
+    "            configs.push_back(common_speculative_config(has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT, params));\n",
+  );
+  content = content.replace(
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
+  );
+  if (content === original) {
+    return;
+  }
+  if (!content.includes("bool has_dflash =") || !content.includes("COMMON_SPECULATIVE_TYPE_COUNT == 9")) {
+    throw new Error(
+      `[dflash-build] patchDflashSpeculativeDispatch: patch verification failed for ${specPath}`,
+    );
+  }
+  if (!dryRun) {
+    fs.writeFileSync(specPath, content, "utf8");
+  }
+  console.log("[dflash-build] patched speculative.cpp to route --spec-type dflash through draft-model speculation");
+}
+
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
 // (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
 // when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
@@ -1650,6 +1689,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });
   patchSpeculativeReplacementsField(cacheDir, { dryRun });
   patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun });
+  patchDflashSpeculativeDispatch(cacheDir, { dryRun });
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash drafter architecture patch for target=${target}; ` +
