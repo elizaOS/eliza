@@ -64,6 +64,7 @@ export function ModelCard({
   const failed = download?.state === "failed";
   const isActive = active.modelId === model.id && active.status !== "error";
   const activating = active.modelId === model.id && active.status === "loading";
+  const parameterLabel = model.parameterLabel ?? model.params;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
@@ -73,7 +74,7 @@ export function ModelCard({
             {displayModelName(model)}
           </div>
           <div className="text-xs text-muted-foreground truncate">
-            {model.params} · {model.quant} · {model.sizeGb.toFixed(1)} GB
+            {parameterLabel} · {model.quant} · {model.sizeGb.toFixed(1)} GB
           </div>
         </div>
         <span
