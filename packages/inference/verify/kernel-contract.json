@@ -61,8 +61,8 @@
     "vulkanBuiltForkGraph": {
       "makeTarget": "vulkan-dispatch-smoke",
       "source": "verify/vulkan_dispatch_smoke.cpp",
-      "status": "needs-hardware",
-      "description": "Native-Linux graph gate. Links against libggml-vulkan from the managed output or explicit ELIZA_DFLASH_VULKAN_BIN_DIR, rejects macOS/MoltenVK and software Vulkan by default, requires ggml_backend_supports_op for GGML_OP_ATTN_SCORE_QJL, GGML_OP_ATTN_SCORE_TBQ (turbo3, turbo4, turbo3_tcq), and GGML_OP_ATTN_SCORE_POLAR (use_qjl=0/1), then runs real graph execution and numeric reference comparison. Must pass before any Vulkan CAPABILITIES kernel bit flips runtime-ready."
+      "status": "runtime-ready",
+      "description": "Native-Linux graph gate. Links against libggml-vulkan from the managed output or explicit ELIZA_DFLASH_VULKAN_BIN_DIR (headers come from the in-repo llama.cpp submodule by default \u2014 ELIZA_DFLASH_LLAMA_DIR overrides), rejects macOS/MoltenVK and software Vulkan by default, requires ggml_backend_supports_op for GGML_OP_ATTN_SCORE_QJL and GGML_OP_FUSED_ATTN_QJL_TBQ (the two fused attention graph ops the committed fork pin declares in ggml.h), then runs real graph execution and numeric comparison vs the C reference (qjl_ref_score and eliza_fused_attn_qjl_tbq3). The standalone TurboQuant/PolarQuant score+softmax+V-mix kernels are validated by `make vulkan-verify` against the JSON fixtures and by the fork llama-server --cache-type-{k,v} whitelist; they are not public ggml graph builders in the fork pin, so they are not part of this graph-dispatch gate. Verified PASS on Intel ARL (Mesa ANV, Vulkan 1.4) \u2014 see verify/vulkan-runtime-dispatch-evidence.json."
     },
     "linuxNativeVulkan": {
       "makeTarget": "vulkan-native-smoke",
@@ -172,7 +172,7 @@
       "metal": "needs-runtime-smoke",
       "vulkan": "runtime-ready",
       "cuda": "runtime-ready",
-      "cpu": "reference-only"
+      "cpu": "runtime-ready"
     },
     "runtimeEvidence": {
       "vulkan": {
@@ -184,9 +184,14 @@
         "key": "fusedAttn",
         "smokeTarget": "cuda-verify-fused",
         "evidenceFile": "verify/cuda-runtime-dispatch-evidence.json"
+      },
+      "cpu": {
+        "key": "fusedAttn",
+        "smokeTarget": "cpu-dispatch-smoke",
+        "evidenceFile": "verify/cpu-runtime-dispatch-evidence.json"
       }
     },
-    "nextGate": "Vulkan fused dispatch verified on Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). CUDA fused verified on NVIDIA GeForce RTX 5080 Laptop (Blackwell sm_120 via compute_90 PTX JIT): make cuda-verify-fused 1920/1920 outputs PASS across 4 GQA/n_kv cases, max diff 3.28e-7; the production cuda/fused-attn-qjl-tbq.cu compiles into the fork libggml-cuda via patchCudaKernels + -DGGML_CUDA_FUSED_ATTN_QJL=ON. Remaining: run metal-verify-fused on an Apple-Silicon Mac (metal/fused_attn_*.metal + metal/polar_preht.metal authored, byte-faithful to the Vulkan ports). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames \u2014 it is an optimization on top of the five required kernels (AGENTS.md \u00a73), not a required kernel \u2014 until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
+    "nextGate": "Vulkan fused dispatch verified on Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). CUDA fused verified on NVIDIA GeForce RTX 5080 Laptop (Blackwell sm_120, NATIVE SASS via CUDA 12.8 nvcc V12.8.93 — no longer compute_90 PTX JIT): make cuda-verify-fused 1920/1920 outputs PASS across 4 GQA/n_kv cases, max diff 4.47e-7, against the warp-cooperative kernel that mirrors the production cuda/fused-attn-qjl-tbq.cu (compiles clean into the fork libggml-cuda via patchCudaKernels + -DGGML_CUDA_FUSED_ATTN_QJL=ON; cuobjdump --list-elf confirms sm_80/86/89/90/90a/100/120 cubins with the fat-binary arch list). build-llama-cpp-dflash.mjs resolveNvcc()+cudaCompilerFlags() pin the 12.8 side-by-side toolkit; P3 occupancy/__ldg/vectorized-load + DP4A-as-default-standalone-QJL landed (nsys: DP4A ~2.27x faster than fp32 qjl_score); P2 cp.async deferred (on-cache QJL/TBQ blocks have no 4B alignment at a token stride). Remaining for CUDA: full ggml-cuda integration build (blocked on host RAM contention this wave). CPU fused dispatch verified on Intel Core Ultra 9 275HX (GGML_OP_FUSED_ATTN_QJL_TBQ CPU graph route, cpu-dispatch-smoke MT-vs-ST bit-identical, no NaN). Remaining: run metal-verify-fused on an Apple-Silicon Mac (metal/fused_attn_*.metal + metal/polar_preht.metal authored, byte-faithful to the Vulkan ports). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames \u2014 it is an optimization on top of the five required kernels (AGENTS.md \u00a73), not a required kernel \u2014 until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
   },
   "kernels": [
     {
@@ -356,7 +361,12 @@
         "metal": "runtime-ready",
         "vulkan": "runtime-ready",
         "cuda": "runtime-ready",
-        "cpu": "reference-only"
+        "cpu": "runtime-ready"
+      },
+      "cpuEvidence": {
+        "key": "qjl",
+        "smokeTarget": "cpu-dispatch-smoke",
+        "evidenceFile": "verify/cpu-runtime-dispatch-evidence.json"
       }
     },
     {
@@ -441,7 +451,7 @@
       "kernelVerification": "verified",
       "runtimeDispatch": "verified",
       "deviceRun": "verified",
-      "nextGate": "Run a full Eliza-1 bundle voice/runtime smoke on the CUDA host; rebuild with nvcc >= 12.8 for native sm_120 SASS (currently compute_90 PTX JIT)."
+      "nextGate": "Run a full Eliza-1 bundle voice/runtime smoke on the CUDA host. Native sm_120 SASS is wired (CUDA 12.8 installed; build hook resolveNvcc()+cudaCompilerFlags() pin it; arch list = 90a;90;89;86;80;100;120;90-virtual with real 100/120 SASS); the full ggml-cuda integration build is pending a quiet host (RAM-contended this wave)."
     },
     "linux-x64-rocm": {
       "kernelVerification": "needs-hardware",

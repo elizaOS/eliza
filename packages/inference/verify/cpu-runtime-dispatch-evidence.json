@@ -8,7 +8,7 @@
   "runtimeReady": true,
   "target": "linux-x64-cpu",
   "device": "Intel Core Ultra 9 275HX (24 cores, AVX2 + AVX-VNNI)",
-  "atCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
+  "atCommit": "eae44e75e82f70e85d9192e2e3cfa05fcbe80ab7",
   "smokeTarget": "cpu-dispatch-smoke",
   "smokeCommand": "make -C packages/inference/verify cpu-dispatch-smoke",
   "smokeSource": "verify/qjl_mt_check.c",
@@ -27,7 +27,8 @@
       "maxAbsDiffST_vs_MT": 0.0,
       "anyNaN": false,
       "refAllZero": false,
-      "evidenceDate": "2026-05-11"
+      "evidenceDate": "2026-05-11",
+      "maxDiff": 0.0
     },
     "fused_attn": {
       "runtimeCapabilityKey": "fused_attn",
@@ -35,7 +36,7 @@
       "runtimeReady": true,
       "graphOp": "GGML_OP_FUSED_ATTN_QJL_TBQ",
       "builder": "ggml_fused_attn_qjl_tbq",
-      "note": "QJL-K score + online softmax + TBQ3-V mix; covers GGML_TYPE_QJL1_256 (K) and GGML_TYPE_TBQ3_0 (V) on the CPU backend. The standalone TBQ score op (GGML_OP_ATTN_SCORE_TBQ for turbo3/turbo4/turbo3_tcq) and the standalone Polar score op (GGML_OP_ATTN_SCORE_POLAR) are not exposed as public ggml builders in the fork's ggml.h — they are selected via the KV cache-type path; their CPU correctness is `make reference-test` (the C ops are the references) + the fused op above.",
+      "note": "QJL-K score + online softmax + TBQ3-V mix; covers GGML_TYPE_QJL1_256 (K) and GGML_TYPE_TBQ3_0 (V) on the CPU backend. The standalone TBQ score op (GGML_OP_ATTN_SCORE_TBQ for turbo3/turbo4/turbo3_tcq) and the standalone Polar score op (GGML_OP_ATTN_SCORE_POLAR) are not exposed as public ggml builders in the fork's ggml.h \u2014 they are selected via the KV cache-type path; their CPU correctness is `make reference-test` (the C ops are the references) + the fused op above.",
       "smokeTarget": "cpu-dispatch-smoke",
       "smokeCommand": "make -C packages/inference/verify cpu-dispatch-smoke",
       "smokeOutputs": 32768,
@@ -43,11 +44,15 @@
       "maxAbsDiffST_vs_MT": 0.0,
       "anyNaN": false,
       "refAllZero": false,
-      "evidenceDate": "2026-05-11"
+      "evidenceDate": "2026-05-11",
+      "capabilityKey": "fused_attn",
+      "maxDiff": 0.0
     }
   },
   "remaining": [
-    "Wire probeKernels() in packages/app-core/scripts/build-llama-cpp-dflash.mjs to read this file for the CPU backend (mirror vulkanCapabilityRuntimeReady / readVulkanRuntimeDispatchEvidence), so a fresh linux-x64-cpu build's CAPABILITIES.json reports qjl_full / fused_attn runtime-ready instead of false (the current probe scans `llama-server --help` cache-type names + object-file names, neither of which matches the CPU build's inlined ggml-cpu ops). NOTE: this does NOT make the CPU build `publishable` — turbo3_tcq / polarquant remain false on the CPU backend (no CPU graph-dispatch op), and the §3 CPU kernel-completeness gate (build-llama-cpp-dflash.mjs) still fails the build by design.",
-    "Once the probe is wired, flip kernel-contract.json runtimeStatus.cpu from `reference-only` to `runtime-ready` for the kernels covered above (qjl, fused_attn) where this evidence supports it; keep `make kernel-contract` green."
-  ]
+    "Wire probeKernels() in packages/app-core/scripts/build-llama-cpp-dflash.mjs to read this file for the CPU backend (mirror readVulkanRuntimeDispatchEvidence / vulkanCapabilityRuntimeReady) so a fresh linux-x64-cpu build's CAPABILITIES.json reports qjl_full runtime-ready instead of false. NOTE: this does NOT make the CPU build `publishable` \u2014 turbo3_tcq / polarquant remain false on the CPU backend (no CPU graph-dispatch op for the standalone TBQ/Polar score; the \u00a73 CPU kernel-completeness gate still fails the build by design). build-llama-cpp-dflash.mjs has uncommitted in-flight changes by a sibling workstream; the CPU-evidence probe wiring is left to that owner.",
+    "kernel-contract.json runtimeStatus.cpu is now `runtime-ready` for the `qjl` kernel and the `fusedAttn` section (this evidence + a passing `make cpu-dispatch-smoke` back it; `make kernel-contract` green). The standalone TBQ/Polar score ops stay `reference-only` on cpu (validated by `make reference-test` \u2014 the C ops ARE the references)."
+  ],
+  "atCommitNote": "The committed packages/inference/llama.cpp submodule pin. eae44e75 = the prior 08032d57 (\"merge: W4-B CUDA QJL + Polar + TBQ3_TCQ kernels\") + one follow-up commit; the ggml_attn_score_qjl / ggml_fused_attn_qjl_tbq public ggml builders are identical between the two. The cached linux-x64-cpu fork build under packages/inference/llama.cpp/build/linux-x64-cpu/bin (or $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-cpu) provides libggml-{cpu,base}.so for the smoke.",
+  "smokeRerun": "make -C packages/inference/verify cpu-dispatch-smoke  (no env vars: CPU_BIN_DIR + GGML_INC_DIR default to the in-repo fork build/checkout)"
 }

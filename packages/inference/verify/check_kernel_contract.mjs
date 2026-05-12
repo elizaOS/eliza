@@ -28,6 +28,10 @@ const cudaDispatchEvidencePath = path.join(
   here,
   "cuda-runtime-dispatch-evidence.json",
 );
+const cpuDispatchEvidencePath = path.join(
+  here,
+  "cpu-runtime-dispatch-evidence.json",
+);
 
 const errors = [];
 
@@ -130,6 +134,9 @@ const vulkanDispatchEvidence = readJson(vulkanDispatchEvidencePath);
 const cudaDispatchEvidence = fs.existsSync(cudaDispatchEvidencePath)
   ? readJson(cudaDispatchEvidencePath)
   : null;
+const cpuDispatchEvidence = fs.existsSync(cpuDispatchEvidencePath)
+  ? readJson(cpuDispatchEvidencePath)
+  : null;
 
 const allowedStatuses = new Set([
   "blocked",
@@ -156,6 +163,10 @@ const cudaEvidenceKernels =
   cudaDispatchEvidence && typeof cudaDispatchEvidence === "object"
     ? cudaDispatchEvidence.kernels || {}
     : {};
+const cpuEvidenceKernels =
+  cpuDispatchEvidence && typeof cpuDispatchEvidence === "object"
+    ? cpuDispatchEvidence.kernels || {}
+    : {};
 
 if (metalDispatchEvidence.backend !== "metal") {
   fail(`metal dispatch evidence backend must be "metal"`);
@@ -165,6 +176,9 @@ if (vulkanDispatchEvidence.backend !== "vulkan") {
 }
 if (cudaDispatchEvidence && cudaDispatchEvidence.backend !== "cuda") {
   fail(`cuda dispatch evidence backend must be "cuda"`);
+}
+if (cpuDispatchEvidence && cpuDispatchEvidence.backend !== "cpu") {
+  fail(`cpu dispatch evidence backend must be "cpu"`);
 }
 
 // 1. Manifest kernel names are the app-core schema names, not shader names.
@@ -301,6 +315,38 @@ for (const kernel of contract.kernels) {
         }
         if (typeof evidence.maxDiff !== "number" || !Number.isFinite(evidence.maxDiff)) {
           fail(`${kernel.id}: runtime-ready Vulkan evidence requires numeric maxDiff`);
+        }
+      }
+    }
+  }
+
+  // CPU graph-dispatch evidence is recorded for the subset of kernels the fork
+  // pin exposes as public ggml ops (QJL score + the fused QJL-K/TBQ-V op). For
+  // the CPU backend the score/decode arithmetic IS the C reference, so the
+  // standalone-fixture parity gate is `reference-test`; `cpu-dispatch-smoke`
+  // additionally proves the op is reachable through real ggml graph execution
+  // and bit-identical at n_threads=1 vs 24. A kernel with a `cpuEvidence`
+  // pointer must have a matching evidence entry whose runtimeReady flag agrees
+  // with runtimeStatus.cpu.
+  if (kernel.cpuEvidence) {
+    const evidence = cpuEvidenceKernels[kernel.cpuEvidence.key];
+    const cpuStatus = kernel.runtimeStatus?.cpu;
+    if (!evidence) {
+      fail(`${kernel.id}: cpuEvidence.key=${kernel.cpuEvidence.key} not found in cpu-runtime-dispatch-evidence.json`);
+    } else {
+      const runtimeKeys = kernel.runtimeCapabilityKeys || [];
+      if (!runtimeKeys.includes(evidence.runtimeCapabilityKey)) {
+        fail(`${kernel.id}: CPU evidence runtimeCapabilityKey=${evidence.runtimeCapabilityKey} not in ${runtimeKeys.join(",")}`);
+      }
+      if (cpuStatus === "runtime-ready" && evidence.runtimeReady !== true) {
+        fail(`${kernel.id}: contract says CPU runtime-ready but cpu evidence runtimeReady is not true`);
+      }
+      if (evidence.runtimeReady === true && cpuStatus !== "runtime-ready") {
+        fail(`${kernel.id}: CPU evidence is runtime-ready but contract status is ${cpuStatus}`);
+      }
+      if (evidence.runtimeReady === true) {
+        if (typeof evidence.smokeTarget !== "string" || !targetBody(makefile, evidence.smokeTarget)) {
+          fail(`${kernel.id}: runtime-ready CPU evidence requires a smokeTarget that exists in the Makefile`);
         }
       }
     }
@@ -573,6 +619,7 @@ if (!fusedAttn || typeof fusedAttn !== "object") {
     metal: metalEvidenceKernels.fusedAttn,
     vulkan: vulkanEvidenceKernels.fusedAttn,
     cuda: cudaEvidenceKernels.fusedAttn,
+    cpu: cpuEvidenceKernels.fused_attn,
   };
   for (const [backend, status] of Object.entries(fusedAttn.runtimeStatus || {})) {
     if (!allowedStatuses.has(status)) {

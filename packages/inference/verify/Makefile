@@ -460,7 +460,17 @@ NVCC ?= $(shell command -v nvcc 2>/dev/null)
 # Distro CUDA toolkits (Debian/Ubuntu `nvidia-cuda-toolkit`) put the runtime
 # headers in /usr/include, not /usr/local/cuda/include. Probe both.
 CUDA_HOME ?= $(if $(wildcard /usr/local/cuda/include/cuda_runtime.h),/usr/local/cuda,$(if $(wildcard /usr/include/cuda_runtime.h),/usr,/usr/local/cuda))
-ELIZA_DFLASH_LLAMA_DIR ?= $(HOME)/.cache/eliza-dflash/eliza-llama-cpp
+# ELIZA_DFLASH_LLAMA_DIR points at a checkout of the patched llama.cpp fork
+# (ggml headers + a build/ tree). Resolution order:
+#   1. explicit override (env / make var) — wins.
+#   2. the in-repo submodule checkout at packages/inference/llama.cpp — the
+#      committed pin; present after `git submodule update --init` (which
+#      `bun install` runs). This is the default so the dispatch-smoke targets
+#      build without any env var on a normal checkout.
+#   3. the legacy `~/.cache/eliza-dflash/eliza-llama-cpp` standalone clone
+#      that `build-llama-cpp-dflash.mjs --src-dir`/`--cache-dir` produces.
+ELIZA_DFLASH_IN_REPO_LLAMA_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../llama.cpp)
+ELIZA_DFLASH_LLAMA_DIR ?= $(if $(wildcard $(ELIZA_DFLASH_IN_REPO_LLAMA_DIR)/ggml/include/ggml.h),$(ELIZA_DFLASH_IN_REPO_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/eliza-llama-cpp)
 ELIZA_DFLASH_LIBGGML_CUDA ?= $(ELIZA_DFLASH_LLAMA_DIR)/build-cuda/ggml/src/ggml-cuda/libggml-cuda.so
 
 # CMAKE_CUDA_ARCHITECTURES the fork build hook should pin (platform-targets
@@ -593,18 +603,25 @@ windows-hardware:
 	@echo "Run on a native Windows host:"
 	@echo "  pwsh -File packages/inference/verify/windows_runner.ps1 -Backend cuda -Model C:\\\\models\\\\eliza-1-smoke.gguf"
 
-# CPU built-fork graph-dispatch smoke. Links qjl_mt_check.c against the
-# linux-x64-cpu fork build (ELIZA_DFLASH_CPU_BIN_DIR overrides; default
-# $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-cpu) and runs a tiny
-# ggml graph that selects GGML_OP_ATTN_SCORE_QJL and GGML_OP_FUSED_ATTN_QJL_TBQ
-# on the CPU backend, executes it, and asserts the output is finite, non-zero,
-# and bit-identical between n_threads=1 and n_threads=24 (the thread split is
-# over disjoint output rows -> no reassociation -> exact equality). Proves the
-# fork's CPU ops are reachable through real llama.cpp graph execution, not just
-# linked symbols. Requires a prior `node packages/app-core/scripts/build-llama-cpp-dflash.mjs
-# --target linux-x64-cpu`. The standalone-fixture vs C-reference parity for the
-# CPU score/decode paths is `reference-test` (the C ops ARE the references).
-CPU_BIN_DIR ?= $(or $(ELIZA_DFLASH_CPU_BIN_DIR),$(or $(ELIZA_STATE_DIR),$(HOME)/.eliza)/local-inference/bin/dflash/linux-x64-cpu)
+# CPU built-fork graph-dispatch smoke. Links qjl_mt_check.c against a
+# linux-x64-cpu fork build and runs a tiny ggml graph that selects
+# GGML_OP_ATTN_SCORE_QJL and GGML_OP_FUSED_ATTN_QJL_TBQ on the CPU backend,
+# executes it, and asserts the output is finite, non-zero, and bit-identical
+# between n_threads=1 and n_threads=24 (the thread split is over disjoint
+# output rows -> no reassociation -> exact equality). Proves the fork's CPU ops
+# are reachable through real llama.cpp graph execution, not just linked symbols.
+#
+# CPU_BIN_DIR resolution (ELIZA_DFLASH_CPU_BIN_DIR overrides everything):
+#   1. the in-repo fork's build/linux-x64-cpu/bin tree (committed pin).
+#   2. $ELIZA_STATE_DIR/local-inference/bin/dflash/linux-x64-cpu — the managed
+#      output `build-llama-cpp-dflash.mjs --target linux-x64-cpu` writes.
+# GGML_INC_DIR defaults to ELIZA_DFLASH_LLAMA_DIR/ggml/include (which itself
+# defaults to the in-repo submodule — see above), so this target builds on a
+# normal checkout with the submodule fetched and a prior linux-x64-cpu build,
+# with no env vars. The standalone-fixture vs C-reference parity for the CPU
+# score/decode paths is `reference-test` (the C ops ARE the references).
+ELIZA_DFLASH_IN_REPO_CPU_BIN_DIR := $(ELIZA_DFLASH_IN_REPO_LLAMA_DIR)/build/linux-x64-cpu/bin
+CPU_BIN_DIR ?= $(or $(ELIZA_DFLASH_CPU_BIN_DIR),$(if $(wildcard $(ELIZA_DFLASH_IN_REPO_CPU_BIN_DIR)/libggml-cpu.so),$(ELIZA_DFLASH_IN_REPO_CPU_BIN_DIR),$(or $(ELIZA_STATE_DIR),$(HOME)/.eliza)/local-inference/bin/dflash/linux-x64-cpu))
 GGML_INC_DIR ?= $(or $(ELIZA_DFLASH_LLAMA_DIR),$(HOME)/.cache/eliza-dflash/milady-llama-cpp)/ggml/include
 cpu-dispatch-smoke:
 	@test -f "$(CPU_BIN_DIR)/libggml-cpu.so" || { echo "[cpu-dispatch-smoke] missing $(CPU_BIN_DIR)/libggml-cpu.so — build the fork first: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu (or set ELIZA_DFLASH_CPU_BIN_DIR)"; exit 1; }
@@ -757,7 +774,7 @@ vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	@echo "[vulkan-dispatch-smoke] running against $(ELIZA_DFLASH_VULKAN_BIN_DIR)"
 	@echo "[vulkan-dispatch-smoke] managed output candidate: $(ELIZA_DFLASH_VULKAN_OUT_DIR)"
 	@echo "[vulkan-dispatch-smoke] build-tree candidate: $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)"
-	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute QJL/TBQ/Polar attention-score graph routes; symbol-only staging cannot pass"
+	@echo "[vulkan-dispatch-smoke] requires ggml-vulkan to advertise and execute the GGML_OP_ATTN_SCORE_QJL and GGML_OP_FUSED_ATTN_QJL_TBQ graph routes (the two fused attention ops the committed fork pin exposes); symbol-only staging cannot pass"
 	@if [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.so" ] && [ ! -f "$(ELIZA_DFLASH_VULKAN_BIN_DIR)/libggml-vulkan.dylib" ]; then \
 	    echo "[vulkan-dispatch-smoke] missing libggml-vulkan under $(ELIZA_DFLASH_VULKAN_BIN_DIR)"; \
 	    echo "[vulkan-dispatch-smoke] run 'node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target $(ELIZA_DFLASH_TARGET)' on a Linux Vulkan host first."; \
