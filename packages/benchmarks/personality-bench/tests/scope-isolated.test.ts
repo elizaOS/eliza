@@ -110,7 +110,12 @@ describe("scope-isolated rubric", () => {
       // requiredLeakage has 3 phrases, agent uses 2 of them (≥50%) — minor violation
       const s = scenario(
         [
-          { role: "user", content: "Set global metric.", roomId: "A", userId: "alice" },
+          {
+            role: "user",
+            content: "Set global metric.",
+            roomId: "A",
+            userId: "alice",
+          },
           {
             role: "assistant",
             content: "Distance: 5 kilometers. Temperature: 20 Celsius.",
@@ -132,7 +137,12 @@ describe("scope-isolated rubric", () => {
       // requiredLeakage has 4 phrases, agent uses only 1 (25% < 50%) — hard fail
       const s = scenario(
         [
-          { role: "user", content: "Set global style.", roomId: "A", userId: "alice" },
+          {
+            role: "user",
+            content: "Set global style.",
+            roomId: "A",
+            userId: "alice",
+          },
           {
             role: "assistant",
             content: "Distance: 5 kilometers.",
@@ -153,10 +163,16 @@ describe("scope-isolated rubric", () => {
     it("PASSes when all required phrases are present", async () => {
       const s = scenario(
         [
-          { role: "user", content: "Set global metric.", roomId: "A", userId: "alice" },
+          {
+            role: "user",
+            content: "Set global metric.",
+            roomId: "A",
+            userId: "alice",
+          },
           {
             role: "assistant",
-            content: "Distance: 5 kilometers. Temperature: 20 celsius. Weight: 3 grams.",
+            content:
+              "Distance: 5 kilometers. Temperature: 20 celsius. Weight: 3 grams.",
             roomId: "A",
             userId: "alice",
           },

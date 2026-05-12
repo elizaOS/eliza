@@ -216,7 +216,9 @@ export async function gradeTraitRespected(
   if (turnResults.length > 1) {
     const first = turnResults[0];
     const rest = turnResults.slice(1);
-    const restPassCount = rest.filter((r) => r.result.verdict === "PASS").length;
+    const restPassCount = rest.filter(
+      (r) => r.result.verdict === "PASS",
+    ).length;
     const restPassRate = rest.length > 0 ? restPassCount / rest.length : 0;
     const firstFailed = first !== undefined && first.result.verdict === "FAIL";
     for (const { t, result } of turnResults) {

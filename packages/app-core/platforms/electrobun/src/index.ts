@@ -3,6 +3,7 @@ import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
+import type { BrowserWindow } from "electrobun/bun";
 import Electrobun, {
 	ApplicationMenu,
 	BrowserView,
@@ -12,7 +13,6 @@ import Electrobun, {
 	WGPU,
 	webgpu,
 } from "electrobun/bun";
-import type { BrowserWindow } from "electrobun/bun";
 import {
 	resolveDesktopRuntimeMode,
 	resolveInitialApiBase,

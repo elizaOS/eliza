@@ -90,8 +90,8 @@ def test_by_tier_partitions_the_ladder() -> None:
     assert len(by_tier(Tier.LOCAL)) == 3
     # WORKSTATION: qwen3.5-9b
     assert len(by_tier(Tier.WORKSTATION)) == 1
-    # CLOUD: qwen3.5-27b + qwen3.6-27b (legacy)
-    assert len(by_tier(Tier.CLOUD)) == 2
+    # CLOUD: qwen3.6-27b
+    assert len(by_tier(Tier.CLOUD)) == 1
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
@@ -101,7 +101,7 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
     assert get("qwen3.5-4b").short_name == "qwen3.5-4b"
     assert get("qwen3.5-9b").short_name == "qwen3.5-9b"
-    assert get("qwen3.5-27b").short_name == "qwen3.5-27b"
+    assert get("qwen3.6-27b").short_name == "qwen3.6-27b"
 
 
 def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
