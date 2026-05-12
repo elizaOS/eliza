@@ -114,6 +114,16 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "GET_LINEAR_ACTIVITY",
   "CLEAR_LINEAR_ACTIVITY",
   "SEARCH_LINEAR_ISSUES",
+  // Page-group umbrella parents collapsed into the single PAGE_DELEGATE action.
+  // PAGE_DELEGATE is registered in packages/agent and is not scanned here.
+  "BROWSER_ACTIONS",
+  "WALLET_ACTIONS",
+  "CHARACTER_ACTIONS",
+  "SETTINGS_ACTIONS",
+  "CONNECTOR_ACTIONS",
+  "AUTOMATION_ACTIONS",
+  "PHONE_ACTIONS",
+  "OWNER_ACTIONS",
 ]);
 
 function readText(filePath) {
