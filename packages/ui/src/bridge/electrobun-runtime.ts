@@ -48,10 +48,6 @@ export function isElectrobunRuntime(): boolean {
 
 function isCapacitorNativePlatform(): boolean {
   try {
-    // Lazy import keeps @capacitor/core out of the desktop / web bundle
-    // graph. @elizaos/ui declares @capacitor/core as a devDependency, so
-    // the import only resolves when a Capacitor app (mobile native) is
-    // the consumer; everywhere else this throws and we fall through.
     const cap = (
       globalThis as unknown as {
         Capacitor?: {
