@@ -134,7 +134,11 @@ function newestReportRecursiveWhere(dir, prefix, predicate) {
         stack.push(full);
         continue;
       }
-      if (entry.isFile() && entry.name.startsWith(prefix) && entry.name.endsWith(".json")) {
+      if (
+        entry.isFile() &&
+        entry.name.startsWith(prefix) &&
+        entry.name.endsWith(".json")
+      ) {
         matches.push({ full, mtime: fs.statSync(full).mtimeMs });
       }
     }
@@ -272,9 +276,7 @@ async function main() {
     e2eEnduranceLoop?.data?.thirtyTurnOk ??
     null;
   const e2eLoopOk =
-    endurance?.data?.summary?.e2eLoopOk ??
-    e2eLoop?.data?.e2eLoopOk ??
-    null;
+    endurance?.data?.summary?.e2eLoopOk ?? e2eLoop?.data?.e2eLoopOk ?? null;
   const voiceRtf =
     e2eLoop?.data?.summary?.ttsRtfMedian ??
     e2eLoop?.data?.summary?.ttsRtfMean ??

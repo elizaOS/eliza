@@ -34,7 +34,7 @@
 #   h100 | h200 | a100 | a100-80 | rtx4090 | rtx5090 | b200 | l40s | blackwell6000
 #
 # Tiers (informational for kernel-verify; sizes the model for bench/train):
-#   0_6b | 1_7b | 9b | 27b | 27b-256k | 27b-1m
+#   0_6b | 1_7b | 4b | 9b | 27b | 27b-256k | 27b-1m
 #
 # Required env per provider:
 #   vast    VAST_API_KEY            (or `vastai set api-key <key>` beforehand)
@@ -84,7 +84,7 @@ done
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
 case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
 case "$TASK" in kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
-case "$TIER" in 0_6b|1_7b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
+case "$TIER" in 0_6b|1_7b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -114,7 +114,7 @@ tier_to_registry_key() {
   # tiers train on the published Qwen3-0.6B / Qwen3-1.7B bases (the documented
   # stand-ins for the unpublished Qwen3.5 small checkpoints).
   case "$1" in
-    0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;; 9b) echo qwen3.5-9b ;;
+    0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;; 4b) echo qwen3-4b ;; 9b) echo qwen3.5-9b ;;
     27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
   esac
 }
@@ -127,23 +127,27 @@ if [[ "$TASK" == "train" ]]; then
   REG_KEY="$(tier_to_registry_key "$TIER")"
 
   if [[ "$PROVIDER" == "nebius" ]]; then
-    # Single H200 for 0.6b/1.7b/9b; the 2× H200 preset is only needed for 27b.
+    # Single H200 (gpu-h200x1 == 1× H200 SXM) for 0.6b/1.7b/4b/9b. The H200
+    # platform has no 2-GPU preset, so 27b would rent 8× H200 (gpu-h200x2 ==
+    # 8gpu-128vcpu-1600gb) + FSDP — expensive; train_nebius.sh's header has the
+    # cost note and asks for explicit operator confirmation. FSDP_WORLD_SIZE is
+    # left unset so train_nebius.sh derives it from the preset (1 / 8).
     case "$TIER" in
-      27b|27b-256k|27b-1m) NEBIUS_PRESET="gpu-h200x2"; NEBIUS_WORLD=2 ;;
-      *)                   NEBIUS_PRESET="gpu-h200x1"; NEBIUS_WORLD=1 ;;
+      27b|27b-256k|27b-1m) NEBIUS_PRESET="gpu-h200x2" ;;
+      *)                   NEBIUS_PRESET="gpu-h200x1" ;;
     esac
     [[ "$GPU" == "h200" ]] || log "note: --provider nebius always uses an H200 preset (--gpu $GPU ignored)"
     CMD=(bash "$TRAINING_DIR/train_nebius.sh" full)
-    log "delegating to train_nebius.sh — registry-key=$REG_KEY preset=$NEBIUS_PRESET world=$NEBIUS_WORLD"
+    log "delegating to train_nebius.sh — registry-key=$REG_KEY preset=$NEBIUS_PRESET"
     if [[ "$DRYRUN" == 1 ]]; then
       echo "[run-on-cloud] DRY-RUN plan:"
-      echo "  REGISTRY_KEY=$REG_KEY NEBIUS_VM_PRESET=$NEBIUS_PRESET FSDP_WORLD_SIZE=$NEBIUS_WORLD ${CMD[*]}"
+      echo "  REGISTRY_KEY=$REG_KEY NEBIUS_VM_PRESET=$NEBIUS_PRESET ${CMD[*]}"
       echo "  (no VM provisioned; no charges)"
       exit 0
     fi
     [[ "$PAY" == 1 ]] || die "refusing to provision without --yes-i-will-pay (train runs cost real money — see ../train_nebius.sh)"
     [[ -n "${NEBIUS_PROJECT_ID:-}" ]] || die "NEBIUS_PROJECT_ID not set — fail-closed (see ../train_nebius.sh)"
-    exec env REGISTRY_KEY="$REG_KEY" NEBIUS_VM_PRESET="$NEBIUS_PRESET" FSDP_WORLD_SIZE="$NEBIUS_WORLD" "${CMD[@]}"
+    exec env REGISTRY_KEY="$REG_KEY" NEBIUS_VM_PRESET="$NEBIUS_PRESET" "${CMD[@]}"
   fi
 
   TOKEN="$(gpu_to_train_vast_token "$GPU")"

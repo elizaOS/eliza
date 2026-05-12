@@ -26,13 +26,10 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  type LatencyTrace,
-  EndToEndLatencyTracer,
-} from "../latency-trace";
-import {
   DuetAudioBridge,
   resampleLinear,
 } from "../../../../scripts/lib/duet-bridge.mjs";
+import { EndToEndLatencyTracer, type LatencyTrace } from "../latency-trace";
 import { parseExpressiveTags } from "./expressive-tags";
 import { PushMicSource } from "./mic-source";
 import type { VoiceGenerateRequest, VoiceTurnOutcome } from "./turn-controller";
@@ -54,7 +51,9 @@ const ASR_RATE = 16_000;
  *  (AGENTS.md §3 bans a *silent* stub in production; a clearly-a-test stub
  *  that emits real PCM is fine here.) */
 class StubTts {
-  constructor(private readonly sink: { write(pcm: Float32Array, sr: number): void }) {}
+  constructor(
+    private readonly sink: { write(pcm: Float32Array, sr: number): void },
+  ) {}
   speak(text: string): number {
     const words = text.trim().split(/\s+/).filter(Boolean);
     const samples = Math.max(1, words.length) * Math.round(TTS_RATE * 0.12);
@@ -87,7 +86,8 @@ class TestTranscriber implements StreamingTranscriber {
       const update: TranscriptUpdate = { partial: prefix, isFinal: false };
       for (const l of this.listeners) l({ kind: "partial", update });
       const words = prefix.split(/\s+/).filter(Boolean);
-      if (words.length > 0) for (const l of this.listeners) l({ kind: "words", words });
+      if (words.length > 0)
+        for (const l of this.listeners) l({ kind: "words", words });
     }
   }
   async flush(): Promise<TranscriptUpdate> {
@@ -118,14 +118,22 @@ class ScriptableVad implements VadEventSource {
   }
 }
 
-const vadStart = (ms: number): VadEvent => ({ type: "speech-start", timestampMs: ms, probability: 0.9 });
+const vadStart = (ms: number): VadEvent => ({
+  type: "speech-start",
+  timestampMs: ms,
+  probability: 0.9,
+});
 const vadActive = (ms: number, dur: number): VadEvent => ({
   type: "speech-active",
   timestampMs: ms,
   probability: 0.9,
   speechDurationMs: dur,
 });
-const vadEnd = (ms: number, dur: number): VadEvent => ({ type: "speech-end", timestampMs: ms, speechDurationMs: dur });
+const vadEnd = (ms: number, dur: number): VadEvent => ({
+  type: "speech-end",
+  timestampMs: ms,
+  speechDurationMs: dur,
+});
 
 describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
   it("resampleLinear: 24 kHz → 16 kHz keeps the 3:2 sample ratio; no-op when rates match", () => {
@@ -173,7 +181,9 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
     const transcriberA = new TestTranscriber("yeah and another thought");
 
     let bTurns = 0;
-    const generateB = async (request: VoiceGenerateRequest): Promise<VoiceTurnOutcome> => {
+    const generateB = async (
+      request: VoiceGenerateRequest,
+    ): Promise<VoiceTurnOutcome> => {
       if (request.signal.aborted) {
         const e = new Error("aborted");
         e.name = "AbortError";
@@ -187,7 +197,9 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
       return { transcript: request.transcript, replyText: reply };
     };
     let aTurns = 0;
-    const generateA = async (request: VoiceGenerateRequest): Promise<VoiceTurnOutcome> => {
+    const generateA = async (
+      request: VoiceGenerateRequest,
+    ): Promise<VoiceTurnOutcome> => {
       if (request.signal.aborted) {
         const e = new Error("aborted");
         e.name = "AbortError";
@@ -211,7 +223,11 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
       args.myTracer.mark(turnId, "peer-utterance-end");
       args.vad.emit(vadStart(0));
       for (let i = 0; i < 4; i++) {
-        args.transcriber.feed({ pcm: new Float32Array(512), sampleRate: ASR_RATE, timestampMs: i * 32 });
+        args.transcriber.feed({
+          pcm: new Float32Array(512),
+          sampleRate: ASR_RATE,
+          timestampMs: i * 32,
+        });
         args.vad.emit(vadActive(40 + i * 30, 40 + i * 30));
       }
       args.vad.emit(vadEnd(200, 200));
@@ -219,10 +235,15 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
       args.myTracer.mark(turnId, "vad-trigger");
       args.myTracer.mark(turnId, "asr-final");
       args.myTracer.mark(turnId, "llm-first-token");
-      const outcome = await args.generate({ transcript: final.partial, final: true, signal: new AbortController().signal });
+      const outcome = await args.generate({
+        transcript: final.partial,
+        final: true,
+        signal: new AbortController().signal,
+      });
       args.myTracer.mark(turnId, "llm-first-replytext-char");
       const parsed = parseExpressiveTags(outcome.replyText);
-      if (parsed.hasTags) args.myTracer.mark(turnId, "replyText-first-emotion-tag");
+      if (parsed.hasTags)
+        args.myTracer.mark(turnId, "replyText-first-emotion-tag");
       args.myTracer.mark(turnId, "phrase-1-to-tts");
       args.myTracer.mark(turnId, "tts-first-audio-chunk");
       args.myTracer.mark(turnId, "audio-first-into-peer-ring");
@@ -235,7 +256,11 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
     tracerA.mark(seedTurnId, "vad-trigger");
     tracerA.mark(seedTurnId, "asr-final");
     tracerA.mark(seedTurnId, "llm-first-token");
-    await generateA({ transcript: "hey what's the most interesting thing you've thought about", final: true, signal: new AbortController().signal });
+    await generateA({
+      transcript: "hey what's the most interesting thing you've thought about",
+      final: true,
+      signal: new AbortController().signal,
+    });
     tracerA.mark(seedTurnId, "tts-first-audio-chunk");
     tracerA.endTurn(seedTurnId);
     // (a) A's TTS PCM is in B's ring now.
@@ -246,15 +271,29 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
       transcriberB.setNext(`turn ${rt}: that's an interesting point`);
       transcriberA.setNext(`turn ${rt}: yeah and another thought`);
       const framesBeforeBReply = pushAFrames;
-      const bResult = await runConsumerTurn({ vad: vadB, transcriber: transcriberB, myTracer: tracerB, roomId: "duet-B", generate: generateB });
+      const bResult = await runConsumerTurn({
+        vad: vadB,
+        transcriber: transcriberB,
+        myTracer: tracerB,
+        roomId: "duet-B",
+        generate: generateB,
+      });
       // (b) B's reply PCM landed in A's ring.
       expect(bToASamples).toBeGreaterThan(0);
       expect(pushAFrames).toBeGreaterThan(framesBeforeBReply);
       expect(bResult.trace?.derived.ttftFromUtteranceEndMs).not.toBeNull();
-      expect(bResult.trace?.derived.firstAudioIntoPeerRingFromUtteranceEndMs).not.toBeNull();
+      expect(
+        bResult.trace?.derived.firstAudioIntoPeerRingFromUtteranceEndMs,
+      ).not.toBeNull();
       expect(bResult.trace?.derived.emotionTagOverheadMs).not.toBeNull();
       // A hears B's reply → A's turn.
-      const aResult = await runConsumerTurn({ vad: vadA, transcriber: transcriberA, myTracer: tracerA, roomId: "duet-A", generate: generateA });
+      const aResult = await runConsumerTurn({
+        vad: vadA,
+        transcriber: transcriberA,
+        myTracer: tracerA,
+        roomId: "duet-A",
+        generate: generateA,
+      });
       expect(aResult.outcome.replyText.length).toBeGreaterThan(0);
     }
 
@@ -265,10 +304,19 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
     expect(tracerB.recentTraces().length).toBeGreaterThanOrEqual(3);
     expect(tracerA.recentTraces().length).toBeGreaterThanOrEqual(4);
     const someB = tracerB.recentTraces()[0] as LatencyTrace;
-    expect(someB.checkpoints.map((c) => c.name)).toContain("peer-utterance-end");
-    expect(someB.checkpoints.map((c) => c.name)).toContain("audio-first-into-peer-ring");
-    expect(tracerB.histogramSummaries().ttftFromUtteranceEndMs.count).toBeGreaterThanOrEqual(3);
-    expect(tracerB.histogramSummaries().firstAudioIntoPeerRingFromUtteranceEndMs.count).toBeGreaterThanOrEqual(3);
+    expect(someB.checkpoints.map((c) => c.name)).toContain(
+      "peer-utterance-end",
+    );
+    expect(someB.checkpoints.map((c) => c.name)).toContain(
+      "audio-first-into-peer-ring",
+    );
+    expect(
+      tracerB.histogramSummaries().ttftFromUtteranceEndMs.count,
+    ).toBeGreaterThanOrEqual(3);
+    expect(
+      tracerB.histogramSummaries().firstAudioIntoPeerRingFromUtteranceEndMs
+        .count,
+    ).toBeGreaterThanOrEqual(3);
     // (e) cross-ring bounded — the DuetSink forwarded everything (the
     // PushMicSource re-frames and drains it; residual < one frame).
     expect(bridge.aToB.totalForwarded()).toBeGreaterThan(0);
@@ -279,12 +327,18 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
 
   it("(f) a cancel mid-generate (the producer's AbortSignal) stops the turn and doesn't wedge the loop", async () => {
     const sinkChunks: Array<{ pcm: Float32Array; sr: number }> = [];
-    const sink = { write: (pcm: Float32Array, sr: number) => sinkChunks.push({ pcm, sr }) };
+    const sink = {
+      write: (pcm: Float32Array, sr: number) => sinkChunks.push({ pcm, sr }),
+    };
     const tts = new StubTts(sink);
     const ctrl = new AbortController();
     let threw = false;
-    const generate = async (request: VoiceGenerateRequest): Promise<VoiceTurnOutcome> => {
-      const words = "this reply will be cancelled before it finishes".split(" ");
+    const generate = async (
+      request: VoiceGenerateRequest,
+    ): Promise<VoiceTurnOutcome> => {
+      const words = "this reply will be cancelled before it finishes".split(
+        " ",
+      );
       for (let i = 0; i < words.length; i++) {
         if (request.signal.aborted) {
           threw = true;
@@ -310,7 +364,11 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
     // A subsequent turn with a fresh (un-aborted) signal runs to completion —
     // the loop is not wedged after the cancel.
     const ctrl2 = new AbortController();
-    const r = await generate({ transcript: "y", final: true, signal: ctrl2.signal });
+    const r = await generate({
+      transcript: "y",
+      final: true,
+      signal: ctrl2.signal,
+    });
     expect(typeof r.replyText).toBe("string");
     expect(r.transcript).toBe("y");
   });

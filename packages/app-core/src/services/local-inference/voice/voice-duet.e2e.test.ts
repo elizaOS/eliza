@@ -35,7 +35,9 @@ async function probeRealBackend(): Promise<boolean> {
     const kernelsOk =
       required.length > 0 &&
       advertised != null &&
-      required.every((k) => (advertised as Record<string, boolean>)[k] === true);
+      required.every(
+        (k) => (advertised as Record<string, boolean>)[k] === true,
+      );
     return Boolean(kernelsOk && status.capabilities?.fused);
   } catch {
     return false;
@@ -84,8 +86,16 @@ describe.skipIf(!realBackendPresent)(
       const engB = new LocalInferenceEngine();
       await engA.load(target.path);
       await engB.load(target.path);
-      engA.startVoice({ bundleRoot, useFfiBackend: true, sink: bridge.sinkForA() as unknown as never });
-      engB.startVoice({ bundleRoot, useFfiBackend: true, sink: bridge.sinkForB() as unknown as never });
+      engA.startVoice({
+        bundleRoot,
+        useFfiBackend: true,
+        sink: bridge.sinkForA() as unknown as never,
+      });
+      engB.startVoice({
+        bundleRoot,
+        useFfiBackend: true,
+        sink: bridge.sinkForB() as unknown as never,
+      });
       await engA.armVoice();
       await engB.armVoice();
 

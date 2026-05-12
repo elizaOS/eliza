@@ -932,6 +932,34 @@ function findPython(): string | null {
 }
 
 /**
+ * Return an env clone with the directory holding `binaryPath` prepended to
+ * the platform's dynamic-linker search path (`LD_LIBRARY_PATH` on Linux,
+ * `DYLD_LIBRARY_PATH` on macOS, `PATH` on Windows). The fork's `llama-server`
+ * and its sidecar shared libraries (`libllama.so`, `libggml*.so`, `libmtmd.so`,
+ * `libelizainference.so`) are installed side by side in the build's `bin/`
+ * directory, but the binary's embedded RUNPATH points at the *build* tree —
+ * not the install tree — so a spawn from the install dir cannot resolve them
+ * without this. Mirrors what `dflash-server-fused.integration.test.ts` does.
+ */
+function withServerLibraryPath(
+  env: NodeJS.ProcessEnv,
+  binaryPath: string,
+): NodeJS.ProcessEnv {
+  const dir = path.dirname(binaryPath);
+  const key =
+    process.platform === "darwin"
+      ? "DYLD_LIBRARY_PATH"
+      : process.platform === "win32"
+        ? "PATH"
+        : "LD_LIBRARY_PATH";
+  const existing = env[key];
+  return {
+    ...env,
+    [key]: existing ? `${dir}${path.delimiter}${existing}` : dir,
+  };
+}
+
+/**
  * Cache of `llama-server --help` text keyed by binary path. The help text
  * lists every accepted flag, so we grep it to gate version-dependent args
  * (`--reasoning`, etc.) instead of letting llama-server reject the whole
@@ -944,7 +972,7 @@ function llamaServerHelpText(binaryPath: string): string {
   if (helpText === undefined) {
     const result = spawnSync(binaryPath, ["--help"], {
       encoding: "utf8",
-      env: process.env,
+      env: withServerLibraryPath(process.env, binaryPath),
       maxBuffer: 4 * 1024 * 1024,
     });
     helpText = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -2206,7 +2234,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
     this.stderrTail = [];
     const child = spawn(status.binaryPath, args, {
-      env: { ...process.env },
+      env: withServerLibraryPath(process.env, status.binaryPath),
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.child = child;

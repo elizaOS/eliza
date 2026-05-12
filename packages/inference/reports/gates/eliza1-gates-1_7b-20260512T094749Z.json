@@ -1,0 +1,300 @@
+{
+  "generatedAt": "2026-05-12T09:47:49.309Z",
+  "collector": "packages/inference/verify/eliza1_gates_collect.mjs",
+  "tier": "1_7b",
+  "gatesFile": "packages/training/benchmarks/eliza1_gates.yaml",
+  "gatesVersion": 2,
+  "sources": {
+    "dflashBench": "packages/inference/reports/dflash-bench/dflash-bench-latest.json",
+    "vadQuality": "packages/inference/reports/vad/vad-quality-20260512T013134Z.json",
+    "bargein": "packages/inference/reports/bargein/bargein-latency-20260512T094742Z.json",
+    "endurance": "packages/inference/reports/endurance/thirty-turn-endurance-20260512T094749Z.json",
+    "e2eLoop": "packages/inference/reports/local-e2e/2026-05-11/e2e-loop-0_6b-2026-05-11-duration32-3-fixedbarge.json",
+    "e2eEnduranceLoop": "packages/inference/reports/local-e2e/2026-05-11/e2e-loop-0_6b-2026-05-11-stablewav-fastout8-30turn.json",
+    "mobileRss": null
+  },
+  "measured": {
+    "text_eval": null,
+    "voice_rtf": 3.7345,
+    "asr_wer": 0,
+    "vad_latency_ms": 0.19758299999989504,
+    "vad_boundary_mae_ms": 40,
+    "vad_endpoint_p95_ms": 552,
+    "vad_false_bargein_per_hour": 0,
+    "first_token_latency_ms": 19,
+    "first_audio_latency_ms": 5423.9,
+    "duet_round_trip_ms": null,
+    "structured_decode_token_savings_pct": null,
+    "barge_in_cancel_ms": 0.8,
+    "thirty_turn_ok": true,
+    "e2e_loop_ok": false,
+    "dflash_acceptance": 0,
+    "dflash_speedup": null,
+    "expressive_tag_faithfulness": null,
+    "expressive_mos": null,
+    "expressive_tag_leakage": null,
+    "peak_rss_mb": null,
+    "thermal_throttle_pct": null
+  },
+  "gateResults": [
+    {
+      "name": "format_ok",
+      "op": ">=",
+      "threshold": 0.7,
+      "measured": null,
+      "status": "needs-data",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "text_eval",
+      "op": ">=",
+      "threshold": 0.6,
+      "measured": null,
+      "status": "needs-data",
+      "required": true,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "voice_rtf",
+      "op": "<=",
+      "threshold": 0.45,
+      "measured": 3.7345,
+      "status": "fail",
+      "required": true,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "asr_wer",
+      "op": "<=",
+      "threshold": 0.08,
+      "measured": 0,
+      "status": "pass",
+      "required": true,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "vad_latency_ms",
+      "op": "<=",
+      "threshold": 18,
+      "measured": 0.19758299999989504,
+      "status": "pass",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "vad_boundary_mae_ms",
+      "op": "<=",
+      "threshold": 40,
+      "measured": 40,
+      "status": "pass",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "vad_endpoint_p95_ms",
+      "op": "<=",
+      "threshold": 650,
+      "measured": 552,
+      "status": "pass",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "vad_false_bargein_per_hour",
+      "op": "<=",
+      "threshold": 0.2,
+      "measured": 0,
+      "status": "pass",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "first_token_latency_ms",
+      "op": "<=",
+      "threshold": 200,
+      "measured": 19,
+      "status": "pass",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "first_audio_latency_ms",
+      "op": "<=",
+      "threshold": 400,
+      "measured": 5423.9,
+      "status": "fail",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "duet_round_trip_ms",
+      "op": "<=",
+      "threshold": 400,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "structured_decode_token_savings_pct",
+      "op": ">=",
+      "threshold": 20,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "barge_in_cancel_ms",
+      "op": "<=",
+      "threshold": 70,
+      "measured": 0.8,
+      "status": "pass",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "thirty_turn_ok",
+      "op": "bool",
+      "threshold": true,
+      "measured": true,
+      "status": "pass",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "e2e_loop_ok",
+      "op": "bool",
+      "threshold": true,
+      "measured": false,
+      "status": "fail",
+      "required": true,
+      "provisional": false,
+      "needsHardware": false
+    },
+    {
+      "name": "dflash_acceptance",
+      "op": ">=",
+      "threshold": 0.65,
+      "measured": 0,
+      "status": "fail",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "dflash_speedup",
+      "op": ">=",
+      "threshold": 1.5,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "expressive_tag_faithfulness",
+      "op": ">=",
+      "threshold": 0.85,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "expressive_mos",
+      "op": ">=",
+      "threshold": 3.8,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "expressive_tag_leakage",
+      "op": "<=",
+      "threshold": 0.03,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": false
+    },
+    {
+      "name": "peak_rss_mb",
+      "op": "<=",
+      "threshold": 4500,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": true
+    },
+    {
+      "name": "thermal_throttle_pct",
+      "op": "<=",
+      "threshold": 20,
+      "measured": null,
+      "status": "needs-data",
+      "required": false,
+      "provisional": true,
+      "needsHardware": true
+    }
+  ],
+  "summary": {
+    "total": 22,
+    "pass": 8,
+    "fail": 4,
+    "needsData": 10,
+    "hardFailures": [
+      "e2e_loop_ok"
+    ],
+    "softFailures": [
+      "voice_rtf",
+      "first_audio_latency_ms",
+      "dflash_acceptance"
+    ],
+    "blocking": true
+  },
+  "manifestEvalsFragment": {
+    "voiceRtf": {
+      "rtf": 3.7345,
+      "passed": false
+    },
+    "asrWer": {
+      "wer": 0,
+      "passed": true
+    },
+    "thirtyTurnOk": true,
+    "e2eLoopOk": false,
+    "vadLatencyMs": {
+      "median": 0.19758299999989504,
+      "boundaryMs": 40,
+      "endpointMs": 552,
+      "falseBargeInRate": 0,
+      "passed": true
+    },
+    "dflash": {
+      "acceptanceRate": 0,
+      "speedup": null,
+      "passed": false
+    }
+  }
+}

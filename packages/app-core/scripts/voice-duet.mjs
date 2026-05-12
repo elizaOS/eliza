@@ -64,7 +64,8 @@ function parseArgs(argv) {
     turns: Infinity,
     characterA: null,
     characterB: null,
-    seedText: "Hey — what's the most interesting thing you've thought about lately?",
+    seedText:
+      "Hey — what's the most interesting thing you've thought about lately?",
     report: null,
     ringMs: 200,
     twoProcess: false,
@@ -263,7 +264,9 @@ async function inspectDuetPrereqs(args) {
   // Reuse the interactive harness's full prereq inspector (catalog entry, bundle
   // install, DFlash binary + kernel coverage, fused libelizainference, VAD,
   // ASR). It's parameterised by `args.modelId` for the tier the duet runs.
-  const { inspectActiveOptimizations } = await import("./voice-interactive.mjs");
+  const { inspectActiveOptimizations } = await import(
+    "./voice-interactive.mjs"
+  );
   return inspectActiveOptimizations({ modelId: args.model, noDflash: false });
 }
 
@@ -428,7 +431,9 @@ async function snapshotTrace(roomId) {
       "../src/services/local-inference/latency-trace.ts"
     );
     const all = voiceLatencyTracer.recentTraces();
-    const t = [...all].reverse().find((x) => x.roomId === roomId) ?? all[all.length - 1];
+    const t =
+      [...all].reverse().find((x) => x.roomId === roomId) ??
+      all[all.length - 1];
     return t ?? null;
   } catch {
     return null;
@@ -503,12 +508,18 @@ async function writeReport(reportPath, payload) {
     "",
     "| metric | p50 | p90 | p99 | n |",
     "|---|---|---|---|---|",
-    ...["ttftFromUtteranceEndMs", "firstAudioIntoPeerRingFromUtteranceEndMs", "ttftMs", "ttfaMs", "ttapMs", "envelopeToReplyTextMs", "emotionTagOverheadMs"].map(
-      (k) => {
-        const s = h[k] ?? {};
-        return `| ${k} | ${fmtMs(s.p50)} | ${fmtMs(s.p90)} | ${fmtMs(s.p99)} | ${s.count ?? 0} |`;
-      },
-    ),
+    ...[
+      "ttftFromUtteranceEndMs",
+      "firstAudioIntoPeerRingFromUtteranceEndMs",
+      "ttftMs",
+      "ttfaMs",
+      "ttapMs",
+      "envelopeToReplyTextMs",
+      "emotionTagOverheadMs",
+    ].map((k) => {
+      const s = h[k] ?? {};
+      return `| ${k} | ${fmtMs(s.p50)} | ${fmtMs(s.p90)} | ${fmtMs(s.p99)} | ${s.count ?? 0} |`;
+    }),
     "",
     "## Run metrics",
     "",
@@ -591,7 +602,12 @@ async function main() {
   const bundleRoot = prereqs.bundleRoot;
   const catalogEntry = prereqs.catalogEntry;
   if (!bundleRoot || !catalogEntry) {
-    log(c("red", "[voice-duet] internal: prereqs OK but no bundleRoot/catalogEntry"));
+    log(
+      c(
+        "red",
+        "[voice-duet] internal: prereqs OK but no bundleRoot/catalogEntry",
+      ),
+    );
     process.exit(1);
   }
 
@@ -600,18 +616,41 @@ async function main() {
   // kernels — almost never in CI. The wiring/cancel/shape path is covered by
   // voice-duet.e2e.test.ts unconditionally with stub backends; this is the
   // real-output run.)
-  tag("duet", "blue", `booting two ${args.model} engines (${args.twoProcess ? "two-process" : "in-process"})…`);
+  tag(
+    "duet",
+    "blue",
+    `booting two ${args.model} engines (${args.twoProcess ? "two-process" : "in-process"})…`,
+  );
 
   const { LocalInferenceEngine } = await import(
     "../src/services/local-inference/engine.ts"
   );
+  // Register the bundle in the local-inference registry if it isn't already
+  // (the same step `voice-interactive.mjs` does before `engine.load`).
+  try {
+    const { ensureBundleRegistered } = await import("./voice-interactive.mjs");
+    await ensureBundleRegistered(catalogEntry, bundleRoot);
+  } catch (err) {
+    log(
+      c(
+        "red",
+        `[voice-duet] failed to register the ${args.model} bundle: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
+    process.exit(1);
+  }
   const { listInstalledModels } = await import(
     "../src/services/local-inference/registry.ts"
   );
   const installed = await listInstalledModels();
   const target = installed.find((m) => m.id === args.model);
   if (!target) {
-    log(c("red", `[voice-duet] ${args.model} is not registered as an installed model`));
+    log(
+      c(
+        "red",
+        `[voice-duet] ${args.model} is not registered as an installed model`,
+      ),
+    );
     process.exit(1);
   }
   const bundlePath = target.path;
@@ -620,8 +659,12 @@ async function main() {
     import("../src/services/local-inference/voice/mic-source.ts"),
     import("../src/services/local-inference/voice/vad.ts"),
   ]);
-  const { markVoiceLatency, endVoiceLatencyTurn, voiceLatencyTracer, VoiceRunMetrics } =
-    await import("../src/services/local-inference/latency-trace.ts");
+  const {
+    markVoiceLatency,
+    endVoiceLatencyTurn,
+    voiceLatencyTracer,
+    VoiceRunMetrics,
+  } = await import("../src/services/local-inference/latency-trace.ts");
   const { parseExpressiveTags, asrEmotionToTag } = await import(
     "../src/services/local-inference/voice/expressive-tags.ts"
   );
@@ -663,10 +706,18 @@ async function main() {
   let emotionPerceiver = "unknown";
 
   // The runtime + generate for each agent.
-  const bootedA = await bootAgentRuntime({ roomId: roomA, character: charA, modelId: args.model });
+  const bootedA = await bootAgentRuntime({
+    roomId: roomA,
+    character: charA,
+    modelId: args.model,
+  });
   const bootedB = args.twoProcess
     ? null /* B runs in a child process — see below */
-    : await bootAgentRuntime({ roomId: roomB, character: charB, modelId: args.model });
+    : await bootAgentRuntime({
+        roomId: roomB,
+        character: charB,
+        modelId: args.model,
+      });
 
   // Wrap each generate to: stream replyText to stdout, parse expressive tags
   // (so the emotion travels into the TTS text), and mark the emotion-tag
@@ -694,20 +745,27 @@ async function main() {
   };
 
   const sharedEvents = (room, label, onComplete) => ({
-    onSpeculativeStart: (t) => tag("spec", "dim", `${label} off partial: "${t}"`),
-    onSpeculativeAbort: () => tag("spec", "dim", `${label} aborted (speech resumed)`),
+    onSpeculativeStart: (t) =>
+      tag("spec", "dim", `${label} off partial: "${t}"`),
+    onSpeculativeAbort: () =>
+      tag("spec", "dim", `${label} aborted (speech resumed)`),
     onSpeculativePromoted: () => tag("spec", "green", `${label} promoted`),
     onTurnComplete: async (outcome) => {
       await onComplete(outcome);
     },
-    onError: (err) => tag("error", "red", `${label}: ${err?.message ?? String(err)}`),
+    onError: (err) =>
+      tag("error", "red", `${label}: ${err?.message ?? String(err)}`),
   });
 
   // ── Boot agent A's engine (sink → aToB ring) ───────────────────────────
-  const vadA = await vadMod.createSileroVadDetector({ modelPath: process.env.ELIZA_VAD_MODEL_PATH });
+  const vadA = await vadMod.createSileroVadDetector({
+    modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+  });
   const vadB = args.twoProcess
     ? null
-    : await vadMod.createSileroVadDetector({ modelPath: process.env.ELIZA_VAD_MODEL_PATH });
+    : await vadMod.createSileroVadDetector({
+        modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+      });
 
   // The cross-agent loop bookkeeping.
   let completedTurns = 0;
@@ -722,7 +780,12 @@ async function main() {
     markVoiceLatency(consumerRoom, "peer-utterance-end");
   };
 
-  const recordTurnMetrics = async ({ producerRoom, consumerRoom, producerOutcome, consumerOutcome }) => {
+  const recordTurnMetrics = async ({
+    producerRoom,
+    consumerRoom,
+    producerOutcome,
+    consumerOutcome,
+  }) => {
     completedTurns += 1;
     // Latency: snapshot the consumer's trace (it has the duet spans).
     const trace = await snapshotTrace(consumerRoom);
@@ -809,7 +872,10 @@ async function main() {
     // A finished speaking → its TTS streamed into the aToB ring. Settle A's
     // TTS, then mark B's peer-utterance-end. B's VAD/ASR already started off
     // the streamed PCM; this is the "A drained its last chunk" instant.
-    await engineA.engine.voice()?.settle?.().catch(() => {});
+    await engineA.engine
+      .voice()
+      ?.settle?.()
+      .catch(() => {});
     afterProducerSettled(roomB);
     markVoiceLatency(roomB, "audio-first-into-peer-ring"); // A's audio landed in B's ring already
     pendingProducerOutcome = outcomeA;
@@ -817,7 +883,10 @@ async function main() {
   };
 
   const onBComplete = async (outcomeB) => {
-    await engineB?.engine?.voice?.()?.settle?.().catch(() => {});
+    await engineB?.engine
+      ?.voice?.()
+      ?.settle?.()
+      .catch(() => {});
     afterProducerSettled(roomA);
     markVoiceLatency(roomA, "audio-first-into-peer-ring");
     // One round-trip done (A→B→A): A asked, B answered, audio's back at A.
@@ -961,13 +1030,15 @@ async function main() {
     // Write the report.
     if (args.report) {
       const histograms = await snapshotHistograms();
-      const accuracy = emotionSamples > 0 ? emotionAgree / emotionSamples : null;
+      const accuracy =
+        emotionSamples > 0 ? emotionAgree / emotionSamples : null;
       const payload = {
         schema: "voice-duet-bench/1",
         model: args.model,
         generatedAt: new Date().toISOString(),
         platform: `${process.platform}-${process.arch}`,
-        backend: process.env.ELIZA_INFERENCE_FUSED_BACKEND ?? args.backend ?? null,
+        backend:
+          process.env.ELIZA_INFERENCE_FUSED_BACKEND ?? args.backend ?? null,
         twoProcess: args.twoProcess,
         requestedTurns: Number.isFinite(args.turns) ? args.turns : null,
         completedTurns,
@@ -985,16 +1056,21 @@ async function main() {
         runMetrics: runMetrics.summary(),
         emotionFidelity: {
           perceiver:
-            emotionSamples > 0 ? emotionPerceiver : "perceiver: fallback-classifier (unavailable — recorded as null)",
+            emotionSamples > 0
+              ? emotionPerceiver
+              : "perceiver: fallback-classifier (unavailable — recorded as null)",
           samples: emotionSamples,
           accuracy,
           confusionMatrix: Object.fromEntries(emotionMatrix),
         },
         // Gate-name-aligned mirror so eliza1_gates_collect.mjs can ingest it.
         gates: {
-          first_token_latency_ms: histograms?.ttftFromUtteranceEndMs?.p50 ?? null,
-          first_audio_latency_ms: histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null,
-          duet_round_trip_ms: histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null,
+          first_token_latency_ms:
+            histograms?.ttftFromUtteranceEndMs?.p50 ?? null,
+          first_audio_latency_ms:
+            histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null,
+          duet_round_trip_ms:
+            histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null,
           structured_decode_token_savings_pct:
             runMetrics.summary().structuredDecodeTokenSavingsPct?.p50 ?? null,
           dflash_acceptance: runMetrics.summary().dflashAcceptRate,
@@ -1011,7 +1087,12 @@ async function main() {
         await writeReport(args.report, payload);
         log(c("green", `[report] wrote ${path.resolve(args.report)} (+ .md)`));
       } catch (err) {
-        log(c("red", `[report] failed to write: ${err instanceof Error ? err.message : String(err)}`));
+        log(
+          c(
+            "red",
+            `[report] failed to write: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
       }
     }
     log(c("green", "[shutdown] done."));
@@ -1021,20 +1102,33 @@ async function main() {
   process.on("SIGTERM", () => void shutdown(0));
 
   // ── Kick off: agent A speaks first off the seed ───────────────────────
-  tag("duet", "green", `armed — A=${charA.name} B=${charB.name} bundle=${args.model}; seeding A's opening line…`);
+  tag(
+    "duet",
+    "green",
+    `armed — A=${charA.name} B=${charB.name} bundle=${args.model}; seeding A's opening line…`,
+  );
   voiceLatencyTracer.beginTurn({ roomId: roomB }); // open B's first latency turn
   markVoiceLatency(roomA, "vad-trigger"); // A's seed has no mic — synthetic t0
   markVoiceLatency(roomA, "asr-final");
   try {
     const seedSignal = new AbortController().signal;
-    const outcomeA = await wrapGenerate(bootedA, roomA, "A")({
+    const outcomeA = await wrapGenerate(
+      bootedA,
+      roomA,
+      "A",
+    )({
       transcript: args.seedText,
       final: true,
       signal: seedSignal,
     });
     await onAComplete(outcomeA);
   } catch (err) {
-    log(c("red", `[voice-duet] seed turn failed: ${err instanceof Error ? err.message : String(err)}`));
+    log(
+      c(
+        "red",
+        `[voice-duet] seed turn failed: ${err instanceof Error ? err.message : String(err)}`,
+      ),
+    );
     await shutdown(1);
     return;
   }
@@ -1062,7 +1156,13 @@ function extractEmotionFromTranscript(transcript) {
 // --two-process: spawn agent B as a child of THIS script
 // ---------------------------------------------------------------------------
 
-async function spawnPeerB({ args, bundlePath, bundleRoot, onPeerPcm, onPeerTurn }) {
+async function spawnPeerB({
+  args,
+  bundlePath,
+  bundleRoot,
+  onPeerPcm,
+  onPeerTurn,
+}) {
   const childArgs = [
     __filename,
     "--as-peer-b",
@@ -1072,13 +1172,19 @@ async function spawnPeerB({ args, bundlePath, bundleRoot, onPeerPcm, onPeerTurn 
     "(peer)",
   ];
   if (args.characterB) childArgs.push("--character-b", args.characterB);
-  if (args.parallel != null) childArgs.push("--parallel", String(args.parallel));
-  if (args.draftMax != null) childArgs.push("--draft-max", String(args.draftMax));
+  if (args.parallel != null)
+    childArgs.push("--parallel", String(args.parallel));
+  if (args.draftMax != null)
+    childArgs.push("--draft-max", String(args.draftMax));
   if (args.ctxSizeDraft != null)
     childArgs.push("--ctx-size-draft", String(args.ctxSizeDraft));
   const child = spawn(process.execPath, childArgs, {
     stdio: ["pipe", "pipe", "inherit"],
-    env: { ...process.env, ELIZA_DUET_PEER_BUNDLE: bundlePath, ELIZA_DUET_PEER_BUNDLE_ROOT: bundleRoot },
+    env: {
+      ...process.env,
+      ELIZA_DUET_PEER_BUNDLE: bundlePath,
+      ELIZA_DUET_PEER_BUNDLE_ROOT: bundleRoot,
+    },
   });
   let buf = "";
   child.stdout.on("data", (chunk) => {
@@ -1099,7 +1205,11 @@ async function spawnPeerB({ args, bundlePath, bundleRoot, onPeerPcm, onPeerTurn 
       }
       if (msg.kind === "pcm" && typeof msg.b64 === "string") {
         const bytes = Buffer.from(msg.b64, "base64");
-        const f = new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4));
+        const f = new Float32Array(
+          bytes.buffer,
+          bytes.byteOffset,
+          Math.floor(bytes.byteLength / 4),
+        );
         onPeerPcm(Float32Array.from(f));
       } else if (msg.kind === "turn") {
         void onPeerTurn(msg.outcome ?? {});
@@ -1114,7 +1224,9 @@ async function spawnPeerB({ args, bundlePath, bundleRoot, onPeerPcm, onPeerTurn 
   return {
     sendPcm(pcm) {
       const b = Buffer.from(Float32Array.from(pcm).buffer);
-      child.stdin.write(`${JSON.stringify({ kind: "pcm", b64: b.toString("base64") })}\n`);
+      child.stdin.write(
+        `${JSON.stringify({ kind: "pcm", b64: b.toString("base64") })}\n`,
+      );
     },
     kill() {
       try {
@@ -1138,7 +1250,10 @@ async function runAsPeerB(args) {
     const bundlePath = process.env.ELIZA_DUET_PEER_BUNDLE;
     const bundleRoot = process.env.ELIZA_DUET_PEER_BUNDLE_ROOT;
     if (!bundlePath || !bundleRoot) {
-      send({ kind: "error", message: "peer-b: missing ELIZA_DUET_PEER_BUNDLE(_ROOT)" });
+      send({
+        kind: "error",
+        message: "peer-b: missing ELIZA_DUET_PEER_BUNDLE(_ROOT)",
+      });
       process.exit(1);
     }
     const { LocalInferenceEngine } = await import(
@@ -1151,19 +1266,31 @@ async function runAsPeerB(args) {
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
     const roomB = "voice-duet-B";
-    const booted = await bootAgentRuntime({ roomId: roomB, character: charB, modelId: args.model });
+    const booted = await bootAgentRuntime({
+      roomId: roomB,
+      character: charB,
+      modelId: args.model,
+    });
     const push = new PushMicSource({ sampleRate: 16_000 });
     await push.start();
     // B's reply PCM (24 kHz from TTS) → resample to 16 kHz → stream to parent.
     const replySink = new DuetSink(
-      (pcm) => send({ kind: "pcm", b64: Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength).toString("base64") }),
+      (pcm) =>
+        send({
+          kind: "pcm",
+          b64: Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength).toString(
+            "base64",
+          ),
+        }),
       { targetRate: 16_000 },
     );
     const engine = new LocalInferenceEngine();
     await engine.load(bundlePath);
     engine.startVoice({ bundleRoot, useFfiBackend: true, sink: replySink });
     await engine.armVoice();
-    const vad = await vadMod.createSileroVadDetector({ modelPath: process.env.ELIZA_VAD_MODEL_PATH });
+    const vad = await vadMod.createSileroVadDetector({
+      modelPath: process.env.ELIZA_VAD_MODEL_PATH,
+    });
     await engine.startVoiceSession({
       roomId: roomB,
       micSource: push,
@@ -1182,10 +1309,20 @@ async function runAsPeerB(args) {
       speculatePauseMs: 300,
       events: {
         onTurnComplete: async (outcome) => {
-          await engine.voice()?.settle?.().catch(() => {});
-          send({ kind: "turn", outcome: { transcript: outcome.transcript, replyText: outcome.replyText } });
+          await engine
+            .voice()
+            ?.settle?.()
+            .catch(() => {});
+          send({
+            kind: "turn",
+            outcome: {
+              transcript: outcome.transcript,
+              replyText: outcome.replyText,
+            },
+          });
         },
-        onError: (err) => send({ kind: "error", message: err?.message ?? String(err) }),
+        onError: (err) =>
+          send({ kind: "error", message: err?.message ?? String(err) }),
       },
     });
     // Read PCM frames from the parent on stdin.
@@ -1202,7 +1339,11 @@ async function runAsPeerB(args) {
           const msg = JSON.parse(line);
           if (msg.kind === "pcm" && typeof msg.b64 === "string") {
             const bytes = Buffer.from(msg.b64, "base64");
-            const f = new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4));
+            const f = new Float32Array(
+              bytes.buffer,
+              bytes.byteOffset,
+              Math.floor(bytes.byteLength / 4),
+            );
             push.push(Float32Array.from(f));
           }
         } catch {
@@ -1213,7 +1354,10 @@ async function runAsPeerB(args) {
     send({ kind: "ready" });
     process.on("SIGTERM", () => process.exit(0));
   } catch (err) {
-    send({ kind: "error", message: err instanceof Error ? (err.stack ?? err.message) : String(err) });
+    send({
+      kind: "error",
+      message: err instanceof Error ? (err.stack ?? err.message) : String(err),
+    });
     process.exit(1);
   }
 }
@@ -1224,13 +1368,18 @@ if (import.meta.main) {
   const parsed = parseArgs(process.argv.slice(2));
   if (parsed.asPeerB) {
     runAsPeerB(parsed).catch((err) => {
-      process.stderr.write(`[voice-duet peer-b] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
+      process.stderr.write(
+        `[voice-duet peer-b] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+      );
       process.exit(1);
     });
   } else {
     main().catch((err) => {
       console.error(
-        c("red", `[voice-duet] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`),
+        c(
+          "red",
+          `[voice-duet] fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+        ),
       );
       process.exit(1);
     });
@@ -1240,10 +1389,10 @@ if (import.meta.main) {
 // Exported for the e2e test (the stub-backend wiring path needs the personas
 // + the bridge + the sweep-knob translator without booting `main()`).
 export {
-  parseArgs,
   applySweepKnobs,
-  loadCharacter,
   DEFAULT_CHARACTER_A,
   DEFAULT_CHARACTER_B,
   extractEmotionFromTranscript,
+  loadCharacter,
+  parseArgs,
 };
