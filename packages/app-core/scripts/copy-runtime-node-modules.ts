@@ -1565,6 +1565,44 @@ function copyPgliteCompatibilityAssets(targetDist: string): void {
   }
 }
 
+/**
+ * Defense-in-depth check: every package marked `alwaysBundled` must land in
+ * `dist/node_modules/<name>/package.json` once the copy + prune phases are
+ * done. The existing `missingAlwaysBundled` tracker already throws when a
+ * package fails to *resolve*, but it can't catch:
+ *
+ *  - a future filter refactor that silently skips a CORE plugin in the
+ *    transitive walk (the same class of bug as elizaOS/eliza#7617's
+ *    transitive-filter change — companion safety net),
+ *  - `pruneCopiedPackageDir` removing a load-bearing file like
+ *    `package.json` because a new rule pattern grew too aggressive.
+ *
+ * Re-walking the dist and asserting presence is O(N) over the bundled set,
+ * runs once per build, and fails the build loudly so the regression never
+ * ships.
+ */
+export function assertRequiredBundledPackagesLanded(
+  targetNodeModules: string,
+  alwaysBundled: ReadonlySet<string>,
+): void {
+  const missing: string[] = [];
+  for (const name of alwaysBundled) {
+    if (!isPackageNameCompatibleWithCurrentPlatform(name)) continue;
+    const pkgJsonPath = path.join(packagePath(name, targetNodeModules), "package.json");
+    if (!fs.existsSync(pkgJsonPath)) {
+      missing.push(name);
+    }
+  }
+  if (missing.length === 0) return;
+  throw new Error(
+    [
+      `[runtime-copy] ${missing.length} required runtime package(s) failed to land in the bundle after copy + prune:`,
+      ...missing.sort().map((n) => `  ${n}  (missing ${path.join(packagePath(n, targetNodeModules), "package.json")})`),
+      "This usually means a filter in the transitive-walk or a rule in pruneCopiedPackageDir accidentally excluded a required package. Bundle is unsafe to ship.",
+    ].join("\n"),
+  );
+}
+
 function assertTarSafeRuntimePaths(targetDist: string): void {
   const unsafe: string[] = [];
 
@@ -1736,6 +1774,21 @@ function main(): void {
         continue;
       }
 
+      // Same filter we apply at initial discovery: runtime plugins that
+      // aren't in `alwaysBundled` (CORE_PLUGINS / OPTIONAL_CORE_PLUGINS /
+      // BASELINE_*) are post-release-installable and must not be physically
+      // bundled into the desktop runtime. Without this guard, an
+      // alwaysBundled package's non-optional peerDependency or dependency
+      // on a post-release plugin (e.g. @elizaos/app-wallet → peerDep on
+      // @elizaos/plugin-wallet) drags the entire transitive tree in,
+      // including @orca-so/whirlpools → @solana-program/* → @solana/kit
+      // with three coexisting major versions of @solana/codecs* nested
+      // 8 levels deep, which then trips `assertTarSafeRuntimePaths`.
+      if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
+        filteredOptionalPlugins.add(dep.name);
+        continue;
+      }
+
       queue.push({
         name: dep.name,
         spec: dep.spec,
@@ -1747,6 +1800,7 @@ function main(): void {
 
   copyPgliteCompatibilityAssets(targetDist);
   assertTarSafeRuntimePaths(targetDist);
+  assertRequiredBundledPackagesLanded(targetNodeModules, alwaysBundled);
 
   console.log(
     `[runtime-copy] bundled ${copiedNames.size} package(s) into ${targetNodeModules}`,
