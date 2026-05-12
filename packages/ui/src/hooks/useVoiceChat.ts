@@ -922,7 +922,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       let audioBytes: Uint8Array | null = null;
       let cached = false;
 
-      if (cachedBytes) {
+      if (cacheKey && cachedBytes) {
         rememberCachedSegment(cacheKey, cachedBytes);
         audioBytes = cachedBytes.slice();
         cached = true;
@@ -1715,8 +1715,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     if (!unsent) return;
 
     const elConfig = voiceConfigRef.current?.elevenlabs;
+    const isFirstClip = state.queuedSpeakablePrefix.length === 0;
+    const segment = isFirstClip ? "full" : "remainder";
     const cacheKey =
-      voiceConfigRef.current?.provider === "elevenlabs" && elConfig
+      voiceConfigRef.current?.provider === "elevenlabs" &&
+      elConfig &&
+      shouldCacheGeneratedSpeech(unsent, segment)
         ? makeElevenCacheKey(unsent, elConfig)
         : undefined;
 
@@ -1727,11 +1731,10 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         }
       : undefined;
 
-    const isFirstClip = state.queuedSpeakablePrefix.length === 0;
     enqueueSpeech({
       text: unsent,
       append: !isFirstClip || !state.replacePlaybackOnFirstClip,
-      segment: isFirstClip ? "full" : "remainder",
+      segment,
       cacheKey,
       debugUtteranceContext: dbgUtterance,
       telemetry: state.telemetry,
@@ -1795,7 +1798,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
         const elConfig = voiceConfigRef.current?.elevenlabs;
         const cacheKey =
-          voiceConfigRef.current?.provider === "elevenlabs" && elConfig
+          voiceConfigRef.current?.provider === "elevenlabs" &&
+          elConfig &&
+          shouldCacheGeneratedSpeech(speakable, "full")
             ? makeElevenCacheKey(speakable, elConfig)
             : undefined;
         const dbgUtterance = isTtsDebugEnabled()
@@ -1850,8 +1855,11 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       if (flushNow) {
         clearAssistantTtsDebounce();
         const elConfig = voiceConfigRef.current?.elevenlabs;
+        const segment = isFirstClip ? "full" : "remainder";
         const cacheKey =
-          voiceConfigRef.current?.provider === "elevenlabs" && elConfig
+          voiceConfigRef.current?.provider === "elevenlabs" &&
+          elConfig &&
+          shouldCacheGeneratedSpeech(unsent, segment)
             ? makeElevenCacheKey(unsent, elConfig)
             : undefined;
         const dbgUtterance = isTtsDebugEnabled()
@@ -1863,7 +1871,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         enqueueSpeech({
           text: unsent,
           append: !isFirstClip || !state.replacePlaybackOnFirstClip,
-          segment: isFirstClip ? "full" : "remainder",
+          segment,
           cacheKey,
           debugUtteranceContext: dbgUtterance,
           telemetry: state.telemetry,

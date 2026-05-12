@@ -497,6 +497,23 @@ export interface SchedulerConfig {
    * common case (text gen leads TTS by a phrase or two).
    */
   maxInFlightPhrases?: number;
+  /**
+   * Enable the streaming-TTS path (`synthesizeStream`) for phrase
+   * synthesis. When `true` (default), the scheduler uses the chunk-by-chunk
+   * streaming ABI when the backend supports it, delivering first audio
+   * before the full phrase finishes synthesizing and enabling per-chunk
+   * prefix-preserving barge-in rollback.
+   *
+   * Previously this was implicitly gated by `ttsStreamSupported()` from the
+   * native FFI layer. On macOS, a `ggml_conv_transpose_1d` stall in the
+   * DAC codec region caused the Metal path to hang — that stall is now
+   * fixed in the llama.cpp merge (native Metal kernels for
+   * `ggml_conv_transpose_1d`; the CPU fallback causing the hang is gone).
+   * The flag is therefore `true` by default. Set to `false` only when
+   * testing against a non-streaming build stub or reproducing the pre-fix
+   * behaviour.
+   */
+  streamingTtsActive?: boolean;
 }
 
 export interface VoiceSchedulerPhraseTelemetry {
@@ -575,6 +592,22 @@ export type VoiceSchedulerTelemetryEvent =
       sinkBufferedSamplesDrained: number;
       inFlightPhrasesCancelled: number;
       wasPaused: boolean;
+    }
+  | {
+      /**
+       * Fired when the prefix-preserving rollback queue partitions
+       * in-flight audio chunks on barge-in. `retainedChunks` are replayed
+       * into the sink; `droppedChunks` are discarded. Present only when
+       * `PrefixPreservingQueue` is active (at least one chunk was tagged).
+       */
+      type: "barge-in-prefix-rollback";
+      atMs: number;
+      divergencePoint: number;
+      retainedChunks: number;
+      droppedChunks: number;
+      straddledChunks: number;
+      retainedDurationMs: number;
+      droppedDurationMs: number;
     };
 
 export type VoiceSchedulerTelemetryListener = (

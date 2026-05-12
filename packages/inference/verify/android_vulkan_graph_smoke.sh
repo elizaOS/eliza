@@ -13,6 +13,7 @@ LLAMA_DIR="${ELIZA_DFLASH_LLAMA_DIR:-$HOME/.cache/eliza-dflash/android-vulkan-gr
 BIN_DIR="${ELIZA_DFLASH_VULKAN_BIN_DIR:-$OUT_DIR}"
 REMOTE_DIR="${ELIZA_ANDROID_VULKAN_GRAPH_REMOTE_DIR:-/data/local/tmp/eliza-vulkan-graph}"
 BUILD_DIR="${ELIZA_ANDROID_VULKAN_GRAPH_BUILD_DIR:-android-vulkan-graph-smoke}"
+DFLASH_BUILD_JOBS="${ELIZA_DFLASH_JOBS:-1}"
 ADB_HINT="${ADB:-adb}"
 ALLOW_EMULATOR="${ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN:-0}"
 ALLOW_SOFTWARE="${ELIZA_ALLOW_SOFTWARE_VULKAN:-0}"
@@ -117,6 +118,7 @@ echo "[android-vulkan-graph-smoke] ndk=${NDK} host_tag=${HOST_TAG}"
 echo "[android-vulkan-graph-smoke] target=${TARGET}"
 echo "[android-vulkan-graph-smoke] llama_dir=${LLAMA_DIR}"
 echo "[android-vulkan-graph-smoke] out_dir=${OUT_DIR}"
+echo "[android-vulkan-graph-smoke] dflash_build_jobs=${DFLASH_BUILD_JOBS}"
 
 ADB_DEVICES=()
 ADB_LIST="$("$ADB" devices -l || true)"
@@ -168,11 +170,13 @@ fi
 
 if [[ "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[android-vulkan-graph-smoke] building patched fork target=${TARGET}"
+  rm -rf "$LLAMA_DIR/build/$TARGET"
   ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
   ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH=1 \
     node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" \
       --target "$TARGET" \
-      --cache-dir "$LLAMA_DIR"
+      --cache-dir "$LLAMA_DIR" \
+      --jobs "$DFLASH_BUILD_JOBS"
 else
   [[ "${ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE:-0}" == "1" ]] || \
     fail 5 "ELIZA_DFLASH_SKIP_BUILD=1 requires ELIZA_DFLASH_ALLOW_PREBUILT_VULKAN_SMOKE=1"
@@ -328,11 +332,13 @@ NODE
 
 if [[ "${ELIZA_DFLASH_SKIP_REBUILD_WITH_EVIDENCE:-0}" != "1" && "${ELIZA_DFLASH_SKIP_BUILD:-0}" != "1" ]]; then
   echo "[android-vulkan-graph-smoke] rebuilding target=${TARGET} with Android Vulkan runtime evidence recorded"
+  rm -rf "$LLAMA_DIR/build/$TARGET"
   ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD=1 \
   ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH=1 \
     node "$REPO_ROOT/packages/app-core/scripts/build-llama-cpp-dflash.mjs" \
     --target "$TARGET" \
-    --cache-dir "$LLAMA_DIR"
+    --cache-dir "$LLAMA_DIR" \
+    --jobs "$DFLASH_BUILD_JOBS"
 fi
 
 echo "[android-vulkan-graph-smoke] PASS Android Vulkan built-fork graph dispatch"
