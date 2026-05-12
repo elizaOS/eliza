@@ -20,7 +20,7 @@
 # micro_batch / grad_accum / seq_len.
 #
 # After training, the script optionally runs PolarQuant + TurboQuant on the
-# resulting checkpoint and the eliza_bench suite for base-vs-finetuned
+# resulting checkpoint and the native function-calling benchmark for base-vs-finetuned
 # comparison numbers.
 #
 # Required env:
@@ -32,7 +32,7 @@
 #   NEBIUS_VM_PRESET           # default: gpu-h200x1
 #   NEBIUS_VM_REGION           # default: eu-north1
 #   QUANTIZE_AFTER             # comma-separated; default: polarquant,turboquant
-#   BENCHMARK_AFTER            # 1 = run eliza_bench base+finetuned (default 1)
+#   BENCHMARK_AFTER            # 1 = run native benchmark base+finetuned (default 1)
 #
 # Usage:
 #   bash scripts/train_nebius.sh provision   # spin up the VM
@@ -180,17 +180,17 @@ bench_remote() {
     echo "[bench] BENCHMARK_AFTER=0 — skipping"
     return 0
   fi
-  echo "[bench] eliza_bench: base + finetuned + quantized"
+  echo "[bench] native_tool_call_bench: base + finetuned + quantized"
   ssh -o StrictHostKeyChecking=no "$target" "bash -lc '
     set -euo pipefail
     cd $REMOTE_TRAIN_DIR
     export PATH=\$HOME/.local/bin:\$PATH
     base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model \$base_id \\
         --out-dir benchmarks/$RUN_NAME/base \\
         --max-per-bucket 200
-    uv run --extra train python scripts/benchmark/eliza_bench.py \\
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
         --model checkpoints/$RUN_NAME/final \\
         --out-dir benchmarks/$RUN_NAME/finetuned \\
         --max-per-bucket 200
@@ -202,7 +202,7 @@ bench_remote() {
       cd $REMOTE_TRAIN_DIR
       export PATH=\$HOME/.local/bin:\$PATH
       if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
-        uv run --extra train python scripts/benchmark/eliza_bench.py \\
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
           --model checkpoints/$RUN_NAME/final-${q} \\
           --out-dir benchmarks/$RUN_NAME/${q} \\
           --max-per-bucket 200

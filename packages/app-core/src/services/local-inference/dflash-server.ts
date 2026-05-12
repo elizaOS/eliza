@@ -174,6 +174,13 @@ export interface DflashGenerateResult {
   text: string;
   usage: LocalUsageBlock;
   slotId: number;
+  /**
+   * Time-to-first-token in milliseconds, measured from the moment the
+   * outbound `fetch` was issued to the first SSE chunk arriving (L5
+   * instrumentation). `null` when the request was non-streaming or the
+   * stream ended before any chunk landed.
+   */
+  firstTokenMs: number | null;
 }
 
 export interface DflashMetricsSnapshot {
@@ -1088,12 +1095,17 @@ async function fetchStreamingChatCompletion(
   repairStream?: StructuredOutputRepairStream | null,
   externalSignal?: AbortSignal,
   startIndex = 0,
-): Promise<string> {
+): Promise<{ text: string; firstTokenMs: number | null }> {
   const controller = new AbortController();
   const abort = () => controller.abort(externalSignal?.reason);
   if (externalSignal?.aborted) abort();
   externalSignal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // L5 — capture t0 immediately before the outbound fetch so first-token
+  // latency reflects the full request round-trip (DNS + connect + server
+  // queue + first SSE chunk).
+  const t0 = performance.now();
+  let firstTokenMs: number | null = null;
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
@@ -1143,12 +1155,21 @@ async function fetchStreamingChatCompletion(
       if (!chunk) return;
       if (repairStream) chunk = repairStream.push(chunk);
       if (!chunk) return;
+      // L5 — first usable chunk: record latency BEFORE emitting so the
+      // first verifier-event payload carries it.
+      if (firstTokenMs === null) {
+        firstTokenMs = performance.now() - t0;
+      }
       text += chunk;
       if (callbacks.onVerifierEvent) {
-        await callbacks.onVerifierEvent({
+        const event: VerifierStreamEvent = {
           kind: "accept",
           tokens: [{ index: nextIndex++, text: chunk }],
-        });
+        };
+        if (firstTokenMs !== null && nextIndex - 1 === startIndex) {
+          event.meta = { firstTokenMs };
+        }
+        await callbacks.onVerifierEvent(event);
       }
       await callbacks.onTextChunk?.(chunk);
     };
@@ -1178,7 +1199,7 @@ async function fetchStreamingChatCompletion(
       }
       await callbacks.onTextChunk?.(finalRepair);
     }
-    return text;
+    return { text, firstTokenMs };
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", abort);
@@ -1537,6 +1558,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * actually happen" assertion in tests.
    */
   private readonly persistedConversations = new Set<string>();
+  /**
+   * P3 — per-slot single-flight lock. The llama-server itself serializes
+   * requests to the same slot, but the JS layer didn't reflect that:
+   * two concurrent `generateWithUsage()` calls against the same `slotId`
+   * could interleave their metrics-diff windows, producing nonsense
+   * usage numbers and (in streaming mode) interleaving SSE events. This
+   * lock makes the JS side wait for the prior in-flight call to a pinned
+   * slot before issuing the next one. Slot id `-1` ("any free slot") is
+   * intentionally NOT locked — it routes to whichever slot is free, so
+   * serializing on it would block unrelated work.
+   */
+  private readonly slotInFlight = new Map<number, Promise<void>>();
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -2415,6 +2448,41 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       typeof dflashArgs.slotId === "number" && dflashArgs.slotId >= -1
         ? dflashArgs.slotId
         : deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
+    // P3 — single-flight per pinned slot. -1 ("any free slot") is
+    // unlocked because the server routes each unpinned call to whichever
+    // slot is free, so serializing on -1 would block unrelated work.
+    if (slotId < 0) {
+      return this.runGenerate(baseUrl, dflashArgs, args, slotId);
+    }
+    const prior = this.slotInFlight.get(slotId);
+    // Chain our work after the prior tail; the new tail is what future
+    // callers will await. Errors don't break the chain (`.catch`).
+    const run = (prior ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => this.runGenerate(baseUrl, dflashArgs, args, slotId));
+    // Store the void-typed continuation so subsequent callers can await
+    // completion without inheriting our result type.
+    const tail = run.then(
+      () => {},
+      () => {},
+    );
+    this.slotInFlight.set(slotId, tail);
+    try {
+      return await run;
+    } finally {
+      // Only clear the entry if no later caller has chained on top.
+      if (this.slotInFlight.get(slotId) === tail) {
+        this.slotInFlight.delete(slotId);
+      }
+    }
+  }
+
+  private async runGenerate(
+    baseUrl: string,
+    dflashArgs: DflashGenerateArgs,
+    args: DflashGenerateArgs | BackendGenerateArgs,
+    slotId: number,
+  ): Promise<DflashGenerateResult> {
     const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
     const prefill =
       typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
@@ -2424,6 +2492,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
     let text: string;
+    let firstTokenMs: number | null = null;
     if (streaming) {
       const repairStream =
         dflashArgs.responseSkeleton || dflashArgs.responseSchema
@@ -2462,7 +2531,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         args.signal,
         idx,
       );
-      text = streamedPrefix + tail;
+      text = streamedPrefix + tail.text;
+      firstTokenMs = tail.firstTokenMs;
     } else {
       json = (await fetchJson(
         `${baseUrl}/v1/chat/completions`,
@@ -2511,7 +2581,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       );
     }
     this.touchSlot(slotId);
-    return { text, usage, slotId };
+    return { text, usage, slotId, firstTokenMs };
   }
 
   /**

@@ -162,10 +162,7 @@ describe("routeOnboardingDeepLink", () => {
   });
 
   it("missing step segment opens the default chooser (no crash)", () => {
-    const handled = routeOnboardingDeepLink(
-      "eliza://onboard/step",
-      URL_SCHEME,
-    );
+    const handled = routeOnboardingDeepLink("eliza://onboard/step", URL_SCHEME);
 
     expect(handled).toBe(true);
     expect(currentParams().get(RUNTIME_PICKER_QUERY_NAME)).toBe(

@@ -87,9 +87,9 @@ def test_schema_version_constant():
 
 
 def test_eliza1_tier_ids_are_canonical():
-    assert ELIZA_1_TIERS[:3] == ("0_6b", "1_7b", "4b")
-    assert "0_6b" in REQUIRED_KERNELS_BY_TIER
-    assert "1_7b" in REQUIRED_KERNELS_BY_TIER
+    assert ELIZA_1_TIERS[:3] == ("0_8b", "2b", "4b")
+    assert "0_8b" in REQUIRED_KERNELS_BY_TIER
+    assert "2b" in REQUIRED_KERNELS_BY_TIER
     assert "0_6b" not in REQUIRED_KERNELS_BY_TIER
     assert "1_7b" not in REQUIRED_KERNELS_BY_TIER
 
@@ -157,7 +157,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 @pytest.mark.parametrize(
     "tier",
-    ["0_6b", "1_7b", "9b", "27b", "27b-256k"],
+    ["0_8b", "2b", "9b", "27b", "27b-256k"],
 )
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))
@@ -192,7 +192,7 @@ def test_default_eligible_requires_measured_dflash_eval():
 
 
 def test_non_publishable_manifest_can_validate_for_local_staging():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -231,7 +231,7 @@ def test_non_publishable_manifest_can_validate_for_local_staging():
 
 
 def test_default_eligible_true_still_rejected_in_local_staging_mode():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["text_eval_passed"] = False
 
     with pytest.raises(Eliza1ManifestError) as exc:
@@ -327,7 +327,7 @@ def test_lite_tier_does_not_require_cuda_or_rocm_pass():
     """Lite tier ships on metal/vulkan/cpu — failing cuda/rocm backends
     must not block lite publishing."""
 
-    kwargs = base_kwargs("0_6b")
+    kwargs = base_kwargs("0_8b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -457,7 +457,7 @@ def test_write_manifest_refuses_invalid(tmp_path: Path):
 def test_write_manifest_allows_non_publishable_only_when_requested(
     tmp_path: Path,
 ):
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -521,7 +521,7 @@ def test_parse_text_ctx_from_filename_finds_suffix_token():
 
 
 def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
-    assert parse_text_ctx_from_filename(Path("text/eliza-1-1_7b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("text/eliza-1-2b.gguf")) is None
     assert parse_text_ctx_from_filename(Path("dflash/drafter-9b.gguf")) is None
 
 

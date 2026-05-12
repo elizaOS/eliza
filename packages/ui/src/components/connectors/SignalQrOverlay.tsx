@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useSignalPairing } from "../../hooks";
 import { DEFAULT_CONNECTOR_ACCOUNT_ID } from "../../hooks/useConnectorAccounts";
 import { useApp } from "../../state";
@@ -14,6 +15,30 @@ export function SignalQrOverlay({
 }: SignalQrOverlayProps) {
   const pairing = useSignalPairing(accountId);
   const { t } = useApp();
+  const steps = useMemo(
+    () => [
+      {
+        id: "open-desktop",
+        content: t("signalqroverlay.OpenSignalDesktop", {
+          defaultValue: "Open Signal Desktop on your Mac.",
+        }),
+      },
+      {
+        id: "open-linked-devices",
+        content: t("signalqroverlay.OpenLinkedDevices", {
+          defaultValue: "Open Signal settings and choose Linked Devices.",
+        }),
+      },
+      {
+        id: "scan-prompt",
+        content: t("signalqroverlay.ScanPrompt", {
+          defaultValue:
+            "Choose Link New Device and scan the QR code shown here.",
+        }),
+      },
+    ],
+    [t],
+  );
 
   return (
     <ConnectorQrPairingOverlay
@@ -46,27 +71,7 @@ export function SignalQrOverlay({
       scanTitle={t("signalqroverlay.ScanWithSignalDesktop", {
         defaultValue: "Scan with Signal Desktop",
       })}
-      steps={[
-        {
-          id: "open-desktop",
-          content: t("signalqroverlay.OpenSignalDesktop", {
-            defaultValue: "Open Signal Desktop on your Mac.",
-          }),
-        },
-        {
-          id: "open-linked-devices",
-          content: t("signalqroverlay.OpenLinkedDevices", {
-            defaultValue: "Open Signal settings and choose Linked Devices.",
-          }),
-        },
-        {
-          id: "scan-prompt",
-          content: t("signalqroverlay.ScanPrompt", {
-            defaultValue:
-              "Choose Link New Device and scan the QR code shown here.",
-          }),
-        },
-      ]}
+      steps={steps}
     />
   );
 }

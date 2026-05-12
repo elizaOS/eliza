@@ -33,6 +33,7 @@ import {
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
 import { APP_RESUME_EVENT } from "../../events";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { normalizeLanguage } from "../../i18n";
 import type { UiLanguage } from "../../i18n/messages";
 import { autoDownloadRecommendedLocalModelInBackground } from "../../onboarding/auto-download-recommended";
@@ -395,6 +396,7 @@ export function resolveRuntimeChoices(args: {
 }
 
 export function RuntimeGate() {
+  useRenderGuard("RuntimeGate");
   const {
     setState,
     completeOnboarding,

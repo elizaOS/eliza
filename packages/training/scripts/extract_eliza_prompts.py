@@ -6,7 +6,7 @@ Sources:
      `eliza/apps/*/src/actions/*.ts` and `eliza/packages/typescript/src/`
      where the file declares a *_PROMPT, *_TEMPLATE, *_TPL, or composePrompt
      literal containing handlebars `{{var}}` and a `# Task:` header or a
-     trailing `output:`/`Respond using TOON` block.
+     trailing `output:`/`Respond using native JSON` block.
 
 Output: `training/data/prompts/registry.json`
 
@@ -17,7 +17,7 @@ Each entry:
     "source_kind":          "canonical | action",
     "template":             "<full text>",
     "variables":            ["agentName", "providers", ...],
-    "output_format":        "toon | json | text | unknown",
+    "output_format":        "payload | json | text | unknown",
     "expected_keys":        ["decision", ...],   // best-effort from example block
     "examples":             [ "<example block>", ... ]
   }
@@ -25,7 +25,7 @@ Each entry:
 Used by:
   * `synthesize_targets.py` — knows which template to render and what schema
     the supervised target should match.
-  * `normalize.py` — uses `expected_keys` to validate that emitted TOON
+  * `normalize.py` — uses `expected_keys` to validate that emitted native JSON
     targets match the prompt's declared schema.
 """
 
@@ -67,7 +67,7 @@ TS_TEMPLATE_RE = re.compile(
     r"(?::\s*[^\n=]+)?\s*=\s*`([^`]+)`"
 )
 
-# Pull TOON example block keys (lines like "key: value" appearing in an
+# Pull native JSON example block keys (lines like "key: value" appearing in an
 # Example: section) so synthesize_targets.py knows the target schema.
 EXAMPLE_BLOCK_RE = re.compile(
     r"(?ms)^Example\s*:\s*\n((?:[ \t]*[A-Za-z_][A-Za-z0-9_]*\s*:[^\n]*\n?)+)"
@@ -88,8 +88,8 @@ class PromptEntry:
 
 def detect_output_format(text: str) -> str:
     lower = text.lower()
-    if "toon" in lower:
-        return "toon"
+    if "payload" in lower:
+        return "payload"
     if "respond with json" in lower or "```json" in lower or "json schema" in lower:
         return "json"
     if "yaml" in lower:
@@ -251,9 +251,9 @@ def main() -> int:
         formats = Counter(e.output_format for e in by_task.values())
         log.info("by source_kind: %s", dict(kinds))
         log.info("by output_format: %s", dict(formats))
-        log.info("toon-output prompts:")
+        log.info("payload-output prompts:")
         for e in by_task.values():
-            if e.output_format == "toon":
+            if e.output_format == "payload":
                 log.info("  %s  keys=%s", e.task_id, e.expected_keys)
 
     return 0

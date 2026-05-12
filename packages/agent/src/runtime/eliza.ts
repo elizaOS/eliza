@@ -4566,7 +4566,16 @@ const isDirectRun = (() => {
   // primary one. The second invocation lacks `{ serverOnly: true }` and
   // drops into the readline chat loop, which closes on stdin EOF and tears
   // the whole process down.
-  if (process.env.ELIZA_DISABLE_DIRECT_RUN === "1") return false;
+  if (
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+      .__ELIZA_MOBILE_BUNDLE__ === true ||
+    (globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: unknown })
+      .__ELIZA_DISABLE_DIRECT_RUN === true ||
+    process.argv.includes("ios-bridge") ||
+    process.env.ELIZA_DISABLE_DIRECT_RUN === "1"
+  ) {
+    return false;
+  }
   const scriptArg = process.argv[1];
   if (!scriptArg) return false;
   const normalised = path.resolve(scriptArg);

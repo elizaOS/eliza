@@ -18,7 +18,6 @@ from benchmarks.standard.trajectory_replay import (
     ReplayStage,
     ReplayTrajectory,
     TrajectoryReplayRunner,
-    _extract_action_names_from_text,
     _extract_candidate_action_names,
     _extract_stage,
     _stage_score_from_components,
@@ -249,19 +248,6 @@ def test_extract_candidate_action_names_prefers_harness_tool_calls() -> None:
         },
     }
     assert _extract_candidate_action_names(raw) == ("SEARCH", "OPEN")
-
-
-def test_extract_action_names_from_text_handles_hermes_xml() -> None:
-    text = (
-        'pre <tool_call>{"name":"A","args":{}}</tool_call> mid '
-        '<tool_call>{"name":"B","arguments":{"x":1}}</tool_call> tail'
-    )
-    assert _extract_action_names_from_text(text) == ("A", "B")
-
-
-def test_extract_action_names_from_text_ignores_malformed() -> None:
-    text = "<tool_call>not json</tool_call> <tool_call>{}</tool_call>"
-    assert _extract_action_names_from_text(text) == ()
 
 
 def test_stage_score_components_clamp_to_unit_interval() -> None:

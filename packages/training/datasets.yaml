@@ -1223,7 +1223,7 @@ synthesized:
   # conversation context, prompt phrasing) triple, ~30 records per
   # action across all 312 actions in the eliza tree. The supervised
   # target is a JSON document matching the message_handler schema
-  # (thought, actions[N]:{name,params}, providers, text, simple).
+  # (thought, tool_calls[]{name,params}, providers, text, simple).
   - task_id: action_planner_coverage
     n_examples: 9305
     weight: 2.0
@@ -1465,7 +1465,7 @@ synthesized:
   # phrasing styles (direct, formal, casual, expert, naive, voice-asr,
   # distracted, broken-english, self-correcting, subtle-null). 10% of
   # records per intent are subtle-null cases that emit a canonical
-  # thought:/text: REPLY or thought:/actions[1]: IGNORE shape rather than
+  # thought:/text: REPLY or thought:/tool_calls[0] IGNORE shape rather than
   # a tool call.
   - task_id: action_examples-messaging
     n_examples: 3400

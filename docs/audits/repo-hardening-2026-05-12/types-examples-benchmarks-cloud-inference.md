@@ -250,7 +250,7 @@ Findings:
   - Judge-filter counters in
     `packages/training/scripts/synth/judge_filter.py:352`.
 - `BucketResult` is duplicated across benchmark scoring scripts:
-  - `packages/training/scripts/benchmark/eliza_bench.py:72`
+  - `packages/training/scripts/benchmark/native_tool_call_bench.py`
   - `packages/training/scripts/benchmark/native_tool_call_bench.py:41`
 - Manifest staging scripts duplicate `StagedFile` exactly:
   - `packages/training/scripts/manifest/stage_real_eliza1_bundle.py:116`

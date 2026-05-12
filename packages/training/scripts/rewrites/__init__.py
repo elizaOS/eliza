@@ -5,7 +5,7 @@ that consumes one canonical eliza record from `data/final/train.jsonl` and
 returns a corrected record (or `None` if it cannot be rewritten cleanly).
 
 The rewriters operate on the already-packed records and emit a corrected
-TOON `expectedResponse`. They fix:
+native JSON `expectedResponse`. They fix:
 
   - mcp-routing-dataset: text was JSON {thought, tool_calls} → mcp_tool_call
   - openclaw-operator: text was JSON [{name, arguments}, ...] → tool_call (or reply when natural-language)
@@ -13,7 +13,7 @@ TOON `expectedResponse`. They fix:
   - regularizer-reasoning-tool: CoT thought without grounded fields → reasoning_cot
   - agent-trove: text was JSON {analysis, plan, ...} → keep plan as text
 
-See `PER_SOURCE_TOON_AUDIT.md` for context.
+See `PER_SOURCE_NATIVE_JSON_AUDIT.md` for context.
 """
 
 from __future__ import annotations

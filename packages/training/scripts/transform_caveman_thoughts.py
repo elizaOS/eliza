@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Caveman-compress the `thought:` field in TOON expectedResponse.
+"""Caveman-compress the `thought:` field in native JSON expectedResponse.
 
 For task_types that contain a `thought:` block (reply, agent_trace, tool_call,
 mcp_tool_call), extract the thought string, compress it via
@@ -34,18 +34,18 @@ MANIFEST = ROOT / "data" / "final" / "manifest_caveman.json"
 
 THOUGHT_TASK_TYPES = {"reply", "agent_trace", "tool_call", "mcp_tool_call"}
 
-# Match `thought: "<value>"` line in TOON. Same shape as transform_deslop.
-TOON_THOUGHT_RE = re.compile(
+# Match `thought: "<value>"` line in native JSON. Same shape as transform_deslop.
+NATIVE_JSON_THOUGHT_RE = re.compile(
     r'(^|\n)(thought:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
-TOON_QUOTED_THOUGHT_RE = re.compile(
+NATIVE_JSON_QUOTED_THOUGHT_RE = re.compile(
     r'(^|\n)("thought":\s*)("(?:[^"\\]|\\.)*")(\s*(?=,|\n|$))',
     re.DOTALL,
 )
 
 
-def replace_thought(toon: str, *, intermediate_writer, idx: int, stats: dict) -> str:
+def replace_thought(payload: str, *, intermediate_writer, idx: int, stats: dict) -> str:
     """Replace `thought: "<x>"` with caveman version. Records original."""
     captured: list[tuple[str, str]] = []
 
@@ -67,8 +67,8 @@ def replace_thought(toon: str, *, intermediate_writer, idx: int, stats: dict) ->
         stats["ratio_sum"] = stats.get("ratio_sum", 0.0) + ratio
         return f"{prefix}{key}{json.dumps(compressed, ensure_ascii=False)}{suffix}"
 
-    new_toon = TOON_THOUGHT_RE.sub(_replace, toon)
-    new_toon = TOON_QUOTED_THOUGHT_RE.sub(_replace, new_toon)
+    new_payload = NATIVE_JSON_THOUGHT_RE.sub(_replace, payload)
+    new_payload = NATIVE_JSON_QUOTED_THOUGHT_RE.sub(_replace, new_payload)
 
     for original, compressed in captured:
         intermediate_writer.write(json.dumps({
@@ -77,7 +77,7 @@ def replace_thought(toon: str, *, intermediate_writer, idx: int, stats: dict) ->
             "caveman": compressed,
         }, ensure_ascii=False) + "\n")
 
-    return new_toon
+    return new_payload
 
 
 def caveman_record(rec: dict, *, intermediate_writer, idx: int, stats: dict) -> dict:

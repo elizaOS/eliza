@@ -79,8 +79,14 @@ export function coerceEmotion(input: unknown): Emotion {
 }
 
 const KEYWORD_RULES: Array<[Emotion, RegExp]> = [
-  ["happy", /\b(yay|hooray|love|great|awesome|amazing|nice|haha|lol|😊|😄|🥰|❤️|🎉)\b/iu],
-  ["sad", /\b(sorry|sad|miss|lonely|alone|cry|tears|hurt|disappointed|😢|😭|💔)\b/iu],
+  [
+    "happy",
+    /\b(yay|hooray|love|great|awesome|amazing|nice|haha|lol|😊|😄|🥰|❤️|🎉)\b/iu,
+  ],
+  [
+    "sad",
+    /\b(sorry|sad|miss|lonely|alone|cry|tears|hurt|disappointed|😢|😭|💔)\b/iu,
+  ],
   ["angry", /\b(angry|mad|furious|hate|stupid|damn|wtf|😠|😡|🤬)\b/iu],
   [
     "surprised",
@@ -106,7 +112,8 @@ export function emotionFromText(text: string): Emotion {
   const counts = new Map<Emotion, number>();
   for (const [emotion, pattern] of KEYWORD_RULES) {
     const matches = text.match(pattern);
-    if (matches) counts.set(emotion, (counts.get(emotion) ?? 0) + matches.length);
+    if (matches)
+      counts.set(emotion, (counts.get(emotion) ?? 0) + matches.length);
   }
   let best: Emotion = DEFAULT_EMOTION;
   let bestCount = 0;

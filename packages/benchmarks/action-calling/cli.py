@@ -13,7 +13,6 @@ import json
 import logging
 import math
 import os
-import re
 import sys
 import time
 from collections.abc import Mapping, Sequence
@@ -367,7 +366,7 @@ def _parse_openai_tool_calls(tool_calls: Any) -> list[dict[str, Any]]:
 
 
 def _parse_content_tool_calls(text: str) -> list[dict[str, Any]]:
-    """Diagnostic fallback for providers that serialize tool calls into text.
+    """Diagnostic fallback for JSON text, not benchmark success.
 
     These calls are reported in failures but do not count as native tool-call
     success; the benchmark requires the provider's actual ``tool_calls`` field.
@@ -387,21 +386,6 @@ def _parse_content_tool_calls(text: str) -> list[dict[str, Any]]:
                 for normalized in [_normalize_tool_call(item)]
                 if normalized is not None
             ]
-    if "<tool_call>" not in stripped:
-        return []
-    calls: list[dict[str, Any]] = []
-    for raw_call in re.findall(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", stripped, re.DOTALL):
-        try:
-            parsed = json.loads(raw_call)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(parsed, Mapping):
-            continue
-        normalized = _normalize_tool_call(parsed)
-        if normalized is not None:
-            calls.append(normalized)
-    if calls:
-        return calls
     return []
 
 

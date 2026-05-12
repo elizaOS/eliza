@@ -318,6 +318,16 @@ export interface PhraseChunkerConfig {
 export interface VerifierStreamEvent {
   kind: "accept" | "reject";
   tokens: TextToken[];
+  /**
+   * Optional per-event metadata. Today only the very first `accept` of a
+   * streaming completion carries `firstTokenMs` (L5 — time from the fetch
+   * being issued to the first SSE chunk arriving). Other consumers MAY
+   * ignore this field; producers MUST omit it on non-first events.
+   */
+  meta?: {
+    /** Milliseconds from request issue (`performance.now()`) to first chunk. */
+    firstTokenMs?: number;
+  };
 }
 
 // ---------------------------------------------------------------------------

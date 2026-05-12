@@ -257,17 +257,49 @@ export class LlamaServerTargetVerifier implements TargetVerifier {
 /**
  * Bridge a `{cancelled: boolean}` flag (the pipeline's cancellation
  * primitive — checked between kernel ticks) onto an `AbortSignal` so the
- * llama-server HTTP request aborts when a barge-in fires. Polls at a
- * coarse interval; the pipeline's own `cancel.cancelled` checks at
- * scheduler-tick boundaries are the fine-grained path, this just makes
- * sure an in-flight HTTP body doesn't keep streaming after a barge-in.
+ * llama-server HTTP request aborts when a barge-in fires.
+ *
+ * L6 — event-driven cancellation. The cancel token may expose an
+ * `onCancel(listener)` hook (set by the scheduler / pipeline when it
+ * wires the token up); when present, we fire `controller.abort()`
+ * synchronously from that hook and skip polling entirely. When the
+ * token is the plain `{cancelled: boolean}` POJO with no hook, we fall
+ * back to a coarse poll so a barge-in still lands in bounded time —
+ * but the hook-driven path is what voice barge-ins use in production.
  */
-function cancelToSignal(cancel: { cancelled: boolean }): AbortSignal {
+export interface CancelTokenWithSignal {
+  cancelled: boolean;
+  /**
+   * Optional hook the token's owner fires synchronously when `cancelled`
+   * flips from false to true. The listener returns nothing; calling it
+   * after `cancelled` has already been set is a harmless no-op.
+   */
+  onCancel?: (listener: () => void) => () => void;
+}
+
+function cancelToSignal(cancel: CancelTokenWithSignal): AbortSignal {
   const controller = new AbortController();
   if (cancel.cancelled) {
     controller.abort();
     return controller.signal;
   }
+  if (typeof cancel.onCancel === "function") {
+    // Event-driven path — no polling. The owner fires the listener
+    // synchronously on barge-in; we abort the HTTP request at that
+    // instant. `once`: AbortController.abort() is idempotent but we
+    // still want to drop the listener to free the closure.
+    const unsubscribe = cancel.onCancel(() => {
+      controller.abort();
+    });
+    controller.signal.addEventListener("abort", () => unsubscribe(), {
+      once: true,
+    });
+    return controller.signal;
+  }
+  // Fallback: polling. Kept for tokens that don't expose the hook (e.g.
+  // tests that pass a plain `{cancelled}` POJO). The interval is short
+  // enough that an aborted-but-unhooked token still lands the abort
+  // before a typical kernel tick completes.
   const timer = setInterval(() => {
     if (cancel.cancelled) {
       controller.abort();

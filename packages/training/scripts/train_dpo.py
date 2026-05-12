@@ -3,7 +3,7 @@
 Uses TRL's `DPOTrainer` against synthesized preference pairs from
 `data/synthesized/action_pairs/`. The synthesized files ship as flat eliza
 records (one per row) — we treat the `expectedResponse` as `chosen` and
-generate a corrupted `rejected` per record (perturbed action / broken TOON)
+generate a corrupted `rejected` per record (perturbed action / broken native JSON)
 so DPO has signal without needing a separate teacher pass.
 
 Mirrors `train_local.py`'s style: APOLLO + Liger + FA-2/3 selection,
@@ -14,7 +14,7 @@ Usage:
     # Smoke
     uv run --extra train python scripts/train_dpo.py \
         --registry-key qwen3.5-2b \
-        --sft-checkpoint checkpoints/qwen3-06b-eliza-toon-v3/final \
+        --sft-checkpoint checkpoints/qwen3-06b-eliza-payload-v3/final \
         --output-dir checkpoints/qwen3-06b-dpo-smoke \
         --max-steps 5
 
@@ -59,7 +59,7 @@ _ROUTING_FLIP = {"RESPOND": "IGNORE", "IGNORE": "RESPOND", "STOP": "RESPOND"}
 
 
 def _corrupt_response(expected: str, task_type: str, rng: random.Random) -> str:
-    """Return a plausibly-bad TOON response derived from `expected`.
+    """Return a plausibly-bad native JSON response derived from `expected`.
 
     Strategy depends on the bucket:
       should_respond → flip the action label.

@@ -79,7 +79,7 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         status="source-only",
         notes=(
             "GGUF mirror for the official Qwen/Qwen3.5-0.8B base.",
-            "Final Eliza-1 0.6B still needs training plus Q3_K_M quantization.",
+            "Final Eliza-1 0.8B still needs training plus Q3_K_M quantization.",
         ),
     ),
     "2b": SourceArtifact(

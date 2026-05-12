@@ -4,7 +4,7 @@ The training/ directory is intentionally NOT committed to the eliza git
 repo (see /home/shaw/eliza/.gitignore). HuggingFace is the canonical
 artifact store for everything in this tree:
 
-  - corpora + dataset splits → ``elizaos/eliza-toon-v1-sft``  (push_to_hf.py)
+  - corpora + dataset splits → ``elizaos/eliza-native-v1-sft``  (push_to_hf.py)
   - trained checkpoints      → ``elizaos/eliza-1-{2b,9b,27b}`` (push_model_to_hf.py)
   - this pipeline (scripts + configs + reports) → ``elizaos/eliza-1-pipeline``
     (THIS script)
@@ -141,7 +141,7 @@ def build_pipeline_card() -> str:
         "[`elizaos/eliza-1-9b`](https://huggingface.co/elizaos/eliza-1-9b),\n"
         "[`elizaos/eliza-1-27b`](https://huggingface.co/elizaos/eliza-1-27b).\n"
         "\n"
-        "Trained on [`elizaos/eliza-toon-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-toon-v1-sft).\n"
+        "Trained on [`elizaos/eliza-native-v1-sft`](https://huggingface.co/datasets/elizaos/eliza-native-v1-sft).\n"
         "\n"
         "## What this repo is\n"
         "\n"
@@ -188,7 +188,7 @@ def build_pipeline_card() -> str:
         "hf download elizaos/eliza-1-pipeline --repo-type model --local-dir ./training\n"
         "cd training\n"
         "uv sync --extra train\n"
-        "hf download elizaos/eliza-toon-v1-sft --repo-type dataset --local-dir data/final\n"
+        "hf download elizaos/eliza-native-v1-sft --repo-type dataset --local-dir data/final\n"
         "uv run --extra train python scripts/run_pipeline.py --registry-key qwen3.5-2b --epochs 3\n"
         "```\n"
         "\n"

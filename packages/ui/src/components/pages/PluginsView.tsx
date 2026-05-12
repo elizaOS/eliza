@@ -9,6 +9,7 @@ import {
 } from "react";
 import type { PluginInfo } from "../../api";
 import { client } from "../../api";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
 
@@ -1426,6 +1427,7 @@ export function PluginsView({
   inModal?: boolean;
   connectorDesktopPlacement?: "left" | "right";
 }) {
+  useRenderGuard("PluginsView");
   const label =
     mode === "social"
       ? "Connectors"

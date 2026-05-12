@@ -13,12 +13,12 @@ const FIXED_TIME = "2025-01-01T00:00:00.000Z";
 
 function syntheticManifest(overrides: Partial<Eliza1Manifest>): Eliza1Manifest {
   return {
-    id: "eliza-1-2b",
-    tier: "2b",
+    id: "eliza-1-1_7b",
+    tier: "1_7b",
     version: "1.0.0",
     publishedAt: FIXED_TIME,
     lineage: {
-      text: { base: "eliza-1-2b", license: "apache-2.0" },
+      text: { base: "eliza-1-1_7b", license: "apache-2.0" },
       voice: { base: "omnivoice", license: "apache-2.0" },
       drafter: { base: "dflash", license: "apache-2.0" },
     },
@@ -67,7 +67,7 @@ function installed(model: CatalogModel): InstalledModel {
 
 describe("resolveRamBudget", () => {
   it("uses the manifest budget for an installed Eliza-1 tier when the manifest is valid", () => {
-    const model = findCatalogModel("eliza-1-2b");
+    const model = findCatalogModel("eliza-1-1_7b");
     if (!model) throw new Error("test setup");
     const loader: ManifestLoader = vi.fn(() => syntheticManifest({}));
 
@@ -80,7 +80,7 @@ describe("resolveRamBudget", () => {
   });
 
   it("falls back to the catalog scalar when an Eliza-1 tier has no manifest on disk", () => {
-    const model = findCatalogModel("eliza-1-2b");
+    const model = findCatalogModel("eliza-1-1_7b");
     if (!model) throw new Error("test setup");
     const loader: ManifestLoader = vi.fn(() => null);
 
@@ -141,7 +141,7 @@ describe("resolveRamBudget", () => {
   });
 
   it("ignores a manifest whose tier disagrees with the installed id", () => {
-    const model = findCatalogModel("eliza-1-2b");
+    const model = findCatalogModel("eliza-1-1_7b");
     if (!model) throw new Error("test setup");
     // A loader that returns a manifest for the WRONG tier (e.g. desktop)
     // should be treated the same as no manifest at all.

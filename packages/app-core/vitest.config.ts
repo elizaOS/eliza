@@ -88,6 +88,7 @@ export default defineConfig({
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
+      "**/.git/**",
       "**/node_modules/**",
       "**/dist/**",
       "**/*.e2e.test.{ts,tsx}",

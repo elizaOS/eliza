@@ -53,7 +53,7 @@ rules[7]:
 - ...
 
 output:
-TOON only.
+native JSON only.
 
 Example:
 name: {{agentName}}
@@ -66,7 +66,7 @@ evidenceTurnIds:
 
 **Output shape (what the model must emit):**
 
-```toon
+```payload
 name: <agent name>
 reasoning: <one-line justification>
 action: RESPOND | REPLY | IGNORE | STOP
@@ -135,14 +135,14 @@ fields[5]{name,meaning}:
                final reply without running REPLY again
 
 output:
-TOON only.
+native JSON only.
 ```
 
 **Output shape:**
 
-```toon
+```payload
 thought: <short plan>
-actions[N]:
+tool_calls[]
   - name: <ACTION_NAME>
     params:
       <key>: <value>
@@ -157,8 +157,8 @@ Tool calls live INSIDE the actions list — there is no separate
 dispatch through the `TASK_CALL` action with `params.tool` and
 `params.arguments`:
 
-```toon
-actions[1]:
+```payload
+tool_calls[0]
   - name: TASK_CALL
     params:
       tool: add_issue_comment
@@ -231,14 +231,14 @@ About {{agentName}}:
 
 **Output shape:** action-specific. For `REPLY`'s template:
 
-```toon
+```payload
 thought: <one-line plan>
 text: <the actual user-facing reply>
 ```
 
 For `EXTRACT_SECRETS`:
 
-```toon
+```payload
 key: <name of secret>
 value: <secret value extracted from message>
 exists: true | false
@@ -246,7 +246,7 @@ exists: true | false
 
 For `CHOOSE_OPTION`:
 
-```toon
+```payload
 option: <one of the offered choices>
 reasoning: <why>
 ```
@@ -366,12 +366,12 @@ should be either reshaped to match one of the four buckets, or dropped.
 For each phase, the synthesis spec is:
 
 1. **`should_respond`**: input = recent messages + agentName + available
-   contexts. Output = TOON with `name + reasoning + action +
+   contexts. Output = native JSON with `name + reasoning + action +
    primaryContext + secondaryContexts + evidenceTurnIds`. Existing
    coverage is decent; expand multi-party variants.
 
 2. **`response`**: input = `task: Generate dialog and actions for X` +
-   providers. Output = TOON with `thought + actions + providers + text +
+   providers. Output = native JSON with `thought + actions + providers + text +
    simple`. **Tool calls are inside `actions`, not a separate field.**
    Existing nubilio + agent-trove + bitagent records are correct;
    enforce this shape during synthesis.

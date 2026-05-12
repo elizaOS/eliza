@@ -719,6 +719,14 @@ function stageIosAgentRuntime() {
       fs.copyFileSync(src, dst);
     }
   }
+  // PGlite resolves extension bundles via new URL("../vector.tar.gz",
+  // import.meta.url) from public/agent/agent-bundle.js, so iOS must stage
+  // these two assets at public/ as well as keeping the manifest copy under
+  // public/agent for build diagnostics.
+  const publicDir = path.dirname(targetDir);
+  for (const file of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
+    fs.copyFileSync(path.join(sourceDir, file), path.join(publicDir, file));
+  }
   console.log(
     `[mobile-build] Staged iOS Bun agent payload: ${path.relative(repoRoot, targetDir)}`,
   );

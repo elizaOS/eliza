@@ -102,11 +102,16 @@ function responseHeadersToRecord(headers: Headers): Record<string, string> {
 }
 
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
+  (
+    globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: boolean }
+  ).__ELIZA_DISABLE_DIRECT_RUN = true;
   process.env.ELIZA_PLATFORM = process.env.ELIZA_PLATFORM || "ios";
   process.env.ELIZA_MOBILE_PLATFORM =
     process.env.ELIZA_MOBILE_PLATFORM || "ios";
   process.env.ELIZA_IOS_LOCAL_BACKEND =
     process.env.ELIZA_IOS_LOCAL_BACKEND || "1";
+  process.env.ELIZA_DISABLE_DIRECT_RUN =
+    process.env.ELIZA_DISABLE_DIRECT_RUN || "1";
   process.env.ELIZA_HEADLESS = process.env.ELIZA_HEADLESS || "1";
   process.env.ELIZA_API_BIND = process.env.ELIZA_API_BIND || "127.0.0.1";
   process.env.LOG_LEVEL = process.env.LOG_LEVEL || "error";

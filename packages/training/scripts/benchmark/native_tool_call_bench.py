@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import re
 import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -32,7 +33,7 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("native-bench")
 
-JSON_FENCE_RE = __import__("re").compile(r"^```(?:json)?\s*([\s\S]*?)\s*```$", __import__("re").I)
+JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*([\s\S]*?)\s*```$", re.I)
 
 
 @dataclass

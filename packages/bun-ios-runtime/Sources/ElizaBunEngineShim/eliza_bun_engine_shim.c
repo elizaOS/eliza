@@ -35,11 +35,20 @@ static int g_stderr_write_fd = -1;
 static pthread_t g_stderr_thread;
 static int g_stderr_thread_started = 0;
 static volatile int g_stderr_thread_stop = 0;
+static volatile int g_bun_exited = 0;
+static volatile uint32_t g_bun_exit_code = 0;
 static char g_last_error[ELIZA_LAST_ERROR_BYTES] = {0};
 
+static void close_fd(int *fd);
+static void set_last_error(const char *fmt, ...);
+
 static void on_bun_exit(uint32_t code) {
-  (void)code;
+  g_bun_exited = 1;
+  g_bun_exit_code = code;
   g_running = 0;
+  set_last_error("Bun exited before ios-bridge readiness with code %u", code);
+  close_fd(&g_stdout_write_fd);
+  close_fd(&g_stderr_write_fd);
 }
 
 static void close_fd(int *fd) {
@@ -471,9 +480,9 @@ static void *stderr_drain_thread(void *arg) {
     }
     if (n == 0) return NULL;
     buffer[n] = '\0';
-    fprintf(stderr, "[ElizaBunEngine stderr] %s", buffer);
-    if (buffer[n - 1] != '\n') fputc('\n', stderr);
-    fflush(stderr);
+    while (n > 0 && (buffer[n - 1] == '\n' || buffer[n - 1] == '\r')) n--;
+    buffer[n] = '\0';
+    if (n > 0) set_last_error("Bun stderr: %s", buffer);
   }
   return NULL;
 }
@@ -591,22 +600,28 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
   for (;;) {
     int64_t remaining = deadline - monotonic_ms();
     if (remaining <= 0) {
-      set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
-      fprintf(stderr, "[ElizaBunEngine] %s\n", eliza_bun_engine_last_error());
+      if (g_bun_exited) {
+        set_last_error("Bun exited before ios-bridge readiness with code %u", g_bun_exit_code);
+      } else {
+        set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
+      }
       return -2;
     }
     int timed_out = 0;
     char *line = read_line_timeout(stdout_fd, (int)remaining, &timed_out);
     if (!line) {
       if (timed_out) {
-        set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
-        fprintf(stderr, "[ElizaBunEngine] %s\n", eliza_bun_engine_last_error());
-        return -2;
+        if (g_bun_exited) {
+          set_last_error("Bun exited before ios-bridge readiness with code %u", g_bun_exit_code);
+          return -1;
+        } else {
+          set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
+          return -2;
+        }
       }
       if (g_last_error[0] == '\0') {
         set_last_error("ios-bridge closed before readiness");
       }
-      fprintf(stderr, "[ElizaBunEngine] ios-bridge closed before readiness\n");
       return -1;
     }
     char *ready_error = NULL;
@@ -617,7 +632,6 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
       set_last_error(
           "ios-bridge readiness failed: %s",
           ready_error ? ready_error : "unknown error");
-      fprintf(stderr, "[ElizaBunEngine] %s\n", eliza_bun_engine_last_error());
       free(ready_error);
       return -1;
     }
@@ -643,6 +657,8 @@ int32_t eliza_bun_engine_start(
     const char *app_support_dir) {
   if (g_running) return 0;
   set_last_error("");
+  g_bun_exited = 0;
+  g_bun_exit_code = 0;
   if (!bundle_path || bundle_path[0] == '\0') {
     set_last_error("bundle_path is required");
     return -1;

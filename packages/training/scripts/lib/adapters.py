@@ -23,7 +23,6 @@ structured tasks, plain text for replies).
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
@@ -217,107 +216,6 @@ def _split_history(messages: list[dict[str, Any]]) -> tuple[
         for m in convo
     ]
     return "\n\n".join(system_parts), memory, current_msg, final_assistant
-
-
-def _parse_apigen_calls(text: str) -> list[dict[str, Any]]:
-    """Parse APIGen-style ``[Name(arg=val, ...), Name2(...)]`` into tool_calls.
-
-    Handles dotted names (``Module.method``), names with embedded spaces
-    (``Manufacturing PMI``), nested literals (lists/dicts), and quoted
-    strings via Python's ast module.
-    """
-    text = (text or "").strip()
-    if not (text.startswith("[") and text.endswith("]")):
-        return []
-    inner = text[1:-1].strip()
-    if not inner:
-        return []
-    # Split top-level call boundaries (commas at depth 0, outside strings).
-    depth = 0
-    in_str: str | None = None
-    starts = [0]
-    prev = ""
-    for i, c in enumerate(inner):
-        if in_str:
-            if c == in_str and prev != "\\":
-                in_str = None
-            prev = c
-            continue
-        if c in ("\"", "'"):
-            in_str = c
-        elif c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-        elif c == "," and depth == 0:
-            starts.append(i + 1)
-        prev = c
-    parts: list[str] = []
-    for j, s in enumerate(starts):
-        e = starts[j + 1] - 1 if j + 1 < len(starts) else len(inner)
-        parts.append(inner[s:e].strip())
-
-    calls: list[dict[str, Any]] = []
-    for part in parts:
-        # Find the leftmost top-level '(' as the start of arguments. Names
-        # may contain dots, hyphens, and even spaces.
-        depth2 = 0
-        open_idx = -1
-        in_str2: str | None = None
-        prev2 = ""
-        for i, c in enumerate(part):
-            if in_str2:
-                if c == in_str2 and prev2 != "\\":
-                    in_str2 = None
-                prev2 = c
-                continue
-            if c in ("\"", "'"):
-                in_str2 = c
-            elif c == "(" and depth2 == 0:
-                open_idx = i
-                break
-            elif c in "[{":
-                depth2 += 1
-            elif c in "]}":
-                depth2 -= 1
-            prev2 = c
-        if open_idx < 0 or not part.endswith(")"):
-            continue
-        name = part[:open_idx].strip()
-        args_str = part[open_idx + 1:-1].strip()
-        if not name:
-            continue
-        # Reject prose-y names with colons, equals signs, newlines, etc.
-        # A function name is identifier-ish (dots/dashes allowed, single
-        # internal spaces allowed for things like "Manufacturing PMI").
-        if not re.match(r"^[A-Za-z_][\w.\-]*(?: [A-Za-z_][\w.\-]*)*$", name):
-            continue
-        args: dict[str, Any] = {}
-        if args_str:
-            try:
-                tree = ast.parse(f"__f({args_str})", mode="eval")
-                call = tree.body
-                if isinstance(call, ast.Call):
-                    pos: list[Any] = []
-                    for a in call.args:
-                        try:
-                            pos.append(ast.literal_eval(a))
-                        except (ValueError, SyntaxError):
-                            pos.append(ast.unparse(a))
-                    if pos:
-                        args["_positional"] = pos
-                    for kw in call.keywords:
-                        if kw.arg is None:
-                            continue
-                        try:
-                            v = ast.literal_eval(kw.value)
-                        except (ValueError, SyntaxError):
-                            v = ast.unparse(kw.value)
-                        args[kw.arg] = v
-            except (SyntaxError, ValueError):
-                args["_raw"] = args_str
-        calls.append({"name": name, "arguments": args})
-    return calls
 
 
 def _extract_tool_calls(

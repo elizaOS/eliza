@@ -30,14 +30,6 @@ def test_parse_content_tool_calls_reports_json_diagnostic() -> None:
     ]
 
 
-def test_parse_content_tool_calls_reports_hermes_xml_diagnostic() -> None:
-    text = '<tool_call>{"name":"mail_search","arguments":{"query":"ACME"}}</tool_call>'
-
-    assert cli._parse_content_tool_calls(text) == [
-        {"name": "mail_search", "arguments": {"query": "ACME"}}
-    ]
-
-
 def test_harness_response_to_calls_reads_adapter_tool_calls() -> None:
     class Response:
         text = ""

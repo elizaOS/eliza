@@ -179,10 +179,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
               <div className="p-2 rounded-md bg-blue-500/10">
                 <Cpu className="h-4 w-4 text-blue-500" />
               </div>
-              <Badge
-                variant={getUtilizationBadge(metrics.cpu_utilization)}
-                className="text-xs"
-              >
+              <Badge variant={getUtilizationBadge(metrics.cpu_utilization)} className="text-xs">
                 {metrics.cpu_utilization.toFixed(1)}%
               </Badge>
             </div>
@@ -207,10 +204,7 @@ export function ContainerMetrics({ containerId, containerName }: ContainerMetric
               <div className="p-2 rounded-md bg-purple-500/10">
                 <HardDrive className="h-4 w-4 text-purple-500" />
               </div>
-              <Badge
-                variant={getUtilizationBadge(metrics.memory_utilization)}
-                className="text-xs"
-              >
+              <Badge variant={getUtilizationBadge(metrics.memory_utilization)} className="text-xs">
                 {metrics.memory_utilization.toFixed(1)}%
               </Badge>
             </div>

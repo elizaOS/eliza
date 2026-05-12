@@ -25,6 +25,7 @@ import {
 import type * as Three from "three";
 import { client, type QueryResult, type TableInfo } from "../../api";
 import { getBootConfig } from "../../config/boot-config";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { useApp } from "../../state";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { MemoryDetailPanel } from "./MemoryDetailPanel";
@@ -835,6 +836,7 @@ export function VectorBrowserView({
   leftNav?: ReactNode;
   contentHeader?: ReactNode;
 }) {
+  useRenderGuard("VectorBrowserView");
   const { t } = useApp();
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [selectedTable, setSelectedTable] = useState("");

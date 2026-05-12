@@ -40,6 +40,7 @@ import {
   client,
 } from "../../api";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
@@ -421,6 +422,7 @@ function resolveSolanaCluster(
 }
 
 export function BrowserWorkspaceView(): JSX.Element {
+  useRenderGuard("BrowserWorkspaceView");
   const {
     getStewardPending,
     getStewardStatus,

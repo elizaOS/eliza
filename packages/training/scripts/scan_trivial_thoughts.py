@@ -42,15 +42,15 @@ from scripts.lib.eliza_record import DEFAULT_THOUGHT_LEAKS  # noqa: E402
 TRIVIAL_THOUGHTS = frozenset(DEFAULT_THOUGHT_LEAKS)
 
 
-def extract_thought(toon: str) -> str | None:
+def extract_thought(payload: str) -> str | None:
     """Pull out the value of the first `thought:` (or `"thought":`) line.
 
     Returns the value with surrounding quotes stripped, or None if the
     record has no thought line.
     """
-    if not toon:
+    if not payload:
         return None
-    for line in toon.splitlines():
+    for line in payload.splitlines():
         s = line.strip()
         key = None
         if s.startswith("thought:"):
