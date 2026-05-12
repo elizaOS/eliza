@@ -62,6 +62,7 @@
     "voice:endurance": "node packages/inference/verify/thirty_turn_endurance_harness.mjs",
     "voice:mobile-rss": "node packages/inference/verify/mobile_peak_rss_harness.mjs",
     "eliza1:gates": "node packages/inference/verify/eliza1_gates_collect.mjs",
+    "release:v1:prep": "node scripts/release-v1-prep.mjs",
     "dev:agent": "bun run --cwd packages/agent dev",
     "harness": "bun run --cwd packages/agent start",
     "dev:core": "bun run --cwd packages/core dev",

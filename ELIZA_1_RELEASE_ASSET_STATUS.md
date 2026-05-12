@@ -35,6 +35,8 @@ step-by-step "run these commands to ship v1" sequence see [`RELEASE_V1.md`](RELE
 | [`packages/inference/AGENTS.md`](packages/inference/AGENTS.md) | The **canonical contract** for the on-device inference stack (tier matrix, bundle layout, mandatory kernels, manifest schema, publishing, verification gates). The durable "current state" facts live here and in this status doc. |
 | [`ELIZA_1_VOICE_SWARM.md`](ELIZA_1_VOICE_SWARM.md) | **Historical record** of the voice swarm wave plan — COMPLETE. Not an active plan; the durable facts moved to `packages/inference/AGENTS.md` and this doc. |
 | [`docs/porting/upstream-rebase-plan.md`](docs/porting/upstream-rebase-plan.md) | The **deferred** plan to rebase the fork onto current upstream llama.cpp. NOT a v1 blocker — the fork already carries `grammar_lazy` / `json_schema` / structured output. |
+| [`scripts/release-v1-prep.mjs`](scripts/release-v1-prep.mjs) (`bun run release:v1:prep`) | The **prep command** — runs every release step that needs no GPU/Metal/Android/HF-write host (build-dflash dry-run, manifest + recipe test suites, `py_compile`, quant `--dry-run`s, DFlash synthetic smoke, platform-plan regen + idempotency, gate-collect per tier, CPU C reference + kernel-contract) and prints the remaining `[hw]` checklist with the host + command per step. |
+| [`scripts/hf-transfer-eliza1.sh`](scripts/hf-transfer-eliza1.sh) | The **HF org transfer** — `huggingface-cli repo move milady-ai/<old> elizaos/<new>` for the legacy per-tier `*-optimized`/`*-drafter` bundles + `repo create elizaos/eliza-1-<tier>` for the canonical bundle repos. Dry-run by default; `--execute` needs an `HF_TOKEN` with write to both orgs. |
 
 ---
 
@@ -77,6 +79,10 @@ component.
 ---
 
 ## What is done in this checkout (no GPU / reference HW needed)
+
+Run `bun run release:v1:prep` to execute all of these in one go (it also prints
+the per-step remaining hardware/network/HF checklist). All no-HW steps are
+green in this checkout.
 
 - The patched fork (`elizaOS/llama.cpp @ v1.0.0-eliza`, upstream base `b8198`)
   ships in-tree as a git submodule at `packages/inference/llama.cpp`; `bun
