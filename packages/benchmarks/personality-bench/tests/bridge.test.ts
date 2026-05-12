@@ -185,4 +185,63 @@ describe("personality-bench bridge — W4-G style/trait wiring (P0-2)", () => {
       expect(bridged.options.trait).toBeUndefined();
     });
   });
+
+  describe("P2-12: bridgePersonalityExpect — shut_up len_1 ack-mode", () => {
+    function shutUpLen1Scenario(): TestScenario {
+      return {
+        personalityExpect: {
+          bucket: "shut_up",
+          judgeKwargs: {
+            instructionTurnIndex: 0,
+            silentTurnIndices: [],
+            releaseTurnIndex: null,
+            allowOneLineAcknowledgmentOnInstructionTurn: true,
+          },
+        },
+      };
+    }
+
+    it("sets len1AckMode on single-turn silence scenarios", () => {
+      const bridged = bridgePersonalityExpect(shutUpLen1Scenario());
+      expect(bridged.options.len1AckMode).toBe(true);
+    });
+
+    it("adds the instruction assistant turn as a checkTurn", () => {
+      const bridged = bridgePersonalityExpect(shutUpLen1Scenario());
+      // instructionTurnIndex=0 → assistantTurnFor(0) = 2
+      expect(bridged.checkTurns).toEqual([2]);
+    });
+
+    it("does NOT set len1AckMode when silentTurnIndices is non-empty", () => {
+      const s: TestScenario = {
+        personalityExpect: {
+          bucket: "shut_up",
+          judgeKwargs: {
+            instructionTurnIndex: 0,
+            silentTurnIndices: [1],
+            releaseTurnIndex: null,
+            allowOneLineAcknowledgmentOnInstructionTurn: true,
+          },
+        },
+      };
+      const bridged = bridgePersonalityExpect(s);
+      expect(bridged.options.len1AckMode).toBeUndefined();
+      // Regular checkTurns for silentTurnIndex=1 → assistantTurnFor(1) = 4
+      expect(bridged.checkTurns).toEqual([4]);
+    });
+
+    it("does NOT set len1AckMode when allowOneLineAcknowledgmentOnInstructionTurn is absent", () => {
+      const s: TestScenario = {
+        personalityExpect: {
+          bucket: "shut_up",
+          judgeKwargs: {
+            instructionTurnIndex: 0,
+            silentTurnIndices: [],
+          },
+        },
+      };
+      const bridged = bridgePersonalityExpect(s);
+      expect(bridged.options.len1AckMode).toBeUndefined();
+    });
+  });
 });
