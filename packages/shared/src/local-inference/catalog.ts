@@ -52,9 +52,11 @@
 import type { CatalogModel, LocalRuntimeKernel } from "./types.js";
 
 export const ELIZA_1_TIER_IDS = [
+  "eliza-1-0_8b",
   "eliza-1-0_6b",
   "eliza-1-1_7b",
   "eliza-1-2b",
+  "eliza-1-4b",
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
@@ -126,8 +128,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
   "eliza-1-0_6b": ["omnivoice", "kokoro"],
   "eliza-1-1_7b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
   "eliza-1-4b": ["omnivoice", "kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice", "kokoro"],
@@ -152,6 +156,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     "eliza-1-2b": {
       repo: "Qwen/Qwen3.5-2B-Base",
     },
+    "eliza-1-4b": {
+      repo: "Qwen/Qwen3.5-4B",
+    },
     "eliza-1-0_6b": {
       repo: "Qwen/Qwen3-0.6B-GGUF",
       file: "Qwen3-0.6B-Q8_0.gguf",
@@ -165,16 +172,13 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       file: "Qwen3.5-9B-Q4_K_M.gguf",
     },
     "eliza-1-27b": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+      repo: "Qwen/Qwen3.6-27B",
     },
     "eliza-1-27b-256k": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+      repo: "Qwen/Qwen3.6-27B",
     },
     "eliza-1-27b-1m": {
-      repo: "batiai/Qwen3.6-27B-GGUF",
-      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+      repo: "Qwen/Qwen3.6-27B",
     },
   };
 
@@ -241,7 +245,10 @@ function runtimeFor(
       draftContextSize: Math.min(contextLength, 65536),
       draftMin: 2,
       draftMax:
-        id === "eliza-1-0_6b" || id === "eliza-1-1_7b" || id === "eliza-1-4b"
+        id === "eliza-1-0_8b" ||
+        id === "eliza-1-0_6b" ||
+        id === "eliza-1-1_7b" ||
+        id === "eliza-1-4b"
           ? 4
           : contextLength >= 131072
             ? 8

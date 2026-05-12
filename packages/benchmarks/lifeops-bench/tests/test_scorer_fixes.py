@@ -1477,3 +1477,167 @@ def test_p2_10_message_send_no_contact_in_gt_no_penalty() -> None:
     ]
     # roomId mismatch → 0.5 partial, but no contact key → no P2-10 penalty.
     assert compare_actions(predicted, gt) == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# P2-9: read_with_side_effects category for LIFE_REVIEW + HEALTH summary/trends.
+#
+# LIFE/review stamps last_reviewed_at on reminder lists (not a pure no-op).
+# HEALTH/summary and HEALTH/trends are side-effecting reads.
+# Weights: 0.15 state + 0.3 action + 0.55 substring.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("umbrella", "subaction"),
+    [
+        ("LIFE", "review"),
+        ("HEALTH", "summary"),
+        ("HEALTH", "trends"),
+    ],
+)
+def test_is_read_with_side_effects_action_recognizes_rwse_ops(
+    umbrella: str, subaction: str
+) -> None:
+    """LIFE/review and HEALTH/summary+trends are read-with-side-effects."""
+    action = Action(name=umbrella, kwargs={"subaction": subaction})
+    assert _is_read_with_side_effects_action(action), f"{umbrella}/{subaction} should be rwse"
+    assert not _is_read_only_action(action), f"{umbrella}/{subaction} must not be pure read"
+
+
+@pytest.mark.parametrize(
+    ("umbrella", "subaction"),
+    [
+        ("LIFE", "list"),
+        ("LIFE", "update"),
+        ("LIFE", "skip"),
+        ("HEALTH", "today"),
+        ("HEALTH", "trend"),
+        ("HEALTH", "by_metric"),
+        ("HEALTH", "status"),
+        ("LIFE", "create"),
+        ("LIFE", "complete"),
+        ("CALENDAR", "create_event"),
+    ],
+)
+def test_is_read_with_side_effects_action_rejects_non_rwse(
+    umbrella: str, subaction: str
+) -> None:
+    """Non-rwse subactions are not classified as read_with_side_effects."""
+    action = Action(name=umbrella, kwargs={"subaction": subaction})
+    assert not _is_read_with_side_effects_action(action), f"{umbrella}/{subaction} is not rwse"
+
+
+def test_classify_scenario_kind_life_review_is_rwse() -> None:
+    """A scenario with only LIFE/review gets read_with_side_effects."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="LIFE", kwargs={"subaction": "review"}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "read_with_side_effects"
+
+
+def test_classify_scenario_kind_health_summary_is_rwse() -> None:
+    """A scenario with only HEALTH/summary gets read_with_side_effects."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="HEALTH", kwargs={"subaction": "summary"}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "read_with_side_effects"
+
+
+def test_classify_scenario_kind_rwse_plus_read_is_rwse() -> None:
+    """Mixing pure-read with rwse (no writes) yields read_with_side_effects."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="LIFE", kwargs={"subaction": "review"}),
+            Action(name="HEALTH", kwargs={"subaction": "today"}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "read_with_side_effects"
+
+
+def test_classify_scenario_kind_rwse_plus_write_is_mixed() -> None:
+    """LIFE/review combined with a write is mixed."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="LIFE", kwargs={"subaction": "review"}),
+            Action(name="CALENDAR", kwargs={"subaction": "create_event", "title": "x"}),
+        ]
+    )
+    assert _classify_scenario_kind(scenario) == "mixed"
+
+
+def test_p2_9_life_review_correct_action_uses_rwse_weights() -> None:
+    """LIFE/review correct action + state_hash match → 1.0 under rwse weights.
+
+    READ_WITH_SIDE_EFFECTS: 0.15 state + 0.3 action + 0.55 substring.
+    All components = 1.0 → total = 1.0.
+    """
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="LIFE", kwargs={"subaction": "review"}),
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[Action(name="LIFE", kwargs={"subaction": "review"})],
+    )
+    assert score_scenario(result, scenario) == pytest.approx(1.0)
+
+
+def test_p2_9_life_review_wrong_kwargs_partial_credit() -> None:
+    """LIFE/review right name but wrong kwargs → partial action credit.
+
+    READ_WITH_SIDE_EFFECTS: 0.15*1.0 + 0.3*0.5 + 0.55*1.0 = 0.85.
+    """
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(name="LIFE", kwargs={"subaction": "review", "list_id": "list_primary"}),
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(name="LIFE", kwargs={"subaction": "review", "list_id": "list_other"}),
+        ],
+    )
+    assert score_scenario(result, scenario) == pytest.approx(0.85)
+
+
+def test_p2_9_health_trends_uses_rwse_weights() -> None:
+    """HEALTH/trends uses rwse weights, not pure-read.
+
+    Partial action (0.5): 0.15 + 0.3*0.5 + 0.55 = 0.85.
+    """
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="HEALTH",
+                kwargs={"subaction": "trends", "metric": "steps", "days": 7},
+            )
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(name="HEALTH", kwargs={"subaction": "trends", "metric": "heart_rate"}),
+        ],
+    )
+    assert score_scenario(result, scenario) == pytest.approx(0.85)
+
+
+def test_p2_9_health_today_still_pure_read() -> None:
+    """HEALTH/today is still pure read (not affected by P2-9)."""
+    action = Action(name="HEALTH", kwargs={"subaction": "today"})
+    assert _is_read_only_action(action)
+    assert not _is_read_with_side_effects_action(action)
+    scenario = _scenario(ground_truth_actions=[action])
+    assert _classify_scenario_kind(scenario) == "read"
+
+
+def test_p2_9_life_review_not_read_only() -> None:
+    """LIFE/review is no longer classified as pure read-only."""
+    assert not _is_read_only_action(Action(name="LIFE", kwargs={"subaction": "review"}))
