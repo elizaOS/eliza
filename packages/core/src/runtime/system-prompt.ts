@@ -7,19 +7,6 @@ type MessageLike = {
 	content?: unknown;
 };
 
-// Mirrors `replaceNameTokens` from @elizaos/shared/src/utils/name-tokens.
-// Inlined here because @elizaos/core does not depend on @elizaos/shared at
-// runtime, and the canonical system prompt must resolve these placeholders
-// before the prompt is passed to `useModel(...)`. Onboarding-preset characters
-// and the character editor (PR #7101) persist `{{name}}` / `{{agentName}}`
-// tokens on save so renames propagate; without this substitution the runtime
-// hands the model literal `{{name}}` text and small instruct models lose
-// coherence (observed on Capacitor mobile with Qwen3-0.6B / Eliza-1).
-function substituteNamePlaceholders(text: string, name: string): string {
-	if (!text || !name) return text;
-	return text.replaceAll("{{name}}", name).replaceAll("{{agentName}}", name);
-}
-
 export function renderSystemPromptBio(value: unknown): string {
 	if (typeof value === "string") {
 		return value.trim();
