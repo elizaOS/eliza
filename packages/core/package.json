@@ -1,0 +1,164 @@
+{
+  "name": "@elizaos/core",
+  "version": "2.0.0-beta.1",
+  "description": "Core runtime, plugin abstractions, and AgentRuntime for elizaOS — actions, providers, evaluators, services, models, and types.",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "elizaos",
+    "agent",
+    "runtime",
+    "ai",
+    "llm",
+    "plugins"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "type": "module",
+  "main": "./dist/node/index.node.js",
+  "module": "./dist/node/index.node.js",
+  "types": "./dist/index.d.ts",
+  "browser": "./dist/browser/index.browser.js",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "import": "./dist/browser/index.browser.js",
+        "default": "./dist/browser/index.browser.js"
+      },
+      "node": {
+        "types": "./dist/index.node.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "bun": {
+        "types": "./dist/index.node.d.ts",
+        "import": "./dist/node/index.node.js",
+        "default": "./dist/node/index.node.js"
+      },
+      "default": "./dist/node/index.node.js"
+    },
+    "./node": {
+      "types": "./dist/index.node.d.ts",
+      "import": "./dist/node/index.node.js",
+      "default": "./dist/node/index.node.js"
+    },
+    "./browser": {
+      "types": "./dist/index.browser.d.ts",
+      "import": "./dist/browser/index.browser.js",
+      "default": "./dist/browser/index.browser.js"
+    },
+    "./roles": {
+      "types": "./dist/roles.d.ts",
+      "import": "./dist/roles.js",
+      "default": "./dist/roles.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "import": "./dist/testing/index.js",
+      "default": "./dist/testing/index.js"
+    },
+    "./services/*": {
+      "types": "./dist/services/*.d.ts",
+      "import": "./dist/services/*.js",
+      "default": "./dist/services/*.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "prebuild": "[ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts",
+    "prepublishOnly": "bun run build",
+    "build": "bun run build.ts",
+    "build:node": "bun run build.ts --node-only",
+    "build:watch": "bun run build.ts --watch",
+    "dev": "bun run build:watch",
+    "clean": "rm -rf dist .turbo .turbo-tsconfig.json *.tsbuildinfo && find src -type f \\( -name '*.js' -o -name '*.js.map' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) ! -path 'src/types/generated/*' -delete 2>/dev/null || true",
+    "perf:settings": "bun run scripts/perf-settings.ts",
+    "test": "node ../../scripts/run-vitest.mjs run",
+    "test:coverage": "mkdir -p coverage/.tmp && node ../../scripts/run-vitest.mjs run --coverage",
+    "test:e2e": "npx playwright test",
+    "test:e2e:smoke": "node scripts/run-e2e-smoke.mjs",
+    "test:watch": "node ../../scripts/run-vitest.mjs",
+    "lint": "bunx @biomejs/biome check --write ./src",
+    "lint:check": "bunx @biomejs/biome check ./src",
+    "lint:fix": "bunx @biomejs/biome check --write ./src",
+    "typecheck": "tsc --noEmit -p ./tsconfig.json",
+    "format": "bunx @biomejs/biome format --write ./src",
+    "format:check": "bunx @biomejs/biome format ./src"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "@types/bun": "^1.3.5",
+    "@types/fast-redact": "^3.0.4",
+    "@types/fs-extra": "^11.0.4",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^25.0.3",
+    "@types/react-test-renderer": "^19.0.0",
+    "@vitest/coverage-v8": "^4.0.0",
+    "esbuild": "^0.28.0",
+    "react-test-renderer": "^19.0.0",
+    "sharp": "^0.34.5",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.13",
+    "@ai-sdk/gateway": "^3.0.109",
+    "@ai-sdk/google": "^3.0.8",
+    "@ai-sdk/openai": "^3.0.9",
+    "@ai-sdk/provider": "^3.0.10",
+    "@ai-sdk/provider-utils": "^4.0.7",
+    "@anthropic-ai/sdk": "^0.92.0",
+    "@elizaos/prompts": "2.0.0-beta.1",
+    "@noble/ciphers": "2.2.0",
+    "@noble/hashes": "2.2.0",
+    "@openrouter/ai-sdk-provider": "^2.0.0",
+    "@standard-schema/spec": "^1.0.0",
+    "adze": "^2.2.5",
+    "ai": "^6.0.30",
+    "coding-agent-adapters": "0.16.3",
+    "dedent": "^1.7.1",
+    "dotenv": "^17.2.3",
+    "drizzle-orm": "0.45.2",
+    "eventsource-parser": "^3.0.8",
+    "fast-redact": "^3.5.0",
+    "file-type": "^22.0.0",
+    "fs-extra": "^11.3.2",
+    "git-workspace-service": "0.4.5",
+    "glob": "^13.0.0",
+    "handlebars": "^4.7.8",
+    "json5": "^2.2.3",
+    "mammoth": "^1.9.0",
+    "markdown-it": "^14.1.0",
+    "pdfjs-dist": "^5.4.530",
+    "underscore": "^1.13.8",
+    "undici": "8.2.0",
+    "unique-names-generator": "^4.7.1",
+    "unpdf": "^1.4.0",
+    "uuid": "^14.0.0",
+    "yaml": "^2.7.0",
+    "zod": "^4.4.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gitHead": "cb192f7b21c441e9463d1af2f890c145814baad2"
+}

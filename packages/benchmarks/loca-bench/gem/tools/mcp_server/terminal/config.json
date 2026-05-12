@@ -1,0 +1,24 @@
+{
+  "mcpServers": {
+    "terminal": {
+      "command": "uvx",
+      "args": [
+        "cli-mcp-server"
+      ],
+      "env": {
+        "ALLOWED_DIR": ".",
+        "ALLOWED_COMMANDS": "ls,cat,pwd,echo,cd,mkdir,touch,rm,cp,mv,find,grep,head,tail,wc,sort,uniq,diff,tree,chmod,stat,file,which,whoami,date,hostname,df,du,ps,env,history,clear,sed,awk,cut,tr,basename,dirname,realpath,md5sum,sha256sum,tar,gzip,gunzip,zip,unzip,less,more,python,wget,curl,ping,netstat,ifconfig,nslookup,traceroute,helm,kubectl,git",
+        "ALLOWED_FLAGS": "all",
+        "MAX_COMMAND_LENGTH": "2048",
+        "COMMAND_TIMEOUT": "60",
+        "ALLOW_SHELL_OPERATORS": "true",
+        "MAX_OUTPUT_LENGTH": "10240",
+        "MAX_STDOUT_LENGTH": "8192",
+        "MAX_STDERR_LENGTH": "2048",
+        "CLI_PROXY_ENABLED": "false",
+        "CLI_PROXY_URL": ""
+      }
+    }
+  }
+}
+

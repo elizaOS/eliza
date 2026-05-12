@@ -1,0 +1,45 @@
+{
+  "name": "@elizaos/plugin-calendly",
+  "version": "2.0.0-beta.1",
+  "description": "Calendly integration plugin for elizaOS agents — event types, scheduled events, cancellations, and booking-link handoff via Calendly v2 API",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.2",
+    "tsup": "8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

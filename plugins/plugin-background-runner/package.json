@@ -1,0 +1,83 @@
+{
+  "name": "@elizaos/plugin-background-runner",
+  "version": "2.0.0-beta.1",
+  "description": "Background task runner for elizaOS — drives core TaskService.runDueTasks() from OS-level wake-ups (BGTaskScheduler on iOS, WorkManager on Android via @capacitor/background-runner). Falls back to a setInterval poll when no native scheduler is available.",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "INSTALL.md"
+  ],
+  "scripts": {
+    "build": "tsc --noCheck -p tsconfig.json",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "test:unit": "bun test __tests__/unit/",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "background",
+    "task",
+    "scheduler",
+    "capacitor",
+    "ios",
+    "android",
+    "mobile"
+  ],
+  "peerDependencies": {
+    "@capacitor/background-runner": "*",
+    "@capacitor-community/background-runner": "*",
+    "@capacitor/core": "*",
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "peerDependenciesMeta": {
+    "@capacitor/background-runner": {
+      "optional": true
+    },
+    "@capacitor-community/background-runner": {
+      "optional": true
+    },
+    "@capacitor/core": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/bun": "^1.3.8",
+    "@types/node": "^25.1.0",
+    "typescript": "^6.0.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  }
+}

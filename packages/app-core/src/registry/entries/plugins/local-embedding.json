@@ -1,0 +1,103 @@
+{
+  "id": "local-embedding",
+  "name": "Local Embedding",
+  "description": "Local embedding generation",
+  "npmName": "@elizaos/plugin-local-embedding",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["local-embedding", "local", "embedding"],
+  "config": {
+    "MODELS_DIR": {
+      "type": "file-path",
+      "required": true,
+      "sensitive": false,
+      "label": "Dir",
+      "help": "Filesystem path to the directory where AI models are stored; required for initializing the LocalAI plugin during tests.",
+      "advanced": false
+    },
+    "CACHE_DIR": {
+      "type": "file-path",
+      "required": true,
+      "sensitive": false,
+      "label": "Dir",
+      "help": "Filesystem path to the cache directory for model assets used by the LocalAI plugin during tests.",
+      "advanced": false
+    },
+    "LOCAL_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text/eliza-1-mobile-1_7b-32k.gguf",
+      "label": "Small Model",
+      "help": "Filename of the small local AI model; overrides the built-in default model if provided.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "LOCAL_LARGE_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text/eliza-1-desktop-9b-64k.gguf",
+      "label": "Large Model",
+      "help": "Filename of the large local AI model; overrides the built-in default model if provided.",
+      "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
+      "advanced": false
+    },
+    "LOCAL_EMBEDDING_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "text/eliza-1-lite-0_6b-32k.gguf",
+      "label": "Embedding Model",
+      "help": "Filename of the embedding model used for vector embeddings; overrides the default if supplied.",
+      "placeholder": "e.g., text-embedding-3-small",
+      "advanced": false
+    },
+    "LOCAL_EMBEDDING_MODEL_REPO": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Model Repo",
+      "help": "Optional HuggingFace repo used to resolve LOCAL_EMBEDDING_MODEL downloads.",
+      "placeholder": "e.g., text-embedding-3-small",
+      "advanced": false
+    },
+    "LOCAL_EMBEDDING_DIMENSIONS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Dimensions",
+      "help": "Optional embedding dimension override; when omitted, dimensions are inferred from model defaults/hints.",
+      "advanced": false
+    },
+    "LOCAL_EMBEDDING_CONTEXT_SIZE": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Embedding Context Size",
+      "help": "Optional embedding context size override; when omitted, context size is inferred from model defaults/hints.",
+      "advanced": false
+    },
+    "CUDA_VISIBLE_DEVICES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Visible Devices",
+      "help": "Used to detect if CUDA-enabled GPUs are available and configure device and data type settings for model components accordingly.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Binary",
+    "group": "documents",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "documents"
+}

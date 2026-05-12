@@ -1,0 +1,311 @@
+name: Tests
+
+# Comprehensive test orchestrator. Runs the full eliza test suite plus
+# focused server/client/plugin slices and the database security guard.
+# This is a peer of `ci.yaml` — `ci.yaml` is the canonical lint+typecheck+
+# build+core-test gate; this workflow adds the broader integration surface.
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "packages/docs/**"
+      - "AGENTS.md"
+      - "CHANGELOG.md"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+  push:
+    branches: [main, develop]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "packages/docs/**"
+      - "AGENTS.md"
+      - "CHANGELOG.md"
+      - "LICENSE"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/pull_request_template.md"
+  workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CI: "true"
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "23"
+  NODE_NO_WARNINGS: "1"
+  NODE_OPTIONS: "--max-old-space-size=4096"
+  # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly
+  # with a yellow warning when a key is missing — the workflow stays green.
+  # Cerebras is the universal default LLM (gpt-oss-120b); the OPENAI_* aliases
+  # are auto-applied by scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
+  CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+  OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+  GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+  XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+  NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+  ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+
+jobs:
+  server-tests:
+    name: Server Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+      PGLITE_WASM_MODE: node
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run server tests
+        run: bun run test:server
+
+  client-tests:
+    name: Client Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run client tests
+        run: bun run test:client
+
+  plugin-tests:
+    name: Plugin Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 95
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+      # Share compiled rust artifacts across all plugin crates so the
+      # `elizaos = "2.0.0"` crate (and its sqlx/hyper/etc transitive deps)
+      # only compiles once, not once per plugin. Without this, each
+      # plugin-{discord,groq,openai,sql,whatsapp} rebuilds the same heavy
+      # dep tree from scratch, blowing past the step timeout.
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-shared-target
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Cache cargo registry and shared target dir
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ${{ github.workspace }}/.cargo-shared-target
+          key: ${{ runner.os }}-cargo-plugin-tests-${{ hashFiles('plugins/*/rust/Cargo.lock', 'plugins/*/rust/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-plugin-tests-
+
+      - name: Run plugin tests
+        # Cap step below the 95m job budget so a flaky plugin
+        # (most recently plugin-shell rust PTY tests in run 25234887145)
+        # fails fast instead of burning the whole job's wall clock.
+        timeout-minutes: 85
+        run: bun run test:plugins
+
+  desktop-contract:
+    name: Electrobun Desktop Contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+
+      - name: Build workspace packages for Vitest resolution
+        run: bun run build:core
+
+      - name: Run Electrobun contract tests
+        working-directory: packages/app-core/platforms/electrobun
+        run: bun run test
+
+  cloud-live-e2e:
+    name: Cloud Live E2E (Eliza Cloud)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - name: Check cloud secrets
+        id: cloud
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+        run: |
+          if [ -z "${ELIZAOS_CLOUD_API_KEY}" ]; then
+            echo "::warning::No Eliza Cloud API key configured - skipping optional cloud live E2E."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout
+        if: steps.cloud.outputs.skip != 'true'
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        if: steps.cloud.outputs.skip != 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        if: steps.cloud.outputs.skip != 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Run Cloud tests
+        if: steps.cloud.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -o pipefail
+          log_file="$(mktemp)"
+
+          if bun run --cwd cloud/packages/sdk test:e2e 2>&1 | tee "$log_file"; then
+            exit 0
+          fi
+
+          if grep -Eiq 'exceeded your current quota|quota exceeded|insufficient[_ -]?(quota|balance|funds|credits?)|billing details|credit balance|please add credits|top[_ -]?up your credits|invalid api key|unauthorized|authentication|status code: 429|too many requests|unexpected error occurred while processing the request|temporarily unavailable|service unavailable|internal server error|overloaded' "$log_file"; then
+            echo "::warning::Cloud Live E2E skipped because the configured external provider is unavailable."
+            exit 0
+          fi
+
+          exit 1
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZA_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+          ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+
+  test-status:
+    name: All Tests Passed
+    if: always()
+    needs:
+      - server-tests
+      - client-tests
+      - plugin-tests
+      - desktop-contract
+      - cloud-live-e2e
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check test results
+        shell: bash
+        run: |
+          set -u
+          echo "=== Required test job results ==="
+          echo "server-tests:     ${{ needs.server-tests.result }}"
+          echo "client-tests:     ${{ needs.client-tests.result }}"
+          echo "plugin-tests:     ${{ needs.plugin-tests.result }}"
+          echo "desktop-contract: ${{ needs.desktop-contract.result }}"
+          echo "cloud-live-e2e:   ${{ needs.cloud-live-e2e.result }}"
+          echo "==================================="
+          strict_results="${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}"
+          bad=0
+          for pair in \
+            "server-tests:${{ needs.server-tests.result }}" \
+            "client-tests:${{ needs.client-tests.result }}" \
+            "plugin-tests:${{ needs.plugin-tests.result }}" \
+            "desktop-contract:${{ needs.desktop-contract.result }}" \
+            "cloud-live-e2e:${{ needs.cloud-live-e2e.result }}"; do
+            name="${pair%%:*}"
+            result="${pair##*:}"
+            if [ "$result" = "skipped" ] && [ "$strict_results" != "true" ]; then
+              echo "::warning title=Test gate::Live-only job '${name}' was skipped for this PR context."
+              continue
+            fi
+            if [ "$result" != "success" ]; then
+              echo "::error title=Test gate::Required job '${name}' finished with '${result}' (expected success)"
+              bad=1
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          echo "All required test jobs passed."

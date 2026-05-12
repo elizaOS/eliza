@@ -1,0 +1,70 @@
+# Eliza eliza-1 training stack — CPU-only image.
+#
+# Used by CI for the cheap `cpu-smoke` lane: lint, typecheck, and the
+# subset of tests that import without CUDA. QJL is *not* built here
+# (no nvcc), and Triton stays JIT-only — anything that touches a real
+# Triton kernel is expected to skip cleanly when no GPU is visible.
+#
+# Base: python:3.12-slim. Matches the train extra's Python pin
+# (>=3.11,<3.13) and keeps the image small (~2 GB target).
+
+FROM python:3.12-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
+
+# build-essential is needed because some training-extra wheels (e.g.
+# bitsandbytes' fallback path, liger-kernel sdist) compile from source
+# when no prebuilt CUDA wheel is selectable. ninja-build keeps those
+# builds reasonably fast. git is required by uv for VCS-pinned deps.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        curl \
+        git \
+        ninja-build \
+        unzip \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV UV_INSTALL_DIR=/usr/local/bin
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+ && uv --version
+
+ENV BUN_INSTALL=/root/.bun \
+    PATH=/root/.bun/bin:$PATH
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.3.13" \
+ && bun --version
+
+WORKDIR /workspace
+
+COPY pyproject.toml ./
+COPY uv.lock ./
+
+# Train extra only. `serve` requires CUDA-bound vllm and would fail on
+# CPU. We rely on torch's CPU wheel auto-selection here; the cu126 wheel
+# pin only matters for the GPU image.
+RUN uv venv --python 3.12 /workspace/.venv \
+ && . /workspace/.venv/bin/activate \
+ && uv sync --extra train --frozen --no-install-project
+
+ENV VIRTUAL_ENV=/workspace/.venv \
+    PATH=/root/.bun/bin:/workspace/.venv/bin:$PATH \
+    PYTHONPATH=/workspace/scripts
+
+# Bring the scripts tree in for tests + lint targets. We deliberately
+# do NOT run scripts/build_quantization_extensions.sh here — it would
+# fail without nvcc and that is the intended split of work.
+COPY scripts ./scripts
+COPY datasets.yaml ./datasets.yaml
+COPY README.md ./README.md
+
+# Verify import surface so the image build fails fast on a broken
+# pyproject / lockfile rather than at `docker run`.
+RUN python -c "from training.model_registry import REGISTRY; print('registry size:', len(REGISTRY))"
+
+ENTRYPOINT ["/bin/bash"]

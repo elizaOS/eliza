@@ -1,0 +1,904 @@
+[
+  {
+    "id": "live.messages.find_urgent_bug_report",
+    "name": "Locate urgent bug report in Slack channel",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I need the latest critical bug report from #dev-alerts. Give me the message content and who posted it. I\u2019ll share the channel ID if you ask.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will only reveal the channel ID after the assistant asks for clarification.",
+    "success_criteria": [
+      "Executor asks which Slack channel to search before proposing a message.",
+      "Executor returns the exact text of the most recent message marked critical.",
+      "Executor includes the sender's name and timestamp."
+    ],
+    "world_assertions": [
+      "No new chat_message is created; only reading existing messages."
+    ]
+  },
+  {
+    "id": "live.messages.summarize_project_updates",
+    "name": "Summarize project updates from multiple group chats",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "ria_pm",
+    "instruction": "My product team uses three group chats: #frontend, #backend, #design. Summarize any action items mentioned today. I\u2019ll tell you which groups to check if you need the IDs.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona expects the assistant to request the group IDs before scanning, and will push back on generic summaries.",
+    "success_criteria": [
+      "Executor asks for the identifiers of the three group chats before extracting items.",
+      "Executor lists at least one concrete action item per group, if present.",
+      "Executor formats the output as bullet points with clear owners."
+    ],
+    "world_assertions": [
+      "No write to chat_message store; only read operations."
+    ]
+  },
+  {
+    "id": "live.messages.coordinate_meeting_reschedule",
+    "name": "Reschedule a meeting via text with a client",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I need to move my 2\u202fpm call with client Alex to later this week. Draft a short text asking for availability, then wait for reply before confirming.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona will only give the client\u2019s phone number after the assistant drafts the message.",
+    "success_criteria": [
+      "Executor drafts a concise message proposing new times.",
+      "Executor asks for the client\u2019s contact details before finalizing the draft.",
+      "Executor indicates it will wait for a reply before marking the task complete."
+    ],
+    "world_assertions": [
+      "A new chat_message draft exists addressed to the client with proposed times."
+    ]
+  },
+  {
+    "id": "live.messages.check_unread_urgent_sms",
+    "name": "Identify urgent unread SMS messages",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "I think I have a few urgent texts I missed. Tell me if any unread messages from school contacts need immediate attention.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will reveal the list of school contacts only after the assistant asks which contacts to prioritize.",
+    "success_criteria": [
+      "Executor asks which school contacts to prioritize before checking messages.",
+      "Executor reports any unread messages from those contacts, including sender and preview text.",
+      "Executor flags any message marked urgent by the sender."
+    ],
+    "world_assertions": [
+      "No new SMS messages are sent; only reading existing ones."
+    ]
+  },
+  {
+    "id": "live.messages.draft_apology_for_missed_deadline",
+    "name": "Draft apology message for missed deadline",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I missed the March 15 deliverable for client BetaCorp. Write a concise apology text, ask for a new deadline, and include a brief reason.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona expects the assistant to ask which communication channel (SMS or WhatsApp) before drafting.",
+    "success_criteria": [
+      "Executor asks which channel to send the apology on before drafting.",
+      "Executor produces a message under 150 characters, with apology, reason, and request for new deadline.",
+      "Executor confirms the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the apology content."
+    ]
+  },
+  {
+    "id": "live.messages.collect_feedback_from_beta_users",
+    "name": "Collect feedback from beta testers via group chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "We have a beta group called \"Beta Testers\". Ask them to share any bugs they encountered today, and summarize the top three issues.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will give the exact group chat ID only after the assistant proposes a concise request.",
+    "success_criteria": [
+      "Executor proposes a brief request message for the beta group before asking for the chat ID.",
+      "Executor asks for the group chat identifier after the proposal.",
+      "Executor later reports three most mentioned bugs with counts."
+    ],
+    "world_assertions": [
+      "A new chat_message draft exists addressed to the beta group with the request."
+    ]
+  },
+  {
+    "id": "live.messages.verify_message_sent_status",
+    "name": "Verify delivery status of a sent WhatsApp message",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I sent a birthday greeting to my niece on WhatsApp yesterday. Check if it was delivered and read, then let me know.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona will provide the contact name only after the assistant confirms the message content.",
+    "success_criteria": [
+      "Executor asks which exact message text was sent before checking status.",
+      "Executor reports delivery and read receipts clearly.",
+      "Executor mentions any pending issues (e.g., not delivered)."
+    ],
+    "world_assertions": [
+      "No new messages created; only status query performed."
+    ]
+  },
+  {
+    "id": "live.messages.filter_spam_from_chat",
+    "name": "Filter spam messages from a family group chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "My family group chat has been flooded with promotional links. Identify and list any messages that look like spam, and suggest removal.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 26,
+    "description": "Persona will reveal the group chat identifier only after the assistant explains the spam detection criteria.",
+    "success_criteria": [
+      "Executor explains how it will detect spam before asking for the chat ID.",
+      "Executor lists each suspected spam message with sender and a short excerpt.",
+      "Executor recommends a removal action without deleting automatically."
+    ],
+    "world_assertions": [
+      "No deletion actions performed; only analysis."
+    ]
+  },
+  {
+    "id": "live.messages.translate_message_for_friend",
+    "name": "Translate a French text for a friend",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "My friend sent me \"Je ne peux pas venir ce soir\". Translate it to English and suggest a reply asking for a new time.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 20,
+    "description": "Persona expects the assistant to ask whether to keep the tone informal before responding.",
+    "success_criteria": [
+      "Executor asks if the reply should be informal or formal before drafting.",
+      "Executor provides an accurate English translation of the French sentence.",
+      "Executor drafts a short reply proposing an alternative time."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the proposed reply."
+    ]
+  },
+  {
+    "id": "live.messages.compile_daily_summary",
+    "name": "Compile daily summary of messages",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Give me a summary of all messages I received today across SMS, iMessage, and WhatsApp, highlighting any that need a response.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 32,
+    "description": "Persona will provide the list of platforms after the assistant confirms it will not delete any messages.",
+    "success_criteria": [
+      "Executor confirms no messages will be deleted before proceeding.",
+      "Executor lists each platform with count of messages received.",
+      "Executor flags messages requiring reply with sender and brief preview."
+    ],
+    "world_assertions": [
+      "No new messages created; only read operations."
+    ]
+  },
+  {
+    "id": "live.messages.ask_for_meeting_confirmation",
+    "name": "Ask coworker to confirm meeting time",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "Send a quick message to coworker Jamie asking if 10\u202fam tomorrow still works for the sync. Keep it under 80 characters.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 21,
+    "description": "Persona will disclose Jamie\u2019s contact after the assistant drafts the message.",
+    "success_criteria": [
+      "Executor drafts a message under 80 characters asking for confirmation.",
+      "Executor asks for Jamie\u2019s contact identifier before finalizing.",
+      "Executor states it will send the message once approved."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists addressed to Jamie with the confirmation request."
+    ]
+  },
+  {
+    "id": "live.messages.retrieve_last_shared_link",
+    "name": "Retrieve last shared link in a chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "In the #marketing Slack channel, what was the most recent URL shared? I need to open it now.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will give the channel ID only after the assistant confirms it will only read, not post.",
+    "success_criteria": [
+      "Executor confirms it will not post any new messages before asking for the channel ID.",
+      "Executor returns the latest URL string found in the channel.",
+      "Executor includes the sender\u2019s name and timestamp."
+    ],
+    "world_assertions": [
+      "No new chat_message is created."
+    ]
+  },
+  {
+    "id": "live.messages.confirm_event_details_via_sms",
+    "name": "Confirm event details with partner via SMS",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "I need to confirm the venue and time for Saturday\u2019s dinner with Alex. Draft a concise SMS asking for both pieces of info.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 23,
+    "description": "Persona will reveal Alex\u2019s phone number after the assistant proposes the exact wording.",
+    "success_criteria": [
+      "Executor proposes a concise SMS template before requesting the phone number.",
+      "Executor asks for Alex\u2019s contact after the proposal.",
+      "Executor indicates the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the venue confirmation request."
+    ]
+  },
+  {
+    "id": "live.messages.fetch_unread_customer_support",
+    "name": "Fetch unread customer support tickets via chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "Check my support chat for any unread tickets from today. Summarize each with customer name and issue brief.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 28,
+    "description": "Persona will give the support chat identifier after the assistant confirms it will not close any tickets.",
+    "success_criteria": [
+      "Executor confirms it will not close tickets before proceeding.",
+      "Executor asks for the support chat ID after confirmation.",
+      "Executor lists each unread ticket with customer name and short issue description."
+    ],
+    "world_assertions": [
+      "No ticket status changes; only read operations."
+    ]
+  },
+  {
+    "id": "live.messages.schedule_follow_up_call",
+    "name": "Schedule follow\u2011up call after meeting",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "After my doctor\u2019s appointment, I need to set a 15\u2011minute follow\u2011up call with the nurse. Draft a polite text asking for a convenient time.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will reveal the nurse\u2019s contact only after the assistant drafts the request.",
+    "success_criteria": [
+      "Executor drafts a polite request text under 120 characters.",
+      "Executor asks for the nurse\u2019s phone number after the draft.",
+      "Executor confirms it will wait for a reply before marking done."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists addressed to the nurse with the follow\u2011up request."
+    ]
+  },
+  {
+    "id": "live.messages.detect_emoji_overuse",
+    "name": "Detect emoji overuse in a chat thread",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "In the #random chat, list messages that contain more than three emojis. I\u2019ll need the timestamps to clean them up later.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 22,
+    "description": "Persona will provide the channel ID after the assistant explains the emoji threshold detection method.",
+    "success_criteria": [
+      "Executor explains its emoji counting method before asking for the channel ID.",
+      "Executor lists each qualifying message with timestamp and emoji count.",
+      "Executor does not delete any messages."
+    ],
+    "world_assertions": [
+      "No chat_message deletions performed."
+    ]
+  },
+  {
+    "id": "live.messages.request_file_from_colleague",
+    "name": "Request missing file from colleague",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I need the latest version of the pitch deck from Jordan. Send a short message asking them to share the file via Google Drive.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will disclose Jordan\u2019s contact after the assistant drafts the request.",
+    "success_criteria": [
+      "Executor drafts a concise request mentioning Google Drive.",
+      "Executor asks for Jordan\u2019s contact details after the draft.",
+      "Executor indicates the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists addressed to Jordan with the file request."
+    ]
+  },
+  {
+    "id": "live.messages.analyze_sentiment_of_feedback",
+    "name": "Analyze sentiment of recent feedback messages",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "From the #feedback Slack channel, give me a quick sentiment breakdown (positive, neutral, negative) for messages posted in the last 24\u202fhours.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will provide the channel ID after the assistant outlines the sentiment categories it will use.",
+    "success_criteria": [
+      "Executor outlines sentiment categories before requesting the channel ID.",
+      "Executor asks for the #feedback channel identifier after confirmation.",
+      "Executor returns counts for positive, neutral, and negative messages."
+    ],
+    "world_assertions": [
+      "No new messages created; only analysis."
+    ]
+  },
+  {
+    "id": "live.messages.confirm_delivery_of_important_email",
+    "name": "Confirm delivery of important email via chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "I sent an important email to client XYZ. Ask them via chat whether they received it and if they have any questions.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 26,
+    "description": "Persona will give the client\u2019s chat handle after the assistant drafts the inquiry.",
+    "success_criteria": [
+      "Executor drafts a polite inquiry about email receipt.",
+      "Executor asks for the client\u2019s chat handle after the draft.",
+      "Executor states it will wait for a response before concluding."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the email receipt request."
+    ]
+  },
+  {
+    "id": "live.messages.filter_unread_from_family",
+    "name": "Filter unread messages from family group",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "Show me any unread messages in the family WhatsApp group that are not about daily chores. I\u2019ll handle the chores ones later.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will reveal the group ID after the assistant confirms it will not modify any messages.",
+    "success_criteria": [
+      "Executor confirms no messages will be altered before asking for the group ID.",
+      "Executor lists each unread non\u2011chore message with sender and short excerpt.",
+      "Executor provides total count of such messages."
+    ],
+    "world_assertions": [
+      "No deletions or edits performed on chat messages."
+    ]
+  },
+  {
+    "id": "live.messages.prepare_welcome_message_new_member",
+    "name": "Prepare welcome message for new Slack member",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "A new engineer, Priya, joined the #dev-team channel. Draft a friendly welcome message that mentions the onboarding doc link.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will give Priya\u2019s Slack ID after the assistant drafts the welcome text.",
+    "success_criteria": [
+      "Executor drafts a warm welcome under 200 characters including the onboarding doc link.",
+      "Executor asks for Priya\u2019s Slack identifier after the draft.",
+      "Executor confirms the message is ready to post."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists addressed to Priya with the welcome content."
+    ]
+  },
+  {
+    "id": "live.messages.ask_for_confirmation_before_deleting",
+    "name": "Ask for confirmation before deleting old chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "I want to delete the old #old-project Slack channel. Before doing so, ask me to confirm and state what will be lost.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 21,
+    "description": "Persona expects a concise confirmation prompt before any deletion.",
+    "success_criteria": [
+      "Executor presents a short confirmation prompt listing the channel name and potential data loss.",
+      "Executor waits for explicit yes/no response before proceeding.",
+      "Executor does not perform deletion without confirmation."
+    ],
+    "world_assertions": [
+      "No channel deletion occurs unless the persona explicitly confirms."
+    ]
+  },
+  {
+    "id": "live.messages.extract_phone_numbers_from_chat",
+    "name": "Extract phone numbers from a chat thread",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "Pull out any phone numbers mentioned in the #team-chat thread from yesterday. I need them for a quick call list.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 20,
+    "description": "Persona will provide the thread ID after the assistant confirms it will not share the numbers elsewhere.",
+    "success_criteria": [
+      "Executor confirms it will keep the extracted numbers private before asking for the thread ID.",
+      "Executor lists each phone number in international format with the sender\u2019s name.",
+      "Executor reports total count of extracted numbers."
+    ],
+    "world_assertions": [
+      "No new messages are sent; only extraction."
+    ]
+  },
+  {
+    "id": "live.messages.confirm_meeting_reschedule_acceptance",
+    "name": "Confirm acceptance of meeting reschedule via chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "I proposed moving tomorrow\u2019s sync to 3\u202fpm. Ask the participant if that works and wait for their response before updating the calendar.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will give the participant\u2019s contact after the assistant drafts the question.",
+    "success_criteria": [
+      "Executor drafts a brief question about the new time.",
+      "Executor asks for the participant\u2019s contact after the draft.",
+      "Executor indicates it will wait for a reply before any calendar change."
+    ],
+    "world_assertions": [
+      "No calendar_event modifications occur until explicit acceptance."
+    ]
+  },
+  {
+    "id": "live.messages.suggest_alternative_contact_method",
+    "name": "Suggest alternative contact method for delayed reply",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My partner hasn\u2019t replied to my text about dinner plans. Propose a polite follow\u2011up suggesting a quick call instead.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 23,
+    "description": "Persona will provide the partner\u2019s name after the assistant drafts the follow\u2011up.",
+    "success_criteria": [
+      "Executor drafts a courteous follow\u2011up asking to switch to a call.",
+      "Executor asks for the partner\u2019s contact after the draft.",
+      "Executor confirms the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the follow\u2011up suggestion."
+    ]
+  },
+  {
+    "id": "live.messages.check_for_missed_calls_in_chat",
+    "name": "Check for missed call notifications in chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "Search my iMessage history for any missed call alerts from the past week and list the callers and timestamps.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will disclose the iMessage conversation ID after the assistant confirms it will not delete any messages.",
+    "success_criteria": [
+      "Executor confirms no deletions before asking for the conversation ID.",
+      "Executor returns each missed call entry with caller name and timestamp.",
+      "Executor reports total number of missed calls found."
+    ],
+    "world_assertions": [
+      "No message deletions performed."
+    ]
+  },
+  {
+    "id": "live.messages.suggest_reply_for_ambiguous_message",
+    "name": "Suggest reply for ambiguous team message",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "A teammate wrote, \"Can we discuss this when you\u2019re free?\" Draft two short reply options: one confirming availability, another asking for a specific time.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will provide the original message\u2019s author after the assistant offers the two drafts.",
+    "success_criteria": [
+      "Executor provides two distinct reply drafts under 120 characters each.",
+      "Executor asks for the teammate\u2019s name after presenting drafts.",
+      "Executor indicates which draft the persona prefers to send."
+    ],
+    "world_assertions": [
+      "No new chat_message sent; only drafts created."
+    ]
+  },
+  {
+    "id": "live.messages.identify_unread_important_emails_in_chat",
+    "name": "Identify unread important emails referenced in chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "In the #project-updates thread, some members mentioned \"please see the attached email\". List any unread emails that were referenced.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 29,
+    "description": "Persona will give the thread ID after the assistant confirms it will not mark emails as read.",
+    "success_criteria": [
+      "Executor confirms it will not change email read status before asking for thread ID.",
+      "Executor lists each referenced email with subject and sender.",
+      "Executor notes which of those are still unread."
+    ],
+    "world_assertions": [
+      "No email read-status changes occur."
+    ]
+  },
+  {
+    "id": "live.messages.ask_for_feedback_on_prototype",
+    "name": "Ask for feedback on prototype via chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "Send a short message to my design peer asking for quick feedback on the new UI prototype link I shared yesterday.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 25,
+    "description": "Persona will reveal the peer\u2019s contact after the assistant drafts the request.",
+    "success_criteria": [
+      "Executor drafts a brief, friendly request referencing the prototype link.",
+      "Executor asks for the peer\u2019s chat handle after the draft.",
+      "Executor confirms the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists addressed to the design peer with the feedback request."
+    ]
+  },
+  {
+    "id": "live.messages.confirm_appointment_via_whatsapp",
+    "name": "Confirm appointment via WhatsApp",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I have a dentist appointment tomorrow at 9\u202fam. Send a WhatsApp message confirming the time and asking if any paperwork is needed.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will give the dentist\u2019s WhatsApp number after the assistant drafts the confirmation.",
+    "success_criteria": [
+      "Executor drafts a polite confirmation under 150 characters.",
+      "Executor asks for the dentist\u2019s WhatsApp contact after the draft.",
+      "Executor states it will wait for a reply before closing."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the appointment confirmation."
+    ]
+  },
+  {
+    "id": "live.messages.report_spam_to_platform",
+    "name": "Report spam messages to platform",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I keep getting unsolicited promo messages from \"DealNow\" on iMessage. Draft a report to Apple\u2019s support asking to block the sender.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 22,
+    "description": "Persona will provide the exact iMessage sender ID after the assistant outlines the report content.",
+    "success_criteria": [
+      "Executor outlines the report content before asking for the sender ID.",
+      "Executor asks for the exact iMessage sender identifier after the outline.",
+      "Executor drafts a concise report message ready for submission."
+    ],
+    "world_assertions": [
+      "No actual submission performed; only draft created."
+    ]
+  },
+  {
+    "id": "live.messages.extract_action_items_from_meeting_chat",
+    "name": "Extract action items from meeting chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "dev_freelancer",
+    "instruction": "During today\u2019s stand\u2011up, we noted several tasks in the #standup Slack channel. List each action item with owner and due date if mentioned.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 30,
+    "description": "Persona will share the Slack channel ID after the assistant confirms it will not post any new messages.",
+    "success_criteria": [
+      "Executor confirms no new messages will be posted before requesting the channel ID.",
+      "Executor returns each identified action item with owner name and any due date.",
+      "Executor notes if any item lacks a due date."
+    ],
+    "world_assertions": [
+      "No new chat_message created."
+    ]
+  },
+  {
+    "id": "live.messages.confirm_message_sent_status",
+    "name": "Confirm if a message was sent successfully",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "I think my message to the vendor didn\u2019t go through. Verify whether the last message to contact_vendor@example.test was delivered.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 21,
+    "description": "Persona will give the exact message timestamp after the assistant asks for it.",
+    "success_criteria": [
+      "Executor asks for the timestamp or ID of the message before checking status.",
+      "Executor reports delivery status (sent, delivered, read) clearly.",
+      "Executor mentions any next steps if delivery failed."
+    ],
+    "world_assertions": [
+      "No new messages sent; only status query performed."
+    ]
+  },
+  {
+    "id": "live.messages.suggest_alternative_time_for_meeting",
+    "name": "Suggest alternative meeting time via chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "maya_parent",
+    "instruction": "My partner can\u2019t make the 4\u202fpm meeting. Propose two alternative times that fit within 9\u202fam\u20115\u202fpm and ask which works best.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 27,
+    "description": "Persona will reveal the partner\u2019s contact after the assistant drafts the alternatives.",
+    "success_criteria": [
+      "Executor drafts two feasible time slots within business hours.",
+      "Executor asks for the partner\u2019s chat handle after the draft.",
+      "Executor indicates the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the alternative time proposal."
+    ]
+  },
+  {
+    "id": "live.messages.check_unread_messages_from_boss",
+    "name": "Check unread messages from boss",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "alex_eng",
+    "instruction": "List any unread messages from my manager in the last 48\u202fhours across all platforms. I need to respond before end of day.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 23,
+    "description": "Persona will give the manager\u2019s contact after the assistant confirms it will not mark messages as read.",
+    "success_criteria": [
+      "Executor confirms it will not change read status before asking for manager\u2019s identifier.",
+      "Executor lists each unread message with platform, timestamp, and short preview.",
+      "Executor reports total count of unread messages."
+    ],
+    "world_assertions": [
+      "No message read-status changes performed."
+    ]
+  },
+  {
+    "id": "live.messages.provide_summary_of_weekend_chat",
+    "name": "Provide summary of weekend group chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "sam_founder",
+    "instruction": "Summarize the key points from the #weekend-plans chat over the past two days. Highlight any decisions made about activities.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 28,
+    "description": "Persona expects the assistant to ask for the channel ID after outlining the summary format.",
+    "success_criteria": [
+      "Executor outlines a brief bullet\u2011point summary format before requesting the channel ID.",
+      "Executor asks for the #weekend-plans channel identifier after confirmation.",
+      "Executor delivers a concise summary with at least two decided activities."
+    ],
+    "world_assertions": [
+      "No new messages created; only read and summarize."
+    ]
+  },
+  {
+    "id": "live.messages.ask_for_clarification_on_vague_message",
+    "name": "Ask for clarification on vague message",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "kai_student",
+    "instruction": "I got a text saying \"we need to talk\" from my roommate. Draft a polite reply asking for a convenient time to discuss.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 20,
+    "description": "Persona will give the roommate\u2019s contact after the assistant drafts the clarification request.",
+    "success_criteria": [
+      "Executor drafts a courteous request for a specific time.",
+      "Executor asks for the roommate\u2019s phone number after the draft.",
+      "Executor confirms the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the clarification request."
+    ]
+  },
+  {
+    "id": "live.messages.confirm_receipt_of_urgent_file",
+    "name": "Confirm receipt of urgent file via chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "nora_consultant",
+    "instruction": "My colleague sent an urgent PDF in the #legal Slack channel. Verify they received it and ask if they need any additional info.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 26,
+    "description": "Persona will give the colleague\u2019s Slack ID after the assistant drafts the confirmation request.",
+    "success_criteria": [
+      "Executor drafts a concise confirmation request referencing the PDF.",
+      "Executor asks for the colleague\u2019s Slack handle after the draft.",
+      "Executor notes it will wait for a reply before proceeding."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists addressed to the colleague with the receipt check."
+    ]
+  },
+  {
+    "id": "live.messages.suggest_alternative_contact_platform",
+    "name": "Suggest alternative contact platform for delayed response",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "tara_night",
+    "instruction": "My friend isn\u2019t responding on iMessage. Suggest switching to Signal for a more reliable conversation and ask if they\u2019re okay with that.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 24,
+    "description": "Persona will provide the friend\u2019s name after the assistant drafts the suggestion.",
+    "success_criteria": [
+      "Executor drafts a gentle suggestion mentioning Signal and asking for consent.",
+      "Executor asks for the friend\u2019s contact identifier after the draft.",
+      "Executor confirms the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists with the platform suggestion."
+    ]
+  },
+  {
+    "id": "live.messages.check_for_unread_announcements",
+    "name": "Check for unread announcements in company chat",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "lin_ops",
+    "instruction": "Find any unread messages in the #company-announcements channel that were posted in the last 24\u202fhours.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 42,
+    "max_turns": 28,
+    "description": "Persona will give the channel ID after the assistant confirms it will not mark messages as read.",
+    "success_criteria": [
+      "Executor confirms it will not change read status before asking for the channel ID.",
+      "Executor lists each unread announcement with timestamp and headline.",
+      "Executor reports total count of unread announcements."
+    ],
+    "world_assertions": [
+      "No read\u2011status modifications performed."
+    ]
+  },
+  {
+    "id": "live.messages.draft_thank_you_message_for_help",
+    "name": "Draft thank\u2011you message for recent help",
+    "domain": "messages",
+    "mode": "live",
+    "persona_id": "owen_retiree",
+    "instruction": "I received assistance from my neighbor fixing the leaky faucet. Write a short thank\u2011you text expressing gratitude and offering coffee.",
+    "ground_truth_actions": [],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 22,
+    "description": "Persona will disclose the neighbor\u2019s contact after the assistant drafts the thank\u2011you note.",
+    "success_criteria": [
+      "Executor drafts a warm thank\u2011you under 130 characters, mentioning coffee.",
+      "Executor asks for the neighbor\u2019s phone number after the draft.",
+      "Executor confirms the message is ready to send."
+    ],
+    "world_assertions": [
+      "A draft chat_message exists addressed to the neighbor with the thank\u2011you."
+    ]
+  }
+]

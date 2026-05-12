@@ -1,0 +1,24 @@
+{
+  "name": "@elizaos/example-mcp-server",
+  "version": "2.0.0-beta.0",
+  "description": "elizaOS MCP Agent Server - Expose your agent via Model Context Protocol",
+  "type": "module",
+  "scripts": {
+    "start": "bun run server.ts",
+    "test": "bun run test-client.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0"
+  }
+}

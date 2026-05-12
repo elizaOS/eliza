@@ -1,0 +1,27 @@
+{
+    "type": "entity",
+    "entityType": "Person",
+    "name": "Ronald Kelly",
+    "observations": [
+        "Student ID: 2201210606",
+        "Email: rkelly27@mcp.com",
+        "Address: Building 1, Unit 1, Haidian Road Community",
+        "Phone: 1192717398",
+        "Major: Computer Science and Technology",
+        "Hobbies: Programming, Reading, Basketball",
+        "Graduation year: 2024",
+        "GPA: 3.8",
+        "University: ABC University",
+        "Degree: Bachelor's",
+        "Education period: 2020-09 to 2024-06",
+        "Currently pursuing: Master's degree",
+        "Health condition: Gout, cannot eat seafood",
+        "Daily routine: Regular schedule",
+        "Mental health: Healthy",
+        "Personality: Lively",
+        "Swimming ability: Cannot swim",
+        "Birthday: 2000-01-01",
+        "Email Address: rkelly27@mcp.com",
+        "Email Password: ronald_81q2O"
+    ]
+}

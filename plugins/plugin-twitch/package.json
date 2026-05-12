@@ -1,0 +1,125 @@
+{
+  "name": "@elizaos/plugin-twitch",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging",
+        "live-streaming"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "bun test",
+    "lint": "echo \"Lint skipped for release\"",
+    "lint:check": "bun run lint",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "echo \"Typecheck skipped for release\""
+  },
+  "dependencies": {
+    "@twurple/auth": "^8.0.0",
+    "@twurple/chat": "^8.0.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/bun": "^1.1.0",
+    "typescript": "^6.0.3"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "TWITCH_USERNAME": {
+        "type": "string",
+        "description": "Username for authentication",
+        "required": false,
+        "sensitive": false
+      },
+      "TWITCH_CLIENT_ID": {
+        "type": "string",
+        "description": "Application/client ID",
+        "required": false,
+        "sensitive": false
+      },
+      "TWITCH_ACCESS_TOKEN": {
+        "type": "string",
+        "description": "Access token for Twitch",
+        "required": true,
+        "sensitive": true
+      },
+      "TWITCH_CLIENT_SECRET": {
+        "type": "string",
+        "description": "Client secret for Twitch",
+        "required": false,
+        "sensitive": true
+      },
+      "TWITCH_REFRESH_TOKEN": {
+        "type": "string",
+        "description": "Refresh token for Twitch",
+        "required": false,
+        "sensitive": true
+      },
+      "TWITCH_CHANNEL": {
+        "type": "string",
+        "description": "Channel name",
+        "required": false,
+        "sensitive": false
+      },
+      "TWITCH_CHANNELS": {
+        "type": "string",
+        "description": "Comma-separated room/channel list",
+        "required": false,
+        "sensitive": false
+      },
+      "TWITCH_REQUIRE_MENTION": {
+        "type": "boolean",
+        "description": "Only respond when mentioned",
+        "required": false,
+        "sensitive": false
+      },
+      "TWITCH_ALLOWED_ROLES": {
+        "type": "string",
+        "description": "Comma-separated allowed roles",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

@@ -1,0 +1,71 @@
+name: Generate Registry JSON
+
+on:
+  push:
+    branches:
+      - main
+      - next
+  workflow_dispatch:
+    inputs:
+      eliza_ref:
+        description: elizaOS ref used to generate built-in packages
+        required: false
+        default: main
+
+jobs:
+  generate-registry:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout registry
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: registry
+
+      - name: Checkout elizaOS
+        uses: actions/checkout@v4
+        with:
+          repository: elizaos/eliza
+          ref: ${{ github.event.inputs.eliza_ref || 'main' }}
+          path: eliza
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: registry/package-lock.json
+
+      - name: Install registry dependencies
+        run: npm ci
+        working-directory: registry
+
+      - name: Generate registry outputs
+        run: npm run generate-registry
+        working-directory: registry
+        env:
+          ELIZA_REPO_ROOT: ${{ github.workspace }}/eliza
+
+      - name: Check for generated changes
+        id: check-changes
+        run: |
+          git add generated-registry.json index.json registry-summary.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+        working-directory: registry
+
+      - name: Commit generated outputs
+        if: steps.check-changes.outputs.changed == 'true'
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git commit -m "Auto-update registry outputs [skip ci]"
+          git push
+        working-directory: registry

@@ -1,0 +1,101 @@
+---
+title: "Connect Remotely"
+sidebarTitle: "Connect Remotely"
+description: "Connect Eliza to a LAN, VPS, Tailscale, or Eliza Cloud backend."
+---
+
+Use remote access when the runtime should live somewhere other than the current device.
+
+## Typical cases
+
+- a home server
+- a VPS
+- one backend shared across multiple devices
+- Eliza Cloud
+
+## What you need
+
+For a normal remote backend:
+
+1. the backend URL
+2. the access token or pairing credentials
+
+For Eliza Cloud, sign in instead of pasting a manual URL and token.
+
+## Connect from the app
+
+On first launch, choose:
+
+- `LAN`
+- `Remote`
+- `Eliza Cloud`
+
+Then enter the URL or sign in.
+
+## If you host your own remote backend
+
+1. Install Eliza on the remote machine.
+2. Start the runtime there.
+3. If it is reachable outside localhost, set a strong API token.
+4. Prefer HTTPS, Tailscale, or another private network path.
+
+Minimal example:
+
+```bash
+ELIZA_API_BIND=0.0.0.0 \
+ELIZA_API_TOKEN="$(openssl rand -hex 32)" \
+eliza start
+```
+
+Use the `ELIZA_API_TOKEN` value as the access token when you connect from another device.
+
+## Use a phone as a LifeOps sensor
+
+Every device sends LifeOps telemetry to whichever backend the app is connected to.
+That backend can be the Mac app on your desk, a LAN machine, a tailnet host, a VPS,
+or Eliza Cloud.
+
+For a local Mac agent:
+
+1. Start Eliza on the Mac with `ELIZA_API_BIND=0.0.0.0` and a strong `ELIZA_API_TOKEN`.
+2. Connect the iOS or Android app to the Mac's LAN or tailnet URL.
+3. In LifeOps setup, open `Device Data`.
+4. Tap `Enable` to request Health permissions where the OS allows it.
+5. Open any remaining settings rows such as Usage Access, Local Network, Notifications, or Battery Optimization.
+
+Once connected, the phone submits lock, wake, foreground, HealthKit or Health
+Connect, and Android usage summaries to the LifeOps API on the backend
+(see [LifeOps API](/rest/lifeops) for available endpoints). No Cloud account is required for local mode.
+
+Android app usage requires the system Usage Access screen. iOS Screen Time
+requires Apple FamilyControls and DeviceActivity entitlements; when Apple only
+allows opening the app's Settings screen, Eliza opens that supported settings
+target and shows the remaining blocker in `Device Data`.
+
+## Provider routing on remote backends
+
+A remote backend often owns provider routing. If provider changes on the client do nothing, check which machine owns the active configuration.
+
+## Common problems
+
+### Eliza will not connect
+
+Check:
+
+- the URL
+- the token
+- whether the backend is running
+- whether the backend listens outside localhost
+
+### One device works and another does not
+
+Check network reachability first. LAN- or tailnet-only hosts often fail from devices outside that network.
+
+## Eliza Cloud
+
+Pick `Eliza Cloud` during setup, sign in, and let that backend own the runtime.
+
+## Next
+
+- [Connect Discord](/user/connect-discord)
+- [Connect Telegram](/user/connect-telegram)

@@ -1,0 +1,43 @@
+name: Sync Next Dist-Tags
+
+on:
+  push:
+    branches:
+      - shaw/release-clean-tree-fix
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: Source dist-tag to mirror
+        required: false
+        default: beta
+        type: string
+      target_tag:
+        description: Target dist-tag to update
+        required: false
+        default: next
+        type: string
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.15.0"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Sync dist-tags
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
+          mkdir -p "$(dirname "$AUTH_NPMRC")"
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
+          node scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag || 'beta' }}" "${{ inputs.target_tag || 'next' }}"

@@ -1,0 +1,343 @@
+---
+title: "Model Providers"
+sidebarTitle: "Model Providers"
+description: "Supported inference backends and how they fit into Eliza's server-target-first routing model."
+---
+
+Eliza supports **18 inference backends**. Five are **bundled** with every release (OpenAI, OpenRouter, Groq, Ollama, and Eliza Cloud); the remaining providers are **on demand** — they auto-install from the plugin registry when their API key or config is detected. The active backend is selected through canonical runtime routing on the connected server, not by ad hoc env toggles in the client.
+
+---
+
+## Provider Reference
+
+The table below is the complete list of supported provider plugins, sourced from Eliza's provider catalog.
+
+<Note>
+Providers marked **bundled** are pre-installed with every Eliza release and load instantly. Providers marked **auto-install** are downloaded automatically the first time their API key is detected — no manual plugin install required. All providers auto-enable when their API key or config is present.
+</Note>
+
+| Provider | Plugin Package | Env Variable(s) | Install | Notes |
+|----------|----------------|------------------|---------|-------|
+| [Anthropic](https://anthropic.com) | `@elizaos/plugin-anthropic` | `ANTHROPIC_API_KEY` or `CLAUDE_API_KEY` | Bundled | **Recommended.** Claude models (Opus, Sonnet, Haiku). |
+| [OpenAI](https://openai.com) | `@elizaos/plugin-openai` | `OPENAI_API_KEY` | Bundled | GPT-4o, o1, o3, GPT-4.1. |
+| [Google Gemini](https://ai.google.dev) | `@elizaos/plugin-google-genai` | `GOOGLE_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` | Bundled | Gemini Pro, Flash, Ultra. |
+| [Google Antigravity](https://cloud.google.com/vertex-ai) | `@elizaos/plugin-google-antigravity` | `GOOGLE_CLOUD_API_KEY` | On demand | Google Cloud / Vertex AI models. |
+| [Vercel AI Gateway](https://sdk.vercel.ai) | `@elizaos/plugin-vercel-ai-gateway` | `AI_GATEWAY_API_KEY` or `AIGATEWAY_API_KEY` | On demand | Unified gateway to multiple providers. |
+| [OpenRouter](https://openrouter.ai) | `@elizaos/plugin-openrouter` | `OPENROUTER_API_KEY` | Bundled | 100+ models behind one API key. |
+| [Groq](https://groq.com) | `@elizaos/plugin-groq` | `GROQ_API_KEY` | On demand | Ultra-fast inference (LPU). |
+| [xAI](https://x.ai) | `@elizaos/plugin-xai` | `XAI_API_KEY` or `GROK_API_KEY` | On demand | Grok models. |
+| [DeepSeek](https://deepseek.com) | `@elizaos/plugin-deepseek` | `DEEPSEEK_API_KEY` | On demand | Reasoning and code models. |
+| [Ollama](https://ollama.com) | `@elizaos/plugin-ollama` | `OLLAMA_BASE_URL` | Bundled | **Local models.** No API key needed. Requires a running [Ollama](https://ollama.com) server. |
+| [Local AI](https://localai.io) | `@elizaos/plugin-local-ai` | — | On demand | **Offline GGUF models.** No API key or server needed. Point `MODELS_DIR` at local model files. |
+| [MiniMax](https://minimaxi.com) | `@elizaos/plugin-minimax` | — | On demand | MiniMax language models. Configure via plugin entry. |
+| [Together AI](https://together.ai) | `@elizaos/plugin-together` | `TOGETHER_API_KEY` | On demand | Open-source model hosting. |
+| [Mistral](https://mistral.ai) | `@elizaos/plugin-mistral` | `MISTRAL_API_KEY` | On demand | Mistral and Mixtral models. |
+| [Cohere](https://cohere.com) | `@elizaos/plugin-cohere` | `COHERE_API_KEY` | On demand | Command R+ and embed models. |
+| [Perplexity](https://perplexity.ai) | `@elizaos/plugin-perplexity` | `PERPLEXITY_API_KEY` | On demand | Search-augmented generation. |
+| [Zai](https://z.ai) | `@elizaos/plugin-zai` | `ZAI_API_KEY` | On demand | z.ai models. |
+| [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Bundled | Cloud-managed inference route. Can be selected independently from where Eliza itself is running. |
+
+<Info>
+For providers without dedicated plugins (DeepSeek, Mistral, Cohere, Together AI, Perplexity, MiniMax), use the **OpenRouter** plugin. OpenRouter provides unified access to 200+ models from these providers and more through a single API key. See the [OpenRouter plugin reference](/plugin-registry/llm/openrouter) for model ID format.
+</Info>
+
+---
+
+## How Provider Selection Works
+
+Eliza uses a **server-target-first** model:
+
+1. Choose which server to use: local, Eliza Cloud, or a remote backend.
+2. Link any accounts the server may need, such as Eliza Cloud or OpenAI.
+3. Select the active inference route for `llmText`.
+
+The connected server then resolves the effective provider from canonical runtime config:
+
+- `deploymentTarget` decides where the server runs
+- `linkedAccounts` decides which accounts are available
+- `serviceRouting.llmText` decides who handles inference
+
+Provider plugins are still auto-enabled from the server environment when appropriate, but the client-facing source of truth is the server's runtime routing config, not a raw environment variable on its own.
+
+### Auto-enable flow
+
+1. On startup, Eliza scans your environment variables (from `~/.eliza/.env`, shell environment, or `eliza.json`).
+2. If a recognized API key is found (e.g., `ANTHROPIC_API_KEY`), the corresponding provider plugin is automatically added to the plugin allowlist.
+3. The plugin is installed on demand if not already present (installed to `~/.eliza/plugins/installed/`).
+4. The provider becomes available for model selection.
+
+### Explicit plugin configuration
+
+You can also enable providers manually in `~/.eliza/eliza.json` under the `plugins` key:
+
+```json5
+{
+  plugins: {
+    allow: ["anthropic", "openai", "ollama"],
+  },
+}
+```
+
+To **disable** an auto-enabled provider, set its entry to `enabled: false`:
+
+```json5
+{
+  plugins: {
+    entries: {
+      anthropic: { enabled: false },
+    },
+  },
+}
+```
+
+### Auth profiles
+
+Providers can also be activated through auth profiles in your config:
+
+```json5
+{
+  auth: {
+    profiles: {
+      main: {
+        provider: "anthropic",
+      },
+      backup: {
+        provider: "openrouter",
+      },
+    },
+  },
+}
+```
+
+---
+
+## Setting Up Providers
+
+### Option 1: Environment file (recommended)
+
+Create or edit `~/.eliza/.env`:
+
+```bash
+# Primary provider
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Additional providers
+OPENAI_API_KEY=sk-...
+OPENROUTER_API_KEY=sk-or-v1-...
+GROQ_API_KEY=gsk_...
+```
+
+### Option 2: Config file
+
+Add keys directly in `~/.eliza/eliza.json`:
+
+```json5
+{
+  env: {
+    ANTHROPIC_API_KEY: "<ANTHROPIC_API_KEY>",
+    OPENAI_API_KEY: "<OPENAI_API_KEY>",
+  },
+}
+```
+
+### Option 3: Interactive setup
+
+```bash
+eliza configure
+```
+
+This walks you through setting common environment variables including your preferred model provider.
+
+<Warning>
+When using the config file approach, your API keys are stored in plaintext in `eliza.json`. The `.env` file approach keeps secrets separate from configuration and is easier to exclude from version control.
+</Warning>
+
+---
+
+## CLI Commands
+
+```bash
+eliza models             # list configured model providers and their status
+eliza configure          # show provider status and env variable guide (read-only)
+```
+
+### Setting the default model
+
+In `~/.eliza/eliza.json`, specify the model using `provider/model` format:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+      },
+    },
+  },
+}
+```
+
+Or switch mid-session using the `/model` chat command:
+
+```
+/model openai/gpt-5
+```
+
+---
+
+## Model Fallbacks
+
+If your primary model is unavailable (rate limit, outage, billing issue), Eliza automatically tries the next option in the list. This keeps the agent responsive even when a single provider has problems.
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+        fallbacks: [
+          "openai/gpt-5",
+          "groq/openai/gpt-oss-120b",
+        ],
+      },
+    },
+  },
+}
+```
+
+Fallbacks are tried in order. Each provider in the fallback chain must have its API key configured.
+
+---
+
+## Using Multiple Providers
+
+You can have multiple providers active simultaneously. Every provider whose API key is detected will be auto-enabled and available for selection.
+
+A common setup:
+
+```bash
+# ~/.eliza/.env
+
+# Primary — high-quality reasoning
+ANTHROPIC_API_KEY=sk-ant-api03-...
+
+# Fast inference for simple tasks
+GROQ_API_KEY=gsk_...
+
+# Fallback — wide model selection
+OPENROUTER_API_KEY=sk-or-v1-...
+
+# Local — offline / privacy-sensitive work
+OLLAMA_API_ENDPOINT=http://127.0.0.1:11434
+```
+
+With this setup, all four providers are available. You can set different models for different purposes:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+        fallbacks: ["openrouter/anthropic/claude-sonnet-4.6"],
+      },
+      imageModel: {
+        primary: "openai/gpt-5",
+      },
+    },
+  },
+}
+```
+
+---
+
+## Local Models with Ollama
+
+Ollama lets you run models locally with no API key and full privacy. It does not require an API key — just a running Ollama server. For fully embedded local inference without any server, see [Local AI](/plugin-registry/llm/local-ai).
+
+### Setup
+
+<Steps>
+  <Step title="Install Ollama">
+    ```bash
+    curl -fsSL https://ollama.com/install.sh | sh
+    ```
+  </Step>
+  <Step title="Create an Eliza-1 model">
+    ```bash
+    ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
+    ```
+  </Step>
+  <Step title="Set the endpoint URL">
+    Add to `~/.eliza/.env`:
+    ```bash
+    OLLAMA_API_ENDPOINT=http://127.0.0.1:11434
+    ```
+    (`OLLAMA_BASE_URL` also works as an alias.)
+  </Step>
+  <Step title="Select the model">
+    In `~/.eliza/eliza.json`:
+    ```json5
+    {
+      agents: {
+        defaults: {
+          model: {
+            primary: "ollama/eliza-1-9b",
+          },
+        },
+      },
+    }
+    ```
+  </Step>
+</Steps>
+
+Ollama auto-enables as soon as `OLLAMA_API_ENDPOINT` (or the alias `OLLAMA_BASE_URL`) is set. If you are running Ollama on the default port locally, just set:
+
+```bash
+OLLAMA_API_ENDPOINT=http://127.0.0.1:11434
+```
+
+To verify Ollama is running and reachable:
+
+```bash
+curl http://127.0.0.1:11434/api/tags
+```
+
+For remote Ollama instances, point to your server's address instead.
+
+---
+
+## Env Variable Quick Reference
+
+Every env variable that triggers auto-enable, grouped by provider:
+
+| Env Variable | Provider Activated |
+|--------------|--------------------|
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `CLAUDE_API_KEY` | Anthropic |
+| `OPENAI_API_KEY` | OpenAI |
+| `GOOGLE_API_KEY` | Google Gemini |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Google Gemini |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway |
+| `AIGATEWAY_API_KEY` | Vercel AI Gateway |
+| `GROQ_API_KEY` | Groq |
+| `XAI_API_KEY` | xAI |
+| `GROK_API_KEY` | xAI |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `OLLAMA_BASE_URL` | Ollama |
+| `DEEPSEEK_API_KEY` | DeepSeek |
+| `TOGETHER_API_KEY` | Together AI |
+| `MISTRAL_API_KEY` | Mistral |
+| `COHERE_API_KEY` | Cohere |
+| `PERPLEXITY_API_KEY` | Perplexity |
+| `ZAI_API_KEY` | Zai |
+| `ELIZAOS_CLOUD_API_KEY` | Eliza Cloud |
+| `ELIZAOS_CLOUD_ENABLED` | Eliza Cloud |
+
+<Tip>
+Some providers accept multiple env variable names for convenience (e.g., both `ANTHROPIC_API_KEY` and `CLAUDE_API_KEY` activate Anthropic). You only need to set one.
+</Tip>
+
+<Info>
+**Local AI** does not auto-enable via an environment variable. Enable it explicitly with `eliza plugins install local-ai` or by adding `"local-ai"` to `plugins.allow` in `eliza.json`. See the [Local AI plugin page](/plugin-registry/llm/local-ai) for configuration.
+</Info>

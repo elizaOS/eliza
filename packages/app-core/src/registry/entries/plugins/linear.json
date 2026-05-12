@@ -1,0 +1,51 @@
+{
+  "id": "linear",
+  "name": "Linear",
+  "description": "Linear integration plugin for ElizaOS (TypeScript)",
+  "npmName": "@elizaos/plugin-linear",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["linear", "typescript", "project-management"],
+  "config": {
+    "LINEAR_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "Linear API key for authentication",
+      "advanced": false
+    },
+    "LINEAR_WORKSPACE_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Workspace Id",
+      "help": "Linear workspace ID",
+      "advanced": false
+    },
+    "LINEAR_DEFAULT_TEAM_KEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Default Team Key",
+      "help": "Default team key for new issues",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Square",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

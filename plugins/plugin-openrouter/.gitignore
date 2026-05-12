@@ -1,0 +1,19 @@
+node_modules/
+.turbo
+dist/
+.envdist
+node_modules
+.env
+.elizadb
+:memory:*/
+target/
+__pycache__
+*.pyc
+.venv
+*.egg-info
+.DS_Store
+package-lock.json
+dist
+# PGlite in-memory database artifacts (leak from vitest runs on some platforms)
+:memory:*/
+typescript/:memory:*/

@@ -1,0 +1,252 @@
+name: Mobile Build Smoke Test
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/agent/**"
+      - "packages/app/**"
+      - "packages/app-core/**"
+      - "packages/core/**"
+      - "packages/native-plugins/**"
+      - "packages/shared/**"
+      - "plugins/plugin-sql/**"
+      - ".github/workflows/mobile-build-smoke.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: mobile-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUN_VERSION: "1.3.11"
+
+jobs:
+  build-ios:
+    name: iOS Simulator Build
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-native-deps: "false"
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          run-postinstall: "true"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Generate protobuf types
+        # Restores the step that was on the last green Mobile Build Smoke
+        # run (52ab686a, 2026-05-09). Without these generated types in
+        # `packages/core/src/types/generated/`, `@elizaos/core`'s build
+        # fails downstream, which cascades into `@elizaos/shared` and
+        # vite config resolution.
+        run: |
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
+            cd packages/schemas
+            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+            bunx @bufbuild/buf@1.67.0 generate
+          fi
+
+      - name: Build Vite config package deps
+        # vite.config.ts imports dist-only workspace packages
+        # (`@elizaos/shared` and `@elizaos/ui/config/app-config`), and the
+        # app aliases plugin-browser source which imports `@elizaos/vault`.
+        # Build those package chains before Vite evaluates/bundles the app.
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
+
+      - name: Build iOS simulator app
+        run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
+        env:
+          LANG: en_US.UTF-8
+          ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator"
+          ELIZA_IOS_BUILD_SDK: "iphonesimulator"
+          NODE_OPTIONS: "--max-old-space-size=8192"
+
+      - name: Verify .app exists
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: App.app not found in DerivedData"
+            exit 1
+          fi
+          echo "Built app at: $APP_PATH"
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")
+          echo "Bundle ID: $BUNDLE_ID"
+          # Bundle ID source of truth is packages/app/app.config.ts (read
+          # by run-mobile-build.mjs via regex). Current value is
+          # `app.eliza` since commit d042ed57b5 renamed it from the
+          # legacy `ai.elizaos.app`. The two prior ids remain accepted
+          # because release branches and downstream forks may not have
+          # rebased onto the rename yet.
+          case "$BUNDLE_ID" in
+            app.eliza|ai.elizaos.app|ai.elizaos.Eliza) ;;
+            *)
+              echo "ERROR: Unexpected bundle ID: $BUNDLE_ID"
+              exit 1
+              ;;
+          esac
+
+      - name: Verify required Info.plist keys for background HealthKit
+        # Background HealthKit + BGTaskScheduler integration is in
+        # progress: no plist generator is configured yet (no
+        # capacitor.config.ts customization, no run-mobile-build.mjs
+        # writer for these keys), so until that lands the verify is a
+        # non-blocking warning. Flip back to a hard fail when the
+        # generator pipeline lands.
+        continue-on-error: true
+        run: |
+          APP_PATH=$(find ~/Library/Developer/Xcode/DerivedData -name "App.app" -path "*/Debug-iphonesimulator/*" | head -1)
+          INFO_PLIST="$APP_PATH/Info.plist"
+          for key in NSHealthShareUsageDescription BGTaskSchedulerPermittedIdentifiers UIBackgroundModes; do
+            if ! /usr/libexec/PlistBuddy -c "Print :$key" "$INFO_PLIST" >/dev/null 2>&1; then
+              echo "::warning::Info.plist missing required key: $key (TODO: wire up plist customization for background HealthKit)"
+              /usr/libexec/PlistBuddy -c "Print" "$INFO_PLIST" | head -80
+              exit 1
+            fi
+          done
+          # Confirm the sleep-refresh task identifier is whitelisted so
+          # BGTaskScheduler.register actually succeeds on device.
+          if ! /usr/libexec/PlistBuddy -c "Print :BGTaskSchedulerPermittedIdentifiers" "$INFO_PLIST" \
+            | grep -q "ai.eliza.mobile-signals.sleep-refresh"; then
+            echo "::warning::BGTaskSchedulerPermittedIdentifiers missing ai.eliza.mobile-signals.sleep-refresh"
+            exit 1
+          fi
+
+      - name: Verify Fastlane config landed in packages/app/ios
+        # Capacitor's iOS project ends up at packages/app/ios/ once
+        # run-mobile-build.mjs runs. overlayIosNativeFiles() copies
+        # the Fastlane config there. Skip when the dir hasn't been
+        # populated yet (Phase D mobile pipeline isn't always run in
+        # smoke).
+        continue-on-error: true
+        run: |
+          if [ ! -d packages/app/ios ]; then
+            echo "::warning::packages/app/ios/ not present; skipping Fastlane config verify"
+            exit 0
+          fi
+          for f in packages/app/ios/Gemfile packages/app/ios/fastlane/Fastfile packages/app/ios/fastlane/Appfile packages/app/ios/fastlane/Matchfile; do
+            if [ ! -f "$f" ]; then
+              echo "::warning::$f missing. overlayIosNativeFiles() should have copied Fastlane config here so CI can call \`fastlane beta|release\`."
+              exit 1
+            fi
+          done
+          echo "Fastlane config present at packages/app/ios/."
+
+  build-android:
+    name: Android Debug Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: "platform-tools platforms;android-34 build-tools;34.0.0"
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+          run-postinstall: "true"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Generate protobuf types
+        # Restores the step that was on the last green Mobile Build Smoke
+        # run (52ab686a, 2026-05-09). Without these generated types in
+        # `packages/core/src/types/generated/`, `@elizaos/core`'s build
+        # fails downstream, which cascades into `@elizaos/shared` and
+        # vite config resolution.
+        run: |
+          if [ -d packages/schemas ] && [ -f packages/schemas/buf.gen.yaml ] && [ ! -d packages/core/src/types/generated ]; then
+            cd packages/schemas
+            node node_modules/@bufbuild/buf/install.js 2>/dev/null || true
+            bunx @bufbuild/buf@1.67.0 generate
+          fi
+
+      - name: Build Vite config package deps
+        # vite.config.ts imports dist-only workspace packages
+        # (`@elizaos/shared` and `@elizaos/ui/config/app-config`), and the
+        # app aliases plugin-browser source which imports `@elizaos/vault`.
+        # Build those package chains before Vite evaluates/bundles the app.
+        run: bun turbo run build --filter=@elizaos/ui --filter=@elizaos/vault
+
+      - name: Accept Android SDK licenses
+        run: yes | sdkmanager --licenses >/dev/null 2>&1 || true
+
+      # Build the mobile agent bundle (Phase D) before Capacitor's
+      # Android sync needs it. The bundler dedupes @elizaos/core,
+      # @elizaos/shared, and @elizaos/plugin-sql to their src trees, so
+      # the workspace plugin packages have to be present in
+      # node_modules. setup-bun-workspace handles install; we just kick
+      # off the bundle here.
+      - name: Build mobile agent bundle
+        run: bun run --cwd packages/agent build:mobile
+
+      # Guard against the May-5 Bun.build TLA regression that required
+      # hot-patching `s/init_eliza()/await init_eliza()/` on every device
+      # bundle. The fix is in 12bfccb481 (lazy plugin-sql resolution from
+      # ensureCoreStaticPluginsRegistered); a regression would re-emit
+      # `var init_eliza = __esm(async () => {...})`. See
+      # docs/porting/on-device-quantization-porting-plan.md §"Current
+      # state on the AOSP image" for context.
+      - name: Verify init_eliza is sync (no TLA regression)
+        run: |
+          BUNDLE=packages/agent/dist-mobile/agent-bundle.js
+          if grep -qE 'var init_eliza\b[^=]*= __esm\(async ' "$BUNDLE"; then
+            echo "::error::init_eliza re-emitted as async __esm — Bun.build cross-module TLA regression"
+            exit 1
+          fi
+          echo "init_eliza sync emit confirmed; no TLA regression"
+
+      - name: Build Android debug app
+        run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs android
+        env:
+          NODE_OPTIONS: "--max-old-space-size=8192"
+
+      - name: Verify APK exists
+        run: |
+          APK_PATH="packages/app/android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$APK_PATH" ]; then
+            echo "::error::Debug APK not found at $APK_PATH"
+            exit 1
+          fi
+          APK_SIZE=$(stat -c%s "$APK_PATH" 2>/dev/null || stat -f%z "$APK_PATH")
+          echo "Debug APK built: $APK_PATH ($APK_SIZE bytes)"
+
+      - name: Upload debug APK
+        if: ${{ hashFiles('packages/app/android/app/build/outputs/apk/debug/app-debug.apk') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-debug-apk
+          path: packages/app/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          if-no-files-found: error

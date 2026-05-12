@@ -1,0 +1,62 @@
+name: Auto Label
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+  issues:
+    types: [opened, edited]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  label-pr:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/labeler@v6
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          pr-number: "${{ github.event.pull_request.number }}"
+
+  label-issue:
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/github-script@v9
+        with:
+          script: |
+            const title = context.payload.issue.title.toLowerCase();
+            const body = (context.payload.issue.body || '').toLowerCase();
+            const text = title + ' ' + body;
+            const labels = [];
+
+            if (text.includes('crash') || text.includes('error') || text.includes('bug') || text.includes('broken') || text.includes('regression')) {
+              labels.push('bug');
+            }
+            if (text.includes('security') || text.includes('vulnerability') || text.includes('cve') || text.includes('injection')) {
+              labels.push('security');
+            }
+            if (text.includes('performance') || text.includes('slow') || text.includes('memory leak') || text.includes('latency')) {
+              labels.push('performance');
+            }
+            if (text.includes('telegram') || text.includes('discord') || text.includes('connector')) {
+              labels.push('connector');
+            }
+            if (text.includes('memory') || text.includes('context') || text.includes('rag')) {
+              labels.push('memory');
+            }
+            if (text.includes('plugin')) {
+              labels.push('plugin');
+            }
+
+            if (labels.length > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                labels: labels
+              });
+            }

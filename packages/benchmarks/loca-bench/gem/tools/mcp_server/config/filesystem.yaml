@@ -1,0 +1,32 @@
+# Filesystem MCP Server Configuration
+name: filesystem
+display_name: Filesystem MCP Server
+description: File system operations (read, write, list)
+
+execution:
+  command_type: npx
+  package_name: "@modelcontextprotocol/server-filesystem"
+
+parameters:
+  allowed_directory:
+    required: false
+    default: "."
+    cli_arg: ""  # Positional argument
+    description: "Directory path that the filesystem server can access. If not specified, uses workspace_path or current directory."
+    aliases:
+      - workspace_path
+
+  workspace_path:
+    required: false
+    description: "Alias for allowed_directory (for consistency with other servers)"
+
+  use_local_server:
+    required: false
+    default: false
+    description: "If True, use local TypeScript server (recommended). If False, use npx to download server (may timeout)."
+
+workspace:
+  set_cwd: true
+  cwd_param: allowed_directory
+  supports_placeholders: true
+  mkdir_if_needed: true

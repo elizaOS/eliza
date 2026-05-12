@@ -1,0 +1,72 @@
+{
+  "id": "commands",
+  "name": "Commands",
+  "description": "Chat command system for Eliza agents (/help, /status, /reset, etc.)",
+  "npmName": "@elizaos/plugin-commands",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["commands"],
+  "config": {
+    "COMMANDS_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Enabled",
+      "help": "Enable command system",
+      "advanced": false
+    },
+    "COMMANDS_CONFIG_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "false",
+      "label": "Config Enabled",
+      "help": "Enable /config command",
+      "advanced": false
+    },
+    "COMMANDS_DEBUG_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "false",
+      "label": "Debug Enabled",
+      "help": "Enable /debug command",
+      "advanced": true
+    },
+    "COMMANDS_BASH_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "false",
+      "label": "Bash Enabled",
+      "help": "Enable /bash command (elevated)",
+      "advanced": false
+    },
+    "COMMANDS_RESTART_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Restart Enabled",
+      "help": "Enable /restart command",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Command",
+    "group": "automation",
+    "groupOrder": 9,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "automation"
+}

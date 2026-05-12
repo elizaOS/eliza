@@ -1,0 +1,140 @@
+---
+title: LifeOps setup
+description: First-run flow, defaults, customize, replay, pause, and wipe for the LifeOps app.
+---
+
+# LifeOps setup
+
+LifeOps is the elizaOS app that runs your day: morning briefs, bedtime
+reminders, follow-ups with people you care about, calendar/email triage, and
+the watchers that keep the agent useful when you go quiet. Everything below
+describes the system as it is shipped today; nothing here is a future plan.
+
+## What ships out of the box
+
+When LifeOps boots for the first time, it offers a small, fixed set of
+**default packs**. Each pack is a bundle of `ScheduledTask` records — the
+single primitive that powers every reminder, check-in, follow-up, watcher,
+recap, and approval surface. There is no second mechanism for "the agent
+nudges you about X." If LifeOps does it, it is a `ScheduledTask`.
+
+The shipped packs:
+
+- **`daily-rhythm`** — gm, gn, daily check-in.
+- **`morning-brief`** — assembler triggered when the wake anchor confirms.
+- **`quiet-user-watcher`** — daily watcher that summarizes recent task states
+  and asks once if you have gone quiet.
+- **`habit-starters`** — eight habits **offered, not auto-seeded**. You pick
+  the ones you want during customize.
+- **`inbox-triage-starter`** — opt-in, gated on a connected Gmail account.
+- **`followup-starter`** — watcher over the relationships you named, files a
+  follow-up `ScheduledTask` per overdue contact.
+- **Health packs** (`bedtime`, `wake-up`, `sleep-recap`) — contributed by
+  `@elizaos/plugin-health` whenever a health connector (Apple Health, Google
+  Fit, Strava, Fitbit, Withings, Oura) is paired.
+
+The full list lives at
+`plugins/app-lifeops/src/default-packs/index.ts` (LifeOps-owned packs) and
+`plugins/plugin-health/src/default-packs/` (health-owned packs).
+
+## First-run paths
+
+The `FIRST_RUN` action drives the first conversation. It has three paths and
+the user picks one in chat:
+
+### Defaults
+
+Accept what the agent ships. Five owner facts get sensible defaults
+(timezone from system, morning window 06:00–11:00, evening window 18:00–22:00,
+preferred channel = in-app, no named relationships) and the always-enabled
+packs are seeded. Total round-trips: one.
+
+### Customize
+
+A fixed five-question flow:
+
+1. What should I call you?
+2. What time zone are you in, and what counts as your morning / evening?
+3. Which categories matter to you? (selects which offered packs seed)
+4. What channel should I reach you on? (validated against connected dispatchers; falls back to in-app with a warning if the chosen channel is not connected)
+5. Any people you want me to keep up with, and how often? (creates relationships with cadences)
+
+Q1, Q2, and Q4 are always asked. Q3 and Q5 are conditional. Answers are
+**persisted question-by-question** — abandoning the flow does not lose
+progress, and the next chat resumes where you left off.
+
+### Replay
+
+Re-run first-run without destroying existing tasks. The owner-fact store
+(`plugins/app-lifeops/src/lifeops/owner/fact-store.ts`) is the source of
+truth; replay reads the current facts, pre-fills the customize answers, and
+lets you change any of them. New packs that became available since the last
+run (for example, after you connected a health source) are offered in the
+same screen.
+
+## Pause
+
+Two pause primitives exist; they do different things:
+
+- **Global pause** (`plugins/app-lifeops/src/lifeops/global-pause/store.ts`)
+  — stops every `ScheduledTask` that has `respectsGlobalPause: true` (the
+  default). Emergency tasks set it to `false` explicitly and still fire.
+  Toggle via the LifeOps UI Pause control or the `app-state` API.
+- **Per-room handoff** (`plugins/app-lifeops/src/lifeops/handoff/store.ts`)
+  — when the agent says "I'll let you take it from here" in a multi-party
+  thread, the room flips into handoff mode. The agent stops contributing
+  until the configured resume condition (mention, explicit resume, silence
+  window, or user request for help) fires. Multiple rooms can be in handoff
+  simultaneously; global pause stays separate.
+
+## Wipe
+
+Wipe deletes the LifeOps state for the current agent and re-arms first-run.
+Specifically it clears: scheduled tasks, owner facts, entities, relationships,
+default-pack seeding state, and pending prompts. Connector credentials in the
+keychain are left alone — disconnect them explicitly from the connector page
+if that is what you want.
+
+## How a journey actually runs
+
+Three concrete examples. Every one is a `ScheduledTask`. The runner
+(`plugins/app-lifeops/src/lifeops/scheduled-task/runner.ts`) is the only
+thing that decides when to fire, what gates apply, and what counts as
+"done."
+
+### Onboarding (first-run customize, channel = SMS, two relationships)
+
+`FIRST_RUN` records the answers Q-by-Q into the owner-fact store, validates
+SMS against the connector registry, then asks the runner to seed the
+selected packs. Each seeded pack contributes `ScheduledTask` records with
+the right `kind`, `trigger`, `shouldFire` gates, `completionCheck`, and
+(for relationships) `subject = { kind: "relationship", id }`. After
+seeding, the agent confirms in chat and the flow ends.
+
+### Habit (Stretch at 14:00, opt-in)
+
+When you pick "Stretch" during customize, the `habit-starters` pack creates
+a `ScheduledTask` with `trigger.kind = "cron"` at 14:00 in your timezone,
+`shouldFire` composing **multiple gates** (in your awake window AND not
+globally paused), `priority: "low"`, and `completionCheck.kind =
+"user_replied_within"`. At 14:00 the runner fires it through the channel
+your channel registry resolves for `priority: low`. Skip / snooze / complete
+update the same record's state.
+
+### Calendar (decline an awkward meeting)
+
+The user types "decline the 3pm tomorrow." The `CALENDAR` action interprets
+the request, builds the decline against the calendar connector (today
+Google), and — if the agent decides a polite note is warranted — creates a
+follow-up `ScheduledTask` with `subject = { kind: "calendar_event", id }`
+whose `output.destination` is `gmail_draft`. The runner respects global
+pause, the calendar connector's send policy, and the channel default pack's
+priority posture. No part of this is bespoke calendar code; it is the same
+runner that fires bedtime reminders.
+
+## Where to look next
+
+- Architecture summary: `plugins/app-lifeops/README.md`.
+- Health domain: `plugins/plugin-health/README.md`.
+- REST endpoints: `docs/rest/lifeops.md`.
+- QA reference: `docs/launchdocs/14-lifeops-qa.md`.

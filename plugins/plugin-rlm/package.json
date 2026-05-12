@@ -1,0 +1,80 @@
+{
+  "name": "@elizaos/plugin-rlm",
+  "version": "2.0.0-beta.1",
+  "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:fix": "biome check --write .",
+    "typecheck": "tsc --noEmit",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "keywords": [
+    "elizaos",
+    "plugin",
+    "rlm",
+    "recursive-language-model",
+    "ai",
+    "agent",
+    "long-context"
+  ],
+  "author": "elizaOS Contributors",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaos/eliza.git",
+    "directory": "plugins/plugin-rlm"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^22.19.17",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "ESM build available via exports.import"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

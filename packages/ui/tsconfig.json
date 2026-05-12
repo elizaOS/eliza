@@ -1,0 +1,112 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": [
+      "node"
+    ],
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "noEmit": true,
+    "paths": {
+      "drizzle-orm": [
+        "../../plugins/plugin-sql/node_modules/drizzle-orm"
+      ],
+      "drizzle-orm/*": [
+        "../../plugins/plugin-sql/node_modules/drizzle-orm/*"
+      ],
+      "@elizaos/app-lifeops": [
+        "../../plugins/app-lifeops/src/index.ts"
+      ],
+      "@elizaos/app-task-coordinator": [
+        "../../plugins/app-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/app-steward": [
+        "../../plugins/app-steward/src/index.ts"
+      ],
+      "@elizaos/app-shopify": [
+        "../../plugins/app-shopify/src/index.ts"
+      ],
+      "@elizaos/app-training": [
+        "../../plugins/app-training/src/index.ts"
+      ],
+      "@elizaos/app-vincent": [
+        "../../plugins/app-vincent/src/index.ts"
+      ],
+      "@elizaos/plugin-lifeops-browser": [
+        "../../plugins/plugin-lifeops-browser/src/index.ts"
+      ],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/src/index.ts"
+      ],
+      "@elizaos/plugin-video": [
+        "../../plugins/plugin-video/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/src/index.node.ts"
+      ],
+      "@elizaos/plugin-computeruse": [
+        "../../plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-whatsapp": [
+        "../../plugins/plugin-whatsapp/src/index.ts"
+      ],
+      "@elizaos/plugin-signal": [
+        "../../plugins/plugin-signal/src/index.ts"
+      ],
+      "@elizaos/app-core": [
+        "../app-core/src/index.ts"
+      ],
+      "@elizaos/agent": [
+        "../agent/src/index.ts"
+      ],
+      "@elizaos/plugin-coding-tools": [
+        "../../plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/app-companion": [
+        "../../plugins/app-companion/src/index.ts"
+      ],
+      "@elizaos/app-elizamaker": [
+        "../../plugins/app-elizamaker/src/index.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "../native-plugins/appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "../native-plugins/bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar": [
+        "../native-plugins/calendar/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "../native-plugins/mobile-signals/src/index.ts"
+      ],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/skills": ["../skills/src/index.ts"],
+      "@elizaos/skills/*": ["../skills/src/*"],
+      "@elizaos/core": ["../core/src/index.ts"],
+      "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/ui": ["./src/index.ts"],
+      "@elizaos/ui/*": ["./src/*"],
+      "@elizaos/*": ["../../node_modules/@elizaos/*"]
+    }
+  },
+  "exclude": [
+    "src/**/*.stories.ts",
+    "src/**/*.stories.tsx",
+    "../../plugins/app-companion/src/**/*.stories.tsx",
+    "../../plugins/app-companion/src/**/*.stories.ts"
+  ],
+  "include": [
+    "src",
+    "../app-core/src/ambient-modules.d.ts",
+    "../agent/src/external-modules.d.ts"
+  ]
+}

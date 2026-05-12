@@ -1,0 +1,18 @@
+{
+  "name": "@elizaos/example-app-capacitor",
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "scripts": {
+    "dev:backend": "bun run --cwd backend dev",
+    "dev:frontend": "bun run --cwd frontend dev",
+    "build:frontend": "bun run --cwd frontend build",
+    "cap:sync": "bunx cap sync",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'",
+    "build": "echo 'No build step configured; skipping build'"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "typescript": "^6.0.3"
+  }
+}

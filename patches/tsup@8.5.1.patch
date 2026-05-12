@@ -1,0 +1,45 @@
+diff --git a/dist/index.js b/dist/index.js
+index 0d4555b2a5e690bd54b9525b52c05b60fb392fb2..ddf61cf797c28a0be64dc4193d21eb09fb504241 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -911,7 +911,7 @@ var require_shims = _chunkTWFEYLU4js.__commonJS.call(void 0, {
+ 
+ // src/plugins/tree-shaking.ts
+ 
+-var _rollup = require('rollup');
++var _rollup = require('@rollup/wasm-node');
+ var treeShakingPlugin = ({
+   treeshake,
+   name,
+diff --git a/dist/rollup.js b/dist/rollup.js
+index e128b61b9558318b9f86dc11d72c31f09a8eb7db..1fefdcf4187bf24ab5f1e5993edfb7ef9c334812 100644
+--- a/dist/rollup.js
++++ b/dist/rollup.js
+@@ -6834,7 +6834,8 @@ var getRollupConfig = async (options) => {
+           tsconfig: options.tsconfig,
+           compilerOptions: {
+             ...compilerOptions,
+-            baseUrl: compilerOptions.baseUrl || ".",
++            // Patched: do not inject `baseUrl` (deprecated in TS 6.0). Preserve any
++            // explicit user-set baseUrl from `compilerOptions` via the spread above.
+             // Ensure ".d.ts" modules are generated
+             declaration: true,
+             // Skip ".js" generation
+@@ -6880,7 +6881,7 @@ var getRollupConfig = async (options) => {
+   };
+ };
+ async function runRollup(options) {
+-  const { rollup } = await Promise.resolve().then(() => _interopRequireWildcard(require("rollup")));
++  const { rollup } = await Promise.resolve().then(() => _interopRequireWildcard(require("@rollup/wasm-node")));
+   try {
+     const start = Date.now();
+     const getDuration = () => {
+@@ -6911,7 +6912,7 @@ async function runRollup(options) {
+   }
+ }
+ async function watchRollup(options) {
+-  const { watch } = await Promise.resolve().then(() => _interopRequireWildcard(require("rollup")));
++  const { watch } = await Promise.resolve().then(() => _interopRequireWildcard(require("@rollup/wasm-node")));
+   watch({
+     ...options.inputConfig,
+     plugins: options.inputConfig.plugins,

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-05-11",
+  "kernel": "packages/inference/cuda/fused-attn-qjl-tbq.cu :: fused_attn_qjl_tbq3_kernel",
+  "host": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell sm_120 via compute_90 PTX JIT, nvcc 12.0)",
+  "method": "Parity verification via make cuda-verify-fused after each change (the fused kernel is not yet wired into a GGML graph op — only the cuda_verify.cu harness's own scalar reference kernel is, so a graph-level llama-bench delta cannot isolate it; the optimizations are arithmetic-reduction / memory-traffic reductions whose magnitude is analytical and whose correctness is the fixture parity).",
+  "optimizations": [
+    {
+      "id": "P0",
+      "name": "shared-memory V-decode (decode each TBQ3 V block once per KV step instead of 4x per lane)",
+      "before": "every one of the 32 warp lanes re-ran all 4 block decodes per KV step (4 x {32 codebook lookups + Hadamard-32 butterfly + 32 sign multiplies}) and kept only its own element acc[c] = dec[lane]; ~31/32 of the decode arithmetic was wasted per block, x4 blocks, x n_kv steps.",
+      "after": "lanes 0..3 each decode one block into __shared__ float sh_dec[4][32]; __syncwarp(); all 32 lanes read sh_dec[c][lane]. V-decode arithmetic per KV step drops from 32*4 block-decodes to 4 (8x fewer than the 8-lane-subgroup variant the prior review proposed; the 32-element Hadamard is inherently sequential so a single thread per block is fine). 512 B shared mem / warp.",
+      "expectedSpeedup": "~8x fewer V-decode FLOPs per KV step (32 block-decodes -> 4); the kernel is V-decode dominated at long context, so end-to-end this is roughly proportional minus the __syncwarp + shared-load overhead.",
+      "parity": "make cuda-verify-fused 1920/1920 outputs PASS, max diff 3.278e-7 (identical to pre-opt: the arithmetic and online-softmax rescale order are unchanged, only which lane performs each scalar op moved)."
+    },
+    {
+      "id": "P1",
+      "name": "register-hoist the 256-element Q sketch row",
+      "before": "qh[lane*8 + b] (8 fp32 per lane) was reloaded from global memory inside the inner t (KV-step) loop on every step.",
+      "after": "float qreg[8] loaded once at kernel entry, reused across all n_kv steps. Q is loop-invariant, so n_kv-1 redundant global loads per lane eliminated.",
+      "expectedSpeedup": "small (8 fp32 loads * (n_kv-1) per lane removed); meaningful at long context where the QJL score loop dominates the per-step cost.",
+      "parity": "make cuda-verify-fused 1920/1920 PASS, max diff 3.278e-7 (unchanged)."
+    }
+  ],
+  "remaining": [
+    "P2 — cp.async / TMA double-buffered K-sign/V-block tile staging on sm_80+ / sm_90+: the __shared__ tiling seam P0 added (sh_dec, plus the existing kv_tile arg) is the hook, but a graph-wired harness is needed to benchmark the double-buffer win before flipping it on; deferred.",
+    "P3 — promote qjl_score_dp4a_kernel to the default standalone QJL score path: needs fork-side wiring of GGML_OP_ATTN_SCORE_QJL to the int8-sketch kernel + a real-graph round-trip accuracy check (the cuda_verify cross-check shows the int8 round-trip diff is ~1.4e-1 on the fixture magnitudes, which is fine for scores but must be confirmed on a real trace); the kernel is authored, the switch is not flipped.",
+    "P3 — occupancy: 1 warp/block at 32 threads under-uses an SM; running 2-4 (head,pos) warps/block sharing the K/V tile in shared memory needs nvcc --ptxas-options=-v + Nsight Compute on the target arch to tune — not done.",
+    "Native sm_120 SASS — needs nvcc >= 12.8 (the distro toolkit here is 12.0; compute_90 PTX JIT works for correctness but is not the tuned Blackwell SASS)."
+  ],
+  "endToEndBench": "see bench_results/cuda_e2e_2026-05-11.json"
+}

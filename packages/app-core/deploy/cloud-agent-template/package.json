@@ -1,0 +1,14 @@
+{
+  "name": "eliza-cloud-agent",
+  "type": "module",
+  "scripts": {
+    "start": "tsx entrypoint.ts"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "@elizaos/plugin-elizacloud": "workspace:*",
+    "@elizaos/plugin-workflow": "workspace:*",
+    "tsx": "4.21.0"
+  }
+}

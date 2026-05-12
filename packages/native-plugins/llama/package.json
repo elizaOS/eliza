@@ -1,0 +1,53 @@
+{
+  "name": "@elizaos/capacitor-llama",
+  "version": "2.0.0-beta.1",
+  "description": "Eliza mobile llama.cpp adapter — wraps llama-cpp-capacitor and maps its contextId-based API onto Eliza's LocalInferenceLoader contract.",
+  "keywords": [
+    "llama",
+    "llama.cpp",
+    "gguf",
+    "on-device-inference",
+    "capacitor",
+    "eliza"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/",
+    "README.md",
+    "dist"
+  ],
+  "author": "elizaOS",
+  "license": "MIT",
+  "scripts": {
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build",
+    "watch": "tsc --watch"
+  },
+  "dependencies": {
+    "llama-cpp-capacitor": "^0.1.5"
+  },
+  "devDependencies": {
+    "@capacitor/core": "^8.3.1",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

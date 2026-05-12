@@ -1,0 +1,105 @@
+---
+title: Gallery
+description: Store and manage generated media on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Gallery
+
+<div className="status-badge status-stable">Stable</div>
+
+View and manage your generated images and videos.
+
+## List Gallery Items
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/gallery</span>
+</div>
+
+Get all items in your gallery.
+
+### Query Parameters
+
+| Parameter | Type    | Description        |
+| --------- | ------- | ------------------ |
+| `type`    | string  | `image` or `video` |
+| `limit`   | integer | Results per page   |
+| `offset`  | integer | Pagination offset  |
+
+### Response
+
+```json
+{
+  "items": [
+    {
+      "id": "gal_abc123",
+      "type": "image",
+      "url": "https://your-storage.vercel-storage.com/images/abc123.png",
+      "prompt": "A mountain landscape at sunset",
+      "model": "google/gemini-2.5-flash-image",
+      "width": 1024,
+      "height": 1024,
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "total": 150
+}
+```
+
+---
+
+## Get Gallery Item
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/gallery/{"{id}"}</span>
+</div>
+
+Get details about a specific item.
+
+### Response
+
+```json
+{
+  "id": "gal_abc123",
+  "type": "image",
+  "url": "https://your-storage.vercel-storage.com/images/abc123.png",
+  "prompt": "A mountain landscape at sunset",
+  "negativePrompt": "blurry, low quality",
+  "model": "google/gemini-2.5-flash-image",
+  "width": 1024,
+  "height": 1024,
+  "seed": 12345,
+  "cost": 0.02,
+  "createdAt": "2024-01-15T10:30:00Z"
+}
+```
+
+---
+
+## Delete Gallery Item
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/gallery/{"{id}"}</span>
+</div>
+
+Delete an item from your gallery.
+
+<Callout type="warning">Deleted items cannot be recovered.</Callout>
+
+---
+
+## Storage Limits
+
+| Plan       | Storage   |
+| ---------- | --------- |
+| Free       | 1 GB      |
+| Pro        | 50 GB     |
+| Enterprise | Unlimited |
+
+<Callout type="info">
+  Gallery items are automatically deleted after 30 days on the free plan.
+</Callout>

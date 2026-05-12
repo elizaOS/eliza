@@ -1,0 +1,85 @@
+{
+  "name": "@elizaos/app-companion",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "description": "Companion app package with the VRM scene runtime and avatar utilities.",
+  "main": "./dist/index.js",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check src/",
+    "test": "bunx vitest run --config ./vitest.config.ts",
+    "storybook": "storybook dev -p 6007",
+    "build-storybook": "storybook build",
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js",
+      "default": "./dist/plugin.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "dependencies": {
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/app-task-coordinator": "2.0.0-beta.1",
+    "@elizaos/app-wallet": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1",
+    "lucide-react": "^1.0.0"
+  },
+  "devDependencies": {
+    "@pixiv/three-vrm": "^3.5.2",
+    "@playwright/test": "^1.58.2",
+    "@storybook/addon-a11y": "^10.0.0",
+    "@storybook/addon-essentials": "^8.6.0",
+    "@storybook/addon-themes": "^10.0.0",
+    "@storybook/react": "^10.0.0",
+    "@storybook/react-vite": "^10.0.0",
+    "@types/bun": "^1.3.5",
+    "@types/node": "^25.0.6",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@types/three": "^0.184.0",
+    "storybook": "^10.0.0",
+    "three": "^0.184.0",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@pixiv/three-vrm": "^3.4.5",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "three": "^0.184.0"
+  },
+  "elizaos": {
+    "app": {
+      "displayName": "Eliza Companion",
+      "category": "game",
+      "heroImage": "assets/hero.png"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ]
+}

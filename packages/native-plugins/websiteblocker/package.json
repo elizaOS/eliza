@@ -1,0 +1,78 @@
+{
+  "name": "@elizaos/capacitor-websiteblocker",
+  "version": "2.0.0-beta.1",
+  "description": "Blocks websites through the Eliza runtime on desktop/web, uses native Android VPN DNS enforcement, and manages a native Safari content blocker on iPhone and iPad.",
+  "keywords": [
+    "website-blocker",
+    "vpn",
+    "dns",
+    "focus"
+  ],
+  "main": "./dist/plugin.cjs.js",
+  "module": "./dist/esm/index.js",
+  "types": "./dist/esm/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/esm/index.d.ts",
+      "import": "./dist/esm/index.js",
+      "require": "./dist/plugin.cjs.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "unpkg": "dist/plugin.js",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "*.podspec",
+    "dist"
+  ],
+  "scripts": {
+    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "prepublishOnly": "bun run build"
+  },
+  "author": "elizaOS",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaOS/eliza.git",
+    "directory": "apps/app/plugins/websiteblocker"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios",
+      "podName": "ElizaosCapacitorWebsiteblocker"
+    },
+    "android": {
+      "src": "android"
+    }
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@capacitor/core": "^8.3.1",
+    "rimraf": "^6.0.0",
+    "rollup": "^4.60.2",
+    "typescript": "^6.0.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^8.3.1"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "elizaos": {
+    "platforms": [
+      "browser",
+      "android",
+      "ios"
+    ],
+    "runtime": "both",
+    "platformDetails": {
+      "browser": "Delegates website blocking to the connected Eliza runtime HTTP API when available",
+      "ios": "Native Safari content blocker managed by the Eliza app with shared block state and Settings-based enablement",
+      "android": "Native split-tunnel VPN DNS blocker with system-wide hostname blocking"
+    }
+  }
+}

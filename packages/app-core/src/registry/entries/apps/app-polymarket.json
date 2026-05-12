@@ -1,0 +1,31 @@
+{
+  "id": "app-polymarket",
+  "name": "Polymarket",
+  "description": "Native Polymarket market discovery and trading readiness for prediction markets.",
+  "npmName": "@elizaos/app-polymarket",
+  "source": "bundled",
+  "tags": ["trading", "polymarket", "prediction-markets", "wallet"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Landmark",
+    "group": "Curated",
+    "groupOrder": 8,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": ["wallet"],
+  "kind": "app",
+  "subtype": "trading",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": ["polymarket", "prediction-markets", "trading", "wallet"],
+    "curatedSlug": "polymarket",
+    "routePlugin": {
+      "specifier": "@elizaos/app-polymarket",
+      "exportName": "polymarketPlugin"
+    }
+  }
+}

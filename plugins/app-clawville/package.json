@@ -1,0 +1,92 @@
+{
+  "name": "@elizaos/app-clawville",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "description": "Eliza app integration for ClawVille, a sea-themed agent game where connected agents enter a 3D underwater world, visit specialist buildings, and learn skills via the agentskills.io open standard.",
+  "main": "./dist/index.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "homepage": "https://clawville.world/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza.git"
+  },
+  "keywords": [
+    "game",
+    "agents",
+    "clawville",
+    "sea",
+    "openclaw",
+    "skills",
+    "solana",
+    "elizaos",
+    "eliza"
+  ],
+  "dependencies": {
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.1"
+  },
+  "elizaos": {
+    "kind": "app",
+    "app": {
+      "displayName": "ClawVille",
+      "category": "game",
+      "heroImage": "assets/hero.png",
+      "launchType": "connect",
+      "launchUrl": "https://clawville.world/game",
+      "capabilities": [
+        "game",
+        "skill-learning",
+        "tokens",
+        "multi-agent",
+        "solana-wallet"
+      ],
+      "runtimePlugin": "@elizaos/app-clawville",
+      "viewer": {
+        "url": "/api/apps/clawville/viewer",
+        "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "suggestions"
+        ]
+      },
+      "uiExtension": {
+        "detailPanelId": "clawville-control"
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

@@ -1,0 +1,110 @@
+---
+title: "Game Examples"
+description: "AI-powered games built with elizaOS (TypeScript)"
+---
+
+Build games where AI agents make strategic decisions. `packages/examples/` ships TypeScript game demos.
+
+## Text adventure
+
+AI-driven dungeon crawl (`examples/text-adventure/game.ts`).
+
+```bash
+cd examples/text-adventure
+cp .env.example .env  # add OPENAI_API_KEY
+bun install
+LOG_LEVEL=fatal bun run game.ts
+```
+
+**Features:** multi-room world, combat, inventory, AI-chosen actions via `ModelType.TEXT_SMALL`.
+
+---
+
+## Tic-tac-toe
+
+Play or benchmark an agent (`examples/tic-tac-toe/game.ts`).
+
+```bash
+cd examples/tic-tac-toe
+bun install
+bun run game.ts --human
+```
+
+---
+
+## Game of life
+
+Multi-agent cellular simulation (`examples/game-of-life/game.ts`).
+
+```bash
+cd examples/game-of-life
+bun install
+bun run game.ts
+```
+
+---
+
+## Extending games
+
+### Add rooms (text adventure pattern)
+
+```typescript
+const rooms = {
+  secret_chamber: {
+    name: "Secret Chamber",
+    description: "A hidden room filled with ancient artifacts.",
+    items: ["golden_idol"],
+    exits: { south: "treasure_room" },
+  },
+};
+```
+
+### Add enemies
+
+```typescript
+const enemies = {
+  lich: {
+    name: "Lich",
+    health: 80,
+    damage: 30,
+    weakness: "holy_water",
+    special: "Can summon skeletons",
+  },
+};
+```
+
+---
+
+## Game ideas
+
+<CardGroup cols={2}>
+  <Card title="RPG Character" icon="user">
+    Create an AI party member that makes strategic combat decisions
+  </Card>
+  <Card title="Mystery Solver" icon="magnifying-glass">
+    Build a detective game where the AI gathers clues
+  </Card>
+  <Card title="Trading Simulator" icon="chart-line">
+    Create an AI trader that learns market patterns
+  </Card>
+  <Card title="Story Generator" icon="book">
+    Build an interactive fiction engine with AI narration
+  </Card>
+</CardGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Examples Overview" icon="grid-2" href="/examples/overview">
+    See all available examples
+  </Card>
+  <Card
+    title="Create a Plugin"
+    icon="puzzle-piece"
+    href="/guides/create-a-plugin"
+  >
+    Build custom game plugins
+  </Card>
+</CardGroup>

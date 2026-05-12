@@ -1,0 +1,506 @@
+# Hono Worker Route Coverage Audit
+
+Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.
+
+- Mounted routes: **493**
+- Covered (path appears in at least one Next-targeted e2e test): **488**
+- Uncovered: **5**
+
+> Note: "covered" here means the path appears in a test file under `cloud/packages/tests/e2e/`. Those tests target the legacy Next.js app, not the Hono Worker built from `apps/api/`. Even covered routes need a Worker-targeted run to confirm the migrated implementation works end-to-end.
+
+## Uncovered (5)
+
+- `/api/.well-known/agent-card.json`
+- `/api/cron/process-stripe-queue`
+- `/api/v1/billing/active`
+- `/api/v1/billing/ledger`
+- `/api/v1/billing/resources/:id/cancel`
+
+## Covered (488)
+
+- `/api/.well-known/jwks.json` — group-i-route-coverage-manifest.test.ts
+- `/api/a2a` — v1/misc.test.ts
+- `/api/admin/redemptions` — group-e-agent-admin.test.ts
+- `/api/affiliate/create-character` — v1/affiliate-miniapp.test.ts, v1/affiliates.test.ts, v1/security.test.ts
+- `/api/affiliate/create-session` — v1/affiliate-miniapp.test.ts, v1/affiliates.test.ts
+- `/api/agents/:id/a2a` — group-c-agents.test.ts
+- `/api/agents/:id/headscale-ip` — group-c-agents.test.ts
+- `/api/agents/:id/mcp` — group-c-agents.test.ts
+- `/api/analytics/breakdown` — group-i-route-coverage-manifest.test.ts
+- `/api/analytics/export` — v1/affiliates.test.ts
+- `/api/analytics/overview` — v1/affiliates.test.ts
+- `/api/analytics/projections` — group-i-route-coverage-manifest.test.ts
+- `/api/anonymous-session` — auth/anonymous-session.test.ts, group-a-auth.test.ts
+- `/api/auth/anonymous-session` — group-a-auth.test.ts
+- `/api/auth/cli-session/:sessionId/complete` — auth/cli-auth.test.ts
+- `/api/auth/cli-session/:sessionId` — auth/cli-auth.test.ts
+- `/api/auth/cli-session` — auth/cli-auth.test.ts
+- `/api/auth/create-anonymous-session` — auth/anonymous-session.test.ts
+- `/api/auth/logout` — auth/siwe.test.ts
+- `/api/auth/migrate-anonymous` — auth/anonymous-session.test.ts
+- `/api/auth/pair` — group-a-auth.test.ts
+- `/api/auth/siwe/nonce` — auth/siwe.test.ts
+- `/api/auth/siwe/verify` — auth/siwe.test.ts
+- `/api/auth/steward-debug` — group-a-auth.test.ts
+- `/api/auth/steward-session` — group-a-auth.test.ts
+- `/api/auto-top-up/trigger` — v1/billing.test.ts
+- `/api/billing/checkout/verify` — group-i-route-coverage-manifest.test.ts
+- `/api/characters/:characterId/mcps` — group-c-agents.test.ts
+- `/api/characters/:characterId/public` — group-c-agents.test.ts
+- `/api/compat/agents/:id/launch` — v1/compat.test.ts
+- `/api/compat/agents/:id/logs` — v1/compat.test.ts
+- `/api/compat/agents/:id/restart` — v1/compat.test.ts
+- `/api/compat/agents/:id/resume` — v1/compat.test.ts
+- `/api/compat/agents/:id/status` — v1/compat.test.ts
+- `/api/compat/agents/:id/suspend` — v1/compat.test.ts
+- `/api/compat/agents/:id` — v1/compat.test.ts
+- `/api/compat/agents` — v1/compat.test.ts
+- `/api/compat/availability` — v1/compat.test.ts
+- `/api/compat/jobs/:jobId` — v1/compat.test.ts
+- `/api/credits/balance` — v1/credits.test.ts
+- `/api/credits/transactions` — v1/credits.test.ts
+- `/api/cron/agent-billing` — group-h-misc.test.ts
+- `/api/cron/agent-budgets` — cron/cron-routes.test.ts
+- `/api/cron/auto-top-up` — cron/cron-routes.test.ts
+- `/api/cron/cleanup-anonymous-sessions` — cron/cron-routes.test.ts
+- `/api/cron/cleanup-cli-sessions` — cron/cron-routes.test.ts
+- `/api/cron/cleanup-expired-crypto-payments` — cron/cron-routes.test.ts
+- `/api/cron/cleanup-priorities` — cron/cron-routes.test.ts
+- `/api/cron/cleanup-stuck-provisioning` — group-i-route-coverage-manifest.test.ts
+- `/api/cron/cleanup-webhook-events` — cron/cron-routes.test.ts
+- `/api/cron/compute-metrics` — cron/cron-routes.test.ts
+- `/api/cron/container-billing` — cron/cron-routes.test.ts
+- `/api/cron/process-redemptions` — cron/cron-routes.test.ts
+- `/api/cron/release-pending-earnings` — cron/cron-routes.test.ts
+- `/api/cron/sample-eliza-price` — cron/cron-routes.test.ts
+- `/api/cron/social-automation` — cron/cron-routes.test.ts
+- `/api/crypto/payments/:id/confirm` — v1/billing.test.ts, group-h-misc.test.ts
+- `/api/crypto/payments/:id` — v1/billing.test.ts, group-h-misc.test.ts
+- `/api/crypto/payments` — v1/billing.test.ts, group-h-misc.test.ts
+- `/api/crypto/status` — v1/billing.test.ts
+- `/api/crypto/webhook` — group-h-misc.test.ts
+- `/api/elevenlabs/stt` — group-d-ai-media.test.ts
+- `/api/elevenlabs/tts` — group-d-ai-media.test.ts
+- `/api/elevenlabs/voices/clone` — group-i-route-coverage-manifest.test.ts
+- `/api/elevenlabs/voices/jobs` — group-i-route-coverage-manifest.test.ts
+- `/api/elevenlabs/voices/user` — group-i-route-coverage-manifest.test.ts
+- `/api/elevenlabs/voices/verify/:id` — group-i-route-coverage-manifest.test.ts
+- `/api/elevenlabs/voices/:id` — group-i-route-coverage-manifest.test.ts
+- `/api/elevenlabs/voices` — v1/media.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/eliza/rooms/:roomId/messages/stream` — v1/eliza-rooms.test.ts, group-f-connectors.test.ts
+- `/api/eliza/rooms/:roomId/messages` — v1/eliza-rooms.test.ts, group-f-connectors.test.ts
+- `/api/eliza/rooms/:roomId/welcome` — v1/eliza-rooms.test.ts, group-f-connectors.test.ts
+- `/api/eliza/rooms/:roomId` — v1/eliza-rooms.test.ts, group-f-connectors.test.ts
+- `/api/eliza/rooms` — v1/eliza-rooms.test.ts, group-f-connectors.test.ts
+- `/api/eliza-app/auth/connection-success` — group-a-auth.test.ts
+- `/api/eliza-app/auth/discord` — group-i-route-coverage-manifest.test.ts
+- `/api/eliza-app/auth/telegram` — group-i-route-coverage-manifest.test.ts
+- `/api/eliza-app/auth/whatsapp` — group-i-route-coverage-manifest.test.ts
+- `/api/eliza-app/cli-auth/complete` — group-a-auth.test.ts
+- `/api/eliza-app/cli-auth/init` — group-a-auth.test.ts
+- `/api/eliza-app/cli-auth/poll` — group-a-auth.test.ts
+- `/api/eliza-app/connections/:platform/initiate` — group-f-connectors.test.ts
+- `/api/eliza-app/connections` — group-f-connectors.test.ts
+- `/api/eliza-app/gateway/:agentId` — group-f-connectors.test.ts
+- `/api/eliza-app/provision-agent` — group-f-connectors.test.ts
+- `/api/eliza-app/user/me` — group-f-connectors.test.ts
+- `/api/eliza-app/user/phone` — group-i-route-coverage-manifest.test.ts
+- `/api/eliza-app/webhook/blooio` — group-f-connectors.test.ts
+- `/api/eliza-app/webhook/discord` — group-f-connectors.test.ts
+- `/api/eliza-app/webhook/telegram` — group-f-connectors.test.ts
+- `/api/eliza-app/webhook/whatsapp` — group-f-connectors.test.ts
+- `/api/fal/proxy` — group-d-ai-media.test.ts
+- `/api/feedback` — group-h-misc.test.ts
+- `/api/health` — api/health-route.test.ts, v1/misc.test.ts, agent-token-flow.test.ts, group-a-auth.test.ts, group-b-account-billing.test.ts, group-c-agents.test.ts, group-d-ai-media.test.ts, group-g-mcps.test.ts, group-h-misc.test.ts, group-j-documents.test.ts
+- `/api/internal/auth/refresh` — group-a-auth.test.ts
+- `/api/internal/auth/token` — v1/security.test.ts
+- `/api/internal/discord/eliza-app/messages` — group-h-misc.test.ts
+- `/api/internal/discord/events` — group-h-misc.test.ts
+- `/api/internal/discord/gateway/assignments` — group-h-misc.test.ts
+- `/api/internal/discord/gateway/failover` — group-h-misc.test.ts
+- `/api/internal/discord/gateway/heartbeat` — group-h-misc.test.ts
+- `/api/internal/discord/gateway/shutdown` — group-h-misc.test.ts
+- `/api/internal/discord/gateway/status` — group-h-misc.test.ts
+- `/api/internal/identity/resolve` — group-a-auth.test.ts
+- `/api/internal/webhook/config` — v1/security.test.ts
+- `/api/invites/accept` — group-h-misc.test.ts
+- `/api/invites/validate` — group-h-misc.test.ts
+- `/api/invoices/list` — v1/misc.test.ts
+- `/api/invoices/:id` — v1/misc.test.ts
+- `/api/mcp/info` — group-i-route-coverage-manifest.test.ts
+- `/api/mcp/list` — group-i-route-coverage-manifest.test.ts
+- `/api/mcp/proxy/:mcpId` — group-i-route-coverage-manifest.test.ts
+- `/api/mcp/registry` — v1/connections.test.ts
+- `/api/mcp/stream` — group-i-route-coverage-manifest.test.ts
+- `/api/mcp` — v1/connections.test.ts, group-c-agents.test.ts, group-g-mcps.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/mcps/airtable/:transport` — group-g-mcps.test.ts
+- `/api/mcps/asana/:transport` — group-g-mcps.test.ts
+- `/api/mcps/crypto/:transport` — group-g-mcps.test.ts
+- `/api/mcps/crypto` — group-i-route-coverage-manifest.test.ts
+- `/api/mcps/dropbox/:transport` — group-g-mcps.test.ts
+- `/api/mcps/github/:transport` — group-g-mcps.test.ts
+- `/api/mcps/google/:transport` — group-g-mcps.test.ts
+- `/api/mcps/hubspot/:transport` — group-g-mcps.test.ts
+- `/api/mcps/jira/:transport` — group-g-mcps.test.ts
+- `/api/mcps/linear/:transport` — group-g-mcps.test.ts
+- `/api/mcps/linkedin/:transport` — group-g-mcps.test.ts
+- `/api/mcps/microsoft/:transport` — group-g-mcps.test.ts
+- `/api/mcps/notion/:transport` — group-g-mcps.test.ts
+- `/api/mcps/salesforce/:transport` — group-g-mcps.test.ts
+- `/api/mcps/time/:transport` — group-c-agents.test.ts, group-g-mcps.test.ts
+- `/api/mcps/time` — group-c-agents.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/mcps/twitter/:transport` — group-g-mcps.test.ts
+- `/api/mcps/weather/:transport` — group-g-mcps.test.ts
+- `/api/mcps/weather` — group-i-route-coverage-manifest.test.ts
+- `/api/mcps/zoom/:transport` — group-g-mcps.test.ts
+- `/api/my-agents/characters/avatar` — group-c-agents.test.ts
+- `/api/my-agents/characters/:id/clone` — v1/affiliate-miniapp.test.ts, group-c-agents.test.ts
+- `/api/my-agents/characters/:id/share` — v1/affiliate-miniapp.test.ts, group-c-agents.test.ts
+- `/api/my-agents/characters/:id/stats` — v1/affiliate-miniapp.test.ts, group-c-agents.test.ts
+- `/api/my-agents/characters/:id/track-interaction` — v1/affiliate-miniapp.test.ts, group-c-agents.test.ts
+- `/api/my-agents/characters/:id/track-view` — v1/affiliate-miniapp.test.ts, group-c-agents.test.ts
+- `/api/my-agents/characters/:id` — v1/affiliate-miniapp.test.ts, group-c-agents.test.ts
+- `/api/my-agents/characters` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, group-c-agents.test.ts
+- `/api/my-agents/claim-affiliate-characters` — group-c-agents.test.ts
+- `/api/my-agents/saved/:id` — group-c-agents.test.ts
+- `/api/my-agents/saved` — group-c-agents.test.ts
+- `/api/og` — group-d-ai-media.test.ts
+- `/api/openapi.json` — group-d-ai-media.test.ts
+- `/api/organizations/invites/:inviteId` — group-h-misc.test.ts
+- `/api/organizations/invites` — group-h-misc.test.ts
+- `/api/organizations/members/:userId` — group-h-misc.test.ts
+- `/api/organizations/members` — group-h-misc.test.ts
+- `/api/quotas/usage` — group-b-account-billing.test.ts
+- `/api/sessions/current` — group-a-auth.test.ts
+- `/api/set-anonymous-session` — group-a-auth.test.ts
+- `/api/signup-code/redeem` — group-b-account-billing.test.ts
+- `/api/stats/account` — group-b-account-billing.test.ts
+- `/api/stripe/create-checkout-session` — group-b-account-billing.test.ts
+- `/api/stripe/credit-packs` — group-b-account-billing.test.ts
+- `/api/stripe/webhook` — v1/security.test.ts
+- `/api/test/auth/session` — agent-token-flow.test.ts, group-a-auth.test.ts
+- `/api/training/trajectories/export` — group-i-route-coverage-manifest.test.ts
+- `/api/training/vertex/assignments` — group-i-route-coverage-manifest.test.ts
+- `/api/training/vertex/jobs` — group-i-route-coverage-manifest.test.ts
+- `/api/training/vertex/models` — group-i-route-coverage-manifest.test.ts
+- `/api/training/vertex/tune` — group-e-agent-admin.test.ts
+- `/api/users/me` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/ai-pricing` — group-e-agent-admin.test.ts
+- `/api/v1/admin/containers/ingress-map` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-containers/audit` — group-e-agent-admin.test.ts
+- `/api/v1/admin/docker-containers/:id/logs` — group-e-agent-admin.test.ts
+- `/api/v1/admin/docker-containers` — group-e-agent-admin.test.ts
+- `/api/v1/admin/docker-nodes/bootstrap-callback` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-nodes/capacity` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-nodes/provision` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-nodes/sync` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-nodes/:nodeId/drain` — group-e-agent-admin.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-nodes/:nodeId/health-check` — group-e-agent-admin.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-nodes/:nodeId` — group-e-agent-admin.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/docker-nodes` — group-e-agent-admin.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/headscale` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/infrastructure/containers/actions` — group-e-agent-admin.test.ts
+- `/api/v1/admin/infrastructure/containers` — group-e-agent-admin.test.ts
+- `/api/v1/admin/infrastructure` — group-e-agent-admin.test.ts
+- `/api/v1/admin/metrics` — v1/misc.test.ts
+- `/api/v1/admin/moderation` — v1/misc.test.ts
+- `/api/v1/admin/orgs/:orgId/rate-limits` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/orgs` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/service-pricing/audit` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/service-pricing` — v1/admin-service-pricing.test.ts, v1/misc.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/users/:userId/billing/breakdown` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/admin/users` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/advertising/accounts/:id` — group-e-agent-admin.test.ts
+- `/api/v1/advertising/accounts` — v1/misc.test.ts, group-e-agent-admin.test.ts
+- `/api/v1/advertising/campaigns/:id/analytics` — group-e-agent-admin.test.ts
+- `/api/v1/advertising/campaigns/:id/creatives` — group-e-agent-admin.test.ts
+- `/api/v1/advertising/campaigns/:id/pause` — group-e-agent-admin.test.ts
+- `/api/v1/advertising/campaigns/:id/start` — group-e-agent-admin.test.ts
+- `/api/v1/advertising/campaigns/:id` — group-e-agent-admin.test.ts
+- `/api/v1/advertising/campaigns` — v1/misc.test.ts, group-e-agent-admin.test.ts
+- `/api/v1/affiliates/link` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/affiliates` — v1/affiliates.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/agents/by-token` — group-c-agents.test.ts
+- `/api/v1/agents/:agentId/logs` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId/monetization` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId/publish` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId/restart` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId/resume` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId/status` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId/suspend` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId/usage` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents/:agentId` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/agents` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts, v1/agents.test.ts, group-c-agents.test.ts
+- `/api/v1/api-keys/explorer` — group-b-account-billing.test.ts
+- `/api/v1/api-keys/:id/regenerate` — v1/api-keys.test.ts, agent-token-flow.test.ts, group-b-account-billing.test.ts
+- `/api/v1/api-keys/:id` — v1/api-keys.test.ts, agent-token-flow.test.ts, group-b-account-billing.test.ts
+- `/api/v1/api-keys` — v1/api-keys.test.ts, agent-token-flow.test.ts, group-b-account-billing.test.ts
+- `/api/v1/app/agents` — v1/affiliate-miniapp.test.ts, v1/agent-publishing.test.ts
+- `/api/v1/app-auth/connect` — v1/misc.test.ts
+- `/api/v1/app-auth/session` — v1/misc.test.ts
+- `/api/v1/app-builder/images` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/commit` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/files` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/history` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/logs` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/prompts/stream` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/resume/stream` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/rollback` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/snapshots` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId/terminal` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/sessions/:sessionId` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder/stream` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-builder` — v1/security.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/app-credits/balance` — v1/affiliate-miniapp.test.ts, v1/credits-billing.test.ts, v1/security.test.ts
+- `/api/v1/app-credits/checkout` — v1/credits-billing.test.ts, v1/security.test.ts
+- `/api/v1/app-credits/verify` — v1/credits-billing.test.ts, v1/security.test.ts
+- `/api/v1/apps/check-name` — v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/analytics/requests` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/analytics` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/characters` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/chat` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/deploy` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/discord-automation/post` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/discord-automation` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/domains/status` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/domains/sync` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/domains/verify` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/domains` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/earnings/history` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/earnings/withdraw` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/earnings` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/monetization` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/promote/analytics` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/promote/assets` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/promote/preview` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/promote` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/public` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/regenerate-api-key` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/telegram-automation/post` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/telegram-automation` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/twitter-automation/post` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/twitter-automation` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id/users` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps/:id` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/miniapp-lifecycle.test.ts
+- `/api/v1/apps` — v1/affiliate-miniapp.test.ts, v1/app-monetization.test.ts, v1/characters.test.ts, v1/miniapp-lifecycle.test.ts, v1/security.test.ts
+- `/api/v1/billing/settings` — v1/billing.test.ts
+- `/api/v1/blooio/connect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/blooio/disconnect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/blooio/status` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/blooio/webhook-secret` — v1/social.test.ts
+- `/api/v1/browser/sessions/:id/command` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/browser/sessions/:id/navigate` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/browser/sessions/:id/snapshot` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/browser/sessions/:id` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/browser/sessions` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/chain/nfts/:chain/:address` — group-h-misc.test.ts
+- `/api/v1/chain/tokens/:chain/:address` — v1/misc.test.ts
+- `/api/v1/chain/transfers/:chain/:address` — group-h-misc.test.ts
+- `/api/v1/chat/completions` — v1/affiliates.test.ts, v1/chat.test.ts, group-d-ai-media.test.ts
+- `/api/v1/chat` — v1/affiliates.test.ts, v1/chat.test.ts, group-d-ai-media.test.ts
+- `/api/v1/connections/:platform` — v1/connections.test.ts
+- `/api/v1/containers/credentials` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers/quota` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers/:id/deployments` — v1/agents.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers/:id/health` — v1/agents.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers/:id/logs/stream` — v1/agents.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers/:id/logs` — v1/agents.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers/:id/metrics` — v1/agents.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers/:id` — v1/agents.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/containers` — v1/agents.test.ts, v1/security.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/credits/balance` — v1/credits-billing.test.ts, v1/security.test.ts, agent-token-flow.test.ts
+- `/api/v1/credits/checkout` — v1/credits-billing.test.ts, v1/security.test.ts
+- `/api/v1/credits/summary` — v1/billing.test.ts, v1/misc.test.ts
+- `/api/v1/credits/verify` — v1/credits-billing.test.ts, v1/security.test.ts
+- `/api/v1/cron/deployment-monitor` — cron/cron-routes.test.ts
+- `/api/v1/cron/health-check` — cron/cron-routes.test.ts
+- `/api/v1/cron/node-autoscale` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/cron/process-provisioning-jobs` — cron/cron-routes.test.ts
+- `/api/v1/cron/refresh-model-catalog` — cron/cron-routes.test.ts
+- `/api/v1/cron/refresh-pricing` — cron/cron-routes.test.ts
+- `/api/v1/dashboard` — v1/misc.test.ts, v1/security.test.ts
+- `/api/v1/device-bus/devices/:deviceId/intents` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/device-bus/devices` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/device-bus/intents` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/discord/callback` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/discord/channels/refresh` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/discord/channels` — v1/social.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/discord/connections/:id` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/discord/connections` — v1/connections.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/discord/disconnect` — v1/social.test.ts
+- `/api/v1/discord/guilds` — v1/social.test.ts
+- `/api/v1/discord/oauth` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/discord/status` — v1/social.test.ts
+- `/api/v1/discovery` — v1/characters.test.ts, v1/security.test.ts
+- `/api/v1/eliza/agents/:agentId/api/wallet/:*{.+}` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/backups` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/bridge` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/discord/oauth` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/discord` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/github/link` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/github/oauth` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/github/token` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/github` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/lifeops/schedule/merged-state` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/lifeops/schedule/observations` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/pairing-token` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/provision` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/restore` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/resume` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/snapshot` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/stream` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/suspend` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId/wallet` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents/:agentId` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/agents` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/discord/gateway-agent` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/gateway-relay/sessions/:sessionId/next` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/gateway-relay/sessions/:sessionId/responses` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/gateway-relay/sessions/:sessionId` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/gateway-relay/sessions` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/github-oauth-complete` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/accounts` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/calendar/calendars` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/calendar/events/:eventId` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/calendar/events` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/calendar/feed` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/connect/initiate` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/disconnect` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/gmail/message-send` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/gmail/read` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/gmail/reply-send` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/gmail/search` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/gmail/subscription-headers` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/gmail/triage` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/google/status` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/launch-sessions/:sessionId` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/lifeops/github-complete` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/paypal/authorize` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/paypal/callback` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/paypal/popup-callback` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/paypal/refresh` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/paypal/status` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/paypal/transactions` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/plaid/exchange` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/plaid/link-token` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/plaid/status` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/eliza/plaid/sync` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/embeddings` — v1/media.test.ts
+- `/api/v1/extract` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/gallery/explore` — group-h-misc.test.ts
+- `/api/v1/gallery/stats` — group-h-misc.test.ts
+- `/api/v1/gallery/:id` — group-h-misc.test.ts
+- `/api/v1/gallery` — v1/characters.test.ts, v1/security.test.ts, group-h-misc.test.ts
+- `/api/v1/generate-image` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/generate-prompts` — v1/misc.test.ts
+- `/api/v1/generate-video` — v1/media.test.ts
+- `/api/v1/jobs/:jobId` — v1/misc.test.ts
+- `/api/v1/documents/check` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/documents/pre-upload` — group-j-documents.test.ts
+- `/api/v1/documents/query` — group-j-documents.test.ts
+- `/api/v1/documents/submit` — group-j-documents.test.ts
+- `/api/v1/documents/upload-file` — group-j-documents.test.ts
+- `/api/v1/documents/:id` — group-i-route-coverage-manifest.test.ts, group-j-documents.test.ts
+- `/api/v1/documents` — v1/connections.test.ts, v1/security.test.ts, group-i-route-coverage-manifest.test.ts, group-j-documents.test.ts
+- `/api/v1/market/candles/:chain/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/market/portfolio/:chain/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/market/preview/portfolio/:chain/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/market/preview/predictions` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/market/preview/price/:chain/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/market/preview/token/:chain/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/market/preview/wallet-overview` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/market/price/:chain/:address` — v1/misc.test.ts
+- `/api/v1/market/token/:chain/:address` — v1/misc.test.ts
+- `/api/v1/market/trades/:chain/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/mcps/:mcpId/publish` — v1/security.test.ts
+- `/api/v1/mcps/:mcpId` — v1/security.test.ts
+- `/api/v1/mcps` — v1/connections.test.ts, v1/security.test.ts
+- `/api/v1/messages` — v1/misc.test.ts
+- `/api/v1/models/status` — v1/models.test.ts
+- `/api/v1/models/:*{.+}` — v1/models.test.ts
+- `/api/v1/models` — v1/models.test.ts
+- `/api/v1/oauth/callback` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/oauth/connect` — v1/connections.test.ts
+- `/api/v1/oauth/connections/:id/token` — v1/connections.test.ts
+- `/api/v1/oauth/connections/:id` — v1/connections.test.ts
+- `/api/v1/oauth/connections` — v1/connections.test.ts
+- `/api/v1/oauth/initiate` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/oauth/providers` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/oauth/status` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/oauth/token/:platform` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/oauth/:platform/callback` — v1/connections.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/oauth/:platform/initiate` — v1/connections.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/pricing/summary` — group-b-account-billing.test.ts
+- `/api/v1/proxy/birdeye/:*{.+}` — group-h-misc.test.ts
+- `/api/v1/proxy/evm-rpc/:chain` — v1/misc.test.ts
+- `/api/v1/proxy/solana-rpc` — v1/misc.test.ts
+- `/api/v1/redemptions/balance` — v1/affiliates.test.ts, v1/redemptions.test.ts, v1/security.test.ts
+- `/api/v1/redemptions/quote` — v1/redemptions.test.ts, v1/security.test.ts
+- `/api/v1/redemptions/status` — v1/redemptions.test.ts, v1/security.test.ts
+- `/api/v1/redemptions/:id` — v1/affiliates.test.ts, v1/redemptions.test.ts, v1/security.test.ts
+- `/api/v1/redemptions` — v1/affiliates.test.ts, v1/billing.test.ts, v1/redemptions.test.ts, v1/security.test.ts
+- `/api/v1/referrals/apply` — v1/affiliates.test.ts
+- `/api/v1/referrals` — v1/affiliates.test.ts
+- `/api/v1/remote/pair` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/remote/sessions/:id/revoke` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/remote/sessions` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/reports/bug` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/responses` — v1/models.test.ts, group-d-ai-media.test.ts
+- `/api/v1/rpc/:chain` — v1/misc.test.ts
+- `/api/v1/search` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/solana/assets/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/solana/methods` — v1/misc.test.ts
+- `/api/v1/solana/rpc` — v1/misc.test.ts
+- `/api/v1/solana/token-accounts/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/solana/transactions/:address` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/steward/tenants/credentials` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/steward/tenants` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/telegram/chats` — v1/social.test.ts
+- `/api/v1/telegram/connect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/telegram/disconnect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/telegram/scan-chats` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/telegram/status` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/telegram/webhook/:orgId` — v1/webhook-crud.test.ts, group-i-route-coverage-manifest.test.ts
+- `/api/v1/topup/10` — group-b-account-billing.test.ts
+- `/api/v1/topup/100` — group-b-account-billing.test.ts
+- `/api/v1/topup/50` — group-b-account-billing.test.ts
+- `/api/v1/track/pageview` — v1/affiliates.test.ts
+- `/api/v1/twilio/connect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/twilio/disconnect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/twilio/status` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/twilio/voice/inbound` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/twitter/callback` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/twitter/connect` — v1/social.test.ts
+- `/api/v1/twitter/disconnect` — v1/social.test.ts
+- `/api/v1/twitter/status` — v1/social.test.ts
+- `/api/v1/user/avatar` — group-b-account-billing.test.ts
+- `/api/v1/user/email` — group-b-account-billing.test.ts
+- `/api/v1/user/wallets/provision` — group-b-account-billing.test.ts
+- `/api/v1/user/wallets/rpc` — group-b-account-billing.test.ts
+- `/api/v1/user/wallets` — group-b-account-billing.test.ts
+- `/api/v1/user` — v1/user.test.ts, agent-token-flow.test.ts, group-b-account-billing.test.ts
+- `/api/v1/video/featured` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/video/usage` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/voice/clone` — v1/media.test.ts
+- `/api/v1/voice/jobs` — v1/media.test.ts
+- `/api/v1/voice/list` — v1/media.test.ts
+- `/api/v1/voice/stt` — v1/media.test.ts, group-d-ai-media.test.ts
+- `/api/v1/voice/tts` — v1/media.test.ts, group-d-ai-media.test.ts
+- `/api/v1/voice/:id` — v1/media.test.ts, group-d-ai-media.test.ts
+- `/api/v1/whatsapp/connect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/whatsapp/disconnect` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/whatsapp/status` — v1/social.test.ts, v1/webhook-crud.test.ts
+- `/api/v1/x/dms/conversations/send` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x/dms/curate` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x/dms/digest` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x/dms/groups` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x/dms/send` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x/feed` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x/posts` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x/status` — group-i-route-coverage-manifest.test.ts
+- `/api/v1/x402/settle` — v1/security.test.ts
+- `/api/v1/x402/verify` — v1/security.test.ts
+- `/api/v1/x402` — v1/billing.test.ts, v1/misc.test.ts, v1/security.test.ts
+- `/api/webhooks/blooio/:orgId` — v1/webhook-crud.test.ts, group-f-connectors.test.ts
+- `/api/webhooks/twilio/:orgId` — v1/webhook-crud.test.ts, group-f-connectors.test.ts
+- `/api/webhooks/whatsapp/:orgId` — v1/webhook-crud.test.ts, group-f-connectors.test.ts

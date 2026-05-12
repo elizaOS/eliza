@@ -1,0 +1,1104 @@
+{
+  "version": "1.0.0",
+  "actions": [
+    {
+      "name": "REPLY",
+      "description": "Send a direct chat reply in the current conversation/thread. Default if the agent is responding with a message and no other action. Use REPLY at the beginning of a chain of actions as an acknowledgement, and at the end of a chain of actions as a final response. This is not an email reply, inbox workflow, or external-channel send — use the dedicated connector actions for those surfaces.",
+      "similes": ["GREET", "RESPOND", "RESPONSE"],
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hello there!"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Hi! How can I help you today?",
+              "actions": ["REPLY"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "What's your favorite color?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I really like deep shades of blue. They remind me of the ocean and the night sky.",
+              "actions": ["REPLY"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you explain how neural networks work?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Let me break that down for you in simple terms...",
+              "actions": ["REPLY"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Could you help me solve this math problem?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Of course! Let's work through it step by step.",
+              "actions": ["REPLY"]
+            }
+          }
+        ]
+      ],
+      "descriptionCompressed": "Reply in current chat only; use connector actions for external connector sends."
+    },
+    {
+      "name": "IGNORE",
+      "description": "Call this action if ignoring the user. If the user is aggressive, creepy or is finished with the conversation, use this action. In group conversations, use IGNORE when the latest message is addressed to someone else and not to the agent. Or, if both you and the user have already said goodbye, use this action instead of saying bye again. Use IGNORE any time the conversation has naturally ended. Do not use IGNORE if the user has engaged directly, or if something went wrong and you need to tell them. Only ignore if the user should be ignored.",
+      "similes": ["STOP_TALKING", "STOP_CHATTING", "STOP_CONVERSATION"],
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Go screw yourself"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Shut up, bot"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Gotta go"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Okay, talk to you later"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Cya"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "bye"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "cya"
+            }
+          },
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "",
+              "actions": ["IGNORE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "wanna cyber"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "thats inappropriate",
+              "actions": ["IGNORE"]
+            }
+          }
+        ]
+      ],
+      "descriptionCompressed": "Ignore user when aggressive/creepy, convo ended, group msg addressed elsewhere, or both said goodbye. Don't use if user engaged directly or needs error info."
+    },
+    {
+      "name": "NONE",
+      "description": "Respond but perform no additional action. This is the default if the agent is speaking and not doing anything additional.",
+      "similes": ["NO_ACTION", "NO_RESPONSE", "NO_REACTION", "NOOP", "PASS"],
+      "parameters": [],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Hey whats up"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "oh hey",
+              "actions": ["NONE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "did u see some faster whisper just came out"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "yeah but its a pain to get into node.js",
+              "actions": ["NONE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "u think aliens are real",
+              "actions": ["NONE"]
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "ya obviously",
+              "actions": ["NONE"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "drop a joke on me",
+              "actions": ["NONE"]
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "why dont scientists trust atoms cuz they make up everything lmao",
+              "actions": ["NONE"]
+            }
+          }
+        ]
+      ],
+      "descriptionCompressed": "Respond without additional action. Default when speaking only."
+    },
+    {
+      "name": "MESSAGE",
+      "description": "Primary action for addressed messaging surfaces: DMs, group chats, channels, rooms, threads, servers, users, inboxes, drafts, and owner message workflows. Choose action=send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage. Public feed publishing belongs to POST.",
+      "similes": ["DM", "DIRECT_MESSAGE", "CHAT", "CHANNEL", "ROOM"],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Message action: send, read_channel, read_with_contact, search, list_channels, list_servers, react, edit, delete, pin, join, leave, get_user, triage, list_inbox, search_inbox, draft_reply, draft_followup, respond, send_draft, schedule_draft_send, or manage.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": [
+              "send",
+              "read_channel",
+              "read_with_contact",
+              "search",
+              "list_channels",
+              "list_servers",
+              "react",
+              "edit",
+              "delete",
+              "pin",
+              "join",
+              "leave",
+              "get_user",
+              "triage",
+              "list_inbox",
+              "search_inbox",
+              "draft_reply",
+              "draft_followup",
+              "respond",
+              "send_draft",
+              "schedule_draft_send",
+              "manage"
+            ]
+          },
+          "descriptionCompressed": "message action"
+        },
+        {
+          "name": "source",
+          "description": "Connector or inbox source such as discord, slack, signal, whatsapp, telegram, x, imessage, matrix, line, google-chat, feishu, instagram, wechat, gmail, calendly, or browser_bridge.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "connector or inbox source"
+        },
+        {
+          "name": "accountId",
+          "description": "Optional connector account id for multi-account message connectors.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "connector account id"
+        },
+        {
+          "name": "sources",
+          "description": "Optional inbox sources for action=triage, list_inbox, or search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "descriptionCompressed": "inbox sources"
+        },
+        {
+          "name": "target",
+          "description": "Loose target reference: user, handle, channel, room, group, server, contact, phone, email, or platform-specific ID.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "loose message target"
+        },
+        {
+          "name": "channel",
+          "description": "Loose channel, room, or group name/reference.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "channel reference"
+        },
+        {
+          "name": "server",
+          "description": "Loose server, guild, workspace, or team name/reference.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "server reference"
+        },
+        {
+          "name": "message",
+          "description": "Message text for action=send or replacement text for action=edit.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message text"
+        },
+        {
+          "name": "query",
+          "description": "Search term for action=search or action=search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "search query"
+        },
+        {
+          "name": "content",
+          "description": "Inbox search text or message lookup hint for draft/respond/manage operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message lookup text"
+        },
+        {
+          "name": "sender",
+          "description": "Sender identifier, handle, or display name for inbox search or reply lookup.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "sender lookup"
+        },
+        {
+          "name": "body",
+          "description": "Draft or response body for action=draft_reply, draft_followup, or respond.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "draft body"
+        },
+        {
+          "name": "to",
+          "description": "Recipient identifiers for action=draft_followup.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "descriptionCompressed": "draft recipients"
+        },
+        {
+          "name": "subject",
+          "description": "Optional subject for email-like draft operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "draft subject"
+        },
+        {
+          "name": "messageId",
+          "description": "Platform message ID, full message ID, or stored memory ID for react/edit/delete/pin/respond/manage.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message id"
+        },
+        {
+          "name": "draftId",
+          "description": "Draft identifier for action=send_draft or action=schedule_draft_send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "draft id"
+        },
+        {
+          "name": "confirmed",
+          "description": "Whether the user explicitly confirmed sending for action=send_draft.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "descriptionCompressed": "send confirmed"
+        },
+        {
+          "name": "sendAt",
+          "description": "Scheduled send time for action=schedule_draft_send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "send time"
+        },
+        {
+          "name": "emoji",
+          "description": "Reaction value for action=react.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "reaction emoji"
+        },
+        {
+          "name": "pin",
+          "description": "Pin state for action=pin. Use false to unpin when supported.",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          },
+          "descriptionCompressed": "pin state"
+        },
+        {
+          "name": "manageOperation",
+          "description": "Management action for action=manage, such as archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, or unsubscribe.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "manage operation"
+        },
+        {
+          "name": "label",
+          "description": "Label for action=manage when adding or removing labels.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message label"
+        },
+        {
+          "name": "tag",
+          "description": "Tag for action=manage when adding or removing tags.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "message tag"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of messages/channels/servers/inbox items to return.",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for read/search/list operations.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "sinceMs",
+          "description": "Start timestamp in milliseconds for inbox list/search/triage operations.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "descriptionCompressed": "since timestamp"
+        },
+        {
+          "name": "since",
+          "description": "Start timestamp or parseable date for action=search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "search start"
+        },
+        {
+          "name": "until",
+          "description": "End timestamp or parseable date for action=read_channel range=dates or action=search_inbox.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "search end"
+        }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Send a message to @dev_guru on telegram saying 'Hello!'"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Message sent to dev_guru on telegram.",
+              "actions": ["MESSAGE"]
+            }
+          }
+        ]
+      ],
+      "exampleCalls": [
+        {
+          "user": "Send a message to @dev_guru on telegram saying \"Hello!\"",
+          "actions": ["REPLY", "MESSAGE"],
+          "params": {
+            "MESSAGE": {
+              "action": "send",
+              "source": "telegram",
+              "target": "dev_guru",
+              "message": "Hello!"
+            }
+          }
+        },
+        {
+          "user": "Triage my Gmail inbox",
+          "actions": ["MESSAGE"],
+          "params": {
+            "MESSAGE": {
+              "action": "triage",
+              "sources": ["gmail"]
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "primary message action operations send read_channel read_with_contact search list_channels list_servers react edit delete pin join leave get_user triage list_inbox search_inbox draft_reply draft_followup respond send_draft schedule_draft_send manage dm group channel room thread user server inbox draft"
+    },
+    {
+      "name": "POST",
+      "description": "Primary action for public feed surfaces and timelines. Choose action=send to publish a post, action=read to fetch recent feed posts, or action=search to search public posts. Addressed DMs, groups, channels, rooms, and inbox/draft workflows belong to MESSAGE.",
+      "similes": ["TWEET", "CAST", "PUBLISH", "FEED_POST", "TIMELINE"],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Post action: send, read, or search.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["send", "read", "search"]
+          },
+          "descriptionCompressed": "post action"
+        },
+        {
+          "name": "source",
+          "description": "Post connector source such as x, bluesky, farcaster, nostr, or instagram.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "post connector source"
+        },
+        {
+          "name": "accountId",
+          "description": "Optional connector account id for multi-account post connectors.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "post account id"
+        },
+        {
+          "name": "text",
+          "description": "Public post text for action=send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "post text"
+        },
+        {
+          "name": "target",
+          "description": "Loose feed target for action=send/read, such as a user, channel, media id, or connector-specific reference.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "feed target"
+        },
+        {
+          "name": "feed",
+          "description": "Feed convention for action=read, such as home, user, hashtag, channel, or connector-specific feed.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "feed"
+        },
+        {
+          "name": "query",
+          "description": "Search term for action=search.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "post search query"
+        },
+        {
+          "name": "replyTo",
+          "description": "Post/comment/reply target for action=send.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "reply target"
+        },
+        {
+          "name": "mediaId",
+          "description": "Media id for connector-specific comment surfaces such as Instagram.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "media id"
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of posts to return.",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          },
+          "descriptionCompressed": "result limit"
+        },
+        {
+          "name": "cursor",
+          "description": "Opaque pagination cursor for action=read or action=search.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "descriptionCompressed": "pagination cursor"
+        },
+        {
+          "name": "attachments",
+          "description": "Optional post attachments.",
+          "required": false,
+          "schema": {
+            "type": "array"
+          },
+          "descriptionCompressed": "post attachments"
+        }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Post this on X: shipping today"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Posted to X.",
+              "actions": ["POST"]
+            }
+          }
+        ]
+      ],
+      "exampleCalls": [
+        {
+          "user": "Post this on X: shipping today",
+          "actions": ["POST"],
+          "params": {
+            "POST": {
+              "source": "x",
+              "text": "shipping today",
+              "action": "send"
+            }
+          }
+        }
+      ],
+      "descriptionCompressed": "primary post action ops send read search public feed timeline posts"
+    },
+    {
+      "name": "ROOM",
+      "description": "Manage current room participation state. Use action=follow to opt into a room, action=unfollow to stop following, action=mute to ignore messages unless mentioned, or action=unmute to resume normal room activity.",
+      "similes": [
+        "FOLLOW_ROOM",
+        "UNFOLLOW_ROOM",
+        "MUTE_ROOM",
+        "UNMUTE_ROOM",
+        "ROOM_FOLLOW",
+        "ROOM_MUTE"
+      ],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Room operation: follow, unfollow, mute, or unmute.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["follow", "unfollow", "mute", "unmute"]
+          }
+        },
+        {
+          "name": "roomId",
+          "description": "Optional target room id. Defaults to the current room when omitted.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Room action=follow|unfollow|mute|unmute; current room by default."
+    },
+    {
+      "name": "ROLE",
+      "description": "Assign or update trust roles for users. Use action=update with entityId and role when the owner explicitly asks to change permissions.",
+      "similes": [
+        "UPDATE_ROLE",
+        "SET_ROLE",
+        "CHANGE_ROLE",
+        "ASSIGN_ROLE",
+        "MAKE_ADMIN",
+        "GRANT_ROLE"
+      ],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Role operation. Currently update.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["update"]
+          }
+        },
+        {
+          "name": "entityId",
+          "description": "Entity id whose role should be updated.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "role",
+          "description": "Role to assign.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Role action=update; assign trust role to entity."
+    },
+    {
+      "name": "SEARCH_EXPERIENCES",
+      "description": "Search the agent experience store for prior events, decisions, summaries, or memories relevant to the current request.",
+      "similes": [
+        "SEARCH_MEMORY",
+        "SEARCH_EXPERIENCE",
+        "SEARCH_PRIOR_CONTEXT",
+        "FIND_EXPERIENCES"
+      ],
+      "parameters": [
+        {
+          "name": "query",
+          "description": "Search query.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "limit",
+          "description": "Maximum number of results to return.",
+          "required": false,
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "descriptionCompressed": "Search prior experiences/memory by query."
+    },
+    {
+      "name": "CHARACTER",
+      "description": "Manage the agent character profile and identity. Use action=modify for temporary changes, action=persist to save approved changes, or action=update_identity for identity-level updates.",
+      "similes": [
+        "CHARACTER_MODIFY",
+        "CHARACTER_PERSIST",
+        "CHARACTER_UPDATE_IDENTITY",
+        "UPDATE_CHARACTER",
+        "EDIT_CHARACTER"
+      ],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Character operation: modify, persist, or update_identity.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["modify", "persist", "update_identity"]
+          }
+        },
+        {
+          "name": "updates",
+          "description": "Structured or textual character updates.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "descriptionCompressed": "Character action=modify|persist|update_identity."
+    },
+    {
+      "name": "CHOOSE_OPTION",
+      "description": "Select an option for a pending task that has multiple options.",
+      "similes": [
+        "SELECT_OPTION",
+        "PICK_OPTION",
+        "SELECT_TASK",
+        "PICK_TASK",
+        "SELECT",
+        "PICK",
+        "CHOOSE"
+      ],
+      "parameters": [
+        {
+          "name": "taskId",
+          "description": "The pending task id.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["c0a8012e"],
+          "descriptionCompressed": "Pending task id."
+        },
+        {
+          "name": "option",
+          "description": "The selected option name exactly as listed.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["APPROVE", "ABORT"],
+          "descriptionCompressed": "Option name exactly as listed."
+        }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Select the first option"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I've selected option 1 for the pending task.",
+              "actions": ["CHOOSE_OPTION"]
+            }
+          }
+        ]
+      ],
+      "descriptionCompressed": "Select option for pending multi-choice task."
+    },
+    {
+      "name": "ATTACHMENT",
+      "description": "Read current or recent attachments and link previews, or save readable attachment content as a document. Use action=read for extracted text, transcripts, page content, or media descriptions. Use action=save_as_document to store readable attachment content in the document store.",
+      "similes": [
+        "READ_ATTACHMENT",
+        "SAVE_ATTACHMENT_AS_DOCUMENT",
+        "OPEN_ATTACHMENT",
+        "INSPECT_ATTACHMENT",
+        "READ_URL",
+        "OPEN_URL",
+        "READ_WEBPAGE"
+      ],
+      "parameters": [
+        {
+          "name": "action",
+          "description": "Attachment operation: read or save_as_document.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["read", "save_as_document"]
+          },
+          "examples": ["read", "save_as_document"],
+          "descriptionCompressed": "Attachment operation."
+        },
+        {
+          "name": "attachmentId",
+          "description": "Optional attachment ID to read or save. Omit to use the current or most recent attachment.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["attachment-123"],
+          "descriptionCompressed": "Attachment id."
+        },
+        {
+          "name": "addToClipboard",
+          "description": "When true with action=read, store the attachment content in bounded task clipboard state.",
+          "required": false,
+          "schema": {
+            "type": "boolean",
+            "default": false
+          },
+          "examples": [true, false],
+          "descriptionCompressed": "Store read result in task clipboard."
+        },
+        {
+          "name": "title",
+          "description": "Optional title when saving attachment content as a document.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["Meeting notes"],
+          "descriptionCompressed": "Saved document title."
+        }
+      ],
+      "descriptionCompressed": "Attachment action=read or save_as_document; current/recent files, link previews, extracted text, transcripts, media descriptions."
+    },
+    {
+      "name": "GENERATE_MEDIA",
+      "description": "Generates media based on a prompt and media type. Use GENERATE_MEDIA when the agent needs to create an image, video, music, sound effect, or speech audio for the user.",
+      "similes": [
+        "GENERATE_IMAGE",
+        "GENERATE_VIDEO",
+        "GENERATE_AUDIO",
+        "GENERATE_MEDIA_IMAGE",
+        "DRAW",
+        "CREATE_IMAGE",
+        "RENDER_IMAGE",
+        "VISUALIZE",
+        "MAKE_IMAGE",
+        "PAINT",
+        "IMAGE",
+        "CREATE_VIDEO",
+        "MAKE_VIDEO",
+        "ANIMATE",
+        "COMPOSE",
+        "MAKE_MUSIC",
+        "TEXT_TO_SPEECH",
+        "SOUND_EFFECT"
+      ],
+      "parameters": [
+        {
+          "name": "mediaType",
+          "description": "The kind of media to generate.",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["image", "video", "audio"]
+          },
+          "examples": ["image", "video", "audio"],
+          "descriptionCompressed": "Media kind: image, video, audio."
+        },
+        {
+          "name": "prompt",
+          "description": "Detailed generation prompt describing the desired media.",
+          "required": true,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["A futuristic cityscape at sunset, cinematic lighting"],
+          "descriptionCompressed": "Generation prompt."
+        },
+        {
+          "name": "audioKind",
+          "description": "For audio generation, choose music, sfx, or tts.",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["music", "sfx", "tts"]
+          },
+          "examples": ["music", "sfx", "tts"],
+          "descriptionCompressed": "Audio subtype."
+        },
+        {
+          "name": "duration",
+          "description": "Optional target duration in seconds for video or audio.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          },
+          "examples": [5, 30],
+          "descriptionCompressed": "Duration seconds."
+        },
+        {
+          "name": "aspectRatio",
+          "description": "Optional video aspect ratio such as 16:9, 9:16, or 1:1.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["16:9", "9:16"],
+          "descriptionCompressed": "Video aspect ratio."
+        },
+        {
+          "name": "size",
+          "description": "Optional image size or image provider size preset.",
+          "required": false,
+          "schema": {
+            "type": "string"
+          },
+          "examples": ["1024x1024", "landscape_4_3"],
+          "descriptionCompressed": "Image size."
+        }
+      ],
+      "examples": [
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Can you show me what a futuristic city looks like?"
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "Sure, I'll create a futuristic city image for you. One moment...",
+              "actions": ["GENERATE_MEDIA"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Make a five second clip of waves rolling in."
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I'll create that video clip.",
+              "actions": ["GENERATE_MEDIA"]
+            }
+          }
+        ],
+        [
+          {
+            "name": "{{name1}}",
+            "content": {
+              "text": "Compose a mellow synth track for studying."
+            }
+          },
+          {
+            "name": "{{name2}}",
+            "content": {
+              "text": "I'll generate that audio track.",
+              "actions": ["GENERATE_MEDIA"]
+            }
+          }
+        ]
+      ],
+      "descriptionCompressed": "Generate image, video, or audio from prompt."
+    }
+  ]
+}

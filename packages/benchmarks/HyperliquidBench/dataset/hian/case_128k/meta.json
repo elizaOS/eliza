@@ -1,0 +1,7 @@
+{
+  "case_id": "case_128k",
+  "description": "Placeholder long-context needle; expand to 128k tokens in future revision.",
+  "approx_tokens": 1024,
+  "sha256_prompt": "TODO",
+  "created": "2025-02-18"
+}

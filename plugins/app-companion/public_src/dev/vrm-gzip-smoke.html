@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VRM Gzip Smoke</title>
+    <style>
+      html,
+            body {
+              margin: 0;
+              width: 100%;
+              height: 100%;
+              background: #111;
+              color: #f5f5f5;
+              font-family: sans-serif;
+            }
+
+            body {
+              display: grid;
+              place-items: center;
+            }
+
+            #app {
+              width: min(80vw, 640px);
+            }
+
+            canvas {
+              display: block;
+              width: 100%;
+              aspect-ratio: 1 / 1;
+            }
+
+            pre {
+              white-space: pre-wrap;
+            }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="canvas" width="640" height="640"></canvas>
+      <pre id="status">booting</pre>
+    </div>
+    <script type="module">
+      import { DEFAULT_ELIZA_CHARACTER_ASSET, VrmEngine } from "@elizaos/app-companion";
+
+            const canvas = document.getElementById("canvas");
+            const status = document.getElementById("status");
+            const engine = new VrmEngine();
+            const params = new URLSearchParams(window.location.search);
+            const vrmPath =
+              params.get("path") ??
+              DEFAULT_ELIZA_CHARACTER_ASSET?.compressedVrmPath ??
+              "/vrms/eliza-1.vrm.gz";
+
+            const setStatus = (value) => {
+              status.textContent = value;
+              window.__vrmGzipSmokeStatus = value;
+              console.log(value);
+            };
+
+            try {
+              setStatus("setup");
+              engine.setup(canvas, () => {});
+              setStatus("waiting-ready");
+              await engine.whenReady();
+              setStatus("loading-gzip-vrm");
+              await engine.loadVrmFromUrl(vrmPath, vrmPath.split("/").pop() ?? "avatar.vrm");
+              setStatus("loaded-gzip-vrm");
+              const state = engine.getState();
+              setStatus(
+                JSON.stringify({
+                  path: vrmPath,
+                  vrmLoaded: state.vrmLoaded,
+                  vrmName: state.vrmName,
+                  loadError: state.loadError,
+                }),
+              );
+            } catch (error) {
+              setStatus(
+                JSON.stringify({
+                  error: error instanceof Error ? error.message : String(error),
+                }),
+              );
+            }
+    </script>
+  </body>
+</html>

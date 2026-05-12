@@ -1,0 +1,22 @@
+--- a/ggml/src/ggml-common.h
++++ b/ggml/src/ggml-common.h
+@@ -<existing TBQ block insertion> @@
++
++// PolarQuant Q4 (block_q4_polar): 4-bit weight quant for the
++// llama.cpp weight tensors.  Codebook is the precomputed Lloyd-Max
++// quantizer for X ~ N(0, 1) with 16 levels (the same 16 floats baked
++// into ggml/src/ggml-cpu/quants-polar.c).  Block layout is locked at
++// 82 bytes:
++//   - ggml_fp16_t d                        2 bytes  (per-block L2 norm)
++//   - uint8_t qs[QK_POLAR / 2]            64 bytes  (4-bit codes, 2/byte)
++//   - uint8_t qjl[QK_POLAR / 8]           16 bytes  (1-bit residual sign per coord)
++// Total 82 bytes / 128 elements = 5.125 bpw with QJL, 4.125 bpw without.
++#define QK_POLAR 128
++#define QPL_RESIDUAL_BYTES (QK_POLAR / 8)
++typedef struct {
++    ggml_fp16_t d;
++    uint8_t     qs[QK_POLAR / 2];
++    uint8_t     qjl[QPL_RESIDUAL_BYTES];
++} block_q4_polar;
++static_assert(sizeof(block_q4_polar) == sizeof(ggml_fp16_t) + QK_POLAR/2 + QPL_RESIDUAL_BYTES,
++              "wrong q4_polar block size/padding");

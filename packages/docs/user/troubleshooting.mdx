@@ -1,0 +1,133 @@
+---
+title: "Troubleshooting"
+sidebarTitle: "Troubleshooting"
+description: "Fix common Eliza issues with startup, providers, voice, connectors, and remote access."
+---
+
+Most failures come from one of these areas:
+
+1. app launch
+2. provider setup
+3. voice setup
+4. connector credentials
+5. remote URL or token configuration
+
+## Eliza will not open
+
+### macOS
+
+Re-download from the official [GitHub releases](https://github.com/eliza-ai/eliza/releases/latest) page if Gatekeeper or notarization warnings look suspicious.
+
+### Windows
+
+If SmartScreen appears, use `More info` and confirm you downloaded the official installer.
+
+### Linux
+
+If the AppImage will not start:
+
+```bash
+chmod +x Eliza.AppImage
+```
+
+## The first message hangs
+
+Check:
+
+- the API key is valid and has remaining credits
+- whether Ollama is running (if using local models): `curl http://127.0.0.1:11434/api/tags`
+- whether the selected model exists on the provider
+- whether a remote backend owns provider routing (`deploymentTarget` in config)
+- logs for specific errors: check `~/.eliza/logs/` or run `eliza doctor`
+
+## Voice is silent
+
+Test voice preview first.
+
+- if preview fails, fix the voice provider or audio output
+- if preview works but replies stay silent, fix the speech provider
+- if talk mode fails, check microphone permissions
+
+## A connector does not reply
+
+### Discord
+
+- token wrong
+- Message Content Intent disabled
+- missing channel permissions
+
+### Telegram
+
+- token wrong
+- connector offline
+- privacy mode blocking group behavior
+
+### Slack
+
+- missing `appToken` for Socket Mode
+- wrong `signingSecret` for HTTP mode
+
+### WhatsApp
+
+- QR code not scanned or session expired
+- `authDir` not set or not writable
+
+### Signal
+
+- `signal-cli` not running or unreachable at `httpUrl`
+
+### General
+
+For any connector: check the token/credential, confirm the connector is enabled in config (`connectors.<name>.enabled` is not `false`), and check logs for startup errors.
+
+Guides:
+
+- [Connect Discord](/user/connect-discord)
+- [Connect Telegram](/user/connect-telegram)
+- [All connectors](/guides/connectors)
+
+## Remote connection fails
+
+Check:
+
+- the URL
+- the token
+- whether the backend is running
+- whether the backend listens outside localhost
+- whether the current device can reach that network
+
+## Useful chat commands
+
+These commands work in the chat input and can help diagnose issues:
+
+- `/model` — check or switch the active model
+- `/clear` — clear the chat and start fresh
+- `/help` — list available commands
+
+See [Chat Commands](/chat-commands) for the full reference.
+
+## Eliza is slow
+
+- slow before the first token: choose a faster model or provider (Groq and Anthropic Haiku are fast options)
+- slow throughout: check network limits or local model size (`eliza-1-2b` is faster than `eliza-1-9b`)
+- check if fallback models are being used (slower providers may be engaged if the primary is rate-limited)
+- for local models, ensure you have enough RAM for the model size
+
+## Start over
+
+Quit Eliza, rename the state directory, and relaunch:
+
+- macOS / Linux: `~/.eliza`
+- Windows: `%USERPROFILE%\\.eliza\\`
+
+## File a bug
+
+Include:
+
+- OS
+- local, remote, or Eliza Cloud
+- selected provider
+- expected behavior
+- actual behavior
+
+Issue tracker: [eliza-ai/eliza issues](https://github.com/eliza-ai/eliza/issues)

@@ -1,0 +1,18 @@
+{
+  "name": "@elizaos/example-browser-extension",
+  "version": "2.0.0-beta.0",
+  "description": "Chat with any webpage using AI - Browser Extension powered by ElizaOS",
+  "workspaces": [
+    "chrome",
+    "safari"
+  ],
+  "scripts": {
+    "build": "node -e \"console.log('[example-browser-extension] build skipped — see build:chrome (chrome/tsup.config.ts has noExternal:[/.*/] which fails on workspaces with Node-only deps).')\"",
+    "build:chrome": "cd chrome && npm run build",
+    "build:safari": "cd safari && npm run build",
+    "dev": "cd chrome && npm run dev",
+    "clean": "rm -rf chrome/dist",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'"
+  }
+}

@@ -1,0 +1,78 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: generated-fields
+spec:
+  description: Verify operator generates correct Deployment, Service, and ScaledObject from a Server CR
+  steps:
+    - name: Create Server CR
+      try:
+        - apply:
+            file: server-cr.yaml
+      cleanup:
+        - script:
+            content: kubectl delete server srv-gen -n eliza-agents --ignore-not-found
+
+    - name: Assert Deployment
+      try:
+        - assert:
+            timeout: 15s
+            file: assert-deployment.yaml
+
+    - name: Assert env vars
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              ENV=$(kubectl get deploy srv-gen -n eliza-agents -o jsonpath='{.spec.template.spec.containers[0].env}')
+              echo "$ENV" | grep -q 'SERVER_NAME' || { echo "FAIL: missing SERVER_NAME env"; exit 1; }
+              echo "$ENV" | grep -q 'CAPACITY' || { echo "FAIL: missing CAPACITY env"; exit 1; }
+              echo "$ENV" | grep -q 'TIER' || { echo "FAIL: missing TIER env"; exit 1; }
+              echo "$ENV" | grep -q 'POD_NAME' || { echo "FAIL: missing POD_NAME env"; exit 1; }
+
+              # Check env values
+              SN=$(kubectl get deploy srv-gen -n eliza-agents -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="SERVER_NAME")].value}')
+              [ "$SN" = "srv-gen" ] || { echo "FAIL: SERVER_NAME=$SN, expected srv-gen"; exit 1; }
+
+              CAP=$(kubectl get deploy srv-gen -n eliza-agents -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="CAPACITY")].value}')
+              [ "$CAP" = "10" ] || { echo "FAIL: CAPACITY=$CAP, expected 10"; exit 1; }
+
+              TIER=$(kubectl get deploy srv-gen -n eliza-agents -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="TIER")].value}')
+              [ "$TIER" = "shared" ] || { echo "FAIL: TIER=$TIER, expected shared"; exit 1; }
+
+              # POD_NAME uses fieldRef
+              FR=$(kubectl get deploy srv-gen -n eliza-agents -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="POD_NAME")].valueFrom.fieldRef.fieldPath}')
+              [ "$FR" = "metadata.name" ] || { echo "FAIL: POD_NAME fieldRef=$FR"; exit 1; }
+
+    - name: Assert Service
+      try:
+        - assert:
+            file: assert-service.yaml
+
+    - name: Assert ScaledObject
+      try:
+        - assert:
+            file: assert-scaledobject.yaml
+
+    - name: Assert Redis state
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              STATUS=$(kubectl run cs-redis-status-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis GET "server:srv-gen:status" 2>/dev/null)
+              echo "$STATUS" | grep -qE "(pending|running|scaleddown)" || { echo "FAIL: server status=$STATUS, expected pending, running, or scaleddown"; exit 1; }
+
+              URL=$(kubectl run cs-redis-url-$RANDOM --rm -i --restart=Never -n eliza-infra \
+                --image=redis:7-alpine --quiet -- \
+                redis-cli -h redis GET "server:srv-gen:url" 2>/dev/null)
+              echo "$URL" | grep -q "srv-gen.eliza-agents.svc:3000" || { echo "FAIL: server url=$URL"; exit 1; }
+
+    - name: Assert CR status
+      try:
+        - script:
+            timeout: 15s
+            content: |
+              PHASE=$(kubectl get server srv-gen -n eliza-agents -o jsonpath='{.status.phase}')
+              echo "$PHASE" | grep -qE "^(Pending|Running|ScaledDown)$" || { echo "FAIL: phase=$PHASE, expected Pending, Running, or ScaledDown"; exit 1; }

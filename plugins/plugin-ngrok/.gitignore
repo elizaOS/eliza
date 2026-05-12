@@ -1,0 +1,13 @@
+.env
+node_modules/
+**node_modules**
+dist
+.cursor/
+.turbo
+.elizadb-test/
+coverage/
+*.log
+AGENTS.md
+.cursor/rules/elizaos
+CLAUDE.md
+.cursorignore

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Eliza</string>
+    <string name="title_activity_main">Eliza</string>
+    <string name="package_name">com.elizaai.eliza</string>
+    <string name="custom_url_scheme">eliza</string>
+</resources>

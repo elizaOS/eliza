@@ -1,0 +1,7 @@
+*
+
+!dist/**
+!package.json
+!readme.md
+!tsup.config.ts
+.turbo
