@@ -248,6 +248,25 @@ describe("payment-requests routes", () => {
     });
   });
 
+  test("POST / rejects stripe requests without redirect URLs", async () => {
+    const h = harness();
+    installMocks(h);
+    const route = await loadRoute("v1/payment-requests/route.ts", "/api/v1/payment-requests");
+
+    const response = await route.request("https://api.test/api/v1/payment-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        provider: "stripe",
+        amountCents: 500,
+        paymentContext: "any_payer",
+      }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(h.createCalls).toHaveLength(0);
+  });
+
   test("POST / rejects invalid body via zod", async () => {
     const h = harness();
     installMocks(h);

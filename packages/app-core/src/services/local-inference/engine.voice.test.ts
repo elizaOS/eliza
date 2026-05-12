@@ -310,6 +310,7 @@ describe("LocalInferenceEngine voice surface", () => {
     ]);
     const backend = new CountingBackend();
     const audio: AudioChunk[] = [];
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const engine = new LocalInferenceEngine();
     engine.startVoice({
       bundleRoot,
@@ -317,6 +318,7 @@ describe("LocalInferenceEngine voice surface", () => {
       backendOverride: backend,
       events: {
         onAudio: (chunk) => audio.push(chunk),
+        onTelemetry: (event) => telemetry.push(event),
       },
     });
 
@@ -326,6 +328,20 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(backend.calls).toBe(0);
     expect(audio).toHaveLength(1);
     expect(Array.from(audio[0].pcm)).toEqual([0.5, 0.5, 0.5]);
+    expect(telemetry.map((event) => event.type)).toEqual([
+      "phrase-dispatch",
+      "phrase-cache-hit",
+      "tts-first-audio",
+      "audio-committed",
+    ]);
+    expect(telemetry.find((event) => event.type === "phrase-cache-hit")).toMatchObject({
+      phrase: { text: "Sure." },
+    });
+    expect(telemetry.find((event) => event.type === "tts-first-audio")).toMatchObject({
+      source: "cache",
+      samples: 3,
+      sampleRate: 24000,
+    });
   });
 
   it("requires an armed voice lifecycle for direct TEXT_TO_SPEECH synthesis", async () => {
@@ -571,6 +587,7 @@ describe("LocalInferenceEngine voice surface", () => {
       phraseId: number;
       range: RejectedTokenRange;
     }> = [];
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const phrases: Phrase[] = [];
     const engine = new LocalInferenceEngine();
     const backend = new DeferredBackend();
@@ -585,6 +602,7 @@ describe("LocalInferenceEngine voice surface", () => {
         onPhrase: (p) => phrases.push(p),
         onRollback: (phraseId, range) =>
           rollbackEvents.push({ phraseId, range }),
+        onTelemetry: (event) => telemetry.push(event),
       },
     });
 
@@ -618,6 +636,17 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(rollbackEvents.some((e) => e.phraseId === phrases[0].id)).toBe(
       false,
     );
+    expect(telemetry.find((event) => event.type === "rollback")).toMatchObject({
+      type: "rollback",
+      phraseId: phrases[1].id,
+      range: { fromIndex: 4, toIndex: 5 },
+      reason: "rejected-tokens",
+    });
+    expect(telemetry.find((event) => event.type === "tts-cancel")).toMatchObject({
+      type: "tts-cancel",
+      phrase: { id: phrases[1].id },
+      reason: "rollback",
+    });
 
     backend.releaseAll();
     await engine.stopVoice();
@@ -811,6 +840,7 @@ describe("LocalInferenceEngine voice surface", () => {
   it("(d) barge-in drains the ring buffer and cancels in-flight TTS within one kernel tick", async () => {
     writePresetBundle(bundleRoot);
     let cancelObserved = false;
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const engine = new LocalInferenceEngine();
     const backend = new DeferredBackend();
     const bridge = engine.startVoice({
@@ -822,6 +852,7 @@ describe("LocalInferenceEngine voice surface", () => {
         onCancel: () => {
           cancelObserved = true;
         },
+        onTelemetry: (event) => telemetry.push(event),
       },
     });
 
@@ -845,6 +876,17 @@ describe("LocalInferenceEngine voice surface", () => {
     // the contract is "<= 1 kernel tick".
     const ticksAfter = bridge.scheduler.kernelTickCount();
     expect(ticksAfter - ticksBefore).toBeLessThanOrEqual(1);
+    expect(telemetry.find((event) => event.type === "tts-cancel")).toMatchObject({
+      type: "tts-cancel",
+      reason: "barge-in",
+    });
+    expect(telemetry.find((event) => event.type === "barge-in")).toMatchObject({
+      type: "barge-in",
+      ringBufferSamplesDrained: 0,
+      sinkBufferedSamplesDrained: 0,
+      inFlightPhrasesCancelled: 1,
+      wasPaused: false,
+    });
 
     // Release the deferred synthesis so settle() can resolve cleanly.
     backend.releaseAll();
