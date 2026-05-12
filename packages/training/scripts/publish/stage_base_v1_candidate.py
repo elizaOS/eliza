@@ -40,10 +40,26 @@ from scripts.manifest import eliza1_manifest as M  # noqa: E402
 REQUIRED_KERNELS_BY_TIER = {
     "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
     "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+    # 27b matches eliza1_manifest.REQUIRED_KERNELS_BY_TIER["27b"] — adds
+    # turbo3_tcq on top of the base 1.7b set for long-context cache compression.
+    "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 }
 RAM_BUDGET_MB = {
     "0_6b": (2500, 3700),
     "1_7b": (4000, 5500),
+    # 27b matches publish/orchestrator.RAM_BUDGET_BY_TIER["27b"] — sized for
+    # 96GB+ Mac / high-VRAM desktop class hosts under the Q4_POLAR text bundle.
+    "27b": (24000, 32000),
+}
+# Per-tier upstream-Qwen3 substitute used by the lineage block and the
+# README/provenance prose. Falls back to "0.6B" for unknown tiers to match
+# the script's historical default behavior.
+QWEN3_PARAMS_BY_TIER = {
+    "0_6b": "0.6B",
+    "1_7b": "1.7B",
+    # The 27b cloud tier substitutes against Qwen3.5-27B (no Qwen3-27B
+    # variant exists upstream); the lineage block records the real base.
+    "27b": "27B",
 }
 TEXT_CTX = 32768
 
@@ -90,7 +106,7 @@ def download_asset(repo: str, remote_path: str, dest: Path) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", required=True, choices=("0_6b", "1_7b"))
+    ap.add_argument("--tier", required=True, choices=("0_6b", "1_7b", "27b"))
     ap.add_argument("--text-gguf", required=True, type=Path)
     ap.add_argument("--text-sidecar", type=Path, default=None,
                     help="The .eliza1.json sidecar for the text GGUF (quant block).")
@@ -171,9 +187,13 @@ def main(argv: list[str] | None = None) -> int:
             "sha256": drafter_sha,
             "source": args.drafter_source,
             "note": (
-                "Upstream Qwen3-0.6B GGUF used as the DFlash drafter for the "
-                "1.7B target; shares the Qwen3 BPE vocabulary so speculative "
-                "decoding is correct (modest acceptance — not a distilled drafter)."
+                # For 27b the canonical drafter is the Qwen3.5-aligned 0.6B
+                # distilled drafter (elizaos/eliza-1-drafter-0_6b-qwen3_5);
+                # for 0_6b/1_7b it's the upstream Qwen3 0.6B GGUF reused as-is.
+                f"DFlash drafter for the {QWEN3_PARAMS_BY_TIER.get(tier, '0.6B')} text target. "
+                "Shares the Qwen3.5/Qwen3 BPE vocabulary with the target so speculative "
+                "decoding is correct. See the drafter source repo for whether this "
+                "candidate is a distilled drafter or the upstream base GGUF (not distilled)."
             ),
         },
         "acceptanceWindow": None,
@@ -184,6 +204,15 @@ def main(argv: list[str] | None = None) -> int:
     # --- voice / asr / vad / cache from elizaos/eliza-1-assets/1_7b/ ---
     # The OmniVoice / Qwen3-ASR / Silero bytes are model-size-independent; the
     # assets repo only carries the 1_7b key, so reuse them under any tier.
+    #
+    # 27b caveat: eliza1_manifest.VOICE_QUANT_BY_TIER["27b"] == "Q8_0", so
+    # required_voice_artifacts_for_tier("27b") returns the Q8_0 names. This
+    # staging path still copies the Q4_K_M bytes (the only ones present in
+    # the assets repo today) — the orchestrator's voice-artifact gate will
+    # therefore fail in publish mode until Q8_0 OmniVoice GGUFs are derived
+    # and pushed to elizaos/eliza-1-assets/27b/. The candidate bundle is
+    # still installable on a runtime that can load Q4_K_M voice, but the
+    # release gate stays red. Track as a separate dependency.
     asset_map = [
         ("1_7b/tts/omnivoice-base-Q4_K_M.gguf", out / "tts" / "omnivoice-base-Q4_K_M.gguf"),
         ("1_7b/tts/omnivoice-tokenizer-Q4_K_M.gguf", out / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf"),
@@ -288,9 +317,10 @@ def main(argv: list[str] | None = None) -> int:
         }, indent=2) + "\n")
 
     # --- lineage ---
+    params = QWEN3_PARAMS_BY_TIER.get(tier, "0.6B")
     lineage = {
         "text": M.LineageEntry(
-            base=f"{args.drafter_source.split('/')[0]}/Qwen3-{'1.7B' if tier=='1_7b' else '0.6B'} (SFT: APOLLO full-parameter; documented substitute for Qwen3.5-{'1.7B' if tier=='1_7b' else '0.6B'})",
+            base=f"{args.drafter_source.split('/')[0]}/Qwen3-{params} (SFT: APOLLO full-parameter; documented substitute for Qwen3.5-{params})",
             license="apache-2.0",
         ),
         "voice": M.LineageEntry(base="Serveurperso/OmniVoice-GGUF@361609388ae572a820d085185bbbe2a2aac4b30e", license="apache-2.0"),
@@ -319,7 +349,14 @@ def main(argv: list[str] | None = None) -> int:
             status="pass", at_commit="08032d57",
             report="packages/inference/verify/cuda-runtime-dispatch-evidence.json",
             device="NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, cc 12.0)",
-            caveat="cuda is not a tier-supported backend for 1_7b/0_6b — recorded as extra evidence",
+            # For 27b cuda is a tier-supported backend (per
+            # eliza1_manifest.SUPPORTED_BACKENDS_BY_TIER["27b"]); for 0_6b/1_7b
+            # it stays "extra evidence" — see the caveat tier-switch below.
+            caveat=(
+                "cuda is a tier-supported backend for 27b"
+                if tier == "27b"
+                else "cuda is not a tier-supported backend for 1_7b/0_6b — recorded as extra evidence"
+            ),
         ),
         "metal": M.KernelVerification(
             status="skipped", at_commit="08032d57", report="not-run",
@@ -327,7 +364,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "rocm": M.KernelVerification(
             status="skipped", at_commit="08032d57", report="not-applicable",
-            caveat="rocm is not a tier-supported backend for 1_7b/0_6b",
+            # rocm is a tier-supported backend for 27b but cannot be verified
+            # on this build host (no AMD GPU); 0_6b/1_7b don't list rocm as
+            # supported at all.
+            caveat=(
+                "rocm is a tier-supported backend for 27b but no AMD GPU on the build host (needs-hardware)"
+                if tier == "27b"
+                else "rocm is not a tier-supported backend for 1_7b/0_6b"
+            ),
         ),
     }
 
@@ -337,7 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         "finetuned": True,
         "sourceModels": {
             "text": {
-                "repo": f"{args.drafter_source.split('/')[0]}/Qwen3-{'1.7B' if tier=='1_7b' else '0.6B'}",
+                "repo": f"{args.drafter_source.split('/')[0]}/Qwen3-{params}",
                 "convertedVia": "packages/inference/llama.cpp/convert_hf_to_gguf.py + scripts/optimize_for_eliza1.py (PolarQuant/QJL/TurboQuant)",
                 "note": "Fine-tuned (APOLLO full-parameter SFT) then optimized. Documented substitute for the not-yet-published Qwen3.5 base; NOT strictly base-v1 semantics — this is a finetuned candidate.",
             },
@@ -443,7 +487,7 @@ def _render_readme(
     optimized: bool,
     eval_results: dict[str, Any],
 ) -> str:
-    params = "1.7B" if tier == "1_7b" else "0.6B"
+    params = QWEN3_PARAMS_BY_TIER.get(tier, "0.6B")
     base_repo = f"{drafter_source.split('/')[0]}/Qwen3-{params}"
     if optimized:
         text_para = (

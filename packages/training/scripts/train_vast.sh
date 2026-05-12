@@ -248,6 +248,14 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="blackwell6000-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
+      qwen3.5-27b)
+        # Registry budget: 130 GB working set on a single 141 GB H200 or 183
+        # GB B200 (apollo_mini rank-1, grad ckpt, Liger CE, micro_batch=1
+        # seq=32k). B200-1x is the cheapest single-GPU fit (≈$3.8/hr × ~50h
+        # ≈ $190) and FSDP_WORLD_SIZE=1 matches the registry's extras block.
+        DEFAULT_GPU_TARGET="b200-1x"
+        DEFAULT_FSDP_WORLD_SIZE=1
+        ;;
       qwen3.6-27b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
