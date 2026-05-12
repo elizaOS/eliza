@@ -63,8 +63,11 @@ _GATES_YAML = Path(__file__).resolve().parent / "eliza1_gates.yaml"
 # import of scripts.manifest from a package that publish/orchestrator.py
 # imports very early.
 KNOWN_TIERS: tuple[str, ...] = (
+    "0_8b",
     "0_6b",
     "1_7b",
+    "2b",
+    "4b",
     "9b",
     "27b",
     "27b-256k",
