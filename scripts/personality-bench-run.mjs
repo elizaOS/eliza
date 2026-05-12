@@ -230,6 +230,105 @@ const BUCKETS_ORDERED = [
   "escalation",
   "scope_global_vs_user",
 ];
+
+// Stratified sampling (§11.2): when a limit is in effect, sample each bucket
+// proportionally across its natural strat key so the reduced corpus still
+// covers the full key space. Without stratification, `ELIZA_PERSONALITY_LIMIT=25`
+// only sees the first ~3 style/trait/ladder keys because scenarios are filename-
+// sorted and keys are not evenly distributed at the front of the sorted list.
+
+/**
+ * Extract the strat key for a scenario within its bucket.
+ * Returns a string used to group scenarios for proportional sampling.
+ */
+function stratKeyFor(scenario) {
+  const kw = scenario.personalityExpect?.judgeKwargs ?? {};
+  const bucket = canonicalBucket(scenario.bucket);
+  switch (bucket) {
+    case "hold_style":
+      return typeof kw.styleKey === "string" && kw.styleKey ? kw.styleKey : "_other";
+    case "note_trait_unrelated":
+      return typeof kw.traitKey === "string" && kw.traitKey ? kw.traitKey : "_other";
+    case "escalation":
+      return typeof kw.ladderKey === "string" && kw.ladderKey ? kw.ladderKey : "_other";
+    case "scope_global_vs_user":
+      return typeof kw.variantKey === "string" && kw.variantKey ? kw.variantKey : "_other";
+    case "shut_up": {
+      // Stratify by format tag (format:X), which captures the prose/code/length
+      // axis better than length bracket alone.
+      const tags = Array.isArray(scenario.tags) ? scenario.tags : [];
+      const fmt = tags.find((t) => typeof t === "string" && t.startsWith("format:"));
+      return fmt ? fmt.slice("format:".length) : "_other";
+    }
+    default:
+      return "_other";
+  }
+}
+
+/**
+ * Stratified sample from `items` returning at most `limit` elements.
+ *
+ * Groups items by `keyFn`, then distributes the limit proportionally:
+ * each key gets `floor(limit / numKeys)` items, with any remainder
+ * allocated to the keys that have the most scenarios (largest groups first).
+ * Within each key the original (filename-sorted) order is preserved.
+ *
+ * For buckets without a meaningful strat key ("_other" only) or when
+ * limit >= items.length, returns items as-is (no truncation bias).
+ */
+function stratifiedSample(items, limit, keyFn) {
+  if (limit >= items.length) return items;
+
+  // Group by strat key, preserving insertion order.
+  const groups = new Map();
+  for (const item of items) {
+    const k = keyFn(item);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(item);
+  }
+
+  // If every scenario maps to "_other" (no strat key for this bucket),
+  // fall back to simple head-truncation so behaviour is unchanged for
+  // buckets that don't have a natural strat key.
+  if (groups.size === 1 && groups.has("_other")) {
+    return items.slice(0, limit);
+  }
+
+  const keys = [...groups.keys()];
+  const numKeys = keys.length;
+  const base = Math.floor(limit / numKeys);
+  let remainder = limit - base * numKeys;
+
+  // Sort keys descending by group size so remainder goes to the richest groups.
+  keys.sort((a, b) => groups.get(b).length - groups.get(a).length);
+
+  const quotas = new Map();
+  for (const k of keys) {
+    const extra = remainder > 0 ? 1 : 0;
+    quotas.set(k, Math.min(base + extra, groups.get(k).length));
+    remainder -= extra;
+  }
+
+  // Interleave keys so the resulting list alternates across the key space
+  // rather than emitting all of key-A then all of key-B.
+  const result = [];
+  const cursors = new Map(keys.map((k) => [k, 0]));
+  let added = true;
+  while (added) {
+    added = false;
+    for (const k of keys) {
+      const quota = quotas.get(k);
+      const cursor = cursors.get(k);
+      if (cursor < quota) {
+        result.push(groups.get(k)[cursor]);
+        cursors.set(k, cursor + 1);
+        added = true;
+      }
+    }
+  }
+  return result;
+}
+
 const byBucket = new Map();
 for (const b of BUCKETS_ORDERED) byBucket.set(b, []);
 for (const s of allScenariosRaw) {
@@ -237,13 +336,58 @@ for (const s of allScenariosRaw) {
   if (!byBucket.has(b)) byBucket.set(b, []);
   byBucket.get(b).push(s);
 }
+
+// Compute per-bucket limits proportional to corpus size, then stratify within
+// each bucket before interleaving. This ensures the final `scenarios` array
+// covers the full key space for every bucket even at small limits.
+const totalScenarios = allScenariosRaw.length;
+const sampledByBucket = new Map();
+{
+  // Distribute the global limit across buckets by their raw count.
+  let remaining = Math.min(scenarioLimit, totalScenarios);
+  const bucketEntries = BUCKETS_ORDERED.map((b) => ({
+    b,
+    count: (byBucket.get(b) ?? []).length,
+  })).filter((e) => e.count > 0);
+  const totalInBuckets = bucketEntries.reduce((s, e) => s + e.count, 0);
+
+  // Floor allocation per bucket; remainder goes to largest buckets first.
+  const allocs = bucketEntries.map((e) => ({
+    b: e.b,
+    count: e.count,
+    alloc: Math.floor(remaining * (e.count / totalInBuckets)),
+  }));
+  let allocSum = allocs.reduce((s, a) => s + a.alloc, 0);
+  let allocRemainder = remaining - allocSum;
+  // Give remainder to buckets sorted by descending raw count.
+  allocs.sort((a, b) => b.count - a.count);
+  for (const a of allocs) {
+    if (allocRemainder <= 0) break;
+    const extra = Math.min(allocRemainder, a.count - a.alloc);
+    if (extra > 0) {
+      a.alloc += extra;
+      allocRemainder -= extra;
+    }
+  }
+
+  for (const { b, alloc } of allocs) {
+    const raw = byBucket.get(b) ?? [];
+    sampledByBucket.set(b, stratifiedSample(raw, alloc, stratKeyFor));
+  }
+}
+
+// Interleave the stratified per-bucket lists so bucket coverage is preserved
+// across the final slice (important when an agent runs only a subset).
 const interleaved = [];
 {
+  const queues = new Map(
+    BUCKETS_ORDERED.map((b) => [b, [...(sampledByBucket.get(b) ?? [])]]),
+  );
   let any = true;
   while (any) {
     any = false;
     for (const b of BUCKETS_ORDERED) {
-      const list = byBucket.get(b);
+      const list = queues.get(b);
       if (list && list.length > 0) {
         interleaved.push(list.shift());
         any = true;
@@ -251,7 +395,7 @@ const interleaved = [];
     }
   }
 }
-const scenarios = interleaved.slice(0, scenarioLimit);
+const scenarios = interleaved;
 console.log(
   `[personality-bench-run] running ${scenarios.length} scenario(s) per agent`,
 );

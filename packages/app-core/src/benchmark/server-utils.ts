@@ -30,9 +30,7 @@ export const BENCHMARK_MESSAGE_SERVER_ID = stringToUuid(
  * Roles for additional users (admin/user/guest) are seeded per-session by
  * `seedBenchUserRole` below.
  */
-export const BENCHMARK_OWNER_ENTITY_ID = stringToUuid(
-  "eliza-benchmark-owner",
-);
+export const BENCHMARK_OWNER_ENTITY_ID = stringToUuid("eliza-benchmark-owner");
 
 const BENCH_ROLE_NAMES: readonly RoleName[] = [
   "OWNER",
@@ -41,9 +39,7 @@ const BENCH_ROLE_NAMES: readonly RoleName[] = [
   "GUEST",
 ] as const;
 
-export function normalizeBenchRoleName(
-  raw: unknown,
-): RoleName | null {
+export function normalizeBenchRoleName(raw: unknown): RoleName | null {
   if (typeof raw !== "string") return null;
   const upper = raw.trim().toUpperCase();
   switch (upper) {
@@ -478,8 +474,8 @@ export async function ensureBenchmarkSessionContext(
   // backfill the canonical owner so role resolution stays correct.
   const existingWorld = await runtime.getWorld(BENCHMARK_WORLD_ID);
   if (existingWorld) {
-    const existingMetadata =
-      (existingWorld.metadata ?? {}) as RolesWorldMetadata;
+    const existingMetadata = (existingWorld.metadata ??
+      {}) as RolesWorldMetadata;
     if (existingMetadata.ownership?.ownerId !== BENCHMARK_OWNER_ENTITY_ID) {
       (existingWorld as { metadata: RolesWorldMetadata }).metadata = {
         ...existingMetadata,
@@ -623,8 +619,7 @@ export async function collectPersonalityAuditLog(
     const scope =
       typeof meta.personalityScope === "string" ? meta.personalityScope : "";
     if (!action || !scope) continue;
-    const targetId =
-      typeof meta.targetId === "string" ? meta.targetId : "";
+    const targetId = typeof meta.targetId === "string" ? meta.targetId : "";
     const actorId =
       typeof meta.actorId === "string"
         ? meta.actorId
@@ -634,7 +629,8 @@ export async function collectPersonalityAuditLog(
     const timestampSource =
       typeof meta.timestamp === "number" && Number.isFinite(meta.timestamp)
         ? meta.timestamp
-        : typeof memory.createdAt === "number" && Number.isFinite(memory.createdAt)
+        : typeof memory.createdAt === "number" &&
+            Number.isFinite(memory.createdAt)
           ? memory.createdAt
           : Date.now();
     entries.push({
@@ -810,7 +806,9 @@ export function applyRoleSeedPayload(
   appliedUserDirective: boolean;
   scopeMode: ScopeSeedMode | null;
 } {
-  const hasDirective = Boolean(payload.globalDirective || payload.userDirective);
+  const hasDirective = Boolean(
+    payload.globalDirective || payload.userDirective,
+  );
   if (!hasDirective) {
     return {
       appliedGlobalDirective: false,
