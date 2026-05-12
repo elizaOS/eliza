@@ -39,10 +39,12 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-1_7b");
+    // Per the 2026-05-12 Qwen3.5 directive, the small ladder leads with
+    // eliza-1-0_8b (Qwen3.5-0.8B-Base, the new small default).
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
     // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is 27b-256k -> 27b -> 9b -> 4b -> 1_7b, picks 27b.
+    // not. Ladder is 27b-256k -> 27b -> 9b -> 2b -> 1_7b, picks 27b.
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
@@ -63,7 +65,7 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
   });
 
-  it("uses the mobile platform ladder and prefers the 4B tier when it fits", () => {
+  it("uses the mobile platform ladder and prefers the small Qwen3.5 tier when it fits", () => {
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -75,8 +77,11 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_6b");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
+    // Per the 2026-05-12 Qwen3.5 directive, mobile ladders lead with the
+    // Qwen3.5 small/mid tiers (eliza-1-0_8b / eliza-1-2b) over the
+    // deprecated Qwen3 tiers.
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
   });
 
   it("falls back to the 0.6B tier on minimal mobile", () => {

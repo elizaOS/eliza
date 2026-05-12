@@ -34,7 +34,12 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_8b": "Q3_K_M",
+    # 0_8b / 2b / 4b (Qwen3.5 family, the active small/mid tiers) ship Q4;
+    # the deprecated legacy Qwen3 0_6b stays on Q3 to match the existing
+    # published bundle (no new SFT runs land there).
+    "0_8b": "Q4_K_M",
+    "0_6b": "Q3_K_M",
+    "1_7b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
@@ -45,8 +50,10 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("32k",),
+    "0_6b": ("32k",),
+    "1_7b": ("32k", "64k"),
     "2b": ("32k", "64k"),
-    "4b": ("64k", "128k"),
+    "4b": ("32k", "64k"),
     "9b": ("64k", "128k"),
     "27b": ("128k", "256k"),
     "27b-256k": ("256k",),
@@ -113,6 +120,35 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-x64-vulkan",
         "linux-x64-cpu",
         "windows-x64-cpu",
+    ),
+    # 2b (Qwen3.5-2B-Base) — mid local tier, same backend coverage as 1_7b
+    # plus desktop CUDA (handles modern phone + mid-laptop + workstation).
+    "2b": (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-x64-vulkan",
+        "windows-arm64-cpu",
+        "windows-arm64-vulkan",
+    ),
+    # 4b (Qwen3.5-4B-Base) — local/workstation tier. Same backend matrix as
+    # 1_7b/2b at the manifest layer (metal/vulkan/cpu); CUDA falls out of the
+    # supported set until a per-tier dispatch report lands.
+    "4b": (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-x64-vulkan",
+        "windows-arm64-cpu",
+        "windows-arm64-vulkan",
     ),
     "9b": (
         "darwin-arm64-metal",

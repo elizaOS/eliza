@@ -86,8 +86,12 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
       "http://127.0.0.1:31337",
     );
 
+    // Per the 2026-05-12 Qwen3.5 directive, the mobile TEXT_LARGE ladder
+    // leads with eliza-1-2b (Qwen3.5-2B-Base, minRamGb 4, sizeGb 1.4)
+    // before the deprecated Qwen3 eliza-1-1_7b — on a 8 GB iOS simulator
+    // eliza-1-2b fits and is the queued default.
     expect(mockClient.startLocalInferenceDownload).toHaveBeenCalledWith(
-      "eliza-1-4b",
+      "eliza-1-2b",
     );
   });
 });

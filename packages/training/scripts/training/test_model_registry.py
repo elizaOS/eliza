@@ -28,6 +28,21 @@ VERIFIED_PUBLIC_NAMES = (
 )
 
 
+# The eliza-1 fused-model line is Qwen3.5-only (per the 2026-05-12 operator
+# directive — the Qwen3 dense bases don't work with dflash). The smallest
+# tier is qwen3.5-0.8b on Qwen/Qwen3.5-0.8B-Base; 2b/4b are mid-local on
+# Qwen/Qwen3.5-{2B,4B}-Base; 9b is the workstation tier on
+# Qwen/Qwen3.5-9B-Base; 27b is the cloud tier on Qwen/Qwen3.5-27B (no -Base
+# variant — that release IS the base). qwen3.6-27b is kept as a legacy
+# long-context 27B variant.
+SMALL_KEYS = ("qwen3.5-0.8b",)
+SMALL_PUBLIC_NAMES = ("eliza-1-0_8b",)
+LARGE_KEYS = ("qwen3.5-2b", "qwen3.5-4b", "qwen3.5-9b", "qwen3.5-27b", "qwen3.6-27b")
+LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b", "eliza-1-27b")
+ALL_KEYS = SMALL_KEYS + LARGE_KEYS
+ALL_PUBLIC_NAMES = SMALL_PUBLIC_NAMES + LARGE_PUBLIC_NAMES
+
+
 def test_registry_is_the_eliza_1_size_ladder() -> None:
     assert set(REGISTRY) == set(VERIFIED_KEYS), (
         f"REGISTRY drifted from the eliza-1 size ladder: {sorted(REGISTRY)}"
@@ -63,20 +78,40 @@ def test_tier_assignments() -> None:
 
 
 def test_by_tier_partitions_the_ladder() -> None:
-    assert len(by_tier(Tier.LOCAL)) == 3   # 0.8b, 2b, 4b
-    assert len(by_tier(Tier.WORKSTATION)) == 1  # 9b
-    assert len(by_tier(Tier.CLOUD)) == 1   # 27b
+    # LOCAL: qwen3.5-0.8b/2b/4b = 3
+    assert len(by_tier(Tier.LOCAL)) == 3
+    # WORKSTATION: qwen3.5-9b
+    assert len(by_tier(Tier.WORKSTATION)) == 1
+    # CLOUD: qwen3.5-27b + qwen3.6-27b (legacy)
+    assert len(by_tier(Tier.CLOUD)) == 2
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("Qwen/Qwen3.5-0.8B").short_name == "qwen3.5-0.8b"
     assert get("qwen3.5-0.8b").short_name == "qwen3.5-0.8b"
     assert get("eliza-1-0_8b").short_name == "qwen3.5-0.8b"
-    assert get("eliza-1-2b").short_name == "qwen3.5-2b"
-    assert get("eliza-1-4b").short_name == "qwen3.5-4b"
-    assert get("qwen3-4b").short_name == "qwen3.5-4b"
-    assert get("eliza-1-9b").short_name == "qwen3.5-9b"
-    assert get("eliza-1-27b").short_name == "qwen3.6-27b"
+    assert get("qwen3.5-2b").short_name == "qwen3.5-2b"
+    assert get("qwen3.5-4b").short_name == "qwen3.5-4b"
+    assert get("qwen3.5-9b").short_name == "qwen3.5-9b"
+    assert get("qwen3.5-27b").short_name == "qwen3.5-27b"
+
+
+def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
+    # The Qwen3.5/3.6 target tiers must draft from the Qwen3.5-0.8B-Base
+    # checkpoint — it shares their 248320-token tokenizer (a Qwen3-0.6B
+    # drafter has the wrong vocab). The shipped drafter GGUF is that base
+    # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
+    # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
+    # directive (Qwen3.5-only fused-model line), the legacy Qwen3 tier
+    # drafter entries (eliza-1-1_7b / eliza-1-4b) are dropped — the
+    # corresponding tiers are deprecated.
+    for tier in ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b"):
+        assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
+    # Smallest tier ships no drafter.
+    assert "eliza-1-0_8b" not in DFLASH_DRAFTER_BASE
+    # Deprecated Qwen3 tiers have no drafter entries.
+    assert "eliza-1-0_6b" not in DFLASH_DRAFTER_BASE
+    assert "eliza-1-1_7b" not in DFLASH_DRAFTER_BASE
 
 
 def test_unknown_model_raises_keyerror() -> None:
@@ -119,13 +154,14 @@ def test_2b_and_9b_seq_len_defaults_unchanged_by_m35() -> None:
 
 
 def test_small_real_tiers_fit_a_consumer_gpu() -> None:
-    """0.8B/2B/4B are the "fine-tune on one consumer GPU" tier — full-param
-    APOLLO SFT, modest seq_len, single-GPU memory budgets."""
-    for key in ("qwen3.5-0.8b", "qwen3.5-2b", "qwen3.5-4b"):
-        e = get(key)
-        assert e.tier == Tier.LOCAL
-        assert e.seq_len <= 8192
-        assert e.train_mem_gb_budget <= 24.0
+    """The qwen3.5-0.8b small tier is the only "fine-tune on a 16 GB
+    consumer GPU" entry left after the Qwen3 legacy line was dropped on
+    2026-05-12. qwen3.5-2b and qwen3.5-4b are mid-local tiers checked
+    separately below."""
+    e = get("qwen3.5-0.8b")
+    assert e.tier == Tier.LOCAL
+    assert e.seq_len <= 8192
+    assert e.train_mem_gb_budget <= 24.0
 
 
 def test_summary_table_includes_every_entry() -> None:
