@@ -1,5 +1,10 @@
 import type http from "node:http";
-import { type ReadJsonBodyOptions, sanitizeSpeechText } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  ModelType,
+  type ReadJsonBodyOptions,
+  sanitizeSpeechText,
+} from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -10,7 +15,7 @@ export interface TtsRouteContext {
   res: http.ServerResponse;
   method: string;
   pathname: string;
-  state: { config: Record<string, unknown> };
+  state: { config: Record<string, unknown>; runtime?: IAgentRuntime | null };
   json: (res: http.ServerResponse, data: unknown, status?: number) => void;
   error: (res: http.ServerResponse, message: string, status?: number) => void;
   readJsonBody: <T extends object>(
@@ -136,6 +141,48 @@ export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
         : undefined,
     });
     return true;
+  }
+
+  // ── POST /api/tts/local-inference ──────────────────────────────────────
+  if (method === "POST" && pathname === "/api/tts/local-inference") {
+    const body = await readJsonBody<{ text?: string }>(req, res);
+    if (!body) return true;
+
+    const text =
+      typeof body.text === "string" ? sanitizeSpeechText(body.text) : "";
+    if (!text) {
+      error(res, "Missing text", 400);
+      return true;
+    }
+
+    const runtime = state.runtime;
+    if (!runtime) {
+      error(res, "Local inference TEXT_TO_SPEECH is not available", 503);
+      return true;
+    }
+
+    try {
+      const audio = await useLocalInferenceTts(runtime, text);
+      const bytes = normalizeAudioBytes(audio);
+      if (bytes.length === 0) {
+        error(res, "Local inference TEXT_TO_SPEECH returned empty audio", 502);
+        return true;
+      }
+      res.writeHead(200, {
+        "Content-Type": sniffAudioContentType(bytes),
+        "Cache-Control": "no-store",
+        "Content-Length": String(bytes.byteLength),
+      });
+      res.end(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+      return true;
+    } catch (err) {
+      error(
+        res,
+        `Local inference TTS error: ${err instanceof Error ? err.message : String(err)}`,
+        502,
+      );
+      return true;
+    }
   }
 
   // ── POST /api/tts/elevenlabs ─────────────────────────────────────────
@@ -335,4 +382,76 @@ export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
   }
 
   return false;
+}
+
+const LOCAL_TTS_PROVIDER_IDS = [
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+  "eliza-aosp-llama",
+] as const;
+
+async function useLocalInferenceTts(
+  runtime: IAgentRuntime,
+  text: string,
+): Promise<Buffer | Uint8Array | ArrayBuffer> {
+  let lastError: unknown;
+  for (const provider of LOCAL_TTS_PROVIDER_IDS) {
+    try {
+      return await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text }, provider);
+    } catch (err) {
+      lastError = err;
+      if (!isMissingProviderError(err)) {
+        throw err;
+      }
+    }
+  }
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("No local-inference TEXT_TO_SPEECH provider is registered");
+}
+
+function isMissingProviderError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /No handler found for delegate type: TEXT_TO_SPEECH/.test(error.message)
+  );
+}
+
+function normalizeAudioBytes(
+  value: Buffer | Uint8Array | ArrayBuffer,
+): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  return new Uint8Array(value);
+}
+
+function sniffAudioContentType(bytes: Uint8Array): string {
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x41 &&
+    bytes[10] === 0x56 &&
+    bytes[11] === 0x45
+  ) {
+    return "audio/wav";
+  }
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0x49 &&
+    bytes[1] === 0x44 &&
+    bytes[2] === 0x33
+  ) {
+    return "audio/mpeg";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+    return "audio/mpeg";
+  }
+  return "application/octet-stream";
 }
