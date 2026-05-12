@@ -26,9 +26,9 @@ Two kinds of entries live here:
    ``Qwen/Qwen3.5-9B`` → ``eliza-1-9b``; ``qwen3.6-27b`` →
    ``Qwen/Qwen3.6-27B`` → ``eliza-1-27b``). All published on the Hub. The
    9b/27b tiers need workstation/cloud-class GPUs (or FSDP). Their DFlash
-   speculative-decode drafter is distilled from ``Qwen/Qwen3.5-0.8B`` (the
-   Qwen3.5 tokenizer — vocab 248320 — must match the target; a Qwen3-0.6B
-   drafter has the wrong vocab for a Qwen3.5/3.6 target). See
+   speculative-decode drafter is distilled from ``Qwen/Qwen3.5-0.8B-Base``
+   (the Qwen3.5 tokenizer — vocab 248320 — must match the target; a
+   Qwen3-0.6B drafter has the wrong vocab for a Qwen3.5/3.6 target). See
    ``DFLASH_DRAFTER_BASE`` below and ``scripts/distill_dflash_drafter.py``.
 
 The numbers below are observed-or-projected memory budgets for full-parameter
@@ -243,18 +243,18 @@ def _entry(**kw) -> ModelEntry:
 # DFlash speculative-decode drafter base, per eliza tier id. The drafter
 # must share the target's tokenizer/vocab: Qwen3 targets (0_6b/1_7b) draft
 # from a Qwen3 base; Qwen3.5/3.6 targets (2b/9b/27b...) draft from the
-# Qwen3.5-0.8B base — published, vocab 248320 — and the *shipped* drafter
-# GGUF is that base distilled down to ~0.6B params (a smaller Qwen3.5-arch
-# student; `scripts/distill_dflash_drafter.py` is the distiller, run on a
-# cloud GPU; the artifact is not produced here). The 0_6b tier ships no
-# drafter (no smaller-than-itself Qwen3 base). Mirrors
+# Qwen3.5-0.8B-Base pretrain checkpoint — published, vocab 248320 — and the
+# *shipped* drafter GGUF is that base distilled down to ~0.6B params (a
+# smaller Qwen3.5-arch student; `scripts/distill_dflash_drafter.py` is the
+# distiller, run on a cloud GPU; the artifact is not produced here). The
+# 0_6b tier ships no drafter (no smaller-than-itself Qwen3 base). Mirrors
 # `DEFAULT_STUDENT_BASE` in `scripts/distill_dflash_drafter.py` — keep the
 # two in sync.
 DFLASH_DRAFTER_BASE: dict[str, str] = {
-    # Qwen3.5/3.6 targets — drafter base is Qwen3.5-0.8B; distill-target: ~0.6B Qwen3.5-arch.
-    "eliza-1-2b": "Qwen/Qwen3.5-0.8B",
-    "eliza-1-9b": "Qwen/Qwen3.5-0.8B",
-    "eliza-1-27b": "Qwen/Qwen3.5-0.8B",
+    # Qwen3.5/3.6 targets — drafter base is Qwen3.5-0.8B-Base; distill-target: ~0.6B Qwen3.5-arch.
+    "eliza-1-2b": "Qwen/Qwen3.5-0.8B-Base",
+    "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
+    "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
     # Qwen3 legacy targets — drafter base stays on the Qwen3 vocab (151936).
     "eliza-1-1_7b": "Qwen/Qwen3-0.6B",
     "eliza-1-4b": "Qwen/Qwen3-0.6B",
@@ -300,7 +300,8 @@ REGISTRY: dict[str, ModelEntry] = {
               "whole train→quant→bench stack end-to-end in well under an "
               "hour. Runtime catalog id: eliza-1-0_8b (32k context). Shares "
               "the 248k Qwen3.5 tokenizer with the 2b/9b/27b targets — also "
-              "the DFlash drafter base for those tiers.",
+              "the DFlash drafter base for those tiers (the -Base pretrain "
+              "checkpoint, distilled to ~0.6B — see DFLASH_DRAFTER_BASE).",
     ),
     # ──────────────────── LEGACY QWEN3 SMALL TIERS ───────────────────────
     # TODO(owner): keep these three Qwen3 tiers as a legacy line alongside
