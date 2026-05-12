@@ -1,17 +1,10 @@
 {
-    "needed_mcp_servers": [
-        "google-sheet-simplified",
-        "filesystem",
-        "terminal"
-    ],
-    "needed_local_tools": [
-        "python_execute",
-        "claim_done"
-    ],
-    "max_turns": 5,
-    "meta": {
-        "description": "NHL 2024-2025 season back-to-back game analysis task",
-        "category": "sports_analysis",
-        "difficulty": "medium"
-    }
+  "needed_mcp_servers": ["google-sheet-simplified", "filesystem", "terminal"],
+  "needed_local_tools": ["python_execute", "claim_done"],
+  "max_turns": 5,
+  "meta": {
+    "description": "NHL 2024-2025 season back-to-back game analysis task",
+    "category": "sports_analysis",
+    "difficulty": "medium"
+  }
 }

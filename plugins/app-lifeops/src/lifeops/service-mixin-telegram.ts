@@ -95,11 +95,15 @@ function telegramPluginConnected(
   );
 }
 
-function telegramPluginCanRead(service: TelegramPluginServiceLike | null): boolean {
+function telegramPluginCanRead(
+  service: TelegramPluginServiceLike | null,
+): boolean {
   return typeof service?.searchConnectorMessages === "function";
 }
 
-function telegramPluginCanSend(service: TelegramPluginServiceLike | null): boolean {
+function telegramPluginCanSend(
+  service: TelegramPluginServiceLike | null,
+): boolean {
   return typeof service?.handleSendMessage === "function";
 }
 

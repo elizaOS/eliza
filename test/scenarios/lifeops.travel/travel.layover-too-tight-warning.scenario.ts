@@ -7,7 +7,8 @@ import {
 
 export default scenario({
   id: "travel.layover-too-tight-warning",
-  title: "Warn on a 35-minute international layover instead of silently booking",
+  title:
+    "Warn on a 35-minute international layover instead of silently booking",
   domain: "lifeops.travel",
   tags: ["lifeops", "travel", "layover", "risk"],
   description:

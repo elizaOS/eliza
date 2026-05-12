@@ -16,21 +16,19 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import {
-  expectApprovalRequest,
-  judgeRubric,
-} from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import {
+  expectApprovalRequest,
+  judgeRubric,
+} from "../_helpers/action-assertions.ts";
 
 const PERSON_EMAIL_SENDER = "real-friend@example.com";
 
-function checkPersonEmailNotArchived(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkPersonEmailNotArchived(ctx: ScenarioContext): string | undefined {
   // No action call may target the person-to-person sender for archive.
   for (const action of ctx.actionsCalled) {
     const blob = JSON.stringify({
@@ -51,13 +49,7 @@ export default scenario({
   id: "inbox-triage.archive-low-value-newsletters",
   title: "Archive newsletters >7d old via approval gate; person mail untouched",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "archive",
-    "policy",
-    "approval-required",
-  ],
+  tags: ["lifeops", "inbox-triage", "archive", "policy", "approval-required"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -111,7 +103,9 @@ export default scenario({
           },
         ];
         for (const row of rows) {
-          const ts = new Date(now - row.offsetHours * 60 * 60_000).toISOString();
+          const ts = new Date(
+            now - row.offsetHours * 60 * 60_000,
+          ).toISOString();
           await executeRawSql(
             runtime,
             `INSERT INTO app_lifeops.life_inbox_triage_entries (

@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
-  listSavedLogins,
   getSavedLogin,
+  listSavedLogins,
   type SavedLoginSummary,
 } from "./credentials.js";
 import {
@@ -15,9 +15,8 @@ import {
   revealBitwardenLogin,
   revealOnePasswordLogin,
 } from "./external-credentials.js";
-import { resolveActiveValue, type ResolutionContext } from "./profiles.js";
+import { type ResolutionContext, resolveActiveValue } from "./profiles.js";
 import { createVault, type Vault, VaultMissError } from "./vault.js";
-import type { PasswordManagerReference } from "./types.js";
 
 const exec = promisify(execFile);
 

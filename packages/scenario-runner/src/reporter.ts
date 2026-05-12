@@ -4,8 +4,7 @@
  * failedCount) plus the richer per-scenario fields we emit for humans.
  */
 
-import { writeFileSync } from "node:fs";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { logger } from "@elizaos/core";
 import type { AggregateReport, ScenarioReport } from "./types.ts";

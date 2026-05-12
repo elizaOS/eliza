@@ -8,17 +8,14 @@
  * decision so the umbrella action can stay focused on dispatch.
  */
 import type { ActionResult, IAgentRuntime, Memory, State } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import { getRecentMessagesData } from "@elizaos/shared";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import type {
   CreateLifeOpsDefinitionRequest,
   CreateLifeOpsGoalRequest,
   LifeOpsCadence,
 } from "../../contracts/index.js";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { recentConversationTexts } from "./recent-context.js";
 
 /** Maximum age (ms) for a deferred draft before it expires. */

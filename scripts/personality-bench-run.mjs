@@ -78,7 +78,6 @@ import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import {
-  assistantTurnFor,
   bridgePersonalityExpect,
   canonicalBucket,
 } from "./personality-bench-bridge.mjs";
@@ -195,15 +194,11 @@ function loadScenarios() {
     "scripts",
     "personality-bench-load-scenarios.ts",
   );
-  const result = spawnSync(
-    "bun",
-    ["--bun", loaderPath, scenarioRoot],
-    {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    },
-  );
+  const result = spawnSync("bun", ["--bun", loaderPath, scenarioRoot], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   if (result.status !== 0) {
     console.error(
       `[personality-bench-run] scenario loader exited ${result.status}: ${result.stderr}`,
@@ -315,10 +310,7 @@ async function callCerebrasOnce({ systemPrompt, messages, modelName }) {
     model: modelName,
     temperature: 0,
     max_tokens: 512,
-    messages: [
-      { role: "system", content: systemPrompt },
-      ...messages,
-    ],
+    messages: [{ role: "system", content: systemPrompt }, ...messages],
   };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60_000);
@@ -561,7 +553,16 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     detached: true,
   });
 
-  const handle = { proc, port, host, token, baseUrl, stdoutLog, stderrLog, killed: false };
+  const handle = {
+    proc,
+    port,
+    host,
+    token,
+    baseUrl,
+    stdoutLog,
+    stderrLog,
+    killed: false,
+  };
   ACTIVE_RUNTIME_SERVER = handle;
   ensureRuntimeCleanupHooked();
 
@@ -643,9 +644,7 @@ async function postBenchMessage({
     });
     const raw = await res.text();
     if (!res.ok) {
-      throw new Error(
-        `bench HTTP ${res.status}: ${raw.slice(0, 400)}`,
-      );
+      throw new Error(`bench HTTP ${res.status}: ${raw.slice(0, 400)}`);
     }
     const json = JSON.parse(raw);
     return {
@@ -653,7 +652,9 @@ async function postBenchMessage({
       thought: typeof json?.thought === "string" ? json.thought : null,
       actions: Array.isArray(json?.actions) ? json.actions : [],
       params:
-        json?.params && typeof json.params === "object" && !Array.isArray(json.params)
+        json?.params &&
+        typeof json.params === "object" &&
+        !Array.isArray(json.params)
           ? json.params
           : {},
       benchmark: typeof json?.benchmark === "string" ? json.benchmark : null,
@@ -773,9 +774,7 @@ async function smokeRuntimePersonalityAction({ baseUrl, token }) {
     });
     const sawPersonality =
       Array.isArray(res.actions) &&
-      res.actions.some((a) =>
-        typeof a === "string" && /personality/i.test(a),
-      );
+      res.actions.some((a) => typeof a === "string" && /personality/i.test(a));
     console.log(
       `[personality-bench-run]   smoke: actions=${JSON.stringify(res.actions)} sawPersonality=${sawPersonality}`,
     );
@@ -800,7 +799,8 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
   // expects. For other buckets there's one room, so one session id.
   const roomMeta = new Map();
   for (const r of scenario.rooms ?? []) {
-    const isAdmin = /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
+    const isAdmin =
+      /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
     roomMeta.set(r.id, {
       userId: r.id,
       userRole: isAdmin ? "admin" : "member",
@@ -808,8 +808,8 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
   }
 
   const trajectory = [];
-  let totalPrompt = 0;
-  let totalCompletion = 0;
+  const totalPrompt = 0;
+  const totalCompletion = 0;
   let totalWallMs = 0;
   let error = null;
   const usedTaskIds = new Map(); // room → taskId
@@ -854,7 +854,7 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
     const turn = scenario.turns[i];
     if (turn.kind !== "message" || typeof turn.text !== "string") continue;
     const meta = turn.room
-      ? roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" }
+      ? (roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" })
       : { userId: "user", userRole: "member" };
     trajectory.push({
       role: "user",
@@ -947,7 +947,8 @@ async function runScenarioForAgent(scenario, agent, modelName) {
   // userId is the room id ("admin"/"user"/"main"/...).
   const roomMeta = new Map();
   for (const r of scenario.rooms ?? []) {
-    const isAdmin = /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
+    const isAdmin =
+      /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
     roomMeta.set(r.id, {
       userId: r.id,
       userRole: isAdmin ? "admin" : "member",
@@ -965,7 +966,7 @@ async function runScenarioForAgent(scenario, agent, modelName) {
     const turn = scenario.turns[i];
     if (turn.kind !== "message" || typeof turn.text !== "string") continue;
     const meta = turn.room
-      ? roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" }
+      ? (roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" })
       : { userId: "user", userRole: "member" };
     messages.push({ role: "user", content: turn.text });
     trajectory.push({
@@ -1054,10 +1055,7 @@ async function runWithConcurrency(items, worker, conc) {
 // Per-agent main loop.
 // ─────────────────────────────────────────────────────────────────────────
 async function runAgent(agent) {
-  const runDir = join(
-    PERSONALITY_RUNS_DIR,
-    `personality-${agent}-${RUN_ID}`,
-  );
+  const runDir = join(PERSONALITY_RUNS_DIR, `personality-${agent}-${RUN_ID}`);
   const scenariosDir = join(runDir, "scenarios");
   mkdirSync(scenariosDir, { recursive: true });
 
@@ -1098,7 +1096,10 @@ async function runAgent(agent) {
               })
             : await runScenarioForAgent(scenario, agent, model);
         const fileName = `${String(i + 1).padStart(3, "0")}-${scenario.id.replace(/[^A-Za-z0-9._-]+/g, "_")}.json`;
-        writeFileSync(join(scenariosDir, fileName), JSON.stringify(out, null, 2));
+        writeFileSync(
+          join(scenariosDir, fileName),
+          JSON.stringify(out, null, 2),
+        );
         if ((i + 1) % 10 === 0 || i === scenarios.length - 1) {
           console.log(
             `[personality-bench-run]   ${agent}: ${i + 1}/${scenarios.length} scenarios complete`,
@@ -1211,11 +1212,15 @@ async function runAgent(agent) {
   lines.push(`Run ID: \`${RUN_ID}\``);
   lines.push(`Model: \`${model}\``);
   lines.push(`Scenarios: ${personalityScenarios.length}`);
-  lines.push(`Wall: ${(wallMs / 1000).toFixed(1)}s (judge ${(judgeWallMs / 1000).toFixed(1)}s)`);
+  lines.push(
+    `Wall: ${(wallMs / 1000).toFixed(1)}s (judge ${(judgeWallMs / 1000).toFixed(1)}s)`,
+  );
   lines.push(`Tokens: in=${totalPrompt} out=${totalCompletion}`);
   lines.push(`Cost: $${totalCost.toFixed(4)}`);
   if (errored > 0) {
-    lines.push(`Trajectory errors: ${errored} (responses recorded as empty content)`);
+    lines.push(
+      `Trajectory errors: ${errored} (responses recorded as empty content)`,
+    );
   }
   lines.push("");
   lines.push("## Totals");
@@ -1226,7 +1231,9 @@ async function runAgent(agent) {
     personalityScenarios.length > 0
       ? ((100 * totals.pass) / personalityScenarios.length).toFixed(1)
       : "0.0";
-  lines.push(`| ${totals.pass} | ${totals.fail} | ${totals.needsReview} | ${pct}% |`);
+  lines.push(
+    `| ${totals.pass} | ${totals.fail} | ${totals.needsReview} | ${pct}% |`,
+  );
   lines.push("");
   lines.push("## Per-bucket");
   lines.push("");
@@ -1321,7 +1328,9 @@ if (reporterResult.status !== 0) {
 
 const reportPath = join(multiRunDir, "report.md");
 if (existsSync(reportPath)) {
-  console.log("\n[personality-bench-run] ===== multi-agent report (head) =====");
+  console.log(
+    "\n[personality-bench-run] ===== multi-agent report (head) =====",
+  );
   console.log(
     readFileSync(reportPath, "utf8").split("\n").slice(0, 60).join("\n"),
   );

@@ -8,7 +8,8 @@ import {
 
 export default scenario({
   id: "push.ack-from-one-device-clears-others",
-  title: "Acknowledging on mobile clears the same notification on desktop + watch",
+  title:
+    "Acknowledging on mobile clears the same notification on desktop + watch",
   domain: "lifeops.push",
   tags: ["lifeops", "push", "ack", "multi-device-sync"],
   description:
@@ -85,7 +86,8 @@ export default scenario({
       predicate: expectStateTransition({
         subject: "deviceIntent",
         to: "acknowledged",
-        description: "device intent transitioned to acknowledged once any device acked",
+        description:
+          "device intent transitioned to acknowledged once any device acked",
       }),
     },
     judgeRubric({

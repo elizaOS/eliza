@@ -167,16 +167,16 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     `║  Date: ${first.timestamp.split("T")[0]}                                                        ║`,
   );
   console.log(
-    `║  System: ${first.system.os} ${first.system.arch}                                       ║`.slice(
+    `${`║  System: ${first.system.os} ${first.system.arch}                                       ║`.slice(
       0,
       76,
-    ) + "║",
+    )}║`,
   );
   console.log(
-    `║  CPUs: ${first.system.cpus} | RAM: ${first.system.memory_gb}GB                                              ║`.slice(
+    `${`║  CPUs: ${first.system.cpus} | RAM: ${first.system.memory_gb}GB                                              ║`.slice(
       0,
       76,
-    ) + "║",
+    )}║`,
   );
   console.log(
     "╚══════════════════════════════════════════════════════════════════════════╝",
@@ -192,11 +192,11 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
   console.log();
 
   // Binary/bundle sizes
-  const hasSizes = runtimes.some((rt) => results.get(rt)!.binary_size_bytes);
+  const hasSizes = runtimes.some((rt) => results.get(rt)?.binary_size_bytes);
   if (hasSizes) {
     console.log("Bundle/Binary Size:");
     for (const rt of runtimes) {
-      const size = results.get(rt)!.binary_size_bytes;
+      const size = results.get(rt)?.binary_size_bytes;
       if (size) {
         console.log(`  ${rt}: ${(size / 1024).toFixed(1)}KB`);
       }
@@ -221,7 +221,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
   for (const scenarioId of scenarioIds) {
     const scenarioResults = new Map<RuntimeName, ScenarioResult>();
     for (const rt of runtimes) {
-      const r = results.get(rt)!.scenarios[scenarioId];
+      const r = results.get(rt)?.scenarios[scenarioId];
       if (r) scenarioResults.set(rt, r);
     }
 
@@ -245,24 +245,24 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Latency metrics
     const avgValues = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)!.latency.avg_ms,
+      (rt) => scenarioResults.get(rt)?.latency.avg_ms,
     );
     const bestAvg = Math.min(...avgValues.filter((v) => v > 0));
 
     const p95Values = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)!.latency.p95_ms,
+      (rt) => scenarioResults.get(rt)?.latency.p95_ms,
     );
     const bestP95 = Math.min(...p95Values.filter((v) => v > 0));
 
     const p99Values = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)!.latency.p99_ms,
+      (rt) => scenarioResults.get(rt)?.latency.p99_ms,
     );
     const bestP99 = Math.min(...p99Values.filter((v) => v > 0));
 
     console.log(
       pad("Avg Latency", METRIC_W) +
         activeRuntimes
-          .map((rt, i) =>
+          .map((_rt, i) =>
             rpad(
               `${formatMs(avgValues[i])} (${ratio(avgValues[i], bestAvg)})`,
               COL_W,
@@ -273,7 +273,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     console.log(
       pad("P95 Latency", METRIC_W) +
         activeRuntimes
-          .map((rt, i) =>
+          .map((_rt, i) =>
             rpad(
               `${formatMs(p95Values[i])} (${ratio(p95Values[i], bestP95)})`,
               COL_W,
@@ -284,7 +284,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     console.log(
       pad("P99 Latency", METRIC_W) +
         activeRuntimes
-          .map((rt, i) =>
+          .map((_rt, i) =>
             rpad(
               `${formatMs(p99Values[i])} (${ratio(p99Values[i], bestP99)})`,
               COL_W,
@@ -295,14 +295,14 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Throughput
     const tpValues = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)!.throughput.messages_per_second,
+      (rt) => scenarioResults.get(rt)?.throughput.messages_per_second,
     );
     const bestTp = Math.max(...tpValues.filter((v) => v > 0));
 
     console.log(
       pad("Throughput (msg/s)", METRIC_W) +
         activeRuntimes
-          .map((rt, i) =>
+          .map((_rt, i) =>
             rpad(
               `${formatMsgPerSec(tpValues[i])} (${ratio(bestTp, tpValues[i])})`,
               COL_W,
@@ -313,14 +313,14 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Memory
     const memValues = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)!.resources.memory_rss_peak_mb,
+      (rt) => scenarioResults.get(rt)?.resources.memory_rss_peak_mb,
     );
     const bestMem = Math.min(...memValues.filter((v) => v > 0));
 
     console.log(
       pad("Peak RSS", METRIC_W) +
         activeRuntimes
-          .map((rt, i) =>
+          .map((_rt, i) =>
             rpad(
               `${formatMb(memValues[i])} (${ratio(memValues[i], bestMem)})`,
               COL_W,
@@ -331,7 +331,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Pipeline breakdown (if any non-zero values)
     const hasPipeline = activeRuntimes.some((rt) => {
-      const pl = scenarioResults.get(rt)!.pipeline;
+      const pl = scenarioResults.get(rt)?.pipeline;
       return pl.compose_state_avg_ms > 0 || pl.model_call_avg_ms > 0;
     });
 
@@ -346,10 +346,10 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
       for (const [label, key] of pipelineMetrics) {
         const vals = activeRuntimes.map(
-          (rt) => scenarioResults.get(rt)!.pipeline[key] as number,
+          (rt) => scenarioResults.get(rt)?.pipeline[key] as number,
         );
         if (vals.every((v) => v === 0)) continue;
-        const best = Math.min(...vals.filter((v) => v > 0));
+        const _best = Math.min(...vals.filter((v) => v > 0));
         console.log(
           pad(label, METRIC_W) +
             activeRuntimes
@@ -372,11 +372,11 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
   // Best average latency across single-message
   const singleMsg = "single-message";
-  if (runtimes.every((rt) => results.get(rt)!.scenarios[singleMsg])) {
+  if (runtimes.every((rt) => results.get(rt)?.scenarios[singleMsg])) {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = Infinity;
     for (const rt of runtimes) {
-      const val = results.get(rt)!.scenarios[singleMsg].latency.avg_ms;
+      const val = results.get(rt)?.scenarios[singleMsg].latency.avg_ms;
       if (val > 0 && val < bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -387,12 +387,12 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
   // Best throughput across burst-100
   const burst = "burst-100";
-  if (runtimes.every((rt) => results.get(rt)!.scenarios[burst])) {
+  if (runtimes.every((rt) => results.get(rt)?.scenarios[burst])) {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = 0;
     for (const rt of runtimes) {
       const val =
-        results.get(rt)!.scenarios[burst].throughput.messages_per_second;
+        results.get(rt)?.scenarios[burst].throughput.messages_per_second;
       if (val > bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -402,12 +402,12 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
   }
 
   // Lowest memory usage
-  if (runtimes.every((rt) => results.get(rt)!.scenarios[singleMsg])) {
+  if (runtimes.every((rt) => results.get(rt)?.scenarios[singleMsg])) {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = Infinity;
     for (const rt of runtimes) {
       const val =
-        results.get(rt)!.scenarios[singleMsg].resources.memory_rss_peak_mb;
+        results.get(rt)?.scenarios[singleMsg].resources.memory_rss_peak_mb;
       if (val > 0 && val < bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -418,11 +418,11 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
   // Fastest startup
   const startup = "startup-cold";
-  if (runtimes.every((rt) => results.get(rt)!.scenarios[startup])) {
+  if (runtimes.every((rt) => results.get(rt)?.scenarios[startup])) {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = Infinity;
     for (const rt of runtimes) {
-      const val = results.get(rt)!.scenarios[startup].latency.avg_ms;
+      const val = results.get(rt)?.scenarios[startup].latency.avg_ms;
       if (val > 0 && val < bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -432,7 +432,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
   }
 
   for (const [category, winner] of Object.entries(categories)) {
-    console.log(`  ${pad(category + ":", 24)} ${winner}`);
+    console.log(`  ${pad(`${category}:`, 24)} ${winner}`);
   }
 
   console.log();

@@ -9,19 +9,41 @@
     "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
     "users": [{ "id": "alice", "role": "OWNER" }],
     "openThreads": [
-      { "id": "thread-promo-A", "owner": "alice", "status": "active", "instruction": "draft Black Friday email blast", "roomId": "dm-alice" },
-      { "id": "thread-promo-B", "owner": "alice", "status": "active", "instruction": "design Black Friday landing page", "roomId": "dm-alice" }
+      {
+        "id": "thread-promo-A",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "draft Black Friday email blast",
+        "roomId": "dm-alice"
+      },
+      {
+        "id": "thread-promo-B",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "design Black Friday landing page",
+        "roomId": "dm-alice"
+      }
     ],
     "scheduledTasks": [],
     "memory": []
   },
   "script": [
-    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "merge the two black friday tasks into one — handle email + landing page together" }
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "merge the two black friday tasks into one — handle email + landing page together"
+    }
   ],
   "quiesceAfterMs": 3000,
   "expectedFinalState": {
     "threads": [
-      { "ownerEq": "alice", "statusEq": "active", "count": 1, "instructionContains": ["email", "landing"] }
+      {
+        "ownerEq": "alice",
+        "statusEq": "active",
+        "count": 1,
+        "instructionContains": ["email", "landing"]
+      }
     ],
     "scheduledTasks": [],
     "repliesByChannel": {

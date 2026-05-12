@@ -19,13 +19,8 @@
 import { extractA11yTree, isA11yAvailable } from "../platform/a11y.js";
 import { captureScreenshot } from "../platform/screenshot.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
-import {
-  fromOSWorldAction,
-  fromPyAutoGUI,
-  toOSWorldAction,
-} from "./action-converter.js";
+import { fromOSWorldAction, fromPyAutoGUI } from "./action-converter.js";
 import type {
-  DEFAULT_AGENT_CONFIG,
   OSWorldAction,
   OSWorldAgentConfig,
   OSWorldObservation,

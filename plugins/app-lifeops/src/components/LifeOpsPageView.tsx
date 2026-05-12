@@ -7,10 +7,10 @@ import {
   isWebPlatform,
   openExternalUrl,
   PagePanel,
+  PageScopedChatPane,
   useApp,
   useMediaQuery,
 } from "@elizaos/ui";
-import { PageScopedChatPane } from "@elizaos/ui";
 import { Power, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {

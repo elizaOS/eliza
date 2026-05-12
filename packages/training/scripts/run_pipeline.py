@@ -109,29 +109,31 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
 
 def _resolve_llama_bench(fork_dir: Path | None) -> Path | None:
     """Find a `llama-bench` binary, preferring the fastest backend available:
-    CUDA build > Vulkan build > plain CPU build > $PATH. Globs the per-backend
-    build dirs rather than hard-coding paths so it survives the `milady`↔
-    `eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
+    CUDA build > Vulkan build > plain CPU build > $PATH. Backend priority is the
+    OUTER loop so a CUDA build under ~/.cache wins over a CPU build under the
+    repo (a contended throughput bench once silently ran on the CPU binary while
+    a perfectly good CUDA build sat in ~/.cache/eliza-dflash). Globs the
+    per-backend build dirs rather than hard-coding paths so it survives the
+    `milady`↔`eliza1` renames and the in-repo-submodule vs ~/.cache layouts."""
     import glob
     import shutil
-    pats: list[str] = []
-    for base in (ROOT / "vendor" / "llama.cpp", fork_dir):
-        if base is None:
-            continue
-        pats += [
-            f"{base}/build-cuda/bin/llama-bench",
-            f"{base}/build/bin/llama-bench",
-            f"{base}/build/*cuda*/bin/llama-bench",
-            f"{base}/build/*vulkan*/bin/llama-bench",
-            f"{base}/build/*/bin/llama-bench",
-        ]
     home = str(Path.home())
-    pats += [
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build-cuda/bin/llama-bench",
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*cuda*/bin/llama-bench",
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/*vulkan*/bin/llama-bench",
-        f"{home}/.cache/eliza-dflash/*-llama-cpp/build/bin/llama-bench",
-    ]
+    bases = [b for b in (ROOT / "vendor" / "llama.cpp", fork_dir) if b is not None]
+    cache_globs = [f"{home}/.cache/eliza-dflash/*-llama-cpp"]
+
+    def _per_base(suffixes: list[str]) -> list[str]:
+        out: list[str] = []
+        for base in bases:
+            out += [f"{base}/{s}/bin/llama-bench" for s in suffixes]
+        for cg in cache_globs:
+            out += [f"{cg}/{s}/bin/llama-bench" for s in suffixes]
+        return out
+
+    # Outer = backend tier (fastest first); inner = location.
+    pats: list[str] = []
+    pats += _per_base(["build-cuda", "build/*cuda*"])      # CUDA
+    pats += _per_base(["build-vulkan", "build/*vulkan*"])  # Vulkan
+    pats += _per_base(["build", "build/*"])                # CPU / unspecified
     for pat in pats:
         for m in sorted(glob.glob(pat)):
             p = Path(m)
@@ -296,7 +298,18 @@ def main() -> int:
     ap.add_argument(
         "--eval-mode", choices=("smoke", "full"), default="smoke",
         help="Eval-gate mode written into evals/aggregate.json and used for "
-             "the gate report. smoke = structural gates only (default).",
+             "the gate report. smoke = structural gates only (default). NOTE: "
+             "this pipeline only produces the structural format_ok metric; the "
+             "held-out quality / voice / e2e measurements that full-mode gates "
+             "expect come from scripts/eval/eliza1_eval_suite.py run against a "
+             "staged bundle (the publish orchestrator runs that) — `full` here "
+             "just tags the report mode.",
+    )
+    ap.add_argument(
+        "--allow-unvalidated-corpus", action="store_true",
+        help="Skip the validate_corpus.py --strict gate that normally runs on "
+             "the train/val/test splits before fine-tuning. AGENTS.md mandates "
+             "the validator; this escape hatch is for emergencies only.",
     )
     pub = ap.add_mutually_exclusive_group()
     pub.add_argument("--publish", dest="publish", action="store_true",
@@ -307,11 +320,27 @@ def main() -> int:
     ap.set_defaults(publish=False)
     ap.add_argument("--bundle-dir", default=None,
                     help="Assembled bundle dir for --publish.")
+    ap.add_argument(
+        "--release-channel", choices=("recommended", "base-v1"), default=None,
+        help="Channel passed to the publish orchestrator at stage 7. Default: "
+             "auto — `recommended` if the held-out text-quality gate is green "
+             "and the run produced a fine-tuned bundle, else `base-v1`.",
+    )
+    ap.add_argument(
+        "--metal-verification", default=None,
+        help="Path to a metal_verify.json recorded on a verified Metal host; "
+             "passed to the publish orchestrator at stage 7.",
+    )
     ap.add_argument("--bench-per-bucket", type=int, default=200)
     ap.add_argument("--skip-base-bench", action="store_true")
     ap.add_argument("--skip-finetune", action="store_true")
     ap.add_argument("--skip-quantize", action="store_true")
     ap.add_argument("--skip-bench", action="store_true")
+    ap.add_argument(
+        "--resume-from-checkpoint", default=None,
+        help="Resume stage-2 SFT from a Trainer checkpoint-N/ dir (or `True` to "
+             "pick the latest under the run's out_dir). Forwarded to train_local.py.",
+    )
     ap.add_argument(
         "--quantizers", default="polarquant,fused_turboquant,qjl",
         help="Comma-separated list of quantizers to apply post-training. "
@@ -447,6 +476,42 @@ def main() -> int:
     summary["val_file"] = str(val_file)
     summary["test_file"] = str(test_file)
 
+    # ── corpus gate: validate_corpus.py --strict on the splits before training.
+    # AGENTS.md: "No raw output → fine-tune in one step." Both the from-scratch
+    # path and the trajectory→SFT path must clear the schema / stale-action /
+    # render gate before train_local.py touches the data.
+    if not args.skip_finetune:
+        review_dir = ROOT / "data" / "synthesized" / "review"
+        review_dir.mkdir(parents=True, exist_ok=True)
+        corpus_bad: list[str] = []
+        for split_name, split_path in (("train", train_file), ("val", val_file), ("test", test_file)):
+            if not split_path.exists():
+                corpus_bad.append(f"{split_name}:missing")
+                continue
+            rc = run([
+                "uv", "run", "--extra", "train", "python", "scripts/validate_corpus.py",
+                "--input", str(split_path),
+                "--report", str(review_dir / f"format_validation_{run_name}_{split_name}.json"),
+                "--strict",
+            ], cwd=ROOT)
+            if rc != 0:
+                corpus_bad.append(f"{split_name}:invalid")
+        summary["stages"]["corpus_validation"] = {
+            "splits": [str(train_file), str(val_file), str(test_file)],
+            "invalid": corpus_bad,
+            "enforced": not args.allow_unvalidated_corpus,
+        }
+        if corpus_bad:
+            msg = ("corpus validation failed: " + ", ".join(corpus_bad)
+                   + " — inspect data/synthesized/review/format_validation_*.json "
+                     "and fix the named adapter/source")
+            if args.allow_unvalidated_corpus:
+                log.warning("%s (continuing: --allow-unvalidated-corpus)", msg)
+            else:
+                log.error("%s; aborting (pass --allow-unvalidated-corpus to override)", msg)
+                (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+                return 1
+
     finetuned_model = ckpt_dir / "final"
 
     def _bench(model: str, out_sub: str) -> dict[str, int]:
@@ -506,6 +571,8 @@ def main() -> int:
             cmd += ["--grad-accum", str(args.grad_accum)]
         if args.max_seq_len:
             cmd += ["--max-seq-len", str(args.max_seq_len)]
+        if args.resume_from_checkpoint:
+            cmd += ["--resume-from-checkpoint", str(args.resume_from_checkpoint)]
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["finetune"] = {"exit": rc, "checkpoint": str(finetuned_model)}
         if rc != 0:
@@ -574,6 +641,15 @@ def main() -> int:
     summary["stages"]["gate_report"] = {"path": str(gate_report_path),
                                         "passed": gate_blob.get("passed")}
     log.info("wrote %s (passed=%s)", gate_report_path, gate_blob.get("passed"))
+
+    # If this run is a publish run, a red (or un-computable) gate aborts here —
+    # before wasting quantize + bundle time — rather than only being caught by
+    # the downstream publish orchestrator's re-check of aggregate.json.
+    if args.publish and gate_blob.get("passed") is not True:
+        log.error("publish run but eval gate did not pass (%s); aborting before quantize",
+                  json.dumps(gate_blob.get("failures") or gate_blob.get("error")))
+        (bench_dir / "pipeline-summary.json").write_text(json.dumps(summary, indent=2))
+        return 1
 
     # ───────────── stage 5: quantize ──────────────────────────────────
     quantizers = [q.strip() for q in args.quantizers.split(",") if q.strip()]
@@ -702,15 +778,44 @@ def main() -> int:
                      tp["ggufs"][0]["backend"] if tp["ggufs"] else "?")
 
     # ───────────── stage 7: publish ───────────────────────────────────
+    # Auto-publish hook: when this is a --publish run and the eval gate cleared
+    # (checked at stage 4b above — a red/un-computable gate already aborted),
+    # hand the assembled bundle to scripts.publish.orchestrator. The orchestrator
+    # re-checks the §3/§6/§7 contract (layout → release evidence → kernel verify →
+    # eval gates → manifest → README → HF push) and refuses-on-red; it never
+    # bypasses a gate. The channel defaults to `recommended` when the held-out
+    # text-quality gate is green (a fine-tune that beat baseline) and to
+    # `base-v1` otherwise (upstream-base, kernel-optimized, not a recommended
+    # default). HF_TOKEN is read from the environment by the orchestrator.
     if args.publish:
-        rc = run([
+        channel = args.release_channel
+        if channel is None:
+            text_quality_green = any(
+                g.get("name") in ("held_out_text_quality", "text_quality",
+                                  "eliza_bench", "held_out_quality")
+                and g.get("passed") is True
+                for g in (gate_blob.get("gates") or [])
+            )
+            channel = "recommended" if text_quality_green else "base-v1"
+        cmd = [
             "uv", "run", "python", "-m", "scripts.publish.orchestrator",
             "--tier", tier_id,
             "--bundle-dir", str(args.bundle_dir),
-        ], cwd=ROOT)
-        summary["stages"]["publish"] = {"exit": rc}
-        if rc != 0:
-            log.error("publish orchestrator failed (exit=%d)", rc)
+        ]
+        if channel == "base-v1":
+            cmd.append("--base-v1")
+        if args.metal_verification:
+            cmd += ["--metal-verification", str(args.metal_verification)]
+        log.info("stage 7: publish channel=%s", channel)
+        rc = run(cmd, cwd=ROOT)
+        summary["stages"]["publish"] = {"exit": rc, "channel": channel}
+        repo_id = getattr(entry, "eliza_repo_id", None) or f"elizaos/eliza-1-{tier_id}"
+        if rc == 0:
+            log.info("published: https://huggingface.co/%s (channel=%s)", repo_id, channel)
+        else:
+            log.error("publish orchestrator failed (exit=%d) — blocked on a gate; "
+                      "see the [stage N/7] lines above for which one", rc)
+            log.error("blocked: %s (exit=%d, channel=%s)", repo_id, rc, channel)
 
     summary["finished"] = time.time()
     summary["elapsed_s"] = summary["finished"] - summary["started"]

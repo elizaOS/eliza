@@ -309,21 +309,24 @@ export const lifeAuditEvents = appLifeopsPgSchema.table(
   ],
 );
 
-export const lifeSubscriptionAudits = appLifeopsPgSchema.table("life_subscription_audits", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  source: text("source").notNull().default("gmail"),
-  queryWindowDays: integer("query_window_days").notNull().default(180),
-  status: text("status").notNull().default("completed"),
-  totalCandidates: integer("total_candidates").notNull().default(0),
-  activeCandidates: integer("active_candidates").notNull().default(0),
-  canceledCandidates: integer("canceled_candidates").notNull().default(0),
-  uncertainCandidates: integer("uncertain_candidates").notNull().default(0),
-  summary: text("summary").notNull().default(""),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const lifeSubscriptionAudits = appLifeopsPgSchema.table(
+  "life_subscription_audits",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    source: text("source").notNull().default("gmail"),
+    queryWindowDays: integer("query_window_days").notNull().default(180),
+    status: text("status").notNull().default("completed"),
+    totalCandidates: integer("total_candidates").notNull().default(0),
+    activeCandidates: integer("active_candidates").notNull().default(0),
+    canceledCandidates: integer("canceled_candidates").notNull().default(0),
+    uncertainCandidates: integer("uncertain_candidates").notNull().default(0),
+    summary: text("summary").notNull().default(""),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
 export const lifeSubscriptionCandidates = appLifeopsPgSchema.table(
   "life_subscription_candidates",
@@ -373,40 +376,46 @@ export const lifeSubscriptionCancellations = appLifeopsPgSchema.table(
   },
 );
 
-export const lifeEmailUnsubscribes = appLifeopsPgSchema.table("life_email_unsubscribes", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  senderEmail: text("sender_email").notNull(),
-  senderDisplay: text("sender_display").notNull().default(""),
-  senderDomain: text("sender_domain"),
-  listId: text("list_id"),
-  method: text("method").notNull().default("manual_only"),
-  status: text("status").notNull().default("failed"),
-  httpStatusCode: integer("http_status_code"),
-  httpFinalUrl: text("http_final_url"),
-  filterCreated: boolean("filter_created").notNull().default(false),
-  filterId: text("filter_id"),
-  threadsTrashed: integer("threads_trashed").notNull().default(0),
-  errorMessage: text("error_message"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const lifeEmailUnsubscribes = appLifeopsPgSchema.table(
+  "life_email_unsubscribes",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    senderEmail: text("sender_email").notNull(),
+    senderDisplay: text("sender_display").notNull().default(""),
+    senderDomain: text("sender_domain"),
+    listId: text("list_id"),
+    method: text("method").notNull().default("manual_only"),
+    status: text("status").notNull().default("failed"),
+    httpStatusCode: integer("http_status_code"),
+    httpFinalUrl: text("http_final_url"),
+    filterCreated: boolean("filter_created").notNull().default(false),
+    filterId: text("filter_id"),
+    threadsTrashed: integer("threads_trashed").notNull().default(0),
+    errorMessage: text("error_message"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
-export const lifePaymentSources = appLifeopsPgSchema.table("life_payment_sources", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  kind: text("kind").notNull().default("manual"),
-  label: text("label").notNull().default(""),
-  institution: text("institution"),
-  accountMask: text("account_mask"),
-  status: text("status").notNull().default("active"),
-  lastSyncedAt: text("last_synced_at"),
-  transactionCount: integer("transaction_count").notNull().default(0),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const lifePaymentSources = appLifeopsPgSchema.table(
+  "life_payment_sources",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind").notNull().default("manual"),
+    label: text("label").notNull().default(""),
+    institution: text("institution"),
+    accountMask: text("account_mask"),
+    status: text("status").notNull().default("active"),
+    lastSyncedAt: text("last_synced_at"),
+    transactionCount: integer("transaction_count").notNull().default(0),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
 export const lifePaymentTransactions = appLifeopsPgSchema.table(
   "life_payment_transactions",
@@ -956,43 +965,49 @@ export const lifeEscalationStates = appLifeopsPgSchema.table(
   ],
 );
 
-export const lifeInboxTriageEntries = appLifeopsPgSchema.table("life_inbox_triage_entries", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  source: text("source").notNull(),
-  sourceRoomId: text("source_room_id"),
-  sourceEntityId: text("source_entity_id"),
-  sourceMessageId: text("source_message_id"),
-  channelName: text("channel_name").notNull(),
-  channelType: text("channel_type").notNull(),
-  deepLink: text("deep_link"),
-  classification: text("classification").notNull(),
-  urgency: text("urgency").notNull().default("low"),
-  confidence: real("confidence").notNull().default(0.5),
-  snippet: text("snippet").notNull().default(""),
-  senderName: text("sender_name"),
-  threadContext: text("thread_context"),
-  triageReasoning: text("triage_reasoning"),
-  suggestedResponse: text("suggested_response"),
-  draftResponse: text("draft_response"),
-  autoReplied: boolean("auto_replied").notNull().default(false),
-  resolved: boolean("resolved").notNull().default(false),
-  resolvedAt: text("resolved_at"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const lifeInboxTriageEntries = appLifeopsPgSchema.table(
+  "life_inbox_triage_entries",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    source: text("source").notNull(),
+    sourceRoomId: text("source_room_id"),
+    sourceEntityId: text("source_entity_id"),
+    sourceMessageId: text("source_message_id"),
+    channelName: text("channel_name").notNull(),
+    channelType: text("channel_type").notNull(),
+    deepLink: text("deep_link"),
+    classification: text("classification").notNull(),
+    urgency: text("urgency").notNull().default("low"),
+    confidence: real("confidence").notNull().default(0.5),
+    snippet: text("snippet").notNull().default(""),
+    senderName: text("sender_name"),
+    threadContext: text("thread_context"),
+    triageReasoning: text("triage_reasoning"),
+    suggestedResponse: text("suggested_response"),
+    draftResponse: text("draft_response"),
+    autoReplied: boolean("auto_replied").notNull().default(false),
+    resolved: boolean("resolved").notNull().default(false),
+    resolvedAt: text("resolved_at"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
-export const lifeInboxTriageExamples = appLifeopsPgSchema.table("life_inbox_triage_examples", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  source: text("source").notNull(),
-  snippet: text("snippet").notNull().default(""),
-  classification: text("classification").notNull(),
-  ownerAction: text("owner_action").notNull(),
-  ownerClassification: text("owner_classification"),
-  contextJson: text("context_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-});
+export const lifeInboxTriageExamples = appLifeopsPgSchema.table(
+  "life_inbox_triage_examples",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    source: text("source").notNull(),
+    snippet: text("snippet").notNull().default(""),
+    classification: text("classification").notNull(),
+    ownerAction: text("owner_action").notNull(),
+    ownerClassification: text("owner_classification"),
+    contextJson: text("context_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+);
 
 export const lifeIntents = appLifeopsPgSchema.table("life_intents", {
   id: text("id").primaryKey(),
@@ -1011,37 +1026,43 @@ export const lifeIntents = appLifeopsPgSchema.table("life_intents", {
   metadataJson: text("metadata_json"),
 });
 
-export const lifeCheckinReports = appLifeopsPgSchema.table("life_checkin_reports", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  kind: text("kind").notNull(),
-  generatedAt: text("generated_at").notNull(),
-  generatedAtMs: bigint("generated_at_ms", { mode: "number" }).notNull(),
-  escalationLevel: integer("escalation_level").notNull(),
-  payloadJson: text("payload_json").notNull(),
-  acknowledgedAt: text("acknowledged_at"),
-});
+export const lifeCheckinReports = appLifeopsPgSchema.table(
+  "life_checkin_reports",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    kind: text("kind").notNull(),
+    generatedAt: text("generated_at").notNull(),
+    generatedAtMs: bigint("generated_at_ms", { mode: "number" }).notNull(),
+    escalationLevel: integer("escalation_level").notNull(),
+    payloadJson: text("payload_json").notNull(),
+    acknowledgedAt: text("acknowledged_at"),
+  },
+);
 
-export const lifeopsFeaturesTable = appLifeopsPgSchema.table("lifeops_features", {
-  featureKey: text("feature_key").primaryKey(),
-  enabled: boolean("enabled").notNull(),
-  source: text("source").notNull(),
-  enabledAt: timestamp("enabled_at", { withTimezone: true, mode: "date" }),
-  enabledBy: uuid("enabled_by"),
-  metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
-  createdAt: timestamp("created_at", {
-    withTimezone: true,
-    mode: "date",
-  })
-    .notNull()
-    .defaultNow(),
-  updatedAt: timestamp("updated_at", {
-    withTimezone: true,
-    mode: "date",
-  })
-    .notNull()
-    .defaultNow(),
-});
+export const lifeopsFeaturesTable = appLifeopsPgSchema.table(
+  "lifeops_features",
+  {
+    featureKey: text("feature_key").primaryKey(),
+    enabled: boolean("enabled").notNull(),
+    source: text("source").notNull(),
+    enabledAt: timestamp("enabled_at", { withTimezone: true, mode: "date" }),
+    enabledBy: uuid("enabled_by"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", {
+      withTimezone: true,
+      mode: "date",
+    })
+      .notNull()
+      .defaultNow(),
+  },
+);
 
 export const lifeRelationships = appLifeopsPgSchema.table(
   "life_relationships",
@@ -1286,20 +1307,23 @@ export const lifeXSyncStates = appLifeopsPgSchema.table(
   (t) => [unique().on(t.agentId, t.feedType)],
 );
 
-export const lifeScreenTimeSessions = appLifeopsPgSchema.table("life_screen_time_sessions", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  source: text("source").notNull(),
-  identifier: text("identifier").notNull(),
-  displayName: text("display_name").notNull(),
-  startAt: text("start_at").notNull(),
-  endAt: text("end_at"),
-  durationSeconds: integer("duration_seconds").notNull().default(0),
-  isActive: boolean("is_active").notNull().default(false),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const lifeScreenTimeSessions = appLifeopsPgSchema.table(
+  "life_screen_time_sessions",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    source: text("source").notNull(),
+    identifier: text("identifier").notNull(),
+    displayName: text("display_name").notNull(),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at"),
+    durationSeconds: integer("duration_seconds").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(false),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
 export const lifeScreenTimeDaily = appLifeopsPgSchema.table(
   "life_screen_time_daily",
@@ -1474,25 +1498,28 @@ export const lifeScheduleInsights = appLifeopsPgSchema.table(
   (t) => [unique().on(t.agentId, t.effectiveDayKey)],
 );
 
-export const lifeScheduleObservations = appLifeopsPgSchema.table("life_schedule_observations", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  origin: text("origin").notNull(),
-  deviceId: text("device_id").notNull(),
-  deviceKind: text("device_kind").notNull(),
-  timezone: text("timezone").notNull(),
-  observedAt: text("observed_at").notNull(),
-  windowStartAt: text("window_start_at").notNull(),
-  windowEndAt: text("window_end_at"),
-  // Default `unclear` so ADD COLUMN migrations succeed on tables with rows.
-  circadianState: text("circadian_state").notNull().default("unclear"),
-  stateConfidence: real("state_confidence").notNull().default(0),
-  uncertaintyReason: text("uncertainty_reason"),
-  mealLabel: text("meal_label"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const lifeScheduleObservations = appLifeopsPgSchema.table(
+  "life_schedule_observations",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    origin: text("origin").notNull(),
+    deviceId: text("device_id").notNull(),
+    deviceKind: text("device_kind").notNull(),
+    timezone: text("timezone").notNull(),
+    observedAt: text("observed_at").notNull(),
+    windowStartAt: text("window_start_at").notNull(),
+    windowEndAt: text("window_end_at"),
+    // Default `unclear` so ADD COLUMN migrations succeed on tables with rows.
+    circadianState: text("circadian_state").notNull().default("unclear"),
+    stateConfidence: real("state_confidence").notNull().default(0),
+    uncertaintyReason: text("uncertainty_reason"),
+    mealLabel: text("meal_label"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
 export const lifeScheduleMergedStates = appLifeopsPgSchema.table(
   "life_schedule_merged_states",
@@ -1562,32 +1589,38 @@ export const lifeSchedulingNegotiations = appLifeopsPgSchema.table(
   },
 );
 
-export const lifeSchedulingProposals = appLifeopsPgSchema.table("life_scheduling_proposals", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  negotiationId: text("negotiation_id").notNull(),
-  startAt: text("start_at").notNull(),
-  endAt: text("end_at").notNull(),
-  status: text("status").notNull(),
-  proposedBy: text("proposed_by").notNull(),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-  updatedAt: text("updated_at").notNull(),
-});
+export const lifeSchedulingProposals = appLifeopsPgSchema.table(
+  "life_scheduling_proposals",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    negotiationId: text("negotiation_id").notNull(),
+    startAt: text("start_at").notNull(),
+    endAt: text("end_at").notNull(),
+    status: text("status").notNull(),
+    proposedBy: text("proposed_by").notNull(),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+);
 
 // T8d — Activity tracker (WakaTime-like).
 // Append-only per-event log produced by the macOS Swift collector.
-export const lifeActivityEvents = appLifeopsPgSchema.table("life_activity_events", {
-  id: text("id").primaryKey(),
-  agentId: text("agent_id").notNull(),
-  observedAt: text("observed_at").notNull(),
-  eventKind: text("event_kind").notNull(),
-  bundleId: text("bundle_id").notNull(),
-  appName: text("app_name").notNull(),
-  windowTitle: text("window_title"),
-  metadataJson: text("metadata_json").notNull().default("{}"),
-  createdAt: text("created_at").notNull(),
-});
+export const lifeActivityEvents = appLifeopsPgSchema.table(
+  "life_activity_events",
+  {
+    id: text("id").primaryKey(),
+    agentId: text("agent_id").notNull(),
+    observedAt: text("observed_at").notNull(),
+    eventKind: text("event_kind").notNull(),
+    bundleId: text("bundle_id").notNull(),
+    appName: text("app_name").notNull(),
+    windowTitle: text("window_title"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    createdAt: text("created_at").notNull(),
+  },
+);
 
 // T7g — Website blocker chat integration (plan §6.8).
 // Stores block rules whose lifecycle is driven by todo completion, fixed
@@ -1691,10 +1724,7 @@ export const lifeScheduledTaskLog = appLifeopsPgSchema.table(
   },
   (t) => [
     index("idx_life_scheduled_task_log_agent_task").on(t.agentId, t.taskId),
-    index("idx_life_scheduled_task_log_agent_time").on(
-      t.agentId,
-      t.occurredAt,
-    ),
+    index("idx_life_scheduled_task_log_agent_time").on(t.agentId, t.occurredAt),
   ],
 );
 
@@ -2095,7 +2125,10 @@ export const scheduledTaskSnoozePayloadSchema = z
 export const scheduledTaskFilterSchema = z.object({
   kind: scheduledTaskKindSchema.optional(),
   status: z
-    .union([scheduledTaskStateSchema.shape.status, z.array(scheduledTaskStateSchema.shape.status)])
+    .union([
+      scheduledTaskStateSchema.shape.status,
+      z.array(scheduledTaskStateSchema.shape.status),
+    ])
     .optional(),
   subject: scheduledTaskSubjectSchema.optional(),
   source: scheduledTaskSourceSchema.optional(),

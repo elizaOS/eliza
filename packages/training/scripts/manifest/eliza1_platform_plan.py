@@ -34,6 +34,9 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
+    # 0_8b (Qwen3.5-0.8B, the new small default) ships Q4 like 1_7b; the
+    # legacy 0_6b stays Q3.
+    "0_8b": "Q4_K_M",
     "0_6b": "Q3_K_M",
     "1_7b": "Q4_K_M",
     "9b": "Q4_K_M",
@@ -43,6 +46,7 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 }
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("32k",),
     "0_6b": ("32k",),
     "1_7b": ("32k", "64k"),
     "9b": ("64k", "128k"),
@@ -79,6 +83,20 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    # 0_8b mirrors 0_6b's platform-evidence coverage (same small-tier
+    # backend set: metal / vulkan / cpu across desktop + mobile).
+    "0_8b": (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+        "windows-x64-vulkan",
+        "windows-arm64-cpu",
+        "windows-arm64-vulkan",
+    ),
     "0_6b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",

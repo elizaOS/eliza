@@ -11,8 +11,8 @@
  */
 
 import {
-  ResponseHandlerFieldRegistry,
   type ResponseHandlerFieldEvaluator,
+  ResponseHandlerFieldRegistry,
 } from "@elizaos/core";
 
 const SOURCE_REF_SCHEMA = {
@@ -25,17 +25,18 @@ const SOURCE_REF_SCHEMA = {
   required: ["kind", "id"],
 };
 
-const SHOULD_RESPOND_EVAL: ResponseHandlerFieldEvaluator<"RESPOND" | "IGNORE"> = {
-  name: "shouldRespond",
-  description:
-    "Routing flag for the turn. 'RESPOND' means produce a reply or take action; 'IGNORE' means the agent should stay silent (e.g., on intermediate fragments of a streamed message or unaddressed group-chat noise).",
-  priority: 0,
-  schema: {
-    type: "string",
-    enum: ["RESPOND", "IGNORE"],
-    description: "RESPOND to act or reply; IGNORE to stay silent.",
-  },
-};
+const SHOULD_RESPOND_EVAL: ResponseHandlerFieldEvaluator<"RESPOND" | "IGNORE"> =
+  {
+    name: "shouldRespond",
+    description:
+      "Routing flag for the turn. 'RESPOND' means produce a reply or take action; 'IGNORE' means the agent should stay silent (e.g., on intermediate fragments of a streamed message or unaddressed group-chat noise).",
+    priority: 0,
+    schema: {
+      type: "string",
+      enum: ["RESPOND", "IGNORE"],
+      description: "RESPOND to act or reply; IGNORE to stay silent.",
+    },
+  };
 
 const CONTEXTS_EVAL: ResponseHandlerFieldEvaluator<string[]> = {
   name: "contexts",
@@ -96,11 +97,13 @@ const FACTS_EVAL: ResponseHandlerFieldEvaluator<string[]> = {
   },
 };
 
-const RELATIONSHIPS_EVAL: ResponseHandlerFieldEvaluator<Array<{
-  subject: string;
-  predicate: string;
-  object: string;
-}>> = {
+const RELATIONSHIPS_EVAL: ResponseHandlerFieldEvaluator<
+  Array<{
+    subject: string;
+    predicate: string;
+    object: string;
+  }>
+> = {
   name: "relationships",
   description:
     "Relationship triples extracted from the message. Empty array when no relationships are mentioned.",

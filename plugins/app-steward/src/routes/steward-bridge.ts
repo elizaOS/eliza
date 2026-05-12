@@ -296,9 +296,7 @@ export async function getStewardBridgeStatus(
 
     if (agentId) {
       try {
-        agentData = (await client.getAgent(
-          agentId,
-        )) as AgentDataShape;
+        agentData = (await client.getAgent(agentId)) as AgentDataShape;
       } catch (error: unknown) {
         if (
           !(error instanceof StewardApiError) ||

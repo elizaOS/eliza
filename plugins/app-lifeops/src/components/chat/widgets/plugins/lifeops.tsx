@@ -1,4 +1,3 @@
-import { client, useApp } from "@elizaos/ui";
 import type {
   LifeOpsCalendarEvent,
   LifeOpsCalendarFeed,
@@ -7,6 +6,7 @@ import type {
   LifeOpsGoogleCapability,
   LifeOpsGoogleConnectorStatus,
 } from "@elizaos/shared";
+import { client, useApp } from "@elizaos/ui";
 import { CalendarDays, Mail } from "lucide-react";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";

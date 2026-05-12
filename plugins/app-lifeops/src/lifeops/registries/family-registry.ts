@@ -45,7 +45,10 @@ export interface BusFamilyContribution {
 
 export interface FamilyRegistry {
   register(contribution: BusFamilyContribution): void;
-  list(filter?: { namespace?: string; source?: string }): BusFamilyContribution[];
+  list(filter?: {
+    namespace?: string;
+    source?: string;
+  }): BusFamilyContribution[];
   get(family: LifeOpsBusFamily): BusFamilyContribution | null;
   has(family: LifeOpsBusFamily): boolean;
   /**
@@ -57,7 +60,10 @@ export interface FamilyRegistry {
 }
 
 class InMemoryFamilyRegistry implements FamilyRegistry {
-  private readonly byFamily = new Map<LifeOpsBusFamily, BusFamilyContribution>();
+  private readonly byFamily = new Map<
+    LifeOpsBusFamily,
+    BusFamilyContribution
+  >();
 
   register(contribution: BusFamilyContribution): void {
     if (!contribution.family) {
@@ -106,7 +112,9 @@ export function createFamilyRegistry(): FamilyRegistry {
  * on `registry.has(family)` for any family carried in
  * `LifeOpsTelemetryEnvelope`.
  */
-export function registerBuiltinTelemetryFamilies(registry: FamilyRegistry): void {
+export function registerBuiltinTelemetryFamilies(
+  registry: FamilyRegistry,
+): void {
   for (const family of LIFEOPS_TELEMETRY_FAMILIES) {
     registry.register({
       family,

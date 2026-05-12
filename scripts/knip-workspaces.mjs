@@ -1,12 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -164,9 +159,7 @@ function expandPattern(pattern) {
 
 function globToRegExp(glob) {
   const escaped = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(
-    `^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
-  );
+  return new RegExp(`^${escaped.replace(/\*/g, ".*").replace(/\?/g, ".")}$`);
 }
 
 function collectWorkspaces(includeRoot) {

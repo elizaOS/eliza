@@ -1,5 +1,4 @@
-import { client } from "@elizaos/ui";
-import { openExternalUrl } from "@elizaos/ui";
+import { client, openExternalUrl } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   LifeOpsConnectorMode,

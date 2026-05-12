@@ -21,10 +21,10 @@
 
 import { hasOwnerAccess } from "@elizaos/agent";
 import type {
+  ResponseHandlerFieldContext,
   ResponseHandlerFieldEffect,
   ResponseHandlerFieldEvaluator,
   ResponseHandlerFieldHandleContext,
-  ResponseHandlerFieldContext,
 } from "@elizaos/core";
 import { createPendingPromptsStore } from "../pending-prompts/store.js";
 import { createWorkThreadStore } from "./store.js";
@@ -339,13 +339,14 @@ async function threadOpsHandle(
 // Exported evaluator
 // ---------------------------------------------------------------------------
 
-export const threadOpsFieldEvaluator: ResponseHandlerFieldEvaluator<ThreadOp[]> =
-  {
-    name: "threadOps",
-    description: THREAD_OPS_DESCRIPTION,
-    priority: 30, // Runs before contexts/candidateActions can be finalized.
-    schema: THREAD_OPS_SCHEMA,
-    shouldRun: threadOpsShouldRun,
-    parse: threadOpsParse,
-    handle: threadOpsHandle,
-  };
+export const threadOpsFieldEvaluator: ResponseHandlerFieldEvaluator<
+  ThreadOp[]
+> = {
+  name: "threadOps",
+  description: THREAD_OPS_DESCRIPTION,
+  priority: 30, // Runs before contexts/candidateActions can be finalized.
+  schema: THREAD_OPS_SCHEMA,
+  shouldRun: threadOpsShouldRun,
+  parse: threadOpsParse,
+  handle: threadOpsHandle,
+};

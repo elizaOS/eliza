@@ -7,10 +7,9 @@ import {
   type AiQaRoute,
   type ReadyCheck,
   SETTINGS_SECTIONS,
-  THEMES,
   type Theme,
-  type ViewportName,
   VIEWPORT_SIZES,
+  type ViewportName,
 } from "../../../../scripts/ai-qa/route-catalog";
 import {
   installDefaultAppRoutes,

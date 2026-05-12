@@ -191,19 +191,35 @@ deterministic scaffold from the forward-pass count.
 
 ## What's still gated
 
-- **The forward-pass skip itself.** The fork pin doesn't consume
-  `eliza_prefill_plan` yet — a sibling owns the fork build, and a regex-based
-  `kernel-patches/` patch can't safely add the token-splice path to the server
-  decode loop. The runtime sends the field today; the win lands when a fork build
-  reads it (then `guided_decode_token_bench.mjs --bin … --model …` measures the
-  real wall-time delta). Until then the lazy GBNF still forces the identical
-  bytes — correctness is unaffected, latency is the grammar-only saving.
-- **`MILADY_LOCAL_GUIDED_DECODE` is opt-in.** The planner/message service can
-  set `providerOptions.eliza.guidedDecode = true` to turn it on per-turn for the
-  forced-skeleton calls; that wiring (a one-line set next to the existing
-  `responseSkeleton` assignment in `planner-loop.ts` / `message.ts`) was left to
-  the W8 owner of those files to avoid a merge conflict in this wave — the
-  consumer side (this work) is ready and off by default.
+- **The forward-pass skip itself — fork-side, not yet landed.** The fork pin
+  (`packages/inference/llama.cpp`) doesn't consume `eliza_prefill_plan` yet. The
+  design is in `.swarm/plans/cluster-4.md` §A.2 (two complementary mechanisms:
+  (1) parse `eliza_prefill_plan` in `tools/server/server-task.cpp`, store the
+  cached-by-`id` run token-ids on the slot, and after each free span splice the
+  next run's tokens into the sequence + advance `n_past` + advance the grammar
+  stacks — zero forward passes for forced runs; (2) a general
+  `llama_grammar_next_forced_run(grammar, vocab)` in `src/llama-grammar.{h,cpp}`
+  that derives the forced run when the allowed-token mask narrows to a singleton
+  chain — works for any GBNF). The DFlash composition: forced runs = 0 drafter
+  calls + 0 target passes; the drafter only fires at free spans. This is a
+  **structural fork commit** (not a regex `kernel-patches/` patch) + a submodule
+  bump — must land on a fork branch+tag coordinated with the build-matrix owner
+  (WS-2 / `eliza/main`). The fork-level equivalence test (real model, plan vs
+  no-plan → byte-identical output + fewer `decode()` calls) must pass before the
+  fast-forward ships. The runtime sends the field today and degrades to
+  grammar-only / byte-identical output when the server doesn't consume it —
+  correctness is unaffected, latency is the grammar-only saving until then.
+- **`MILADY_LOCAL_GUIDED_DECODE` default — DONE.** The Stage-1 response handler
+  (`packages/core/src/services/message.ts`) and the Stage-2 planner
+  (`packages/core/src/runtime/planner-loop.ts`) now set
+  `providerOptions.eliza.guidedDecode = true` next to the `responseSkeleton`
+  assignment via `withGuidedDecodeProviderOptions()`
+  (`packages/core/src/runtime/response-grammar.ts`) — guided decode is **on by
+  default** for the two calls that always carry a forced skeleton. Operator
+  opt-out: `MILADY_LOCAL_GUIDED_DECODE=0` (or `ELIZA_LOCAL_GUIDED_DECODE=0` /
+  `false` / `off` / `no`). Cloud adapters ignore the flag. Tests:
+  `packages/core/src/runtime/__tests__/response-grammar.test.ts` (`withGuidedDecodeProviderOptions`
+  — default-on, sibling preservation, env opt-out, idempotent merge).
 - **Display-label map.** `longNames` is plumbed end-to-end but empty unless a
   producer fills it; the action catalog's `normalizeActionName` ids are already
   the wire form, so this is a no-op until a separate label surface exists.

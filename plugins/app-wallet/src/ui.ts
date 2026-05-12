@@ -1,5 +1,6 @@
 import "./register-routes.ts";
 
+export { useWalletState } from "@elizaos/ui";
 export { InventoryView } from "./InventoryView.tsx";
 export { ChainIcon } from "./inventory/ChainIcon.tsx";
 export {
@@ -28,7 +29,6 @@ export {
 } from "./inventory/constants.ts";
 export { TokenLogo } from "./inventory/TokenLogo.tsx";
 export { useInventoryData } from "./inventory/useInventoryData.ts";
-export { useWalletState } from "@elizaos/ui";
 export {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,

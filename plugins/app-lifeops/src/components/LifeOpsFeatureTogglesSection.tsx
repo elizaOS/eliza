@@ -1,5 +1,4 @@
-import { client, useApp } from "@elizaos/ui";
-import { Button, Switch } from "@elizaos/ui";
+import { Button, client, Switch, useApp } from "@elizaos/ui";
 import { Cloud, DollarSign, Loader2, LogIn, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type {

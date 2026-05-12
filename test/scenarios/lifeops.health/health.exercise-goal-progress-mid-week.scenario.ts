@@ -43,9 +43,7 @@ export default scenario({
       type: "custom",
       name: "agent-discusses-progress",
       predicate: (ctx) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const onTopic =
           reply.includes("workout") ||

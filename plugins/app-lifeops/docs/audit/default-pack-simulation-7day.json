@@ -34,34 +34,10 @@
         "endMin": 1260
       }
     ],
-    "checkinRepliedByDay": [
-      true,
-      true,
-      false,
-      true,
-      false,
-      true,
-      true
-    ],
-    "gmRepliedByDay": [
-      false,
-      false,
-      false,
-      false,
-      false,
-      false,
-      false
-    ],
+    "checkinRepliedByDay": [true, true, false, true, false, true, true],
+    "gmRepliedByDay": [false, false, false, false, false, false, false],
     "workoutSkippedDays": {},
-    "followupEmissionsByDay": [
-      0,
-      0,
-      0,
-      0,
-      1,
-      1,
-      1
-    ]
+    "followupEmissionsByDay": [0, 0, 0, 0, 1, 1, 1]
   },
   "days": [
     {
@@ -2794,15 +2770,7 @@
       "inbox-triage-starter": 7,
       "habit-starters": 55
     },
-    "perDayUserFacingNudgeBatches": [
-      9,
-      13,
-      14,
-      13,
-      13,
-      14,
-      9
-    ]
+    "perDayUserFacingNudgeBatches": [9, 13, 14, 13, 13, 14, 9]
   },
   "decisions": [
     {

@@ -118,9 +118,13 @@ for (const filePath of collectDarwinNativeBindings()) {
 }
 
 if (signed > 0) {
-  console.log(`[patch-rolldown-wasi-fallback] Ad-hoc signed ${signed} macOS Rolldown binding(s).`);
+  console.log(
+    `[patch-rolldown-wasi-fallback] Ad-hoc signed ${signed} macOS Rolldown binding(s).`,
+  );
 }
 
 if (patched === 0 && process.env.VERBOSE) {
-  console.log("[patch-rolldown-wasi-fallback] No unpatched Rolldown loaders found.");
+  console.log(
+    "[patch-rolldown-wasi-fallback] No unpatched Rolldown loaders found.",
+  );
 }

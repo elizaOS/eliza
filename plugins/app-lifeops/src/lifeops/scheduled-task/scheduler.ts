@@ -1,15 +1,15 @@
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 
 import {
   ownerFactsToView,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
-import { getAnchorRegistry } from "../registries/anchor-registry.js";
-import { LifeOpsRepository } from "../repository.js";
 import {
   createPendingPromptsStore,
   type RecordedPendingPrompt,
 } from "../pending-prompts/store.js";
+import { getAnchorRegistry } from "../registries/anchor-registry.js";
+import { LifeOpsRepository } from "../repository.js";
 import {
   expectedReplyKindForTask,
   isCompletionTimeoutDue,

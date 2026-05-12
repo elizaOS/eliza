@@ -61,7 +61,9 @@ function loadReport(p) {
     const issues = parsed.error.issues
       .map((iss) => `  - ${iss.path.join(".") || "(root)"}: ${iss.message}`)
       .join("\n");
-    throw new Error(`[lifeops-bench-delta] ${p} is not a valid report.json:\n${issues}`);
+    throw new Error(
+      `[lifeops-bench-delta] ${p} is not a valid report.json:\n${issues}`,
+    );
   }
   return parsed.data;
 }
@@ -71,12 +73,11 @@ const candidate = loadReport(candidatePath);
 
 // Index scenarios by id so we only compare like-for-like.
 const baselineById = new Map(baseline.scenarios.map((s) => [s.scenarioId, s]));
-const candidateById = new Map(candidate.scenarios.map((s) => [s.scenarioId, s]));
+const candidateById = new Map(
+  candidate.scenarios.map((s) => [s.scenarioId, s]),
+);
 
-const scenarioIds = new Set([
-  ...baselineById.keys(),
-  ...candidateById.keys(),
-]);
+const scenarioIds = new Set([...baselineById.keys(), ...candidateById.keys()]);
 
 const perScenario = [];
 for (const scenarioId of [...scenarioIds].sort()) {
@@ -117,8 +118,12 @@ const deltaCacheHitPctRollup =
       ).toFixed(4);
 
 const rollup = {
-  deltaPassRate: +(candidateRollup.passRate - baselineRollup.passRate).toFixed(4),
-  deltaCostUsd: +(candidateRollup.totalCostUsd - baselineRollup.totalCostUsd).toFixed(6),
+  deltaPassRate: +(candidateRollup.passRate - baselineRollup.passRate).toFixed(
+    4,
+  ),
+  deltaCostUsd: +(
+    candidateRollup.totalCostUsd - baselineRollup.totalCostUsd
+  ).toFixed(6),
   deltaTotalTokens:
     candidateRollup.totalInputTokens +
     candidateRollup.totalOutputTokens -
@@ -148,7 +153,7 @@ if (!parsed.success) {
 
 fs.mkdirSync(path.resolve(outDir), { recursive: true });
 const deltaJsonPath = path.join(path.resolve(outDir), "delta.json");
-fs.writeFileSync(deltaJsonPath, JSON.stringify(parsed.data, null, 2) + "\n");
+fs.writeFileSync(deltaJsonPath, `${JSON.stringify(parsed.data, null, 2)}\n`);
 
 // ---------------------------------------------------------------------------
 // delta.md — human-readable rollup. Pairs with delta.json; both kept side by
@@ -160,8 +165,7 @@ const fmtPct = (n) =>
   n === null ? "n/a" : `${(n * 100).toFixed(2).replace(/^-/, "−")}%`;
 const fmtDeltaPct = (n) =>
   n === null ? "n/a" : `${n >= 0 ? "+" : ""}${(n * 100).toFixed(2)}%`;
-const fmtMoney = (n) =>
-  `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(4)}`;
+const fmtMoney = (n) => `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(4)}`;
 
 const mdLines = [
   `# LifeOps benchmark delta`,
@@ -192,7 +196,7 @@ for (const s of perScenario) {
 }
 
 const deltaMdPath = path.join(path.resolve(outDir), "delta.md");
-fs.writeFileSync(deltaMdPath, mdLines.join("\n") + "\n");
+fs.writeFileSync(deltaMdPath, `${mdLines.join("\n")}\n`);
 
 process.stdout.write(
   `[lifeops-bench-delta] wrote ${deltaJsonPath}\n` +

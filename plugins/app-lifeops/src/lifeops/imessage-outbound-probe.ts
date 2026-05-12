@@ -39,7 +39,9 @@ export async function probeIMessageOutboundActivity(args: {
     DEFAULT_CHAT_DB_PATH?: string;
   };
   try {
-    mod = (await import(/* @vite-ignore */ IMESSAGE_PLUGIN_PACKAGE)) as typeof mod;
+    mod = (await import(
+      /* @vite-ignore */ IMESSAGE_PLUGIN_PACKAGE
+    )) as typeof mod;
   } catch {
     return;
   }

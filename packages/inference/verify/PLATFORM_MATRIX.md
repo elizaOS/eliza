@@ -11,6 +11,34 @@
 > publish-blocker ledger is
 > [`../reports/porting/2026-05-11/remaining-work-ledger.md`](../reports/porting/2026-05-11/remaining-work-ledger.md).
 
+## Verify status as of 2026-05-12 (post multi-agent wave)
+
+Re-ran the full integration verify matrix on this box (Intel Arrow Lake CPU +
+Intel ARL/ANV Vulkan + RTX 5080 / sm_120 CUDA, with a full-corpus SFT job
+holding ~12 GB VRAM concurrently — no OOM contention on the short verify runs):
+
+| Target | Result |
+| --- | --- |
+| `make kernel-contract` | PASS — `OK kernels=6 targets=26 manifestNames=6` |
+| `make reference-test` | PASS — C reference clean; `gen_fixture --self-test` finite (fused-attn + TBQ V-cache parity OK) |
+| `make cpu-bench` | PASS (nothing to rebuild; harness in place) |
+| `make cpu-dispatch-smoke` | PASS — `ATTN_SCORE_QJL` + `FUSED_ATTN_QJL_TBQ` MT-vs-ST bit-identical, no NaN |
+| `make vulkan-dispatch-smoke` | PASS — Intel ARL: `GGML_OP_ATTN_SCORE_QJL` 32 outs max 2.7e-7, `GGML_OP_FUSED_ATTN_QJL_TBQ` 512 outs max 4.5e-8 |
+| `make vulkan-verify` | PASS — 8/8 (turbo3/turbo4/turbo3_tcq/qjl/polar incl. polar pre-Hadamard, both residual modes) |
+| `make vulkan-verify-multiblock` | PASS — 8/8 across 1/2/4/8 blocks-per-workgroup |
+| `make vulkan-verify-fused` | PASS — 1920/1920 outputs (4 cases) on Intel ARL ANV, max diff ≤ 7.2e-7 |
+| `make cuda-verify` | PASS — 8/8 each kernel + 1920/1920 fused on RTX 5080 (sm_120), max diff ≤ 9.5e-6 |
+| `make cuda-verify-fused` | PASS — 1920/1920 fused QJL-K/TBQ-V on RTX 5080, max diff 4.47e-7 |
+
+Nothing regressed in this wave. `bun run typecheck` for `packages/app-core` is
+clean; `bun test packages/app-core/src/services/local-inference/` is 603 pass /
+17 fail where all 17 failures are the known test-isolation flakes (downloader ×6
+— passes 7/7 alone — plus `cache-restart-corruption` / `cache-multi-model` /
+`cache-thrash` / `cache-stress` shared-mock-state, and the 2 `fused llama-server`
+tests that need the fused binary built); `…/voice/` is 217/218 + 28/28 green;
+`python3 -m pytest packages/training/scripts/{eval,publish,manifest,wakeword}
+packages/training/benchmarks` is 140 passed / 1 skipped.
+
 ## Status vocabulary
 
 | Status | Meaning |
@@ -36,6 +64,8 @@
 | `windows-x64-cpu` | `--target windows-x64-cpu` (mingw cross-build) | `pwsh -File verify/windows_runner.ps1 -Backend cpu -Model C:\models\eliza-1-smoke.gguf` on a real Windows box (now drives `llama-bench` + `llama-completion`, not `llama-cli`) | `windows_runner.ps1` (above) | **authored-pending-hardware** (cross-built exe is not counted) | A native Windows x64 host. |
 | `windows-arm64-cpu` | `--target windows-arm64-cpu` (needs an MSVC arm64 cross-toolchain or a native Windows-arm64 host — no mingw arm64 wiring here) | `windows_runner.ps1 -Backend cpu` on a Snapdragon X box | `windows_runner.ps1` | **authored-pending-hardware** | A Snapdragon X Elite / Copilot+ PC. |
 | `android-arm64-cpu` | `node packages/app-core/scripts/aosp/compile-libllama.mjs` (NDK cross-build) | CPU/NEON parity via `adb` on a physical Android device | `adb`-pushed `cpu_bench` / `llama-bench` | **authored-pending-hardware** | A physical Android device + NDK. |
+| `android-x86_64-cpu` | `ANDROID_NDK_HOME=… node …/build-llama-cpp-dflash.mjs --target android-x86_64-cpu` (NDK cross-build, `-DANDROID_ABI=x86_64`, forces AVX/AVX2/FMA/F16C — the x86_64 Android ABI baseline is SSE4.2; the QJL/Polar CPU kernels need AVX2) | The 8-step Cuttlefish (`cvd`) smoke `node packages/app-core/scripts/aosp/smoke-cuttlefish.mjs` (runs on the x86_64 Linux box under KVM — no physical device). **This wave: 5/6 infra steps PASS on the live cvd** (cvd reachable, APK installed abi=x86_64, ElizaAgentService start, /api/health agentState=running runtime=ok, bearer token); step 6 chat completion failed — no model staged in the release APK on that cvd. See [`../reports/porting/2026-05-12/cuttlefish-x86_64-smoke.md`](../reports/porting/2026-05-12/cuttlefish-x86_64-smoke.md). | `adb`-pushed `cpu_bench` / `llama-bench`; `e2e_loop_bench.mjs` on the cvd | **build verified-here** (real x86_64 Android ELF — `interpreter /system/bin/linker64` — + libs, fork commit `536ff214`; `CAPABILITIES.json` `qjl_full`/`polarquant` true), Cuttlefish cvd smoke 5/6 infra steps PASS | A `build-aosp.mjs --launch` rebuild staging the new `android-x86_64-cpu` libllama + a bundled eliza-1-smoke GGUF in the privileged APK → 8/8; Vulkan-on-cvd is gfxstream/SwiftShader (software → not recordable). |
+| `android-x86_64-vulkan` | `…/build-llama-cpp-dflash.mjs --target android-x86_64-vulkan` (NDK + Vulkan headers, `-DANDROID_ABI=x86_64`) | standalone `vulkan_verify` fixtures pass on the host ANV iGPU; graph dispatch needs real ChromeOS x86_64 GPU (Adreno/Mali under ARCVM) — cvd virtio-gpu Vulkan is gfxstream/SwiftShader (software → no recordable evidence) | `adb`-pushed `vulkan_bench` | **authored-pending-hardware** for graph dispatch (ChromeOS GPU) | Real ChromeOS x86_64 GPU silicon. |
 | `linux-x64-cpu-fused` | `ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 …/build-llama-cpp-dflash.mjs --target linux-x64-cpu-fused` | `OMNIVOICE_FUSE_VERIFY.json` `ok=true` + `verifyFusedSymbols` (abi/omnivoice/llama-reexport counts) | `dflash-server-fused.integration.test.ts` (spawns the fused `llama-server`, hits `/completion` + `/v1/audio/speech` same-PID); `llama-bench`/`llama-completion` for text | **verified-here** for the merged HTTP route + symbol-verify; exit-1 is the §3 CPU-backend kernel-completeness gate (turbo3_tcq/qjl_full/polarquant aren't CPU-graph-dispatch caps), `CAPABILITIES.json` `publishable: false`. | A weight-backed `/v1/audio/speech` smoke against a real `tts/omnivoice-*.gguf` (the dev stand-in bundle has no `tts/`). |
 
 ## CUDA — verified-here on the RTX 5080 (sm_120, **native SASS** via CUDA 12.8)
@@ -73,7 +103,7 @@
 
 | Target | Build | Kernel verify | Bench | Status | Prereq if not done |
 | --- | --- | --- | --- | --- | --- |
-| `linux-x64-rocm` | `…/build-llama-cpp-dflash.mjs --target linux-x64-rocm` (needs `hipcc` + ROCm) | `verify/rocm_runner.sh --report …` (refuses without `hipcc` + `rocminfo` `gfx*` agent + a smoke GGUF; builds the fork, then `runtime_graph_smoke.sh --gen-check` → `llama-bench` + `llama-completion` on the HIP backend). There is no standalone HIP fixture harness equivalent to `cuda_verify` yet. | `rocm_runner.sh`; `llama-bench -ngl 99` on the HIP backend | **authored-pending-hardware** | An AMD ROCm host (RDNA2/RDNA3, `gfx*` agent). Use the cloud runner. |
+| `linux-x64-rocm` | `…/build-llama-cpp-dflash.mjs --target linux-x64-rocm` (needs `hipcc` + ROCm) | `make -C …/verify hip-verify` — the standalone fixture-parity harness (NEW this wave): `hip_verify.cu` is a thin shim that `#include`s `cuda_verify.cu` (which now guards its backend headers on `__HIP_PLATFORM_AMD__` and aliases the `cuda*` runtime calls to `hip*`), so it runs the EXACT same ~25 device kernels + fixture loader + reference cross-check the NVIDIA `cuda-verify` does, compiled by `hipcc` against a `gfx*` GPU. Plus `verify/rocm_runner.sh --report …` (refuses without `hipcc` + `rocminfo` `gfx*` agent + a smoke GGUF; builds the fork, then `runtime_graph_smoke.sh --gen-check` → `llama-bench` + `llama-completion` on the HIP backend). | `make hip-verify`; `rocm_runner.sh`; `llama-bench -ngl 99` on the HIP backend | **authored-pending-hardware** — `hip_verify.cu` + the `hip-verify` Makefile target are authored + buildable (no `hipcc` on the authoring box → clean "install ROCm / see rocm_runner.sh" message); the fork's *production* `.cu` kernels (turboquant.cuh/qjl.cu/polarquant.cu/turbo-tcq.cu) are not yet `__HIP_PLATFORM_AMD__`-clean — until that lands the ROCm runtime story is the `hip-verify` numeric gate + the documented reduced-optimization local mode (`ELIZA_LOCAL_ALLOW_STOCK_KV=1`, loud warning, not publishable) for production inference. | An AMD ROCm host (RDNA2/RDNA3 or CDNA, `gfx*` agent — e.g. a vast.ai MI300 box). |
 
 ## Quick "one command for everything I can run here" line
 
@@ -86,3 +116,44 @@ make -C packages/inference/verify vulkan-dispatch-smoke   # built-fork Vulkan gr
 ~/.cache/eliza-dflash/milady-llama-cpp/build-cuda/bin/llama-bench \
   -m ~/.eliza/local-inference/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-32k.gguf -ngl 99 -p 16,512 -n 32 -fa 1
 ```
+
+## Not in `SUPPORTED_TARGETS` — runtime-side / explicitly-out-of-scope notes
+
+### MLX (`mlx_lm.server`) — Apple-Silicon convenience path, NOT publishable
+
+`packages/app-core/src/services/local-inference/mlx-server.ts` is a
+spawn-and-route adapter for `mlx_lm.server` (the OpenAI-compatible HTTP server
+shipped with the `mlx-lm` Python package), mirroring the `DflashLlamaServer`
+shape (health-check `/v1/models`, route `/v1/chat/completions` with SSE
+streaming through `onTextChunk`). The engine forwards text generation to it
+when `mlxLocalServer.hasLoadedModel()`. **Opt-in only** (`ELIZA_LOCAL_MLX=1`
+or `ELIZA_LOCAL_BACKEND=mlx-server`); never auto-selected even on Apple
+Silicon. **Apple-Silicon only.** **NOT a kernel-aware path** — MLX has no
+TurboQuant/QJL/PolarQuant, so it can never satisfy the §3 required-kernel
+contract and never flips `verifiedBackends.mlx`; it is the same class as the
+reduced-optimization local mode. **NOT the voice path** — MLX doesn't carry
+OmniVoice/Qwen3-ASR; text completion only. A "works-on-Apple-Silicon-without-
+the-fork-build" convenience path, **not** a publish path. 8 unit tests (opt-in
+/ eligibility gating, model-dir heuristic, non-streaming + SSE-streaming route
+against a mock HTTP server) — green. Live smoke against a real `mlx-lm`
+install is host-gated (no Apple hardware on the authoring box).
+
+### TPU / NPU — not a target this wave (verdict, documented)
+
+**No.** The eliza-1 text backbone (0.6B smallest, fp16/Q4) does not fit a Coral
+Edge TPU's 8 MB on-chip SRAM, isn't int8-only quantizable to the Coral's
+constraints, and KV-cache attention is not an Edge-TPU workload. The Pixel
+Tensor TPU could in principle run a small int8 transformer but there is no
+public delegate API to target it from a third-party app, and NNAPI is
+deprecated by Google in favour of per-vendor delegates. The Android GPU
+(Mali/Adreno via Vulkan) is the right on-device accelerator for the text model
+— which the `android-arm64-vulkan` / `android-x86_64-vulkan` targets already
+cover. The sidecars (Silero VAD, Qwen3-ASR-0.6B, Qwen3-Embedding-0.6B) don't
+win enough on an NPU to justify the conversion work, and OmniVoice TTS is fused
+into the llama.cpp build (one GGML pin) — pulling it onto a separate NPU breaks
+the fusion contract (§4: one process, one build). The one open angle: a
+`ELIZA_VAD_QNN_DELEGATE=1` flag that, when `onnxruntime-mobile` is built with
+the Qualcomm QNN EP, runs Silero VAD on the Hexagon NPU island while the CPU
+sleeps — that is a **battery** optimization for always-listening wake-word
+mode, not a latency one, and is a stretch, not core. No `plugin-coral` /
+`plugin-qnn` is added.

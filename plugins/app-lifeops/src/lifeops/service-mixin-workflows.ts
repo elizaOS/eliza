@@ -7,6 +7,7 @@
 // or moving to a single composed interface — tracked as separate work.
 
 import { computeNextCronRunAtMs } from "@elizaos/agent";
+import type { LifeOpsDerivedEvent } from "@elizaos/plugin-health";
 import type {
   CreateLifeOpsWorkflowRequest,
   LifeOpsCalendarEvent,
@@ -17,18 +18,18 @@ import type {
   UpdateLifeOpsWorkflowRequest,
 } from "../contracts/index.js";
 import { LIFEOPS_WORKFLOW_STATUSES } from "../contracts/index.js";
-import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
-import {
-  createLifeOpsWorkflowDefinition,
-  createLifeOpsWorkflowRun,
-} from "./repository.js";
-import { parseWorkflowSchedulerState } from "./service-helpers-browser.js";
 import {
   getWorkflowStepRegistry,
   UnknownWorkflowStepError,
   type WorkflowStepExecuteArgs,
   type WorkflowStepExecuteContext,
 } from "./registries/workflow-step-registry.js";
+import { resolveNextRelativeScheduleInstant } from "./relative-schedule-resolver.js";
+import {
+  createLifeOpsWorkflowDefinition,
+  createLifeOpsWorkflowRun,
+} from "./repository.js";
+import { parseWorkflowSchedulerState } from "./service-helpers-browser.js";
 import {
   isRecord,
   normalizeOptionalRecord,
@@ -57,7 +58,6 @@ import type {
   LifeOpsWorkflowSchedulerState,
 } from "./service-types.js";
 import { LifeOpsServiceError } from "./service-types.js";
-import type { LifeOpsDerivedEvent } from "@elizaos/plugin-health";
 import { addMinutes } from "./time.js";
 
 export interface LifeOpsWorkflowService {

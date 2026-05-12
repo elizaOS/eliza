@@ -32,9 +32,9 @@ import {
   type Chain,
   createWalletClient,
   type Hex,
-  http as viemHttp,
   publicActions,
   type TypedDataDefinition,
+  http as viemHttp,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import * as viemChains from "viem/chains";
@@ -93,7 +93,11 @@ function setCors(req: http.IncomingMessage, res: http.ServerResponse): void {
   res.setHeader("Access-Control-Max-Age", "600");
 }
 
-function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+function sendJson(
+  res: http.ServerResponse,
+  status: number,
+  body: unknown,
+): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(body));
@@ -138,7 +142,9 @@ function decodeTransaction(b64: string): Transaction | VersionedTransaction {
   }
 }
 
-function serializeTransaction(tx: Transaction | VersionedTransaction): Uint8Array {
+function serializeTransaction(
+  tx: Transaction | VersionedTransaction,
+): Uint8Array {
   if (tx instanceof VersionedTransaction) return tx.serialize();
   return new Uint8Array(
     tx.serialize({ requireAllSignatures: false, verifySignatures: false }),

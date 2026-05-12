@@ -22,9 +22,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "68.2"
-    ],
+    "required_outputs": ["68.2"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -47,9 +45,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "steps"
-    ],
+    "required_outputs": ["steps"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 3,
@@ -72,9 +68,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "heart"
-    ],
+    "required_outputs": ["heart"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -104,9 +98,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "yoga"
-    ],
+    "required_outputs": ["yoga"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -129,9 +121,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "average"
-    ],
+    "required_outputs": ["average"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -160,9 +150,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "3 km"
-    ],
+    "required_outputs": ["3 km"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -185,9 +173,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "kg"
-    ],
+    "required_outputs": ["kg"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -210,9 +196,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "steps"
-    ],
+    "required_outputs": ["steps"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -242,9 +226,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "10 km"
-    ],
+    "required_outputs": ["10 km"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -267,9 +249,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "heart"
-    ],
+    "required_outputs": ["heart"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -298,9 +278,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "meditation"
-    ],
+    "required_outputs": ["meditation"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -323,9 +301,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "hours"
-    ],
+    "required_outputs": ["hours"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 3,
@@ -354,9 +330,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "67.9"
-    ],
+    "required_outputs": ["67.9"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -379,9 +353,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "average"
-    ],
+    "required_outputs": ["average"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -412,9 +384,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "swim"
-    ],
+    "required_outputs": ["swim"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -437,9 +407,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "kg"
-    ],
+    "required_outputs": ["kg"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 3,
@@ -469,9 +437,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "20 km"
-    ],
+    "required_outputs": ["20 km"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -494,9 +460,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sleep"
-    ],
+    "required_outputs": ["sleep"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -525,9 +489,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "22.5"
-    ],
+    "required_outputs": ["22.5"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -550,9 +512,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "heart"
-    ],
+    "required_outputs": ["heart"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -582,9 +542,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "hike"
-    ],
+    "required_outputs": ["hike"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -607,9 +565,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "steps"
-    ],
+    "required_outputs": ["steps"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 3,
@@ -639,9 +595,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "5 km"
-    ],
+    "required_outputs": ["5 km"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

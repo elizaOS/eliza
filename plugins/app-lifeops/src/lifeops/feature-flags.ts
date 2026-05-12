@@ -1,9 +1,5 @@
 import { type IAgentRuntime, logger, type Service } from "@elizaos/core";
 import {
-  getFeatureFlagRegistry,
-  UnknownFeatureFlagError,
-} from "./registries/feature-flag-registry.js";
-import {
   ALL_FEATURE_KEYS,
   type FeatureFlagChangeListener,
   type FeatureFlagService,
@@ -13,6 +9,10 @@ import {
   type LifeOpsFeatureFlagKey,
   resolveFeatureDefaults,
 } from "./feature-flags.types.js";
+import {
+  getFeatureFlagRegistry,
+  UnknownFeatureFlagError,
+} from "./registries/feature-flag-registry.js";
 import {
   executeRawSql,
   parseJsonRecord,

@@ -19,6 +19,7 @@ import {
   type ImageAttachment,
 } from "../api";
 import { type Tab, tabFromPath } from "../navigation";
+import { isTransientOptionalFetchFailure } from "../utils/transient-fetch";
 import { isTtsDebugEnabled } from "../utils/tts-debug";
 import {
   isConversationRecord,
@@ -547,12 +548,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           if (!isCurrentHydration()) {
             return null;
           }
-          const transientOptionalFetchFailure =
-            err instanceof Error &&
-            err.name === "ApiError" &&
-            (err as Error & { kind?: string }).kind === "network" &&
-            /^(Failed to fetch|Request aborted)$/i.test(err.message);
-          if (!transientOptionalFetchFailure) {
+          if (!isTransientOptionalFetchFailure(err)) {
             console.warn(
               "[eliza][chat:init] failed to load restored conversation messages",
               err,
@@ -636,7 +632,12 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         return null;
       }
     } catch (err) {
-      console.warn("[eliza][chat:init] failed to hydrate conversations", err);
+      if (!isTransientOptionalFetchFailure(err)) {
+        console.warn(
+          "[eliza][chat:init] failed to hydrate conversations",
+          err,
+        );
+      }
       return null;
     }
   }, [

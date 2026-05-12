@@ -110,10 +110,19 @@ run() {
   fi
 }
 
-if ! command -v huggingface-cli >/dev/null 2>&1; then
-  echo "huggingface-cli not found. Install with: uv pip install 'huggingface_hub[cli]>=0.24'" >&2
+# `huggingface-cli` was renamed to `hf` in huggingface_hub 1.x. Resolve whichever
+# is available; both expose `repo move` / `repo create` with the same syntax.
+HF_CLI=""
+if command -v hf >/dev/null 2>&1; then
+  HF_CLI="hf"
+elif command -v huggingface-cli >/dev/null 2>&1; then
+  HF_CLI="huggingface-cli"
+fi
+if [[ -z "${HF_CLI}" ]]; then
+  echo "Neither 'hf' nor 'huggingface-cli' found. Install with: uv pip install 'huggingface_hub[cli]'" >&2
   [[ "$EXECUTE" -eq 1 ]] && exit 1
-  echo "(dry-run continues; commands below are what WOULD run)"
+  echo "(dry-run continues; commands below are what WOULD run — assuming 'hf')"
+  HF_CLI="hf"
 fi
 
 if [[ "$EXECUTE" -eq 1 && -z "${HF_TOKEN:-}" ]]; then
@@ -136,17 +145,17 @@ if [[ "$SKIP_MOVES" -eq 0 ]]; then
   for pair in "${LEGACY_MOVES[@]}"; do
     read -r OLD NEW <<<"$pair"
     echo "  move ${SRC_ORG}/${OLD}  ->  ${DST_ORG}/${NEW}"
-    # `huggingface-cli repo move` exits non-zero if the source repo does not
+    # `${HF_CLI} repo move` exits non-zero if the source repo does not
     # exist; tolerate that in --execute (some names in LEGACY_MOVES are
     # alternates) but surface every other failure.
     if [[ "$EXECUTE" -eq 1 ]]; then
-      if huggingface-cli repo move "${SRC_ORG}/${OLD}" "${DST_ORG}/${NEW}"; then
+      if ${HF_CLI} repo move "${SRC_ORG}/${OLD}" "${DST_ORG}/${NEW}"; then
         echo "    moved."
       else
         echo "    (skipped: ${SRC_ORG}/${OLD} not found or already moved)"
       fi
     else
-      echo "  + huggingface-cli repo move ${SRC_ORG}/${OLD} ${DST_ORG}/${NEW}"
+      echo "  + ${HF_CLI} repo move ${SRC_ORG}/${OLD} ${DST_ORG}/${NEW}"
     fi
   done
   echo
@@ -157,7 +166,7 @@ if [[ "$SKIP_CREATES" -eq 0 ]]; then
   for name in "${TIER_REPOS[@]}"; do
     echo "  create ${DST_ORG}/${name}"
     # `--exist-ok` makes this idempotent.
-    run huggingface-cli repo create "${DST_ORG}/${name}" --repo-type model --exist-ok
+    run ${HF_CLI} repo create "${DST_ORG}/${name}" --repo-type model --exist-ok
   done
   echo
 fi

@@ -12,7 +12,7 @@
 
 import type { JSONSchema, ResponseHandlerResult } from "@elizaos/core";
 
-const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
+const _CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const DEFAULT_MODEL = "gpt-oss-120b";
 
 export interface CerebrasMessage {
@@ -49,7 +49,8 @@ function readEnv(): { apiKey: string; baseUrl: string } {
       "CEREBRAS_API_KEY not set. Add it to your environment or .env file at the repo root.",
     );
   }
-  const baseUrl = process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
+  const baseUrl =
+    process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
   return { apiKey, baseUrl };
 }
 
@@ -131,7 +132,9 @@ export async function callCerebras(
     );
   }
   if (!parsed || typeof parsed !== "object") {
-    throw new Error(`Cerebras JSON was not an object: ${content.slice(0, 200)}`);
+    throw new Error(
+      `Cerebras JSON was not an object: ${content.slice(0, 200)}`,
+    );
   }
   return {
     parsed: parsed as ResponseHandlerResult,

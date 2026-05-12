@@ -13,12 +13,9 @@ import {
   AgentRuntime as AgentRuntimeCtor,
   createBasicCapabilitiesPlugin,
   createCharacter,
-  logger,
-} from "@elizaos/core";
-
-import {
   type LiveProviderConfig,
   type LiveProviderName,
+  logger,
   selectLiveProvider,
 } from "@elizaos/core";
 

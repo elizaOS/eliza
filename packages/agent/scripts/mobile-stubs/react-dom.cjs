@@ -16,9 +16,14 @@ function makeReactDomProxy() {
       if (prop === "default") return module.exports;
       if (prop === "__esModule") return true;
       if (prop === "createPortal") return NOOP_FN;
-      if (prop === "flushSync") return (cb) => (typeof cb === "function" ? cb() : undefined);
+      if (prop === "flushSync")
+        return (cb) => (typeof cb === "function" ? cb() : undefined);
       if (prop === "version") return "0.0.0-mobile-stub";
-      if (prop === "render" || prop === "hydrate" || prop === "unmountComponentAtNode") {
+      if (
+        prop === "render" ||
+        prop === "hydrate" ||
+        prop === "unmountComponentAtNode"
+      ) {
         return NOOP_FN;
       }
       return NOOP_FN;

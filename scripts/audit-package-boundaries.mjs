@@ -10,7 +10,8 @@ const asJson = args.has("--json");
 const includeTests = args.has("--include-tests");
 
 const repoRoot = process.cwd();
-const ignoredPath = /(^|\/)(node_modules|dist|build|\.turbo|\.next|coverage|\.vite)(\/|$)/;
+const ignoredPath =
+  /(^|\/)(node_modules|dist|build|\.turbo|\.next|coverage|\.vite)(\/|$)/;
 const sourceExtensions = new Set([
   ".cjs",
   ".cts",
@@ -46,7 +47,10 @@ function relative(file) {
 function packageOwnerForPath(absPath, packages) {
   let owner = null;
   for (const pkg of packages) {
-    if (absPath === pkg.absDir || absPath.startsWith(`${pkg.absDir}${path.sep}`)) {
+    if (
+      absPath === pkg.absDir ||
+      absPath.startsWith(`${pkg.absDir}${path.sep}`)
+    ) {
       if (!owner || pkg.absDir.length > owner.absDir.length) {
         owner = pkg;
       }
@@ -67,7 +71,7 @@ function getManifestDeps(manifest) {
 function hasDeclaredDependency(manifest, packageName) {
   const deps = getManifestDeps(manifest);
   return Object.values(deps).some((section) =>
-    Object.prototype.hasOwnProperty.call(section, packageName),
+    Object.hasOwn(section, packageName),
   );
 }
 
@@ -131,7 +135,9 @@ const packages = packageJsonFiles
   .sort((left, right) => left.absDir.length - right.absDir.length);
 
 const packageByName = new Map(packages.map((pkg) => [pkg.name, pkg]));
-const packageNames = [...packageByName.keys()].sort((left, right) => right.length - left.length);
+const packageNames = [...packageByName.keys()].sort(
+  (left, right) => right.length - left.length,
+);
 
 const sourceFiles = shellLines("rg", [
   "--files",
@@ -184,16 +190,15 @@ function scriptKindForFile(file) {
     case ".mjs":
     case ".cjs":
       return ts.ScriptKind.JS;
-    case ".ts":
-    case ".mts":
-    case ".cts":
     default:
       return ts.ScriptKind.TS;
   }
 }
 
 function literalText(node) {
-  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node) ? node.text : null;
+  return ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
+    ? node.text
+    : null;
 }
 
 function getImportSpecifiers(file, source) {
@@ -207,7 +212,10 @@ function getImportSpecifiers(file, source) {
   const specifiers = [];
 
   function visit(node) {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier) {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier
+    ) {
       const specifier = literalText(node.moduleSpecifier);
       if (specifier) specifiers.push(specifier);
     } else if (ts.isCallExpression(node)) {
@@ -217,7 +225,8 @@ function getImportSpecifiers(file, source) {
         if (
           specifier &&
           (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
-            (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+            (ts.isIdentifier(node.expression) &&
+              node.expression.text === "require"))
         ) {
           specifiers.push(specifier);
         }
@@ -229,7 +238,6 @@ function getImportSpecifiers(file, source) {
   visit(sourceFile);
   return specifiers;
 }
-
 
 const relativeCrossPackageImports = [];
 const relativeOutsidePackageImports = [];
@@ -245,7 +253,10 @@ for (const file of sourceFiles) {
 
     if (specifier.startsWith(".")) {
       const resolved = path.resolve(path.dirname(file), specifier);
-      if (resolved === owner.absDir || resolved.startsWith(`${owner.absDir}${path.sep}`)) {
+      if (
+        resolved === owner.absDir ||
+        resolved.startsWith(`${owner.absDir}${path.sep}`)
+      ) {
         continue;
       }
       const target = packageOwnerForPath(resolved, packages);
@@ -307,7 +318,10 @@ function groupCount(records, key) {
   }
   return [...counts.entries()]
     .map(([name, count]) => ({ name, count }))
-    .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
+    .sort(
+      (left, right) =>
+        right.count - left.count || left.name.localeCompare(right.name),
+    );
 }
 
 const report = {
@@ -324,10 +338,19 @@ const report = {
     pluginDependencyViolations: pluginDependencyViolations.length,
   },
   byOwner: {
-    relativeCrossPackageImports: groupCount(relativeCrossPackageImports, "owner"),
-    relativeOutsidePackageImports: groupCount(relativeOutsidePackageImports, "owner"),
+    relativeCrossPackageImports: groupCount(
+      relativeCrossPackageImports,
+      "owner",
+    ),
+    relativeOutsidePackageImports: groupCount(
+      relativeOutsidePackageImports,
+      "owner",
+    ),
     undeclaredWorkspaceImports: groupCount(undeclaredWorkspaceImports, "owner"),
-    pluginDependencyViolations: groupCount(pluginDependencyViolations, "packageName"),
+    pluginDependencyViolations: groupCount(
+      pluginDependencyViolations,
+      "packageName",
+    ),
   },
 };
 
@@ -336,10 +359,18 @@ if (asJson) {
 } else {
   console.log(`Packages: ${report.packageCount}`);
   console.log(`Source files: ${report.sourceFileCount}`);
-  console.log(`Relative cross-package imports: ${report.counts.relativeCrossPackageImports}`);
-  console.log(`Relative imports outside package roots: ${report.counts.relativeOutsidePackageImports}`);
-  console.log(`Undeclared workspace package imports: ${report.counts.undeclaredWorkspaceImports}`);
-  console.log(`Plugin dependency violations: ${report.counts.pluginDependencyViolations}`);
+  console.log(
+    `Relative cross-package imports: ${report.counts.relativeCrossPackageImports}`,
+  );
+  console.log(
+    `Relative imports outside package roots: ${report.counts.relativeOutsidePackageImports}`,
+  );
+  console.log(
+    `Undeclared workspace package imports: ${report.counts.undeclaredWorkspaceImports}`,
+  );
+  console.log(
+    `Plugin dependency violations: ${report.counts.pluginDependencyViolations}`,
+  );
 
   for (const [label, records] of [
     ["Relative cross-package imports", relativeCrossPackageImports],

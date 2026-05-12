@@ -1522,7 +1522,9 @@ function filterProxyRequestHeaders(
   return next;
 }
 
-function incomingMessageBody(req: http.IncomingMessage): ReadableStream<Uint8Array> {
+function incomingMessageBody(
+  req: http.IncomingMessage,
+): ReadableStream<Uint8Array> {
   return new ReadableStream<Uint8Array>({
     start(controller) {
       req.on("data", (chunk: Buffer | string) => {

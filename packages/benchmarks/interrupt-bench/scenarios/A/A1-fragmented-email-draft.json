@@ -13,10 +13,15 @@
     "memory": []
   },
   "script": [
-    { "t": 0,    "channel": "dm-alice", "sender": "alice", "text": "i need to" },
-    { "t": 800,  "channel": "dm-alice", "sender": "alice", "text": "send" },
+    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "i need to" },
+    { "t": 800, "channel": "dm-alice", "sender": "alice", "text": "send" },
     { "t": 1600, "channel": "dm-alice", "sender": "alice", "text": "an email" },
-    { "t": 2400, "channel": "dm-alice", "sender": "alice", "text": "to bob about lunch tomorrow" }
+    {
+      "t": 2400,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "to bob about lunch tomorrow"
+    }
   ],
   "quiesceAfterMs": 5000,
   "expectedFinalState": {

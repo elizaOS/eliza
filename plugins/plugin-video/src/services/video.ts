@@ -1,21 +1,21 @@
+import fs from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
+  elizaLogger,
   type IAgentRuntime,
-  ITranscriptionService,
+  type ITranscriptionService,
   IVideoService,
   type Media,
   type Service,
   ServiceType,
   stringToUuid,
-  elizaLogger,
   type VideoDownloadOptions,
   type VideoFormat,
   type VideoInfo,
   type VideoProcessingOptions,
 } from "@elizaos/core";
 import ffmpeg from "fluent-ffmpeg";
-import fs from "fs";
-import { tmpdir } from "os";
-import path from "path";
 import { BinaryResolver } from "./binaries";
 
 /** Minimal yt-dlp JSON shape used by this service (fields vary by extractor). */
@@ -394,7 +394,7 @@ export class VideoService extends IVideoService {
   ): Promise<Media> {
     const videoId =
       url.match(
-        /(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^\/&?]+)/, // eslint-disable-line
+        /(?:youtu\.be\/|youtube\.com(?:\/embed\/|\/v\/|\/watch\?v=|\/watch\?.+&v=))([^/&?]+)/, // eslint-disable-line
       )?.[1] || "";
     const videoUuid = this.getVideoId(videoId);
     const cacheKey = `${this.cacheKey}/${videoUuid}`;
@@ -476,7 +476,7 @@ export class VideoService extends IVideoService {
     elizaLogger.log("Getting transcript");
     try {
       // Check for manual subtitles
-      if (videoInfo.subtitles && videoInfo.subtitles.en) {
+      if (videoInfo.subtitles?.en) {
         elizaLogger.log("Manual subtitles found");
         const srtContent = await this.downloadSRT(
           videoInfo.subtitles.en[0].url,
@@ -485,7 +485,7 @@ export class VideoService extends IVideoService {
       }
 
       // Check for automatic captions
-      if (videoInfo.automatic_captions && videoInfo.automatic_captions.en) {
+      if (videoInfo.automatic_captions?.en) {
         elizaLogger.log("Automatic captions found");
         const captionUrl = videoInfo.automatic_captions.en[0].url;
         const captionContent = await this.downloadCaption(captionUrl);
@@ -493,7 +493,7 @@ export class VideoService extends IVideoService {
       }
 
       // Check if it's a music video
-      if (videoInfo.categories && videoInfo.categories.includes("Music")) {
+      if (videoInfo.categories?.includes("Music")) {
         elizaLogger.log("Music video detected, no lyrics available");
         return "No lyrics available.";
       }

@@ -33,7 +33,7 @@ export default scenario({
       kind: "message",
       name: "brush cancel with reason",
       text: "Actually never mind, I already have a brushing habit. Don't add another one.",
-      responseExcludes: ["saved \"brush teeth\""],
+      responseExcludes: ['saved "brush teeth"'],
     },
   ],
   finalChecks: [

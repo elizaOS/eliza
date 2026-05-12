@@ -21,13 +21,12 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import type {
-  LifeOpsBusFamily,
-  LifeOpsTelemetryFamily,
-} from "@elizaos/shared";
-import type { ActivitySignalBusView } from "../scheduled-task/types.js";
-import type { ScheduledTaskSubject } from "../scheduled-task/types.js";
+import type { LifeOpsBusFamily, LifeOpsTelemetryFamily } from "@elizaos/shared";
 import type { FamilyRegistry } from "../registries/family-registry.js";
+import type {
+  ActivitySignalBusView,
+  ScheduledTaskSubject,
+} from "../scheduled-task/types.js";
 
 export interface ActivitySignalEnvelope {
   family: LifeOpsBusFamily;
@@ -237,9 +236,7 @@ export function getActivitySignalBus(
   return buses.get(runtime) ?? null;
 }
 
-export function __resetActivitySignalBusForTests(
-  runtime: IAgentRuntime,
-): void {
+export function __resetActivitySignalBusForTests(runtime: IAgentRuntime): void {
   buses.delete(runtime);
 }
 

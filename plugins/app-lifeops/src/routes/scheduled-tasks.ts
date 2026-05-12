@@ -61,7 +61,7 @@ interface ScheduledTaskRouteDeps {
 }
 
 const PATH_PREFIX = "/api/lifeops/scheduled-tasks";
-const DEV_PATH_PREFIX = "/api/lifeops/dev/scheduled-tasks";
+const _DEV_PATH_PREFIX = "/api/lifeops/dev/scheduled-tasks";
 const DEV_REGISTRIES_PATH = "/api/lifeops/dev/registries";
 
 function matchTaskVerb(pathname: string): { id: string; verb: string } | null {

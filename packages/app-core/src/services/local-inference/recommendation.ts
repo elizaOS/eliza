@@ -28,6 +28,7 @@ import type {
 // type so the ladder definitions can't drift from the canonical list.
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
 const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
@@ -64,28 +65,33 @@ const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
+  // TODO(owner): the small tiers are moving to the Qwen3.5 backbone
+  // (eliza-1-0_8b / eliza-1-2b). The legacy Qwen3 tiers (0_6b/1_7b) are
+  // kept here additively; eliza-1-0_8b is slotted between them by size
+  // (0.8B Q4 > 0.6B Q3, < 1.7B). Re-order / drop the legacy tiers once the
+  // owner decides — also see FIRST_RUN_DEFAULT_MODEL_ID in catalog.ts.
   mobile: {
-    TEXT_SMALL: [TIER_0_6B, TIER_1_7B],
-    TEXT_LARGE: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_0_6B, TIER_0_8B, TIER_1_7B],
+    TEXT_LARGE: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
     TEXT_LARGE: [TIER_27B, TIER_9B, TIER_1_7B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
     TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
     TEXT_LARGE: [TIER_9B, TIER_1_7B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
     TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
     TEXT_LARGE: [TIER_9B, TIER_1_7B],
   },
 };

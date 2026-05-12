@@ -19,6 +19,7 @@ import type {
 } from "@elizaos/core";
 
 import type { ScapeGameService } from "../services/game-service.js";
+
 const NPC_LIMIT = 20;
 const PLAYER_LIMIT = 12;
 const ITEM_LIMIT = 20;
@@ -51,33 +52,35 @@ export const nearbyProvider: Provider = {
         text: JSON.stringify({
           scape_nearby: {
             npcs: snapshot.nearbyNpcs.slice(0, NPC_LIMIT).map((n) => ({
-            id: n.id,
-            name: n.name,
-            x: n.x,
-            z: n.z,
-            hp: n.hp ?? null,
-            cl: n.combatLevel ?? null,
-          })),
+              id: n.id,
+              name: n.name,
+              x: n.x,
+              z: n.z,
+              hp: n.hp ?? null,
+              cl: n.combatLevel ?? null,
+            })),
             players: snapshot.nearbyPlayers.slice(0, PLAYER_LIMIT).map((p) => ({
-            id: p.id,
-            name: p.name,
-            x: p.x,
-            z: p.z,
-            cl: p.combatLevel,
-          })),
-            groundItems: snapshot.nearbyGroundItems.slice(0, ITEM_LIMIT).map((g) => ({
-            itemId: g.itemId,
-            name: g.name,
-            x: g.x,
-            z: g.z,
-            count: g.count,
-          })),
+              id: p.id,
+              name: p.name,
+              x: p.x,
+              z: p.z,
+              cl: p.combatLevel,
+            })),
+            groundItems: snapshot.nearbyGroundItems
+              .slice(0, ITEM_LIMIT)
+              .map((g) => ({
+                itemId: g.itemId,
+                name: g.name,
+                x: g.x,
+                z: g.z,
+                count: g.count,
+              })),
             objects: snapshot.nearbyObjects.slice(0, OBJECT_LIMIT).map((o) => ({
-            locId: o.locId,
-            name: o.name,
-            x: o.x,
-            z: o.z,
-          })),
+              locId: o.locId,
+              name: o.name,
+              x: o.x,
+              z: o.z,
+            })),
           },
         }),
       };

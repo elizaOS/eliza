@@ -1,5 +1,9 @@
 import type { ActionResult, IAgentRuntime } from "@elizaos/core";
-import { type ActionResultData, FAILURE_TEXT_PREFIX, type ToolFailure } from "../types.js";
+import {
+  type ActionResultData,
+  FAILURE_TEXT_PREFIX,
+  type ToolFailure,
+} from "../types.js";
 
 export function failureToActionResult(
   failure: ToolFailure,
@@ -25,7 +29,10 @@ export function successActionResult(
   };
 }
 
-export function readParam<T = unknown>(options: unknown, name: string): T | undefined {
+export function readParam<T = unknown>(
+  options: unknown,
+  name: string,
+): T | undefined {
   if (!options || typeof options !== "object") return undefined;
   const opts = options as Record<string, unknown>;
   const params = opts.parameters as Record<string, unknown> | undefined;
@@ -33,12 +40,18 @@ export function readParam<T = unknown>(options: unknown, name: string): T | unde
   return value;
 }
 
-export function readStringParam(options: unknown, name: string): string | undefined {
+export function readStringParam(
+  options: unknown,
+  name: string,
+): string | undefined {
   const v = readParam<unknown>(options, name);
   return typeof v === "string" ? v : undefined;
 }
 
-export function readNumberParam(options: unknown, name: string): number | undefined {
+export function readNumberParam(
+  options: unknown,
+  name: string,
+): number | undefined {
   const v = readParam<unknown>(options, name);
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -48,7 +61,10 @@ export function readNumberParam(options: unknown, name: string): number | undefi
   return undefined;
 }
 
-export function readBoolParam(options: unknown, name: string): boolean | undefined {
+export function readBoolParam(
+  options: unknown,
+  name: string,
+): boolean | undefined {
   const v = readParam<unknown>(options, name);
   if (typeof v === "boolean") return v;
   if (v === "true" || v === "1" || v === 1) return true;
@@ -56,12 +72,18 @@ export function readBoolParam(options: unknown, name: string): boolean | undefin
   return undefined;
 }
 
-export function readArrayParam(options: unknown, name: string): unknown[] | undefined {
+export function readArrayParam(
+  options: unknown,
+  name: string,
+): unknown[] | undefined {
   const v = readParam<unknown>(options, name);
   return Array.isArray(v) ? v : undefined;
 }
 
-export function truncate(s: string, max: number): { text: string; truncated: boolean } {
+export function truncate(
+  s: string,
+  max: number,
+): { text: string; truncated: boolean } {
   if (s.length <= max) return { text: s, truncated: false };
   return {
     text: `${s.slice(0, max)}\n…[truncated, ${s.length - max} more chars]`,
@@ -76,7 +98,8 @@ export function readPositiveIntSetting(
   fallback: number,
 ): number {
   const v = runtime.getSetting?.(key);
-  if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.floor(v);
+  if (typeof v === "number" && Number.isFinite(v) && v > 0)
+    return Math.floor(v);
   if (typeof v === "string") {
     const n = Number(v);
     if (Number.isFinite(n) && n > 0) return Math.floor(n);

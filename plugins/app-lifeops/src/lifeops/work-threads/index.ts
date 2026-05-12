@@ -1,3 +1,9 @@
+export {
+  type CreateWorkThreadInput,
+  createWorkThreadStore,
+  type UpdateWorkThreadInput,
+  type WorkThreadStore,
+} from "./store.js";
 export type {
   ThreadSourceRef,
   WorkThread,
@@ -6,9 +12,3 @@ export type {
   WorkThreadListFilter,
   WorkThreadStatus,
 } from "./types.js";
-export {
-  createWorkThreadStore,
-  type CreateWorkThreadInput,
-  type UpdateWorkThreadInput,
-  type WorkThreadStore,
-} from "./store.js";

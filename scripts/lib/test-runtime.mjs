@@ -1,7 +1,7 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 const CODEX_NODE_MARKER = `${path.sep}Applications${path.sep}Codex.app${path.sep}Contents${path.sep}Resources${path.sep}node`;
 
@@ -95,7 +95,10 @@ function canRunNode(nodePath, currentExecPath) {
     ["-e", "process.stdout.write(`${process.platform}/${process.arch}`)"],
     { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
   );
-  return result.status === 0 && result.stdout.trim() === `${process.platform}/${process.arch}`;
+  return (
+    result.status === 0 &&
+    result.stdout.trim() === `${process.platform}/${process.arch}`
+  );
 }
 
 export function isCodexBundledNode(execPath = process.execPath) {
@@ -117,7 +120,9 @@ export function resolveExternalNode({
     "/usr/local/bin/node",
   ].filter(Boolean);
 
-  return candidates.find((candidate) => canRunNode(candidate, execPath)) || null;
+  return (
+    candidates.find((candidate) => canRunNode(candidate, execPath)) || null
+  );
 }
 
 export function buildTestRuntimeEnv(baseEnv = process.env, options = {}) {

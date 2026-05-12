@@ -7,11 +7,7 @@ import type {
 } from "@elizaos/core";
 import { CODING_TOOLS_CONTEXTS } from "../types.js";
 
-const TOOL_NAMES = [
-  "FILE",
-  "SHELL",
-  "WORKTREE",
-] as const;
+const TOOL_NAMES = ["FILE", "SHELL", "WORKTREE"] as const;
 
 /**
  * Surface the coding-tools toolkit to the planner. Mirrors the

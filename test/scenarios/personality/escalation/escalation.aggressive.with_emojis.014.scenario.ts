@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "escalation.aggressive.with_emojis.014",
-  title: "escalation :: more_terse :: aggressive :: with_emojis :: 15-turn (14)",
+  title:
+    "escalation :: more_terse :: aggressive :: with_emojis :: 15-turn (14)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,16 +24,17 @@ export default scenario({
     "aggression:aggressive",
     "format:with_emojis",
   ],
-  description: "Ladder of escalation requests ('more_terse', direction: terser). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+  description:
+    "Ladder of escalation requests ('more_terse', direction: terser). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "escalation",
@@ -41,28 +43,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          ladderKey: "more_terse",
-          direction: "terser",
-          escalationStepTurnIndices: [
-                  0,
-                  2,
-                  4,
-                  6,
-                  8,
-                ],
-          probeTurnIndices: [
-                  1,
-                  3,
-                  5,
-                  7,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
-                ],
-        },
+      ladderKey: "more_terse",
+      direction: "terser",
+      escalationStepTurnIndices: [0, 2, 4, 6, 8],
+      probeTurnIndices: [1, 3, 5, 7, 9, 10, 11, 12, 13, 14],
+    },
   },
   turns: [
     // escalation step 1 of 5

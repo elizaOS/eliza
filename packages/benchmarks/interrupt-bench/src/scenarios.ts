@@ -21,7 +21,14 @@ function isScenarioShape(obj: unknown): obj is Scenario {
   if (typeof o.category !== "string") return false;
   if (typeof o.interruptionType !== "string") return false;
   if (typeof o.weight !== "number") return false;
-  if (!o.setup || !o.script || !o.expectedFinalState || !o.expectedTrace || !o.responseRubric) return false;
+  if (
+    !o.setup ||
+    !o.script ||
+    !o.expectedFinalState ||
+    !o.expectedTrace ||
+    !o.responseRubric
+  )
+    return false;
   return true;
 }
 

@@ -79,7 +79,7 @@ export class VisionBasicE2ETestSuite {
         // Validate the action
         const isValid = await visionAction.validate(runtime, message, state);
 
-        if (!visionService || !visionService.isActive()) {
+        if (!visionService?.isActive()) {
           // If vision service is not active, validation should return false
           if (isValid) {
             throw new Error(
@@ -107,7 +107,7 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse || !callbackResponse.text) {
+          if (!callbackResponse?.text) {
             throw new Error("No response text returned from action");
           }
 
@@ -148,7 +148,7 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse || !callbackResponse.text) {
+          if (!callbackResponse?.text) {
             throw new Error("No response text returned from action");
           }
 
@@ -160,10 +160,7 @@ export class VisionBasicE2ETestSuite {
         }
 
         // Verify response contains expected action
-        if (
-          !callbackResponse.actions ||
-          !callbackResponse.actions.includes("VISION")
-        ) {
+        if (!callbackResponse.actions?.includes("VISION")) {
           throw new Error("Response does not include VISION action");
         }
       },
@@ -197,7 +194,7 @@ export class VisionBasicE2ETestSuite {
         // Validate the action
         const isValid = await visionAction.validate(runtime, message, state);
 
-        if (!visionService || !visionService.isActive()) {
+        if (!visionService?.isActive()) {
           // If vision service is not active, validation should return false
           if (isValid) {
             throw new Error(
@@ -225,7 +222,7 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse || !callbackResponse.text) {
+          if (!callbackResponse?.text) {
             throw new Error("No response text returned from action");
           }
 
@@ -266,7 +263,7 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse || !callbackResponse.text) {
+          if (!callbackResponse?.text) {
             throw new Error("No response text returned from action");
           }
 
@@ -284,7 +281,7 @@ export class VisionBasicE2ETestSuite {
           }
 
           const attachment = callbackResponse.attachments[0];
-          if (!attachment.url || !attachment.url.startsWith("data:image/")) {
+          if (!attachment.url?.startsWith("data:image/")) {
             throw new Error("Invalid image attachment format");
           }
 
@@ -292,10 +289,7 @@ export class VisionBasicE2ETestSuite {
         }
 
         // Verify response contains expected action
-        if (
-          !callbackResponse.actions ||
-          !callbackResponse.actions.includes("VISION")
-        ) {
+        if (!callbackResponse.actions?.includes("VISION")) {
           throw new Error("Response does not include VISION action");
         }
       },

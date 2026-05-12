@@ -15,7 +15,8 @@ function checkReconciliation(ctx: ScenarioContext): string | undefined {
   // The second user turn is the counter-proposal; the agent's reply on the
   // second turn must concretely accept or counter.
   const secondReply = String(ctx.turns?.[1]?.responseText ?? "").toLowerCase();
-  if (!secondReply) return "agent gave no second-turn reply to counter-proposal";
+  if (!secondReply)
+    return "agent gave no second-turn reply to counter-proposal";
   const decisionSignals = [
     "works",
     "confirmed",

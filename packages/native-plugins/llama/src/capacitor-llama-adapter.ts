@@ -98,6 +98,19 @@ interface LlamaCppPluginLike {
    * the .so's APK assets at first call.
    */
   getNativeKernels?: () => Promise<{ kernels: string[]; variant?: string }>;
+  /**
+   * Apply the loaded GGUF's chat template (Jinja, from gguf metadata) to
+   * the given conversation. Backed by llama.cpp's
+   * `llama_chat_apply_template`. Returns the rendered prompt string ready
+   * for `completion()` / `generateText()`. Returns null when the model
+   * has no chat template baked in.
+   */
+  getFormattedChat?: (options: {
+    contextId: number;
+    messages: string;
+    chatTemplate?: string | null;
+    params?: { jinja?: boolean };
+  }) => Promise<{ prompt: string | null }>;
   addListener: (
     event: string,
     listener: (data: TokenEventPayload) => void,
@@ -575,22 +588,8 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       temperature: options.temperature ?? 0.7,
       top_p: options.topP ?? 0.9,
     };
-    // llama-cpp-capacitor@0.1.5 drops the stop array on the JNI side
-    // (cparams.antiprompt.clear() with no repopulate). Pass it anyway for
-    // future builds, and rely on JS-side post-processing to trim output.
-    // For Llama-3 GGUFs always inject <|eot_id|>: published quants are
-    // inconsistent about eos_token_id=128009 metadata, so the model rambles
-    // past its natural turn boundary to maxTokens without an explicit stop.
-    const effectiveStop = [...(options.stopSequences ?? [])];
-    if (
-      this.loadedPath &&
-      /llama.?3/i.test(this.loadedPath) &&
-      !effectiveStop.includes("<|eot_id|>")
-    ) {
-      effectiveStop.push("<|eot_id|>");
-    }
-    if (effectiveStop.length > 0) {
-      params.stop = effectiveStop;
+    if (options.stopSequences && options.stopSequences.length > 0) {
+      params.stop = options.stopSequences;
     }
     if (options.stream) {
       params.emit_partial_completion = true;
@@ -601,10 +600,18 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     // reads it via setCacheType / completion params and pins KV slots.
     if (options.cacheKey) {
       const slotId = deriveCacheSlotId(options.cacheKey);
-      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).cache_prompt =
-        true;
-      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).slot_id =
-        slotId;
+      (
+        params as NativeGenerateParams & {
+          cache_prompt?: boolean;
+          slot_id?: number;
+        }
+      ).cache_prompt = true;
+      (
+        params as NativeGenerateParams & {
+          cache_prompt?: boolean;
+          slot_id?: number;
+        }
+      ).slot_id = slotId;
     }
 
     const started = Date.now();
@@ -633,20 +640,8 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
         ? Math.round(result.timings.predicted_ms)
         : Date.now() - started;
 
-    // JS-side safety trim: when the native plugin didn't honor the stop array,
-    // the model emits the stop token as plain text and continues. Trim at the
-    // first matching stop sequence to guarantee a clean turn boundary.
-    let text = result.text;
-    for (const stop of effectiveStop) {
-      const idx = text.indexOf(stop);
-      if (idx !== -1) {
-        text = text.slice(0, idx);
-        break;
-      }
-    }
-
     return {
-      text,
+      text: result.text,
       promptTokens: result.tokens_evaluated,
       outputTokens: result.tokens_predicted,
       durationMs: duration,
@@ -656,6 +651,30 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
   async cancelGenerate(): Promise<void> {
     if (!this.plugin) return;
     await this.plugin.stopCompletion({ contextId: CONTEXT_ID });
+  }
+
+  /**
+   * Round-trip to the loaded GGUF's native chat template via
+   * `LlamaCpp.getFormattedChat`. The plugin's Java side serializes
+   * `messages` as a JSON string and invokes
+   * `cap_format_chat()` → `llama_chat_apply_template()`. Returns the
+   * rendered prompt (or null when the GGUF has no template metadata).
+   */
+  async formatChat(
+    messages: { role: string; content: string }[],
+  ): Promise<string | null> {
+    if (!this.plugin || !this.loadedPath) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    if (typeof this.plugin.getFormattedChat !== "function") {
+      return null;
+    }
+    const result = await this.plugin.getFormattedChat({
+      contextId: CONTEXT_ID,
+      messages: JSON.stringify(messages),
+      params: { jinja: true },
+    });
+    return result.prompt ?? null;
   }
 
   async embed(options: EmbedOptions): Promise<EmbedResult> {

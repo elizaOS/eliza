@@ -293,10 +293,7 @@ export interface ScheduledTaskRunner {
     verb: ScheduledTaskVerb,
     payload?: unknown,
   ): Promise<ScheduledTask>;
-  pipeline(
-    taskId: string,
-    outcome: TerminalState,
-  ): Promise<ScheduledTask[]>;
+  pipeline(taskId: string, outcome: TerminalState): Promise<ScheduledTask[]>;
 }
 
 // ---------------------------------------------------------------------------

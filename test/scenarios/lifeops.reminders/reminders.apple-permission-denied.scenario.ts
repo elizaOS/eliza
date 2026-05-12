@@ -20,11 +20,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentChoseValidFallback(
@@ -139,12 +139,14 @@ export default scenario({
              'denied',
              'local',
              'local_storage',
-             ${sqlQuote(JSON.stringify({
-               denied: true,
-               denied_reason:
-                 "user denied Reminders access in System Settings → Privacy & Security → Reminders",
-               last_check_at: nowIso,
-             }))},
+             ${sqlQuote(
+               JSON.stringify({
+                 denied: true,
+                 denied_reason:
+                   "user denied Reminders access in System Settings → Privacy & Security → Reminders",
+                 last_check_at: nowIso,
+               }),
+             )},
              ${sqlQuote(nowIso)},
              ${sqlQuote(nowIso)},
              ${sqlQuote(nowIso)}

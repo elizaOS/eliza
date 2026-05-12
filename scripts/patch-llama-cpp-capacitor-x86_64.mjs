@@ -23,7 +23,7 @@
  * line) and exits early.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -242,13 +242,7 @@ function patchGradle(pkgRoot) {
 }
 
 function patchCMake(pkgRoot) {
-  const cmakeFile = join(
-    pkgRoot,
-    "android",
-    "src",
-    "main",
-    "CMakeLists.txt",
-  );
+  const cmakeFile = join(pkgRoot, "android", "src", "main", "CMakeLists.txt");
   if (!existsSync(cmakeFile)) return false;
   const text = readFileSync(cmakeFile, "utf8");
   if (text.includes(CMAKE_PATCHED_MARKER)) return false;

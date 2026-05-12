@@ -79,6 +79,15 @@ CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
 KNOWN_BASE_MODELS = {
+    "elizaos/eliza-1-0_8b": {
+        "params": "0.8B",
+        "context_length": 32768,
+        "tokenizer_family": "eliza1",
+        "category": "chat",
+        "bucket": "small",
+        "min_ram_gb": 2,
+        "size_gb_estimate": 0.7,  # Q4 0.8B (Qwen3.5-0.8B backbone, 248k vocab embd)
+    },
     "elizaos/eliza-1-0_6b": {
         "params": "0.6B",
         "context_length": 32768,

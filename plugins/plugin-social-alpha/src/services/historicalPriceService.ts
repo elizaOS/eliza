@@ -32,8 +32,6 @@ export interface TokenResolution {
 }
 
 export class HistoricalPriceService {
-	private runtime: IAgentRuntime;
-	private runtime: IAgentRuntime;
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
 
@@ -181,7 +179,7 @@ export class HistoricalPriceService {
 						p.chainId === chainId,
 				) || searchResults.pairs[0];
 
-			if (!pair || !pair.priceUsd) {
+			if (!pair?.priceUsd) {
 				return null;
 			}
 

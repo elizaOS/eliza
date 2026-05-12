@@ -14,9 +14,9 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 
@@ -56,7 +56,8 @@ function describeAgentRespectedInstanceScope(
 
 export default scenario({
   id: "calendar.dst-boundary-event-series",
-  title: "Daily recurring series across DST boundary respects this-instance scope",
+  title:
+    "Daily recurring series across DST boundary respects this-instance scope",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "dst", "recurring", "robustness"],
   isolation: "per-scenario",
@@ -102,7 +103,9 @@ export default scenario({
             location: "",
             status: "confirmed",
             startAt: inst.startUtc,
-            endAt: new Date(Date.parse(inst.startUtc) + 30 * 60_000).toISOString(),
+            endAt: new Date(
+              Date.parse(inst.startUtc) + 30 * 60_000,
+            ).toISOString(),
             isAllDay: false,
             timezone: PACIFIC_TZ,
             htmlLink: null,

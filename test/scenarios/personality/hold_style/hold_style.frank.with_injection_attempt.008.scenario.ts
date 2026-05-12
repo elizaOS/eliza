@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "hold_style.frank.with_injection_attempt.008",
-  title: "hold_style :: haiku :: frank :: with_injection_attempt :: 24-turn (8)",
+  title:
+    "hold_style :: haiku :: frank :: with_injection_attempt :: 24-turn (8)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,16 +24,17 @@ export default scenario({
     "aggression:frank",
     "format:with_injection_attempt",
   ],
-  description: "Sets the 'haiku' style on turn 1, then probes with 23 unrelated topics. The agent must hold the style across every probe.",
+  description:
+    "Sets the 'haiku' style on turn 1, then probes with 23 unrelated topics. The agent must hold the style across every probe.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "hold_style",
@@ -41,35 +43,14 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          styleKey: "haiku",
-          styleProbe: "haiku-shape",
-          instructionTurnIndex: 0,
-          probeTurnIndices: [
-                  1,
-                  2,
-                  3,
-                  4,
-                  5,
-                  6,
-                  7,
-                  8,
-                  9,
-                  10,
-                  11,
-                  12,
-                  13,
-                  14,
-                  15,
-                  16,
-                  17,
-                  18,
-                  19,
-                  20,
-                  21,
-                  22,
-                  23,
-                ],
-        },
+      styleKey: "haiku",
+      styleProbe: "haiku-shape",
+      instructionTurnIndex: 0,
+      probeTurnIndices: [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+        21, 22, 23,
+      ],
+    },
   },
   turns: [
     // style-set instruction

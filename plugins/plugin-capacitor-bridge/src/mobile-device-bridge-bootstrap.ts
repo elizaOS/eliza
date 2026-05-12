@@ -182,6 +182,18 @@ type DeviceOutbound =
 			tokens: number;
 	  }
 	| { type: "embedResult"; correlationId: string; ok: false; error: string }
+	| {
+			type: "formatChatResult";
+			correlationId: string;
+			ok: true;
+			prompt: string | null;
+	  }
+	| {
+			type: "formatChatResult";
+			correlationId: string;
+			ok: false;
+			error: string;
+	  }
 	| { type: "pong"; at: number };
 
 type AgentOutbound =
@@ -196,6 +208,11 @@ type AgentOutbound =
 			temperature?: number;
 	  }
 	| { type: "embed"; correlationId: string; input: string }
+	| {
+			type: "formatChat";
+			correlationId: string;
+			messages: { role: string; content: string }[];
+	  }
 	| { type: "ping"; at: number };
 
 interface ConnectedDevice {
@@ -262,6 +279,10 @@ class MobileDeviceBridge {
 	private readonly pendingUnloads = new Map<string, Pending<void>>();
 	private readonly pendingGenerates = new Map<string, Pending<string>>();
 	private readonly pendingEmbeds = new Map<string, Pending<number[]>>();
+	private readonly pendingFormatChats = new Map<
+		string,
+		Pending<string | null>
+	>();
 
 	status(): MobileDeviceBridgeStatus {
 		const devices = [...this.devices.values()].map((device) => ({
@@ -433,6 +454,19 @@ class MobileDeviceBridge {
 			} else {
 				pending.reject(new Error(msg.error));
 			}
+			return;
+		}
+
+		if (msg.type === "formatChatResult") {
+			const pending = this.pendingFormatChats.get(msg.correlationId);
+			if (!pending) return;
+			clearTimeout(pending.timeout);
+			this.pendingFormatChats.delete(msg.correlationId);
+			if (msg.ok === true) {
+				pending.resolve(msg.prompt);
+			} else {
+				pending.reject(new Error(msg.error));
+			}
 		}
 	}
 
@@ -545,6 +579,30 @@ class MobileDeviceBridge {
 			}),
 			readTimeoutMs("ELIZA_DEVICE_EMBED_TIMEOUT_MS", DEFAULT_CALL_TIMEOUT_MS),
 			"DEVICE_TIMEOUT: no device returned embeddings within deadline",
+		);
+	}
+
+	/**
+	 * Apply the model's native chat template (Jinja, from the GGUF) to the
+	 * given message list. Round-trips to the WebView so the Capacitor
+	 * `LlamaCpp.getFormattedChat()` plugin call can invoke llama.cpp's
+	 * `llama_chat_apply_template`. Returns the fully tokenized chat
+	 * prompt string ready to feed back into `generate()`. Returns `null`
+	 * when the loaded model has no chat template baked in (caller should
+	 * fall back to a manual flatten in that case).
+	 */
+	formatChat(
+		messages: { role: string; content: string }[],
+	): Promise<string | null> {
+		return this.sendToPrimary<string | null>(
+			this.pendingFormatChats,
+			(correlationId) => ({
+				type: "formatChat",
+				correlationId,
+				messages,
+			}),
+			readTimeoutMs("ELIZA_DEVICE_LOAD_TIMEOUT_MS", DEFAULT_LOAD_TIMEOUT_MS),
+			"DEVICE_TIMEOUT: chat template format exceeded deadline",
 		);
 	}
 }
@@ -855,6 +913,44 @@ function resolveEmbeddingDimension(): number {
 	);
 }
 
+// elizaOS v5 message-pipeline calls `runtime.useModel(TEXT_LARGE, params)`
+// with `params.messages` set and `params.prompt` undefined. The native
+// Capacitor llama plugin only accepts a flat string prompt, so we have
+// to render the conversation into the model's chat template ourselves.
+// This path is only reached when `getFormattedChat` is unavailable or
+// the model has no baked-in Jinja template. Use model-agnostic plain-text
+// role labels (`role:\ncontent`) — hardcoding Llama-3 special tokens here
+// breaks Qwen3 / Eliza-1 GGUFs whose templates use <|im_start|>/<|im_end|>
+// (#7612). When params include a legacy `prompt`, pass it through unchanged.
+function flattenChatParamsForPrompt(params: GenerateTextParams): string {
+	if (typeof params.prompt === "string" && params.prompt.length > 0) {
+		return params.prompt;
+	}
+	const messages = params.messages ?? [];
+	const blocks: string[] = [];
+	const hasSystemMessage = messages.some(
+		(m: { role?: string }) => m.role === "system",
+	);
+	if (!hasSystemMessage && typeof params.system === "string" && params.system) {
+		blocks.push(`system:\n${params.system}`);
+	}
+	for (const m of messages) {
+		const content =
+			typeof (m as { content?: unknown }).content === "string"
+				? (m as { content: string }).content
+				: "";
+		if (!content) continue;
+		const role = ((m as { role?: string }).role ?? "user").toLowerCase();
+		const safeRole =
+			role === "system" || role === "assistant" || role === "user"
+				? role
+				: "user";
+		blocks.push(`${safeRole}:\n${content}`);
+	}
+	blocks.push("assistant:");
+	return blocks.join("\n\n");
+}
+
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 	return async (_runtime: IAgentRuntime, params: GenerateTextParams) => {
 		const loadArgs = await resolveLoadArgsWithAutoDownload(slot);
@@ -864,13 +960,68 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 			);
 		}
 		await mobileDeviceBridge.loadModel(loadArgs);
+		// Prefer the model's native chat template via the Capacitor
+		// `LlamaCpp.getFormattedChat()` round-trip. That path invokes
+		// `llama_chat_apply_template()` on the loaded GGUF, which:
+		//   * honours the model's own Jinja template (Llama-3, Qwen,
+		//     Mistral, Phi, …) without per-model code on our side,
+		//   * sets up llama.cpp's internal antiprompt list against the
+		//     model's true stop tokens so generation terminates at the
+		//     natural assistant-turn boundary (`<|eot_id|>` etc.),
+		//   * handles BOS, EOT, system-message edge cases correctly.
+		// Fall back to the plain-text flatten when the model has no chat
+		// template baked in (older or non-instruct GGUFs) or when the legacy
+		// `params.prompt` is already set. The fallback is model-agnostic —
+		// no Llama-3 special tokens — so it works across Qwen3, Eliza-1, etc.
+		const messagesForTemplate = collectMessagesForNativeTemplate(params);
+		let nativePrompt: string | null = null;
+		if (messagesForTemplate) {
+			try {
+				nativePrompt = await mobileDeviceBridge.formatChat(messagesForTemplate);
+			} catch (err) {
+				logger.warn(
+					`[mobile-device-bridge] getFormattedChat failed, falling back to plain-text flatten: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+		}
+		const prompt = nativePrompt ?? flattenChatParamsForPrompt(params);
 		return mobileDeviceBridge.generate({
-			prompt: params.prompt ?? "",
+			prompt,
 			stopSequences: params.stopSequences,
 			maxTokens: params.maxTokens,
 			temperature: params.temperature,
 		});
 	};
+}
+
+// Reshape `params` into the `[{role, content}, ...]` list the native
+// `getFormattedChat` call expects. Returns null if `params.messages` is
+// empty (caller falls back to hand-rolled flatten).
+function collectMessagesForNativeTemplate(
+	params: GenerateTextParams,
+): { role: string; content: string }[] | null {
+	const messages = params.messages ?? [];
+	const result: { role: string; content: string }[] = [];
+	const hasSystemMessage = messages.some(
+		(m: { role?: string }) => m.role === "system",
+	);
+	if (!hasSystemMessage && typeof params.system === "string" && params.system) {
+		result.push({ role: "system", content: params.system });
+	}
+	for (const m of messages) {
+		const content =
+			typeof (m as { content?: unknown }).content === "string"
+				? (m as { content: string }).content
+				: "";
+		if (!content) continue;
+		const role = ((m as { role?: string }).role ?? "user").toLowerCase();
+		const safeRole =
+			role === "system" || role === "assistant" || role === "user"
+				? role
+				: "user";
+		result.push({ role: safeRole, content });
+	}
+	return result.length > 0 ? result : null;
 }
 
 function extractEmbeddingText(

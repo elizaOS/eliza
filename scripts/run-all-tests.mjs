@@ -50,10 +50,10 @@
  * See `.env.test.example` and `scripts/test-env.mjs` for live env setup.
  */
 
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildTestRuntimeEnv } from "./lib/test-runtime.mjs";
 
@@ -154,8 +154,8 @@ if (TEST_SHARD) {
     const index = parseInt(parts[0], 10);
     const total = parseInt(parts[1], 10);
     if (
-      !isNaN(index) &&
-      !isNaN(total) &&
+      !Number.isNaN(index) &&
+      !Number.isNaN(total) &&
       total > 0 &&
       index >= 1 &&
       index <= total

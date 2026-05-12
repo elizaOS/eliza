@@ -89,6 +89,7 @@ function parseArgs(argv) {
     ),
     report: process.env.ELIZA_E2E_REPORT || "",
     quiet: process.env.ELIZA_E2E_QUIET === "1",
+    json: process.env.ELIZA_E2E_JSON === "1",
   };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -123,9 +124,12 @@ function parseArgs(argv) {
     else if (a === "--ngl") args.ngl = next();
     else if (a === "--report") args.report = next();
     else if (a === "--quiet") args.quiet = true;
-    else if (a === "--help" || a === "-h") {
+    else if (a === "--json") {
+      args.json = true;
+      args.quiet = true;
+    } else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda] [--turns N] [--wav a,b] [--report out.json]",
+        "Usage: bun packages/inference/verify/e2e_loop_bench.mjs --bundle <dir> --tier <id> [--backend cpu|vulkan|cuda] [--turns N] [--wav a,b] [--report out.json] [--json] [--quiet]",
       );
       process.exit(0);
     } else throw new Error(`unknown argument: ${a}`);
@@ -1282,6 +1286,13 @@ function finish(report, args, logFn) {
     );
   } else {
     logFn(`RESULT status=${report.status}: ${report.reason}`);
+  }
+  if (args.json) {
+    // Machine-readable: emit the (single-run) report on stdout, same as the
+    // sibling harnesses (`embedding_bench.mjs`, `guided_decode_token_bench.mjs`,
+    // `bargein_latency_harness.mjs`, …). `--json` implies `--quiet` so stdout
+    // stays parseable.
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   }
   // The bench exits 0 whenever it produced its output (including needs-*),
   // matching the eval-suite honesty contract; a non-zero exit means a harness

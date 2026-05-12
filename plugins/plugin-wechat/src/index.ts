@@ -1,10 +1,10 @@
 import {
-  getConnectorAccountManager,
-  stringToUuid,
   type Content,
+  getConnectorAccountManager,
   type IAgentRuntime,
   type Memory,
   type MessageConnectorTarget,
+  stringToUuid,
   type TargetInfo,
   type UUID,
 } from "@elizaos/core";
@@ -84,31 +84,32 @@ type RuntimeWithWechatConnector = {
 };
 
 type WechatConnectorReadParams = {
-	target?: TargetInfo;
-	limit?: number;
-	query?: string;
+  target?: TargetInfo;
+  limit?: number;
+  query?: string;
 };
 
 function readRuntimeSetting(runtime: unknown, key: string): string | undefined {
-	const value = (runtime as { getSetting?: (setting: string) => unknown })
-		.getSetting?.(key);
-	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  const value = (
+    runtime as { getSetting?: (setting: string) => unknown }
+  ).getSetting?.(key);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 function resolveWechatConfig(
-	config: Record<string, unknown>,
-	runtime: unknown,
+  config: Record<string, unknown>,
+  runtime: unknown,
 ): WechatConfig | undefined {
-	const explicit = (config as { connectors?: { wechat?: WechatConfig } })
-		?.connectors?.wechat;
-	if (explicit) return explicit;
-	const apiKey = readRuntimeSetting(runtime, "WECHAT_API_KEY");
-	const proxyUrl = readRuntimeSetting(runtime, "WECHAT_PROXY_URL");
-	if (!apiKey && !proxyUrl) return undefined;
-	return {
-		apiKey,
-		proxyUrl,
-	};
+  const explicit = (config as { connectors?: { wechat?: WechatConfig } })
+    ?.connectors?.wechat;
+  if (explicit) return explicit;
+  const apiKey = readRuntimeSetting(runtime, "WECHAT_API_KEY");
+  const proxyUrl = readRuntimeSetting(runtime, "WECHAT_PROXY_URL");
+  if (!apiKey && !proxyUrl) return undefined;
+  return {
+    apiKey,
+    proxyUrl,
+  };
 }
 
 function normalizeConnectorLimit(

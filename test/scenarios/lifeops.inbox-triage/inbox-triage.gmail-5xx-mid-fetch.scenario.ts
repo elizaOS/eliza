@@ -62,7 +62,8 @@ function checkAgentSurfacesFailure(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "inbox-triage.gmail-5xx-mid-fetch",
-  title: "Gmail connector 5xx during triage degrades gracefully and surfaces failure",
+  title:
+    "Gmail connector 5xx during triage degrades gracefully and surfaces failure",
   domain: "lifeops.inbox-triage",
   tags: [
     "lifeops",

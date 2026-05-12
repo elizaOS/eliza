@@ -179,7 +179,7 @@ async function calculateSuccessMetrics() {
   // Calculate final metrics
   const userMetricsArray: UserMetrics[] = [];
 
-  for (const [userId, metrics] of userMetricsMap) {
+  for (const [_userId, metrics] of userMetricsMap) {
     // Update unique token count
     metrics.uniqueTokenCount = metrics.uniqueTokens.size;
 
@@ -198,9 +198,9 @@ async function calculateSuccessMetrics() {
         (metrics.sentimentAccuracy / metrics.callsWithPriceData) * 100;
 
       // Fix infinity values
-      if (!isFinite(metrics.bestCallProfitPercent))
+      if (!Number.isFinite(metrics.bestCallProfitPercent))
         metrics.bestCallProfitPercent = 0;
-      if (!isFinite(metrics.worstCallLossPercent))
+      if (!Number.isFinite(metrics.worstCallLossPercent))
         metrics.worstCallLossPercent = 0;
 
       userMetricsArray.push(metrics);

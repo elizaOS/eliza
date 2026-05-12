@@ -11,32 +11,15 @@
     "resolveJsonModule": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "lib": [
-      "ES2023",
-      "DOM"
-    ],
-    "types": [
-      "node"
-    ],
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
     "paths": {
-      "@elizaos/core": [
-        "../core/src/index.node.ts"
-      ],
-      "@elizaos/agent": [
-        "../agent/src/index.ts"
-      ],
-      "@elizaos/shared": [
-        "../shared/src/index.ts"
-      ],
-      "@elizaos/ui": [
-        "../ui/dist/index.d.ts"
-      ],
-      "@elizaos/vault": [
-        "../vault/src/index.ts"
-      ],
-      "@elizaos/app-core": [
-        "../app-core/src/index.ts"
-      ],
+      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/vault": ["../vault/src/index.ts"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/dist/index.d.ts"
       ],
@@ -52,15 +35,11 @@
       "@elizaos/plugin-local-embedding": [
         "../../plugins/plugin-local-embedding/src/index.ts"
       ],
-      "@elizaos/plugin-sql": [
-        "../../plugins/plugin-sql/src/index.ts"
-      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"
       ],
-      "@elizaos/plugin-signal": [
-        "../../plugins/plugin-signal/src/index.ts"
-      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-streaming": [
         "../../plugins/plugin-streaming/dist/index.d.ts"
       ],
@@ -70,9 +49,7 @@
       "@elizaos/capacitor-mobile-signals": [
         "../native-plugins/mobile-signals/src/index.ts"
       ],
-      "@elizaos/app-lifeops": [
-        "./src/shims/eliza-app-lifeops.ts"
-      ]
+      "@elizaos/app-lifeops": ["./src/shims/eliza-app-lifeops.ts"]
     }
   },
   "include": [

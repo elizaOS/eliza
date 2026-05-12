@@ -103,7 +103,9 @@ async function main() {
     printUsageAndExit(2);
   }
   if (args.apply && args.snapshot) {
-    console.error("--apply is not supported with --snapshot (snapshot mode is read-only)");
+    console.error(
+      "--apply is not supported with --snapshot (snapshot mode is read-only)",
+    );
     process.exit(2);
   }
 

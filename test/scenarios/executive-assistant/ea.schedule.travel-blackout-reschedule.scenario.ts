@@ -33,11 +33,7 @@ export default scenario({
       room: "main",
       text: "We're gonna cancel some stuff and push everything back until next month. All partnership meetings.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: [
-          "CALENDAR",
-          "MESSAGE",
-          "MESSAGE",
-        ],
+        acceptedActions: ["CALENDAR", "MESSAGE", "MESSAGE"],
         description: "bulk partnership reschedule",
         includesAny: ["cancel", "push", "next month", "partnership"],
       }),
@@ -73,11 +69,7 @@ export default scenario({
       type: "custom",
       name: "ea-travel-blackout-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: [
-          "CALENDAR",
-          "MESSAGE",
-          "MESSAGE",
-        ],
+        acceptedActions: ["CALENDAR", "MESSAGE", "MESSAGE"],
         description: "bulk partnership reschedule",
         includesAny: ["cancel", "push", "next month", "partnership"],
       }),

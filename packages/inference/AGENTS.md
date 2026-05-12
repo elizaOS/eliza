@@ -346,11 +346,56 @@ The §4 graph is the same on every platform; the *runtime path* differs:
 
 §3 requires the TurboQuant/QJL/PolarQuant/DFlash kernels on every bundle
 and forbids a "kernels-missing fallback build". When a backend genuinely
-can't dispatch a required kernel yet (ROCm/HIP — the custom kernels
-aren't HIP-ported; or `turbo3_tcq` as a generic K/V cache type — it has a
-block layout in `ggml-common.h` but no ggml type-traits entry in
-`ggml.c`), there is an **opt-in, loudly-warned, non-publishable** escape
-hatch so the voice pipeline still *runs* on that backend:
+can't dispatch a required kernel yet (ROCm/HIP — the *production* `.cu`
+custom kernels aren't `__HIP_PLATFORM_AMD__`-clean yet, though
+`verify/hip_verify.cu` — a thin shim over `cuda_verify.cu` — now gives a
+fixture-parity gate via `make -C packages/inference/verify hip-verify`;
+CPU TBQ/Polar *standalone score graph op* — no public CPU ggml graph
+builder in the pin), there is an **opt-in, loudly-warned,
+non-publishable** escape hatch so the voice pipeline still *runs* on
+that backend:
+
+> **`turbo3_tcq` is now a real K/V cache type** (2026-05-12). The fork's
+> `ggml.c` has the `[GGML_TYPE_TBQ3_TCQ]` type-traits entry (`to_float` =
+> sliding-9-bit-window codebook lookup `dequantize_row_tbq3_tcq`;
+> `from_float_ref` = host-side 512-state Viterbi forward+backtrack in the
+> orthogonal WHT basis `quantize_row_tbq3_tcq_ref`; codebook + the two
+> 128-element WHT sign vectors in the new `ggml/src/ggml-tcq-codebook.h`),
+> plus the ggml-cpu `from_float` (so `ggml_cpy(K_cur -> K_view)` can
+> quantize), the `quantize_tbq3_tcq` size wrapper, and the
+> `validate_row_data` case. `build-llama-cpp-dflash.mjs`'s
+> `patchServerKvCacheTypeNames` appends `GGML_TYPE_TBQ3_TCQ` to
+> `common/arg.cpp`'s `kv_cache_types`, so `--cache-type-k tbq3_tcq`
+> resolves. Like `qjl1_256`/`q4_polar` it is a cache type only (never a
+> `mul_mat` operand); the score path consumes the WHT-rotated cache
+> directly, bit-identical to the CUDA (`ggml-cuda/turbo-tcq.cu`) + Metal
+> decode kernels. Unblocks the 27b / 27b-256k / 27b-1m tiers
+> (`requiredKernelsForContext` adds `turbo3_tcq` at `contextLength >=
+> 65536`). Fork branch: `elizaOS/llama.cpp` `eliza/ws2-tbq3-tcq-traits`
+> @ `536ff214` (on top of pin `2f80716c`); the `packages/inference/llama.cpp`
+> gitlink is bumped to it. WS-4 to merge the decode-loop / streaming
+> source on that branch, then tag. The CPU *standalone score graph op*
+> stays `reference-only` (no public CPU graph builder for TCQ in the
+> pin — the reduced-mode hatch covers it).
+>
+> **MLX (`mlx_lm.server`)** is a separate Apple-Silicon convenience path
+> (`packages/app-core/src/services/local-inference/mlx-server.ts`,
+> opt-in `ELIZA_LOCAL_MLX=1`) — text completion only, NOT kernel-aware
+> (no TurboQuant/QJL/Polar → never `defaultEligible`, never flips
+> `verifiedBackends.mlx`), NOT the voice path (no OmniVoice/Qwen3-ASR).
+> Same class as reduced-mode: a "works-on-Apple-Silicon-without-the-fork-
+> build" convenience, not a publish path. **TPU/NPU** is not a target
+> this wave (text model doesn't fit an Edge TPU's 8 MB SRAM, no Pixel-
+> Tensor third-party delegate API, NNAPI deprecated; the Android GPU via
+> Vulkan is the on-device accelerator — `ELIZA_VAD_QNN_DELEGATE=1` for
+> Silero VAD on the Hexagon NPU is a future *battery* optimization, not
+> core). The **`android-x86_64-cpu`** target (Cuttlefish/cvd, ChromeOS,
+> emulator) is real and built (cvd smoke 5/6 infra steps PASS); the
+> Android in-process voice path adds the **"path b" `common_speculative`
+> shim** (`aosp/llama-shim/eliza_llama_shim_speculative.cpp` — C ABI over
+> the C++ helpers, in-process libllama, no localhost server; path a /
+> spawned `llama-server` stays the fallback) + the Capacitor mic/audio/
+> ONNX-VAD bridges + `aosp/deploy-pixel.mjs`.
 
 - **Runtime:** `MILADY_LOCAL_ALLOW_STOCK_KV=1` — `backend.ts`'s
   `BackendDispatcher.load()` and `dflash-server.ts`'s

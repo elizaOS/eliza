@@ -9,19 +9,28 @@
     "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
     "users": [{ "id": "alice", "role": "OWNER" }],
     "openThreads": [
-      { "id": "thread-research-001", "owner": "alice", "status": "active", "instruction": "research best EV chargers for home install", "roomId": "dm-alice" }
+      {
+        "id": "thread-research-001",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "research best EV chargers for home install",
+        "roomId": "dm-alice"
+      }
     ],
     "scheduledTasks": [],
     "memory": []
   },
   "script": [
-    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "actually nvm stop" }
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "actually nvm stop"
+    }
   ],
   "quiesceAfterMs": 3000,
   "expectedFinalState": {
-    "threads": [
-      { "id": "thread-research-001", "status": "stopped" }
-    ],
+    "threads": [{ "id": "thread-research-001", "status": "stopped" }],
     "scheduledTasks": [],
     "repliesByChannel": {
       "dm-alice": { "count": { "min": 1, "max": 1 }, "shortAck": true }

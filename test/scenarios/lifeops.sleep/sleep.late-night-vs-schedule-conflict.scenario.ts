@@ -6,11 +6,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedCalendarCache } from "../_helpers/lifeops-seeds.ts";
 
 const LATE_BEDTIME_UTC = "2025-11-04T08:00:00.000Z"; // 01:00 Pacific
@@ -103,9 +103,7 @@ export default scenario({
       type: "custom",
       name: "agent-surfaces-sleep-meeting-tension",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const sleepMention =
           reply.includes("sleep") ||

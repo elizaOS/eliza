@@ -66,7 +66,7 @@ type SignalStubHandle = StartedHttpServer & {
 
 type RouteServerHandle = StartedHttpServer;
 
-function ownerMessage(runtime: AgentRuntime, text: string) {
+function _ownerMessage(runtime: AgentRuntime, text: string) {
   return {
     id: stringToUuid(`signal-owner-${text}`),
     roomId: stringToUuid(`signal-owner-room-${text}`),
@@ -138,7 +138,7 @@ async function startServer(
   };
 }
 
-async function startSignalHttpStub(
+async function _startSignalHttpStub(
   options: { failSend?: boolean } = {},
 ): Promise<SignalStubHandle> {
   const sendPayloads: SignalSendPayload[] = [];
@@ -334,7 +334,7 @@ async function waitFor<T>(
   throw new Error(`${label} timed out. Last value: ${renderedLastValue}`);
 }
 
-async function writeLinkedSignalDevice(
+async function _writeLinkedSignalDevice(
   authDir: string,
   phoneNumber = SIGNAL_ACCOUNT,
 ): Promise<void> {
@@ -355,7 +355,7 @@ async function writeLinkedSignalDevice(
   );
 }
 
-async function seedSignalGrant(
+async function _seedSignalGrant(
   runtime: AgentRuntime,
   authDir: string,
 ): Promise<void> {
@@ -378,7 +378,7 @@ async function seedSignalGrant(
   );
 }
 
-async function seedSignalMemory(runtime: AgentRuntime): Promise<void> {
+async function _seedSignalMemory(runtime: AgentRuntime): Promise<void> {
   const roomId = stringToUuid("lifeops-signal-room");
   const entityId = stringToUuid("lifeops-signal-user");
   await runtime.ensureConnection({
@@ -570,5 +570,4 @@ describe("Real E2E: LifeOps Signal", () => {
     },
     90_000,
   );
-
 });

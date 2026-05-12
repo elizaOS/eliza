@@ -29,7 +29,8 @@ function checkBufferMatches30Min(ctx: ScenarioContext): string | undefined {
 
 export default scenario({
   id: "travel-buffer.respects-user-default",
-  title: "Travel buffer uses the seeded 30-min user default, not a generic 15-min",
+  title:
+    "Travel buffer uses the seeded 30-min user default, not a generic 15-min",
   domain: "lifeops.travel-buffer",
   tags: ["lifeops", "travel-buffer", "preferences"],
   isolation: "per-scenario",

@@ -46,13 +46,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -86,12 +80,7 @@ if (existsSync(ENV_FILE)) {
     }
   }
 }
-const BENCH_DIR = join(
-  REPO_ROOT,
-  "packages",
-  "benchmarks",
-  "lifeops-bench",
-);
+const BENCH_DIR = join(REPO_ROOT, "packages", "benchmarks", "lifeops-bench");
 
 const AGENT_ORDER = ["eliza", "hermes", "openclaw"];
 const KNOWN_AGENTS = new Set([...AGENT_ORDER, "cerebras-direct"]);
@@ -116,7 +105,7 @@ function envStr(name, fallback) {
 
 function envBoolish(name, fallback) {
   const raw = (process.env[name] ?? "").trim().toLowerCase();
-  if (raw === "" ) return fallback;
+  if (raw === "") return fallback;
   return ["1", "true", "yes", "on"].includes(raw);
 }
 
@@ -193,11 +182,15 @@ if (useMockoon) {
       `[lifeops-full-run] mockoon up — ${mockoonHandle.connectors.length} connectors listening`,
     );
   } catch (e) {
-    console.error(`[lifeops-full-run] mockoon bootstrap failed: ${e?.message ?? e}`);
+    console.error(
+      `[lifeops-full-run] mockoon bootstrap failed: ${e?.message ?? e}`,
+    );
     process.exit(2);
   }
 } else {
-  console.log(`[lifeops-full-run] LIFEOPS_USE_MOCKOON=0 → skipping mockoon bootstrap`);
+  console.log(
+    `[lifeops-full-run] LIFEOPS_USE_MOCKOON=0 → skipping mockoon bootstrap`,
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────

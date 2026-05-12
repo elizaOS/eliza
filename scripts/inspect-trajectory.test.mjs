@@ -1,8 +1,8 @@
-import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { test } from "node:test";
 
 import {
   aggregateStats,
@@ -74,9 +74,7 @@ function fakeTrajectory(id, opts = {}) {
             { role: "user", content: "hello there" },
           ],
           response: "Hi back.",
-          toolCalls: [
-            { id: "t1", name: "REPLY", args: { text: "Hi back." } },
-          ],
+          toolCalls: [{ id: "t1", name: "REPLY", args: { text: "Hi back." } }],
           usage: {
             promptTokens: 100,
             completionTokens: 20,
@@ -128,7 +126,10 @@ test("loadTrajectories: missing dir returns []", () => {
 test("loadTrajectories: skips non-trajectory JSON", () => {
   const dir = mkTmpDir();
   writeTrajectory(dir, "tj-good", fakeTrajectory("tj-good"));
-  fs.writeFileSync(path.join(dir, "agent-1", "junk.json"), JSON.stringify({ hello: "world" }));
+  fs.writeFileSync(
+    path.join(dir, "agent-1", "junk.json"),
+    JSON.stringify({ hello: "world" }),
+  );
   const result = loadTrajectories(dir);
   assert.equal(result.length, 1);
   assert.equal(result[0].data.trajectoryId, "tj-good");
@@ -167,12 +168,19 @@ test("aggregateStats sums tokens, tool calls, and finds longest", () => {
   assert.equal(stats.toolCalls, 1);
   assert.equal(stats.avgLatencyMs, 500);
   // First stage prompt is much longer than second.
-  assert.ok(stats.longestPromptChars > 50, `expected > 50 got ${stats.longestPromptChars}`);
+  assert.ok(
+    stats.longestPromptChars > 50,
+    `expected > 50 got ${stats.longestPromptChars}`,
+  );
 });
 
 test("compactModelPrompt strips Loaded Plugins block", () => {
   const compacted = compactModelPrompt(SAMPLE_PROMPT_WITH_PLUGINS);
-  assert.notEqual(compacted, SAMPLE_PROMPT_WITH_PLUGINS, "compaction should change the prompt");
+  assert.notEqual(
+    compacted,
+    SAMPLE_PROMPT_WITH_PLUGINS,
+    "compaction should change the prompt",
+  );
   assert.match(compacted, /\[list omitted in compact mode\]/);
   // Original individual plugin lines should be gone.
   assert.doesNotMatch(compacted, /@elizaos\/plugin-foo/);
@@ -194,7 +202,10 @@ test("approxTokens uses 4-chars-per-token heuristic", () => {
 });
 
 test("assembledPromptFor prefers raw prompt then falls back to messages", () => {
-  const withPrompt = assembledPromptFor({ prompt: "raw", messages: [{ role: "user", content: "msg" }] });
+  const withPrompt = assembledPromptFor({
+    prompt: "raw",
+    messages: [{ role: "user", content: "msg" }],
+  });
   assert.equal(withPrompt, "raw");
   const fromMessages = assembledPromptFor({
     messages: [
@@ -217,7 +228,9 @@ test("main(list) on empty dir exits 0 and prints friendly message", async () => 
   };
   // console.log goes through stdout.write; we replace it briefly to avoid noise:
   const origLog = console.log;
-  console.log = (...a) => { captured += `${a.join(" ")}\n`; };
+  console.log = (...a) => {
+    captured += `${a.join(" ")}\n`;
+  };
   try {
     const code = await main(["list", "--dir", dir]);
     assert.equal(code, 0);
@@ -233,7 +246,9 @@ test("main(show) prints trajectory and step contents", async () => {
   writeTrajectory(dir, "tj-show", fakeTrajectory("tj-show"));
   let captured = "";
   const origLog = console.log;
-  console.log = (...a) => { captured += `${a.join(" ")}\n`; };
+  console.log = (...a) => {
+    captured += `${a.join(" ")}\n`;
+  };
   try {
     const code = await main(["show", "tj-show", "--dir", dir]);
     assert.equal(code, 0);
@@ -251,7 +266,9 @@ test("main(compaction-diff) reports reduction for plugin-listing prompt", async 
   writeTrajectory(dir, "tj-diff", fakeTrajectory("tj-diff"));
   let captured = "";
   const origLog = console.log;
-  console.log = (...a) => { captured += `${a.join(" ")}\n`; };
+  console.log = (...a) => {
+    captured += `${a.join(" ")}\n`;
+  };
   try {
     const code = await main(["compaction-diff", "tj-diff", "--dir", dir]);
     assert.equal(code, 0);
@@ -269,7 +286,9 @@ test("main(stats) prints aggregate counts", async () => {
   writeTrajectory(dir, "tj-stats-cmd", fakeTrajectory("tj-stats-cmd"));
   let captured = "";
   const origLog = console.log;
-  console.log = (...a) => { captured += `${a.join(" ")}\n`; };
+  console.log = (...a) => {
+    captured += `${a.join(" ")}\n`;
+  };
   try {
     const code = await main(["stats", "tj-stats-cmd", "--dir", dir]);
     assert.equal(code, 0);
@@ -284,7 +303,9 @@ test("main(stats) prints aggregate counts", async () => {
 test("main(--help) prints usage", async () => {
   let captured = "";
   const origLog = console.log;
-  console.log = (...a) => { captured += `${a.join(" ")}\n`; };
+  console.log = (...a) => {
+    captured += `${a.join(" ")}\n`;
+  };
   try {
     const code = await main(["--help"]);
     assert.equal(code, 0);

@@ -18,9 +18,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "birthday"
-    ],
+    "required_outputs": ["birthday"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -46,9 +44,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "family"
-    ],
+    "required_outputs": ["family"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -73,9 +69,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "draft"
-    ],
+    "required_outputs": ["draft"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -99,9 +93,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Signal"
-    ],
+    "required_outputs": ["Signal"],
     "first_question_fallback": {
       "canned_answer": "Sure, I\u2019ll pull the last 10 messages.",
       "applies_when": "agent asks how many messages to fetch"
@@ -129,9 +121,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Dinner"
-    ],
+    "required_outputs": ["Dinner"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -155,9 +145,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "iMessage"
-    ],
+    "required_outputs": ["iMessage"],
     "first_question_fallback": {
       "canned_answer": "20 messages works for me.",
       "applies_when": "agent asks how many messages to retrieve"
@@ -185,9 +173,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "\ud83d\ude97"
-    ],
+    "required_outputs": ["\ud83d\ude97"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -211,9 +197,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "iMessage"
-    ],
+    "required_outputs": ["iMessage"],
     "first_question_fallback": {
       "canned_answer": "30 messages is fine.",
       "applies_when": "agent asks how many messages to fetch"
@@ -241,9 +225,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "draft"
-    ],
+    "required_outputs": ["draft"],
     "first_question_fallback": {
       "canned_answer": "Sure, I\u2019ll send it now.",
       "applies_when": "agent asks for confirmation before sending"
@@ -272,9 +254,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "kids"
-    ],
+    "required_outputs": ["kids"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -299,9 +279,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "late"
-    ],
+    "required_outputs": ["late"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -327,9 +305,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "#dev"
-    ],
+    "required_outputs": ["#dev"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -354,9 +330,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "demo"
-    ],
+    "required_outputs": ["demo"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -380,9 +354,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "family"
-    ],
+    "required_outputs": ["family"],
     "first_question_fallback": {
       "canned_answer": "15 messages will be enough.",
       "applies_when": "agent asks how many messages to fetch"
@@ -410,9 +382,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "lunch"
-    ],
+    "required_outputs": ["lunch"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -436,9 +406,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "WhatsApp"
-    ],
+    "required_outputs": ["WhatsApp"],
     "first_question_fallback": {
       "canned_answer": "Sure, I\u2019ll pull the last 12 messages.",
       "applies_when": "agent asks how many messages to retrieve"
@@ -466,9 +434,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "6pm"
-    ],
+    "required_outputs": ["6pm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -492,9 +458,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Slack"
-    ],
+    "required_outputs": ["Slack"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -519,9 +483,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "3pm"
-    ],
+    "required_outputs": ["3pm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -547,9 +509,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "wellness"
-    ],
+    "required_outputs": ["wellness"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -574,9 +534,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Q3"
-    ],
+    "required_outputs": ["Q3"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -602,9 +560,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "iMessage"
-    ],
+    "required_outputs": ["iMessage"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -630,9 +586,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "book club"
-    ],
+    "required_outputs": ["book club"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -657,9 +611,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "hiking"
-    ],
+    "required_outputs": ["hiking"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -683,9 +635,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "meditation"
-    ],
+    "required_outputs": ["meditation"],
     "first_question_fallback": {
       "canned_answer": "25 messages is fine.",
       "applies_when": "agent asks how many messages to fetch"
@@ -713,9 +663,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "report"
-    ],
+    "required_outputs": ["report"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -739,9 +687,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Signal"
-    ],
+    "required_outputs": ["Signal"],
     "first_question_fallback": {
       "canned_answer": "6 messages works.",
       "applies_when": "agent asks how many messages to retrieve"

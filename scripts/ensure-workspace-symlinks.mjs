@@ -34,8 +34,8 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
-  readFileSync,
   readdirSync,
+  readFileSync,
   realpathSync,
   symlinkSync,
   unlinkSync,
@@ -116,7 +116,9 @@ function ensureSymlink(linkPath, targetDir) {
 
 function isInsideRepo(absPath) {
   const rel = relative(REPO_ROOT, absPath);
-  return rel === "" || (!rel.startsWith("..") && !resolve(rel).startsWith(".."));
+  return (
+    rel === "" || (!rel.startsWith("..") && !resolve(rel).startsWith(".."))
+  );
 }
 
 /**
@@ -139,7 +141,7 @@ function repairNestedElizaSymlinks(pkgDir, workspaceByName, repaired) {
     if (!targetDir) continue; // not a workspace package — leave it alone
     const linkPath = join(scopeDir, entry.name);
     const stat = lstatSync(linkPath, { throwIfNoEntry: false });
-    if (!stat || !stat.isSymbolicLink()) continue; // real dir written by bun — don't touch
+    if (!stat?.isSymbolicLink()) continue; // real dir written by bun — don't touch
     let resolved = null;
     try {
       resolved = realpathSync(linkPath);

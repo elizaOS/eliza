@@ -8,7 +8,11 @@ math, mobile/16-24GB decision table), `APOLLO_TUNING.md` (APOLLO config audit +
 memory math), `CUDA_KERNEL_PUNCHLIST.md` (per-kernel punch-list for the
 inference team), `docs/training/cuda-setup-and-degradation.md` (driver vs
 toolkit, detection, degradation, installer plan), `docs/training/schema-constrained-decoding.md`
-(grammar-constrained tool calls + jump-ahead decoding).
+(grammar-constrained tool calls + jump-ahead decoding),
+`INFERENCE_OPTIMIZATION_PLAN.md` (the 12-expert TTFT/TTFA-focused survey:
+streaming ASR/output, multi-model orchestration, context length, API/harness,
+pipeline config space, cross-platform/installer — with a unified P0/P1/P2
+roadmap and the shared modules the plans converge on).
 
 ## Headline numbers (RTX 5080 Laptop, 16 GB, sm_120; `eliza-1-0_6b` = Qwen3-0.6B)
 
