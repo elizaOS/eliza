@@ -129,6 +129,11 @@ interface OmnivoiceFFIFunctions {
   ov_audio_free: (audioPtr: bigint) => void;
 }
 
+interface BunFFIJSCallback {
+  readonly ptr: bigint | number;
+  close: () => void;
+}
+
 interface BunFFIModule {
   dlopen: (
     p: string,
@@ -148,6 +153,14 @@ interface BunFFIModule {
     byteOffset?: number,
     byteLength?: number,
   ) => string;
+  // `bun:ffi` exposes JSCallback as a constructor that produces a stable
+  // C function pointer the native side can call back into JS. The handle
+  // MUST be kept alive (and explicitly `close()`-ed after the call) — a
+  // GC'd JSCallback leaves the native side dereferencing freed memory.
+  JSCallback: new (
+    fn: (...args: never[]) => unknown,
+    def: { args: readonly string[]; returns: string },
+  ) => BunFFIJSCallback;
 }
 
 interface OmnivoiceLibHandle {
@@ -326,6 +339,18 @@ export class OmnivoiceContext {
    * ov_synthesize is invoked. Pointer fields written into params
    * MUST be backed by buffers in the `retain` array — otherwise the
    * GC can collect them between write and call.
+   *
+   * When `onChunk` is provided, the streaming path is engaged: a
+   * `bun:ffi` `JSCallback` is bound to the C `ov_audio_chunk_cb` slot
+   * and invoked once per chunk during `ov_synthesize`. The C ABI
+   * documents that `out` stays empty on success in this mode, so the
+   * returned `samples` are accumulated from the chunks. The callback
+   * may return `false` to request cancellation; the lib will surface
+   * that as a synthesis failure status code.
+   *
+   * Sample rate is fixed by the codec (24 kHz mono — see omnivoice.h);
+   * we read it from `out` when available and fall back to 24000 if the
+   * streaming path leaves `out` zeroed.
    */
   async synthesize(
     prepareParams: (
@@ -334,6 +359,7 @@ export class OmnivoiceContext {
       ffi: BunFFIModule,
       retain: (buf: ArrayBufferView) => void,
     ) => void,
+    onChunk?: (chunk: OmnivoiceStreamingChunk) => boolean | void,
   ): Promise<OmnivoiceSynthesisResult> {
     const { symbols, ffi } = this.handle;
     const paramsBuf = new Uint8Array(OV_TTS_PARAMS_LAYOUT.size);
@@ -351,11 +377,80 @@ export class OmnivoiceContext {
       callRetained.push(b);
     });
 
+    // Streaming setup — only when caller provided onChunk. We allocate
+    // and register the JSCallback here (after prepareParams ran) so the
+    // caller cannot accidentally overwrite our on_chunk slot.
+    let jsCallback: BunFFIJSCallback | null = null;
+    const streamedChunks: Float32Array[] = [];
+    let streamedTotal = 0;
+    if (onChunk) {
+      if (typeof ffi.JSCallback !== "function") {
+        throw new OmnivoiceNotInstalled(
+          "bun:ffi runtime does not expose JSCallback — streaming requires Bun >= 1.0",
+        );
+      }
+      jsCallback = new ffi.JSCallback(
+        ((samplesPtr: bigint, nSamples: number) => {
+          // ov_audio_chunk_cb signature:
+          //   bool (*)(const float *samples, int n_samples, void *user_data)
+          // bun:ffi delivers pointer args as bigint, i32 args as number.
+          // user_data is unused on the JS side — we forward NULL from C.
+          const n = Number(nSamples);
+          let pcm: Float32Array;
+          if (n > 0 && samplesPtr !== 0n) {
+            // Copy out of native memory before returning. The lib's
+            // contract: buffer is valid only for the duration of this
+            // call. Use .slice() to detach from the native ArrayBuffer.
+            const ab = ffi.toArrayBuffer(samplesPtr, 0, n * F32).slice(0);
+            pcm = new Float32Array(ab);
+          } else {
+            pcm = new Float32Array(0);
+          }
+          streamedChunks.push(pcm);
+          streamedTotal += pcm.length;
+          let keepGoing: boolean | void;
+          try {
+            keepGoing = onChunk({ samples: pcm });
+          } catch (err) {
+            // Surface JS callback errors as cancellation; do not let
+            // them propagate into the native call stack.
+            logger.error(
+              `[plugin-omnivoice] onChunk threw: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+            return 0;
+          }
+          // C bool return: 1 = continue, 0 = cancel. `void` means continue.
+          return keepGoing === false ? 0 : 1;
+        }) as unknown as (...args: never[]) => unknown,
+        {
+          // (samples: ptr, n_samples: i32, user_data: ptr) -> bool (i32)
+          args: ["ptr", "i32", "ptr"],
+          returns: "bool",
+        },
+      );
+      writePointer(
+        view,
+        OV_TTS_PARAMS_LAYOUT.fields.on_chunk.offset,
+        BigInt(jsCallback.ptr),
+      );
+      // on_chunk_user_data left at 0 — we have no per-call state.
+    }
+
     const audioBuf = new Uint8Array(OV_AUDIO_LAYOUT.size);
     const audioPtr = ffi.ptr(audioBuf);
     callRetained.push(audioBuf);
 
-    const status = symbols.ov_synthesize(this.ctx, paramsPtr, audioPtr);
+    let status: number;
+    try {
+      status = symbols.ov_synthesize(this.ctx, paramsPtr, audioPtr);
+    } finally {
+      // Close the JSCallback *after* ov_synthesize returns. The lib
+      // guarantees it will not retain the function pointer past the
+      // call boundary.
+      if (jsCallback) jsCallback.close();
+    }
     if (status !== OV_STATUS_OK) {
       const err = readLastError(this.handle);
       throw new OmnivoiceSynthesisFailed(status, err);
@@ -376,6 +471,25 @@ export class OmnivoiceContext {
       true,
     );
 
+    if (onChunk) {
+      // Streaming path: `out` stays empty on success per the ABI.
+      // Concatenate the streamed chunks for the caller's convenience.
+      const samples = new Float32Array(streamedTotal);
+      let off = 0;
+      for (const c of streamedChunks) {
+        samples.set(c, off);
+        off += c.length;
+      }
+      // Sample rate / channels: prefer values the lib wrote into `out`
+      // (some builds populate metadata even on the streaming path); fall
+      // back to the codec defaults documented in omnivoice.h.
+      return {
+        samples,
+        sampleRate: sampleRate > 0 ? sampleRate : 24000,
+        channels: channels > 0 ? channels : 1,
+      };
+    }
+
     const byteLen = nSamples * F32;
     // Copy out of native memory before releasing — ov_audio_free invalidates
     // the underlying pointer.
@@ -386,6 +500,12 @@ export class OmnivoiceContext {
 
     return { samples, sampleRate, channels };
   }
+}
+
+/** Argument shape for the streaming callback. */
+export interface OmnivoiceStreamingChunk {
+  /** Mono float PCM at the codec sample rate (24 kHz). */
+  samples: Float32Array;
 }
 
 function encodeCString(s: string): Uint8Array {
@@ -409,10 +529,45 @@ function readLastError(handle: OmnivoiceLibHandle): string | undefined {
 
 // ───────────────────────── exports for tests ─────────────────────────
 
+/**
+ * Test-only factory: build an OmnivoiceContext around a caller-provided
+ * fake `BunFFIModule` + symbols. Lets unit tests exercise the streaming
+ * callback wiring without dlopen-ing a real libomnivoice. Production
+ * code MUST go through `OmnivoiceContext.open` instead.
+ */
+function createForTest(args: {
+  symbols: OmnivoiceFFIFunctions;
+  ffi: BunFFIModule;
+  ctx?: bigint;
+  options?: OmnivoiceContextOptions;
+}): OmnivoiceContext {
+  const handle: OmnivoiceLibHandle = {
+    symbols: args.symbols,
+    ffi: args.ffi,
+    close: () => {},
+    libPath: "<test-fake>",
+  };
+  // Cast through unknown to reach the private constructor — the only
+  // place in the codebase that does this, gated behind _internal.
+  const Ctor = OmnivoiceContext as unknown as new (
+    handle: OmnivoiceLibHandle,
+    ctx: bigint,
+    options: OmnivoiceContextOptions,
+    retained: ArrayBufferView[],
+  ) => OmnivoiceContext;
+  return new Ctor(
+    handle,
+    args.ctx ?? 0x1234n,
+    args.options ?? { modelPath: "<fake>", codecPath: "<fake>" },
+    [],
+  );
+}
+
 export const _internal = {
   buildLayout,
   align,
   encodeCString,
   expectedDefaultLibName,
   defaultLibSearchPaths,
+  createForTest,
 };
