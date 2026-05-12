@@ -75,8 +75,9 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	// Secrets leaves consolidated under the single SECRETS umbrella with
 	// action=get|set|delete|list|check|mirror|request. The previous
 	// top-level MANAGE_SECRET / SET_SECRET / atomic leaves are gone — the
-	// planner sees only SECRETS plus its promoted virtuals (SECRETS_GET,
-	// SECRETS_SET, ...) and the separate SECRETS_UPDATE_SETTINGS.
+	// planner sees only SECRETS and the separate SECRETS_UPDATE_SETTINGS.
+	// No virtual promoted subactions (SECRETS_GET, SECRETS_SET, …) are
+	// registered; callers supply action=<verb> on the umbrella directly.
 	"MANAGE_SECRET",
 	"SET_SECRET",
 	"GET_SECRET",
