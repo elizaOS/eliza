@@ -266,6 +266,23 @@ are sequential within a turn) — ~1 GB on `0_6b`, which would let the
    for measurable spill profiles. Remaining work is catalog thresholds and
    platform latency gates that decide when spill is allowed versus failing
    closed on small phones.
+7. **Guided structured decoding — fork-side prefill plan.** The runtime side
+   landed (2026-05-11): `compilePrefillPlan` (`structured-output.ts`) derives an
+   `ElizaPrefillPlan` from a `ResponseSkeleton` — the byte runs the schema fully
+   determines (JSON scaffold, fixed keys, collapsed single-value enums) — and
+   `buildChatCompletionBody` / `engine.ts` ship it as `eliza_prefill_plan` +
+   seed the leading run as an assistant-turn prefill, **off by default**
+   (`providerOptions.eliza.guidedDecode === true` / `MILADY_LOCAL_GUIDED_DECODE=1`).
+   Today's fork pin doesn't consume `eliza_prefill_plan`, so the saving is the
+   grammar-only constrained-decode bound (the lazy GBNF forces the same bytes —
+   correctness unaffected). Remaining: a `kernel-patches/` patch to a fork build
+   that reads `eliza_prefill_plan` and splices the forced token ids without a
+   forward pass (a sibling owns the fork build); then wire
+   `providerOptions.eliza.guidedDecode = true` next to the existing
+   `responseSkeleton` assignment in `planner-loop.ts` / `message.ts` (W8). Static
+   token-savings floor ≈ 21–58% of generated tokens per envelope; bench
+   `verify/guided_decode_token_bench.mjs`. Design + prefill-plan format:
+   `reports/porting/2026-05-11/guided-structured-decoding.md`.
 
 ## Platform Matrix Remaining Work
 

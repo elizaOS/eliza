@@ -314,30 +314,104 @@ function detectBackend() {
   return "cpu";
 }
 
-// Parse the major.minor CUDA toolkit version reported by `nvcc --version`,
-// e.g. "Cuda compilation tools, release 12.6, V12.6.20" -> { major: 12, minor: 6 }.
-// Returns null when nvcc is absent or the banner can't be parsed — callers
-// must treat that as "assume the conservative arch list".
-function nvccVersion() {
-  if (!has("nvcc")) return null;
-  const r = tryRun("nvcc", ["--version"], { capture: true });
-  const m = (r.stdout || "").match(/release\s+(\d+)\.(\d+)/i);
+// Parse the major.minor CUDA toolkit version reported by `<nvcc> --version`,
+// e.g. "Cuda compilation tools, release 12.8, V12.8.93" -> { major: 12, minor: 8 }.
+// Returns null when the banner can't be parsed.
+function parseNvccBanner(stdout) {
+  const m = (stdout || "").match(/release\s+(\d+)\.(\d+)/i);
   if (!m) return null;
   return { major: Number(m[1]), minor: Number(m[2]) };
 }
 
+// Resolve the *newest* available CUDA toolkit nvcc and its version. Distro
+// installs put nvcc on PATH (often an old `nvidia-cuda-toolkit` build, e.g.
+// 12.0) while a side-by-side toolkit lives under /usr/local/cuda-<ver>/. We
+// want the newest one so sm_100/sm_120 (CUDA >= 12.8) gets native SASS, not a
+// compute_90 PTX JIT. Resolution order, newest wins:
+//   1. $CUDACXX                       (explicit override)
+//   2. $CUDA_HOME/bin/nvcc, $CUDA_PATH/bin/nvcc
+//   3. /usr/local/cuda-*/bin/nvcc     (sorted by version, newest first)
+//   4. /usr/local/cuda/bin/nvcc       (the `cuda` -> `cuda-<ver>` symlink)
+//   5. `nvcc` on PATH
+// Returns { path, version } or null when no nvcc is found.
+let _resolvedNvccCache;
+function resolveNvcc() {
+  if (_resolvedNvccCache !== undefined) return _resolvedNvccCache;
+  const candidates = [];
+  const seen = new Set();
+  const pushCand = (p) => {
+    if (!p || seen.has(p)) return;
+    seen.add(p);
+    if (fs.existsSync(p)) candidates.push(p);
+  };
+  pushCand(process.env.CUDACXX?.trim());
+  for (const root of [process.env.CUDA_HOME, process.env.CUDA_PATH]) {
+    if (root?.trim()) pushCand(path.join(root.trim(), "bin", "nvcc"));
+  }
+  // /usr/local/cuda-12.8, /usr/local/cuda-12.6, ... — newest version first.
+  try {
+    const entries = fs
+      .readdirSync("/usr/local")
+      .filter((d) => /^cuda-\d+\.\d+$/.test(d))
+      .map((d) => {
+        const [, mj, mn] = d.match(/^cuda-(\d+)\.(\d+)$/);
+        return { dir: d, key: Number(mj) * 1000 + Number(mn) };
+      })
+      .sort((a, b) => b.key - a.key);
+    for (const e of entries) pushCand(path.join("/usr/local", e.dir, "bin", "nvcc"));
+  } catch {
+    /* /usr/local not readable — fine, fall through to PATH */
+  }
+  pushCand("/usr/local/cuda/bin/nvcc");
+  // `nvcc` on PATH (resolve to an absolute path via `command -v` so the CMake
+  // -DCMAKE_CUDA_COMPILER pin below is unambiguous).
+  {
+    const r = tryRun(
+      process.platform === "win32" ? "where" : "command",
+      process.platform === "win32" ? ["nvcc"] : ["-v", "nvcc"],
+      { capture: true },
+    );
+    const onPath = (r.stdout || "").split(/\r?\n/)[0]?.trim();
+    pushCand(onPath || (has("nvcc") ? "nvcc" : null));
+  }
+  // Pick the candidate reporting the newest release.
+  let best = null;
+  for (const p of candidates) {
+    const r = tryRun(p, ["--version"], { capture: true });
+    if (r.status !== 0) continue;
+    const v = parseNvccBanner(r.stdout);
+    if (!v) continue;
+    const key = v.major * 1000 + v.minor;
+    if (!best || key > best.key) best = { path: p, version: v, key };
+  }
+  _resolvedNvccCache = best ? { path: best.path, version: best.version } : null;
+  return _resolvedNvccCache;
+}
+
+// Back-compat shim: the major.minor of the resolved nvcc, or null.
+function nvccVersion() {
+  return resolveNvcc()?.version ?? null;
+}
+
 // Build the CUDA fat-binary arch list for cuda/cuda-fused targets. The base
 // list (sm_80..sm_90a) is unconditional; the Blackwell datacenter (sm_100)
-// and consumer (sm_120) virtual architectures are only appended when the
-// installed nvcc actually knows about them — sm_100/sm_120 first compile in
-// CUDA 12.8, and older nvcc rejects them with "Unsupported gpu architecture".
+// and consumer (sm_120) architectures are only appended when the resolved
+// nvcc (newest available toolkit — see resolveNvcc) actually knows about
+// them — sm_100/sm_120 first compile in CUDA 12.8, and older nvcc rejects
+// them with "Unsupported gpu architecture". A plain `100`/`120` entry in
+// CMAKE_CUDA_ARCHITECTURES emits *real SASS* (`-gencode arch=compute_120,
+// code=sm_120`), not just PTX — so with CUDA >= 12.8 an RTX 50xx (Blackwell
+// sm_120) launches JIT-free instead of paying a compute_90 PTX JIT on first
+// kernel launch.
 //   90a -> H200 / GH200 (the only arch with the TMA / WGMMA fast paths)
 //   90  -> H100
 //   89  -> Ada / RTX 4090 / L4
 //   86  -> Ampere consumer / RTX 30xx
 //   80  -> A100 / datacenter Ampere
 //   100 -> Blackwell datacenter (B100/B200/GB200) — CUDA >= 12.8
-//   120 -> Blackwell consumer (RTX 50xx) — CUDA >= 12.8
+//   120 -> Blackwell consumer (RTX 50xx, e.g. RTX 5080 Laptop) — CUDA >= 12.8
+// We always also append `90-virtual` so a future arch with no real SASS in
+// the fat binary still JIT-launches from compute_90 PTX (forward compat).
 // Operators that target an older card (sm_75 Turing, sm_70 Volta) can
 // override via ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=... which
 // appends after this list and wins on a CMake conflict.
@@ -345,9 +419,35 @@ function cudaArchListFlag() {
   const archs = ["90a", "90", "89", "86", "80"];
   const v = nvccVersion();
   if (v && (v.major > 12 || (v.major === 12 && v.minor >= 8))) {
+    // Real SASS for both Blackwell arches (no `-virtual` suffix).
     archs.push("100", "120");
   }
+  archs.push("90-virtual");
   return `-DCMAKE_CUDA_ARCHITECTURES=${archs.join(";")}`;
+}
+
+// When the resolved nvcc is NOT the one CMake would find on PATH, pin it
+// explicitly. Without this, a side-by-side /usr/local/cuda-12.8 toolkit is
+// useless on a host whose PATH `nvcc` is an old distro 12.0 — CMake compiles
+// with the old one and cudaArchListFlag's sm_100/sm_120 entries get rejected.
+// Returns [] when nvcc is unresolved or already the PATH default. Also returns
+// the bin dir to prepend to PATH so the toolkit's nvlink/ptxas/fatbinary etc.
+// resolve consistently with the pinned nvcc.
+function cudaCompilerFlags() {
+  const resolved = resolveNvcc();
+  if (!resolved || resolved.path === "nvcc") return { flags: [], binDir: null };
+  const onPathBanner = tryRun("nvcc", ["--version"], { capture: true });
+  const onPathV =
+    onPathBanner.status === 0 ? parseNvccBanner(onPathBanner.stdout) : null;
+  const sameAsPath =
+    onPathV &&
+    onPathV.major === resolved.version.major &&
+    onPathV.minor === resolved.version.minor;
+  if (sameAsPath) return { flags: [], binDir: null };
+  return {
+    flags: [`-DCMAKE_CUDA_COMPILER=${resolved.path}`],
+    binDir: path.dirname(resolved.path),
+  };
 }
 
 // Build the ROCm/HIP fat-binary arch list for rocm targets. gfx1200/gfx1201
@@ -984,6 +1084,12 @@ function cmakeFlagsForTarget(target, ctx) {
     // GGML_CUDA_TBQ3_TCQ flags the W4-B fork already carries. Optional
     // (AGENTS.md §3) — fused_attn sits on top of the five required kernels.
     flags.push(...CUDA_KERNEL_CMAKE_FLAGS);
+    // Pin the newest available nvcc (resolveNvcc) when PATH's nvcc is an
+    // older toolkit — otherwise cudaArchListFlag's sm_100/sm_120 entries get
+    // rejected by a stale distro nvcc and we silently lose native Blackwell
+    // SASS. cmakeFlagsForTarget cannot mutate PATH; the caller in build()
+    // prepends ctx.cudaToolkitBinDir before invoking cmake.
+    flags.push(...cudaCompilerFlags().flags);
     // Multi-arch fat-binary pin (see cudaArchListFlag). Without this the
     // build host's GPU (or sm_52 default on a GPU-less host) decides the
     // emitted PTX/SASS — wrong for a redistributable artifact, and the
@@ -2803,6 +2909,18 @@ function buildTarget({ target, args, ctx }) {
 
   console.log(`[dflash-build] building target=${target}`);
   applyForkPatches(args.cacheDir, backend, target);
+
+  // When the build pinned a side-by-side CUDA toolkit (resolveNvcc picked a
+  // newer nvcc than PATH's), put that toolkit's bin dir at the front of PATH
+  // for the cmake configure + build so ptxas/nvlink/fatbinary/cicc all match
+  // the pinned nvcc. cudaCompilerFlags() already added -DCMAKE_CUDA_COMPILER.
+  if (backend === "cuda") {
+    const { binDir } = cudaCompilerFlags();
+    if (binDir && !process.env.PATH?.split(path.delimiter).includes(binDir)) {
+      process.env.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
+      console.log(`[dflash-build] cuda: prepended ${binDir} to PATH (pinned toolkit)`);
+    }
+  }
 
   fs.mkdirSync(buildDir, { recursive: true });
   run("cmake", ["-B", buildDir, ...flags], { cwd: args.cacheDir });

@@ -118,13 +118,69 @@ and whose correctness is the fixture parity.
   once into `float qreg[8]` at kernel entry. n_kv−1 redundant global loads per
   lane eliminated.
 
-Remaining (deferred — need a graph-wired microbench harness and/or Nsight on
-the target arch, beyond this session's budget): **P2** cp.async/TMA
-double-buffered K/V tile staging on sm_80+/sm_90+ (the `sh_dec` + `kv_tile`
-seam is the hook); **P3** promote `qjl_score_dp4a_kernel` to the default
-standalone QJL score path (needs fork-side `GGML_OP_ATTN_SCORE_QJL` wiring + a
-real-trace round-trip accuracy check); **P3** occupancy (1 warp/block
-under-uses an SM); native `sm_120` SASS (needs nvcc ≥ 12.8).
+## 5a. P3 + native sm_120 SASS landed (2026-05-11, CUDA 12.8 wave)
+
+CUDA 12.8 (`/usr/local/cuda-12.8`, `nvcc V12.8.93`) was installed on the box
+alongside the distro 12.0. Changes:
+
+- **Native Blackwell SASS.** `cudaArchListFlag()` already appended `100;120`
+  when nvcc ≥ 12.8 — but only as seen on `PATH`, which is still the distro
+  12.0. Added `resolveNvcc()` to `build-llama-cpp-dflash.mjs`: it probes
+  `$CUDACXX`, `$CUDA_HOME/$CUDA_PATH/bin/nvcc`, `/usr/local/cuda-*/bin/nvcc`
+  (newest first), `/usr/local/cuda/bin/nvcc`, then `PATH`, and picks the
+  newest-versioned toolkit. `cudaArchListFlag()` now uses that version (so the
+  CUDA-12.8 side-by-side toolkit is what decides `100;120`), and a new
+  `cudaCompilerFlags()` emits `-DCMAKE_CUDA_COMPILER=<resolved nvcc>` plus
+  prepends its bin dir to `PATH` for the cmake configure+build when it differs
+  from `PATH`'s nvcc. The arch list for `linux-x64-cuda` is now
+  `90a;90;89;86;80;100;120;90-virtual` — plain `120` is **real SASS** (`-gencode
+  arch=compute_120,code=sm_120`), not PTX, so RTX 50xx launches JIT-free; the
+  trailing `90-virtual` keeps forward-compat PTX in the fat binary. Verified by
+  compiling `cuda/fused-attn-qjl-tbq.cu` against the fork headers with the full
+  fat-binary list — `cuobjdump --list-elf` shows `sm_80/86/89/90/90a/100/120`
+  cubins. The standalone `verify/cuda_verify` now also builds a native
+  `sm_120.cubin` (Makefile's `CUDA_BLACKWELL_GENCODE` probe fires under 12.8).
+- **P3 — occupancy + read-only loads.** `fused_attn_qjl_tbq3_kernel` and
+  `qjl_score_dp4a_kernel` get `__launch_bounds__(32, 16)` (1 warp/block, ask for
+  16 blocks/SM so the many tiny `n_heads × n_q_pos` attention blocks co-reside);
+  `__ldg` on the K-cache scalars (`pk[t].signs[lane]`, `pk[t].d`, `q_scale[hq]`,
+  the DP4A K signs + q bytes); the per-lane Q sketch row is now a vectorized
+  `float4 + float4` load (with a scalar fallback when the 32-byte slice isn't
+  16-aligned). The `verify/cuda_verify` fused kernel was rewritten from the old
+  single-thread reference shape to the **same warp-cooperative form** so the
+  gate exercises the production algorithm — `cuda-verify-fused` still
+  1920/1920 PASS, max diff 4.47e-7 (was 3.28e-7; the warp-reduction order
+  shifts a few ULPs, still 4 orders of magnitude inside the 1e-3 tol).
+- **P3 — DP4A as the production standalone QJL path.** `qjl_score_dp4a_kernel`
+  (64 `__dp4a` MACs over the int8-quantized Q sketch) is now documented as *the*
+  NVIDIA standalone `GGML_OP_ATTN_SCORE_QJL` path; the fp32 sign-dot inside the
+  fused kernel stays the bit-exact reference. nsys (back-to-back, same process)
+  measured the DP4A kernel at **~2.27× faster** than the fp32 `qjl_score_kernel`
+  on the `qjl.json` fixture (2,976 ns vs 6,752 ns). It still cross-checks
+  against the fp32 path in the harness (max diff ~1.4e-1 vs the int8 round-trip
+  — expected and well under any attention-softmax sensitivity).
+- **P2 — cp.async/TMA staging: NOT applied (deferred with a recorded reason).**
+  cp.async requires the *global source* to be aligned to the copy granularity
+  (4/8/16 B). The on-cache QJL block is 34 B and the TBQ3 V block 14 B — neither
+  layout has any natural 4-byte alignment at a token stride, so staging a KV
+  tile via cp.async would need an aligned repack of the cache (or the sm_90+ TMA
+  bulk-tensor path with a custom tensor map) *first*. That repack is a real
+  design item, not a drop-in, and is out of scope for this wave. The kernel is
+  V-decode-arithmetic dominated (Hadamard-32 × 4 blocks/token) far more than
+  KV-load-latency dominated at the context lengths in the fixtures, so the
+  expected win is modest until the V-decode itself is parallelized further.
+
+**Nsight profiling note.** `ncu` (Nsight Compute 2022.4.1) is installed but
+`ERR_NVGPUCTRPERM` — GPU performance counters need root / the
+`NVreg_RestrictProfilingToAdminUsers=0` driver param, neither available on this
+box. `nsys` (system tracer, no perf counters) works and gave the kernel-duration
+deltas above; full occupancy / memory-throughput / stall-reason sections await a
+host with profiling perms.
+
+Remaining (still deferred): **P2** cp.async/TMA after an aligned cache repack;
+parallelizing the TBQ3 V-decode beyond 4 lanes/warp; a graph-wired microbench
+harness so the fused op's end-to-end delta can be isolated (only the standalone
+launch wrappers exist today).
 
 ## 6. End-to-end benchmark
 
@@ -148,7 +204,18 @@ attention on.
 
 ## What's left
 
-- Native `sm_120` SASS — needs `nvcc` ≥ 12.8 (distro toolkit here is 12.0).
-- CUDA TTS/ASR `llama-bench` runs (out of time after 6+ rebuilds forced by a
-  concurrent sibling CUDA build saturating this box).
-- P2/P3 kernel optimizations (need a graph-wired microbench harness + Nsight).
+- ~~Native `sm_120` SASS~~ — **done** (CUDA 12.8 installed; `resolveNvcc()` +
+  `cudaCompilerFlags()` in the build hook pin it; arch list now includes real
+  `100;120` SASS; verified via `cuobjdump --list-elf`). See §5a.
+- Full `ggml-cuda` integration build with the 12.8 toolkit — **blocked on host
+  RAM contention** (≥7 sibling agents building; ~3 GB free of 30 GB, 23 GB swap
+  in use, 80+ `cc1plus`/`cicc` procs). The kernel-patch dry-run is green, the
+  staged `fused-attn-qjl-tbq.cu` compiles clean against the fork headers with
+  the full fat-binary arch list (native `sm_120` cubin confirmed), and an empty
+  object is produced without `-DGGML_CUDA_FUSED_ATTN_QJL`. Re-run
+  `node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda`
+  once the box is quiet to refresh `llama-server`/`llama-bench` and run the
+  graph-dispatch + voice/runtime smoke.
+- CUDA TTS/ASR `llama-bench` runs (still pending the rebuild above).
+- P2 (cp.async/TMA after an aligned cache repack); a graph-wired microbench
+  harness; profiling on a host with GPU perf-counter perms.
