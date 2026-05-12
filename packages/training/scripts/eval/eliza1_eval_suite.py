@@ -330,12 +330,22 @@ class EvalContext:
 def _run_llama(
     ctx: EvalContext, bin_path: Path, args: list[str], timeout_s: int | None = None
 ) -> tuple[int, str]:
-    """Run a llama.cpp binary, return ``(returncode, combined output)``."""
+    """Run a llama.cpp binary, return ``(returncode, combined output)``.
+
+    The binary's own dir leads ``LD_LIBRARY_PATH`` so it loads its own
+    ``libllama.so`` etc. — important when ``llama-speculative-simple`` is
+    resolved from a *sibling* (non-fused) build dir whose libllama version
+    differs from the fused build's.
+    """
+    env = ctx.llama_env()
+    own = str(bin_path.parent)
+    for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
+        env[var] = f"{own}:{env[var]}" if env.get(var) else own
     proc = subprocess.run(  # noqa: S603 - bin_path is a discovered local binary
         [str(bin_path), *args],
         capture_output=True,
         text=True,
-        env=ctx.llama_env(),
+        env=env,
         timeout=timeout_s or ctx.timeout_s,
         cwd=str(bin_path.parent),
     )
