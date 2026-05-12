@@ -11,8 +11,8 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": null,
-  "higher_is_better": true,
+  "error": "Benchmark 'framework' is no longer compatible with harness 'openclaw' (supported: eliza)",
+  "higher_is_better": null,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
@@ -20,6 +20,7 @@
       "cache_read_input_tokens": 0,
       "turns_with_cached_field": 0
     },
+    "harness": "openclaw",
     "mean_latency_ms": 10.05412922,
     "performance_metrics": {
       "duration_seconds": 1.247526499995729,
@@ -27,9 +28,13 @@
       "p95_latency_ms": 10.05412922,
       "throughput_per_second": 0.8015861787332161
     },
+    "reason": "latest_row_violates_current_compatibility",
     "return_code": 0,
     "runtime": "typescript",
     "scenario_count": 1,
+    "supported_harnesses": [
+      "eliza"
+    ],
     "token_metrics": {
       "avg_completion_tokens": 0.0,
       "avg_prompt_tokens": 0.0,
@@ -58,8 +63,8 @@
   "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131544Z_fb67665e/framework__framework/run_framework_20260511T131544Z_1_e8db3b31/output/framework-results.json",
   "run_group_id": "rg_20260511T131544Z_fb67665e",
   "run_id": "run_framework_20260511T131544Z_1_e8db3b31",
-  "score": 99.46162199813064,
-  "status": "succeeded",
+  "score": null,
+  "status": "incompatible",
   "token_metrics": {
     "avg_completion_tokens": 0.0,
     "avg_prompt_tokens": 0.0,
@@ -74,6 +79,6 @@
     "repeated_prefixes": [],
     "turns": 1
   },
-  "unit": "messages_per_second",
-  "updated_at": "2026-05-12T01:33:59Z"
+  "unit": null,
+  "updated_at": "2026-05-11T13:15:46.066214+00:00"
 }

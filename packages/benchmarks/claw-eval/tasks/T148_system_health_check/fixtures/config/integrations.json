@@ -1,0 +1,78 @@
+[
+  {
+    "integration_id": "INT-1001",
+    "name": "Payment Gateway",
+    "status": "active",
+    "config": {
+      "endpoint": "https://pay.company.com/api/v2",
+      "timeout_ms": 5000,
+      "retry_count": 3
+    },
+    "error_rate": 0.02,
+    "description": "Online payment gateway integration, handles order payment callbacks",
+    "service": "payment",
+    "last_verified": "2026-03-10",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-1002",
+    "name": "Email Service",
+    "status": "error",
+    "config": {
+      "host": "smtp.company.com",
+      "port": 587,
+      "auth": "credentials"
+    },
+    "error_rate": 1.0,
+    "error_message": "SMTP authentication expired, last successful send: 2026-03-18",
+    "description": "System email sending service, used for notifications, alerts, and report delivery",
+    "service": "smtp",
+    "last_verified": "2026-03-18",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-1003",
+    "name": "Data Warehouse Sync",
+    "status": "active",
+    "config": {
+      "source": "production_db",
+      "target": "data_warehouse",
+      "sync_interval_minutes": 30
+    },
+    "error_rate": 0.28,
+    "description": "Incremental sync from production database to data warehouse, used for reports and analytics",
+    "service": "etl",
+    "last_verified": "2026-03-20",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-1004",
+    "name": "Message Queue",
+    "status": "active",
+    "config": {
+      "broker": "rabbitmq.company.com:5672",
+      "vhost": "/production",
+      "prefetch_count": 10
+    },
+    "error_rate": 0.01,
+    "description": "Asynchronous message queue, handles background tasks and event distribution",
+    "service": "mq",
+    "last_verified": "2026-03-22",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-1005",
+    "name": "Logging Service",
+    "status": "active",
+    "config": {
+      "endpoint": "https://log.company.com/ingest",
+      "buffer_size": 1000,
+      "flush_interval_seconds": 5
+    },
+    "error_rate": 0.005,
+    "description": "Centralized log collection and storage service",
+    "service": "logging",
+    "last_verified": "2026-03-25",
+    "monthly_calls": 0
+  }
+]

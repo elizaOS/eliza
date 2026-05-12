@@ -1,0 +1,50 @@
+task_id: M083_multi_doc_extraction_horizontal_bar
+task_name: Multi-Document Extraction - Horizontal Grouped Bar
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am compiling a benchmark report on Document AI. Please download and read
+    these two PDFs:
+    - https://arxiv.org/pdf/2502.13923
+    - https://arxiv.org/pdf/2412.10302
+
+    Locate the main evaluation tables and extract the test accuracy scores on
+    three specific benchmarks: DocVQA, ChartQA, and TextVQA, for the following
+    two models: Qwen2.5-VL-72B and DeepSeek-VL2.
+
+    Save the synthesized data into /workspace/doc_ai_metrics.csv with exactly
+    four columns: Model, DocVQA, ChartQA, and TextVQA.
+
+    Next, generate a Horizontal Grouped Bar Chart (bars extending from left to
+    right) comparing these two models across the three benchmarks. Use a specific
+    color palette (Hex codes: #1f77b4 for DocVQA, #ff7f0e for ChartQA, #2ca02c
+    for TextVQA). Ensure the y-axis contains the model names. Save the image as
+    /workspace/doc_ai_horizontal.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/doc_ai_metrics.csv
+  - /workspace/doc_ai_horizontal.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download 2 PDFs (Qwen2.5-VL and DeepSeek-VL2 reports), extract DocVQA,
+  ChartQA, TextVQA scores for 2 models, save CSV and horizontal grouped bar
+  chart with specific hex color codes.
+primary_dimensions:
+  - completion
+  - robustness

@@ -1,0 +1,39 @@
+task_id: M029_video_surveillance_clip
+task_name: Video Surveillance Clip Extraction
+version: "1.0"
+category: video_edit
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    识别这段监控录像中的撞车事件出现时间（以视频中呈现的时间为准），并截取相关片段，保存为 /workspace/clip.mp4。
+  language: zh
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands:
+  - "ffprobe -v quiet -print_format json -show_format -show_streams /workspace/clip.mp4"
+  - "mkdir -p /workspace/grading_frames && ffmpeg -i /workspace/clip.mp4 -vf 'select=eq(n\\,0)+eq(n\\,5)+eq(n\\,10)' -vsync vfr /workspace/grading_frames/clip_frame_%03d.png -y"
+env_snapshot_files:
+  - /workspace/clip.mp4
+  - /workspace/grading_frames/*.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch surveillance video, identify car crash event timestamps,
+  extract the relevant clip using ffmpeg, save as /workspace/clip.mp4.
+primary_dimensions:
+  - completion
+  - robustness

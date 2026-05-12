@@ -702,10 +702,13 @@ public class AgentPlugin: CAPPlugin, CAPBridgedPlugin {
                 "agentRuntimeMode",
                 "ELIZA_IOS_RUNTIME_MODE",
                 "ELIZA_MOBILE_RUNTIME_MODE",
+<<<<<<< HEAD
                 "ELIZA_IOS_RUNTIME_MODE",
                 "ELIZA_MOBILE_RUNTIME_MODE",
                 "VITE_ELIZA_IOS_RUNTIME_MODE",
                 "VITE_ELIZA_MOBILE_RUNTIME_MODE",
+=======
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
                 "VITE_ELIZA_IOS_RUNTIME_MODE",
                 "VITE_ELIZA_MOBILE_RUNTIME_MODE",
             ]

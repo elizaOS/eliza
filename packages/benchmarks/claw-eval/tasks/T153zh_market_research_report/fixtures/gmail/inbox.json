@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_1201",
+    "from": "zhangceo@company.com",
+    "to": "me@company.com",
+    "subject": "请提交Q1市场研究报告",
+    "date": "2026-03-24T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "市场团队好，请在本周五前提交Q1市场研究报告。重点关注以下方面：\n1. AI技术对我们目标行业（制造/医疗/教育）的影响\n2. 各目标行业的最新市场动态和政策变化\n3. 结合我们的客户数据，给出下一阶段的市场策略建议\n\n报告需要发给全体管理层（CEO/CTO/CMO/VP Sales），请准备邮件草稿。\n\n张总"
+  },
+  {
+    "message_id": "msg_1202",
+    "from": "zhaovp@company.com",
+    "to": "me@company.com",
+    "subject": "市场报告补充：制造业客户AI需求",
+    "date": "2026-03-25T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "补充一下市场报告的参考信息：\n\n最近拜访制造业客户时，多个客户主动询问我们的AI功能规划，尤其是AI质检和预测性维护方面。鼎盛机械（VIP客户）的CTO甚至在评估竞品A的AI模块。\n\n建议市场报告重点关注AI对制造业客户的影响，以及我们的AI能力建设进度能否满足客户需求。这直接关系到下半年的续约。\n\n赵总"
+  }
+]

@@ -1,0 +1,82 @@
+[
+  {
+    "contact_id": "CT-901",
+    "name": "马强",
+    "department": "IT运维组",
+    "title": "运维主管",
+    "email": "maqiang@company.com",
+    "phone": "13900901001",
+    "location": "上海总部",
+    "notes": "负责系统运维、网络管理、邮箱和VPN等基础设施"
+  },
+  {
+    "contact_id": "CT-902",
+    "name": "李华",
+    "department": "数据组",
+    "title": "数据工程师",
+    "email": "lihua@company.com",
+    "phone": "13900901002",
+    "location": "上海总部",
+    "notes": "负责数据仓库、报表系统、数据质量"
+  },
+  {
+    "contact_id": "CT-903",
+    "name": "张伟",
+    "department": "安全组",
+    "title": "安全工程师",
+    "email": "zhangwei@company.com",
+    "phone": "13900901003",
+    "location": "上海总部",
+    "notes": "负责账号权限管理、安全审计、合规"
+  },
+  {
+    "contact_id": "CT-904",
+    "name": "陈婷",
+    "department": "行政部",
+    "title": "行政专员",
+    "email": "chenting@company.com",
+    "phone": "13900901004",
+    "location": "上海总部",
+    "notes": "负责办公环境维护、办公设备采购和更换"
+  },
+  {
+    "contact_id": "CT-905",
+    "name": "王明",
+    "department": "技术部",
+    "title": "技术总监",
+    "email": "wangming@company.com",
+    "phone": "13900901005",
+    "location": "上海总部",
+    "notes": "技术团队负责人，跨部门技术协调"
+  },
+  {
+    "contact_id": "CT-906",
+    "name": "周明",
+    "department": "研发部",
+    "title": "前端组长",
+    "email": "zhouming@company.com",
+    "phone": "13900901006",
+    "location": "上海总部",
+    "notes": "前端技术负责人"
+  },
+  {
+    "contact_id": "CT-907",
+    "name": "赵蕾",
+    "department": "销售部",
+    "title": "客户经理",
+    "email": "zhaolei@company.com",
+    "phone": "13900901007",
+    "location": "上海总部",
+    "notes": "负责大客户关系"
+  },
+  {
+    "contact_id": "CT-908",
+    "name": "刘洋",
+    "department": "财务部",
+    "title": "财务主管",
+    "email": "liuyang@company.com",
+    "phone": "13900901008",
+    "location": "上海总部",
+    "notes": "负责账务和财务报表"
+  }
+]

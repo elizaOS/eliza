@@ -1019,23 +1019,25 @@ def score_scenario(result: ScenarioResult, scenario: Scenario) -> float:
 
     if scenario.mode is ScenarioMode.STATIC:
         predicted_actions = [a for turn in result.turns for a in turn.agent_actions]
-        action_component = compare_actions(
-            predicted_actions, scenario.ground_truth_actions
-        )
+        action_component = compare_actions(predicted_actions, scenario.ground_truth_actions)
+
+        kind = _classify_scenario_kind(scenario)
+
+        # The state-hash → action promotion only makes sense for writes:
+        # on a write scenario the world ending up correct is strong
+        # evidence the agent's call did the right thing, even if kwarg
+        # spellings drift (e.g. `start_time` vs `details.start`). On a
+        # read scenario the state hash always matches trivially, so
+        # promoting partial action credit to full is exactly the
+        # inflation P0-8 exists to remove.
         if (
-            result.state_hash_match
+            kind == "write"
+            and result.state_hash_match
             and action_component >= 0.5
             and _state_hash_can_promote_action_score(
                 predicted_actions, scenario.ground_truth_actions
             )
         ):
-            # The executor is the semantic authority for state-changing
-            # behavior. If the final world hash matches and the agent emitted
-            # structurally matching action names, kwarg spelling differences
-            # such as start_time vs details.start should not keep an otherwise
-            # successful trajectory below pass@1. Read-only/no-op actions are
-            # excluded unless their kwargs match, because state equality cannot
-            # prove they looked up the right thing.
             action_component = 1.0
 
         # Triviality guard: when the scenario specifies ground-truth actions

@@ -1,0 +1,61 @@
+{
+  "_metadata": {
+    "config_version": "3.1.0",
+    "updated": "2024-10-15T14:30:00Z",
+    "updated_by": "platform-engineering",
+    "status": "active"
+  },
+  "default_sync_interval_seconds": 300,
+  "conflict_resolution_strategy": "last_write_wins",
+  "max_payload_size_kb": 512,
+  "retry_attempts": 3,
+  "retry_backoff_multiplier": 2.0,
+  "shared_namespace": "/shared/knowledge_base",
+  "sync_mode": "pull",
+  "polling_enabled": true,
+  "batch_size": 100,
+  "compression": "gzip",
+  "timeout_seconds": 30,
+  "health_check_interval_seconds": 60,
+  "per_agent_overrides": {
+    "research_agent": {
+      "sync_interval_seconds": 300,
+      "priority": "normal",
+      "namespaces": ["/shared/knowledge_base", "/shared/entity_store"],
+      "max_payload_size_kb": 1024,
+      "notes": "Research agent syncs large knowledge documents"
+    },
+    "coding_agent": {
+      "sync_interval_seconds": 300,
+      "priority": "normal",
+      "namespaces": ["/shared/knowledge_base", "/shared/workflow_state"],
+      "max_payload_size_kb": 512
+    },
+    "customer_agent": {
+      "sync_interval_seconds": 60,
+      "priority": "high",
+      "namespaces": ["/shared/knowledge_base", "/shared/entity_store"],
+      "max_payload_size_kb": 256,
+      "notes": "Customer agent requires near-real-time sync for live support sessions"
+    },
+    "analytics_agent": {
+      "sync_interval_seconds": 300,
+      "priority": "normal",
+      "namespaces": ["/shared/knowledge_base", "/shared/entity_store", "/shared/config_cache"],
+      "max_payload_size_kb": 2048,
+      "notes": "Analytics agent pulls large datasets for reporting"
+    },
+    "ops_agent": {
+      "sync_interval_seconds": 600,
+      "priority": "low",
+      "namespaces": ["/shared/knowledge_base", "/shared/config_cache"],
+      "max_payload_size_kb": 256,
+      "notes": "Ops agent has minimal sync needs; mostly reads deployment configs"
+    }
+  },
+  "dead_letter_queue": {
+    "enabled": true,
+    "max_retries": 5,
+    "ttl_hours": 72
+  }
+}

@@ -254,6 +254,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               onClick={refresh}
               disabled={loading}
               aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
+              data-testid="contacts-refresh"
             >
               <RefreshCw
                 className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
@@ -265,6 +266,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               className="h-9 w-9 rounded-xl text-muted hover:text-txt"
               onClick={handleOpenNew}
               aria-label={t("contacts.new", { defaultValue: "New contact" })}
+              data-testid="contacts-new"
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -286,6 +288,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               aria-label={t("contacts.search", {
                 defaultValue: "Search contacts",
               })}
+              data-testid="contacts-search"
             />
           </div>
         </div>

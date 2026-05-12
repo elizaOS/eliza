@@ -41,6 +41,8 @@ type IterationResult = {
   expectedTranscript: string | null;
   transcriptionExactMatch: boolean | null;
   transcriptionNormalizedMatch: boolean | null;
+  transcriptionWer: number | null;
+  transcriptionCer: number | null;
   speechEndToTextMs: number;
   transcriptionMs: number;
   responseHandlerDecisionMs: number;
@@ -56,6 +58,7 @@ type IterationResult = {
   voiceFirstTokenUncachedMs: number;
   voiceFirstTokenCachedMs: number;
   ttsFirstSentenceCacheHit: boolean;
+  ttsFirstSentenceCacheEligible: boolean;
   ttsRemainderMs: number;
   ttsCachedPipelineMs: number;
   endToEndMs: number;
@@ -93,6 +96,7 @@ type IterationResult = {
   responseSegmentation: {
     firstSentence: string;
     remainder: string;
+    firstSentenceEstimatedTokens: number;
   };
 };
 
@@ -155,6 +159,9 @@ type BenchmarkOutput = {
       p95TtsCachedPipelineMs: number;
       p99TtsCachedPipelineMs: number;
       firstSentenceCacheHitRate: number;
+      firstSentenceCacheEligibleRate: number;
+      avgTranscriptionWer: number;
+      avgTranscriptionCer: number;
       transcriptionNormalizedAccuracy: number;
       avgEndToEndMs: number;
       p95EndToEndMs: number;
@@ -216,21 +223,29 @@ const WORLD_ID = "00000000-0000-0000-0000-000000000104" as UUID;
 
 const MOCK_TRANSCRIPT = "Hello there. This is a short voice benchmark sample.";
 const MOCK_TEXT_RESPONSE = "Mock voicebench response is ready.";
-const MOCK_MESSAGE_HANDLER_TOON = `thought: Running deterministic voicebench mock response.
-actions: REPLY
-providers:
-text: ${MOCK_TEXT_RESPONSE}
-simple: true`;
-const MOCK_NON_SIMPLE_HANDLER_TOON = `thought: Running deterministic voicebench mock response with provider context.
-actions: REPLY
-providers: VOICEBENCH_CONTEXT
-text: ${MOCK_TEXT_RESPONSE}
-simple: false`;
-const MOCK_REPLY_TOON = `thought: Generating deterministic benchmark dialog.
-text: ${MOCK_TEXT_RESPONSE}`;
-const MOCK_SHOULD_RESPOND_TOON = `name: VoicebenchAgent
-reasoning: Voicebench messages should receive a benchmark response.
-action: RESPOND`;
+const MOCK_MESSAGE_HANDLER_JSON = JSON.stringify({
+  thought: "Running deterministic voicebench mock response.",
+  actions: [{ name: "REPLY", params: {} }],
+  providers: [],
+  text: MOCK_TEXT_RESPONSE,
+  simple: true,
+});
+const MOCK_NON_SIMPLE_HANDLER_JSON = JSON.stringify({
+  thought: "Running deterministic voicebench mock response with provider context.",
+  actions: [{ name: "REPLY", params: {} }],
+  providers: ["VOICEBENCH_CONTEXT"],
+  text: MOCK_TEXT_RESPONSE,
+  simple: false,
+});
+const MOCK_REPLY_JSON = JSON.stringify({
+  thought: "Generating deterministic benchmark dialog.",
+  text: MOCK_TEXT_RESPONSE,
+});
+const MOCK_SHOULD_RESPOND_JSON = JSON.stringify({
+  name: "VoicebenchAgent",
+  reasoning: "Voicebench messages should receive a benchmark response.",
+  action: "RESPOND",
+});
 const ZERO_EMBEDDING = Object.freeze(
   new Array(384).fill(0),
 ) as readonly number[];
@@ -241,15 +256,15 @@ function mockTextHandler(params: Record<string, unknown>): string {
     prompt.includes("should respond") ||
     prompt.includes("RESPOND | IGNORE | STOP")
   ) {
-    return MOCK_SHOULD_RESPOND_TOON;
+    return MOCK_SHOULD_RESPOND_JSON;
   }
   if (prompt.includes("Generate dialog for the character")) {
-    return MOCK_REPLY_TOON;
+    return MOCK_REPLY_JSON;
   }
   if (prompt.includes("Voicebench non-simple path")) {
-    return MOCK_NON_SIMPLE_HANDLER_TOON;
+    return MOCK_NON_SIMPLE_HANDLER_JSON;
   }
-  return MOCK_MESSAGE_HANDLER_TOON;
+  return MOCK_MESSAGE_HANDLER_JSON;
 }
 
 function readModelParams(params: unknown): Record<string, unknown> {
@@ -335,6 +350,38 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+function levenshteinDistance<T>(a: readonly T[], b: readonly T[]): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const curr = new Array<number>(b.length + 1);
+  for (let i = 1; i <= a.length; i += 1) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitution = Object.is(a[i - 1], b[j - 1]) ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + substitution,
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j];
+  }
+  return prev[b.length] ?? 0;
+}
+
+function wordErrorRate(reference: string, hypothesis: string): number | null {
+  const refWords = normalizeText(reference).split(/\s+/).filter(Boolean);
+  if (refWords.length === 0) return null;
+  const hypWords = normalizeText(hypothesis).split(/\s+/).filter(Boolean);
+  return levenshteinDistance(refWords, hypWords) / refWords.length;
+}
+
+function characterErrorRate(reference: string, hypothesis: string): number | null {
+  const refChars = Array.from(normalizeText(reference).replace(/\s+/g, ""));
+  if (refChars.length === 0) return null;
+  const hypChars = Array.from(normalizeText(hypothesis).replace(/\s+/g, ""));
+  return levenshteinDistance(refChars, hypChars) / refChars.length;
+}
+
 function normalizeCacheKeyText(text: string): string {
   return text
     .toLowerCase()
@@ -383,7 +430,7 @@ function splitFirstSentence(text: string): {
   if (!stripped) {
     return { firstSentence: "", remainder: "" };
   }
-  const match = stripped.match(/[.!?](?:["')\]]+)?\s/);
+  const match = stripped.match(/[,.!?;:](?:["')\]]+)?(?:\s+|$)/);
   if (!match || typeof match.index !== "number") {
     return { firstSentence: stripped, remainder: "" };
   }
@@ -391,6 +438,12 @@ function splitFirstSentence(text: string): {
   const firstSentence = stripped.slice(0, end).trim();
   const remainder = stripped.slice(end).trim();
   return { firstSentence: firstSentence || stripped, remainder };
+}
+
+function estimateTokenCount(text: string): number {
+  const normalized = normalizeCacheKeyText(text);
+  if (!normalized) return 0;
+  return normalized.split(/\s+/).filter(Boolean).length;
 }
 
 function inspectModelOutput(raw: string): ModelOutputInspection {
@@ -768,6 +821,14 @@ async function main(): Promise<void> {
               ? normalizeText(transcriptText) ===
                 normalizeText(expectedTranscript)
               : null;
+          const transcriptionWer =
+            typeof expectedTranscript === "string"
+              ? wordErrorRate(expectedTranscript, transcriptText)
+              : null;
+          const transcriptionCer =
+            typeof expectedTranscript === "string"
+              ? characterErrorRate(expectedTranscript, transcriptText)
+              : null;
 
           const userPrompt = `${transcriptText}\n\n${config.responsePrompt}`;
           const message: Memory = {
@@ -827,6 +888,10 @@ async function main(): Promise<void> {
           const segmented = splitFirstSentence(responseText);
           const firstSentence = segmented.firstSentence || responseText;
           const remainder = segmented.remainder;
+          const firstSentenceEstimatedTokens = estimateTokenCount(firstSentence);
+          const ttsFirstSentenceCacheEligible =
+            firstSentenceEstimatedTokens > 0 &&
+            firstSentenceEstimatedTokens < 10;
           const firstSentenceKey = `${profile}|${ttsProvider}|${normalizeCacheKeyText(firstSentence)}`;
 
           const uncachedFirstSentenceStart = nowMs();
@@ -938,6 +1003,10 @@ async function main(): Promise<void> {
             expectedTranscript,
             transcriptionExactMatch,
             transcriptionNormalizedMatch,
+            transcriptionWer:
+              transcriptionWer === null ? null : round(transcriptionWer),
+            transcriptionCer:
+              transcriptionCer === null ? null : round(transcriptionCer),
             speechEndToTextMs: round(transcriptionMs),
             transcriptionMs: round(transcriptionMs),
             responseHandlerDecisionMs: round(responseTtftMs),
@@ -955,6 +1024,7 @@ async function main(): Promise<void> {
             voiceFirstTokenUncachedMs: round(uncachedFirstSentenceMs),
             voiceFirstTokenCachedMs: round(cachedFirstSentenceMs),
             ttsFirstSentenceCacheHit: cachedHit,
+            ttsFirstSentenceCacheEligible,
             ttsRemainderMs: round(ttsRemainderMs),
             ttsCachedPipelineMs: round(ttsCachedPipelineMs),
             endToEndMs: round(endToEndMs),
@@ -992,6 +1062,7 @@ async function main(): Promise<void> {
             responseSegmentation: {
               firstSentence: truncate(firstSentence),
               remainder: truncate(remainder),
+              firstSentenceEstimatedTokens,
             },
           };
 
@@ -1241,6 +1312,27 @@ async function main(): Promise<void> {
       ),
       firstSentenceCacheHitRate: round(
         average(rows.map((entry) => (entry.ttsFirstSentenceCacheHit ? 1 : 0))),
+      ),
+      firstSentenceCacheEligibleRate: round(
+        average(
+          rows.map((entry) =>
+            entry.ttsFirstSentenceCacheEligible ? 1 : 0,
+          ),
+        ),
+      ),
+      avgTranscriptionWer: round(
+        average(
+          rows
+            .map((entry) => entry.transcriptionWer)
+            .filter((value): value is number => value !== null),
+        ),
+      ),
+      avgTranscriptionCer: round(
+        average(
+          rows
+            .map((entry) => entry.transcriptionCer)
+            .filter((value): value is number => value !== null),
+        ),
       ),
       transcriptionNormalizedAccuracy: round(
         average(

@@ -112,9 +112,13 @@ function localInferenceRoot() {
 
 function defaults() {
   const root = localInferenceRoot();
+<<<<<<< HEAD
   const bundle =
     process.env.ELIZA_BUNDLE ??
     path.join(root, "models", "eliza-1-1_7b.bundle");
+=======
+  const bundle = process.env.ELIZA_BUNDLE ?? path.join(root, "models", "eliza-1-2b.bundle");
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   return {
     cli:
       process.env.ELIZA_TTS_CLI ??

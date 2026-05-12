@@ -17,7 +17,11 @@ import type {
   BscUnsignedTradeTx,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
+<<<<<<< HEAD
 import { ethers } from "ethers";
+=======
+import * as ethers from "ethers";
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 import {
   normalizeRpcUrl,
   resolveBscRpcUrls as resolveWalletBscRpcUrls,

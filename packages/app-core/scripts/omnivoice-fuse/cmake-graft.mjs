@@ -274,9 +274,13 @@ export function fusedCmakeBuildTargets() {
     "llama-server",
     "llama-cli",
     "llama-speculative-simple",
+<<<<<<< HEAD
     // Non-interactive generation drivers used by the verify runners.
     "llama-bench",
     "llama-completion",
+=======
+    "llama-mtmd-cli",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "omnivoice-core",
     "elizainference",
     "llama-omnivoice-server",

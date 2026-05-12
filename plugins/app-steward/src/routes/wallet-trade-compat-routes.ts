@@ -20,7 +20,7 @@ import {
   resolveTradePermissionMode as _resolveTradePermissionMode,
 } from "@elizaos/plugin-wallet";
 import { type PolicyResult, StewardApiError } from "@stwd/sdk";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import {
   buildBscApproveUnsignedTx,
   buildBscBuyUnsignedTx,

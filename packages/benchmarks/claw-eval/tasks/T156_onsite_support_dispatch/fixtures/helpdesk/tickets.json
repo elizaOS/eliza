@@ -1,0 +1,62 @@
+[
+  {
+    "ticket_id": "TK-1201",
+    "title": "Complete Production System Outage",
+    "description": "Wantong Logistics (CUS-1201) urgent report: Starting 10:00 AM today, the production ERP system is completely inaccessible, all business operations interrupted. Service restart attempted but did not resolve. System logs show database connection pool exhausted, suspected primary database node failure. Currently 200+ employees unable to work normally, logistics dispatch completely halted.",
+    "customer_id": "CUS-1201",
+    "reporter": "General Manager Wang",
+    "department": "Technical Support",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-26T10:15:00+08:00",
+    "tags": ["system outage", "VIP", "urgent", "onsite support"],
+    "category": "System Failure",
+    "requires_onsite": true,
+    "sla_deadline": "2026-03-26T14:15:00+08:00"
+  },
+  {
+    "ticket_id": "TK-1202",
+    "title": "Report Export Intermittently Failing",
+    "description": "Hanhai E-Commerce (CUS-1202) reports: When exporting monthly sales reports, approximately 30% of attempts result in timeout errors. Error message: ExportTimeout: query exceeded 30s limit. Small data ranges export normally.",
+    "customer_id": "CUS-1202",
+    "reporter": "Manager Lin",
+    "department": "Technical Support",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T16:00:00+08:00",
+    "tags": ["reports", "export", "timeout"],
+    "category": "Feature Bug",
+    "requires_onsite": false,
+    "sla_deadline": "2026-03-27T16:00:00+08:00"
+  },
+  {
+    "ticket_id": "TK-1203",
+    "title": "New Feature Training Request",
+    "description": "Qianfeng Tech (CUS-1203) requests a training session on the new data analytics module, approximately 20 participants. Preferred next week, online or in-person both acceptable.",
+    "customer_id": "CUS-1203",
+    "reporter": "Supervisor Zhang",
+    "department": "Customer Service",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T11:00:00+08:00",
+    "tags": ["training", "new feature"],
+    "category": "Service Request",
+    "requires_onsite": false,
+    "sla_deadline": "2026-04-02T11:00:00+08:00"
+  },
+  {
+    "ticket_id": "TK-1204",
+    "title": "Data Migration Consultation",
+    "description": "Sunlight Media (CUS-1204) plans to migrate historical data from legacy system to new platform, approximately 500GB of data, seeking migration plan and timeline estimate.",
+    "customer_id": "CUS-1204",
+    "reporter": "Director Liu",
+    "department": "Technical Support",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T14:30:00+08:00",
+    "tags": ["data migration", "consultation", "VIP"],
+    "category": "Technical Consultation",
+    "requires_onsite": false,
+    "sla_deadline": "2026-03-27T14:30:00+08:00"
+  }
+]

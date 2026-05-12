@@ -22,10 +22,15 @@ the eliza runtime actually parses for each `metadata.task_type`:
                                  chosen action MUST be TASK_CALL or the tool
                                  name itself.
 
+<<<<<<< HEAD
   shell_command               JSON with `command` field (or planner action
                                  carrying `params.command`); SHELL (legacy
                                  name SHELL_COMMAND also accepted) must be in
                                  availableActions.
+=======
+  shell_command               JSON with `command` field; SHELL must
+                                 be in availableActions.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
   agent_trace (planning)      JSON envelope: `actions` (each with a `name`)
                                  plus an OPTIONAL `thought` — adapters omit
@@ -89,11 +94,15 @@ ACTION_IGNORE = "IGNORE"
 ACTION_STOP = "STOP"
 ACTION_REPLY = "REPLY"
 ACTION_TASK_CALL = "TASK_CALL"
+<<<<<<< HEAD
 # `SHELL_COMMAND` was renamed to `SHELL` in the runtime (config/eliza1_action_aliases.json,
 # action-docs.ts; mirrors lib/eliza_record.ACTION_SHELL). Accept either form so a
 # re-packed corpus using the new name validates while older rows still pass.
 ACTION_SHELL = "SHELL"
 SHELL_ACTION_NAMES = {ACTION_SHELL, "SHELL_COMMAND"}
+=======
+ACTION_SHELL = "SHELL"
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ROUTING_ACTIONS = {ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP}
 
 # DATASET_REVIEW.md-flagged default-thought leaks. Single source of truth
@@ -243,7 +252,7 @@ SOURCE_ALLOWLIST: set[str] = _load_source_allowlist()
 # ──────────────────────── decode helpers ────────────────────────
 
 
-def _try_decode_toon(text: str) -> tuple[bool, Any, str]:
+def _try_decode_payload(text: str) -> tuple[bool, Any, str]:
     """Structured decode for native v5 JSON expectedResponse values.
 
     Returns `(ok, value, error)`.
@@ -343,7 +352,7 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
                      "expectedResponse is empty"))
         return errs
     # Two acceptable shapes: a bare token "RESPOND"/"IGNORE"/"STOP", or a
-    # TOON document with `action:` carrying the token (LIGHT/MultiLIGHT).
+    # native JSON document with `action:` carrying the token (LIGHT/MultiLIGHT).
     if expected in ROUTING_ACTIONS:
         return errs
     if isinstance(decoded, dict):
@@ -355,7 +364,7 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
             return errs
         errs.append((
             "routing_decoded_no_action_field",
-            "TOON document for routing must have `action: RESPOND|IGNORE|STOP`",
+            "native JSON document for routing must have `action: RESPOND|IGNORE|STOP`",
         ))
         return errs
     errs.append((
@@ -369,12 +378,12 @@ def validate_routing(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
 def validate_tool_call(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("tool_call_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("tool_call_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("tool_call_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
     # Two valid shapes:
     #   1. `{tool_calls: [{name, arguments}, ...]}` — the spec preference.
@@ -423,20 +432,29 @@ def validate_tool_call(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
 def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("shell_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("shell_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("shell_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
+<<<<<<< HEAD
     # Either a top-level `command: ...` or a planner envelope whose
     # SHELL (a.k.a. legacy SHELL_COMMAND) action carries `params.command`.
+=======
+    # Either a top-level `command: ...` or a planner envelope whose canonical
+    # SHELL action carries `params.command`.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     command = decoded.get("command")
     if not (isinstance(command, str) and command.strip()):
         planner_actions = _planner_actions(decoded) or []
         cmd_action = next((a for a in planner_actions
+<<<<<<< HEAD
                            if a.get("name") in SHELL_ACTION_NAMES), None)
+=======
+                           if a.get("name") == ACTION_SHELL), None)
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         if cmd_action is None:
             errs.append(("shell_missing_command_field",
                          "shell_command task needs `command:` or "
@@ -449,7 +467,11 @@ def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, st
                 errs.append(("shell_action_missing_params_command",
                              "SHELL action needs params.command non-empty"))
     actions = set(_action_names(rec.get("availableActions", [])))
+<<<<<<< HEAD
     if not (actions & SHELL_ACTION_NAMES):
+=======
+    if ACTION_SHELL not in actions:
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         errs.append(("shell_missing_SHELL_action",
                      "availableActions must contain SHELL for task_type=shell_command"))
     return errs
@@ -458,12 +480,12 @@ def validate_shell_command(rec: dict, decoded: Any | None) -> list[tuple[str, st
 def validate_agent_trace(rec: dict, decoded: Any | None) -> list[tuple[str, str]]:
     errs: list[tuple[str, str]] = []
     if decoded is None:
-        errs.append(("agent_trace_invalid_toon",
-                     "expectedResponse failed to TOON-decode"))
+        errs.append(("agent_trace_invalid_payload",
+                     "expectedResponse failed to native JSON-decode"))
         return errs
     if not isinstance(decoded, dict):
         errs.append(("agent_trace_decoded_not_object",
-                     f"decoded TOON is {type(decoded).__name__}, not an object"))
+                     f"decoded native JSON is {type(decoded).__name__}, not an object"))
         return errs
     # `thought` is OPTIONAL in the planner envelope. The adapters
     # (lib/adapters.py:_planner_envelope) deliberately OMIT the `thought:` key
@@ -619,7 +641,7 @@ def validate_record(rec: dict) -> list[tuple[str, str]]:
     if task_type in {"tool_call", "shell_command", "agent_trace",
                      "should_respond_with_context", "should_respond",
                      "context_routing", "routing"} or task_type.startswith("mobile_"):
-        ok, value, _err = _try_decode_toon(expected)
+        ok, value, _err = _try_decode_payload(expected)
         decoded = value if ok else None
 
     errs = schema_agnostic_checks(rec, decoded)

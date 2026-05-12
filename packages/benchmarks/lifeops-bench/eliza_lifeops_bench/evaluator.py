@@ -20,6 +20,9 @@ answer "how much of this $50 run was the executor vs. the judge?".
 
 from __future__ import annotations
 
+import json
+import re
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from .clients.base import BaseClient, ClientCall
@@ -27,6 +30,162 @@ from .types import FirstQuestionFallback, MessageTurn, Scenario
 
 if TYPE_CHECKING:
     from .lifeworld import LifeWorld
+
+
+def _parse_iso_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    text = value.rstrip("Z")
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _coerce_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "yes", "y", "satisfied", "pass", "1"}:
+            return True
+        if normalized in {"false", "no", "n", "failed", "fail", "0"}:
+            return False
+    return None
+
+
+def _strip_code_fence(text: str) -> str:
+    stripped = text.strip()
+    if not stripped.startswith("```"):
+        return stripped
+    stripped = stripped[3:].lstrip()
+    if stripped.startswith("json"):
+        stripped = stripped[4:].lstrip()
+    if stripped.endswith("```"):
+        stripped = stripped[:-3].rstrip()
+    return stripped
+
+
+def _summarize_world_state(world_state: "LifeWorld") -> str:
+    counts = world_state.counts()
+    lines = [
+        f"Benchmark clock: {world_state.now_iso}",
+        "World heartbeat: this is the latest live snapshot before the next user reply.",
+        (
+            "Entity counts: "
+            f"emails={counts['email']}, "
+            f"calendar_events={counts['calendar_event']}, "
+            f"reminders={counts['reminder']}, "
+            f"conversations={counts['conversation']}, "
+            f"contacts={counts['contact']}"
+        ),
+    ]
+
+    email_items = sorted(
+        world_state.emails.values(),
+        key=lambda email: (
+            _parse_iso_utc(email.received_at or email.sent_at) or datetime.min.replace(
+                tzinfo=timezone.utc
+            ),
+            email.id,
+        ),
+        reverse=True,
+    )[:3]
+    if email_items:
+        lines.append("Recent emails:")
+        for email in email_items:
+            lines.append(
+                f"  - {email.folder} from {email.from_email}: {email.subject}"
+            )
+
+    calendar_items = sorted(
+        world_state.calendar_events.values(),
+        key=lambda event: (
+            _parse_iso_utc(event.start) or datetime.max.replace(tzinfo=timezone.utc),
+            event.id,
+        ),
+    )[:3]
+    if calendar_items:
+        lines.append("Upcoming calendar events:")
+        for event in calendar_items:
+            lines.append(
+                f"  - {event.start} [{event.status}] {event.title}"
+            )
+
+    reminder_items = sorted(
+        world_state.reminders.values(),
+        key=lambda reminder: (
+            _parse_iso_utc(reminder.due_at) or datetime.max.replace(tzinfo=timezone.utc),
+            reminder.id,
+        ),
+    )[:3]
+    if reminder_items:
+        lines.append("Pending reminders:")
+        for reminder in reminder_items:
+            due = reminder.due_at or "unscheduled"
+            lines.append(f"  - {due} {reminder.title}")
+
+    return "\n".join(lines)
+
+
+def _parse_judge_verdict(content: str | None) -> tuple[bool, str]:
+    raw = (content or "").strip()
+    if not raw:
+        return False, "empty judge response"
+
+    for candidate in (raw, _strip_code_fence(raw)):
+        if not candidate:
+            continue
+        json_candidate = candidate
+        if not json_candidate.lstrip().startswith("{"):
+            start = json_candidate.find("{")
+            end = json_candidate.rfind("}")
+            if start != -1 and end > start:
+                json_candidate = json_candidate[start : end + 1]
+            else:
+                json_candidate = ""
+        if not json_candidate:
+            continue
+        try:
+            parsed = json.loads(json_candidate)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        verdict_value = parsed.get("satisfied")
+        if verdict_value is None:
+            verdict_value = parsed.get("verdict")
+        if verdict_value is None:
+            verdict_value = parsed.get("answer")
+        if verdict_value is None:
+            verdict_value = parsed.get("status")
+        satisfied = _coerce_bool(verdict_value)
+        if satisfied is None:
+            continue
+        reason_value = parsed.get("reason")
+        if reason_value is None:
+            reason_value = parsed.get("explanation")
+        if reason_value is None:
+            reason_value = parsed.get("why")
+        reason = str(reason_value).strip() if reason_value is not None else ""
+        return satisfied, reason or raw
+
+    first_line = raw.splitlines()[0].strip()
+    match = re.match(r"^(YES|NO)\b[:\s\-—]*(.*)$", first_line, flags=re.IGNORECASE)
+    if match:
+        satisfied = match.group(1).upper() == "YES"
+        reason = match.group(2).strip()
+        if not reason:
+            tail = [line.strip() for line in raw.splitlines()[1:] if line.strip()]
+            reason = " ".join(tail)
+        return satisfied, reason or raw
+
+    return False, raw
 
 
 class LifeOpsEvaluator:
@@ -88,9 +247,10 @@ class LifeOpsEvaluator:
         """
         turn_number = sum(1 for t in history if t.role == "user") + 1
         remaining_patience = max(0, scenario.persona.patience_turns - turn_number)
+        world_snapshot = _summarize_world_state(world_state)
 
         system_prompt = self._build_user_simulation_prompt(
-            scenario, turn_number, remaining_patience
+            scenario, turn_number, remaining_patience, world_snapshot
         )
         history_messages = self._render_history_for_user(history)
 
@@ -140,10 +300,7 @@ class LifeOpsEvaluator:
         if response.cost_usd is not None:
             # Unpriced models skip the accumulator (AGENTS.md Cmd #8).
             self.judge_cost_usd += response.cost_usd
-        verdict = (response.content or "").strip()
-        first_line = verdict.splitlines()[0].strip().upper() if verdict else ""
-        satisfied = first_line.startswith("YES")
-        reason = verdict[3:].lstrip(" :-—") if first_line.startswith(("YES", "NO")) else verdict
+        satisfied, reason = _parse_judge_verdict(response.content)
         return satisfied, reason
 
     # ------------------------------------------------------------------
@@ -175,6 +332,7 @@ class LifeOpsEvaluator:
         scenario: Scenario,
         turn_number: int,
         remaining_patience: int,
+        world_snapshot: str,
     ) -> str:
         persona = scenario.persona
         traits = ", ".join(persona.traits)
@@ -199,8 +357,10 @@ class LifeOpsEvaluator:
             f"    (e.g. 'great, thanks', 'perfect', 'works for me'). Don't be effusive.\n"
             f"  - Keep messages short — one to three sentences is typical for chat.\n"
             f"\n"
-            f"This is turn {turn_number}. You have roughly {remaining_patience} turns of patience left "
+            f"Live heartbeat: turn {turn_number}. You have roughly {remaining_patience} turns of patience left "
             f"before you would normally walk away from a real assistant.\n"
+            f"\n"
+            f"Latest world snapshot:\n{world_snapshot}\n"
             f"\n"
             f"Reply with ONLY the next message you would send. No narration, no labels."
         )
@@ -241,6 +401,8 @@ class LifeOpsEvaluator:
         history: list[MessageTurn],
         world_state: "LifeWorld",
     ) -> str:
+        judge_turn_number = sum(1 for turn in history if turn.role == "user") + 1
+        world_snapshot = _summarize_world_state(world_state)
         transcript_lines: list[str] = []
         for turn in history:
             if turn.role == "system":
@@ -275,8 +437,11 @@ class LifeOpsEvaluator:
             "PERSONA: " + scenario.persona.name + "\n"
             "PERSONA GOAL (the user actually wanted this — the executor was NOT given it verbatim):\n"
             "  " + scenario.instruction + "\n"
+            f"Live heartbeat: turn {judge_turn_number}.\n"
             + success_clause
             + world_clause
+            + "\nLATEST WORLD SNAPSHOT:\n"
+            + world_snapshot
             + "\nCONVERSATION TRANSCRIPT:\n"
             + transcript
             + "\n\n"
@@ -288,7 +453,10 @@ class LifeOpsEvaluator:
             "  - Refusal or off-topic responses are NOT satisfied.\n"
             "  - Partial completion that the persona explicitly accepted IS satisfied.\n"
             "\n"
-            "Respond with one of:\n"
+            "Respond with a single JSON object and nothing else:\n"
+            '  {"satisfied": true, "reason": "<one-sentence reason>"}\n'
+            '  {"satisfied": false, "reason": "<one-sentence reason>"}\n'
+            "If you cannot produce JSON, fall back to:\n"
             "  YES: <one-sentence reason>\n"
             "  NO: <one-sentence reason>\n"
         )

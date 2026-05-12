@@ -11,4 +11,5 @@ export * from "./components/voice";
 export { default as dynamic } from "./runtime/dynamic";
 export { default as Image } from "./runtime/image";
 export * from "./runtime/navigation";
+export * from "./runtime/render-telemetry";
 export * from "./types/chat-media";

@@ -187,14 +187,29 @@ type DeviceOutbound =
 			correlationId: string;
 			ok: true;
 			prompt: string | null;
-	  }
-	| {
-			type: "formatChatResult";
-			correlationId: string;
-			ok: false;
-			error: string;
-	  }
-	| { type: "pong"; at: number };
+	  };
+<<<<<<< HEAD
+	|
+{
+	type: "formatChatResult";
+	correlationId: string;
+	ok: false;
+	error: string;
+}
+=======
+	|
+{
+	type: "formatChatResult";
+	correlationId: string;
+	ok: false;
+	error: string;
+}
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
+	|
+{
+	type: "pong";
+	at: number;
+}
 
 type AgentOutbound =
 	| ({ type: "load"; correlationId: string } & LocalInferenceLoadArgs)
@@ -974,10 +989,16 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		// `params.prompt` is already set. The fallback is model-agnostic —
 		// no Llama-3 special tokens — so it works across Qwen3, Eliza-1, etc.
 		const messagesForTemplate = collectMessagesForNativeTemplate(params);
-		let nativePrompt: string | null = null;
+		const nativePrompt: string | null = null;
 		if (messagesForTemplate) {
 			try {
-				nativePrompt = await mobileDeviceBridge.formatChat(messagesForTemplate);
+				<<<<<<< HEAD
+				nativePrompt = await mobileDeviceBridge.formatChat(messagesForTemplate)
+				=======
+				nativePrompt = await mobileDeviceBridge.formatChat(
+					messagesForTemplate,
+				)
+				>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 			} catch (err) {
 				logger.warn(
 					`[mobile-device-bridge] getFormattedChat failed, falling back to plain-text flatten: ${err instanceof Error ? err.message : String(err)}`,
@@ -996,7 +1017,11 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 
 // Reshape `params` into the `[{role, content}, ...]` list the native
 // `getFormattedChat` call expects. Returns null if `params.messages` is
+<<<<<<< HEAD
 // empty (caller falls back to hand-rolled flatten).
+=======
+// empty (caller falls back to plain-text flatten).
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 function collectMessagesForNativeTemplate(
 	params: GenerateTextParams,
 ): { role: string; content: string }[] | null {
@@ -1011,10 +1036,19 @@ function collectMessagesForNativeTemplate(
 	for (const m of messages) {
 		const content =
 			typeof (m as { content?: unknown }).content === "string"
+<<<<<<< HEAD
 				? (m as { content: string }).content
 				: "";
 		if (!content) continue;
+		const _role = ((m as { role?: string }).role ?? "user").toLowerCase();
+		=======
+				? ((m as
+		content: string;
+		).content)
+				: ""
+		if (!content) continue;
 		const role = ((m as { role?: string }).role ?? "user").toLowerCase();
+		>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 		const safeRole =
 			role === "system" || role === "assistant" || role === "user"
 				? role

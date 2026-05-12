@@ -8,6 +8,7 @@
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { AgentEventService, promoteSubactionsToActions } from "@elizaos/core";
+import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
 import { logsAction } from "../actions/logs.ts";
@@ -207,6 +208,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       ...promoteSubactionsToActions(logsAction),
       ...promoteSubactionsToActions(runtimeAction),
       ...promoteSubactionsToActions(databaseAction),
+      compactConversationAction,
       ...promoteSubactionsToActions(memoryAction),
       // SCHEDULE_FOLLOW_UP is now the `followup` op on contactAction.
       // ARCHIVE_CODING_TASK / REOPEN_CODING_TASK live as ops on the TASKS

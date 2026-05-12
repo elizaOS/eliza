@@ -5,19 +5,20 @@ to the loss). Checkpoints land under `training/checkpoints/<run_name>/`.
 
 The base model is resolved from `--registry-key` (see
 `training/model_registry.py`); pass `--model <hf-id>` to override. With no
-registry key the default is `Qwen/Qwen3-0.6B` — the smallest published
+registry key the default is `Qwen/Qwen3.5-0.8B` — the smallest published
 eliza-1 target.
 
 Usage:
     # Smoke test on the smallest eliza-1 tier
     uv run --extra train python scripts/train_local.py \
-        --registry-key qwen3-0.6b \
-        --max-samples 256 --epochs 1 --run-name eliza-1-0_6b-smoke
+        --registry-key qwen3.5-0.8b \
+        --max-samples 256 --epochs 1 --run-name eliza-1-0_8b-smoke
 
     # Real run
     uv run --extra train python scripts/train_local.py \
-        --registry-key qwen3-0.6b \
+        --registry-key qwen3.5-0.8b \
         --epochs 3 --batch-size 4 --grad-accum 8 \
+<<<<<<< HEAD
         --run-name eliza-1-0_6b-eliza-native-v1
 
 Environment knobs:
@@ -31,6 +32,9 @@ Environment knobs:
     ELIZA_FORCE_COL=1       force completion-only loss even when Liger is on
                             (skips Liger's logits-free CE path).
     ELIZA_ALLOW_UNVERIFIED_BASE=1   load a registry entry flagged unverified.
+=======
+        --run-name eliza-1-0_8b-eliza-native-v1
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 """
 
 from __future__ import annotations
@@ -193,7 +197,7 @@ def build_dataset(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3-0.6B")
+    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
     ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"))
@@ -212,13 +216,13 @@ def main() -> int:
              "a single run — useful for long-context experiments on the 27B "
              "(validate VRAM with `memory_calc.py --shape qwen3.6-27b` first)."
     )
-    ap.add_argument("--lora-r", type=int, default=32)
-    ap.add_argument("--lora-alpha", type=int, default=64)
-    ap.add_argument("--lora-dropout", type=float, default=0.05)
     ap.add_argument("--full-finetune", action="store_true",
-                    help="skip LoRA — full-parameter SFT")
-    ap.add_argument("--qlora", action="store_true",
-                    help="disabled; this entrypoint is full-parameter APOLLO only")
+                    help="Compatibility no-op; this entrypoint is always full-parameter APOLLO SFT.")
+    ap.add_argument(
+        "--preflight-only",
+        action="store_true",
+        help="Validate split files and APOLLO-only configuration without loading model weights.",
+    )
     ap.add_argument(
         "--optimizer",
         choices=["apollo", "apollo_mini"],
@@ -270,9 +274,16 @@ def main() -> int:
         ):
             raise SystemExit(
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
+<<<<<<< HEAD
                 "is flagged unverified_base — its hf_id does not resolve to a "
                 "published checkpoint; loading it will fail. Use a verified key, "
                 "pass an explicit --model <real-hf-id>, or set "
+=======
+                "is an UNVERIFIED placeholder with no published checkpoint as of "
+                "2026-05; loading it will fail. Use a real key "
+                "(qwen3.5-0.8b / qwen3.5-2b / qwen3.5-4b → eliza-1-0_8b / eliza-1-2b / "
+                "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
                 "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
         if args.model == ap.get_default("model"):
@@ -293,22 +304,39 @@ def main() -> int:
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
                  args.max_seq_len, args.optimizer, args.memory_budget_gb or 0)
 
-    if not args.full_finetune:
-        log.warning(
-            "--optimizer=%s is intended for full-parameter fine-tuning; "
-            "auto-enabling --full-finetune",
-            args.optimizer,
+    train_recs = load_jsonl(
+        Path(args.train_file),
+        max_n=args.max_samples or None,
+    )
+    val_recs = load_jsonl(
+        Path(args.val_file),
+        max_n=max(1, args.max_samples // 10) if args.max_samples else None,
+    )
+    if not train_recs:
+        log.error("no training records — run pack_dataset.py or prepare_eliza1_trajectory_dataset.py first")
+        return 1
+
+    if args.preflight_only:
+        train_ok = sum(1 for rec in train_recs if format_record(rec))
+        val_ok = sum(1 for rec in val_recs if format_record(rec))
+        if train_ok == 0:
+            log.error("preflight failed: training split formats to zero train-local rows")
+            return 1
+        if val_recs and val_ok == 0:
+            log.error("preflight failed: validation split formats to zero train-local rows")
+            return 1
+        log.info(
+            "preflight ok: train=%d/%d validation=%d/%d optimizer=%s rank=%d",
+            train_ok, len(train_recs), val_ok, len(val_recs),
+            args.optimizer, args.apollo_rank,
         )
-        args.full_finetune = True
-    if args.qlora:
-        raise SystemExit(
-            "QLoRA is disabled in the APOLLO-only local training pipeline. "
-            "Use full-parameter APOLLO fine-tuning."
+        log.info(
+            "APOLLO/APOLLO-Mini is the only optimizer path; full-parameter fine-tuning is required."
         )
+        return 0
 
     import torch
-    from peft import LoraConfig, prepare_model_for_kbit_training
-    from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+    from transformers import AutoModelForCausalLM, AutoTokenizer
     from trl import SFTConfig, SFTTrainer
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -320,18 +348,6 @@ def main() -> int:
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
     tokenizer.truncation_side = "left"
-
-    train_recs = load_jsonl(
-        Path(args.train_file),
-        max_n=args.max_samples or None,
-    )
-    val_recs = load_jsonl(
-        Path(args.val_file),
-        max_n=max(1, args.max_samples // 10) if args.max_samples else None,
-    )
-    if not train_recs:
-        log.error("no training records — run pack_dataset.py first")
-        return 1
 
     max_chars = args.max_chars or None
     try:
@@ -355,15 +371,7 @@ def main() -> int:
         log.error("%s", exc)
         return 1
 
-    log.info("loading model %s qlora=%s", args.model, args.qlora)
-    quant_cfg = None
-    if args.qlora and device == "cuda":
-        quant_cfg = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-        )
+    log.info("loading model %s for full-parameter APOLLO SFT", args.model)
     attn_impl = select_attn_impl(device)
     # device_map='auto' is incompatible with FSDP / DDP — accelerate's
     # `prepare()` rejects models that already have a device map. When we
@@ -391,8 +399,6 @@ def main() -> int:
         low_cpu_mem_usage=True,
         attn_implementation=attn_impl,
     )
-    if quant_cfg is not None:
-        model_kwargs["quantization_config"] = quant_cfg
     if use_device_map:
         model_kwargs["device_map"] = "auto"
     log.info("loading model (in_distributed=%s device_map=%s)", in_distributed, use_device_map)
@@ -457,9 +463,7 @@ def main() -> int:
                 log.info("Liger FLCE chunk_size set to 512 for our (B,T,V,H) shape")
             log.info("Liger kernel applied (fused CE + RMSNorm + SwiGLU + RoPE)")
     model.config.use_cache = False
-    if quant_cfg is not None:
-        model = prepare_model_for_kbit_training(model, use_gradient_checkpointing=True)
-    elif hasattr(model, "gradient_checkpointing_enable"):
+    if hasattr(model, "gradient_checkpointing_enable"):
         # Selective activation checkpointing: skip every Nth layer so we trade
         # ~5% peak memory for ~10% throughput vs uniform full-block AC. Set
         # ELIZA_AC_EVERY=1 (default) for uniform; 2 for "checkpoint every other
@@ -496,6 +500,7 @@ def main() -> int:
                         ac_every, kept, len(layers),
                     )
 
+<<<<<<< HEAD
     # Opt-in `torch.compile` of the model forward/backward. Must run AFTER the
     # Liger patch (Liger swaps module forward methods, so compile has to capture
     # the post-patch graph) and AFTER gradient checkpointing is enabled, and
@@ -531,6 +536,8 @@ def main() -> int:
             ],
         )
 
+=======
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     out_dir = Path(args.out_dir) / args.run_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -540,9 +547,9 @@ def main() -> int:
             "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
         )
 
-    # SFTConfig still requires a supported `optim` enum even though the custom
-    # Trainer below replaces optimizer creation before that enum is used.
-    trainer_optim = "adafactor"
+    # IMPORTANT: do not add a second optimizer path here. APOLLO is what lets
+    # full-parameter Eliza-1 fine-tuning fit smaller GPUs by shrinking optimizer
+    # state; _ElizaSFTTrainer.create_optimizer below is the only optimizer hook.
     # TRL's SFTTrainer.tokenize is a single-process dataset.map by default,
     # which on a 1.06M-record corpus at seq_len=8192 takes ~30+ hours to walk
     # before the first training step. Fan out to all CPU cores; cap at 32 to
@@ -559,7 +566,6 @@ def main() -> int:
         lr_scheduler_type="cosine",
         warmup_ratio=0.03,
         weight_decay=0.0,
-        optim=trainer_optim,
         bf16=device == "cuda",
         logging_steps=10,
         save_steps=500,
@@ -687,7 +693,6 @@ def main() -> int:
         train_dataset=train_ds,
         eval_dataset=val_ds,
         args=sft_cfg,
-        peft_config=peft_cfg,
     )
 
     if fp8_handle is not None and fp8_handle.enabled:
@@ -758,7 +763,7 @@ def main() -> int:
         trainer.train()
     trainer.save_model(str(out_dir / "final"))
     tokenizer.save_pretrained(str(out_dir / "final"))
-    log.info("done. adapter at %s", out_dir / "final")
+    log.info("done. full-parameter APOLLO checkpoint at %s", out_dir / "final")
     return 0
 
 

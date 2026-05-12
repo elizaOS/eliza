@@ -8,21 +8,22 @@
  *            substitutes for Silero — it only decides "is there acoustic
  *            activity right now".
  *
- *   Tier 2 — `SileroVad`. The MIT-licensed Silero VAD v5 ONNX model
+ *   Tier 2 — a model VAD provider. Resolver order is Qwen toolkit adapter
+ *            when supplied, native libelizainference Silero, then the
+ *            MIT-licensed Silero VAD v5 ONNX model
  *            (`vad/silero-vad-int8.onnx` in the Eliza-1 bundle layout). 512-
  *            sample windows at 16 kHz (32 ms hop), one speech probability per
- *            window, an internal LSTM state carried across windows. This is
- *            the *authoritative* speech/no-speech signal — it gates ASR and
- *            drives turn-taking.
+ *            window. This is the *authoritative* speech/no-speech signal — it
+ *            gates ASR and drives turn-taking.
  *
  *   `VadDetector` wires both together and emits the `VadEvent` stream
  *   (`speech-start` / `speech-active` / `speech-pause` / `speech-end` /
  *   `blip`) plus the raw `EnergyGateEvent` stream.
  *
- * No fallback sludge: if `onnxruntime-node` is not installed or the model
- * file is missing, `loadSileroVad()` throws `VadUnavailableError`. The
- * caller surfaces "VAD unavailable — voice features degrade" — there is no
- * silent downgrade to the RMS gate (AGENTS.md §3).
+ * No fallback sludge: if no model VAD provider can be loaded,
+ * `createVadDetector()` throws `VadUnavailableError`. The caller surfaces
+ * "VAD unavailable — voice features degrade" — there is no silent downgrade to
+ * the RMS gate (AGENTS.md §3).
  */
 
 import { existsSync } from "node:fs";
@@ -51,7 +52,11 @@ import type {
  *  `onnxruntime-node`, missing model file, or a corrupt model. There is no
  *  fallback; voice features that depend on VAD must surface this. */
 export class VadUnavailableError extends Error {
-  readonly code: "ort-missing" | "model-missing" | "model-load-failed";
+  readonly code:
+    | "ort-missing"
+    | "model-missing"
+    | "model-load-failed"
+    | "provider-missing";
   constructor(code: VadUnavailableError["code"], message: string) {
     super(message);
     this.name = "VadUnavailableError";
@@ -404,6 +409,20 @@ export interface VadDetectorConfig {
    *  segment is considered *paused* (kick speculative response). Default
    *  220 ms. */
   pauseHangoverMs?: number;
+  /**
+   * V1 — "fast endpoint" pause hangover, used when `fastEndpointEnabled`
+   * is true. Default 100 ms — short enough that a clean trailing-off
+   * end-of-utterance hits the speculative path quickly, but long enough
+   * to ride out mid-sentence micro-pauses. Gated by the flag so callers
+   * can opt in once they've validated the false-positive rate on their
+   * hardware. Default 100 ms.
+   */
+  fastPauseHangoverMs?: number;
+  /**
+   * V1 — when true, use `fastPauseHangoverMs` instead of `pauseHangoverMs`.
+   * Default false until the streaming-ASR fast path (V2) ships.
+   */
+  fastEndpointEnabled?: boolean;
   /** Consecutive ms paused before the segment *ends* (finalize the turn).
    *  Default 700 ms. Must be ≥ `pauseHangoverMs`. */
   endHangoverMs?: number;
@@ -413,24 +432,127 @@ export interface VadDetectorConfig {
   /** Interval between `speech-active` heartbeats while speaking. Default
    *  200 ms. */
   activeHeartbeatMs?: number;
+  /**
+   * V4 — adaptive pause hangover. When the windowed RMS is in a sharp
+   * downward trend across the last few frames (the user audibly trailed
+   * off rather than stopping mid-thought), the hangover used to detect a
+   * pause is scaled by this factor (clamped to a minimum). Default 0.5
+   * (halve the hangover); set to 1.0 to disable.
+   */
+  adaptiveHangoverScaleOnDrop?: number;
+  /**
+   * V4 — minimum hangover the adaptive scale is allowed to produce, ms.
+   * Default 50 ms. Prevents a steep drop from collapsing the hangover to
+   * zero and emitting a pause on a single quiet frame.
+   */
+  adaptiveHangoverFloorMs?: number;
+  /**
+   * V4 — energy derivative (ΔRMS over the V4 history window) below this
+   * value, combined with RMS below `offsetThreshold`, counts as "audibly
+   * trailed off". Default -0.02 (negative slope: RMS dropping at least
+   * 0.02 / window).
+   */
+  adaptiveHangoverDropThreshold?: number;
   /** RMS gate config (tier 1). */
   energyGate?: RmsEnergyGateConfig;
 }
 
-interface SileroLike {
+type SegmentPhase = "idle" | "speaking" | "paused";
+
+export interface VadLike {
   readonly windowSamples: number;
   readonly sampleRate: number;
   process(window: Float32Array): Promise<number>;
   reset(): void;
 }
 
-type SegmentPhase = "idle" | "speaking" | "paused";
+export type VadProviderId = "qwen-toolkit" | "silero-native" | "silero-onnx";
+export type VadProviderPreference = "auto" | VadProviderId;
+
+export interface QwenToolkitVadAdapter {
+  isAvailable?(): boolean | Promise<boolean>;
+  loadVad(opts: { sampleRate: number }): Promise<VadLike>;
+}
+
+export interface ResolvedVadProvider {
+  id: VadProviderId;
+  vad: VadLike;
+}
+
+export interface CreateVadDetectorOptions {
+  modelPath?: string;
+  bundleRoot?: string;
+  ffi?: ElizaInferenceFfi | null;
+  ctx?: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
+  qwenToolkitVad?: QwenToolkitVadAdapter | null;
+  config?: VadDetectorConfig;
+  prefer?: VadProviderPreference;
+}
+
+export function vadProviderOrder(
+  prefer: VadProviderPreference = "auto",
+): VadProviderId[] {
+  if (prefer !== "auto") return [prefer];
+  return ["qwen-toolkit", "silero-native", "silero-onnx"];
+}
+
+export async function resolveVadProvider(
+  opts: CreateVadDetectorOptions = {},
+): Promise<ResolvedVadProvider> {
+  const sampleRate = opts.config?.sampleRate ?? 16_000;
+  const tried: string[] = [];
+
+  for (const provider of vadProviderOrder(opts.prefer)) {
+    switch (provider) {
+      case "qwen-toolkit": {
+        tried.push(provider);
+        if (!opts.qwenToolkitVad) break;
+        const available = (await opts.qwenToolkitVad.isAvailable?.()) ?? true;
+        if (!available) break;
+        return {
+          id: provider,
+          vad: await opts.qwenToolkitVad.loadVad({ sampleRate }),
+        };
+      }
+      case "silero-native": {
+        tried.push(provider);
+        if (!opts.ffi || !opts.ctx || !NativeSileroVad.isSupported(opts.ffi)) {
+          break;
+        }
+        return {
+          id: provider,
+          vad: await NativeSileroVad.load({
+            ffi: opts.ffi,
+            ctx: opts.ctx,
+            sampleRate,
+          }),
+        };
+      }
+      case "silero-onnx": {
+        tried.push(provider);
+        return {
+          id: provider,
+          vad: await SileroVad.load({
+            modelPath: opts.modelPath,
+            bundleRoot: opts.bundleRoot,
+            sampleRate,
+          }),
+        };
+      }
+    }
+  }
+
+  throw new VadUnavailableError(
+    "provider-missing",
+    `[voice] No VAD provider available. Tried: ${tried.join(", ")}.`,
+  );
+}
 
 /**
- * The authoritative VAD. Owns a `SileroVad` (or any `SileroLike` for tests),
+ * The authoritative VAD. Owns a model VAD provider (or any `VadLike` for tests),
  * an `RmsEnergyGate`, and the speech state machine. `pushFrame()` accepts
- * mic frames of any length ≥ 1 sample; internally it re-windows to Silero's
- * fixed 512-sample window. Emits `VadEvent`s on the Silero timeline and
+ * mic frames of any length ≥ 1 sample; internally it re-windows to the
+ * provider's fixed sample window. Emits `VadEvent`s on the VAD timeline and
  * `EnergyGateEvent`s on the fast timeline.
  *
  * Frame ingestion is serialized (`pushFrame` awaits the model forward pass)
@@ -438,15 +560,25 @@ type SegmentPhase = "idle" | "speaking" | "paused";
  * dropped-frame counter (`droppedFrames`) records overruns.
  */
 export class VadDetector {
-  readonly silero: SileroLike;
+  readonly silero: VadLike;
   readonly energyGate: RmsEnergyGate;
   private readonly sampleRate: number;
   private readonly onsetThreshold: number;
   private readonly offsetThreshold: number;
   private readonly pauseHangoverMs: number;
+  private readonly fastPauseHangoverMs: number;
+  private readonly fastEndpointEnabled: boolean;
   private readonly endHangoverMs: number;
   private readonly minSpeechMs: number;
   private readonly activeHeartbeatMs: number;
+  // V4 — adaptive hangover state.
+  private readonly adaptiveHangoverScaleOnDrop: number;
+  private readonly adaptiveHangoverFloorMs: number;
+  private readonly adaptiveHangoverDropThreshold: number;
+  // Rolling RMS history (last 3 windows ≈ 96 ms @ 16 kHz / 512). The
+  // sample-rate-of-drop check reads from this each window.
+  private readonly recentRms: number[] = [];
+  private static readonly RECENT_RMS_HISTORY = 3;
 
   private readonly vadListeners = new Set<VadEventListener>();
 
@@ -463,7 +595,7 @@ export class VadDetector {
   private lastHeartbeatMs = 0;
   private peakRmsInSegment = 0;
 
-  constructor(silero: SileroLike, config: VadDetectorConfig = {}) {
+  constructor(silero: VadLike, config: VadDetectorConfig = {}) {
     this.silero = silero;
     this.sampleRate = config.sampleRate ?? silero.sampleRate ?? 16_000;
     if (this.sampleRate !== silero.sampleRate) {
@@ -475,14 +607,53 @@ export class VadDetector {
     this.offsetThreshold =
       config.offsetThreshold ?? Math.max(0.1, this.onsetThreshold - 0.15);
     this.pauseHangoverMs = config.pauseHangoverMs ?? 220;
+    this.fastPauseHangoverMs = config.fastPauseHangoverMs ?? 100;
+    this.fastEndpointEnabled = config.fastEndpointEnabled ?? false;
     this.endHangoverMs = Math.max(
-      this.pauseHangoverMs,
+      this.fastEndpointEnabled ? this.fastPauseHangoverMs : this.pauseHangoverMs,
       config.endHangoverMs ?? 700,
     );
     this.minSpeechMs = config.minSpeechMs ?? 250;
     this.activeHeartbeatMs = config.activeHeartbeatMs ?? 200;
+    this.adaptiveHangoverScaleOnDrop = Math.max(
+      0.1,
+      Math.min(1, config.adaptiveHangoverScaleOnDrop ?? 0.5),
+    );
+    this.adaptiveHangoverFloorMs = Math.max(
+      0,
+      config.adaptiveHangoverFloorMs ?? 50,
+    );
+    this.adaptiveHangoverDropThreshold =
+      config.adaptiveHangoverDropThreshold ?? -0.02;
     this.energyGate = new RmsEnergyGate(config.energyGate);
     this.windowDurationMs = (silero.windowSamples / this.sampleRate) * 1000;
+  }
+
+  /**
+   * Effective pause hangover for this window. Starts from
+   * `fastPauseHangoverMs` or `pauseHangoverMs` (V1: gated on
+   * `fastEndpointEnabled`), then optionally scales it down when the RMS
+   * trajectory shows an audible trail-off (V4).
+   */
+  private effectivePauseHangoverMs(): number {
+    const base = this.fastEndpointEnabled
+      ? this.fastPauseHangoverMs
+      : this.pauseHangoverMs;
+    if (this.adaptiveHangoverScaleOnDrop >= 1) return base;
+    // V4 — need at least two samples to compute a slope.
+    if (this.recentRms.length < 2) return base;
+    const first = this.recentRms[0];
+    const last = this.recentRms[this.recentRms.length - 1];
+    // Slope per window (we sample once per window). Negative = trailing off.
+    const slope = (last - first) / (this.recentRms.length - 1);
+    const lastBelowOffset = last < this.offsetThreshold;
+    if (slope <= this.adaptiveHangoverDropThreshold && lastBelowOffset) {
+      return Math.max(
+        this.adaptiveHangoverFloorMs,
+        base * this.adaptiveHangoverScaleOnDrop,
+      );
+    }
+    return base;
   }
 
   onVadEvent(listener: VadEventListener): () => void {
@@ -555,6 +726,7 @@ export class VadDetector {
     this.clockMs = 0;
     this.phase = "idle";
     this.peakRmsInSegment = 0;
+    this.recentRms.length = 0;
     this.silero.reset();
     this.energyGate.reset();
   }
@@ -573,6 +745,12 @@ export class VadDetector {
   private async processWindow(window: Float32Array): Promise<void> {
     const prob = await this.silero.process(window);
     const windowRms = rms(window);
+    // V4 — keep a short rolling RMS history for the energy-rate-of-drop
+    // adaptive hangover. Three windows ≈ 96 ms at 16 kHz / 512 samples.
+    this.recentRms.push(windowRms);
+    if (this.recentRms.length > VadDetector.RECENT_RMS_HISTORY) {
+      this.recentRms.shift();
+    }
     // Clock at the *end* of this window.
     this.clockMs += this.windowDurationMs;
     const now = this.clockMs;
@@ -601,7 +779,7 @@ export class VadDetector {
           this.lastSpeechMs = now;
         }
         const quietMs = now - this.lastSpeechMs;
-        if (quietMs >= this.pauseHangoverMs) {
+        if (quietMs >= this.effectivePauseHangoverMs()) {
           this.phase = "paused";
           this.pauseStartedMs = this.lastSpeechMs;
           this.emit({
@@ -674,30 +852,22 @@ export class VadDetector {
 }
 
 /**
- * Convenience: load the Silero model and wrap it in a `VadDetector`.
- * Throws `VadUnavailableError` if the model or runtime is missing.
+ * Back-compat wrapper for callers that still use the old Silero-specific
+ * helper name. It now goes through the full provider resolver.
  */
 export async function createSileroVadDetector(
-  opts: {
-    modelPath?: string;
-    bundleRoot?: string;
-    ffi?: ElizaInferenceFfi | null;
-    ctx?: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
-    config?: VadDetectorConfig;
-  } = {},
+  opts: CreateVadDetectorOptions = {},
 ): Promise<VadDetector> {
-  if (opts.ffi && opts.ctx && NativeSileroVad.isSupported(opts.ffi)) {
-    const native = await NativeSileroVad.load({
-      ffi: opts.ffi,
-      ctx: opts.ctx,
-      sampleRate: opts.config?.sampleRate,
-    });
-    return new VadDetector(native, opts.config);
-  }
-  const silero = await SileroVad.load({
-    modelPath: opts.modelPath,
-    bundleRoot: opts.bundleRoot,
-    sampleRate: opts.config?.sampleRate,
-  });
-  return new VadDetector(silero, opts.config);
+  return createVadDetector(opts);
+}
+
+/**
+ * Convenience: resolve the best available model VAD provider and wrap it in a
+ * `VadDetector`.
+ */
+export async function createVadDetector(
+  opts: CreateVadDetectorOptions = {},
+): Promise<VadDetector> {
+  const { vad } = await resolveVadProvider(opts);
+  return new VadDetector(vad, opts.config);
 }

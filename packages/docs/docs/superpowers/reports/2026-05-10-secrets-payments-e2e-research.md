@@ -81,7 +81,7 @@ Companion documents:
 - `packages/benchmarks/lifeops-bench` — strongest backend-state verification (LifeWorld + state-hash).
 - `packages/benchmarks/configbench` — TS, exercises real eliza runtime for plugin discovery + agent config.
 - `packages/benchmarks/scambench` — Python refusal/helpful scoring on 3000+ scam-vs-legit prompts.
-- `packages/benchmarks/action-calling` — TOON format validation only.
+- `packages/benchmarks/action-calling` — native function-call validation.
 - `packages/scenario-runner/src/{loader,executor,interceptor,judge,reporter}.ts` — TS scenario engine. `interceptor.ts` captures `CapturedAction[]`, `ConnectorDispatch`, `ApprovalRequest`, `StateTransition`, `Artifact`. `judge.ts` uses `runtime.useModel(TEXT_LARGE)` (judge model is not decoupled from agent model).
 - `packages/benchmarks/lifeops-bench/eliza_lifeops_bench/scenarios/_authoring/generate_candidates.py` — Cerebras-driven scenario synthesizer (only domain-specific).
 

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "metric": "vision_smoke",
+  "generatedAt": "2026-05-12T05:57:28.905Z",
+  "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+  "tier": "0_6b",
+  "expectedVisionTier": false,
+  "textVoiceOnlyTier": true,
+  "supported": false,
+  "passed": false,
+  "status": "not-applicable",
+  "action": "mark-text-voice-only",
+  "manifest": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle/eliza-1.manifest.json",
+    "filesVision": [],
+    "lineageVisionPresent": false
+  },
+  "inventory": {
+    "visionFiles": [],
+    "sourceVisionFiles": [],
+    "asrMmprojFiles": [
+      "asr/eliza-1-asr-mmproj.gguf"
+    ],
+    "borrowedVisionArtifactsSeen": [
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle/vision/mmproj-27b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle/vision/mmproj-27b-256k.gguf"
+    ]
+  },
+  "appCorePath": {
+    "spawnArg": "--mmproj",
+    "envOverride": "ELIZA_LOCAL_MMPROJ",
+    "optimizationField": "runtime.optimizations.mmproj",
+    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+  },
+  "imageAnalysis": {
+    "attempted": false,
+    "status": "skipped",
+    "reason": "skipped because manifest.files.vision is empty"
+  },
+  "reason": "0_6b is text/voice-only by the Eliza-1 tier contract: packages/inference/AGENTS.md marks Vision=no for 0_6b, packages/shared/src/local-inference/catalog.ts has no sourceModel.components.vision for this tier, packages/training/scripts/manifest/stage_eliza1_source_weights.py has no vision source for this tier, and manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; the local 9B/27B mmproj files are tied to different text backbones and are not compatible substitutes."
+}

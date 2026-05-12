@@ -11,6 +11,7 @@ Covers:
 
 import json
 import os
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -599,7 +600,15 @@ class TestElizaExplorerConstruction:
         explorer = ElizaExplorer(max_messages=1)
         # Remove all possible API keys
         saved: dict[str, str] = {}
-        for var in ("GROQ_API_KEY", "OPENROUTER_API_KEY", "OPENAI_API_KEY"):
+        for var in (
+            "ANTHROPIC_API_KEY",
+            "BENCHMARK_MODEL_PROVIDER",
+            "CEREBRAS_API_KEY",
+            "GROQ_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "VLLM_API_KEY",
+        ):
             val = os.environ.pop(var, None)
             if val:
                 saved[var] = val
@@ -608,6 +617,15 @@ class TestElizaExplorerConstruction:
                 explorer._ensure_llm()
         finally:
             os.environ.update(saved)
+
+    def test_last_json_object_ignores_trailing_logs(self):
+        from benchmarks.evm.eliza_explorer import _last_json_object
+        parsed = _last_json_object('boot\n{"results": [{"selector": "0x12345678"}]}\ndone\n')
+        assert parsed == {"results": [{"selector": "0x12345678"}]}
+
+    def test_last_json_object_returns_none_without_json(self):
+        from benchmarks.evm.eliza_explorer import _last_json_object
+        assert _last_json_object("boot\nstill running\n") is None
 
     def test_metrics_structure(self):
         from benchmarks.evm.eliza_explorer import ElizaExplorer
@@ -639,7 +657,7 @@ class TestElizaExplorerConstruction:
 # skill_templates: TypeScript validity via real Bun execution
 # =========================================================================
 
-BUN_AVAILABLE = subprocess.run(
+BUN_AVAILABLE = shutil.which("bun") is not None and subprocess.run(
     ["bun", "--version"], capture_output=True, text=True
 ).returncode == 0
 

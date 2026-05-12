@@ -50,6 +50,10 @@ export {
   matchPluginRoutePath,
   tryHandleRuntimePluginRoute,
 } from "./runtime-plugin-routes.ts";
+export {
+  dispatchRoute,
+  type DispatchRouteArgs,
+} from "./dispatch-route.ts";
 export * from "./subscription-routes.ts";
 export * from "./terminal-run-limits.ts";
 export * from "./training-backend-check.ts";

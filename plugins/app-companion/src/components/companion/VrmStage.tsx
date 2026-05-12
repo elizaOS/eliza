@@ -244,6 +244,9 @@ export const VrmStage = memo(function VrmStage({
     <div
       data-testid="companion-vrm-stage"
       data-theme={environmentTheme}
+      data-vrm-loaded={vrmLoaded ? "true" : "false"}
+      data-vrm-fallback={showVrmFallback ? "true" : "false"}
+      data-loader-hidden={loaderHidden ? "true" : "false"}
       className={`fixed inset-0 z-0 overflow-hidden ${environmentTheme === "dark" ? "bg-[#08060e]" : "bg-[#f5f5f5]"}`}
     >
       {/* Static CSS fallback — themed construct with faint receding grid */}

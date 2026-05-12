@@ -4523,13 +4523,19 @@ export class AgentRuntime implements IAgentRuntime {
 		const msgId = streamingCtx?.messageId;
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
+		const resolvedProviderName = resolvedModel?.provider ?? provider;
+		const streamStructuredOnNonLocalProvider =
+			paramsAsStreaming?.streamStructured === true &&
+			explicitStream !== true &&
+			(!resolvedProviderName || !isLocalProvider(resolvedProviderName));
 
 		// stream: false = force no stream, otherwise stream if any callback exists
 		const shouldStream =
 			explicitStream === false
 				? false
-				: !!(paramsChunk || ctxChunk || explicitStream);
-		const resolvedProviderName = resolvedModel?.provider ?? provider;
+				: streamStructuredOnNonLocalProvider
+					? false
+					: !!(paramsChunk || ctxChunk || explicitStream);
 		const structuredStreamFields =
 			shouldStream && paramsAsStreaming?.streamStructured === true
 				? resolveResponseSkeletonStreamFields(
@@ -4723,16 +4729,18 @@ export class AgentRuntime implements IAgentRuntime {
 				resultRef.current,
 			);
 
-			await this.recordUseModelTrajectory({
-				modelType: String(modelType),
-				resolvedModelKey: String(resolvedModelKey),
-				provider: resolvedModel?.provider ?? provider,
-				modelParams,
-				promptContent,
-				result: resultRef.current,
-				response: modelOutToTrajectoryString(resultRef.current),
-				elapsedTime,
-			});
+			if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+				await this.recordUseModelTrajectory({
+					modelType: String(modelType),
+					resolvedModelKey: String(resolvedModelKey),
+					provider: resolvedModel?.provider ?? provider,
+					modelParams,
+					promptContent,
+					result: resultRef.current,
+					response: modelOutToTrajectoryString(resultRef.current),
+					elapsedTime,
+				});
+			}
 
 			return resultRef.current as R;
 		}
@@ -4802,16 +4810,18 @@ export class AgentRuntime implements IAgentRuntime {
 			resultRef.current,
 		);
 
-		await this.recordUseModelTrajectory({
-			modelType: String(modelType),
-			resolvedModelKey: String(resolvedModelKey),
-			provider: resolvedModel?.provider ?? provider,
-			modelParams,
-			promptContent,
-			result: resultRef.current,
-			response: modelOutToTrajectoryString(resultRef.current),
-			elapsedTime,
-		});
+		if (String(modelType) !== ModelType.TEXT_EMBEDDING) {
+			await this.recordUseModelTrajectory({
+				modelType: String(modelType),
+				resolvedModelKey: String(resolvedModelKey),
+				provider: resolvedModel?.provider ?? provider,
+				modelParams,
+				promptContent,
+				result: resultRef.current,
+				response: modelOutToTrajectoryString(resultRef.current),
+				elapsedTime,
+			});
+		}
 		return resultRef.current as R;
 	}
 

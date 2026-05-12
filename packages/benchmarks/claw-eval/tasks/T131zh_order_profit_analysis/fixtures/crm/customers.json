@@ -1,0 +1,66 @@
+[
+  {
+    "customer_id": "CUS-801",
+    "name": "鼎新软件",
+    "contact_person": "周经理",
+    "email": "zhou@dingxin.com",
+    "phone": "13900801001",
+    "industry": "软件",
+    "tier": "vip",
+    "annual_revenue": 5200000,
+    "last_contact_date": "2026-03-20",
+    "status": "active",
+    "recent_orders": [
+      {"order_id": "ORD-801", "products": ["PROD-01", "PROD-02", "PROD-03"], "total_price": 180000, "date": "2026-03-10"}
+    ],
+    "notes": "战略合作伙伴"
+  },
+  {
+    "customer_id": "CUS-802",
+    "name": "瀚海电商",
+    "contact_person": "林总",
+    "email": "lin@hanhai.com",
+    "phone": "13900801002",
+    "industry": "电商",
+    "tier": "standard",
+    "annual_revenue": 800000,
+    "last_contact_date": "2026-03-15",
+    "status": "active",
+    "recent_orders": [
+      {"order_id": "ORD-802", "products": ["PROD-01", "PROD-04"], "total_price": 80000, "date": "2026-03-12"}
+    ],
+    "notes": "续约期客户"
+  },
+  {
+    "customer_id": "CUS-803",
+    "name": "万通物流",
+    "contact_person": "赵总监",
+    "email": "zhao@wantong.com",
+    "phone": "13900801003",
+    "industry": "物流",
+    "tier": "vip",
+    "annual_revenue": 3800000,
+    "last_contact_date": "2026-03-22",
+    "status": "active",
+    "recent_orders": [
+      {"order_id": "ORD-803", "products": ["PROD-02", "PROD-03", "PROD-05", "PROD-06"], "total_price": 250000, "date": "2026-03-08"}
+    ],
+    "notes": "物流行业标杆"
+  },
+  {
+    "customer_id": "CUS-804",
+    "name": "前锋科技",
+    "contact_person": "王敏",
+    "email": "wang@qianfeng.com",
+    "phone": "13900801004",
+    "industry": "科技",
+    "tier": "standard",
+    "annual_revenue": 360000,
+    "last_contact_date": "2026-03-25",
+    "status": "active",
+    "recent_orders": [
+      {"order_id": "ORD-804", "products": ["PROD-01"], "total_price": 30000, "date": "2026-03-18"}
+    ],
+    "notes": "小型客户"
+  }
+]

@@ -1,0 +1,30 @@
+{"type": "session_start", "session_id": "subagent_6179661", "model": "deepseek-r1", "created_at": "2026-02-20T14:48:34.322522", "user_id": "cron-scheduler", "channel": "internal"}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-20T14:50:07.993443", "session_id": "subagent_6179661", "seq": 1}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-20T14:51:11.263241", "session_id": "subagent_6179661", "seq": 2}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-20T14:54:56.249652", "session_id": "subagent_6179661", "seq": 3, "usage": {"prompt_tokens": 4590, "completion_tokens": 3456, "total_tokens": 7687}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-20T14:59:54.865326", "session_id": "subagent_6179661", "seq": 4, "usage": {"prompt_tokens": 4494, "completion_tokens": 1008, "total_tokens": 1920}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-20T15:04:39.829112", "session_id": "subagent_6179661", "seq": 5, "usage": {"prompt_tokens": 1156, "completion_tokens": 2245, "total_tokens": 3861}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-20T15:07:33.593110", "session_id": "subagent_6179661", "seq": 6}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-20T15:07:36.259100", "session_id": "subagent_6179661", "seq": 7, "usage": {"prompt_tokens": 2283, "completion_tokens": 255, "total_tokens": 11559}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-20T15:10:00.502940", "session_id": "subagent_6179661", "seq": 8, "usage": {"prompt_tokens": 2813, "completion_tokens": 3009, "total_tokens": 2646}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-20T15:11:23.137405", "session_id": "subagent_6179661", "seq": 9}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-20T15:15:29.530741", "session_id": "subagent_6179661", "seq": 10}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T15:15:44.378612", "session_id": "subagent_6179661", "seq": 11}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-20T15:16:53.265135", "session_id": "subagent_6179661", "seq": 12}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-20T15:21:25.579651", "session_id": "subagent_6179661", "seq": 13}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-20T15:22:44.400841", "session_id": "subagent_6179661", "seq": 14}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-20T15:27:29.219799", "session_id": "subagent_6179661", "seq": 15, "usage": {"prompt_tokens": 7412, "completion_tokens": 3140, "total_tokens": 5930}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-20T15:31:37.202212", "session_id": "subagent_6179661", "seq": 16}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T15:33:29.470840", "session_id": "subagent_6179661", "seq": 17}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-20T15:35:48.434650", "session_id": "subagent_6179661", "seq": 18, "usage": {"prompt_tokens": 7875, "completion_tokens": 1220, "total_tokens": 8133}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-20T15:38:09.510415", "session_id": "subagent_6179661", "seq": 19}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-20T15:38:23.401085", "session_id": "subagent_6179661", "seq": 20}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T15:43:16.705228", "session_id": "subagent_6179661", "seq": 21}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-20T15:44:59.306461", "session_id": "subagent_6179661", "seq": 22}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-20T15:48:57.654897", "session_id": "subagent_6179661", "seq": 23}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-20T15:50:59.310409", "session_id": "subagent_6179661", "seq": 24}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-20T15:51:19.402995", "session_id": "subagent_6179661", "seq": 25, "usage": {"prompt_tokens": 5472, "completion_tokens": 1200, "total_tokens": 421}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-20T15:52:18.886221", "session_id": "subagent_6179661", "seq": 26}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-20T15:54:35.902089", "session_id": "subagent_6179661", "seq": 27}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-20T15:54:44.367653", "session_id": "subagent_6179661", "seq": 28}
+{"type": "session_end", "session_id": "subagent_6179661", "ended_at": "2026-02-20T15:54:54.367653", "total_messages": 28, "status": "completed"}

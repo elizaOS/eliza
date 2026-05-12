@@ -1,0 +1,67 @@
+task_id: M097_video_movie_speed_edit
+task_name: Movie Clip Speed-Up Editing
+version: "1.0"
+category: video_edit
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。请观看视频并完成以下任务：
+    (1) 找到视频中两个男孩互相追逐奔跑的片段（他们从吊脚楼下跑出来后开始追逐），确定追逐片段的起止时间。
+    (2) 提取该追逐片段。
+    (3) 将提取的片段制作成2倍速版本（视频和音频都加速）。
+    (4) 保存为 /workspace/chase_2x.mp4。
+    同时将你识别到的追逐片段原始时间区间保存到 /workspace/timestamp.txt（格式如 "16 - 33"，单位秒）。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+
+env_snapshot_commands:
+  - ffprobe -v quiet -print_format json -show_format -show_streams /workspace/chase_2x.mp4
+
+env_snapshot_files:
+  - /workspace/chase_2x.mp4
+  - /workspace/timestamp.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  评估视频加速编辑任务。
+
+  Ground Truth：
+  - 追逐片段时间区间：约 00:16 - 00:23（约 7 秒）
+  - 2 倍速后输出时长应约 3-4 秒
+
+  评分规则（总分 1.0）：
+  - 0.1 分：/workspace/chase_2x.mp4 文件存在
+  - 0.4 分：timestamp.txt 中记录的时间区间与 GT [16, 23] 的 IoU
+    IoU = intersection / union，IoU >= 0.7 满分，按比例给分
+  - 0.5 分：输出视频质量
+    - ffprobe 显示时长在 2-5 秒范围内（占 0.25 分）
+    - 内容确实是加速后的追逐场景（占 0.25 分）
+
+reference_solution: |
+  观看视频识别追逐场景在 00:16-00:23。使用 ffmpeg 提取该片段：
+  ffmpeg -i /workspace/fixtures/video.mp4 -ss 16 -to 23 -c copy /workspace/chase_segment.mp4
+  然后应用 2 倍速：
+  ffmpeg -i /workspace/chase_segment.mp4 -filter:v "setpts=0.5*PTS" -filter:a "atempo=2.0" /workspace/chase_2x.mp4
+  将时间区间 "16 - 23" 写入 /workspace/timestamp.txt。
+
+primary_dimensions:
+  - completion
+  - robustness

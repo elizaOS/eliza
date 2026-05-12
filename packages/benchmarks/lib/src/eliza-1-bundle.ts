@@ -32,11 +32,19 @@ import path from "node:path";
 import { expandHome } from "./local-llama-cpp.ts";
 
 export const ELIZA_ONE_MODEL_SIZES = [
+<<<<<<< HEAD
   "0.6b",
   "1.7b",
   "9b",
   "27b",
   "27b-1m",
+=======
+	"0.8b",
+	"2b",
+	"9b",
+	"27b",
+	"27b-1m",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ] as const;
 export type ElizaOneModelSize = (typeof ELIZA_ONE_MODEL_SIZES)[number];
 

@@ -1,0 +1,230 @@
+name: Build libomnivoice
+
+# Builds the libomnivoice shared library used by @elizaos/plugin-omnivoice
+# via bun:ffi on each supported runner class and uploads the resulting
+# native artifact so end users don't have to compile locally.
+#
+# Triggers:
+#   - workflow_dispatch (always; needed for cost control)
+#   - push of tags matching `omnivoice-*` (release cuts)
+#
+# Matrix gating:
+#   - macos-14 builds the Apple Silicon Metal artifact (darwin-arm64-metal).
+#   - ubuntu-22.04 builds the Linux x64 CPU artifact (linux-x64-cpu).
+#   - CUDA is intentionally NOT in the default matrix: GitHub-hosted
+#     ubuntu runners don't ship nvcc, and the CUDA toolchain installer is
+#     multi-gigabyte. A self-hosted (`gpu`, `cuda`) leg is added only when
+#     workflow_dispatch input `run_cuda` is true; the leg is
+#     continue-on-error so the workflow stays green if the runner is
+#     offline.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_cuda:
+        description: "Build Linux x64 CUDA artifact on self-hosted gpu runner"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "omnivoice-*"
+
+concurrency:
+  group: build-omnivoice-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.13"
+  # omnivoice.cpp upstream — packages/inference/omnivoice.cpp is
+  # gitignored at the parent repo level, so CI clones it fresh.
+  OMNIVOICE_REPO: "https://github.com/elizaOS/omnivoice.cpp.git"
+  OMNIVOICE_REF: "main"
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/github-script@v7
+        id: set
+        with:
+          script: |
+            const ev = context.eventName;
+            const inputs = context.payload.inputs ?? {};
+
+            const runCudaDispatch =
+              ev === "workflow_dispatch" &&
+              (inputs.run_cuda === true || inputs.run_cuda === "true");
+
+            const include = [
+              {
+                label: "macos-14 metal",
+                "runs-on": "macos-14",
+                backend: "metal",
+                target: "darwin-arm64-metal",
+                lib_name: "libomnivoice.dylib",
+                timeout: 90,
+                "continue-on-error": false,
+              },
+              {
+                label: "ubuntu-22.04 cpu",
+                "runs-on": "ubuntu-22.04",
+                backend: "cpu",
+                target: "linux-x64-cpu",
+                lib_name: "libomnivoice.so",
+                timeout: 90,
+                "continue-on-error": false,
+              },
+            ];
+
+            if (runCudaDispatch) {
+              include.push({
+                label: "ubuntu-22.04 cuda (self-hosted)",
+                "runs-on": ["self-hosted", "gpu", "cuda"],
+                backend: "cuda",
+                target: "linux-x64-cuda",
+                lib_name: "libomnivoice.so",
+                timeout: 120,
+                "continue-on-error": true,
+              });
+            }
+
+            core.setOutput("matrix", JSON.stringify({ include }));
+
+  build:
+    name: ${{ matrix.label }}
+    needs: prepare-matrix
+    runs-on: ${{ matrix.runs-on }}
+    timeout-minutes: ${{ matrix.timeout }}
+    continue-on-error: ${{ matrix.continue-on-error }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install Linux build deps
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          set -euo pipefail
+          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          for attempt in 1 2 3; do
+            if sudo apt-get "${APT_ARGS[@]}" update && \
+               sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
+                 cmake ninja-build build-essential ccache git python3; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "apt install failed after ${attempt} attempts"
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          cmake --version
+
+      - name: Install macOS build deps
+        if: ${{ runner.os == 'macOS' }}
+        run: |
+          set -euo pipefail
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          cmake --version
+
+      - name: Clone omnivoice.cpp (gitignored in parent repo)
+        env:
+          OMNIVOICE_REPO: ${{ env.OMNIVOICE_REPO }}
+          OMNIVOICE_REF: ${{ env.OMNIVOICE_REF }}
+        run: |
+          set -euo pipefail
+          TARGET_DIR="packages/inference/omnivoice.cpp"
+          if [ -d "${TARGET_DIR}/.git" ]; then
+            echo "omnivoice.cpp already present (cache hit)"
+          else
+            git clone --recurse-submodules "${OMNIVOICE_REPO}" "${TARGET_DIR}"
+          fi
+          git -C "${TARGET_DIR}" fetch --tags origin
+          git -C "${TARGET_DIR}" checkout "${OMNIVOICE_REF}"
+          git -C "${TARGET_DIR}" submodule update --init --recursive
+          git -C "${TARGET_DIR}" rev-parse HEAD
+
+      - name: Cache omnivoice cmake build dir
+        uses: actions/cache@v4
+        with:
+          path: packages/inference/omnivoice.cpp/build
+          key: omnivoice-build-${{ matrix.target }}-${{ hashFiles('packages/inference/build-omnivoice.mjs') }}
+          restore-keys: |
+            omnivoice-build-${{ matrix.target }}-
+
+      - name: Plan (dry-run, sanity check)
+        env:
+          OMNIVOICE_BACKEND: ${{ matrix.backend }}
+        run: |
+          node packages/inference/build-omnivoice.mjs --dry-run
+
+      - name: Build libomnivoice (${{ matrix.backend }})
+        env:
+          OMNIVOICE_BACKEND: ${{ matrix.backend }}
+        run: |
+          node packages/inference/build-omnivoice.mjs
+
+      - name: Verify artifact
+        run: |
+          set -euo pipefail
+          ART="packages/inference/omnivoice.cpp/build/${{ matrix.lib_name }}"
+          if [ ! -f "$ART" ]; then
+            echo "expected artifact missing: $ART"
+            ls -la packages/inference/omnivoice.cpp/build || true
+            exit 1
+          fi
+          ls -lh "$ART"
+          file "$ART" || true
+
+      - name: Stage artifact with target-tagged name
+        id: stage
+        run: |
+          set -euo pipefail
+          STAGE_DIR="artifacts/libomnivoice/${{ matrix.target }}"
+          mkdir -p "$STAGE_DIR"
+          cp "packages/inference/omnivoice.cpp/build/${{ matrix.lib_name }}" \
+            "$STAGE_DIR/${{ matrix.lib_name }}"
+          # Capture provenance alongside the binary.
+          {
+            echo "target=${{ matrix.target }}"
+            echo "backend=${{ matrix.backend }}"
+            echo "lib_name=${{ matrix.lib_name }}"
+            echo "ref=${{ github.ref }}"
+            echo "sha=${{ github.sha }}"
+            echo "runner=${{ matrix.runs-on }}"
+            echo "omnivoice_ref=${{ env.OMNIVOICE_REF }}"
+            echo "omnivoice_sha=$(git -C packages/inference/omnivoice.cpp rev-parse HEAD)"
+          } > "$STAGE_DIR/BUILD_INFO.txt"
+          echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload libomnivoice artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libomnivoice-${{ matrix.target }}
+          path: ${{ steps.stage.outputs.stage_dir }}/*
+          if-no-files-found: error
+          retention-days: 30

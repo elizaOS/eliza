@@ -1,0 +1,49 @@
+task_id: M069_video_tennis_ace_return_ace
+task_name: Video Tennis Ace and Return Ace Count
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Watch the video and answer: how many aces (serve winners) did the doubles pair ERRANI/PAOLINI and the doubles pair SINIAKOVA/TOWNSEND each hit in this video? How many return aces did each pair hit?
+
+    Note: An ace is a serve that lands in the valid service box and the returner fails to touch the ball at all. A return ace is when the returner hits the return of serve for a clean winner that the server cannot touch.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the tennis doubles match video.
+  ERRANI/PAOLINI: 0 aces, 0 return aces.
+  SINIAKOVA/TOWNSEND: 0 aces, 1 return ace.
+
+primary_dimensions:
+  - completion
+  - robustness

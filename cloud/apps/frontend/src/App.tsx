@@ -1,4 +1,8 @@
-import { DashboardRouteError, formatDashboardRouteErrorMessage } from "@elizaos/cloud-ui";
+import {
+  DashboardRouteError,
+  formatDashboardRouteErrorMessage,
+  useRenderGuard,
+} from "@elizaos/cloud-ui";
 import {
   Component,
   type ComponentType,
@@ -72,7 +76,6 @@ const BlogPost = lazyWithPreload(() => import("./pages/blog/[slug]/page"));
 
 const DocsRouter = lazyWithPreload(() => import("./docs/DocsRouter"));
 
-// Dashboard layout + pages (ported from legacy Next.js tree).
 const DashboardLayout = lazyWithPreload(() => import("./dashboard/DashboardLayout"));
 const DashboardIndex = lazyWithPreload(() => import("./dashboard/Page"));
 
@@ -334,6 +337,18 @@ function RouteChunkFallback() {
   return <div aria-busy="true" className="min-h-[40vh]" />;
 }
 
+/**
+ * Wraps a lazy-loaded route component in the standard Suspense boundary.
+ * Use this instead of repeating `<Suspense fallback={<RouteChunkFallback />}>` inline.
+ */
+function SuspenseRoute({ component: RouteComponent }: { component: ComponentType }) {
+  return (
+    <Suspense fallback={<RouteChunkFallback />}>
+      <RouteComponent />
+    </Suspense>
+  );
+}
+
 function NotFound() {
   return (
     <div className="p-8 max-w-prose mx-auto text-sm text-neutral-400">
@@ -400,192 +415,51 @@ function LegacyBuildRedirect() {
 }
 
 function App() {
+  useRenderGuard("CloudFrontendApp");
   useLinkChunkPreload();
   return (
     <Routes>
       <Route element={<RootLayout />}>
-        <Route
-          index
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <Home />
-            </Suspense>
-          }
-        />
-        <Route
-          path="terms-of-service"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <TermsOfService />
-            </Suspense>
-          }
-        />
-        <Route
-          path="privacy-policy"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <PrivacyPolicy />
-            </Suspense>
-          }
-        />
-        <Route
-          path="sandbox-proxy"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <SandboxProxy />
-            </Suspense>
-          }
-        />
+        <Route index element={<SuspenseRoute component={Home} />} />
+        <Route path="terms-of-service" element={<SuspenseRoute component={TermsOfService} />} />
+        <Route path="privacy-policy" element={<SuspenseRoute component={PrivacyPolicy} />} />
+        <Route path="sandbox-proxy" element={<SuspenseRoute component={SandboxProxy} />} />
+        <Route path="chat/:characterRef" element={<SuspenseRoute component={PublicChat} />} />
 
-        <Route
-          path="chat/:characterRef"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <PublicChat />
-            </Suspense>
-          }
-        />
-
-        <Route
-          path="auth/success"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <AuthSuccess />
-            </Suspense>
-          }
-        />
-        <Route
-          path="auth/cli-login"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <AuthCliLogin />
-            </Suspense>
-          }
-        />
-        <Route
-          path="auth/error"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <AuthError />
-            </Suspense>
-          }
-        />
+        <Route path="auth/success" element={<SuspenseRoute component={AuthSuccess} />} />
+        <Route path="auth/cli-login" element={<SuspenseRoute component={AuthCliLogin} />} />
+        <Route path="auth/error" element={<SuspenseRoute component={AuthError} />} />
         <Route
           path="auth/callback/email"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <AuthEmailCallback />
-            </Suspense>
-          }
+          element={<SuspenseRoute component={AuthEmailCallback} />}
         />
-        <Route
-          path="app-auth/authorize"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <AppAuthAuthorize />
-            </Suspense>
-          }
-        />
+        <Route path="app-auth/authorize" element={<SuspenseRoute component={AppAuthAuthorize} />} />
 
-        <Route
-          path="login"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <LoginLayout />
-            </Suspense>
-          }
-        >
-          <Route
-            index
-            element={
-              <Suspense fallback={<RouteChunkFallback />}>
-                <LoginPage />
-              </Suspense>
-            }
-          />
+        <Route path="login" element={<SuspenseRoute component={LoginLayout} />}>
+          <Route index element={<SuspenseRoute component={LoginPage} />} />
         </Route>
 
-        <Route
-          path="invite/accept"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <InviteAcceptLayout />
-            </Suspense>
-          }
-        >
-          <Route
-            index
-            element={
-              <Suspense fallback={<RouteChunkFallback />}>
-                <InviteAcceptPage />
-              </Suspense>
-            }
-          />
+        <Route path="invite/accept" element={<SuspenseRoute component={InviteAcceptLayout} />}>
+          <Route index element={<SuspenseRoute component={InviteAcceptPage} />} />
         </Route>
 
         <Route
           path="payment/app-charge/:appId/:chargeId"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <AppChargePaymentLayout />
-            </Suspense>
-          }
+          element={<SuspenseRoute component={AppChargePaymentLayout} />}
         >
-          <Route
-            index
-            element={
-              <Suspense fallback={<RouteChunkFallback />}>
-                <AppChargePaymentPage />
-              </Suspense>
-            }
-          />
+          <Route index element={<SuspenseRoute component={AppChargePaymentPage} />} />
         </Route>
 
-        <Route
-          path="payment/success"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <PaymentSuccessLayout />
-            </Suspense>
-          }
-        >
-          <Route
-            index
-            element={
-              <Suspense fallback={<RouteChunkFallback />}>
-                <PaymentSuccessPage />
-              </Suspense>
-            }
-          />
+        <Route path="payment/success" element={<SuspenseRoute component={PaymentSuccessLayout} />}>
+          <Route index element={<SuspenseRoute component={PaymentSuccessPage} />} />
         </Route>
 
         <Route path="blog">
-          <Route
-            index
-            element={
-              <Suspense fallback={<RouteChunkFallback />}>
-                <BlogIndex />
-              </Suspense>
-            }
-          />
-          <Route
-            path=":slug"
-            element={
-              <Suspense fallback={<RouteChunkFallback />}>
-                <BlogPost />
-              </Suspense>
-            }
-          />
+          <Route index element={<SuspenseRoute component={BlogIndex} />} />
+          <Route path=":slug" element={<SuspenseRoute component={BlogPost} />} />
         </Route>
 
-        <Route
-          path="docs/*"
-          element={
-            <Suspense fallback={<RouteChunkFallback />}>
-              <DocsRouter />
-            </Suspense>
-          }
-        />
+        <Route path="docs/*" element={<SuspenseRoute component={DocsRouter} />} />
 
         {/*
          * Dashboard subtree. Suspense for the layout itself stays here, but

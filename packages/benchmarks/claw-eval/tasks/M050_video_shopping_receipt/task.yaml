@@ -1,0 +1,50 @@
+task_id: M050_video_shopping_receipt
+task_name: Shopping Receipt Items and Prices Summary
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/shopping.mp4
+
+    请观看视频，完成以下任务：
+
+    统计一下视频中今天买了哪些东西，分别多少钱，把结果保存到 /workspace/summary.txt。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/shopping.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/summary.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames showing the shopping receipt or items.
+  The items and prices are:
+  蚝油 39.9, 厨房纸巾 49.9, 垃圾袋 49.9, 麻辣牛肉 79.8, 鱿鱼 79.9,
+  眼肉牛排 238.66, 薄切西冷 243.09, 大蒜 19.9, 玉米 59.9, 番茄39.9,
+  鸡蛋56.8, 生菜15.9, 甜杆西兰花19.9, 辣椒15.9, 西兰花17.9,
+  鳕鱼片115.9, 脱骨鸭掌69.9
+  Save the results to /workspace/summary.txt.
+
+primary_dimensions:
+  - completion
+  - robustness

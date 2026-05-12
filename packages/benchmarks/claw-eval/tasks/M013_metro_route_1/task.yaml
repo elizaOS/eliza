@@ -1,0 +1,58 @@
+task_id: M013_metro_route_1
+task_name: Animated Metro Route 1
+version: "2.0"
+category: multimodal_webpage
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/地铁1.png — a metro/subway map image
+
+    Please first use tools to view the metro map, then generate /workspace/output.html to create an interactive route display page:
+    1. Reproduce the metro map using SVG with correct line colors and station positions
+    2. Highlight a specific route from one station to another
+    3. Dim or fade non-route lines to make the route stand out
+    4. Clearly mark the start and end stations
+    5. Include a route description panel showing the stations along the route
+    6. Add animation showing the route being traced from start to end
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/地铁1.png
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 10 --interval 0.5 --wait-before 2"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+local_grader_files:
+  - fixtures/地铁1.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read 地铁1.png, reproduce full metro map as SVG.
+  Choose two stations on different lines, highlight optimal transfer route.
+  Add route info panel. Animate route progression on click.
+
+primary_dimensions: [completion, robustness]

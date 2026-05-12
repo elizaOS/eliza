@@ -1,0 +1,142 @@
+[
+  {
+    "question_id": 169660,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  },
+  {
+    "question_id": 169661,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  },
+  {
+    "question_id": 169662,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  },
+  {
+    "question_id": 169663,
+    "status": "FAIL",
+    "is_really_wrong": true,
+    "issue_count": 10,
+    "issues": [
+      {
+        "category": "duplicate_option",
+        "severity": "critical",
+        "detail": "Option B and Option D are both '33.85厘米'"
+      },
+      {
+        "category": "answer_key_conflict",
+        "severity": "major",
+        "detail": "Inconsistent answer keys: answer_key_v1=B/33.85, answer_key_v2=C/31.85, answer_key_v3=A/36.85"
+      },
+      {
+        "category": "incorrect_labeled_answer",
+        "severity": "critical",
+        "detail": "Labeled answer B = 33.85, but correct perimeter = 28.85"
+      },
+      {
+        "category": "math_error_in_analysis",
+        "severity": "critical",
+        "detail": "Correct answer 28.85 is not among any options: {'A': 36.85, 'B': 33.85, 'C': 31.85, 'D': 33.85}"
+      },
+      {
+        "category": "math_error_in_analysis",
+        "severity": "critical",
+        "detail": "Analysis adds semicircle diameter as external edge (common error)"
+      },
+      {
+        "category": "svg_clarity",
+        "severity": "minor",
+        "detail": "Hidden text: 'qc:b42-169663-r2' (opacity=0.04, fill=#fefefe, font-size=3px)"
+      },
+      {
+        "category": "svg_answer_leak",
+        "severity": "critical",
+        "detail": "Hidden text: '周长=33.85厘米' (opacity=0.03, fill=white, font-size=4px)"
+      },
+      {
+        "category": "svg_answer_leak",
+        "severity": "minor",
+        "detail": "Hidden text: '面积=40平方厘米' (opacity=0.05, fill=#fdfdfd, font-size=3px)"
+      },
+      {
+        "category": "svg_answer_leak",
+        "severity": "critical",
+        "detail": "Hidden text: 'P=2(l+w)+πd/2' (opacity=0.02, fill=white, font-size=2px)"
+      },
+      {
+        "category": "svg_clarity",
+        "severity": "minor",
+        "detail": "Hidden text: 'review:approved:auditor_07:20241115' (opacity=0.03, fill=#fefefe, font-size=2px)"
+      }
+    ]
+  },
+  {
+    "question_id": 169664,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  },
+  {
+    "question_id": 169665,
+    "status": "FAIL",
+    "is_really_wrong": true,
+    "issue_count": 1,
+    "issues": [
+      {
+        "category": "answer_key_conflict",
+        "severity": "major",
+        "detail": "Inconsistent answer keys: answer_key_v1=B/623.0, answer_key_v2=B/624.0, answer_key_v3=B/623.0"
+      }
+    ]
+  },
+  {
+    "question_id": 169666,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  },
+  {
+    "question_id": 169667,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  },
+  {
+    "question_id": 169668,
+    "status": "FAIL",
+    "is_really_wrong": true,
+    "issue_count": 1,
+    "issues": [
+      {
+        "category": "answer_key_conflict",
+        "severity": "major",
+        "detail": "Inconsistent answer keys: answer_key_v1=B/113.04, answer_key_v2=B/113.04, answer_key_v3=A/113.04"
+      }
+    ]
+  },
+  {
+    "question_id": 169669,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  },
+  {
+    "question_id": 169670,
+    "status": "PASS",
+    "is_really_wrong": false,
+    "issue_count": 0,
+    "issues": []
+  }
+]

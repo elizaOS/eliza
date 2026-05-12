@@ -20,9 +20,11 @@ import os
 import re
 import subprocess
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Any, Mapping, Sequence
 
 from benchmarks.lib.base_benchmark_client import (
     CEREBRAS_GPT_OSS_120B_PRICING,
@@ -43,8 +45,10 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_MODEL = "gpt-oss-120b"
 DEFAULT_API_KEY_ENV = "CEREBRAS_API_KEY"
 DEFAULT_BASE_URL_ENV = "CEREBRAS_BASE_URL"
+DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_TIMEOUT_S = 600.0
+<<<<<<< HEAD
 # Default concurrency. OpenClaw routes to the same Cerebras endpoint as
 # Hermes, so the W2-9 429 ceiling applies here too; callers can raise it.
 _OPENCLAW_DEFAULT_CONCURRENCY = 2
@@ -54,6 +58,9 @@ def _openclaw_pricing(provider: str, model: str) -> ModelPricing | None:
     if provider.strip().lower() == "cerebras" and model.strip().lower() == "gpt-oss-120b":
         return CEREBRAS_GPT_OSS_120B_PRICING
     return None
+=======
+_ALLOWED_TOOL_CHOICES = {"auto", "required", "none"}
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -74,7 +81,209 @@ class MessageResponse:
     params: dict[str, object]
 
 
+<<<<<<< HEAD
 class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
+=======
+_CONTROL_CONTEXT_KEYS = {
+    "messages",
+    "system_prompt",
+    "system_hint",
+    "temperature",
+    "reasoning_effort",
+    "max_tokens",
+    "model_name",
+    "benchmark",
+    "task_id",
+    "session_id",
+    "agent_id",
+    "tools",
+    "tool_choice",
+}
+
+
+def context_to_prompt(context: Mapping[str, object] | None) -> str:
+    if not context:
+        return ""
+    parts: list[str] = []
+    hint_keys = ("instructions",) if isinstance(context.get("system_prompt"), str) else ("system_hint", "instructions")
+    for key in hint_keys:
+        value = context.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(f"{key}:\n{value.strip()}")
+    history = context.get("history")
+    if isinstance(history, Sequence) and not isinstance(history, (str, bytes)):
+        history_lines: list[str] = []
+        for item in history:
+            if not isinstance(item, Mapping):
+                continue
+            role = str(item.get("role") or "turn")
+            content = item.get("content")
+            if content is not None:
+                history_lines.append(f"{role}: {content}")
+        if history_lines:
+            parts.append("history:\n" + "\n".join(history_lines))
+    for key in sorted(str(k) for k in context.keys()):
+        if key in _CONTROL_CONTEXT_KEYS or key == "history":
+            continue
+        value = context.get(key)
+        if value in (None, "", [], {}):
+            continue
+        parts.append(f"{key}:\n{json.dumps(_jsonable(value), ensure_ascii=True, indent=2)}")
+    return "\n\n".join(parts)
+
+
+def _prompt_text(text: str, context: Mapping[str, object] | None) -> str:
+    if not context:
+        return text
+    parts: list[str] = []
+    system_prompt = context.get("system_prompt")
+    if isinstance(system_prompt, str) and system_prompt.strip():
+        parts.append(system_prompt.strip())
+    else:
+        system_hint = context.get("system_hint")
+        if isinstance(system_hint, str) and system_hint.strip():
+            parts.append(system_hint.strip())
+    context_prompt = context_to_prompt(context)
+    if context_prompt:
+        parts.append(f"Benchmark context:\n{context_prompt}")
+    messages = context.get("messages")
+    if isinstance(messages, Sequence) and not isinstance(messages, (str, bytes)):
+        for item in messages:
+            if not isinstance(item, Mapping):
+                continue
+            role = item.get("role")
+            content = item.get("content")
+            if isinstance(role, str) and content is not None:
+                parts.append(f"{role}: {content}")
+    if text:
+        parts.append(f"user: {text}")
+    return "\n".join(parts) if parts else text
+
+
+def _jsonable(value: object) -> object:
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, Mapping):
+        return {str(k): _jsonable(v) for k, v in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [_jsonable(v) for v in value]
+    return str(value)
+
+
+def _coerce_optional_float(value: object, *, fallback: float | None) -> float | None:
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_optional_int(value: object, *, fallback: int | None) -> int | None:
+    if isinstance(value, bool):
+        return fallback
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return int(value)
+        except ValueError:
+            return fallback
+    return fallback
+
+
+def _coerce_optional_str(value: object, *, fallback: str | None) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return fallback
+
+
+def _env_optional_float(*names: str) -> float | None:
+    for name in names:
+        value = _coerce_optional_float(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _env_optional_int(*names: str) -> int | None:
+    for name in names:
+        value = _coerce_optional_int(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _env_optional_str(*names: str) -> str | None:
+    for name in names:
+        value = _coerce_optional_str(os.environ.get(name), fallback=None)
+        if value is not None:
+            return value
+    return None
+
+
+def _is_gpt_oss_model(model: str) -> bool:
+    return model.rsplit("/", 1)[-1].startswith("gpt-oss")
+
+
+def _write_telemetry(
+    *,
+    harness: str,
+    provider: str,
+    model: str,
+    text: str,
+    context: Mapping[str, object] | None,
+    latency_ms: float,
+    task_id: str | None,
+    benchmark: str | None,
+    response: MessageResponse | None = None,
+    error: str | None = None,
+) -> None:
+    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if not telemetry_path:
+        return
+    usage: object = {}
+    if response is not None:
+        usage_raw = response.params.get("usage")
+        if isinstance(usage_raw, Mapping):
+            usage = dict(usage_raw)
+        else:
+            meta_raw = response.params.get("_meta")
+            if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
+                usage = dict(meta_raw["usage"])  # type: ignore[index]
+    prompt = _prompt_text(text, context)
+    record: dict[str, Any] = {
+        "harness": harness,
+        "provider": provider,
+        "model": model,
+        "benchmark": benchmark,
+        "task_id": task_id,
+        "prompt_text": prompt,
+        "prompt_chars": len(prompt),
+        "latency_ms": latency_ms,
+        "usage": _jsonable(usage),
+        "actions": list(response.actions) if response is not None else [],
+        "response_text": response.text if response is not None else "",
+    }
+    if error:
+        record["error"] = error
+    try:
+        path = Path(telemetry_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=True, sort_keys=True) + "\n")
+    except OSError as exc:
+        logger.debug("failed to write openclaw telemetry: %s", exc)
+
+
+class OpenClawClient:
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     """Spawn ``openclaw agent --local --json`` per turn.
 
     The client is stateless. ``reset`` simply records the ``task_id`` and
@@ -95,10 +304,18 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
         model: str = DEFAULT_MODEL,
         api_key: str | None = None,
         api_key_env: str = DEFAULT_API_KEY_ENV,
+        base_url: str | None = None,
         base_url_env: str = DEFAULT_BASE_URL_ENV,
         thinking_level: str = DEFAULT_THINKING_LEVEL,
         timeout_s: float = DEFAULT_TIMEOUT_S,
+<<<<<<< HEAD
         concurrency: int = _OPENCLAW_DEFAULT_CONCURRENCY,
+=======
+        temperature: float | None = None,
+        reasoning_effort: str | None = None,
+        max_tokens: int | None = None,
+        direct_openai_compatible: bool = False,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     ) -> None:
         super().__init__(
             concurrency=concurrency,
@@ -109,10 +326,27 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
         self.api_key_env = api_key_env
+        self.base_url = base_url.rstrip("/") if isinstance(base_url, str) and base_url else None
         self.base_url_env = base_url_env
         self.api_key = api_key if api_key is not None else _default_api_key(provider, api_key_env)
         self.thinking_level = thinking_level
         self.timeout_s = float(timeout_s)
+        self.temperature = (
+            temperature
+            if temperature is not None
+            else _env_optional_float("BENCHMARK_TEMPERATURE", "TEMPERATURE")
+        )
+        self.reasoning_effort = (
+            reasoning_effort
+            if reasoning_effort is not None
+            else _env_optional_str("BENCHMARK_REASONING_EFFORT", "CEREBRAS_REASONING_EFFORT")
+        )
+        self.max_tokens = (
+            max_tokens
+            if max_tokens is not None
+            else _env_optional_int("BENCHMARK_MAX_TOKENS", "MAX_TOKENS")
+        )
+        self.direct_openai_compatible = bool(direct_openai_compatible)
         self._task_id: str | None = None
         self._benchmark: str | None = None
 
@@ -194,6 +428,7 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
+<<<<<<< HEAD
         """Spawn one ``openclaw agent --local --json`` turn and parse it.
 
         Captures per-turn telemetry via the base class so callers can read
@@ -218,13 +453,37 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
         return result
 
     def _send(
+=======
+        """Run one OpenClaw turn and parse it.
+
+        Normal benchmark runs use the OpenClaw CLI. Tests and lightweight
+        smoke paths can set ``direct_openai_compatible=True`` (or
+        ``OPENCLAW_DIRECT_OPENAI_COMPAT=1``) to exercise the direct
+        OpenAI-compatible retry/parser path without requiring the Node binary.
+        Setting ``OPENCLAW_USE_CLI=1`` always forces the CLI path.
+        """
+        direct_requested = (
+            self.direct_openai_compatible
+            or os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+        )
+        if direct_requested and os.environ.get("OPENCLAW_USE_CLI") != "1":
+            return self._send_openai_compatible(text, context)
+        return self._send_cli(text, context)
+
+    def _send_cli(
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         self,
         text: str,
         context: Mapping[str, object] | None,
     ) -> MessageResponse:
+<<<<<<< HEAD
         """Transport: spawn the CLI and parse JSON. Required by BaseBenchmarkClient."""
+=======
+        """Spawn one ``openclaw agent --local --json`` turn and parse it."""
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         argv = self.build_argv(text, context)
         env = self.build_env()
+        started = time.monotonic()
         try:
             result = subprocess.run(
                 argv,
@@ -235,6 +494,17 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
+            _write_telemetry(
+                harness="openclaw",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"TimeoutExpired: {exc}",
+            )
             raise RuntimeError(
                 f"openclaw CLI timed out after {self.timeout_s}s\n"
                 f"argv: {argv}\n"
@@ -243,6 +513,17 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
             ) from exc
 
         if result.returncode != 0:
+            _write_telemetry(
+                harness="openclaw",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"openclaw CLI failed rc={result.returncode}",
+            )
             raise RuntimeError(
                 f"openclaw CLI failed rc={result.returncode}\n"
                 f"argv: {argv}\n"
@@ -251,7 +532,64 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
             )
 
         payload = _extract_json_blob(result.stdout or "", result.stderr or "")
-        return _response_from_payload(payload)
+        response = _response_from_payload(payload)
+        _write_telemetry(
+            harness="openclaw",
+            provider=self.provider,
+            model=self.model,
+            text=text,
+            context=context,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            task_id=self._task_id,
+            benchmark=self._benchmark,
+            response=response,
+        )
+        return response
+
+    def _send_openai_compatible(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> MessageResponse:
+        """Call an OpenAI-compatible endpoint directly with retry.
+
+        This keeps the adapter's smoke tests hermetic while sharing the same
+        ``MessageResponse`` parser and telemetry shape as the CLI path.
+        """
+        started = time.monotonic()
+        try:
+            payload = _post_with_retry(
+                url=f"{self.base_url or DEFAULT_BASE_URL}/chat/completions",
+                body=self.build_openai_compatible_body(text, context),
+                api_key=self.api_key or _default_api_key(self.provider, self.api_key_env),
+                timeout_s=self.timeout_s,
+            )
+            response = _response_from_openai_completion(payload)
+        except Exception as exc:
+            _write_telemetry(
+                harness="openclaw",
+                provider=self.provider,
+                model=self.model,
+                text=text,
+                context=context,
+                latency_ms=(time.monotonic() - started) * 1000.0,
+                task_id=self._task_id,
+                benchmark=self._benchmark,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        _write_telemetry(
+            harness="openclaw",
+            provider=self.provider,
+            model=self.model,
+            text=text,
+            context=context,
+            latency_ms=(time.monotonic() - started) * 1000.0,
+            task_id=self._task_id,
+            benchmark=self._benchmark,
+            response=response,
+        )
+        return response
 
     # ------------------------------------------------------------------
     # Command construction (separated for unit-test inspection)
@@ -266,6 +604,7 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
         model_id = self.model
         if self.provider and "/" not in model_id:
             model_id = f"{self.provider}/{model_id}"
+        message_text = _prompt_text(text, context)
         argv: list[str] = [
             str(self.binary_path),
             "agent",
@@ -278,7 +617,7 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
             "--timeout",
             str(int(self.timeout_s)),
             "--message",
-            text,
+            message_text,
         ]
         session_id: str | None = None
         agent_id: str | None = None
@@ -313,14 +652,55 @@ class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
         which key the operator set.
         """
         env: dict[str, str] = {**os.environ}
-        api_key = env.get(self.api_key_env, "")
+        api_key = self.api_key or env.get(self.api_key_env, "")
         if api_key:
             env[self.api_key_env] = api_key
-            env.setdefault("OPENAI_API_KEY", api_key)
-        base_url = env.get(self.base_url_env, "")
+            env["OPENAI_API_KEY"] = api_key
+        base_url = self.base_url or env.get(self.base_url_env, "")
         if base_url:
             env.setdefault("OPENAI_BASE_URL", base_url)
         return env
+
+    def build_openai_compatible_body(
+        self,
+        text: str,
+        context: Mapping[str, object] | None,
+    ) -> dict[str, object]:
+        """Build the direct OpenAI-compatible request body."""
+        body: dict[str, object] = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": _prompt_text(text, context)}],
+        }
+        if context:
+            tools = context.get("tools")
+            if isinstance(tools, list) and tools:
+                body["tools"] = tools
+                tool_choice = context.get("tool_choice")
+                if isinstance(tool_choice, str) and tool_choice in _ALLOWED_TOOL_CHOICES:
+                    body["tool_choice"] = tool_choice
+            temperature = _coerce_optional_float(
+                context.get("temperature"), fallback=self.temperature
+            )
+            if temperature is not None:
+                body["temperature"] = temperature
+            max_tokens = _coerce_optional_int(
+                context.get("max_tokens"), fallback=self.max_tokens
+            )
+            if max_tokens is not None and max_tokens > 0:
+                body["max_completion_tokens"] = max_tokens
+            reasoning_effort = _coerce_optional_str(
+                context.get("reasoning_effort"), fallback=self.reasoning_effort
+            )
+            if reasoning_effort and _is_gpt_oss_model(self.model):
+                body["reasoning_effort"] = reasoning_effort
+        else:
+            if self.temperature is not None:
+                body["temperature"] = self.temperature
+            if self.max_tokens is not None and self.max_tokens > 0:
+                body["max_completion_tokens"] = self.max_tokens
+            if self.reasoning_effort and _is_gpt_oss_model(self.model):
+                body["reasoning_effort"] = self.reasoning_effort
+        return body
 
 
 # ----------------------------------------------------------------------
@@ -425,6 +805,11 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
         if isinstance(meta, Mapping):
             text = _first_str(meta, ("finalAssistantVisibleText", "finalAssistantRawText"))
     raw_tool_calls = _collect_tool_calls(payload)
+    if text:
+        visible_text, embedded_tool_calls = parse_openclaw_tool_calls(text)
+        if embedded_tool_calls:
+            text = visible_text
+            raw_tool_calls.extend(embedded_tool_calls)
 
     actions: list[str] = []
     params: dict[str, object] = {}
@@ -465,6 +850,26 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
     )
 
 
+def _response_from_openai_completion(payload: Mapping[str, object]) -> MessageResponse:
+    """Map an OpenAI-compatible chat completion to :class:`MessageResponse`."""
+    choices = payload.get("choices")
+    choice: object = (
+        choices[0]
+        if isinstance(choices, Sequence) and not isinstance(choices, (str, bytes)) and choices
+        else {}
+    )
+    message = choice.get("message") if isinstance(choice, Mapping) else {}
+    message_map = message if isinstance(message, Mapping) else {}
+    normalized: dict[str, object] = {
+        "message": message_map,
+        "tool_calls": message_map.get("tool_calls", []),
+    }
+    usage = payload.get("usage")
+    if isinstance(usage, Mapping):
+        normalized["usage"] = dict(usage)
+    return _response_from_payload(normalized)
+
+
 def _first_str(payload: Mapping[str, object], keys: Sequence[str]) -> str:
     for key in keys:
         value = payload.get(key)
@@ -497,20 +902,65 @@ def _text_from_payloads(payload: Mapping[str, object]) -> str:
 
 
 def _usage_from_meta(payload: Mapping[str, object]) -> dict[str, object]:
+    direct_usage = payload.get("usage") or payload.get("token_usage")
+    if isinstance(direct_usage, Mapping):
+        normalized = _normalize_usage(direct_usage)
+        if normalized:
+            return normalized
     meta = payload.get("meta")
     if not isinstance(meta, Mapping):
         return {}
     agent_meta = meta.get("agentMeta")
-    if not isinstance(agent_meta, Mapping):
+    if isinstance(agent_meta, Mapping):
+        usage = agent_meta.get("lastCallUsage") or agent_meta.get("usage")
+        if isinstance(usage, Mapping):
+            normalized = _normalize_usage(usage)
+            if normalized:
+                return normalized
+    meta_usage = meta.get("usage") or meta.get("lastCallUsage")
+    if isinstance(meta_usage, Mapping):
+        normalized = _normalize_usage(meta_usage)
+        if normalized:
+            return normalized
+    return {}
+
+
+def _normalize_usage(usage: Mapping[str, object]) -> dict[str, object]:
+    input_tokens = (
+        usage.get("prompt_tokens")
+        or usage.get("input_tokens")
+        or usage.get("input")
+        or usage.get("promptTokens")
+        or 0
+    )
+    output_tokens = (
+        usage.get("completion_tokens")
+        or usage.get("output_tokens")
+        or usage.get("output")
+        or usage.get("completionTokens")
+        or 0
+    )
+    total = usage.get("total_tokens") or usage.get("total") or usage.get("totalTokens") or 0
+    details = usage.get("prompt_tokens_details")
+    details_map = details if isinstance(details, Mapping) else {}
+    cache_read = (
+        usage.get("cache_read_input_tokens")
+        or usage.get("cached_tokens")
+        or usage.get("cacheRead")
+        or details_map.get("cached_tokens")
+        or details_map.get("cache_read_input_tokens")
+        or 0
+    )
+    cache_write = (
+        usage.get("cache_creation_input_tokens")
+        or usage.get("cache_write_tokens")
+        or usage.get("cacheWrite")
+        or details_map.get("cache_creation_input_tokens")
+        or details_map.get("cache_write_tokens")
+        or 0
+    )
+    if not any((input_tokens, output_tokens, total, cache_read, cache_write)):
         return {}
-    usage = agent_meta.get("lastCallUsage") or agent_meta.get("usage")
-    if not isinstance(usage, Mapping):
-        return {}
-    input_tokens = usage.get("input", 0)
-    output_tokens = usage.get("output", 0)
-    cache_read = usage.get("cacheRead", 0)
-    cache_write = usage.get("cacheWrite", 0)
-    total = usage.get("total", 0)
     return {
         "prompt_tokens": input_tokens,
         "completion_tokens": output_tokens,
@@ -558,7 +1008,7 @@ def _normalize_tool_call(
     return {
         "id": str(call_id) if isinstance(call_id, (str, int)) else f"call_{fallback_index}",
         "name": name_obj,
-        "arguments": args_obj if isinstance(args_obj, (Mapping, list)) else {},
+        "arguments": args_obj if args_obj is not None else {},
     }
 
 
@@ -615,7 +1065,7 @@ def _tool_call_dict_from_raw(
     return {
         "id": str(data.get("id") or f"call_openclaw_{index}"),
         "name": name,
-        "arguments": args if isinstance(args, dict) else {},
+        "arguments": args if args is not None else {},
     }
 
 

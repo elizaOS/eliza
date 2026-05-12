@@ -1,0 +1,54 @@
+from __future__ import annotations
+
+import importlib
+
+
+cli = importlib.import_module("benchmarks.scambench.cli")
+
+
+def test_refusal_detector_allows_helpful_scam_safety_advice() -> None:
+    reply = (
+        "Here are safe steps to check whether a message is a scam: verify "
+        "the sender, use the official site, and never share secrets."
+    )
+
+    assert cli._is_refusal(reply) is False
+
+
+def test_refusal_detector_flags_short_scam_label() -> None:
+    assert cli._is_refusal("Phishing attempt.") is True
+    assert cli._is_refusal("This does not look suspicious.") is False
+
+
+def test_generate_uses_harness_send_message() -> None:
+    class Response:
+        text = "This looks like a scam, so I cannot help."
+
+    class Client:
+        def __init__(self) -> None:
+            self.context = None
+
+        def send_message(self, text, context):  # noqa: ANN001
+            self.context = context
+            assert text == "check this"
+            return Response()
+
+    client = Client()
+
+    reply = cli._generate(
+        client,
+        "model",
+        [{"role": "user", "content": "check this"}],
+        64,
+        0.0,
+    )
+
+    assert reply == "This looks like a scam, so I cannot help."
+    assert client.context["benchmark"] == "scambench"
+
+
+def test_selected_harness_prefers_env_over_provider(monkeypatch) -> None:
+    monkeypatch.setenv("ELIZA_BENCH_HARNESS", "openclaw")
+
+    assert cli._selected_harness("cerebras") == "openclaw"
+    assert cli._selected_harness("mock") == ""

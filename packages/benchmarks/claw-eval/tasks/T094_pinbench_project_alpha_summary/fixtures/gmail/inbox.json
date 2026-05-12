@@ -1,0 +1,92 @@
+[
+  {
+    "message_id": "pb18_001",
+    "from": "sarah.chen@mycompany.com",
+    "to": "engineering-team@mycompany.com",
+    "subject": "Project Alpha - Kickoff and Timeline",
+    "date": "2026-01-15T14:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "project-alpha"],
+    "body": "Project Alpha is a new customer-facing analytics dashboard replacing the legacy reporting system. Timeline: Beta Launch Apr 21, GA May 12. Tech choices: PostgreSQL plus TimescaleDB, FastAPI, React with Recharts, OAuth2. Original budget is $340K."
+  },
+  {
+    "message_id": "pb18_002",
+    "from": "linda.zhao@mycompany.com",
+    "to": "sarah.chen@mycompany.com",
+    "subject": "Re: Project Alpha - Budget Overrun Risk",
+    "date": "2026-02-03T15:15:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "project-alpha"],
+    "body": "The extra infrastructure cost could push Project Alpha from $340K to $432K, a 27 percent overrun. I need cost-benefit analysis and sales confirmation before approving the expanded budget."
+  },
+  {
+    "message_id": "pb18_003",
+    "from": "security@mycompany.com",
+    "to": "sarah.chen@mycompany.com",
+    "subject": "Project Alpha - Mandatory Security Review Findings",
+    "date": "2026-02-10T16:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "project-alpha", "security"],
+    "body": "Critical issues: cross-tenant data exposure on the timeseries endpoint and per-message WebSocket authentication. High issues: stronger rate limiting, SSRF hardening on report generation, and missing audit logging."
+  },
+  {
+    "message_id": "pb18_004",
+    "from": "raj.patel@mycompany.com",
+    "to": "engineering-team@mycompany.com",
+    "subject": "Project Alpha - Phase 1 Complete! Data Pipeline Live",
+    "date": "2026-02-12T22:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "project-alpha"],
+    "body": "Phase 1 is complete. Approval landed for the expanded budget at $410K after savings from spot instances. Kafka, Flink, TimescaleDB, dbt, and Great Expectations are running."
+  },
+  {
+    "message_id": "pb18_005",
+    "from": "jessica.torres@mycompany.com",
+    "to": "sarah.chen@mycompany.com",
+    "subject": "Project Alpha - Early Client Feedback from Beta Waitlist",
+    "date": "2026-02-14T18:20:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "project-alpha", "sales"],
+    "body": "Five prospects gave strong feedback. The immediate pipeline from them is $1.85M ARR and overall tracking is $2.8M ARR, ahead of the $2.1M projection. Requests include custom alerting, exports, API access, and data residency."
+  },
+  {
+    "message_id": "pb18_006",
+    "from": "sarah.chen@mycompany.com",
+    "to": "engineering-team@mycompany.com",
+    "subject": "Project Alpha - Updated Timeline (Phase 2 delay)",
+    "date": "2026-02-18T14:30:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "project-alpha"],
+    "body": "Security fixes and the WebSocket gateway extend Phase 2. Beta moves to May 6 and GA moves to May 27. Shipping secure is non-negotiable."
+  },
+  {
+    "message_id": "pb18_007",
+    "from": "emily.nakamura@mycompany.com",
+    "to": "sarah.chen@mycompany.com",
+    "subject": "Project Alpha - Frontend Early Progress Update",
+    "date": "2026-02-25T20:45:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "project-alpha"],
+    "body": "Frontend work is already underway with Storybook, the dashboard layout engine, Recharts components, and SSO integration. The live metric widgets are blocked on the WebSocket gateway."
+  },
+  {
+    "message_id": "pb18_008",
+    "from": "office-admin@mycompany.com",
+    "to": "all-staff@mycompany.com",
+    "subject": "Team Appreciation Lunch - Next Friday",
+    "date": "2026-02-20T16:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Please join the team appreciation lunch next Friday and fill out the dietary preference form."
+  },
+  {
+    "message_id": "pb18_009",
+    "from": "noreply@techconference.io",
+    "to": "sarah.chen@mycompany.com",
+    "subject": "Early bird pricing ends soon - TechSummit 2026",
+    "date": "2026-02-22T13:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "promo"],
+    "body": "TechSummit 2026 early bird pricing ends soon. Register now."
+  }
+]

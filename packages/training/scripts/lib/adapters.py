@@ -18,14 +18,11 @@ Current canonical action vocabulary (used in `availableActions`; mirror
     APP, GENERATE_MEDIA, CHOOSE_OPTION, ...  — plus per-tool / per-skill custom names
 
 The supervised target is `expectedResponse` (a JSON planner document for
-structured tasks, plain text for replies). Legacy TOON output is only for
-compatibility rebuilds that pass a legacy encoder from
-`normalize.py --expected-response-format legacy-toon`.
+structured tasks, plain text for replies).
 """
 
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
@@ -221,107 +218,6 @@ def _split_history(messages: list[dict[str, Any]]) -> tuple[
     return "\n\n".join(system_parts), memory, current_msg, final_assistant
 
 
-def _parse_apigen_calls(text: str) -> list[dict[str, Any]]:
-    """Parse APIGen-style ``[Name(arg=val, ...), Name2(...)]`` into tool_calls.
-
-    Handles dotted names (``Module.method``), names with embedded spaces
-    (``Manufacturing PMI``), nested literals (lists/dicts), and quoted
-    strings via Python's ast module.
-    """
-    text = (text or "").strip()
-    if not (text.startswith("[") and text.endswith("]")):
-        return []
-    inner = text[1:-1].strip()
-    if not inner:
-        return []
-    # Split top-level call boundaries (commas at depth 0, outside strings).
-    depth = 0
-    in_str: str | None = None
-    starts = [0]
-    prev = ""
-    for i, c in enumerate(inner):
-        if in_str:
-            if c == in_str and prev != "\\":
-                in_str = None
-            prev = c
-            continue
-        if c in ("\"", "'"):
-            in_str = c
-        elif c in "([{":
-            depth += 1
-        elif c in ")]}":
-            depth -= 1
-        elif c == "," and depth == 0:
-            starts.append(i + 1)
-        prev = c
-    parts: list[str] = []
-    for j, s in enumerate(starts):
-        e = starts[j + 1] - 1 if j + 1 < len(starts) else len(inner)
-        parts.append(inner[s:e].strip())
-
-    calls: list[dict[str, Any]] = []
-    for part in parts:
-        # Find the leftmost top-level '(' as the start of arguments. Names
-        # may contain dots, hyphens, and even spaces.
-        depth2 = 0
-        open_idx = -1
-        in_str2: str | None = None
-        prev2 = ""
-        for i, c in enumerate(part):
-            if in_str2:
-                if c == in_str2 and prev2 != "\\":
-                    in_str2 = None
-                prev2 = c
-                continue
-            if c in ("\"", "'"):
-                in_str2 = c
-            elif c == "(" and depth2 == 0:
-                open_idx = i
-                break
-            elif c in "[{":
-                depth2 += 1
-            elif c in "]}":
-                depth2 -= 1
-            prev2 = c
-        if open_idx < 0 or not part.endswith(")"):
-            continue
-        name = part[:open_idx].strip()
-        args_str = part[open_idx + 1:-1].strip()
-        if not name:
-            continue
-        # Reject prose-y names with colons, equals signs, newlines, etc.
-        # A function name is identifier-ish (dots/dashes allowed, single
-        # internal spaces allowed for things like "Manufacturing PMI").
-        if not re.match(r"^[A-Za-z_][\w.\-]*(?: [A-Za-z_][\w.\-]*)*$", name):
-            continue
-        args: dict[str, Any] = {}
-        if args_str:
-            try:
-                tree = ast.parse(f"__f({args_str})", mode="eval")
-                call = tree.body
-                if isinstance(call, ast.Call):
-                    pos: list[Any] = []
-                    for a in call.args:
-                        try:
-                            pos.append(ast.literal_eval(a))
-                        except (ValueError, SyntaxError):
-                            pos.append(ast.unparse(a))
-                    if pos:
-                        args["_positional"] = pos
-                    for kw in call.keywords:
-                        if kw.arg is None:
-                            continue
-                        try:
-                            v = ast.literal_eval(kw.value)
-                        except (ValueError, SyntaxError):
-                            v = ast.unparse(kw.value)
-                        args[kw.arg] = v
-            except (SyntaxError, ValueError):
-                args["_raw"] = args_str
-        calls.append({"name": name, "arguments": args})
-    return calls
-
-
 def _extract_tool_calls(
     assistant: dict[str, Any]
 ) -> list[dict[str, Any]]:
@@ -329,11 +225,36 @@ def _extract_tool_calls(
 
     Recognized formats (in order):
       1. OpenAI ``tool_calls`` array on the raw message.
-      2. Hermes ``<tool_call>{...}</tool_call>`` JSON inside content.
-      3. APIGen ``[Name(arg=val), ...]`` bracket-call syntax in content.
+      2. OpenAI legacy ``function_call`` object on the raw message.
+      3. JSON content with ``tool_calls`` / ``toolCalls`` fields.
     """
     raw = assistant.get("raw") or {}
     content = assistant.get("content") or ""
+
+    def normalize_one(tc: Any) -> dict[str, Any] | None:
+        if not isinstance(tc, dict):
+            return None
+        fn = tc.get("function") or {}
+        if not isinstance(fn, dict):
+            fn = {}
+        args = (
+            tc.get("arguments")
+            if "arguments" in tc
+            else tc.get("args")
+            if "args" in tc
+            else tc.get("input")
+            if "input" in tc
+            else fn.get("arguments")
+        )
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                pass
+        name = tc.get("name") or tc.get("tool_name") or tc.get("toolName") or fn.get("name")
+        if not isinstance(name, str) or not name.strip():
+            return None
+        return {"name": name.strip(), "arguments": args if isinstance(args, dict) else {}}
 
     # OpenAI-format: assistant.tool_calls = [{id,type,function:{name,arguments}}]
     # Some sources (playwright-mcp-toolcalling/train_v4) ship the array
@@ -346,36 +267,33 @@ def _extract_tool_calls(
             raw_calls = []
     parsed: list[dict[str, Any]] = []
     for tc in (raw_calls or []):
-        if not isinstance(tc, dict):
-            continue
-        fn = tc.get("function") or {}
-        if not isinstance(fn, dict):
-            continue
-        args = fn.get("arguments")
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except json.JSONDecodeError:
-                pass
-        parsed.append({"name": fn.get("name", ""), "arguments": args or {}})
+        normalized = normalize_one(tc)
+        if normalized:
+            parsed.append(normalized)
 
-    # Hermes-style <tool_call>{...}</tool_call>
-    if not parsed and "<tool_call>" in content:
-        for m in re.finditer(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", content, re.S):
-            try:
-                obj = json.loads(m.group(1))
-                parsed.append({
-                    "name": obj.get("name", ""),
-                    "arguments": obj.get("arguments") or obj.get("args") or {},
-                })
-            except json.JSONDecodeError:
-                continue
+    if not parsed and isinstance(raw.get("function_call"), dict):
+        normalized = normalize_one({"function": raw["function_call"]})
+        if normalized:
+            parsed.append(normalized)
 
-    # APIGen-style [Name(arg=val), Name2(...)]
-    if not parsed:
-        stripped = content.strip()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            parsed = _parse_apigen_calls(stripped)
+    if not parsed and isinstance(content, str):
+        body = content.strip()
+        if body.startswith("{") and body.endswith("}"):
+            try:
+                obj = json.loads(body)
+            except json.JSONDecodeError:
+                obj = {}
+            if isinstance(obj, dict):
+                calls = obj.get("tool_calls") or obj.get("toolCalls")
+                if isinstance(calls, list):
+                    parsed.extend(
+                        normalized for call in calls
+                        if (normalized := normalize_one(call))
+                    )
+                else:
+                    normalized = normalize_one(obj)
+                    if normalized:
+                        parsed.append(normalized)
 
     return parsed
 
@@ -478,8 +396,7 @@ def _cot_to_expected(
 
     Produces `{thought, text}` when a reasoning block can be extracted from
     `<think>` / `<thinking>` / `THOUGHT:` markers in the body,
-    OR when `extra_thought` is supplied. Native v5 encodes that object as JSON;
-    legacy compatibility rebuilds can still pass a TOON encoder.
+    OR when `extra_thought` is supplied. Native v5 encodes that object as JSON.
     """
     thought, body = _split_thought_and_body(raw_text or "")
     if extra_thought:
@@ -1332,10 +1249,16 @@ def bitagent(records, *, slug, license, split, encoder):
             role = m.get("role", "")
             content = m.get("content")
             if role == "tool call" and isinstance(content, dict):
-                # render as Hermes <tool_call> for _extract_tool_calls
                 normalized.append({
                     "role": "assistant",
-                    "content": "<tool_call>" + json.dumps(content) + "</tool_call>",
+                    "content": "",
+                    "tool_calls": [{
+                        "type": "function",
+                        "function": {
+                            "name": str(content.get("name") or content.get("tool") or content.get("tool_name") or ""),
+                            "arguments": json.dumps(content.get("arguments") or content.get("args") or {}),
+                        },
+                    }],
                 })
             elif role in ("tool response", "tool"):
                 normalized.append({"role": "tool", "content": str(content)})
@@ -1429,10 +1352,14 @@ def nemotron_rl_tool_use(records, *, slug, license, split, encoder):
         if isinstance(ea, dict) and ea.get("name"):
             msgs = list(msgs) + [{
                 "role": "assistant",
-                "content": "<tool_call>" + json.dumps({
-                    "name": ea.get("name", ""),
-                    "arguments": ea.get("arguments") or ea.get("args") or {},
-                }) + "</tool_call>",
+                "content": "",
+                "tool_calls": [{
+                    "type": "function",
+                    "function": {
+                        "name": ea.get("name", ""),
+                        "arguments": json.dumps(ea.get("arguments") or ea.get("args") or {}),
+                    },
+                }],
             }]
         return {"messages": msgs, "tools": tools, "id": r.get("trajectory_id")}
 
@@ -1935,9 +1862,8 @@ def mcp_messages(records, *, slug, license, split, encoder):
 
     1. **Multi-turn message lists** (``messages``/``conversations``/...)
        are split into one supervised record per assistant turn. Each
-       assistant turn lands as structured ``tool_calls`` when it carries any
-       tool call (OpenAI ``tool_calls``, Hermes ``<tool_call>``, or
-       APIGen ``[Func(...)]``). Otherwise it lands as structured output
+       assistant turn lands as structured ``tool_calls`` when it carries an
+       OpenAI-compatible tool call. Otherwise it lands as structured output
        ``{thought, text}`` for text replies. This recovers tool calls
        that live in the middle of agent traces (deepfabric-github-mcp,
        playwright-mcp-toolcalling) instead of dropping them in favor of
@@ -1949,9 +1875,9 @@ def mcp_messages(records, *, slug, license, split, encoder):
        ``metadata.tool_reason``; non-tool replies land as structured output
        ``{thought, text}``.
 
-    3. **Generic Alpaca** (``instruction``/``input``/``output``). The
-       output is checked for embedded APIGen / Hermes tool calls and
-       routed to structured ``tool_calls`` when present.
+    3. **Generic Alpaca** (``instruction``/``input``/``output``). Plain
+       text outputs remain replies; tool-call rows must carry structured
+       fields in the source.
     """
     for r in records:
         msgs = (
@@ -2516,12 +2442,8 @@ def reasoning_cot(records, *, slug, license, split, encoder):
 # calls); no adapter change is needed when that happens.
 #
 # `reflection_trajectories.jsonl` and `reflection_evaluator_trajectories.jsonl`
-# are forward-compat entries: the elizaOS reflection prompts
-# (`prompts/reflection.txt`, `prompts/reflection_evaluator.txt`) emit
-# TOON `key: value` documents (`thought:`, `quality_score:`, `facts[i]:`,
-# `relationships[i]:`, `task_completed:` …) which round-trip through
-# the existing yaml-thought parser. They are mapped here so the runtime
-# can start writing them without a follow-up adapter patch.
+# are forward-compat entries for elizaOS reflection prompts. They are mapped
+# here so the runtime can start writing them without a follow-up adapter patch.
 _NUBILIO_TASK_MAP: dict[str, tuple[str, list[str]]] = {
     "action_planner_trajectories.jsonl":     ("agent_trace",          [ACTION_REPLY, ACTION_TASKS, ACTION_IGNORE]),
     "response_trajectories.jsonl":            ("reply",                REPLY_ACTIONS.copy()),
@@ -3176,7 +3098,7 @@ def scam_defense_corpus(records, *, slug, license, split, encoder):
 # `<params>`. We emit BOTH shapes (50/50, deterministic by record index)
 # so the SFT target distribution covers either form.
 #
-# `expectedResponse` is raw text — no TOON wrapping. The workflow JSON is
+# `expectedResponse` is raw text. The workflow JSON is
 # already structured and often multi-KB; double-encoding bloats tokens.
 
 # Action surface the planner sees on n8n turns.
@@ -3790,7 +3712,7 @@ def claude_distill(records: Iterator[dict], *, slug: str, license: str,
     `<think>{reasoning}</think>{final answer}`.
 
     We preserve the assistant content **verbatim** in `expectedResponse`
-    (no TOON re-encoding) so the student model learns the exact `<think>`
+    without re-encoding so the student model learns the exact `<think>`
     surface that Qwen3.6 / Qwopus and our generation pipeline both expect.
 
     The `messages` array is rendered into `memoryEntries` + `currentMessage`
@@ -3869,7 +3791,7 @@ def claude_distill(records: Iterator[dict], *, slug: str, license: str,
             agentId="assistant",
             memoryEntries=memory,
             currentMessage=current,
-            # Verbatim — no TOON re-encoding. The `<think>...</think>final`
+            # Verbatim. The `<think>...</think>final`
             # surface ships through `tokenizer.apply_chat_template` exactly
             # as the distill source recorded it.
             expectedResponse=final_assistant["content"],

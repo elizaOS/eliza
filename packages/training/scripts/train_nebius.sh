@@ -24,6 +24,7 @@
 # without explicit operator confirmation. Prefer Vast (`train_vast.sh`) which
 # can target a 2× or 4× H200/B200 box.
 #
+<<<<<<< HEAD
 # eliza-1 cloud-tier targets (model_registry.py REGISTRY keys):
 #   REGISTRY_KEY=qwen3.5-0.8b → eliza-1-0_8b   (single H200 — overkill, ~2 GPU-h)
 #   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b     (single H200 — fits seq 8k)
@@ -32,11 +33,17 @@
 #   REGISTRY_KEY=qwen3.5-27b  → eliza-1-27b    (single H200 — apollo_mini fits 141 GB)
 #   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
 #   compatibility but the eliza-1 fused-kernel stack only validates Qwen3.5.)
+=======
+# After training, the script optionally runs PolarQuant + TurboQuant on the
+# resulting checkpoint and the native function-calling benchmark for base-vs-finetuned
+# comparison numbers.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access + pushing results
 # Optional env:
+<<<<<<< HEAD
 #   REGISTRY_KEY               # default: qwen3-0.6b
 #   RUN_NAME                   # default: <registry-key>-apollo-<unix-ts>
 #   NEBIUS_VM_PRESET           # gpu-h200x1 (default) | gpu-h200x2 — selects the
@@ -59,6 +66,14 @@
 #                              #   (default: polarquant,fused_turboquant,qjl)
 #   BENCHMARK_AFTER            # 1 = base-vs-finetuned bench (default 1); 0 skips base bench
 #   PUSH_AFTER                 # 1 = run_pipeline.py --publish at the tail (default 0 — fetch + publish locally)
+=======
+#   REGISTRY_KEY               # default: qwen3.6-27b
+#   RUN_NAME                   # default: <registry-key>-apollo
+#   NEBIUS_VM_PRESET           # default: gpu-h200x1
+#   NEBIUS_VM_REGION           # default: eu-north1
+#   QUANTIZE_AFTER             # comma-separated; default: polarquant,turboquant
+#   BENCHMARK_AFTER            # 1 = run native benchmark base+finetuned (default 1)
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 #
 # Usage:
 #   bash scripts/train_nebius.sh smoke       # cheap CPU instance up → uname → teardown (pennies)
@@ -74,10 +89,18 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+<<<<<<< HEAD
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID (the Nebius project == --parent-id)}"
 : "${NEBIUS_VM_NAME:=eliza-train-h200}"
 : "${NEBIUS_VM_PRESET:=gpu-h200x1}"
 : "${NEBIUS_VM_DISK_GB:=512}"
+=======
+: "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
+: "${NEBIUS_VM_NAME:=eliza-train-h200}"
+: "${NEBIUS_VM_PRESET:=gpu-h200x2}"
+: "${NEBIUS_VM_REGION:=eu-north1}"
+: "${NEBIUS_VM_DISK_GB:=2048}"
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 : "${NEBIUS_SSH_USER:=ubuntu}"
 : "${NEBIUS_IMAGE_FAMILY:=mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8}"
 : "${NEBIUS_IMAGE_PARENT:=project-e00public-images}"
@@ -305,6 +328,7 @@ run_remote() {
   else
     launch="python"
   fi
+<<<<<<< HEAD
   local push_flag="--skip-publish"
   [ "$PUSH_AFTER" = "1" ] && push_flag="--publish"
   local base_bench_flag=""
@@ -408,6 +432,36 @@ EOF
       break
     fi
     if [ "$i" -gt 360 ]; then echo "[train_nebius][run] ERROR: still running after 6h — bailing (VM left up; ssh in to investigate or run teardown)"; return 1; fi
+=======
+  echo "[bench] native_tool_call_bench: base + finetuned + quantized"
+  ssh -o StrictHostKeyChecking=no "$target" "bash -lc '
+    set -euo pipefail
+    cd $REMOTE_TRAIN_DIR
+    export PATH=\$HOME/.local/bin:\$PATH
+    base_id=\$(uv run --extra train python -c \"from scripts.training.model_registry import get; print(get(\\\"$REGISTRY_KEY\\\").hf_id)\")
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+        --model \$base_id \\
+        --out-dir benchmarks/$RUN_NAME/base \\
+        --max-per-bucket 200
+    uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+        --model checkpoints/$RUN_NAME/final \\
+        --out-dir benchmarks/$RUN_NAME/finetuned \\
+        --max-per-bucket 200
+  '"
+  IFS=',' read -ra qs <<< "$QUANTIZE_AFTER"
+  for q in "${qs[@]}"; do
+    ssh -o StrictHostKeyChecking=no "$target" "bash -lc '
+      set -euo pipefail
+      cd $REMOTE_TRAIN_DIR
+      export PATH=\$HOME/.local/bin:\$PATH
+      if [ -d checkpoints/$RUN_NAME/final-${q} ]; then
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
+          --model checkpoints/$RUN_NAME/final-${q} \\
+          --out-dir benchmarks/$RUN_NAME/${q} \\
+          --max-per-bucket 200
+      fi
+    '" || true
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   done
 }
 

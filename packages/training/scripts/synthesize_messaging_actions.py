@@ -388,7 +388,11 @@ TWITTER_QUERIES = [
 ]
 SAMPLE_TWEETS = [
     "Just shipped a new build of eliza — local-first AI agents that respect your data.",
+<<<<<<< HEAD
     "Hot take: TOON > JSON when the model is the consumer.",
+=======
+    "Hot take: native JSON > JSON when the model is the consumer.",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "Friendly reminder that @elizaos_official is always hiring.",
     "Coffee, then deploy. In that order.",
     "Eliza skill of the week: yara-authoring. Detect malware patterns from chat.",

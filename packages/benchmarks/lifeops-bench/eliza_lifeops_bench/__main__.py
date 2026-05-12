@@ -15,6 +15,7 @@ import asyncio
 import logging
 import os
 import sys
+from pathlib import Path
 from typing import Optional
 
 from .eliza_1_bundle import (
@@ -44,6 +45,45 @@ _DOMAIN_CHOICES = tuple(d.value for d in Domain)
 _MODE_CHOICES = tuple(m.value for m in ScenarioMode)
 _MODEL_TIER_CHOICES = tuple(DEFAULT_TIERS.keys())
 _SUITE_CHOICES = tuple(SUITES.keys())
+
+
+def _load_env_file(path: Path) -> None:
+    """Load KEY=VALUE pairs from *path* without overriding existing env."""
+    if not path.exists() or not path.is_file():
+        return
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].strip()
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not key or key in os.environ:
+            continue
+        value = value.strip()
+        if (
+            len(value) >= 2
+            and value[0] == value[-1]
+            and value[0] in {"'", '"'}
+        ):
+            value = value[1:-1]
+        os.environ[key] = value
+
+
+def _load_default_env_files() -> None:
+    """Mirror orchestrator dotenv loading for direct LifeOps CLI runs."""
+    repo_root = Path(__file__).resolve().parents[4]
+    for candidate in (
+        repo_root / ".env",
+        repo_root.parent / ".env",
+        Path.cwd() / ".env",
+    ):
+        _load_env_file(candidate)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -225,6 +265,9 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
         return None
     if name == "eliza":
         try:
+            from .agents.adapter_paths import ensure_benchmark_adapter_importable
+
+            ensure_benchmark_adapter_importable("eliza")
             from .agents import build_eliza_agent  # type: ignore[attr-defined]
         except ImportError as exc:
             raise SystemExit(
@@ -418,6 +461,21 @@ def _build_world_factory():
     return factory
 
 
+def _needs_live_evaluator(
+    scenarios,
+    *,
+    domain: Domain | None,
+    mode: ScenarioMode | None,
+) -> bool:
+    """Whether the post-filter scenario set contains LIVE cases."""
+    return any(
+        s.mode is ScenarioMode.LIVE
+        for s in scenarios
+        if (domain is None or s.domain == domain)
+        and (mode is None or s.mode == mode)
+    )
+
+
 async def _run(args: argparse.Namespace) -> None:
     if args.scenario and args.suite:
         print(
@@ -512,6 +570,27 @@ async def _run(args: argparse.Namespace) -> None:
         print(f"[dry-run] resolved {len(scenarios)} scenarios; skipping execution.")
         return
 
+    simulated_user_client = None
+    judge_client = None
+    if _needs_live_evaluator(scenarios, domain=domain, mode=mode):
+        try:
+            from .clients.base import ProviderError
+            from .clients.factory import make_client
+        except ImportError as exc:
+            raise SystemExit(
+                "LIVE mode requires LifeOpsBench client providers; failed to "
+                f"import client factory: {exc}"
+            ) from exc
+        try:
+            simulated_user_client = make_client("cerebras", model=evaluator_model)
+            judge_client = make_client("anthropic", model=args.judge_model)
+        except ProviderError as exc:
+            raise SystemExit(
+                "LIVE mode requires CEREBRAS_API_KEY for the simulated user "
+                "and ANTHROPIC_API_KEY for the judge. "
+                f"Client setup failed: {exc}"
+            ) from exc
+
     runner = LifeOpsBenchRunner(
         agent_fn=agent_fn,
         agent_factory=agent_factory,
@@ -524,6 +603,8 @@ async def _run(args: argparse.Namespace) -> None:
         max_cost_usd=args.max_cost_usd,
         per_scenario_timeout_s=args.per_scenario_timeout_s,
         abort_on_budget_exceeded=args.abort_on_budget_exceeded,
+        simulated_user_client=simulated_user_client,
+        judge_client=judge_client,
     )
 
     result = await runner.run_filtered(domain=domain, mode=mode)
@@ -533,6 +614,7 @@ async def _run(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    _load_default_env_files()
     parser = _build_parser()
     args = parser.parse_args()
 

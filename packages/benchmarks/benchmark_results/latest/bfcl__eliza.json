@@ -1,7 +1,11 @@
 {
   "agent": "eliza",
   "artifacts": [
+<<<<<<< HEAD
     "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133303Z_3242988f/bfcl__bfcl/run_bfcl_20260511T133303Z_2_d447a22d/output"
+=======
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T105315Z_73a0a8da/bfcl__bfcl/run_bfcl_20260512T105315Z_1_64ae93da/output"
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   ],
   "benchmark_directory": "bfcl",
   "benchmark_id": "bfcl",
@@ -11,69 +15,73 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": null,
-  "higher_is_better": true,
+  "error": "Command exited with return code 1 and no result JSON found",
+  "higher_is_better": null,
   "metrics": {
-    "ast_accuracy": 1.0,
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
       "cache_hit_ratio": 0.0,
       "cache_read_input_tokens": 0,
       "turns_with_cached_field": 0
     },
-    "exec_accuracy": 0,
-    "overall_score": 1.0,
     "performance_metrics": {
-      "duration_seconds": 17.7655007080175,
-      "mean_latency_ms": 8166.71895980835,
-      "p95_latency_ms": 8166.71895980835,
-      "throughput_per_second": 0.056288872260645266
+      "duration_seconds": 0.23375708400271833,
+      "mean_latency_ms": null,
+      "p95_latency_ms": null,
+      "throughput_per_second": 0.0
     },
-    "relevance_accuracy": 1.0,
-    "return_code": 0,
+    "result_locator": "not_found",
+    "return_code": 1,
     "token_metrics": {
       "avg_completion_tokens": 0.0,
       "avg_prompt_tokens": 0.0,
       "completion_tokens": 0,
-      "llm_call_count": 1,
+      "llm_call_count": 0,
       "prompt_tokens": 0,
       "total_tokens": 0
     },
-    "total_tests": 1,
     "trajectory_summary": {
-      "files": 2,
+      "files": 0,
       "prompt_chars": 0,
       "repeated_prefixes": [],
-      "turns": 1
+      "turns": 0
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 17.7655007080175,
-    "mean_latency_ms": 8166.71895980835,
-    "p95_latency_ms": 8166.71895980835,
-    "throughput_per_second": 0.056288872260645266
+    "duration_seconds": 0.23375708400271833,
+    "mean_latency_ms": null,
+    "p95_latency_ms": null,
+    "throughput_per_second": 0.0
   },
   "provider": "cerebras",
+<<<<<<< HEAD
   "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133303Z_3242988f/bfcl__bfcl/run_bfcl_20260511T133303Z_2_d447a22d/output/bfcl_results_gpt-oss-120b_20260511_063321.json",
   "run_group_id": "rg_20260511T133303Z_3242988f",
   "run_id": "run_bfcl_20260511T133303Z_2_d447a22d",
   "score": 1.0,
   "status": "succeeded",
+=======
+  "result_json_path": null,
+  "run_group_id": "rg_20260512T105315Z_73a0a8da",
+  "run_id": "run_bfcl_20260512T105315Z_1_64ae93da",
+  "score": null,
+  "status": "failed",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "token_metrics": {
     "avg_completion_tokens": 0.0,
     "avg_prompt_tokens": 0.0,
     "completion_tokens": 0,
-    "llm_call_count": 1,
+    "llm_call_count": 0,
     "prompt_tokens": 0,
     "total_tokens": 0
   },
   "trajectory_summary": {
-    "files": 2,
+    "files": 0,
     "prompt_chars": 0,
     "repeated_prefixes": [],
-    "turns": 1
+    "turns": 0
   },
-  "unit": "ratio",
-  "updated_at": "2026-05-12T01:33:59Z"
+  "unit": null,
+  "updated_at": "2026-05-12T10:53:15.880689+00:00"
 }

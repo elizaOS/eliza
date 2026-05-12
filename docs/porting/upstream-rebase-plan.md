@@ -24,10 +24,14 @@
   worth doing only when (a) there is a concrete upstream feature we want
   (e.g. a newer quant kernel, a server fix), and (b) GPU/Metal runners are
   available to re-verify the TurboQuant Q1_0 path on upstream's new block
+<<<<<<< HEAD
   layout. A 2026-05-11 attempt confirmed the target tag (`b9113`), the
   exact replay command, and the conflict surface — it dies on the first
   replayed commit (the `Q1_0` slot collision) and the resolution is the
   kernel re-port below. See "Rebase attempt — 2026-05-11" near the bottom.
+=======
+  layout.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 - The `v1.0.0-eliza` tag = the kernel-complete `v0.4.0-eliza`/`v0.2.0-eliza`
   lineage tree, re-tagged for the org rename. A real newer rebase produces a
   new `v1.x` tag.

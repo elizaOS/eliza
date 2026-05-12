@@ -45,12 +45,16 @@ function normalizeMode(value: string | undefined): AndroidRuntimeMode {
 }
 
 export function resolveAndroidRuntimeMode(env: RuntimeEnv): AndroidRuntimeMode {
+<<<<<<< HEAD
   return normalizeMode(
     readString(env, [
       "VITE_ELIZA_ANDROID_RUNTIME_MODE",
       "VITE_ELIZA_ANDROID_RUNTIME_MODE",
     ]),
   );
+=======
+  return normalizeMode(readString(env, ["VITE_ELIZA_ANDROID_RUNTIME_MODE"]));
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 /**

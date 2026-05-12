@@ -31,6 +31,7 @@ import type {
 const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
 const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
+const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
@@ -71,6 +72,7 @@ const SLOT_LADDERS: Record<
   // (0.8B Q4 > 0.6B Q3, < 1.7B). Re-order / drop the legacy tiers once the
   // owner decides — also see FIRST_RUN_DEFAULT_MODEL_ID in catalog.ts.
   mobile: {
+<<<<<<< HEAD
     TEXT_SMALL: [TIER_0_6B, TIER_0_8B, TIER_1_7B],
     TEXT_LARGE: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
   },
@@ -93,6 +95,30 @@ const SLOT_LADDERS: Record<
   "desktop-cpu": {
     TEXT_SMALL: [TIER_1_7B, TIER_0_8B, TIER_0_6B],
     TEXT_LARGE: [TIER_9B, TIER_1_7B],
+=======
+    TEXT_SMALL: [TIER_0_6B, TIER_1_7B],
+    TEXT_LARGE: [TIER_1_7B, TIER_4B, TIER_0_6B],
+  },
+  "apple-silicon": {
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_1_7B],
+  },
+  "linux-gpu": {
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_1_7B],
+  },
+  "linux-cpu": {
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_1_7B],
+  },
+  "desktop-gpu": {
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_1_7B],
+  },
+  "desktop-cpu": {
+    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_1_7B],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   },
 };
 

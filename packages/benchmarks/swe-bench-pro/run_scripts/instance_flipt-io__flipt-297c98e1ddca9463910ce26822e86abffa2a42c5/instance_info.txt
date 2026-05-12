@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-297c98e1ddca9463910ce26822e86abffa2a42c5
+Repository: flipt-io/flipt
+Base Commit: 9d1dfaa7de63789ced81ac9fd358c7a324be84e0
+Test Files: ["TestGetProviderConfiguration"]
+FAIL_TO_PASS: ["TestGetProviderConfiguration"]
+PASS_TO_PASS: []

@@ -1,4 +1,3 @@
-// @ts-nocheck -- legacy wallet sync task from absorbed Birdeye plugin; strict types pending cleanup
 import {
   type Content,
   createUniqueUuid,
@@ -14,6 +13,11 @@ import type {
   TransactionHistory,
 } from "./types/shared";
 import { extractChain } from "./utils";
+
+const settingAsString = (
+  value: string | number | boolean | null,
+): string | undefined =>
+  typeof value === "string" && value.trim().length > 0 ? value : undefined;
 
 export interface SentimentContent extends Content {
   text: string;
@@ -39,7 +43,7 @@ export default class Birdeye {
   beService!: BirdeyeService;
 
   constructor(runtime: IAgentRuntime) {
-    this.apiKey = runtime.getSetting("BIRDEYE_API_KEY");
+    this.apiKey = settingAsString(runtime.getSetting("BIRDEYE_API_KEY")) ?? "";
     this.sentimentRoomId = createUniqueUuid(runtime, "sentiment-analysis");
     this.twitterFeedRoomId = createUniqueUuid(runtime, "twitter-feed");
     this.runtime = runtime;
@@ -69,13 +73,21 @@ export default class Birdeye {
         publicKey,
       );
 
-      const transactions: TransactionHistory[] = birdeyeData.map(
-        (tx: { txHash: string; blockTime: number | string }) => ({
+      if (!Array.isArray(birdeyeData)) {
+        return [];
+      }
+
+      const transactions: TransactionHistory[] = [];
+      for (const tx of birdeyeData) {
+        if (typeof tx.txHash !== "string" || typeof tx.blockTime !== "string") {
+          continue;
+        }
+        transactions.push({
           txHash: tx.txHash,
           blockTime: new Date(tx.blockTime),
           data: tx,
-        }),
-      );
+        });
+      }
 
       try {
         const cachedTxs = await this.runtime.getCache<TransactionHistory[]>(
@@ -150,12 +162,16 @@ export default class Birdeye {
   }
 
   async syncWallet() {
-    const walletAddr = this.runtime.getSetting("BIRDEYE_WALLET_ADDR");
+    const walletAddr = settingAsString(
+      this.runtime.getSetting("BIRDEYE_WALLET_ADDR"),
+    );
     if (!walletAddr) {
       return;
     }
 
-    const explicitChain = this.runtime.getSetting("BIRDEYE_CHAIN");
+    const explicitChain = settingAsString(
+      this.runtime.getSetting("BIRDEYE_CHAIN"),
+    );
 
     try {
       const chain = extractChain(walletAddr, explicitChain);

@@ -410,7 +410,11 @@ export function mergeOpencodeAgentsMd(
 /**
  * Setting keys consulted to locate the parent agent's HTTP API. Order
  * matters: we prefer the explicit override (`SERVER_PORT`) over deployment
+<<<<<<< HEAD
  * env vars (`ELIZA_API_PORT`, `MILADY_API_PORT`). The fallback `2138`
+=======
+ * env vars (`ELIZA_API_PORT`, `ELIZA_PORT`). The fallback `2138`
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * targets the dev-UI (Vite) port, which does NOT serve
  * `/api/coding-agents/*` — that lives on the API server. The dev-UI
  * port answer was correct only for the legacy single-port topology
@@ -423,7 +427,11 @@ export function mergeOpencodeAgentsMd(
 const SERVER_PORT_SETTING_KEYS = [
   "SERVER_PORT",
   "ELIZA_API_PORT",
+<<<<<<< HEAD
   "MILADY_API_PORT",
+=======
+  "ELIZA_PORT",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ] as const;
 
 /** @internal — exported for unit tests in `pty-service-server-port.test.ts`. */

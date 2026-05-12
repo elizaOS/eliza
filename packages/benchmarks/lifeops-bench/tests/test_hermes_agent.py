@@ -21,7 +21,20 @@ from eliza_lifeops_bench.clients.hermes import HermesClient
 from eliza_lifeops_bench.types import MessageTurn
 
 
-def _hermes_response(text: str, *, prompt_tokens: int = 80, completion_tokens: int = 40) -> dict[str, Any]:
+def _hermes_response(
+    text: str,
+    *,
+    prompt_tokens: int = 80,
+    completion_tokens: int = 40,
+    cached_tokens: int | None = None,
+) -> dict[str, Any]:
+    usage: dict[str, Any] = {
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": prompt_tokens + completion_tokens,
+    }
+    if cached_tokens is not None:
+        usage["prompt_tokens_details"] = {"cached_tokens": cached_tokens}
     return {
         "id": "chatcmpl-hermes",
         "model": "NousResearch/Hermes-3-Llama-3.1-70B",
@@ -32,11 +45,7 @@ def _hermes_response(text: str, *, prompt_tokens: int = 80, completion_tokens: i
                 "message": {"role": "assistant", "content": text},
             }
         ],
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
+        "usage": usage,
     }
 
 
@@ -80,11 +89,51 @@ def test_build_hermes_agent_returns_open_ai_compat_agent() -> None:
         assert callable(agent)
         # Not an OpenAICompatAgent (which is reserved for direct-client paths).
         assert not isinstance(agent, OpenAICompatAgent)
+        assert getattr(agent, "total_cost_usd") == 0.0
+        assert getattr(agent, "total_input_tokens") == 0
+        assert getattr(agent, "total_output_tokens") == 0
     finally:
         if saved is None:
             os.environ.pop("HERMES_BASE_URL", None)
         else:
             os.environ["HERMES_BASE_URL"] = saved
+
+
+def test_build_hermes_agent_threads_harness_generation_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LifeOps must pass model/limit settings into the shared Hermes adapter."""
+    from eliza_lifeops_bench.agents.adapter_paths import ensure_benchmark_adapter_importable
+
+    ensure_benchmark_adapter_importable("hermes")
+    from hermes_adapter.client import HermesClient as BridgeHermesClient
+
+    captured: dict[str, Any] = {}
+
+    def _fake_init(self: Any, **kwargs: Any) -> None:
+        captured.update(kwargs)
+        self.model = kwargs.get("model") or "gpt-oss-120b"
+
+    monkeypatch.setattr(BridgeHermesClient, "__init__", _fake_init)
+    monkeypatch.setattr(BridgeHermesClient, "wait_until_ready", lambda self, timeout=60: None)
+
+    agent = build_hermes_agent(
+        model="gpt-oss-20b",
+        base_url="https://cerebras.example/v1",
+        api_key="test-key",
+        temperature=0.2,
+        reasoning_effort="medium",
+        max_tokens=1234,
+    )
+
+    assert callable(agent)
+    assert captured == {
+        "mode": "in_process",
+        "temperature": 0.2,
+        "reasoning_effort": "medium",
+        "max_tokens": 1234,
+        "model": "gpt-oss-20b",
+        "base_url": "https://cerebras.example/v1",
+        "api_key": "test-key",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -102,10 +151,11 @@ async def test_hermes_agent_returns_tool_call_turn() -> None:
         return httpx.Response(
             200,
             json=_hermes_response(
-                'Checking now.\n<tool_call>{"name": "CALENDAR.create", '
-                '"arguments": {"event_id": "e1", "calendar_id": "primary", '
+                'Checking now.\n<tool_call>{"tool": "CALENDAR.create", '
+                '"args": {"event_id": "e1", "calendar_id": "primary", '
                 '"title": "Lunch", "start": "2026-05-10T12:00:00Z", '
-                '"end": "2026-05-10T13:00:00Z"}}</tool_call>'
+                '"end": "2026-05-10T13:00:00Z"}}</tool_call>',
+                cached_tokens=12,
             ),
         )
 
@@ -145,6 +195,8 @@ async def test_hermes_agent_returns_tool_call_turn() -> None:
     assert agent.total_cost_usd == getattr(turn, "cost_usd")  # noqa: B009
     assert getattr(turn, "input_tokens") == 80  # noqa: B009
     assert getattr(turn, "output_tokens") == 40  # noqa: B009
+    assert getattr(turn, "cache_read_input_tokens") == 12  # noqa: B009
+    assert getattr(turn, "cache_creation_input_tokens") is None  # noqa: B009
 
     # Wire format: history converted to OpenAI shape with the user message preserved.
     body = captured[0]
@@ -317,6 +369,26 @@ async def test_hermes_agent_propagates_provider_error() -> None:
     try:
         with pytest.raises(ProviderError):
             await agent([MessageTurn(role="user", content="hi")], [])
+    finally:
+        await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_hermes_agent_raises_provider_error_on_malformed_tool_json() -> None:
+    """Malformed Hermes XML tool JSON must fail loudly, not become fake success."""
+    from eliza_lifeops_bench.clients.base import ProviderError
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_hermes_response('<tool_call>{"name": "MAIL.send", bad}</tool_call>'),
+        )
+
+    transport = httpx.MockTransport(handler)
+    agent, http_client = _build_agent_with_transport(transport)
+    try:
+        with pytest.raises(ProviderError, match="not valid JSON"):
+            await agent([MessageTurn(role="user", content="send mail")], [])
     finally:
         await http_client.aclose()
 

@@ -1,0 +1,61 @@
+keyword,frequency_rank,awl_sublist,definition,common_synonyms
+sustainability,1,5,The ability to maintain ecological balance without depleting natural resources,durability; viability; maintainability
+infrastructure,2,4,The basic physical systems and structures serving a community,framework; foundation; facilities
+mitigation,3,9,The action of reducing the severity or seriousness of something,reduction; alleviation; lessening
+biodiversity,4,domain-specific,The variety of plant and animal life in a particular habitat,ecological diversity; biological variety; species richness
+stormwater,5,domain-specific,Surface water resulting from heavy rainfall or snowmelt,runoff; surface water; rainwater discharge
+impervious,6,domain-specific,Not allowing fluid to pass through,non-porous; waterproof; impenetrable
+permeable,7,domain-specific,Allowing liquids or gases to pass through,porous; absorbent; penetrable
+photovoltaic,8,domain-specific,Relating to the conversion of light into electricity,solar-electric; light-converting
+retrofit,9,domain-specific,To add new technology or features to an older system,upgrade; modify; renovate
+resilience,10,8,The capacity to recover quickly from difficulties,robustness; adaptability; recovery capacity
+urbanisation,11,domain-specific,The process of making an area more urban in character,city expansion; urban growth; metropolitan development
+ecosystem_services,12,domain-specific,Benefits humans derive from natural ecosystems,ecological benefits; nature's contributions; environmental services
+carbon_sequestration,13,domain-specific,The process of capturing and storing atmospheric carbon dioxide,carbon capture; CO2 storage; carbon fixation
+evapotranspiration,14,domain-specific,The combined process of evaporation and plant transpiration,moisture release; water vapour loss
+bioretention,15,domain-specific,A stormwater management practice using soil and plants to filter runoff,biofiltration; rain garden filtration
+canopy,16,domain-specific,The uppermost layer of branches and leaves in a forest or tree grouping,tree cover; leaf cover; overhead foliage
+runoff,17,domain-specific,Water that flows over the ground surface rather than being absorbed,surface water flow; drainage; overflow
+catchment,18,domain-specific,An area from which rainfall flows into a river or reservoir,drainage area; watershed; basin
+thermal,19,domain-specific,Relating to heat,heat-related; caloric; temperature-based
+riparian,20,domain-specific,Relating to or situated on the banks of a river,riverbank; streamside; waterside
+infiltration,21,domain-specific,The process by which water on the ground surface enters the soil,absorption; seepage; percolation
+pollutant,22,domain-specific,A substance that contaminates the environment,contaminant; toxin; impurity
+implementation,23,4,The process of putting a plan or decision into effect,execution; application; enactment
+regulation,24,2,A rule or directive made and maintained by an authority,ordinance; law; statute
+incentive,25,6,A thing that motivates or encourages someone to do something,motivation; stimulus; inducement
+assessment,26,1,The evaluation or estimation of the nature or quality of something,evaluation; appraisal; analysis
+comprehensive,27,7,Including all or nearly all elements or aspects of something,thorough; exhaustive; all-encompassing
+intervention,28,7,The action of becoming involved in a situation to improve it,action; measure; involvement
+integration,29,4,The process of combining or incorporating parts into a whole,combination; incorporation; unification
+precipitation,30,domain-specific,"Rain, snow, sleet, or hail that falls to the ground",rainfall; moisture; atmospheric water
+expenditure,31,6,The action of spending funds,spending; outlay; cost
+deterioration,32,8,The process of becoming progressively worse,degradation; decline; worsening
+adjacent,33,1,Next to or adjoining something else,neighbouring; bordering; contiguous
+accumulate,34,8,To gather together or acquire an increasing amount,build up; amass; collect
+diminish,35,9,To make or become less,decrease; reduce; lessen
+substantial,36,5,"Of considerable importance, size, or worth",significant; considerable; noteworthy
+facilitate,37,5,To make an action or process easier,enable; assist; promote
+mandate,38,domain-specific,An official order or commission to do something,require; decree; directive
+municipality,39,domain-specific,A city or town with its own local government,local government; city authority; borough
+ordinance,40,domain-specific,A piece of legislation enacted by a municipal authority,regulation; bylaw; decree
+zoning,41,domain-specific,The division of land into zones for different uses,land-use regulation; district planning; area designation
+albedo,42,domain-specific,The proportion of incident light reflected by a surface,reflectivity; surface reflectance
+microclimate,43,domain-specific,The climate of a very small or restricted area,local climate; site-specific conditions
+percolation,44,domain-specific,The slow movement of water through a porous material,seepage; filtration; infiltration
+aquifer,45,domain-specific,An underground layer of rock or sediment that holds groundwater,groundwater reservoir; water table; underground basin
+transpiration,46,domain-specific,The process by which moisture is carried through plants and evaporated from leaves,plant moisture release; leaf evaporation
+anthropogenic,47,domain-specific,Originating from human activity,human-caused; man-made; human-induced
+sequestration,48,domain-specific,The action of isolating or storing a substance,capture; storage; isolation
+ecosystem,49,domain-specific,A biological community of interacting organisms and their physical environment,ecological system; biome; habitat network
+corridor,50,domain-specific,A strip of land connecting wildlife habitats,pathway; linkage; passage
+vegetation,51,domain-specific,"Plants considered collectively, especially those found in a particular area",plant cover; flora; greenery
+habitat,52,domain-specific,The natural home or environment of an organism,natural environment; dwelling; territory
+morbidity,53,domain-specific,The condition of suffering from a disease or medical condition,illness rate; disease incidence; sickness
+fiscal,54,10,"Relating to government revenue, especially taxes",financial; monetary; budgetary
+viable,55,7,Capable of working successfully; feasible,feasible; workable; practicable
+convergent,56,domain-specific,Coming closer together; tending toward a common point,merging; unifying; intersecting
+fragmented,57,domain-specific,Broken into separate parts or pieces,disconnected; divided; scattered
+disparity,58,9,A great difference,inequality; gap; imbalance
+accelerate,59,5,"To increase in rate, amount, or extent",speed up; hasten; intensify
+systematic,60,7,Done or acting according to a fixed plan or system,methodical; organised; structured

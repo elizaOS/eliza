@@ -1,5 +1,4 @@
-// @ts-nocheck — bridges legacy analytics services behind the consolidated TOKEN_INFO registry.
-import type { ActionResult, IAgentRuntime } from "@elizaos/core";
+import type { ActionResult, ContentValue, IAgentRuntime } from "@elizaos/core";
 import { BirdeyeProvider } from "../birdeye/birdeye";
 import { searchBirdeyeTokens } from "../birdeye/search-category";
 import type { WalletPortfolioResponse } from "../birdeye/types/api/wallet";
@@ -34,6 +33,36 @@ function failure(
   };
 }
 
+function toCallbackContentValue(value: unknown): ContentValue {
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "bigint" || typeof value === "symbol") {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => toCallbackContentValue(item));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        toCallbackContentValue(item),
+      ]),
+    );
+  }
+  return undefined;
+}
+
 async function emit(
   context: TokenInfoDispatchContext,
   result: ActionResult,
@@ -41,7 +70,7 @@ async function emit(
   await context.callback?.({
     text: result.text ?? "",
     actions: ["TOKEN_INFO"],
-    data: result.data,
+    data: toCallbackContentValue(result.data),
   });
   return result;
 }
@@ -603,7 +632,7 @@ async function executeCoingecko(
       }>(runtime, "/search/trending");
       const coins = (result.coins ?? [])
         .map((entry) => entry.item)
-        .filter(Boolean)
+        .filter((coin): coin is NonNullable<typeof coin> => coin !== undefined)
         .slice(0, params.limit ?? 10);
       const text = coins
         .map(

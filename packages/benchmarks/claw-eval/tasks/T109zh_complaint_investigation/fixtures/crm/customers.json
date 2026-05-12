@@ -1,0 +1,41 @@
+[
+  {
+    "customer_id": "CUS-601",
+    "name": "中和集团",
+    "contact_person": "李伟",
+    "email": "liwei@zhonghe-group.com",
+    "phone": "13900611001",
+    "industry": "制造业",
+    "tier": "vip",
+    "annual_revenue": 1440000,
+    "last_contact_date": "2026-03-10",
+    "status": "active",
+    "notes": "年合同144万（月12万），近期投诉账单异常"
+  },
+  {
+    "customer_id": "CUS-602",
+    "name": "前锋科技",
+    "contact_person": "王敏",
+    "email": "wangmin@qianfeng-tech.com",
+    "phone": "13900611002",
+    "industry": "科技",
+    "tier": "standard",
+    "annual_revenue": 360000,
+    "last_contact_date": "2026-03-03",
+    "status": "active",
+    "notes": "3月初服务中断受影响客户，已承诺补偿但未执行"
+  },
+  {
+    "customer_id": "CUS-603",
+    "name": "阳光传媒",
+    "contact_person": "张华",
+    "email": "zhanghua@sunlight-media.com",
+    "phone": "13900611003",
+    "industry": "传媒",
+    "tier": "standard",
+    "annual_revenue": 480000,
+    "last_contact_date": "2026-03-20",
+    "status": "active",
+    "notes": "高级功能因付款延迟被自动降级，已于3月18日补缴"
+  }
+]

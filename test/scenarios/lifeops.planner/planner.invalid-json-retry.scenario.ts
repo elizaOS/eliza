@@ -51,7 +51,11 @@ function resolveTrajectoryDir(): string {
   if (explicit && explicit.length > 0) return explicit;
   const stateDir =
     process.env.ELIZA_STATE_DIR ??
+<<<<<<< HEAD
     process.env.MILADY_STATE_DIR ??
+=======
+    process.env.ELIZA_STATE_DIR ??
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "trajectories");
 }

@@ -36,7 +36,11 @@ Eliza-owned models directory so it shows up as an `eliza-download`:
 $ELIZA_STATE_DIR/local-inference/models/<id>.gguf
 ```
 
+<<<<<<< HEAD
 (`$ELIZA_STATE_DIR` falls back to `$MILADY_STATE_DIR`, then `~/.eliza`.
+=======
+(`$ELIZA_STATE_DIR` falls back to `$ELIZA_STATE_DIR`, then `~/.eliza`.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 The directory is `elizaModelsDir()` in
 `packages/shared/src/local-inference/paths.ts`; the local-inference root
 is `<state-dir>/local-inference/`.)
@@ -104,7 +108,11 @@ Once a model is installed (either source), three layers route a
 Relevant env vars / files (no hardcoded ports here, this is all
 state-dir + mode):
 
+<<<<<<< HEAD
 - `ELIZA_STATE_DIR` / `MILADY_STATE_DIR` — root for
+=======
+- `ELIZA_STATE_DIR` / `ELIZA_STATE_DIR` — root for
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   `<state-dir>/local-inference/{models,registry.json,assignments.json,routing.json,downloads}`.
 - Runtime mode — local-inference handlers only register when the runtime
   mode is `local` or `local-only` (`shouldRegisterLocalInferenceHandlers`).
@@ -141,13 +149,13 @@ manifest:
 ```bash
 # Print the entry + where it goes (recommended):
 uv run python scripts/emit_eliza1_catalog.py \
-    --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json
+    --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json
 
 # Or produce a unified diff against the canonical shared catalog:
 uv run python scripts/emit_eliza1_catalog.py \
-    --manifest checkpoints/eliza-1-0_6b/gguf/eliza1_manifest.json \
+    --manifest checkpoints/eliza-1-0_8b/gguf/eliza1_manifest.json \
     --catalog packages/shared/src/local-inference/catalog.ts \
-    --output reports/training/catalog-eliza-1-0_6b.diff
+    --output reports/training/catalog-eliza-1-0_8b.diff
 ```
 
 The canonical catalog is **`packages/shared/src/local-inference/catalog.ts`**

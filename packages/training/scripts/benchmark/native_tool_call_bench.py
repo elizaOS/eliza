@@ -34,7 +34,6 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("native-bench")
 
-TOOL_BLOCK_RE = re.compile(r"<tool_call>\s*([\s\S]*?)\s*</tool_call>", re.I)
 JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*([\s\S]*?)\s*```$", re.I)
 
 
@@ -167,14 +166,6 @@ def normalize_tool_calls(value: Any) -> list[dict[str, Any]]:
 
 
 def extract_tool_calls_from_text(text: str) -> list[dict[str, Any]]:
-    calls: list[dict[str, Any]] = []
-    for block in TOOL_BLOCK_RE.findall(text):
-        parsed = _parse_json_object(block)
-        if parsed:
-            calls.extend(normalize_tool_calls([parsed]))
-    if calls:
-        return calls
-
     parsed = _parse_json_object(text)
     if not parsed:
         return []

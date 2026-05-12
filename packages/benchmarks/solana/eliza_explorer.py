@@ -33,12 +33,49 @@ def _last_json_line(output: str) -> dict[str, Any]:
         line = line.strip()
         if not line:
             continue
-        return json.loads(line)
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
     return {
         "success": False,
         "reason": "Skill runner did not emit JSON output.",
         "serialized_tx": None,
     }
+
+
+def _detect_model_provider(model_name: str) -> str:
+    env_provider = os.getenv("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    if env_provider:
+        return env_provider
+
+    lower = model_name.lower()
+    for provider in ("groq", "openrouter", "openai", "anthropic", "cerebras", "vllm"):
+        if lower.startswith(f"{provider}/"):
+            return provider
+    if lower.startswith("claude"):
+        return "anthropic"
+
+    if os.getenv("GROQ_API_KEY"):
+        return "groq"
+    if os.getenv("OPENROUTER_API_KEY"):
+        return "openrouter"
+    if os.getenv("ANTHROPIC_API_KEY"):
+        return "anthropic"
+    if os.getenv("CEREBRAS_API_KEY"):
+        return "cerebras"
+    if os.getenv("OPENAI_API_KEY"):
+        return "openai"
+    return "openai"
+
+
+def _strip_provider_prefix(model_name: str, provider: str) -> str:
+    prefix = f"{provider}/"
+    if model_name.lower().startswith(prefix):
+        return model_name[len(prefix):]
+    return model_name
 
 
 def run_typescript_skill(
@@ -150,25 +187,49 @@ class ElizaExplorer:
     def _ensure_llm(self):
         if self._llm is not None:
             return self._llm
-        provider = os.getenv("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
-        if not provider:
-            if os.getenv("GROQ_API_KEY"):
-                provider = "groq"
-            elif os.getenv("OPENROUTER_API_KEY"):
-                provider = "openrouter"
-            elif os.getenv("OPENAI_API_KEY"):
-                provider = "openai"
-            else:
-                provider = "openrouter"
+        provider = _detect_model_provider(self.model_name)
         provider_config = {
             "groq": ("GROQ_API_KEY", "https://api.groq.com/openai/v1"),
             "openrouter": ("OPENROUTER_API_KEY", "https://openrouter.ai/api/v1"),
             "openai": ("OPENAI_API_KEY", os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")),
+            "cerebras": (
+                "CEREBRAS_API_KEY",
+                os.getenv("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1"),
+            ),
+            "vllm": (
+                "VLLM_API_KEY",
+                os.getenv(
+                    "VLLM_BASE_URL",
+                    os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8001/v1"),
+                ),
+            ),
         }
+        model_name = _strip_provider_prefix(self.model_name, provider)
+        if provider == "anthropic":
+            api_key = os.getenv("ANTHROPIC_API_KEY")
+            if not api_key:
+                raise RuntimeError("API key required: set ANTHROPIC_API_KEY for provider=anthropic")
+            try:
+                from langchain_anthropic import ChatAnthropic
+            except ImportError as exc:
+                raise RuntimeError(
+                    "langchain_anthropic is required to run the Solana explorer with Anthropic"
+                ) from exc
+            self._llm = ChatAnthropic(
+                model=model_name,
+                api_key=api_key,
+                temperature=0.7,
+            )
+            return self._llm
         if provider not in provider_config:
-            raise RuntimeError("Solana explorer supports provider=openai, groq, or openrouter")
+            raise RuntimeError(
+                "Solana explorer supports provider=openai, groq, openrouter, "
+                "anthropic, cerebras, or vllm"
+            )
         key_var, base_url = provider_config[provider]
         api_key = os.getenv(key_var)
+        if provider == "vllm" and not api_key:
+            api_key = os.getenv("OPENAI_API_KEY", "local-vllm")
         if not api_key:
             raise RuntimeError(f"API key required: set {key_var} for provider={provider}")
         try:
@@ -177,7 +238,7 @@ class ElizaExplorer:
             raise RuntimeError("langchain_openai is required to run the Solana explorer") from exc
         self._llm = ChatOpenAI(
             base_url=base_url,
-            model=self.model_name,
+            model=model_name,
             api_key=api_key,
             temperature=0.7,
         )
@@ -199,8 +260,7 @@ class ElizaExplorer:
 
     async def run(self) -> Path:
         if self.max_messages <= 0:
-            self.save_checkpoint()
-            return GYM_ENV_DIR / "metrics" / f"{self.run_id}_metrics.json"
+            return self.save_checkpoint()
 
         if str(GYM_ENV_DIR) not in sys.path:
             sys.path.insert(0, str(GYM_ENV_DIR))

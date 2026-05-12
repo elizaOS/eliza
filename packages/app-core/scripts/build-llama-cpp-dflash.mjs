@@ -1735,7 +1735,11 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // warning, not a build failure: structured output is an optional HTTP
   // surface, not a mandatory kernel per AGENTS.md §3), and add the
   // `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime parses
+<<<<<<< HEAD
   // for rollback-safe TTS where an anchor exists. Idempotent via the
+=======
+  // for rollback-safe TTS. Idempotent via the
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   // `// ELIZA-DFLASH-VERIFIER-STREAM-V1` sentinel. Applies to every target
   // that ships `llama-server` (i.e. not the iOS / EMBED-only library builds).
   if (!target || !target.startsWith("ios-")) {
@@ -1899,14 +1903,25 @@ function hasLegacyDflashDrafterBinaries(binDir) {
 function sourceContainsDflashDraft(root) {
   const archPath = path.join(root, "src", "llama-arch.cpp");
   const specPath = path.join(root, "common", "speculative.cpp");
+  const argPath = path.join(root, "common", "arg.cpp");
+  const dflashModelPath = path.join(root, "src", "models", "dflash_draft.cpp");
+  if (
+    !fs.existsSync(dflashModelPath) ||
+    !fs.existsSync(archPath) ||
+    !fs.existsSync(specPath) ||
+    !fs.existsSync(argPath)
+  ) {
+    return false;
+  }
+  const archSource = fs.readFileSync(archPath, "utf8");
+  const specSource = fs.readFileSync(specPath, "utf8");
+  const argSource = fs.readFileSync(argPath, "utf8");
   return (
-    fs.existsSync(path.join(root, "src", "models", "dflash_draft.cpp")) &&
-    fs.existsSync(archPath) &&
-    fs.existsSync(specPath) &&
-    fs.readFileSync(archPath, "utf8").includes('"dflash-draft"') &&
-    fs
-      .readFileSync(specPath, "utf8")
-      .includes("common_speculative_state_dflash")
+    archSource.includes('"dflash-draft"') &&
+    specSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH") &&
+    specSource.includes('"dflash"') &&
+    argSource.includes("--spec-type") &&
+    argSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH")
   );
 }
 
@@ -2878,6 +2893,7 @@ function cmakeBuildTargetsFor(target) {
           "llama-server",
           "llama-cli",
           "llama-speculative-simple",
+<<<<<<< HEAD
           // llama-bench / llama-completion are the non-interactive
           // generation drivers the verify runners (cuda_runner.sh,
           // runtime_graph_smoke.sh, linux/android vulkan smokes) use —
@@ -2886,6 +2902,9 @@ function cmakeBuildTargetsFor(target) {
           // and the GGUF generation check through llama-completion.
           "llama-bench",
           "llama-completion",
+=======
+          "llama-mtmd-cli",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         ];
 
   // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
@@ -3077,9 +3096,13 @@ function buildTarget({ target, args, ctx }) {
       "llama-server",
       "llama-cli",
       "llama-speculative-simple",
+<<<<<<< HEAD
       // Non-interactive generation drivers the verify runners use.
       "llama-bench",
       "llama-completion",
+=======
+      "llama-mtmd-cli",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       // Stub fused server emitted only when target is in FUSED_TARGETS.
       // Adding it unconditionally is harmless: the install loop only
       // copies a binary when it actually exists in binDir.

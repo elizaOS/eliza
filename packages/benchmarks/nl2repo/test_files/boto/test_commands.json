@@ -1,0 +1,1 @@
+["echo 'This is sample RST text.' >> README.rst","pip install  -e .","pytest --continue-on-collection-errors tests"]

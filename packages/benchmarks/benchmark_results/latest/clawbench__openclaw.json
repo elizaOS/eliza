@@ -1,78 +1,89 @@
 {
   "agent": "openclaw",
   "artifacts": [
+<<<<<<< HEAD
     "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131814Z_7a3871b4/clawbench__clawbench/run_clawbench_20260511T131814Z_2_0a2143ec/output"
+=======
+    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T084515Z_44cfd047/clawbench__clawbench/run_clawbench_20260512T084525Z_1_2875a7d4/output"
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   ],
   "benchmark_directory": "clawbench",
   "benchmark_id": "clawbench",
   "cache_metrics": {
     "cache_creation_input_tokens": 0,
-    "cache_hit_ratio": 0.0,
-    "cache_read_input_tokens": 0,
-    "turns_with_cached_field": 0
+    "cache_hit_ratio": 0.9928894634776988,
+    "cache_read_input_tokens": 21504,
+    "turns_with_cached_field": 1
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
-      "cache_hit_ratio": 0.0,
-      "cache_read_input_tokens": 0,
-      "turns_with_cached_field": 0
+      "cache_hit_ratio": 0.9928894634776988,
+      "cache_read_input_tokens": 21504,
+      "turns_with_cached_field": 1
     },
-    "nonzero_return_code_with_result": 2,
-    "passed": 1,
+    "canonical_entries": 0,
+    "passed": 2,
     "performance_metrics": {
-      "duration_seconds": 1.0316682919801679,
-      "mean_latency_ms": 816.6899681091309,
-      "p95_latency_ms": 816.6899681091309,
-      "throughput_per_second": 0.9693038041138357
+      "duration_seconds": 32.99100499995984,
+      "mean_latency_ms": 32852.20309521537,
+      "p95_latency_ms": 32852.540731430054,
+      "throughput_per_second": 0.06062258485312692
     },
-    "return_code": 2,
-    "score": 0.0714,
+    "return_code": 0,
+    "score": 0.1429,
     "token_metrics": {
-      "avg_completion_tokens": 0.0,
-      "avg_prompt_tokens": 0.0,
-      "completion_tokens": 0,
-      "llm_call_count": 1,
-      "prompt_tokens": 0,
-      "total_tokens": 0
+      "avg_completion_tokens": 207.0,
+      "avg_prompt_tokens": 77.0,
+      "completion_tokens": 414,
+      "llm_call_count": 2,
+      "prompt_tokens": 154,
+      "total_tokens": 22072
     },
     "total": 13,
     "trajectory_summary": {
-      "files": 1,
-      "prompt_chars": 692,
+      "files": 2,
+      "prompt_chars": 1390,
       "repeated_prefixes": [],
-      "turns": 1
+      "turns": 2
     }
   },
   "model": "gpt-oss-120b",
   "performance_metrics": {
-    "duration_seconds": 1.0316682919801679,
-    "mean_latency_ms": 816.6899681091309,
-    "p95_latency_ms": 816.6899681091309,
-    "throughput_per_second": 0.9693038041138357
+    "duration_seconds": 32.99100499995984,
+    "mean_latency_ms": 32852.20309521537,
+    "p95_latency_ms": 32852.540731430054,
+    "throughput_per_second": 0.06062258485312692
   },
   "provider": "cerebras",
+<<<<<<< HEAD
   "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131814Z_7a3871b4/clawbench__clawbench/run_clawbench_20260511T131814Z_2_0a2143ec/output/trajectory_inbox_triage_1778505495.json",
   "run_group_id": "rg_20260511T131814Z_7a3871b4",
   "run_id": "run_clawbench_20260511T131814Z_2_0a2143ec",
   "score": 0.0714,
+=======
+  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T084515Z_44cfd047/clawbench__clawbench/run_clawbench_20260512T084525Z_1_2875a7d4/output/trajectory_inbox_triage_1778575558.json",
+  "run_group_id": "rg_20260512T084515Z_44cfd047",
+  "run_id": "run_clawbench_20260512T084525Z_1_2875a7d4",
+  "score": 0.1429,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "status": "succeeded",
   "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 1,
-    "prompt_tokens": 0,
-    "total_tokens": 0
+    "avg_completion_tokens": 207.0,
+    "avg_prompt_tokens": 77.0,
+    "completion_tokens": 414,
+    "llm_call_count": 2,
+    "prompt_tokens": 154,
+    "total_tokens": 22072
   },
   "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 692,
+    "files": 2,
+    "prompt_chars": 1390,
     "repeated_prefixes": [],
-    "turns": 1
+    "turns": 2
   },
   "unit": "ratio",
-  "updated_at": "2026-05-12T01:33:59Z"
+  "updated_at": "2026-05-12T08:45:58.884868+00:00"
 }

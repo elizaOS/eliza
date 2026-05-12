@@ -80,6 +80,16 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   }
 }
 
+function isTransientConversationHydrationFetchFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  if (!/^(Failed to fetch|Request aborted)$/i.test(err.message)) return false;
+  if (err.name === "TypeError") return true;
+  return (
+    err.name === "ApiError" &&
+    (err as Error & { kind?: string }).kind === "network"
+  );
+}
+
 import { isRoutineCodingAgentMessage } from "../chat";
 
 const COMPANION_STALE_THREAD_MAX_AGE_MS = 30 * 60 * 1000;
@@ -548,7 +558,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           if (!isCurrentHydration()) {
             return null;
           }
+<<<<<<< HEAD
           if (!isTransientOptionalFetchFailure(err)) {
+=======
+          if (!isTransientConversationHydrationFetchFailure(err)) {
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
             console.warn(
               "[eliza][chat:init] failed to load restored conversation messages",
               err,
@@ -632,7 +646,11 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
         return null;
       }
     } catch (err) {
+<<<<<<< HEAD
       if (!isTransientOptionalFetchFailure(err)) {
+=======
+      if (!isTransientConversationHydrationFetchFailure(err)) {
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         console.warn("[eliza][chat:init] failed to hydrate conversations", err);
       }
       return null;

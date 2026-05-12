@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-02f8c99ea563fc65719a8161c39191cb1c45f47e
+Repository: protonmail/webclients
+Base Commit: f76ac68ada1e427b5b47ef2276464533fd0cadae
+Test Files: ["containers/filters/spams/test/Spams.test.ts", "packages/components/containers/filters/spams/test/Spams.test.tsx"]
+FAIL_TO_PASS: ["containers/filters/spams/test/Spams.test.tsx | Should display an empty list", "containers/filters/spams/test/Spams.test.tsx | Should display blocked email modal", "containers/filters/spams/test/Spams.test.tsx | Should display blocked email modal with organization"]
+PASS_TO_PASS: ["containers/filters/spams/test/Spams.test.tsx | Modal submission should return correct values"]

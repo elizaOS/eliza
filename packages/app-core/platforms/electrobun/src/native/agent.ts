@@ -159,8 +159,12 @@ function normalizeEnvPath(value: string | undefined): string | null {
 }
 
 function isStoreBuildVariant(env: NodeJS.ProcessEnv = process.env): boolean {
+<<<<<<< HEAD
 	const raw =
 		env.ELIZA_BUILD_VARIANT?.trim() || env.MILADY_BUILD_VARIANT?.trim();
+=======
+	const raw = env.ELIZA_BUILD_VARIANT?.trim();
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 	return raw?.toLowerCase() === "store";
 }
 
@@ -169,10 +173,14 @@ function resolveStateNamespace(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 function resolveExplicitStateDir(env: NodeJS.ProcessEnv): string | null {
+<<<<<<< HEAD
 	return (
 		normalizeEnvPath(env.ELIZA_STATE_DIR) ??
 		normalizeEnvPath(env.MILADY_STATE_DIR)
 	);
+=======
+	return normalizeEnvPath(env.ELIZA_STATE_DIR);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 function resolveStoreUserDataStateDir(): string {
@@ -200,6 +208,10 @@ function applyDesktopChildStateEnv(childEnv: Record<string, string>): void {
 		env: childEnv as NodeJS.ProcessEnv,
 	});
 	fs.mkdirSync(stateDir, { recursive: true });
+<<<<<<< HEAD
+=======
+	childEnv.ELIZA_STATE_DIR = stateDir;
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 	childEnv.ELIZA_STATE_DIR = stateDir;
 	childEnv.MILADY_STATE_DIR = stateDir;
 }
@@ -228,7 +240,11 @@ function buildExistingElizaInstallCandidates(opts?: {
 	const homedir = opts?.homedir ?? os.homedir();
 	const configPathFromEnv =
 		normalizeEnvPath(env.ELIZA_CONFIG_PATH) ??
+<<<<<<< HEAD
 		normalizeEnvPath(env.MILADY_CONFIG_PATH);
+=======
+		normalizeEnvPath(env.ELIZA_CONFIG_PATH);
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 	const stateDirFromEnv = resolveExplicitStateDir(env);
 	const defaultStateDir = joinPortable(
 		homedir,

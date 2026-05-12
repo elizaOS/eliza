@@ -21,6 +21,7 @@ from eliza_lifeops_bench.scorer import (
     _is_read_only_action,
     _kwargs_match,
     compare_actions,
+    compile_benchmark_result,
     output_substring_match,
     score_scenario,
 )
@@ -73,6 +74,7 @@ def _result(
     agent_actions: list[Action],
     required_outputs: list[str] | None = None,
     output_substring_matches: list[bool] | None = None,
+    terminated_reason: str = "respond",
 ) -> ScenarioResult:
     turns = [
         TurnResult(
@@ -95,7 +97,7 @@ def _result(
         output_substring_matches=matches,
         total_score=0.0,
         max_score=1.0,
-        terminated_reason="respond",
+        terminated_reason=terminated_reason,  # type: ignore[arg-type]
         total_cost_usd=0.0,
         total_latency_ms=0,
     )
@@ -156,9 +158,8 @@ def test_compare_actions_granular_matches_umbrella_gt() -> None:
             },
         )
     ]
-    # Names align after canonicalization; kwargs partial overlap (different
-    # key naming `startAt`/`start`), so 0.5 partial credit.
-    assert compare_actions(predicted, gt) == 0.5
+    # Names and structural kwarg aliases align after canonicalization.
+    assert compare_actions(predicted, gt) == 1.0
 
 
 def test_compare_actions_umbrella_matches_granular_gt() -> None:
@@ -176,6 +177,42 @@ def test_compare_actions_umbrella_matches_granular_gt() -> None:
         )
     ]
     assert compare_actions(predicted, gt) == 1.0
+
+
+def test_compare_actions_accepts_field_registry_action_discriminator_aliases() -> None:
+    """Runtime field-registry `action` aliases score like canonical discriminators."""
+    assert (
+        compare_actions(
+            [
+                Action(
+                    name="CALENDAR",
+                    kwargs={
+                        "action": "check_availability",
+                        "startAt": "2026-05-14T09:00:00Z",
+                        "endAt": "2026-05-14T10:00:00Z",
+                    },
+                )
+            ],
+            [
+                Action(
+                    name="CALENDAR",
+                    kwargs={
+                        "subaction": "check_availability",
+                        "startAt": "2026-05-14T09:00:00Z",
+                        "endAt": "2026-05-14T10:00:00Z",
+                    },
+                )
+            ],
+        )
+        == 1.0
+    )
+    assert (
+        compare_actions(
+            [Action(name="MESSAGE", kwargs={"action": "list_inbox"})],
+            [Action(name="MESSAGE", kwargs={"operation": "search_inbox"})],
+        )
+        == 1.0
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -208,11 +245,45 @@ def test_kwargs_match_required_field_missing_still_fails() -> None:
     assert _kwargs_match(predicted, expected) is False
 
 
-def test_kwargs_match_intent_present_but_mismatched_still_fails() -> None:
-    """If predicted DOES emit `intent`, the value still has to match."""
+def test_kwargs_match_structural_aliases_are_equivalent() -> None:
+    """Adapters and authored GT use both camelCase and snake_case fields."""
+    expected = {
+        "subaction": "check_availability",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    predicted = {
+        "subaction": "check_availability",
+        "start": "2026-05-14T09:00:00Z",
+        "end": "2026-05-14T10:00:00Z",
+    }
+    assert _kwargs_match(predicted, expected) is True
+
+
+def test_kwargs_match_propose_times_window_can_be_same_day_superset() -> None:
+    """A broader same-day search window still covers the requested slot window."""
+    expected = {
+        "subaction": "propose_times",
+        "durationMinutes": 60,
+        "slotCount": 3,
+        "windowStart": "2026-05-12T13:00:00Z",
+        "windowEnd": "2026-05-15T22:00:00Z",
+    }
+    predicted = {
+        "subaction": "propose_times",
+        "durationMinutes": 60,
+        "slotCount": 3,
+        "windowStart": "2026-05-12T00:00:00Z",
+        "windowEnd": "2026-05-15T23:59:59Z",
+    }
+    assert _kwargs_match(predicted, expected) is True
+
+
+def test_kwargs_match_intent_present_but_mismatched_is_ignored() -> None:
+    """`intent` is prose documentation; executable kwargs decide the match."""
     expected = {"subaction": "x", "intent": "find a free hour on monday"}
     predicted = {"subaction": "x", "intent": "send an email to john"}
-    assert _kwargs_match(predicted, expected) is False
+    assert _kwargs_match(predicted, expected) is True
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +350,15 @@ def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
     )
 
     assert matches == [True, True]
+
+
+def test_output_substring_match_accepts_slot_plural() -> None:
+    matches = output_substring_match(
+        [MessageTurn(role="assistant", content="Here are three slots.")],
+        ["slot"],
+    )
+
+    assert matches == [True]
 
 
 def test_output_substring_match_accepts_24_hour_time_for_pm_requirement() -> None:
@@ -354,6 +434,21 @@ def test_output_substring_match_normalizes_unicode_hyphen() -> None:
     )
 
     assert matches == [True]
+
+
+def test_output_substring_match_rejects_embedded_word() -> None:
+    """Required output terms must not match inside unrelated words."""
+    matches = output_substring_match(
+        [
+            MessageTurn(
+                role="assistant",
+                content="The email is already archived.",
+            )
+        ],
+        ["read"],
+    )
+
+    assert matches == [False]
 
 
 def test_score_scenario_state_match_plus_partial_action_and_synonym_passes() -> None:
@@ -454,6 +549,7 @@ def test_score_scenario_triviality_guard_still_zeros_no_action() -> None:
     assert score == 0.0
 
 
+<<<<<<< HEAD
 # ---------------------------------------------------------------------------
 # P0-1: extended _UMBRELLA_SUBACTIONS + OWNER_* aliases
 #
@@ -1037,20 +1133,135 @@ def test_p0_8_read_scenario_partial_action_no_longer_promoted() -> None:
                 },
             )
         ]
+=======
+def test_score_scenario_readonly_same_action_wrong_kwargs_scores_zero() -> None:
+    """State hash cannot validate read-only lookups, so wrong params get no credit."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "check_availability",
+                    "startAt": "2026-05-14T09:00:00Z",
+                    "endAt": "2026-05-14T10:00:00Z",
+                },
+            )
+        ],
+        required_outputs=["free"],
     )
     result = _result(
         state_hash_match=True,
         agent_actions=[
             Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "check_availability",
+                    "start": "2026-05-14T11:00:00Z",
+                    "end": "2026-05-14T12:00:00Z",
+                },
+            )
+        ],
+        required_outputs=["free"],
+        output_substring_matches=[True],
+    )
+
+    assert score_scenario(result, scenario) == 0.0
+
+
+def test_score_scheduled_task_create_structural_fields_affect_state_hash() -> None:
+    """ScheduledTask fields are now modeled, so missing structure changes state."""
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.scorer import state_hash
+
+    scenario = _scenario(
+        domain=Domain.SLEEP,
+        ground_truth_actions=[
+            Action(
+                name="SCHEDULED_TASK_CREATE",
+                kwargs={
+                    "subaction": "create",
+                    "kind": "reminder",
+                    "promptInstructions": "Wind down",
+                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+                    "subject": {"kind": "self", "id": "me"},
+                    "pipeline": {"onComplete": ["task_followup"]},
+                },
+            )
+        ],
+    )
+    expected_world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    actual_world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    _execute_action(scenario.ground_truth_actions[0], expected_world)
+    _execute_action(
+        Action(
+            name="SCHEDULED_TASK_CREATE",
+            kwargs={
+                "subaction": "create",
+                "kind": "reminder",
+                "promptInstructions": "Wind down",
+                "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+            },
+        ),
+        actual_world,
+    )
+    assert state_hash(actual_world) != state_hash(expected_world)
+
+    result = _result(
+        state_hash_match=False,
+        agent_actions=[
+            Action(
+                name="SCHEDULED_TASK_CREATE",
+                kwargs={
+                    "subaction": "create",
+                    "kind": "reminder",
+                    "promptInstructions": "Wind down",
+                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+                },
+            )
+        ],
+    )
+
+    assert score_scenario(result, scenario) < 1.0
+
+
+def test_score_scheduled_task_plural_alias_matches_singular_ground_truth() -> None:
+    scenario = _scenario(
+        domain=Domain.SLEEP,
+        ground_truth_actions=[
+            Action(
+                name="SCHEDULED_TASK_CREATE",
+                kwargs={
+                    "kind": "reminder",
+                    "promptInstructions": "Wind down",
+                    "trigger": {"atIso": "2026-05-10T22:00:00Z"},
+                },
+            )
+        ],
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+<<<<<<< HEAD
                 name="BLOCK_BLOCK",
                 kwargs={
                     "apps": ["distract"],
                     "duration_minutes": 120,
                     "duration": "2h",
+=======
+                name="SCHEDULED_TASKS_CREATE",
+                kwargs={
+                    "kind": "reminder",
+                    "prompt_instructions": "Wind down",
+                    "trigger": {"at_iso": "2026-05-10T22:00:00Z"},
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
                 },
             )
         ],
     )
+<<<<<<< HEAD
     score = score_scenario(result, scenario)
     # READ weights: 0.1*1 (state) + 0.7*0.5 (partial action) + 0.2*1 (empty subs) = 0.65
     assert score == pytest.approx(0.65)
@@ -1243,3 +1454,65 @@ def test_p0_8_mixed_scenario_split_weights() -> None:
     )
     # Mixed weights: 0.35 + 0.5 + 0.15 = 1.0 on perfect run.
     assert score_scenario(result, scenario) == pytest.approx(1.0)
+=======
+
+    assert score_scenario(result, scenario) == 1.0
+
+
+def test_compile_benchmark_result_counts_missing_expected_runs_as_failures() -> None:
+    """pass@1 is over expected scenario/seed pairs, not only returned rows."""
+    scenario_a = _scenario(ground_truth_actions=[])
+    scenario_b = Scenario(
+        id="missing_scenario",
+        name="missing",
+        domain=Domain.CALENDAR,
+        mode=ScenarioMode.STATIC,
+        persona=_PERSONA,
+        instruction="",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=1,
+    )
+    result_a = _result(state_hash_match=True, agent_actions=[])
+    aggregate = compile_benchmark_result(
+        [result_a],
+        {scenario_a.id: scenario_a, scenario_b.id: scenario_b},
+        seeds=1,
+        model_name="m",
+        judge_model_name="j",
+        timestamp="2026-05-12T00:00:00Z",
+    )
+
+    assert aggregate.pass_at_1 == pytest.approx(0.5)
+    assert aggregate.mean_score_per_domain["calendar"] == pytest.approx(0.5)
+
+
+def test_live_score_requires_judge_satisfaction() -> None:
+    """LIVE mode must not pass just because no scripted state changed."""
+    scenario = Scenario(
+        id="live.test",
+        name="live",
+        domain=Domain.MAIL,
+        mode=ScenarioMode.LIVE,
+        persona=_PERSONA,
+        instruction="draft the reply",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=0,
+    )
+    unsatisfied = _result(
+        state_hash_match=True,
+        agent_actions=[],
+        terminated_reason="max_turns",
+    )
+    satisfied = _result(
+        state_hash_match=True,
+        agent_actions=[],
+        terminated_reason="satisfied",
+    )
+
+    assert score_scenario(unsatisfied, scenario) == 0.0
+    assert score_scenario(satisfied, scenario) == pytest.approx(1.0)
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline

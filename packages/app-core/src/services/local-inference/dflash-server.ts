@@ -52,9 +52,15 @@ import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
+<<<<<<< HEAD
   prefillPlanRequestFields,
   resolveGuidedDecodeForParams,
+=======
+  repairStructuredOutput,
+  resolveGrammarForParams,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   type StructuredGenerateParams,
+  StructuredOutputRepairStream,
 } from "./structured-output";
 import type {
   CatalogModel,
@@ -177,6 +183,13 @@ export interface DflashGenerateResult {
   text: string;
   usage: LocalUsageBlock;
   slotId: number;
+  /**
+   * Time-to-first-token in milliseconds, measured from the moment the
+   * outbound `fetch` was issued to the first SSE chunk arriving (L5
+   * instrumentation). `null` when the request was non-streaming or the
+   * stream ended before any chunk landed.
+   */
+  firstTokenMs: number | null;
 }
 
 export interface DflashMetricsSnapshot {
@@ -314,6 +327,7 @@ export function shouldRequireActiveDflashForRequest(
 }
 
 /**
+<<<<<<< HEAD
  * The single developer-only kill-switch for the always-on speculative-decoding
  * contract (`packages/inference/AGENTS.md` §4: "If the user disables speculative
  * decoding for debugging, that is a developer-only flag (`ELIZA_DFLASH_DISABLE=1`),
@@ -331,6 +345,22 @@ export function shouldRequireActiveDflashForRequest(
  */
 export function dflashDevDisabled(): boolean {
   return readBool("ELIZA_DFLASH_DISABLE") || readBool("MILADY_DFLASH_DISABLE");
+=======
+ * Developer-only escape hatch from the always-on speculative-decoding
+ * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
+ * the user disables speculative decoding for debugging, that is a
+ * developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
+ * setting, and it MUST log a loud warning every turn.").
+ *
+ * This is NOT a product setting — there is no UI surface and no
+ * `ELIZA_LOCAL_*` mapping. It exists so a developer can bisect a
+ * suspected DFlash regression. When set, `dflashEnabled()` returns false
+ * (the dispatcher then routes to node-llama-cpp) and every generation
+ * turn that runs while it is set logs `logDflashDevDisabledWarning()`.
+ */
+export function dflashDevDisabled(): boolean {
+  return readBool("ELIZA_DFLASH_DISABLE");
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 /**
@@ -574,17 +604,6 @@ export function readDflashBinaryCapabilities(): DflashBinaryCapabilities | null 
   return null;
 }
 
-function isMetalDflashRuntime(): boolean {
-  return platformKey().endsWith("-metal");
-}
-
-function dflashMetalAutoEnabled(): boolean {
-  return (
-    readBool("ELIZA_DFLASH_METAL_AUTO") ||
-    readBool("ELIZA_DFLASH_METAL_ENABLED")
-  );
-}
-
 /**
  * Resolve the `--cache-type-k/v` value the spawn should actually use.
  *
@@ -638,7 +657,6 @@ export function dflashEnabled(): boolean {
   ) {
     return false;
   }
-  if (isMetalDflashRuntime()) return dflashMetalAutoEnabled();
   return true;
 }
 
@@ -685,12 +703,15 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   const binary = resolveDflashBinary();
   const capabilities = readDflashBinaryCapabilities();
   if (!dflashEnabled()) {
-    const managedBinaryExists = fs.existsSync(managedDflashBinaryPath());
     const reason = dflashDevDisabled()
       ? "DFlash is disabled by the developer-only ELIZA_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
+<<<<<<< HEAD
       : managedBinaryExists && isMetalDflashRuntime()
         ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
         : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
+=======
+      : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     return {
       enabled: false,
       required: dflashRequired(),
@@ -1229,14 +1250,20 @@ async function fetchStreamingChatCompletion(
     onTextChunk?: (chunk: string) => void | Promise<void>;
     onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
   },
+  repairStream?: StructuredOutputRepairStream | null,
   externalSignal?: AbortSignal,
   startIndex = 0,
-): Promise<string> {
+): Promise<{ text: string; firstTokenMs: number | null }> {
   const controller = new AbortController();
   const abort = () => controller.abort(externalSignal?.reason);
   if (externalSignal?.aborted) abort();
   externalSignal?.addEventListener("abort", abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // L5 — capture t0 immediately before the outbound fetch so first-token
+  // latency reflects the full request round-trip (DNS + connect + server
+  // queue + first SSE chunk).
+  const t0 = performance.now();
+  let firstTokenMs: number | null = null;
   try {
     const res = await fetch(url, { ...init, signal: controller.signal });
     if (!res.ok) {
@@ -1282,14 +1309,25 @@ async function fetchStreamingChatCompletion(
         return;
       }
 
-      const chunk = extractStreamingChatDelta(parsed);
+      let chunk = extractStreamingChatDelta(parsed);
       if (!chunk) return;
+      if (repairStream) chunk = repairStream.push(chunk);
+      if (!chunk) return;
+      // L5 — first usable chunk: record latency BEFORE emitting so the
+      // first verifier-event payload carries it.
+      if (firstTokenMs === null) {
+        firstTokenMs = performance.now() - t0;
+      }
       text += chunk;
       if (callbacks.onVerifierEvent) {
-        await callbacks.onVerifierEvent({
+        const event: VerifierStreamEvent = {
           kind: "accept",
           tokens: [{ index: nextIndex++, text: chunk }],
-        });
+        };
+        if (firstTokenMs !== null && nextIndex - 1 === startIndex) {
+          event.meta = { firstTokenMs };
+        }
+        await callbacks.onVerifierEvent(event);
       }
       await callbacks.onTextChunk?.(chunk);
     };
@@ -1308,7 +1346,18 @@ async function fetchStreamingChatCompletion(
     }
     buffer += decoder.decode();
     if (buffer.trim()) await consumeEvent(buffer);
-    return text;
+    const finalRepair = repairStream?.flush() ?? "";
+    if (finalRepair) {
+      text += finalRepair;
+      if (callbacks.onVerifierEvent) {
+        await callbacks.onVerifierEvent({
+          kind: "accept",
+          tokens: [{ index: nextIndex++, text: finalRepair }],
+        });
+      }
+      await callbacks.onTextChunk?.(finalRepair);
+    }
+    return { text, firstTokenMs };
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", abort);
@@ -1669,6 +1718,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * actually happen" assertion in tests.
    */
   private readonly persistedConversations = new Set<string>();
+  /**
+   * P3 — per-slot single-flight lock. The llama-server itself serializes
+   * requests to the same slot, but the JS layer didn't reflect that:
+   * two concurrent `generateWithUsage()` calls against the same `slotId`
+   * could interleave their metrics-diff windows, producing nonsense
+   * usage numbers and (in streaming mode) interleaving SSE events. This
+   * lock makes the JS side wait for the prior in-flight call to a pinned
+   * slot before issuing the next one. Slot id `-1` ("any free slot") is
+   * intentionally NOT locked — it routes to whichever slot is free, so
+   * serializing on it would block unrelated work.
+   */
+  private readonly slotInFlight = new Map<number, Promise<void>>();
 
   hasLoadedModel(): boolean {
     return this.child !== null && this.loadedPlan !== null;
@@ -2591,6 +2652,41 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       typeof dflashArgs.slotId === "number" && dflashArgs.slotId >= -1
         ? dflashArgs.slotId
         : deriveSlotId(args.cacheKey ?? "", this.cacheParallel);
+    // P3 — single-flight per pinned slot. -1 ("any free slot") is
+    // unlocked because the server routes each unpinned call to whichever
+    // slot is free, so serializing on -1 would block unrelated work.
+    if (slotId < 0) {
+      return this.runGenerate(baseUrl, dflashArgs, args, slotId);
+    }
+    const prior = this.slotInFlight.get(slotId);
+    // Chain our work after the prior tail; the new tail is what future
+    // callers will await. Errors don't break the chain (`.catch`).
+    const run = (prior ?? Promise.resolve())
+      .catch(() => {})
+      .then(() => this.runGenerate(baseUrl, dflashArgs, args, slotId));
+    // Store the void-typed continuation so subsequent callers can await
+    // completion without inheriting our result type.
+    const tail = run.then(
+      () => {},
+      () => {},
+    );
+    this.slotInFlight.set(slotId, tail);
+    try {
+      return await run;
+    } finally {
+      // Only clear the entry if no later caller has chained on top.
+      if (this.slotInFlight.get(slotId) === tail) {
+        this.slotInFlight.delete(slotId);
+      }
+    }
+  }
+
+  private async runGenerate(
+    baseUrl: string,
+    dflashArgs: DflashGenerateArgs,
+    args: DflashGenerateArgs | BackendGenerateArgs,
+    slotId: number,
+  ): Promise<DflashGenerateResult> {
     const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
     // The assistant-turn prefill that was seeded server-side (an explicit
     // `prefill`, or the leading literal run of an `elizaSchema`'s prefill
@@ -2602,18 +2698,28 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
     let text: string;
+    let firstTokenMs: number | null = null;
     if (streaming) {
+      const repairStream =
+        dflashArgs.responseSkeleton || dflashArgs.responseSchema
+          ? new StructuredOutputRepairStream({
+              skeleton: dflashArgs.responseSkeleton,
+              jsonSchema: dflashArgs.responseSchema,
+            })
+          : null;
       // When the assistant turn is prefilled, the model only streams the
       // continuation — surface the full assistant message (prefill + tail)
       // and fire the prefill chunk through the callbacks first so the voice
       // bridge / structured-field tracker sees a complete envelope.
       let idx = 0;
+      let streamedPrefix = prefill;
       if (prefill.length > 0) {
+        streamedPrefix = repairStream?.push(prefill) ?? prefill;
         await dflashArgs.onVerifierEvent?.({
           kind: "accept",
-          tokens: [{ index: idx++, text: prefill }],
+          tokens: [{ index: idx++, text: streamedPrefix }],
         });
-        await args.onTextChunk?.(prefill);
+        await args.onTextChunk?.(streamedPrefix);
       }
       const tail = await fetchStreamingChatCompletion(
         `${baseUrl}/v1/chat/completions`,
@@ -2627,10 +2733,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           onTextChunk: args.onTextChunk,
           onVerifierEvent: dflashArgs.onVerifierEvent,
         },
+        repairStream,
         args.signal,
         idx,
       );
-      text = prefill + tail;
+      text = streamedPrefix + tail.text;
+      firstTokenMs = tail.firstTokenMs;
     } else {
       json = (await fetchJson(
         `${baseUrl}/v1/chat/completions`,
@@ -2643,6 +2751,16 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         args.signal,
       )) as Record<string, unknown>;
       text = prefill + extractCompletionText(json);
+      if (dflashArgs.responseSkeleton) {
+        text = repairStructuredOutput(text, {
+          skeleton: dflashArgs.responseSkeleton,
+          jsonSchema: dflashArgs.responseSchema,
+        }).text;
+      } else if (dflashArgs.responseSchema) {
+        text = repairStructuredOutput(text, {
+          jsonSchema: dflashArgs.responseSchema,
+        }).text;
+      }
     }
     const after = await fetchMetricsSnapshot(baseUrl);
     const responseUsage = json ? extractResponseUsage(json) : undefined;
@@ -2669,7 +2787,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       );
     }
     this.touchSlot(slotId);
-    return { text, usage, slotId };
+    return { text, usage, slotId, firstTokenMs };
   }
 
   /**

@@ -24,12 +24,16 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "call", returnType: CAPPluginReturnPromise),
     ]
 
+    private static let fullBunSmokeRequestKey = "CapacitorStorage.eliza:ios-full-bun-smoke:request"
+    private static let fullBunSmokeResultKey = "CapacitorStorage.eliza:ios-full-bun-smoke:result"
     private var runtime: ElizaBunRuntime?
+    private var nativeSmokeStarted = false
 
     override public func load() {
         // Construct lazily on first start to avoid holding the JSVirtualMachine
         // when the app launches without the runtime.
         runtime = nil
+        runNativeFullBunSmokeIfRequested()
     }
 
     // MARK: - start
@@ -149,6 +153,237 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         let new = ElizaBunRuntime(plugin: self)
         runtime = new
         return new
+    }
+
+    // MARK: - Simulator full Bun smoke
+
+    private func runNativeFullBunSmokeIfRequested() {
+        guard !nativeSmokeStarted else { return }
+        guard UserDefaults.standard.string(forKey: Self.fullBunSmokeRequestKey) == "1" else { return }
+        nativeSmokeStarted = true
+
+        let runtime = ensureRuntime()
+        writeFullBunSmokeResult([
+            "phase": "native-starting",
+            "nativeOnly": true,
+        ])
+        runtime.start(
+            bundlePath: nil,
+            polyfillPath: nil,
+            engine: "bun",
+            argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
+            env: [
+                "ELIZA_PLATFORM": "ios",
+                "ELIZA_MOBILE_PLATFORM": "ios",
+                "ELIZA_IOS_LOCAL_BACKEND": "1",
+                "ELIZA_IOS_FULL_BUN_SMOKE": "1",
+                "ELIZA_HEADLESS": "1",
+                "ELIZA_API_BIND": "127.0.0.1",
+                "LOG_LEVEL": "error",
+            ]
+        ) { [weak self, weak runtime] result in
+            guard let self = self, let runtime = runtime else { return }
+            switch result {
+            case .success:
+                self.runNativeFullBunRouteSmoke(runtime: runtime)
+            case .failure(let error):
+                self.writeFullBunSmokeFailure(error)
+            }
+        }
+    }
+
+    private func runNativeFullBunRouteSmoke(runtime: ElizaBunRuntime) {
+        dispatchSmokeCall(runtime: runtime, method: "status", args: ["timeoutMs": 60_000]) { [weak self, weak runtime] statusResult in
+            guard let self = self, let runtime = runtime else { return }
+            switch statusResult {
+            case .failure(let error):
+                self.writeFullBunSmokeFailure(error)
+            case .success(let bridgeStatus):
+                let healthArgs: [String: Any] = [
+                    "method": "GET",
+                    "path": "/api/health",
+                    "headers": ["accept": "application/json"],
+                    "timeoutMs": 120_000,
+                ]
+                self.dispatchSmokeCall(runtime: runtime, method: "http_request", args: healthArgs) { [weak self, weak runtime] healthResult in
+                    guard let self = self, let runtime = runtime else { return }
+                    switch healthResult {
+                    case .failure(let error):
+                        self.writeFullBunSmokeFailure(error)
+                    case .success(let healthResponse):
+                        do {
+                            let healthJson = try self.parseSmokeHttpJSON(
+                                label: "native full Bun /api/health",
+                                value: healthResponse
+                            )
+                            guard healthJson["ready"] as? Bool == true,
+                                  healthJson["runtime"] as? String == "ok" else {
+                                throw self.makeSmokeError(
+                                    "native full Bun /api/health returned unexpected body: \(healthJson)"
+                                )
+                            }
+                            self.createNativeSmokeConversation(
+                                runtime: runtime,
+                                bridgeStatus: bridgeStatus,
+                                health: healthJson
+                            )
+                        } catch {
+                            self.writeFullBunSmokeFailure(error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func createNativeSmokeConversation(
+        runtime: ElizaBunRuntime,
+        bridgeStatus: Any?,
+        health: [String: Any]
+    ) {
+        let createArgs: [String: Any] = [
+            "method": "POST",
+            "path": "/api/conversations",
+            "headers": [
+                "accept": "application/json",
+                "content-type": "application/json",
+            ],
+            "body": "{\"title\":\"iOS Full Bun Native Smoke\"}",
+            "timeoutMs": 120_000,
+        ]
+        dispatchSmokeCall(runtime: runtime, method: "http_request", args: createArgs) { [weak self, weak runtime] createResult in
+            guard let self = self, let runtime = runtime else { return }
+            switch createResult {
+            case .failure(let error):
+                self.writeFullBunSmokeFailure(error)
+            case .success(let createResponse):
+                do {
+                    let createJson = try self.parseSmokeHttpJSON(
+                        label: "native full Bun POST /api/conversations",
+                        value: createResponse
+                    )
+                    guard let conversation = createJson["conversation"] as? [String: Any],
+                          let conversationId = conversation["id"] as? String,
+                          !conversationId.isEmpty else {
+                        throw self.makeSmokeError("native full Bun conversation create did not return an id")
+                    }
+                    self.sendNativeSmokeMessage(
+                        runtime: runtime,
+                        bridgeStatus: bridgeStatus,
+                        health: health,
+                        conversationId: conversationId
+                    )
+                } catch {
+                    self.writeFullBunSmokeFailure(error)
+                }
+            }
+        }
+    }
+
+    private func sendNativeSmokeMessage(
+        runtime: ElizaBunRuntime,
+        bridgeStatus: Any?,
+        health: [String: Any],
+        conversationId: String
+    ) {
+        let messageArgs: [String: Any] = [
+            "message": "iOS full Bun native smoke",
+            "conversationId": conversationId,
+            "metadata": ["smoke": "ios-full-bun-native"],
+            "timeoutMs": 180_000,
+        ]
+        dispatchSmokeCall(runtime: runtime, method: "send_message", args: messageArgs) { [weak self] messageResult in
+            guard let self = self else { return }
+            switch messageResult {
+            case .failure(let error):
+                self.writeFullBunSmokeFailure(error)
+            case .success(let sendMessage):
+                self.writeFullBunSmokeProgress([
+                    "phase": "native-complete",
+                    "nativeOnly": true,
+                    "engine": runtime.engineMode,
+                    "bridgeVersion": runtime.bridgeVersion ?? NSNull(),
+                    "bridgeStatus": Self.jsonSafe(bridgeStatus),
+                    "health": Self.jsonSafe(health),
+                    "conversationId": conversationId,
+                    "sendMessage": Self.jsonSafe(sendMessage),
+                ])
+            }
+        }
+    }
+
+    private func dispatchSmokeCall(
+        runtime: ElizaBunRuntime,
+        method: String,
+        args: Any?,
+        completion: @escaping (Result<Any?, Error>) -> Void
+    ) {
+        runtime.dispatchHandler(method: method, args: args) { result in
+            completion(result)
+        }
+    }
+
+    private func parseSmokeHttpJSON(label: String, value: Any?) throws -> [String: Any] {
+        guard let response = value as? [String: Any] else {
+            throw makeSmokeError("\(label) did not return an object")
+        }
+        let status = (response["status"] as? NSNumber)?.intValue ?? response["status"] as? Int
+        guard let status = status, status >= 200, status < 300 else {
+            throw makeSmokeError("\(label) returned HTTP \(String(describing: response["status"]))")
+        }
+        guard let body = response["body"] as? String,
+              let data = body.data(using: .utf8),
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw makeSmokeError("\(label) returned invalid JSON body")
+        }
+        return json
+    }
+
+    private func writeFullBunSmokeFailure(_ error: Error) {
+        writeFullBunSmokeResult([
+            "ok": false,
+            "phase": "failed",
+            "nativeOnly": true,
+            "error": error.localizedDescription,
+            "finishedAt": isoTimestamp(),
+        ])
+        UserDefaults.standard.removeObject(forKey: Self.fullBunSmokeRequestKey)
+        UserDefaults.standard.synchronize()
+    }
+
+    private func writeFullBunSmokeProgress(_ result: [String: Any]) {
+        if let existing = UserDefaults.standard.string(forKey: Self.fullBunSmokeResultKey),
+           let data = existing.data(using: .utf8),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           json["ok"] as? Bool == true {
+            return
+        }
+        writeFullBunSmokeResult(result)
+    }
+
+    private func writeFullBunSmokeResult(_ result: [String: Any]) {
+        var payload = result
+        payload["updatedAt"] = isoTimestamp()
+        let safePayload = Self.jsonSafe(payload)
+        guard JSONSerialization.isValidJSONObject(safePayload),
+              let data = try? JSONSerialization.data(withJSONObject: safePayload),
+              let json = String(data: data, encoding: .utf8) else {
+            return
+        }
+        UserDefaults.standard.set(json, forKey: Self.fullBunSmokeResultKey)
+        UserDefaults.standard.synchronize()
+    }
+
+    private func makeSmokeError(_ message: String) -> NSError {
+        NSError(
+            domain: "ElizaBunRuntimeSmoke",
+            code: -1,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    }
+
+    private func isoTimestamp() -> String {
+        ISO8601DateFormatter().string(from: Date())
     }
 
     /// Capacitor's bridge serializes a known set of Foundation types

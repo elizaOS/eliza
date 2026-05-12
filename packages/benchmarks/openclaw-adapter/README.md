@@ -22,6 +22,12 @@ manage. The `OpenClawCLIManager` is intentionally thin: `start()` validates
 the binary exists and warms up the Node compile cache by running `--version`;
 `stop()` is a no-op.
 
+For hermetic adapter tests and lightweight smoke checks, `OpenClawClient` also
+supports a direct OpenAI-compatible path when constructed with
+`direct_openai_compatible=True` or when `OPENCLAW_DIRECT_OPENAI_COMPAT=1` is
+set. `base_url=...` by itself only configures the CLI environment. Set
+`OPENCLAW_USE_CLI=1` to force the production CLI path.
+
 ## Layout
 
 ```
@@ -69,12 +75,14 @@ regardless of which env var the operator set.
 | Constructor arg | Default | Description |
 |---|---|---|
 | `binary_path` | resolved from `OPENCLAW_BIN` env, `~/.eliza/agents/openclaw/manifest.json`, or `~/.eliza/agents/openclaw/v2026.5.7/node_modules/.bin/openclaw` | path to the `openclaw` Node binary |
-| `provider` | `"openai"` | provider prefix injected as `<provider>/<model>` when `model` has no slash |
+| `provider` | `"cerebras"` | provider prefix injected as `<provider>/<model>` when `model` has no slash |
 | `model` | `"gpt-oss-120b"` | model id passed via `--model` |
 | `api_key_env` | `"CEREBRAS_API_KEY"` | env var read for the OpenAI-compatible API key |
+| `base_url` | `None` | optional OpenAI-compatible base URL mirrored into CLI env |
 | `base_url_env` | `"CEREBRAS_BASE_URL"` | env var read for the OpenAI-compatible base URL |
 | `thinking_level` | `"medium"` | one of `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `adaptive`, `max` |
 | `timeout_s` | `600.0` | seconds before the CLI subprocess is killed |
+| `direct_openai_compatible` | `False` | bypass the CLI for hermetic retry/parser tests |
 
 `context={"session_id": "..."}` passes `--session-id` to the CLI;
 `context={"agent_id": "..."}` passes `--agent`.

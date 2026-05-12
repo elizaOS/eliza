@@ -11,13 +11,12 @@
 //   layers map but are not the same enum.
 // - The schema URL `https://elizalabs.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
-// - Shared-vocabulary invariant: every text-bearing GGUF in an Eliza-1 bundle
-//   — the text/vision model, the DFlash drafter, the Qwen3-ASR text decoder,
-//   and (on 1.7B+) the Qwen3-Embedding model — is Qwen-lineage and shares the
-//   same Qwen2 BPE vocabulary (151 936 tokens) and the same merges table. This
-//   is what makes (a) DFlash speculative decoding correct (spec decoding only
-//   works if token ids match), (b) zero re-tokenization between ASR output and
-//   text input (inference/AGENTS.md §1), and (c) the drafter GGUFs ship without
+// - Shared-vocabulary invariant: every speculative-decoding GGUF in an
+//   Eliza-1 bundle — the text/vision model and the DFlash drafter — is
+//   Qwen3.5/Qwen3.6-lineage and shares the same Qwen3.5 BPE vocabulary
+//   (248 320 tokens) and the same merges table. This is what makes
+//   (a) DFlash speculative decoding correct (spec decoding only works if token
+//   ids match), and (b) the drafter GGUFs ship without
 //   their own `tokenizer.ggml.merges` (repaired at load time from the text GGUF
 //   by `resolveDflashDrafter` in `../dflash-server.ts`). The shared *vocabulary*
 //   is not the same thing as a shared *token-embedding tensor*: each component
@@ -34,12 +33,12 @@ export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
   "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
 
-// The shared Qwen2 BPE vocabulary every text-bearing component in an Eliza-1
-// bundle uses. Exported so runtime code can assert it (a GGUF whose
+// The shared Qwen3.5 BPE vocabulary every text/drafter component in an
+// Eliza-1 bundle uses. Exported so runtime code can assert it (a GGUF whose
 // `tokenizer.ggml.tokens` length differs from this is not an Eliza-1 component
 // and the merges-repair / zero-re-tokenization assumptions do not hold).
-export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
-export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 151_936 as const;
+export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
+export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
 // GH200-class 1M-context variant of the 27B tier. `0_8b` is the new smallest
@@ -56,6 +55,7 @@ export const ELIZA_1_TIERS = [
   "0_8b",
   "0_6b",
   "1_7b",
+  "4b",
   "9b",
   "27b",
   "27b-256k",
@@ -140,28 +140,40 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
+<<<<<<< HEAD
 // The `q3` vs `q4` choice is tier-driven: the legacy 0.6B tier ships Q3;
 // 0.8B and larger ship Q4.
+=======
+// The `q3` vs `q4` choice is tier-driven: 0_6b ships Q3; 1_7b and larger
+// ship Q4.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
   "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
+<<<<<<< HEAD
 // Backends each tier is expected to support on shipped hardware. The small
 // tiers (0.8B / 0.6B / 1.7B) do not need cuda/rocm.
+=======
+// Backends each tier is expected to support on shipped hardware. The 0_6b and
+// 1_7b tiers do not need cuda/rocm.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
   "0_8b": ["metal", "vulkan", "cpu"],
   "0_6b": ["metal", "vulkan", "cpu"],
   "1_7b": ["metal", "vulkan", "cpu"],
+  "4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
@@ -215,15 +227,15 @@ export const Eliza1FilesSchema = z.object({
   dflash: z.array(Eliza1FileEntrySchema).min(1),
   cache: z.array(Eliza1FileEntrySchema).min(1),
   // Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-0.6B tiers) and
+  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-lite tiers) and
   // a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-  // optional in the schema — the 0.6B tier intentionally omits the
+  // optional in the schema — the 0_6b tier intentionally omits the
   // dedicated embedding (pools from text backbone) and a tier may
   // ship without wake-word support.
   //
   // Schema-level optionality: empty array = "this bundle does not
   // ship this component"; the validator enforces tier-specific
-  // consistency rules (e.g. 1.7B-and-up MUST ship `embedding[]`).
+  // consistency rules (e.g. 1_7b-and-up MUST ship `embedding[]`).
   embedding: z.array(Eliza1FileEntrySchema).optional(),
   vad: z.array(Eliza1FileEntrySchema).optional(),
   wakeword: z.array(Eliza1FileEntrySchema).optional(),
@@ -368,6 +380,7 @@ export const Eliza1RamBudgetSchema = z
 // Release-state vocabulary. `base-v1` is the v1 product: the upstream BASE
 // models — GGUF-converted via the elizaOS/llama.cpp fork and fully
 // Eliza-optimized (every quant/kernel trick in inference/AGENTS.md §3) —
+<<<<<<< HEAD
 // but NOT fine-tuned (fine-tuning ships in v2). `base-v1-candidate` is the
 // in-progress state of a base-v1 bundle before every release-blocking
 // gate (real fork-built bytes, every supported-backend kernel verify,
@@ -376,6 +389,12 @@ export const Eliza1RamBudgetSchema = z
 // `local-standin` is a non-publishable staging shape; `upload-candidate` /
 // `final` are the historical fine-tuned-v1 publish states retained for
 // forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
+=======
+// but NOT fine-tuned (fine-tuning ships in v2). `finetuned-v2` is the v2
+// state; `local-standin` is a non-publishable staging shape;
+// `upload-candidate` / `final` are the historical fine-tuned-v1 publish
+// states retained for forward-compat. Mirrors `ELIZA_1_RELEASE_STATES` in
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 // `packages/training/scripts/manifest/eliza1_manifest.py`.
 export const ELIZA_1_RELEASE_STATES = [
   "local-standin",

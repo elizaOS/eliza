@@ -23,10 +23,10 @@ from scripts.training.memory_calc import (
 
 
 def test_shapes_match_eliza_1_series() -> None:
-    # Three production sizes plus the qwen3-0.6b smoke key consumed by
+    # Three production sizes plus the qwen3.5-0.8b smoke key consumed by
     # smoke_full_stack.sh and resolved by scripts/preflight.sh.
     assert {"qwen3.5-2b", "qwen3.5-9b", "qwen3.6-27b"} <= set(SHAPES)
-    assert "qwen3-0.6b" in SHAPES, "smoke key missing from SHAPES"
+    assert "qwen3.5-0.8b" in SHAPES, "smoke key missing from SHAPES"
 
 
 def test_train_2b_under_24gb_at_8k() -> None:

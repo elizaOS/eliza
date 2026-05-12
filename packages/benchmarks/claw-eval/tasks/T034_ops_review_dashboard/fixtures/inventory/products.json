@@ -1,0 +1,56 @@
+[
+  {
+    "product_id": "PRD-201",
+    "name": "Smart Camera Pro",
+    "category": "Smart Hardware",
+    "current_stock": 450,
+    "min_stock": 100,
+    "status": "overstocked",
+    "return_rate": 18.5,
+    "return_count": 95,
+    "units_sold_this_month": 514,
+    "supplier": "Shenzhen Optoelectronics Tech",
+    "last_restock_date": "2026-02-10",
+    "notes": "Return rate is abnormally high (18.5%), far exceeding the 3% industry average. 95 units returned in the past month. Primary reasons include: firmware crashes, blurry images, unstable connectivity. Recommend initiating a quality investigation immediately."
+  },
+  {
+    "product_id": "PRD-202",
+    "name": "Smart Speaker Mini",
+    "category": "Smart Hardware",
+    "current_stock": 80,
+    "min_stock": 50,
+    "status": "normal",
+    "return_rate": 2.1,
+    "return_count": 5,
+    "units_sold_this_month": 238,
+    "supplier": "SoundTech Electronics",
+    "last_restock_date": "2026-02-15"
+  },
+  {
+    "product_id": "PRD-203",
+    "name": "Smart Lock S1",
+    "category": "Smart Hardware",
+    "current_stock": 35,
+    "min_stock": 30,
+    "status": "normal",
+    "return_rate": 1.8,
+    "return_count": 3,
+    "units_sold_this_month": 167,
+    "supplier": "SecureTech",
+    "last_restock_date": "2026-02-20"
+  },
+  {
+    "product_id": "PRD-204",
+    "name": "Enterprise Router X1",
+    "category": "Network Equipment",
+    "current_stock": 15,
+    "min_stock": 20,
+    "status": "low_stock",
+    "return_rate": 0.5,
+    "return_count": 1,
+    "units_sold_this_month": 45,
+    "supplier": "NetComm Devices",
+    "last_restock_date": "2026-02-01",
+    "notes": "Stock is below the safety threshold; restocking recommended as soon as possible"
+  }
+]

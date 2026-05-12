@@ -1,0 +1,1 @@
+["python install.py","pytest --continue-on-collection-errors tests"]

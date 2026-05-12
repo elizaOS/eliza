@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Strip `<think>` and `</think>` tokens from inside `text:` and content
 fields. Mostly affects agent-trove records where the source model emitted
-think-wrapper slop inside TOON text fields.
+think-wrapper slop inside native JSON text fields.
 
 Reads/writes data/final/train_final.jsonl in place via temp swap.
 """

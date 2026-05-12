@@ -207,6 +207,8 @@ class BFCLReporter:
                         {"name": c.name, "arguments": c.arguments}
                         for c in r.expected_calls
                     ],
+                    "raw_response": r.raw_response,
+                    "details": r.details,
                     "error": r.error,
                 }
                 for r in results.results

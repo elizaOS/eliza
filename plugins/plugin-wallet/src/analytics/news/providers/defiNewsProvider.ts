@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import type { NewsDataService } from "../services/newsDataService";
 
@@ -29,10 +28,13 @@ interface CoinGeckoSearchResult {
 interface CoinGeckoCoinData {
   name: string;
   symbol: string;
+  market_cap_rank?: number;
   market_data?: {
     current_price?: { usd?: number };
     market_cap?: { usd?: number };
     total_volume?: { usd?: number };
+    high_24h?: { usd?: number };
+    low_24h?: { usd?: number };
     price_change_percentage_24h?: number;
     price_change_percentage_7d?: number;
     price_change_percentage_30d?: number;
@@ -40,6 +42,11 @@ interface CoinGeckoCoinData {
   community_data?: {
     twitter_followers?: number;
     reddit_subscribers?: number;
+    telegram_channel_user_count?: number;
+  };
+  developer_data?: {
+    forks?: number;
+    stars?: number;
   };
 }
 
@@ -565,7 +572,7 @@ async function getTokenInfoByAddress(
     );
 
     // Try to search CoinGecko by symbol
-    let coinData = null;
+    let coinData: CoinGeckoCoinData | null = null;
     const searchResults = await coinGeckoService.searchCoin(tokenSymbol);
 
     if (searchResults && searchResults.length > 0) {
@@ -608,8 +615,8 @@ async function getTokenInfoByAddress(
       if (md.total_volume?.usd) {
         tokenInfo += `   24h Volume: $${(md.total_volume.usd / 1e9).toFixed(2)}B\n`;
       }
-      if (md.market_cap_rank) {
-        tokenInfo += `   Market Cap Rank: #${md.market_cap_rank}\n`;
+      if (coinData.market_cap_rank) {
+        tokenInfo += `   Market Cap Rank: #${coinData.market_cap_rank}\n`;
       }
 
       tokenInfo += "\n📈 PRICE CHANGES:\n";

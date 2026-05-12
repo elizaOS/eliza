@@ -13,9 +13,9 @@ Aggregate eval blob shape
 ::
 
     {
-      "tier": "0_6b",                 # Eliza-1 device tier id, OR a
+      "tier": "0_8b",                 # Eliza-1 device tier id, OR a
                                       # registry/public name like
-                                      # "eliza-1-0_6b" (normalized here).
+                                      # "eliza-1-0_8b" (normalized here).
       "mode": "smoke" | "full",       # optional; "full" if omitted.
       "results": {                    # measured metrics; see eliza1_gates.yaml
         "text_eval": 0.71,
@@ -31,7 +31,7 @@ Aggregate eval blob shape
 For convenience :func:`apply_gates` also accepts a bare ``results`` dict
 plus an explicit ``tier`` string::
 
-    apply_gates({"format_ok": 0.6}, "eliza-1-0_6b")
+    apply_gates({"format_ok": 0.6}, "eliza-1-0_8b")
 
 Smoke mode
 ----------
@@ -64,8 +64,11 @@ _GATES_YAML = Path(__file__).resolve().parent / "eliza1_gates.yaml"
 # imports very early.
 KNOWN_TIERS: tuple[str, ...] = (
     "0_8b",
+<<<<<<< HEAD
     "0_6b",
     "1_7b",
+=======
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "2b",
     "4b",
     "9b",
@@ -196,7 +199,7 @@ def load_gates(path: str | Path | None = None) -> GatesDoc:
 def normalize_tier(value: str | None) -> str:
     """Map a tier id or registry/public name to the canonical tier id.
 
-    ``"eliza-1-0_6b"`` → ``"0_6b"``; ``"0_6b"`` → ``"0_6b"``;
+    ``"eliza-1-0_8b"`` → ``"0_8b"``; ``"0_8b"`` → ``"0_8b"``;
     ``"eliza-1-27b-256k"`` → ``"27b-256k"``.
     """
     if not value:

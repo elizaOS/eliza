@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 // @ts-nocheck — Mixin pattern: see service.ts for the composed public type.
 
 import type { GoogleDriveFile } from "@elizaos/plugin-google";
@@ -5,11 +6,23 @@ import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
 } from "@elizaos/shared";
+=======
+import type { LifeOpsConnectorMode, LifeOpsConnectorSide } from "@elizaos/shared";
+import type { GoogleDriveFile } from "@elizaos/plugin-google";
+import type {
+  LifeOpsConnectorGrant,
+  LifeOpsGoogleConnectorStatus,
+} from "../contracts/index.js";
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 import {
   accountIdForGrant,
   requireGoogleServiceMethod,
 } from "./google-plugin-delegates.js";
-import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
+import type {
+  Constructor,
+  LifeOpsServiceBase,
+  MixinClass,
+} from "./service-mixin-core.js";
 import { fail } from "./service-normalize.js";
 import {
   normalizeOptionalConnectorMode,
@@ -33,10 +46,120 @@ export const DRIVE_CONNECTOR_CAPABILITIES = {
   deliveryStatus: false,
 } as const;
 
+<<<<<<< HEAD
 function hasDriveRead(grant: {
   grantedScopes: string[];
   capabilities: string[];
 }): boolean {
+=======
+export interface LifeOpsDriveService {
+  requireGoogleDriveReadGrant(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsConnectorGrant>;
+  requireGoogleDriveWriteGrant(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsConnectorGrant>;
+  listDriveFiles(
+    requestUrl: URL,
+    request?: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      folderId?: string;
+      maxResults?: number;
+      pageToken?: string;
+    },
+  ): Promise<{ files: GoogleDriveFile[]; nextPageToken: string | null }>;
+  getDriveFile(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      fileId: string;
+    },
+  ): Promise<GoogleDriveFile>;
+  searchDriveFiles(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      query: string;
+      maxResults?: number;
+    },
+  ): Promise<{ files: GoogleDriveFile[]; nextPageToken: string | null }>;
+  getDocContent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      documentId: string;
+    },
+  ): Promise<{ title: string; plainText: string }>;
+  getSheetContent(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      spreadsheetId: string;
+      range?: string;
+    },
+  ): Promise<{ title: string; rows: string[][] }>;
+  createDriveFile(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      name: string;
+      mimeType: string;
+      content?: string | Uint8Array;
+      parentFolderId?: string;
+    },
+  ): Promise<GoogleDriveFile>;
+  appendToDoc(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      documentId: string;
+      text: string;
+    },
+  ): Promise<void>;
+  updateSheetCells(
+    requestUrl: URL,
+    request: {
+      mode?: LifeOpsConnectorMode;
+      side?: LifeOpsConnectorSide;
+      grantId?: string;
+      spreadsheetId: string;
+      range: string;
+      values: ReadonlyArray<ReadonlyArray<string | number>>;
+    },
+  ): Promise<{ updatedRange: string; updatedCells: number }>;
+}
+
+type DriveMixinDependencies = LifeOpsServiceBase & {
+  getGoogleConnectorStatus(
+    requestUrl: URL,
+    requestedMode?: LifeOpsConnectorMode,
+    requestedSide?: LifeOpsConnectorSide,
+    grantId?: string,
+  ): Promise<LifeOpsGoogleConnectorStatus>;
+};
+
+function hasDriveRead(grant: LifeOpsConnectorGrant): boolean {
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   const scopes = new Set(grant.grantedScopes);
   return (
     scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
@@ -47,10 +170,14 @@ function hasDriveRead(grant: {
   );
 }
 
+<<<<<<< HEAD
 function hasDriveWrite(grant: {
   grantedScopes: string[];
   capabilities: string[];
 }): boolean {
+=======
+function hasDriveWrite(grant: LifeOpsConnectorGrant): boolean {
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   const scopes = new Set(grant.grantedScopes);
   return (
     scopes.has(GOOGLE_DRIVE_WRITE_SCOPE) ||
@@ -62,8 +189,10 @@ function hasDriveWrite(grant: {
 /** @internal */
 export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
-) {
-  class LifeOpsDriveServiceMixin extends Base {
+): MixinClass<TBase, LifeOpsDriveService> {
+  const DriveBase = Base as unknown as Constructor<DriveMixinDependencies>;
+
+  class LifeOpsDriveServiceMixin extends DriveBase {
     public async requireGoogleDriveReadGrant(
       requestUrl: URL,
       requestedMode?: LifeOpsConnectorMode,
@@ -332,5 +461,8 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
     }
   }
 
-  return LifeOpsDriveServiceMixin;
+  return LifeOpsDriveServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsDriveService
+  >;
 }

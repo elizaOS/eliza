@@ -50,11 +50,19 @@ const DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
 const elizaRoot = path.resolve(packageRoot, "..", "..");
+<<<<<<< HEAD
 const repoRoot = path.resolve(elizaRoot, "..");
 for (const candidate of [
   path.join(packageRoot, ".env"),
   path.join(elizaRoot, ".env"),
   path.join(repoRoot, ".env"),
+=======
+const elizaRoot = path.resolve(elizaRoot, "..");
+for (const candidate of [
+  path.join(packageRoot, ".env"),
+  path.join(elizaRoot, ".env"),
+  path.join(elizaRoot, ".env"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ]) {
   if (fs.existsSync(candidate)) {
     dotenv.config({ path: candidate, override: false });

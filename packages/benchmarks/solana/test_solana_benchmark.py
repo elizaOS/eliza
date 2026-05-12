@@ -12,6 +12,7 @@ import asyncio
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -208,13 +209,9 @@ class TestSkillTemplates:
         assert code == ""
 
     def test_negative_step_returns_empty(self):
-        # Negative index would index from end in list, but we guard with >= len
         name, code = get_template_for_step(-1, FAKE_PUBKEY)
-        # -1 < len, so it would try to dispatch DETERMINISTIC_TEMPLATES[-1]
-        # which is address_lookup_table — this is actually valid Python indexing
-        # The function uses >= len check which doesn't catch negative. This is a
-        # real code path that works because DETERMINISTIC_TEMPLATES[-1] exists.
-        assert name != ""  # It dispatches the last template
+        assert name == ""
+        assert code == ""
 
     def test_total_expected_reward_is_positive(self):
         total = get_total_expected_deterministic_reward()
@@ -459,7 +456,7 @@ class TestExplorationStrategy:
 # skill_templates: TypeScript validity via real Bun execution
 # =========================================================================
 
-BUN_AVAILABLE = subprocess.run(
+BUN_AVAILABLE = shutil.which("bun") is not None and subprocess.run(
     ["bun", "--version"], capture_output=True, text=True
 ).returncode == 0
 
@@ -563,15 +560,38 @@ class TestElizaExplorerConstruction:
 
     def test_ensure_llm_raises_without_any_key(self):
         from benchmarks.solana.eliza_explorer import ElizaExplorer
-        explorer = ElizaExplorer(max_messages=1)
+        explorer = ElizaExplorer(model_name="anthropic/claude-sonnet-4.6", max_messages=1)
         saved = {}
-        for k in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY"):
+        for k in (
+            "ANTHROPIC_API_KEY",
+            "CEREBRAS_API_KEY",
+            "GROQ_API_KEY",
+            "OPENAI_API_KEY",
+            "OPENROUTER_API_KEY",
+            "VLLM_API_KEY",
+            "BENCHMARK_MODEL_PROVIDER",
+        ):
             saved[k] = os.environ.pop(k, None)
         with pytest.raises(RuntimeError, match="API key"):
             explorer._ensure_llm()
         for k, v in saved.items():
             if v is not None:
                 os.environ[k] = v
+
+    def test_last_json_line_ignores_trailing_logs(self):
+        from benchmarks.solana.eliza_explorer import _last_json_line
+        parsed = _last_json_line(
+            'starting runner\n{"success": true, "serialized_tx": "abc"}\ncleanup complete\n'
+        )
+        assert parsed["success"] is True
+        assert parsed["serialized_tx"] == "abc"
+
+    def test_zero_message_run_returns_output_dir_path(self, tmp_path):
+        from benchmarks.solana.eliza_explorer import ElizaExplorer
+        explorer = ElizaExplorer(max_messages=0, output_dir=str(tmp_path))
+        path = asyncio.get_event_loop().run_until_complete(explorer.run())
+        assert path.parent == tmp_path
+        assert path.exists()
 
     def test_metrics_structure(self):
         from benchmarks.solana.eliza_explorer import ElizaExplorer

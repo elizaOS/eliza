@@ -331,13 +331,14 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     }
   }
 
-  // DFlash bench. The `dflash` eval is shape-checked by the Zod schema; here
-  // we only enforce internal consistency — if `passed: true` is claimed, the
-  // bench must have actually produced numbers (a null acceptanceRate/speedup
-  // with `passed: true` would be a lie). The gate threshold itself stays
-  // *provisional* in `eliza1_gates.yaml` until a trained drafter exists, so a
-  // `passed: false` dflash eval does NOT block `defaultEligible`.
-  if (m.evals.dflash) {
+  // DFlash bench. Staging manifests may record missing or failing DFlash
+  // measurements, but a default bundle is not eligible unless speculative
+  // decoding was actually measured and passed.
+  if (!m.evals.dflash) {
+    if (m.defaultEligible) {
+      errors.push("evals.dflash: required when defaultEligible=true");
+    }
+  } else {
     if (
       m.evals.dflash.passed &&
       (m.evals.dflash.acceptanceRate === null ||
@@ -346,6 +347,19 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
       errors.push(
         "evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
       );
+    }
+    if (m.defaultEligible) {
+      if (!m.evals.dflash.passed) {
+        errors.push("evals.dflash.passed: false for defaultEligible manifest");
+      }
+      if (
+        m.evals.dflash.acceptanceRate === null ||
+        m.evals.dflash.speedup === null
+      ) {
+        errors.push(
+          "evals.dflash: defaultEligible requires measured acceptanceRate and speedup",
+        );
+      }
     }
   }
 

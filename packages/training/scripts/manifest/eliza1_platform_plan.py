@@ -34,11 +34,17 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
+<<<<<<< HEAD
     # 0_8b (Qwen3.5-0.8B, the new small default) ships Q4 like 1_7b; the
     # legacy 0_6b stays Q3.
     "0_8b": "Q4_K_M",
     "0_6b": "Q3_K_M",
     "1_7b": "Q4_K_M",
+=======
+    "0_8b": "Q3_K_M",
+    "2b": "Q4_K_M",
+    "4b": "Q4_K_M",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
     "27b-256k": "Q4_K_M",
@@ -47,8 +53,13 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("32k",),
+<<<<<<< HEAD
     "0_6b": ("32k",),
     "1_7b": ("32k", "64k"),
+=======
+    "2b": ("32k", "64k"),
+    "4b": ("64k", "128k"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": ("64k", "128k"),
     "27b": ("128k", "256k"),
     "27b-256k": ("256k",),
@@ -73,16 +84,13 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.vad",
         "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1",
-        *(
-            ("licenses/LICENSE.vision",)
-            if tier in {"9b", "27b", "27b-256k", "27b-1m"}
-            else ()
-        ),
+        "licenses/LICENSE.vision",
     )
     for tier in ELIZA_1_TIERS
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+<<<<<<< HEAD
     # 0_8b mirrors 0_6b's platform-evidence coverage (same small-tier
     # backend set: metal / vulkan / cpu across desktop + mobile).
     "0_8b": (
@@ -98,6 +106,9 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-arm64-vulkan",
     ),
     "0_6b": (
+=======
+    "0_8b": (
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -109,7 +120,7 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-arm64-cpu",
         "windows-arm64-vulkan",
     ),
-    "1_7b": (
+    "2b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -120,6 +131,19 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-x64-vulkan",
         "windows-arm64-cpu",
         "windows-arm64-vulkan",
+    ),
+    "4b": (
+        "darwin-arm64-metal",
+        "ios-arm64-metal",
+        "linux-x64-vulkan",
+        "android-adreno-vulkan",
+        "android-mali-vulkan",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+        "windows-x64-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
     ),
     "9b": (
         "darwin-arm64-metal",
@@ -197,11 +221,7 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
     dflash_files = (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
-    vision_files = (
-        (f"vision/mmproj-{tier}.gguf",)
-        if tier in {"9b", "27b", "27b-256k"}
-        else ()
-    )
+    vision_files = (f"vision/mmproj-{tier}.gguf",)
     return (
         *text_files,
         *voice_files,

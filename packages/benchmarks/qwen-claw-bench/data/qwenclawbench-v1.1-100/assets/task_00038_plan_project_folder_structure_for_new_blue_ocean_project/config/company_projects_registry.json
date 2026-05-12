@@ -1,0 +1,47 @@
+[
+  {
+    "project_code": "02TK23010E",
+    "project_name": "Greenfield Petrochemical Complex Phase II Expansion",
+    "year": 2023,
+    "phase": "Construction",
+    "status": "active",
+    "client": "Greenfield Petrochemical Industries Ltd.",
+    "registered_date": "2023-02-10"
+  },
+  {
+    "project_code": "03TK24018A",
+    "project_name": "Tianhe Refinery Catalytic Cracking Unit Revamp",
+    "year": 2024,
+    "phase": "Detailed Design",
+    "status": "active",
+    "client": "Tianhe Refining & Chemical Co., Ltd.",
+    "registered_date": "2024-01-08"
+  },
+  {
+    "project_code": "04TK25001C",
+    "project_name": "Evergreen Energy LNG Receiving Terminal",
+    "year": 2025,
+    "phase": "Feasibility Study",
+    "status": "active",
+    "client": "Evergreen Energy Holdings",
+    "registered_date": "2025-03-22"
+  },
+  {
+    "project_code": "05TK25002D",
+    "project_name": "Blue Ocean Advanced Materials Co., Ltd. High-End Polyolefin New Materials Project",
+    "year": 2026,
+    "phase": "Basic Design",
+    "status": "active",
+    "client": "Blue Ocean Advanced Materials Co., Ltd.",
+    "registered_date": "2025-11-30"
+  },
+  {
+    "project_code": "06TK26003B",
+    "project_name": "Sunrise Chemical Ethylene Oxide Derivatives Plant",
+    "year": 2026,
+    "phase": "Preliminary Design",
+    "status": "active",
+    "client": "Sunrise Chemical Group",
+    "registered_date": "2025-12-15"
+  }
+]

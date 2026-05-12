@@ -1,0 +1,218 @@
+From 6eef04130afc8b0ccb63c9a0d8650209cf54892f Mon Sep 17 00:00:00 2001
+From: Jakub Witczak <kuba@erlang.org>
+Date: Mon, 14 Apr 2025 16:33:21 +0200
+Subject: [PATCH] ssh: early RCE fix
+
+- disconnect when connection protocol message arrives
+- when user is not authenticated for connection
+- see RFC4252 sec.6
+---
+ lib/ssh/src/ssh_connection.erl      | 28 ++++++++--
+ lib/ssh/test/ssh_protocol_SUITE.erl | 86 +++++++++++++++--------------
+ 2 files changed, 67 insertions(+), 47 deletions(-)
+
+diff --git a/lib/ssh/src/ssh_connection.erl b/lib/ssh/src/ssh_connection.erl
+index 73b626cc9143..1c90b56ec9f0 100644
+--- a/lib/ssh/src/ssh_connection.erl
++++ b/lib/ssh/src/ssh_connection.erl
+@@ -53,6 +53,8 @@ these messages are handled by
+                   {type,<<"Signals">>},
+                   {type,<<"Exit Status">>}]}).
+ 
++-include_lib("kernel/include/logger.hrl").
++
+ -include("ssh.hrl").
+ -include("ssh_connect.hrl").
+ -include("ssh_transport.hrl").
+@@ -756,6 +758,25 @@ channel_data(ChannelId, DataType, Data0,
+ %%%
+ 
+ -doc false.
++handle_msg(#ssh_msg_disconnect{code = Code, description = Description}, Connection, _, _SSH) ->
++    {disconnect, {Code, Description}, handle_stop(Connection)};
++
++handle_msg(Msg, Connection, server, Ssh = #ssh{authenticated = false}) ->
++    %% See RFC4252 6.
++    %% Message numbers of 80 and higher are reserved for protocols running
++    %% after this authentication protocol, so receiving one of them before
++    %% authentication is complete is an error, to which the server MUST
++    %% respond by disconnecting, preferably with a proper disconnect message
++    %% sent to ease troubleshooting.
++    MsgFun = fun(M) ->
++                     MaxLogItemLen = ?GET_OPT(max_log_item_len, Ssh#ssh.opts),
++                     io_lib:format("Connection terminated. Unexpected message for unauthenticated user."
++                                   " Message:  ~w", [M],
++                                   [{chars_limit, MaxLogItemLen}])
++             end,
++    ?LOG_DEBUG(MsgFun, [Msg]),
++    {disconnect, {?SSH_DISCONNECT_PROTOCOL_ERROR, "Connection refused"}, handle_stop(Connection)};
++
+ handle_msg(#ssh_msg_channel_open_confirmation{recipient_channel = ChannelId, 
+ 					      sender_channel = RemoteId,
+ 					      initial_window_size = WindowSz,
+@@ -1260,12 +1281,7 @@ handle_msg(#ssh_msg_request_success{data = Data},
+ 	   #connection{requests = [{_, From, Fun} | Rest]} = Connection0, _, _SSH) ->
+     Connection = Fun({success,Data}, Connection0),
+     {[{channel_request_reply, From, {success, Data}}],
+-     Connection#connection{requests = Rest}};
+-
+-handle_msg(#ssh_msg_disconnect{code = Code,
+-			       description = Description},
+-	   Connection, _, _SSH) ->
+-    {disconnect, {Code, Description}, handle_stop(Connection)}.
++     Connection#connection{requests = Rest}}.
+ 
+ 
+ %%%----------------------------------------------------------------
+diff --git a/lib/ssh/test/ssh_protocol_SUITE.erl b/lib/ssh/test/ssh_protocol_SUITE.erl
+index 7d3cdf924f08..e280db200f2f 100644
+--- a/lib/ssh/test/ssh_protocol_SUITE.erl
++++ b/lib/ssh/test/ssh_protocol_SUITE.erl
+@@ -75,6 +75,7 @@
+          no_common_alg_client_disconnects/1,
+          no_common_alg_server_disconnects/1,
+          custom_kexinit/1,
++         early_rce/1,
+          no_ext_info_s1/1,
+          no_ext_info_s2/1,
+          packet_length_too_large/1,
+@@ -113,6 +114,7 @@ suite() ->
+ all() -> 
+     [{group,tool_tests},
+      client_info_line,
++     early_rce,
+      {group,kex},
+      {group,service_requests},
+      {group,authentication},
+@@ -131,10 +133,8 @@ groups() ->
+ 		      ]},
+      {packet_size_error, [], [packet_length_too_large,
+ 			      packet_length_too_short]},
+-      
+      {field_size_error, [], [service_name_length_too_large,
+ 			     service_name_length_too_short]},
+-      
+      {kex, [], [custom_kexinit,
+                 no_common_alg_server_disconnects,
+ 		no_common_alg_client_disconnects,
+@@ -178,7 +178,8 @@ init_per_suite(Config) ->
+ end_per_suite(Config) ->
+     stop_apps(Config).
+ 
+-init_per_testcase(Tc, Config) when Tc == no_common_alg_server_disconnects; Tc == custom_kexinit ->
++init_per_testcase(Tc, Config) when Tc == no_common_alg_server_disconnects;
++                                   Tc == custom_kexinit ->
+     start_std_daemon(Config, [{preferred_algorithms,[{public_key,['ssh-rsa']},
+                                                      {cipher,?DEFAULT_CIPHERS}
+                                                     ]}]);
+@@ -224,7 +225,8 @@ init_per_testcase(TC, Config) when TC == gex_client_init_option_groups ;
+ init_per_testcase(_TestCase, Config) ->
+     check_std_daemon_works(Config, ?LINE).
+ 
+-end_per_testcase(Tc, Config) when Tc == no_common_alg_server_disconnects; Tc == custom_kexinit ->
++end_per_testcase(Tc, Config) when Tc == no_common_alg_server_disconnects;
++                                  Tc == custom_kexinit ->
+     stop_std_daemon(Config);
+ end_per_testcase(kex_strict_negotiated, Config) ->
+     Config;
+@@ -385,6 +387,44 @@ no_common_alg_server_disconnects(Config) ->
+ 	  ]
+ 	 ).
+ 
++early_rce(Config) ->
++    {ok,InitialState} =
++        ssh_trpt_test_lib:exec([{set_options, [print_ops, print_seqnums, print_messages]}]),
++    TypeOpen = "session",
++    ChannelId = 0,
++    WinSz = 425984,
++    PktSz = 65536,
++    DataOpen = <<>>,
++    SshMsgChannelOpen = ssh_connection:channel_open_msg(TypeOpen, ChannelId, WinSz, PktSz, DataOpen),
++
++    Id = 0,
++    TypeReq = "exec",
++    WantReply = true,
++    DataReq = <<?STRING(<<"lists:seq(1,10).">>)>>,
++    SshMsgChannelRequest =
++        ssh_connection:channel_request_msg(Id, TypeReq, WantReply, DataReq),
++    {ok,AfterKexState} =
++        ssh_trpt_test_lib:exec(
++          [{connect,
++            server_host(Config),server_port(Config),
++            [{preferred_algorithms,[{kex,[?DEFAULT_KEX]},
++                                    {cipher,?DEFAULT_CIPHERS}
++                                   ]},
++             {silently_accept_hosts, true},
++             {recv_ext_info, false},
++             {user_dir, user_dir(Config)},
++             {user_interaction, false}
++            | proplists:get_value(extra_options,Config,[])]},
++           receive_hello,
++           {send, hello},
++           {send, ssh_msg_kexinit},
++           {match, #ssh_msg_kexinit{_='_'}, receive_msg},
++           {send, SshMsgChannelOpen},
++           {send, SshMsgChannelRequest},
++           {match, disconnect(), receive_msg}
++          ], InitialState),
++    ok.
++
+ custom_kexinit(Config) ->
+     %% 16#C0 value causes unicode:characters_to_list to return a big error value
+     Trash = lists:duplicate(260_000, 16#C0),
+@@ -411,11 +451,6 @@ custom_kexinit(Config) ->
+                          first_kex_packet_follows = false,
+                          reserved = 0
+                         },
+-    PacketFun =
+-        fun(Msg, Ssh) ->
+-                BinMsg = custom_encode(Msg),
+-                ssh_transport:pack(BinMsg, Ssh, 0)
+-        end,
+     {ok,_} =
+ 	ssh_trpt_test_lib:exec(
+ 	  [{set_options, [print_ops, {print_messages,detail}]},
+@@ -431,42 +466,11 @@ custom_kexinit(Config) ->
+ 	   receive_hello,
+ 	   {send, hello},
+ 	   {match, #ssh_msg_kexinit{_='_'}, receive_msg},
+-	   {send, {special, KexInit, PacketFun}},  % with server unsupported 'ssh-dss' !
++	   {send, KexInit},  % with server unsupported 'ssh-dss' !
+ 	   {match, disconnect(), receive_msg}
+ 	  ]
+ 	 ).
+ 
+-custom_encode(#ssh_msg_kexinit{
+-	  cookie = Cookie,
+-	  kex_algorithms = KeyAlgs,
+-	  server_host_key_algorithms = HostKeyAlgs,
+-	  encryption_algorithms_client_to_server = EncAlgC2S,
+-	  encryption_algorithms_server_to_client = EncAlgS2C,
+-	  mac_algorithms_client_to_server = MacAlgC2S,
+-	  mac_algorithms_server_to_client = MacAlgS2C,
+-	  compression_algorithms_client_to_server = CompAlgS2C,
+-	  compression_algorithms_server_to_client = CompAlgC2S,
+-	  languages_client_to_server = LangC2S,
+-	  languages_server_to_client = LangS2C,
+-	  first_kex_packet_follows = Bool,
+-	  reserved = Reserved
+-	 }) ->
+-    KeyAlgsBin0 = <<?Ename_list(KeyAlgs)>>,
+-    <<?UINT32(Len0), Data:Len0/binary>> = KeyAlgsBin0,
+-    KeyAlgsBin = <<?UINT32(Len0), Data/binary>>,
+-    <<?Ebyte(?SSH_MSG_KEXINIT), Cookie/binary,
+-      KeyAlgsBin/binary,
+-      ?Ename_list(HostKeyAlgs),
+-      ?Ename_list(EncAlgC2S),
+-      ?Ename_list(EncAlgS2C),
+-      ?Ename_list(MacAlgC2S),
+-      ?Ename_list(MacAlgS2C),
+-      ?Ename_list(CompAlgS2C),
+-      ?Ename_list(CompAlgC2S),
+-      ?Ename_list(LangC2S),
+-      ?Ename_list(LangS2C),
+-      ?Eboolean(Bool), ?Euint32(Reserved)>>.
+-
+ %%--------------------------------------------------------------------
+ %%% Algo negotiation fail.  This should result in a ssh_msg_disconnect
+ %%% being sent from the client.

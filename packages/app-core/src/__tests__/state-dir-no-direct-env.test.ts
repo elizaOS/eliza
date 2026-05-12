@@ -1,9 +1,16 @@
 /**
+<<<<<<< HEAD
  * Guard: no callsite in `packages/app-core/src/` reads `ELIZA_STATE_DIR` /
  * `ELIZA_STATE_DIR` without going through `resolveStateDir()` or pairing both
  * env vars in the same window. The canonical resolver lives in
  * `@elizaos/core/utils/state-dir.ts` and honors the documented precedence
  * `ELIZA_STATE_DIR > ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}`.
+=======
+ * Guard: stale state-dir alias migrations should not leave duplicate fallback
+ * chains such as `ELIZA_STATE_DIR || ELIZA_STATE_DIR` in app-core source.
+ * The canonical resolver lives in `@elizaos/core/utils/state-dir.ts` and
+ * honors `ELIZA_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}`.
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
  */
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
@@ -42,17 +49,20 @@ function walkSrc(root: string): string[] {
 }
 
 describe("state-dir consolidation", () => {
+<<<<<<< HEAD
   it("no callsite reads ELIZA_STATE_DIR without honoring ELIZA_STATE_DIR in the same window", () => {
+=======
+  it("does not contain duplicate ELIZA_STATE_DIR fallback chains", () => {
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     const files = walkSrc(APP_CORE_SRC);
     const offenders: string[] = [];
     for (const file of files) {
       const lines = readFileSync(file, "utf8").split("\n");
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i] ?? "";
-        // Match either `process.env.ELIZA_STATE_DIR` or `env.ELIZA_STATE_DIR`,
-        // but NOT inside a comment line (// or *).
         const trimmed = line.trim();
         if (trimmed.startsWith("//") || trimmed.startsWith("*")) continue;
+<<<<<<< HEAD
         if (
           !/process\.env\.ELIZA_STATE_DIR\b/.test(line) &&
           !/\benv\.ELIZA_STATE_DIR\b/.test(line)
@@ -69,6 +79,9 @@ describe("state-dir consolidation", () => {
         ) {
           continue;
         }
+=======
+        if (!/ELIZA_STATE_DIR[\s\S]*ELIZA_STATE_DIR/.test(line)) continue;
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
         offenders.push(`${file}:${i + 1}: ${trimmed}`);
       }
     }

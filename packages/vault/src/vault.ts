@@ -53,12 +53,20 @@ export function createVault(opts: CreateVaultOptions = {}): Vault {
 
   // Backend selection. Default: PGlite (consolidates state into the same
   // database surface used by conversations/plugins). Set
+<<<<<<< HEAD
   // `ELIZA_VAULT_BACKEND=file` (or legacy `MILADY_VAULT_BACKEND=file`) to
+=======
+  // `ELIZA_VAULT_BACKEND=file` (or legacy `ELIZA_VAULT_BACKEND=file`) to
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   // keep the legacy file-backed VaultImpl. The PGlite backend
   // automatically migrates from `vault.json` on first construction if the
   // table is empty and the file exists; legacy file is retained one
   // release as a safety net.
   const backend = (
+<<<<<<< HEAD
+=======
+    process.env.ELIZA_VAULT_BACKEND ??
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     process.env.ELIZA_VAULT_BACKEND ??
     process.env.MILADY_VAULT_BACKEND ??
     "pglite"

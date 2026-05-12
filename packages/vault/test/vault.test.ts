@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestVault, type TestVault } from "../src/testing.js";
 import { VaultMissError } from "../src/vault.js";
+import { runtimeVaultCaller } from "./vitest-assertion-shim.js";
 
 describe("vault — set / get / has / remove", () => {
   let test: TestVault;
@@ -57,17 +58,11 @@ describe("vault — set / get / has / remove", () => {
 
   it("rejects empty / non-string keys", async () => {
     await expect(test.vault.set("", "v")).rejects.toThrow();
-    await expect(
-      // @ts-expect-error exercises runtime validation for invalid callers.
-      test.vault.set(123, "v"),
-    ).rejects.toThrow();
+    await expect(runtimeVaultCaller(test.vault).set(123, "v")).rejects.toThrow();
   });
 
   it("rejects non-string values", async () => {
-    await expect(
-      // @ts-expect-error exercises runtime validation for invalid callers.
-      test.vault.set("k", 42),
-    ).rejects.toThrow();
+    await expect(runtimeVaultCaller(test.vault).set("k", 42)).rejects.toThrow();
   });
 });
 
@@ -172,8 +167,7 @@ describe("vault — references (1Password, Proton Pass)", () => {
 
   it("rejects unsupported sources", async () => {
     await expect(
-      test.vault.setReference("k", {
-        // @ts-expect-error exercises runtime validation for unsupported sources.
+      runtimeVaultCaller(test.vault).setReference("k", {
         source: "lastpass",
         path: "x",
       }),

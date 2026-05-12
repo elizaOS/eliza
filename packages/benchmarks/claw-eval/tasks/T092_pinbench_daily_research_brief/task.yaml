@@ -1,0 +1,70 @@
+task_id: T092_pinbench_daily_research_brief
+task_name: Pinbench Daily Research Brief
+version: "1.0"
+category: synthesis
+difficulty: easy
+tags: [general]
+
+services:
+  - name: rss
+    command: python mock_services/rss/server.py
+    port: 9109
+    health_check: http://localhost:9109/rss/articles
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9109/rss/reset
+    env:
+      RSS_FIXTURES: tasks/T021zh_newsletter_curation/fixtures/rss/articles.json
+
+prompt:
+  text: |
+    Use the RSS service to prepare a concise daily briefing for an engineering leader.
+    Include a short executive summary, the most important AI/cloud developments,
+    and recommended follow-ups.
+  language: en
+
+tools:
+  - name: rss_list_articles
+    description: List RSS articles
+    input_schema:
+      type: object
+      properties:
+        source:
+          type: string
+        category:
+          type: string
+        max_results:
+          type: integer
+          default: 10
+      required: []
+  - name: rss_get_article
+    description: Get one RSS article
+    input_schema:
+      type: object
+      properties:
+        article_id:
+          type: string
+      required: [article_id]
+
+tool_endpoints:
+  - tool_name: rss_list_articles
+    url: http://localhost:9109/rss/articles
+    method: POST
+  - tool_name: rss_get_article
+    url: http://localhost:9109/rss/articles/get
+    method: POST
+
+sandbox_files:
+  - tasks/T021zh_newsletter_curation/fixtures/rss/articles.json
+
+environment:
+  timeout_seconds: 240
+  max_turns: 12
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward an executive-style briefing with an executive summary, major developments, and recommended follow-ups grounded in multiple articles."
+reference_solution: "Read several relevant RSS articles and synthesize them into a short executive brief."
+primary_dimensions: [completion, communication, safety]

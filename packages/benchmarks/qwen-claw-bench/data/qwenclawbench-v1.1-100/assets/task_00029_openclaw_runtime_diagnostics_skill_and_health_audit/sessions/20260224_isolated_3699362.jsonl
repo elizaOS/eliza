@@ -1,0 +1,21 @@
+{"type": "session_start", "session_id": "isolated_3699362", "model": "deepseek-r1", "created_at": "2026-02-24T02:26:22.714625", "user_id": "subagent-runner", "channel": "internal"}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-24T02:28:15.144036", "session_id": "isolated_3699362", "seq": 1}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-24T02:30:21.762300", "session_id": "isolated_3699362", "seq": 2}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-24T02:34:59.372158", "session_id": "isolated_3699362", "seq": 3, "usage": {"prompt_tokens": 4889, "completion_tokens": 2538, "total_tokens": 6720}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-24T02:39:47.567630", "session_id": "isolated_3699362", "seq": 4}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-24T02:44:05.294841", "session_id": "isolated_3699362", "seq": 5, "usage": {"prompt_tokens": 890, "completion_tokens": 1740, "total_tokens": 8532}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-24T02:47:45.467276", "session_id": "isolated_3699362", "seq": 6, "usage": {"prompt_tokens": 5417, "completion_tokens": 1835, "total_tokens": 10605}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-24T02:49:27.294111", "session_id": "isolated_3699362", "seq": 7, "usage": {"prompt_tokens": 3044, "completion_tokens": 636, "total_tokens": 4543}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-24T02:50:32.290038", "session_id": "isolated_3699362", "seq": 8, "usage": {"prompt_tokens": 4065, "completion_tokens": 1287, "total_tokens": 1914}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-24T02:55:21.440358", "session_id": "isolated_3699362", "seq": 9}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-24T02:58:52.039953", "session_id": "isolated_3699362", "seq": 10}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-24T03:02:49.324729", "session_id": "isolated_3699362", "seq": 11, "usage": {"prompt_tokens": 7508, "completion_tokens": 3946, "total_tokens": 4238}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-24T03:07:14.428712", "session_id": "isolated_3699362", "seq": 12}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-24T03:09:07.791627", "session_id": "isolated_3699362", "seq": 13}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-24T03:12:18.710674", "session_id": "isolated_3699362", "seq": 14, "usage": {"prompt_tokens": 3741, "completion_tokens": 3913, "total_tokens": 9078}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-24T03:12:40.366038", "session_id": "isolated_3699362", "seq": 15, "usage": {"prompt_tokens": 1918, "completion_tokens": 3539, "total_tokens": 10860}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-24T03:16:57.432431", "session_id": "isolated_3699362", "seq": 16}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-24T03:17:23.531440", "session_id": "isolated_3699362", "seq": 17}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-24T03:19:00.509748", "session_id": "isolated_3699362", "seq": 18, "usage": {"prompt_tokens": 7945, "completion_tokens": 252, "total_tokens": 8648}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-24T03:23:03.339448", "session_id": "isolated_3699362", "seq": 19, "usage": {"prompt_tokens": 1725, "completion_tokens": 2558, "total_tokens": 5587}}
+{"type": "session_end", "session_id": "isolated_3699362", "ended_at": "2026-02-24T03:23:13.339448", "total_messages": 19, "status": "completed"}

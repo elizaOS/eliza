@@ -1,0 +1,8 @@
+name: jax-jit
+description: JIT compile function
+inputs:
+  fn: callable
+  args: any
+outputs:
+  result: any
+implementation: jax_skills.jit_run

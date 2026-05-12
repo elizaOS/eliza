@@ -33,7 +33,12 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
+<<<<<<< HEAD
     "@elizaos/app-core": "2.0.0-beta.3",
+=======
+    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/capacitor-system": "2.0.0-beta.1",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "@elizaos/capacitor-wifi": "2.0.0-beta.1",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",

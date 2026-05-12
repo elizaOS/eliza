@@ -100,7 +100,11 @@
         "GGML_OP_FUSED_ATTN_QJL_TBQ"
       ],
       "generatedFrom": "/home/shaw/eliza/eliza/packages/inference/verify/hardware-results/linux-vulkan-fork-build-a1-a2-d1-2026-05-11.json",
+<<<<<<< HEAD
       "device": "Intel(R) Graphics (ARL) \u2014 Intel open-source Mesa ANV driver, Vulkan 1.4.318",
+=======
+      "device": "Intel(R) Graphics (ARL) — Intel open-source Mesa ANV driver, Vulkan 1.4.318",
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "atCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
       "note": "Single-q-pos fused attention graph route (n_heads=4 n_kv_heads=2 n_tokens=8) executed end-to-end on the built fork's libggml-vulkan and matched eliza_fused_attn_qjl_tbq3; the standalone fused shaders are 1920/1920 outputs PASS across 4 GQA/n_kv cases. fused_attn is an optimization on top of the five required kernels (AGENTS.md \u00a73) and is intentionally NOT in requiredRuntimeCapabilityKeys / manifestKernelNames.",
       "evidenceDate": "2026-05-11",

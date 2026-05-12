@@ -13,6 +13,12 @@ describe("distribution profile", () => {
       "unrestricted",
     );
     expect(
+<<<<<<< HEAD
+=======
+      resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "" }),
+    ).toBe("unrestricted");
+    expect(
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
       resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "   " }),
     ).toBe("unrestricted");
   });

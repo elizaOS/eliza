@@ -10,7 +10,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { BrowserWindow } from "electrobun/bun";
+import type { BrowserWindow } from "electrobun/bun";
+import { createElectrobunBrowserWindow } from "../electrobun-window-options";
 import type {
 	CanvasWindowInfo,
 	CanvasWindowOptions,
@@ -72,7 +73,7 @@ export class CanvasManager {
 	async createWindow(options: CanvasWindowOptions): Promise<{ id: string }> {
 		const id = `canvas_${++canvasCounter}`;
 
-		const win = new BrowserWindow({
+		const win = createElectrobunBrowserWindow({
 			title: options.title ?? "Canvas",
 			url: options.url ?? null,
 			frame: {
@@ -83,7 +84,6 @@ export class CanvasManager {
 			},
 			transparent: options.transparent ?? false,
 			sandbox: true,
-			// @ts-expect-error — partition is a valid Electrobun option not yet typed
 			partition: "canvas-isolated",
 		});
 		if (options.alwaysOnTop === true) {
@@ -415,7 +415,7 @@ $bmp.Dispose()`;
 			);
 		}
 
-		const win = new BrowserWindow({
+		const win = createElectrobunBrowserWindow({
 			title: options.title ?? "Game",
 			url: options.url,
 			frame: {
@@ -426,7 +426,6 @@ $bmp.Dispose()`;
 			},
 			transparent: false,
 			sandbox: true,
-			// @ts-expect-error — partition is a valid Electrobun option not yet typed
 			partition: "game-isolated",
 			// On macOS, use the native WKWebView renderer for WebGPU support.
 			// On Linux/Win, omit this to use the default CEF renderer.

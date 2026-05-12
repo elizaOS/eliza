@@ -718,20 +718,35 @@ function applyMetricsForStage(
 	}
 }
 
+const RECORD_SANITIZE_MAX_DEPTH = 40;
+const RECORD_SANITIZE_MAX_ARRAY_ITEMS = 250;
+const RECORD_SANITIZE_MAX_OBJECT_KEYS = 200;
+const RECORD_SANITIZE_MAX_STRING_CHARS = 64 * 1024;
+const RECORD_SANITIZE_TRUNCATION_SUFFIX = "...[truncated]";
+
+function truncateRecordString(value: string): string {
+	if (value.length <= RECORD_SANITIZE_MAX_STRING_CHARS) return value;
+	const previewLength = Math.max(
+		0,
+		RECORD_SANITIZE_MAX_STRING_CHARS - RECORD_SANITIZE_TRUNCATION_SUFFIX.length,
+	);
+	return `${value.slice(0, previewLength)}${RECORD_SANITIZE_TRUNCATION_SUFFIX}`;
+}
+
 function sanitizeForRecord(
 	value: unknown,
 	seen = new WeakSet<object>(),
 	depth = 0,
 ): unknown {
-	if (depth > 40) {
+	if (depth > RECORD_SANITIZE_MAX_DEPTH) {
 		return "[MaxDepth]";
 	}
-	if (
-		value === null ||
-		typeof value === "string" ||
-		typeof value === "number" ||
-		typeof value === "boolean"
-	) {
+	if (value === null) return null;
+	if (typeof value === "string") return truncateRecordString(value);
+	if (typeof value === "number") {
+		return Number.isFinite(value) ? value : null;
+	}
+	if (typeof value === "boolean") {
 		return value;
 	}
 	if (typeof value === "bigint") {
@@ -757,37 +772,113 @@ function sanitizeForRecord(
 			stack: value.stack,
 		};
 	}
+	if (value instanceof RegExp) {
+		return value.toString();
+	}
+	if (value instanceof ArrayBuffer) {
+		return { type: "ArrayBuffer", byteLength: value.byteLength };
+	}
+	if (ArrayBuffer.isView(value)) {
+		return {
+			type: value.constructor.name || "ArrayBufferView",
+			byteLength: value.byteLength,
+		};
+	}
+	if (value instanceof Map) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: Record<string, unknown> = {};
+		let index = 0;
+		for (const [key, entry] of value.entries()) {
+			if (index >= RECORD_SANITIZE_MAX_OBJECT_KEYS) break;
+			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
+			if (sanitized !== undefined) {
+				output[String(key)] = sanitized;
+			}
+			index++;
+		}
+		if (value.size > RECORD_SANITIZE_MAX_OBJECT_KEYS) {
+			output.__truncatedKeys = value.size - RECORD_SANITIZE_MAX_OBJECT_KEYS;
+		}
+		seen.delete(value);
+		return output;
+	}
+	if (value instanceof Set) {
+		if (seen.has(value)) return "[Circular]";
+		seen.add(value);
+		const output: unknown[] = [];
+		let index = 0;
+		for (const entry of value.values()) {
+			if (index >= RECORD_SANITIZE_MAX_ARRAY_ITEMS) break;
+			output.push(sanitizeForRecord(entry, seen, depth + 1) ?? null);
+			index++;
+		}
+		if (value.size > RECORD_SANITIZE_MAX_ARRAY_ITEMS) {
+			output.push({
+				__truncatedItems: value.size - RECORD_SANITIZE_MAX_ARRAY_ITEMS,
+			});
+		}
+		seen.delete(value);
+		return output;
+	}
 	if (Array.isArray(value)) {
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
-		return value.map((entry) => sanitizeForRecord(entry, seen, depth + 1));
+		const output: unknown[] = [];
+		const length = Math.min(value.length, RECORD_SANITIZE_MAX_ARRAY_ITEMS);
+		for (let i = 0; i < length; i++) {
+			output.push(sanitizeForRecord(value[i], seen, depth + 1) ?? null);
+		}
+		if (value.length > RECORD_SANITIZE_MAX_ARRAY_ITEMS) {
+			output.push({
+				__truncatedItems: value.length - RECORD_SANITIZE_MAX_ARRAY_ITEMS,
+			});
+		}
+		seen.delete(value);
+		return output;
 	}
 	if (typeof value === "object") {
 		if (seen.has(value)) return "[Circular]";
 		seen.add(value);
+		const entries = Object.entries(value as Record<string, unknown>);
+		if (entries.length === 0) {
+			seen.delete(value);
+			return String(value);
+		}
 		const output: Record<string, unknown> = {};
-		for (const [key, entry] of Object.entries(
-			value as Record<string, unknown>,
+		for (const [key, entry] of entries.slice(
+			0,
+			RECORD_SANITIZE_MAX_OBJECT_KEYS,
 		)) {
 			const sanitized = sanitizeForRecord(entry, seen, depth + 1);
 			if (sanitized !== undefined) {
 				output[key] = sanitized;
 			}
 		}
+		if (entries.length > RECORD_SANITIZE_MAX_OBJECT_KEYS) {
+			output.__truncatedKeys = entries.length - RECORD_SANITIZE_MAX_OBJECT_KEYS;
+		}
+		seen.delete(value);
 		return output;
 	}
 	return String(value);
 }
 
 function cloneForRecord<T>(value: T): T {
-	if (typeof structuredClone === "function") {
-		try {
-			return structuredClone(value);
-		} catch {
-			return sanitizeForRecord(value) as T;
-		}
-	}
 	return sanitizeForRecord(value) as T;
+}
+
+function cloneRootMessageForRecord(
+	rootMessage: StartTrajectoryInput["rootMessage"],
+): RecordedTrajectory["rootMessage"] {
+	return {
+		id: String(rootMessage.id),
+		text: truncateRecordString(String(rootMessage.text ?? "")),
+		sender:
+			rootMessage.sender === undefined
+				? undefined
+				: truncateRecordString(String(rootMessage.sender)),
+	};
 }
 
 // ---------------------------------------------------------------------------
@@ -1029,6 +1120,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 	private readonly enabled: boolean;
 	private readonly markdownEnabled: boolean;
 	private readonly active = new Map<string, MutableTrajectory>();
+	private readonly flushQueues = new Map<string, Promise<void>>();
 
 	constructor(opts: CreateJsonFileRecorderOptions = {}) {
 		this.rootDir = opts.rootDir ?? resolveTrajectoryDir();
@@ -1053,7 +1145,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			roomId: input.roomId,
 			runId: input.runId ?? process.env.ELIZA_LIFEOPS_RUN_ID,
 			scenarioId: input.scenarioId ?? process.env.ELIZA_LIFEOPS_SCENARIO_ID,
-			rootMessage: input.rootMessage,
+			rootMessage: cloneRootMessageForRecord(input.rootMessage),
 			startedAt: Date.now(),
 			status: "running",
 			stages: [],
@@ -1075,7 +1167,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 
 		// Best-effort initial flush so the file exists even if the run crashes
 		// before any stage lands. Errors are logged and swallowed.
-		void this.flushTrajectory(trajectory).catch((err) => {
+		void this.queueFlushTrajectory(trajectory).catch((err) => {
 			this.logger?.warn?.(
 				{ err: (err as Error).message, trajectoryId: id },
 				"[TrajectoryRecorder] initial flush failed",
@@ -1100,7 +1192,7 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		trajectory.stages.push(recordedStage);
 		applyMetricsForStage(trajectory.metrics, recordedStage);
 
-		await this.flushTrajectory(trajectory);
+		await this.queueFlushTrajectory(trajectory);
 	}
 
 	async endTrajectory(
@@ -1123,8 +1215,9 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			trajectory.metrics.finalDecision = "error";
 		}
 
-		await this.flushTrajectory(trajectory);
+		await this.queueFlushTrajectory(trajectory);
 		this.active.delete(trajectoryId);
+		this.flushQueues.delete(trajectoryId);
 	}
 
 	async load(trajectoryId: string): Promise<RecordedTrajectory | null> {
@@ -1180,22 +1273,40 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 		}
 	}
 
-	private async flushTrajectory(trajectory: MutableTrajectory): Promise<void> {
+	private queueFlushTrajectory(trajectory: MutableTrajectory): Promise<void> {
+		const trajectoryId = trajectory.trajectoryId;
+		const snapshot = cloneForRecord(trajectory);
+		const previous = this.flushQueues.get(trajectoryId) ?? Promise.resolve();
+		const next = previous
+			.catch(() => undefined)
+			.then(() => this.flushSnapshot(snapshot));
+		this.flushQueues.set(trajectoryId, next);
+		void next
+			.finally(() => {
+				if (this.flushQueues.get(trajectoryId) === next) {
+					this.flushQueues.delete(trajectoryId);
+				}
+			})
+			.catch(() => undefined);
+		return next;
+	}
+
+	private async flushSnapshot(snapshot: RecordedTrajectory): Promise<void> {
 		const filePath = path.join(
 			this.rootDir,
-			trajectory.agentId,
-			trajectoryFileName(trajectory.trajectoryId),
+			snapshot.agentId,
+			trajectoryFileName(snapshot.trajectoryId),
 		);
-		await atomicWriteJson(filePath, trajectory, this.logger);
+		await atomicWriteJson(filePath, snapshot, this.logger);
 		if (!this.markdownEnabled) return;
 		const markdownPath = path.join(
 			this.markdownDir,
-			trajectory.agentId,
-			`${trajectory.trajectoryId}.md`,
+			snapshot.agentId,
+			`${snapshot.trajectoryId}.md`,
 		);
 		await atomicWriteText(
 			markdownPath,
-			renderTrajectoryMarkdown(trajectory),
+			renderTrajectoryMarkdown(snapshot),
 			this.logger,
 		);
 	}

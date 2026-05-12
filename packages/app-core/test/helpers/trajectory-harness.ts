@@ -150,7 +150,11 @@ function isTrajectoryMarkdownReviewEnabled(
   const raw = (
     env.ELIZA_TRAJECTORY_REVIEW_MODE ??
     env.ELIZA_TRAJECTORY_MARKDOWN ??
+<<<<<<< HEAD
     env.MILADY_TRAJECTORY_MARKDOWN
+=======
+    env.ELIZA_TRAJECTORY_MARKDOWN
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
   )
     ?.trim()
     .toLowerCase();

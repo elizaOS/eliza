@@ -64,7 +64,11 @@ function parseArgs(argv) {
   const out = {
     target: "http://localhost:31337",
     config: null,
+<<<<<<< HEAD
     token: process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null,
+=======
+    token: process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     out: null,
     streaming: true,
     loadTimeoutMs: 120_000,

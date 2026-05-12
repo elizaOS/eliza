@@ -1,0 +1,18 @@
+{
+  "team_size": 2,
+  "max_parallel_tasks": 2,
+  "constraint": "each_person_one_task_at_a_time",
+  "working_hours_per_day": 8,
+  "members": [
+    {
+      "id": "R1",
+      "name": "Worker1",
+      "role": "Full-stack Developer"
+    },
+    {
+      "id": "R2",
+      "name": "Worker2",
+      "role": "Full-stack Developer"
+    }
+  ]
+}

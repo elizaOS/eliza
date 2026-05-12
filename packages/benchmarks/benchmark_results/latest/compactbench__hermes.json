@@ -11,8 +11,8 @@
     "cache_read_input_tokens": 0,
     "turns_with_cached_field": 0
   },
-  "error": null,
-  "higher_is_better": true,
+  "error": "Benchmark 'compactbench' is no longer compatible with harness 'hermes' (supported: eliza)",
+  "higher_is_better": null,
   "metrics": {
     "cache_metrics": {
       "cache_creation_input_tokens": 0,
@@ -24,6 +24,7 @@
     "constraint_retention": 0.8,
     "contradiction_rate": 0.0,
     "drift_resistance": 1.0,
+    "harness": "hermes",
     "overall_score": 0.775,
     "performance_metrics": {
       "duration_seconds": 9.644054292002693,
@@ -31,7 +32,11 @@
       "p95_latency_ms": 5730.0,
       "throughput_per_second": 1.3479807979492833
     },
+    "reason": "latest_row_violates_current_compatibility",
     "return_code": 0,
+    "supported_harnesses": [
+      "eliza"
+    ],
     "token_metrics": {
       "avg_completion_tokens": 730.8461538461538,
       "avg_prompt_tokens": 1941.4615384615386,
@@ -58,8 +63,8 @@
   "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T135326Z_2ade52f0/compactbench__compactbench/run_compactbench_20260511T135326Z_2_235b5925/output/compactbench-results.jsonl",
   "run_group_id": "rg_20260511T135326Z_2ade52f0",
   "run_id": "run_compactbench_20260511T135326Z_2_235b5925",
-  "score": 0.775,
-  "status": "succeeded",
+  "score": null,
+  "status": "incompatible",
   "token_metrics": {
     "avg_completion_tokens": 730.8461538461538,
     "avg_prompt_tokens": 1941.4615384615386,
@@ -74,6 +79,6 @@
     "repeated_prefixes": [],
     "turns": 13
   },
-  "unit": "ratio",
-  "updated_at": "2026-05-12T01:33:59Z"
+  "unit": null,
+  "updated_at": "2026-05-11T13:53:36.267379+00:00"
 }

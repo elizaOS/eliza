@@ -1,0 +1,47 @@
+task_id: M070_video_tennis_serve_game_stats
+task_name: Video Tennis Serve Game Statistics
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Watch the video and answer: in the first set of this highlights video, how many service points are shown for Zverev and how many for Sinner respectively? Of those service points, how many did Zverev win on his own serve, and how many did Sinner win on his own serve?
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the tennis highlights video.
+  First set: Zverev had 4 serve points shown, Sinner had 5 serve points shown.
+  Zverev won 2 of his serve points, Sinner won 2 of his serve points.
+
+primary_dimensions:
+  - completion
+  - robustness

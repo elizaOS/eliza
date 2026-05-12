@@ -1,0 +1,191 @@
+[
+  {
+    "ticket_id": "TK-1901",
+    "title": "API Response Timeout Alert",
+    "reporter": "Monitoring System",
+    "created_at": "2026-02-28T20:15:00+08:00",
+    "priority": "high",
+    "status": "resolved",
+    "description": "Multiple API endpoints are experiencing response times exceeding 5 seconds, affecting core interfaces including /api/orders, /api/payments, and /api/users. The alert threshold is 3 seconds; current P99 latency has reached 8.2 seconds.",
+    "tags": [
+      "monitoring",
+      "api",
+      "timeout"
+    ],
+    "assignee": "Ops On-Call",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1902",
+    "title": "User Reports of Slow Page Loading",
+    "reporter": "Customer Support",
+    "created_at": "2026-02-28T20:18:00+08:00",
+    "priority": "medium",
+    "status": "resolved",
+    "description": "Multiple users have reported via customer support that website pages are taking too long to load and they are unable to place orders. Customer support has received approximately 30 similar complaints.",
+    "tags": [
+      "user-report",
+      "performance"
+    ],
+    "assignee": "CS On-Call",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1903",
+    "title": "Database Connection Pool Exhausted",
+    "reporter": "DBA Alert",
+    "created_at": "2026-02-28T20:22:00+08:00",
+    "priority": "critical",
+    "status": "resolved",
+    "description": "PostgreSQL connection pool utilization is at 100%; all new connection requests are being rejected. Current connections: 200/200, wait queue is full. Multiple services are reporting inability to acquire database connections.",
+    "tags": [
+      "database",
+      "connection-pool",
+      "critical"
+    ],
+    "assignee": "DBA Wang",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1904",
+    "title": "Payment Service 503 Errors",
+    "reporter": "Payment Team",
+    "created_at": "2026-02-28T20:25:00+08:00",
+    "priority": "critical",
+    "status": "resolved",
+    "description": "The payment gateway is returning 503 errors; all payment transactions are failing. Error message: 'Service Unavailable - unable to acquire database connection'. All online payment channels are affected.",
+    "tags": [
+      "payment",
+      "503",
+      "critical"
+    ],
+    "assignee": "Payment Team On-Call",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1905",
+    "title": "Order Submission Failure Rate Spike",
+    "reporter": "E-Commerce Platform",
+    "created_at": "2026-02-28T20:28:00+08:00",
+    "priority": "critical",
+    "status": "resolved",
+    "description": "Order submission endpoint failure rate has spiked from 0.1% to over 95%; a large number of users are unable to complete orders. Error logs indicate database connection timeouts.",
+    "tags": [
+      "orders",
+      "failure-rate",
+      "critical"
+    ],
+    "assignee": "E-Commerce Platform On-Call",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1906",
+    "title": "CDN Cache Miss Rate Increase",
+    "reporter": "Infrastructure",
+    "created_at": "2026-02-28T20:35:00+08:00",
+    "priority": "low",
+    "status": "resolved",
+    "description": "CDN cache hit rate has dropped from 95% to 60%. Preliminary analysis: because the backend API is timing out, CDN is unable to refresh cached content, causing the hit rate to decline. This is a secondary symptom, not the root cause.",
+    "tags": [
+      "cdn",
+      "cache",
+      "secondary"
+    ],
+    "assignee": "Infrastructure",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1907",
+    "title": "Background Task Queue Backlog",
+    "reporter": "Ops",
+    "created_at": "2026-02-28T20:40:00+08:00",
+    "priority": "high",
+    "status": "resolved",
+    "description": "Celery task queue has a backlog of over 50,000 tasks, including order confirmation emails, inventory sync, and data analytics async tasks. Cause: worker processes are blocked because database connections are unavailable.",
+    "tags": [
+      "queue",
+      "celery",
+      "backlog"
+    ],
+    "assignee": "Ops On-Call",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1908",
+    "title": "CRM Sync Process Consuming Excessive DB Resources",
+    "reporter": "DBA Wang",
+    "created_at": "2026-02-28T20:45:00+08:00",
+    "priority": "critical",
+    "status": "investigating",
+    "description": "Discovered that the crm_data_sync process is holding 300+ database connections and executing a full table scan SQL query. This query was added in last Friday's deployment. SQL statement: SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id WHERE sync_status = 'pending', not using any index, resulting in a full table scan. A single query execution is estimated to scan 12 million rows.",
+    "tags": [
+      "database",
+      "crm",
+      "root-cause"
+    ],
+    "assignee": "DBA Wang",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1909",
+    "title": "Manually Terminated CRM Sync Process",
+    "reporter": "DBA Wang",
+    "created_at": "2026-02-28T21:30:00+08:00",
+    "priority": "critical",
+    "status": "done",
+    "description": "Manually killed the crm_data_sync process and suspended the corresponding scheduled job. Database connections have started recovering. Connection pool utilization dropped from 100% to 25% within 5 minutes.",
+    "tags": [
+      "database",
+      "crm",
+      "mitigation"
+    ],
+    "assignee": "DBA Wang",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1910",
+    "title": "Services Gradually Recovering",
+    "reporter": "Ops",
+    "created_at": "2026-02-28T21:35:00+08:00",
+    "priority": "high",
+    "status": "done",
+    "description": "Payment service and order service recovered to normal within 5 minutes. API response times have returned to normal levels (P99 < 500ms). Celery task queue has started processing the backlog.",
+    "tags": [
+      "recovery",
+      "services"
+    ],
+    "assignee": "Ops On-Call",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1911",
+    "title": "Some User Order Data Inconsistencies",
+    "reporter": "Data Team",
+    "created_at": "2026-02-28T21:45:00+08:00",
+    "priority": "medium",
+    "status": "open",
+    "description": "Approximately 200 orders have abnormal statuses during the outage period and require manual verification. Some orders show payment succeeded but order status was not updated; some orders were submitted in duplicate. The list of affected orders has been exported and is awaiting manual processing.",
+    "tags": [
+      "data-consistency",
+      "orders",
+      "followup"
+    ],
+    "assignee": "Data Team",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1912",
+    "title": "Monitoring Alert Recovery Notification",
+    "reporter": "Monitoring System",
+    "created_at": "2026-02-28T21:50:00+08:00",
+    "priority": "low",
+    "status": "done",
+    "description": "All monitoring metrics have returned to normal. API response times, database connection pool, and payment success rate have all returned to normal levels. Alerts have been automatically cleared.",
+    "tags": [
+      "monitoring",
+      "recovery"
+    ],
+    "assignee": "Ops On-Call",
+    "department": "技术部"
+  }
+]

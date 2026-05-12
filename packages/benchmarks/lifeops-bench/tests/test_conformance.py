@@ -289,6 +289,28 @@ CONFORMANCE_SCENARIOS: list[Scenario] = [
         max_turns=4,
     ),
     Scenario(
+        id="conformance_promoted_message_send",
+        name="send a chat message via promoted action",
+        domain=Domain.MESSAGES,
+        mode=ScenarioMode.STATIC,
+        persona=_PERSONA,
+        instruction="text Alice hi",
+        ground_truth_actions=[
+            Action(
+                name="MESSAGE_SEND",
+                kwargs={
+                    "source": "imessage",
+                    "target": "Alice",
+                    "message": "hi",
+                },
+            ),
+        ],
+        required_outputs=["sent"],
+        first_question_fallback=None,
+        world_seed=112,
+        max_turns=4,
+    ),
+    Scenario(
         id="conformance_contacts_add",
         name="add a contact",
         domain=Domain.CONTACTS,

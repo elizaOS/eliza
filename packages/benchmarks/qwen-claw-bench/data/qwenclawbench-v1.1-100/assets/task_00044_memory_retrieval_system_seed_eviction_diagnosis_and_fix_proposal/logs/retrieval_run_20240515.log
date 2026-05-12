@@ -1,0 +1,73 @@
+========================================================================
+RETRIEVAL RUN LOG
+Run ID: run-20240515-003
+Timestamp: 2024-05-15T14:08:12Z
+Config: config/retrieval_config.yaml
+Query: 'database indexing performance caching optimization'
+========================================================================
+
+[2024-05-15T14:08:12.050Z] [INFO] === STAGE 1: Keyword Matching ===
+[2024-05-15T14:08:12.051Z] [INFO] Extracted query keywords: ['database', 'indexing', 'performance', 'caching', 'optimization']
+[2024-05-15T14:08:12.178Z] [INFO] Keyword matching completed in 127ms
+[2024-05-15T14:08:12.179Z] [INFO] Candidate pool size: 94 entries
+
+[2024-05-15T14:08:12.185Z] [INFO] === STAGE 2: Seed Selection (top-K) ===
+[2024-05-15T14:08:12.186Z] [INFO] Selecting top 10 seeds by composite score
+[2024-05-15T14:08:12.187Z] [INFO] Scoring weights: keyword_match=0.40, recency_bias=0.35, semantic_similarity=0.20, frequency=0.05
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #3: score=0.8212, ts=2023-01-06T05:49:04Z, relevance=0.828
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #18: score=0.7843, ts=2023-02-13T17:17:19Z, relevance=0.949
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #27: score=0.8379, ts=2023-03-10T15:18:57Z, relevance=0.854
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #41: score=0.8865, ts=2023-04-16T13:25:38Z, relevance=0.722
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #78: score=0.8033, ts=2023-07-21T08:04:17Z, relevance=0.634
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #103: score=0.8234, ts=2023-09-23T05:08:39Z, relevance=0.546
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #138: score=0.6042, ts=2023-12-24T21:49:00Z, relevance=0.365
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #162: score=0.9148, ts=2024-02-22T21:05:05Z, relevance=0.529
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #181: score=0.7561, ts=2024-04-11T14:26:39Z, relevance=0.634
+[2024-05-15T14:08:12.188Z] [INFO]   Seed #199: score=0.8091, ts=2024-05-28T15:26:26Z, relevance=0.236
+[2024-05-15T14:08:12.195Z] [INFO] Selected 10 seed memories: [3, 18, 27, 41, 78, 103, 138, 162, 181, 199]
+
+[2024-05-15T14:08:12.200Z] [INFO] === STAGE 3: Context Expansion (±3) ===
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #3: expanded to entries [1-6] (6 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #18: expanded to entries [15-21] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #27: expanded to entries [24-30] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #41: expanded to entries [38-44] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #78: expanded to entries [75-81] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #103: expanded to entries [100-106] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #138: expanded to entries [135-141] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #162: expanded to entries [159-165] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #181: expanded to entries [178-184] (7 entries)
+[2024-05-15T14:08:12.201Z] [INFO]   Seed #199: expanded to entries [196-200] (5 entries)
+[2024-05-15T14:08:12.220Z] [INFO] Total entries after expansion: 67
+
+[2024-05-15T14:08:12.225Z] [INFO] === STAGE 4: Deduplication ===
+[2024-05-15T14:08:12.226Z] [INFO] Strategy: keep_first
+[2024-05-15T14:08:12.230Z] [INFO] Removed 12 duplicate entries from overlapping windows
+[2024-05-15T14:08:12.231Z] [INFO] Entries after dedup: 55
+
+[2024-05-15T14:08:12.235Z] [INFO] === STAGE 5: Truncation ===
+[2024-05-15T14:08:12.236Z] [INFO] Current result count: 55, max_total_results: 50
+[2024-05-15T14:08:12.237Z] [INFO] Sorting by timestamp_desc before truncation
+[2024-05-15T14:08:12.240Z] [INFO] Truncating: dropping 5 oldest entries
+
+[2024-05-15T14:08:12.241Z] [WARN] Seed #3 (ts=2023-01-06T05:49:04Z, relevance=0.828) DROPPED during truncation
+[2024-05-15T14:08:12.241Z] [WARN]   Context window [1-6] (6 entries) also dropped
+[2024-05-15T14:08:12.241Z] [WARN] Seed #18 (ts=2023-02-13T17:17:19Z, relevance=0.949) DROPPED during truncation
+[2024-05-15T14:08:12.241Z] [WARN]   Context window [15-21] (7 entries) also dropped
+[2024-05-15T14:08:12.241Z] [WARN] Seed #27 (ts=2023-03-10T15:18:57Z, relevance=0.854) DROPPED during truncation
+[2024-05-15T14:08:12.241Z] [WARN]   Context window [24-30] (7 entries) also dropped
+[2024-05-15T14:08:12.241Z] [WARN] Seed #41 (ts=2023-04-16T13:25:38Z, relevance=0.722) DROPPED during truncation
+[2024-05-15T14:08:12.241Z] [WARN]   Context window [38-44] (7 entries) also dropped
+
+[2024-05-15T14:08:12.245Z] [WARN] 4 of 10 selected seeds were evicted by timestamp-based truncation
+[2024-05-15T14:08:12.246Z] [WARN] All evicted seeds had timestamps before 2023-05-15
+[2024-05-15T14:08:12.247Z] [INFO] Final result count: 50
+
+[2024-05-15T14:08:12.250Z] [INFO] === RUN SUMMARY ===
+[2024-05-15T14:08:12.251Z] [INFO] Seeds selected: 10
+[2024-05-15T14:08:12.252Z] [INFO] Seeds retained: 6
+[2024-05-15T14:08:12.253Z] [INFO] Seeds evicted: 4 (ids: [3, 18, 27, 41])
+[2024-05-15T14:08:12.254Z] [INFO] Final entries: 50
+[2024-05-15T14:08:12.255Z] [INFO] Precision (seeds retained/selected): 0.62
+[2024-05-15T14:08:12.256Z] [INFO] Total latency: 206ms
+[2024-05-15T14:08:12.257Z] [INFO] Run completed successfully
+========================================================================

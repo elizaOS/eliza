@@ -1,0 +1,138 @@
+[
+  {
+    "url": "https://status.cloudpay.com/incidents/INC-20260301-001",
+    "title": "CloudPay Status - Major Payment Processing Incident",
+    "snippet": "Investigating — We are experiencing a major incident affecting payment processing in the Asia-Pacific region. Started at 14:30 UTC. Impact: Payment API, Refund API, Webhooks.",
+    "source": "status.cloudpay.com",
+    "published_at": "2026-03-01T14:45:00Z",
+    "keywords": ["cloudpay", "status", "outage", "incident", "payment", "故障", "支付", "down", "宕机"]
+  },
+  {
+    "url": "https://technews.example.com/2026/03/cloudpay-major-outage",
+    "title": "CloudPay Suffers Major Outage, Asia-Pacific Merchants Impacted",
+    "snippet": "Payment gateway CloudPay is experiencing a significant service disruption since early afternoon UTC. Multiple merchants report payment processing failures across the Asia-Pacific region...",
+    "source": "technews.example.com",
+    "published_at": "2026-03-01T15:30:00Z",
+    "keywords": ["cloudpay", "outage", "payment", "merchant", "disruption", "故障", "中断", "商户"]
+  },
+  {
+    "url": "https://news.ycombinator.com/item?id=39882145",
+    "title": "CloudPay is down – payment processing failures across Asia-Pacific",
+    "snippet": "Multiple reports of CloudPay API returning 503 errors. Some users reporting partial recovery at 18:00 UTC but webhooks still not firing. Discussion of root cause and workarounds...",
+    "source": "news.ycombinator.com",
+    "published_at": "2026-03-01T15:15:00Z",
+    "keywords": ["cloudpay", "down", "api", "503", "webhook", "payment", "故障", "宕机", "社区"]
+  },
+  {
+    "url": "https://blog.cloudpay.com/incident-update-20260301",
+    "title": "CloudPay Incident Update: Database Migration Issue Identified",
+    "snippet": "Update: We have identified the root cause as a failed database migration in our v3.2.1 update. Our engineering team is working on a rollback. Estimated recovery: 22:30 UTC.",
+    "source": "blog.cloudpay.com",
+    "published_at": "2026-03-01T17:00:00Z",
+    "keywords": ["cloudpay", "incident", "database", "migration", "update", "root cause", "rollback", "数据库", "迁移", "根因"]
+  },
+  {
+    "url": "https://docs.asiapay.com/integration/quick-start",
+    "title": "AsiaPay Integration Quick Start Guide — For CloudPay Merchants",
+    "snippet": "AsiaPay provides a drop-in replacement API compatible with CloudPay. Emergency migration takes 30 minutes. Compatible API format, same webhook structure.",
+    "source": "docs.asiapay.com",
+    "published_at": "2026-01-15T10:00:00Z",
+    "keywords": ["asiapay", "payment", "alternative", "integration", "gateway", "替代", "备选", "支付", "替代方案", "迁移", "cloudpay"]
+  },
+  {
+    "url": "https://pcissc.example.com/guidance/incident-response-2026",
+    "title": "PCI DSS v4.0 Incident Response Requirements",
+    "snippet": "Under PCI DSS v4.0, merchants must notify their acquiring bank within 72 hours of a payment service disruption. Documentation requirements and compliance timeline...",
+    "source": "pcissc.example.com",
+    "published_at": "2026-01-10T08:00:00Z",
+    "keywords": ["pci", "compliance", "incident", "notification", "payment", "security", "合规", "PCI", "72"]
+  },
+  {
+    "url": "https://36kr.com/p/cloudpay-outage-20260301",
+    "title": "支付网关CloudPay大规模宕机，亚太区商户受影响",
+    "snippet": "3月1日下午，国际支付网关CloudPay发生大规模服务故障，亚太区多家商户支付功能受到影响。官方确认问题源于数据库迁移失败...",
+    "source": "36kr.com",
+    "published_at": "2026-03-01T16:00:00Z",
+    "keywords": ["cloudpay", "宕机", "故障", "支付", "亚太", "数据库", "迁移", "商户", "36kr"]
+  },
+  {
+    "url": "https://dev.community.cloudpay.com/t/outage-workaround-queue-and-retry",
+    "title": "Workaround for CloudPay Outage: Queue and Retry Pattern",
+    "snippet": "During the ongoing outage, here's a tested workaround: implement a local payment queue. Also: route through US-West endpoint or failover to AsiaPay...",
+    "source": "dev.community.cloudpay.com",
+    "published_at": "2026-03-01T16:30:00Z",
+    "keywords": ["cloudpay", "workaround", "outage", "retry", "queue", "解决方案", "临时方案", "替代", "应急"]
+  },
+  {
+    "url": "https://fintech-insights.example.com/payment-outage-cost-analysis",
+    "title": "The True Cost of Payment Gateway Outages: A 2026 Analysis",
+    "snippet": "Mid-size merchants lose an average of $35,000-$50,000 per hour during payment gateway outages. Beyond direct revenue loss, customer churn increases by 15-20%...",
+    "source": "fintech-insights.example.com",
+    "published_at": "2026-02-15T09:00:00Z",
+    "keywords": ["payment", "outage", "cost", "analysis", "revenue", "loss", "成本", "损失", "影响"]
+  },
+  {
+    "url": "https://fintech-review.example.com/compare-asia-payment-gateways-2026",
+    "title": "2026年亚太区支付网关对比：CloudPay vs AsiaPay vs PayEast",
+    "snippet": "三大亚太区支付网关功能、费率和可靠性对比。AsiaPay在API兼容性方面表现突出，支持CloudPay格式的无缝迁移...",
+    "source": "fintech-review.example.com",
+    "published_at": "2026-02-20T14:00:00Z",
+    "keywords": ["payment", "gateway", "comparison", "asiapay", "cloudpay", "支付", "对比", "网关", "替代", "payeast"]
+  },
+  {
+    "url": "https://technews.example.com/2025/09/cloudpay-september-outage",
+    "title": "CloudPay September 2025 Outage: Post-Mortem Published",
+    "snippet": "CloudPay has published their post-mortem for the September 15 outage which lasted 4 hours. Root cause was a misconfigured load balancer during maintenance...",
+    "source": "technews.example.com",
+    "published_at": "2025-09-20T12:00:00Z",
+    "keywords": ["cloudpay", "outage", "post-mortem", "2025", "september", "历史", "故障"]
+  },
+  {
+    "url": "https://www.cloudpay.com/features",
+    "title": "CloudPay - Enterprise Payment Solutions | Features",
+    "snippet": "Discover CloudPay's enterprise payment platform. Support for 150+ currencies, 99.99% uptime SLA, real-time analytics, and fraud detection...",
+    "source": "www.cloudpay.com",
+    "published_at": "2026-02-01T10:00:00Z",
+    "keywords": ["cloudpay", "features", "payment", "enterprise", "功能", "支付"]
+  },
+  {
+    "url": "https://blog.cloudpay.com/maintenance-notice-20260301",
+    "title": "CloudPay Scheduled Maintenance Notice - March 2026",
+    "snippet": "Notice regarding planned maintenance window for CloudPay infrastructure. Please refer to the status page for real-time updates...",
+    "source": "blog.cloudpay.com",
+    "published_at": "2026-03-01T13:00:00Z",
+    "keywords": ["cloudpay", "maintenance", "notice", "update", "维护", "公告"]
+  },
+  {
+    "url": "https://medium.com/@fintech-daily/digital-wallet-trends-2026",
+    "title": "Top 10 Digital Wallet Trends to Watch in 2026",
+    "snippet": "From biometric authentication to embedded finance, here are the trends reshaping digital payments this year. Apple Pay and Google Pay continue to dominate...",
+    "source": "medium.com",
+    "published_at": "2026-02-28T08:00:00Z",
+    "keywords": ["payment", "digital", "wallet", "trends", "fintech", "支付"]
+  },
+  {
+    "url": "https://www.cloudpay.com/careers",
+    "title": "Careers at CloudPay — Join Our Team",
+    "snippet": "CloudPay is hiring! We're looking for talented engineers, product managers, and sales professionals to join our rapidly growing team across 12 offices worldwide.",
+    "source": "www.cloudpay.com",
+    "published_at": "2026-01-20T10:00:00Z",
+    "keywords": ["cloudpay", "careers", "hiring", "jobs", "招聘"]
+  },
+  {
+    "url": "https://example-ecommerce-blog.com/optimize-checkout-conversion",
+    "title": "How to Optimize Your E-Commerce Checkout for Higher Conversion",
+    "snippet": "Reduce cart abandonment by 30% with these checkout optimization tips. Learn about one-click payments, address autofill, and payment method selection...",
+    "source": "example-ecommerce-blog.com",
+    "published_at": "2026-02-10T11:00:00Z",
+    "keywords": ["payment", "checkout", "conversion", "ecommerce", "支付", "购物车"]
+  },
+  {
+    "url": "https://regulationnews.example.com/eu-psd3-2026-update",
+    "title": "EU PSD3 Regulation Update: What Payment Providers Need to Know",
+    "snippet": "The European Commission's PSD3 framework enters enforcement phase in Q3 2026. Key changes include stronger SCA requirements and open banking mandates...",
+    "source": "regulationnews.example.com",
+    "published_at": "2026-02-25T09:00:00Z",
+    "keywords": ["payment", "regulation", "psd3", "compliance", "合规", "监管"]
+  }
+]

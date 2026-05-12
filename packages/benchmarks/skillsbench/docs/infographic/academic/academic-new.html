@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SkillsBench - Academic</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #e8e8e8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .infographic {
+      width: 1080px;
+      height: 1080px;
+      background: #fafafa;
+      padding: 32px 44px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ==================== HEADER ==================== */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+
+    .header-left h1 {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 78px;
+      font-weight: 700;
+      color: #111;
+      letter-spacing: -2px;
+      line-height: 1;
+    }
+
+    .header-left .subtitle {
+      font-size: 20px;
+      color: #555;
+      margin-top: 12px;
+      max-width: 620px;
+      line-height: 1.5;
+    }
+
+    .header-right {
+      text-align: right;
+      padding-top: 8px;
+    }
+
+    .header-venue {
+      font-size: 14px;
+      font-weight: 700;
+      color: #111;
+      background: #f0f0f0;
+      padding: 6px 14px;
+      border-radius: 4px;
+    }
+
+    .header-meta {
+      font-size: 12px;
+      color: #888;
+      margin-top: 6px;
+    }
+
+    /* ==================== CONTEXT BAR ==================== */
+    .context-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      background: #111;
+      border-radius: 10px;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+
+    .context-col {
+      padding: 18px 16px;
+      text-align: center;
+      border-right: 1px solid #333;
+    }
+
+    .context-col:last-child {
+      border-right: none;
+      background: #1a1a2e;
+    }
+
+    .context-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+
+    .context-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .context-sub {
+      font-size: 13px;
+      color: #888;
+    }
+
+    /* ==================== TIMELINE ==================== */
+    .timeline-bar {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 16px 22px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+    }
+
+    .timeline-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+      flex-shrink: 0;
+    }
+
+    .timeline {
+      flex: 1;
+      position: relative;
+      height: 50px;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      top: 6px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, #ddd 0%, #111 100%);
+    }
+
+    .timeline-item {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      z-index: 1;
+      transform: translateX(-50%);
+    }
+
+    /* Proportional positioning: Nov'24(0%) --4mo-- Mar'25(31%) --7mo-- Oct'25(85%) --2mo-- Dec'25(100%) */
+    .timeline-item:nth-child(1) { left: 0%; transform: translateX(0); }
+    .timeline-item:nth-child(2) { left: 31%; }
+    .timeline-item:nth-child(3) { left: 85%; }
+    .timeline-item:nth-child(4) { left: 100%; transform: translateX(-100%); }
+
+    .timeline-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      border: 3px solid #bbb;
+      margin-bottom: 6px;
+    }
+
+    .timeline-item.highlight .timeline-dot {
+      background: #111;
+      border-color: #111;
+      box-shadow: 0 0 0 4px rgba(0,0,0,0.1);
+    }
+
+    .timeline-date {
+      font-size: 14px;
+      font-weight: 600;
+      color: #333;
+      white-space: nowrap;
+    }
+
+    .timeline-text {
+      font-size: 12px;
+      color: #888;
+      white-space: nowrap;
+    }
+
+    /* ==================== GAP STATEMENT ==================== */
+    .gap-section {
+      background: linear-gradient(135deg, #f5f5f5 0%, #ebebeb 100%);
+      border-left: 4px solid #111;
+      border-radius: 0 8px 8px 0;
+      padding: 18px 22px;
+      margin-bottom: 10px;
+    }
+
+    .gap-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #111;
+      margin-bottom: 8px;
+    }
+
+    .gap-text {
+      font-size: 16px;
+      color: #555;
+      line-height: 1.55;
+    }
+
+    .gap-text strong {
+      color: #111;
+      background: #fff3cd;
+      padding: 1px 4px;
+      border-radius: 2px;
+    }
+
+    /* ==================== RESEARCH QUESTIONS ==================== */
+    .rq-section {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .rq-card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 20px 18px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .rq-num {
+      width: 44px;
+      height: 44px;
+      background: #111;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 22px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .rq-content {
+      flex: 1;
+    }
+
+    .rq-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .rq-text {
+      font-size: 19px;
+      font-weight: 600;
+      color: #111;
+      line-height: 1.35;
+      margin-bottom: 6px;
+    }
+
+    .rq-sub {
+      font-size: 15px;
+      color: #666;
+      line-height: 1.45;
+    }
+
+    /* ==================== BENCHMARK ==================== */
+    .benchmark-section {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 10px;
+      padding: 22px 24px;
+      margin-bottom: 12px;
+    }
+
+    .benchmark-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .benchmark-title {
+      font-size: 16px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #111;
+    }
+
+    .benchmark-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #888;
+      background: #f5f5f5;
+      padding: 4px 10px;
+      border-radius: 4px;
+    }
+
+    .benchmark-grid {
+      display: grid;
+      grid-template-columns: auto auto 1fr;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .stat-box {
+      background: #f8f8f8;
+      border-radius: 8px;
+      padding: 16px 28px;
+      text-align: center;
+    }
+
+    .stat-num {
+      font-size: 42px;
+      font-weight: 700;
+      color: #111;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      color: #888;
+      margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .tags-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .tags-label {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+    }
+
+    .tags-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tag {
+      background: #f0f0f0;
+      padding: 5px 10px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #555;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tag-count {
+      background: #111;
+      color: #fff;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .difficulty-box {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 140px;
+    }
+
+    .diff-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+    }
+
+    .diff-bar {
+      height: 8px;
+      background: #eee;
+      border-radius: 4px;
+      overflow: hidden;
+      display: flex;
+    }
+
+    .diff-hard {
+      background: #111;
+      width: 65%;
+    }
+
+    .diff-med {
+      background: #888;
+      width: 35%;
+    }
+
+    .diff-legend {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      color: #888;
+    }
+
+    /* ==================== SUMMARY ROW ==================== */
+    .summary-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 2px solid #e0e0e0;
+    }
+
+    .summary-item {
+      background: #fff;
+      border: 1px solid #e8e8e8;
+      border-radius: 8px;
+      padding: 16px 16px;
+    }
+
+    .summary-label {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    .summary-value {
+      font-size: 16px;
+      font-weight: 600;
+      color: #111;
+    }
+
+    /* ==================== FOOTER ==================== */
+    .footer {
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      color: #888;
+    }
+
+    .footer-left {
+      font-weight: 600;
+      color: #111;
+    }
+  </style>
+</head>
+<body>
+  <div class="infographic">
+
+    <!-- ① HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <h1>SkillsBench</h1>
+        <p class="subtitle">The first gym-style benchmark for AI Agent Skills—measuring how well agents apply procedural knowledge, not just connect to tools.</p>
+      </div>
+      <div class="header-right">
+        <div class="header-venue">Open Source</div>
+        <div class="header-meta">skillsbench.ai</div>
+      </div>
+    </div>
+
+    <!-- ② CONTEXT: MCP + Skills = SkillsBench -->
+    <div class="context-bar">
+      <div class="context-col">
+        <div class="context-label">MCP</div>
+        <div class="context-title">Tool Provisioning</div>
+        <div class="context-sub">"What tools can an agent use?"</div>
+      </div>
+      <div class="context-col">
+        <div class="context-label">Skills</div>
+        <div class="context-title">Training Materials</div>
+        <div class="context-sub">"How should an agent work?"</div>
+      </div>
+      <div class="context-col">
+        <div class="context-label">SkillsBench</div>
+        <div class="context-title">First Benchmark</div>
+        <div class="context-sub">Measuring expertise transfer at scale</div>
+      </div>
+    </div>
+
+    <!-- ③ TIMELINE -->
+    <div class="timeline-bar">
+      <div class="timeline-title">Timeline</div>
+      <div class="timeline">
+        <div class="timeline-item">
+          <div class="timeline-dot"></div>
+          <div class="timeline-date">Nov '24</div>
+          <div class="timeline-text">MCP ships</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot"></div>
+          <div class="timeline-date">Mar '25</div>
+          <div class="timeline-text">OpenAI adopts</div>
+        </div>
+        <div class="timeline-item">
+          <div class="timeline-dot"></div>
+          <div class="timeline-date">Oct '25</div>
+          <div class="timeline-text">Skills beta</div>
+        </div>
+        <div class="timeline-item highlight">
+          <div class="timeline-dot"></div>
+          <div class="timeline-date">Dec '25</div>
+          <div class="timeline-text">9 agents adopt</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ④ THE GAP -->
+    <div class="gap-section">
+      <div class="gap-title">The Gap: No Benchmark for Skills</div>
+      <div class="gap-text">
+        MCP benchmarks measure tool connectivity. But Skills are training materials—procedural knowledge that teaches agents <em>how</em> to work.
+        No systematic framework exists for evaluating whether Skills actually transfer expertise effectively.
+        <strong>SkillsBench fills this gap.</strong>
+      </div>
+    </div>
+
+    <!-- ⑤ RESEARCH QUESTIONS -->
+    <div class="rq-section">
+      <div class="rq-card">
+        <div class="rq-num">1</div>
+        <div class="rq-content">
+          <div class="rq-label">Research Question</div>
+          <div class="rq-text">Do Skills help agents perform better?</div>
+          <div class="rq-sub">Comparing agent performance with vs. without Skills on identical tasks</div>
+        </div>
+      </div>
+      <div class="rq-card">
+        <div class="rq-num">2</div>
+        <div class="rq-content">
+          <div class="rq-label">Research Question</div>
+          <div class="rq-text">Can agents compose multiple Skills?</div>
+          <div class="rq-sub">Measuring how well agents select and combine Skills for complex workflows</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑥ ECOSYSTEM ADOPTION -->
+    <div class="benchmark-section">
+      <div class="benchmark-header">
+        <div class="benchmark-title">Ecosystem Adoption</div>
+        <div class="benchmark-badge">Dec 2025</div>
+      </div>
+      <div class="benchmark-grid">
+        <div class="stat-box">
+          <div class="stat-num">28k+</div>
+          <div class="stat-label">Smithery.ai</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-num">45k+</div>
+          <div class="stat-label">GitHub SKILL.md</div>
+        </div>
+        <div class="tags-section">
+          <div class="tags-label">Domains</div>
+          <div class="tags-wrap">
+            <span class="tag">Research</span>
+            <span class="tag">Coding</span>
+            <span class="tag">Writing</span>
+            <span class="tag">Data</span>
+            <span class="tag">Design</span>
+            <span class="tag">Planning</span>
+            <span class="tag">Office</span>
+            <span class="tag">Logistics</span>
+            <span class="tag">Bio</span>
+            <span class="tag">Finance</span>
+            <span class="tag">Security</span>
+            <span class="tag">DevOps</span>
+            <span class="tag">Marketing</span>
+            <span class="tag">Legal</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ⑦ SUMMARY ROW -->
+    <div class="summary-row">
+      <div class="summary-item">
+        <div class="summary-label">Evaluation</div>
+        <div class="summary-value">State → Action → Reward</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Format</div>
+        <div class="summary-value">Filesystem-native</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Properties</div>
+        <div class="summary-value">Versionable · Composable</div>
+      </div>
+      <div class="summary-item">
+        <div class="summary-label">Environment</div>
+        <div class="summary-value">Docker + BenchFlow</div>
+      </div>
+    </div>
+
+    <!-- ⑧ FOOTER -->
+    <div class="footer">
+      <span class="footer-left">skillsbench.ai</span>
+      <span>github.com/benchflow-ai/skillsbench</span>
+    </div>
+
+  </div>
+</body>
+</html>

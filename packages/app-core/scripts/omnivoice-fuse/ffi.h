@@ -184,12 +184,12 @@ typedef int (*eliza_tts_chunk_cb)(
     int is_final,
     void * user_data);
 
-/* Capability probe: 1 when this build implements streaming TTS, 0 when
+/* Capability probe: 1 only when this build wires real decoded PCM chunk
+ * callbacks and the cooperative `eliza_inference_cancel_tts` path, 0 when
  * it does not (stub / TTS-disabled build). Mirrors
- * `eliza_inference_asr_stream_supported`. Callers pick the streaming
- * path vs the batch `eliza_inference_tts_synthesize` off this flag —
- * they do not have to call the streaming entry and catch
- * ELIZA_ERR_NOT_IMPLEMENTED. */
+ * `eliza_inference_asr_stream_supported`. Callers pick the streaming path
+ * vs the batch `eliza_inference_tts_synthesize` off this flag — they do
+ * not have to call the streaming entry and catch ELIZA_ERR_NOT_IMPLEMENTED. */
 int eliza_inference_tts_stream_supported(void);
 
 int eliza_inference_tts_synthesize_stream(

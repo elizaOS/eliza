@@ -20,12 +20,20 @@ import dotenv from "dotenv";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
 const elizaRoot = path.resolve(packageRoot, "..", "..");
+<<<<<<< HEAD
 const repoRoot = path.resolve(elizaRoot, "..");
+=======
+const elizaRoot = path.resolve(elizaRoot, "..");
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 const envCandidates = [
   path.join(packageRoot, ".env"),
   path.join(elizaRoot, ".env"),
+<<<<<<< HEAD
   path.join(repoRoot, ".env"),
+=======
+  path.join(elizaRoot, ".env"),
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ];
 for (const candidate of envCandidates) {
   if (fs.existsSync(candidate)) {
@@ -53,7 +61,11 @@ const child = spawn(
   "bunx",
   ["vitest", "run", "--config", vitestConfig, testFile],
   {
+<<<<<<< HEAD
     cwd: repoRoot,
+=======
+    cwd: elizaRoot,
+>>>>>>> origin/shaw/fine-tune-apollo-pipeline
     stdio: "inherit",
     env: process.env,
   },

@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { strict as assert } from "node:assert";
 import type { IAgentRuntime, TestSuite } from "@elizaos/core";
 import type { DexInteractionService } from "../services/DexInteractionService.ts";

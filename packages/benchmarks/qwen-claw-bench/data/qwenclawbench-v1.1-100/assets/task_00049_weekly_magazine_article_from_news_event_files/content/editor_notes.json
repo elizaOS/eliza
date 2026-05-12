@@ -1,0 +1,9 @@
+{
+  "editor": "M. Chen",
+  "date": "2025-06-01",
+  "revision": 3,
+  "notes": "Target audience changed to advanced learners. Use complex sentence structures and academic vocabulary throughout the article. Include 5 discussion questions instead of 2 to encourage deeper critical thinking. Add a summary paragraph at the beginning of the article before the main body. Glossary should contain 7-8 entries with etymology notes.",
+  "priority": "high",
+  "applies_to": "article_output.md",
+  "status": "SUPERSEDED - see article_guidelines.yaml for final requirements"
+}

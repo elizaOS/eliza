@@ -468,7 +468,7 @@ public for public repos.
 | Drafter for that target  | hidden companion file in the same `elizaos/eliza-1-<tier>` repo |
 | Pairing manifest (siblings) | `manifest.json` inside each repo (target points at drafter) |
 
-`<tier>` follows the catalog ids: `0_6b`, `1_7b`,
+`<tier>` follows the catalog ids: `0_8b`, `2b`,
 `9b`, `27b`, and `27b-256k`. The target the user installs
 is visible; the drafter is hidden from the catalog and only downloaded
 as a companion (matching the `runtimeRole: "dflash-drafter"` pattern in
@@ -491,16 +491,16 @@ file expects. Schema:
 {
   "version": 1,
   "kind": "eliza-1-optimized",
-  "modelId": "eliza-1-1_7b",
+  "modelId": "eliza-1-2b",
   "base": {
-    "name": "eliza-1-1_7b",
-    "displayName": "Eliza-1 Mobile 1.7B",
-    "params": "1.7B",
+    "name": "eliza-1-2b",
+    "displayName": "Eliza-1 Mobile 2B",
+    "params": "2B",
     "tokenizerFamily": "eliza1",
     "contextLength": 32768
   },
   "gguf": {
-    "file": "text/eliza-1-1_7b-q4_k_m.gguf",
+    "file": "text/eliza-1-2b-q4_k_m.gguf",
     "sha256": "<64-hex>",
     "sizeBytes": 0,
     "quant": "Q4_POLAR + QJL1_256 K + TBQ V"
@@ -514,9 +514,9 @@ file expects. Schema:
     "requiresFork": "elizaOS/llama.cpp@v1.0.0-eliza"
   },
   "drafter": {
-    "repo": "elizaos/eliza-1-1_7b",
-    "file": "text/eliza-1-1_7b-drafter.gguf",
-    "params": "0.6B",
+    "repo": "elizaos/eliza-1-2b",
+    "file": "text/eliza-1-2b-drafter.gguf",
+    "params": "0.8B",
     "tokenizerFamily": "eliza1"
   },
   "pipeline": {
@@ -538,8 +538,8 @@ catalog sync script can walk either side and reconstruct pairings.
 # Dry-run — refuses to push anything, prints the manifest and what
 # would upload. No HF_TOKEN required.
 uv run python scripts/publish_eliza1_model.py \
-    --model-dir /path/to/eliza-1-1_7b \
-    --repo-id elizaos/eliza-1-1_7b \
+    --model-dir /path/to/eliza-1-2b \
+    --repo-id elizaos/eliza-1-2b \
     --dry-run
 
 # Real push. The script refuses to ship a stock-format GGUF (one
@@ -548,8 +548,8 @@ uv run python scripts/publish_eliza1_model.py \
 # + size; subsequent runs skip re-upload when the sha matches the
 # existing remote LFS pointer.
 HF_TOKEN=hf_xxx uv run python scripts/publish_eliza1_model.py \
-    --model-dir /path/to/eliza-1-1_7b \
-    --repo-id elizaos/eliza-1-1_7b
+    --model-dir /path/to/eliza-1-2b \
+    --repo-id elizaos/eliza-1-2b
 ```
 
 After a publish run, refresh the local-inference catalog so the phone
@@ -572,7 +572,7 @@ class the iOS / Android runtimes use, points its state directory at a
 temp dir, and reports time + bytes/sec. Run it from the repo root:
 
 ```bash
-node scripts/verify-phone-download.mjs --model-id eliza-1-1_7b
+node scripts/verify-phone-download.mjs --model-id eliza-1-2b
 ```
 
 This is the gate W5-Catalog uses to decide whether to land a catalog
