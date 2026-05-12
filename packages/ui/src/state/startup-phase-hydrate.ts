@@ -23,7 +23,7 @@ import {
   type Tab,
   tabFromPath,
 } from "../navigation";
-import { resolveApiUrl } from "../utils";
+import { isTransientOptionalFetchFailure, resolveApiUrl } from "../utils";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -152,29 +152,6 @@ export async function runHydrating(
   dispatch: (event: StartupEvent) => void,
   cancelled: { current: boolean },
 ): Promise<void> {
-  const isTransientOptionalFetchFailure = (err: unknown): boolean => {
-    if (!(err instanceof Error)) return false;
-    const maybeApiError = err as Error & {
-      kind?: string;
-      path?: string;
-    };
-    // A raw `TypeError: Failed to fetch` (fetch() rejecting before any HTTP
-    // response — connection reset, route not yet wired, navigation aborted)
-    // during optional startup hydration is transient by definition: every
-    // such fetch here is best-effort and re-driven by later polls. Don't
-    // surface it as a console warning (it flakes the ui-smoke guards).
-    if (
-      err.name === "TypeError" &&
-      /^(Failed to fetch|NetworkError|Load failed)$/i.test(err.message)
-    ) {
-      return true;
-    }
-    return (
-      err.name === "ApiError" &&
-      maybeApiError.kind === "network" &&
-      /^(Failed to fetch|Request aborted)$/i.test(err.message)
-    );
-  };
   const warn = (scope: string, err: unknown) => {
     if (isTransientOptionalFetchFailure(err)) return;
     console.warn(`[eliza][startup:init] ${scope}`, err);
