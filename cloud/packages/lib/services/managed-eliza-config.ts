@@ -15,19 +15,20 @@ export interface ManagedElizaEnvironmentResult {
   apiToken: string;
   changed: boolean;
   environmentVars: Record<string, string>;
-  userApiKey: string;
+  agentApiKey: string;
 }
 
 export interface ManagedElizaBaseEnvironmentResult {
   apiToken: string;
   environmentVars: Record<string, string>;
-  userApiKey: string;
+  agentApiKey: string;
 }
 
 export interface PrepareManagedElizaSharedEnvironmentParams {
   existingEnv?: Record<string, string> | null;
   organizationId: string;
   userId: string;
+  agentSandboxId: string;
 }
 
 export function normalizeBaseUrl(raw: string): string {
@@ -51,7 +52,9 @@ export function resolveCloudPublicUrl(): string {
 export function resolveCloudApiBaseUrl(): string {
   const env = getCloudAwareEnv();
   const explicit =
-    env.ELIZAOS_CLOUD_BASE_URL || env.ELIZA_CLOUD_API_BASE_URL || env.NEXT_PUBLIC_API_URL;
+    env.ELIZAOS_CLOUD_BASE_URL ||
+    env.ELIZA_CLOUD_API_BASE_URL ||
+    env.NEXT_PUBLIC_API_URL;
   if (explicit) {
     return normalizeBaseUrl(explicit);
   }
@@ -111,73 +114,36 @@ export function mergeManagedAllowedOrigins(existingValue?: string): string {
   return [...merged].join(",");
 }
 
-function copyProviderSecret(
-  target: Record<string, string>,
-  key: string,
-  source: NodeJS.ProcessEnv = process.env,
-): void {
-  if (target[key]?.trim()) return;
-  const value = source[key]?.trim();
-  if (value) target[key] = value;
-}
-
-function isActiveApiKeyForUser(
-  key: {
-    user_id: string;
-    is_active: boolean;
-    expires_at: Date | null;
-    key: string;
-  },
-  userId: string,
-): boolean {
-  if (key.user_id !== userId || !key.is_active || !key.key?.trim()) {
-    return false;
-  }
-
-  return !key.expires_at || new Date(key.expires_at).getTime() > Date.now();
-}
-
-async function getOrCreateUserApiKey(userId: string, organizationId: string): Promise<string> {
-  const existingKeys = await apiKeysService.listByOrganization(organizationId);
-  const existingKey = existingKeys.find((key) => isActiveApiKeyForUser(key, userId));
-  if (existingKey) {
-    return existingKey.key;
-  }
-
-  const { plainKey } = await apiKeysService.create({
-    name: "Eliza Cloud Managed Access",
-    description: "Auto-generated for managed Eliza instances on Eliza Cloud",
-    organization_id: organizationId,
-    user_id: userId,
-    permissions: [],
-    rate_limit: 1000,
-    is_active: true,
-    expires_at: null,
-  });
-
-  return plainKey;
-}
-
 export async function prepareManagedElizaBaseEnvironment(params: {
   existingEnv?: Record<string, string> | null;
   organizationId: string;
   userId: string;
+  agentSandboxId: string;
 }): Promise<ManagedElizaBaseEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
-  const userApiKey = await getOrCreateUserApiKey(params.userId, params.organizationId);
+  const { plainKey: agentApiKey } = await apiKeysService.createForAgent({
+    organizationId: params.organizationId,
+    userId: params.userId,
+    agentSandboxId: params.agentSandboxId,
+  });
   const apiToken =
-    existingEnv.ELIZA_API_TOKEN?.trim() || `agent_${crypto.randomUUID().replace(/-/g, "")}`;
+    existingEnv.ELIZA_API_TOKEN?.trim() ||
+    `agent_${crypto.randomUUID().replace(/-/g, "")}`;
 
   return {
     apiToken,
-    userApiKey,
+    agentApiKey,
     environmentVars: {
       ...existingEnv,
       ELIZA_API_TOKEN: apiToken,
       ELIZA_ALLOW_WS_QUERY_TOKEN: "1",
-      ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(existingEnv.ELIZA_ALLOWED_ORIGINS),
-      ELIZAOS_API_KEY: userApiKey,
-      ELIZAOS_CLOUD_API_KEY: userApiKey,
+      ELIZA_ALLOWED_ORIGINS: mergeManagedAllowedOrigins(
+        existingEnv.ELIZA_ALLOWED_ORIGINS,
+      ),
+      // Public web UI off by default. Operators can re-enable per-agent with
+      // ELIZA_UI_ENABLE=true via existingEnv when needed for ops/debug.
+      ELIZA_UI_ENABLE: existingEnv.ELIZA_UI_ENABLE ?? "false",
+      ELIZAOS_CLOUD_API_KEY: agentApiKey,
       ELIZAOS_CLOUD_ENABLED: "true",
       ELIZAOS_CLOUD_BASE_URL: resolveCloudApiBaseUrl(),
     },
@@ -192,20 +158,16 @@ export async function prepareManagedElizaSharedEnvironment(
     existingEnv,
     organizationId: params.organizationId,
     userId: params.userId,
+    agentSandboxId: params.agentSandboxId,
   });
   const environmentVars: Record<string, string> = {
     ...baseEnvironment.environmentVars,
   };
-  const env = getCloudAwareEnv();
-  copyProviderSecret(environmentVars, "OPENAI_API_KEY", env);
-  copyProviderSecret(environmentVars, "ANTHROPIC_API_KEY", env);
-  copyProviderSecret(environmentVars, "AI_GATEWAY_API_KEY", env);
-  copyProviderSecret(environmentVars, "VERCEL_AI_GATEWAY_API_KEY", env);
 
   return {
     apiToken: environmentVars.ELIZA_API_TOKEN,
     changed: JSON.stringify(existingEnv) !== JSON.stringify(environmentVars),
     environmentVars,
-    userApiKey: baseEnvironment.userApiKey,
+    agentApiKey: baseEnvironment.agentApiKey,
   };
 }
