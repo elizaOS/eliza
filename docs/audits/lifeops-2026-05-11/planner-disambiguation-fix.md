@@ -129,5 +129,34 @@ next bench run picks up the corrected wire-shape hint immediately.
 - Hand-patched owner-surface entries verified via `jq` for
   `OWNER_REMINDERS_CREATE` — title + details descriptions now carry the
   flat/nested rule with concrete examples.
-- Smoke run (5 scenarios, `MILADY_BENCH_AGENT=eliza`) results recorded
-  alongside this audit.
+- Smoke run (5 scenarios, `MILADY_BENCH_AGENT=eliza`,
+  run id `lifeops-multiagent-1778549433787`):
+
+  | Scenario | Before (W2-9) | After |
+  | --- | --- | --- |
+  | `smoke_static_calendar_01` | `BLOCK { name, start_time, duration_minutes }` | `CALENDAR_CREATE_EVENT { title, start, duration_minutes }` |
+  | `calendar.reschedule_roadmap_sync_to_afternoon` | `CALENDAR { subaction: update_event, details: { title, start_time, duration_minutes } }` | `CALENDAR { subaction: update_event, title, new_start, duration_hours }` |
+  | `calendar.cancel_tentative_launch_checklist` | (no action emitted) | `CALENDAR { subaction: delete_event, title, date, calendar }` |
+  | `calendar.find_free_60min_this_week` | (no action emitted) | `CALENDAR_PROPOSE_TIMES { start_date, end_date, duration_minutes }` |
+  | `calendar.check_availability_thursday_morning` | (no action emitted) | `CALENDAR_CHECK_AVAILABILITY { start, end }` |
+
+  Key results:
+  - Bug A fixed: `smoke_static_calendar_01` now routes to
+    `CALENDAR_CREATE_EVENT`, not `BLOCK`. `title` is at the top level (matches
+    bench expected shape) and the BLOCK action is correctly skipped.
+  - `title` is now consistently emitted at the top level on calendar
+    update/delete/create rather than wrapped in `details` — the title-shape
+    half of Bug B is fixed.
+  - Remaining drift: time fields (`start` / `end` / `new_start`) are still
+    appearing flat instead of inside `details` on create_event /
+    update_event. The compressed parameter description spells out the
+    nested-time-fields rule with two concrete examples; whether the planner
+    picks it up consistently is a function of the planner model's adherence
+    to descriptions and will need another bench pass on the full corpus.
+  - Scores remain `null` for the eliza adapter (same as W2-9) — that is a
+    scorer/adapter-side gap outside W4-D scope (constraint forbids
+    scorer/adapter edits).
+- Constraints respected: edits were limited to `block.ts`, `calendar.ts`,
+  the regenerated `actions.manifest.json`/`actions.summary.md`, and this
+  audit doc. No scorer, bench server, adapter, scenario, helper, or other
+  action handler was touched.
