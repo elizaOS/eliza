@@ -126,9 +126,11 @@ def main(argv: list[str] | None = None) -> int:
     shutil.copy2(args.text_gguf, text_dest)
     text_sha = sha256_file(text_dest)
     quant_block: dict[str, Any] = {}
-    if args.text_sidecar and args.text_sidecar.is_file():
+    optimized = bool(args.text_sidecar and args.text_sidecar.is_file())
+    if optimized:
         sc = json.loads(args.text_sidecar.read_text())
         quant_block = {
+            "optimized": True,
             "polarquant": sc.get("polarquant"),
             "qjl": sc.get("qjl"),
             "turboquant": sc.get("turboquant"),
@@ -137,6 +139,17 @@ def main(argv: list[str] | None = None) -> int:
         }
         # Carry the sidecar verbatim into the bundle for auditability.
         shutil.copy2(args.text_sidecar, text_dest.with_suffix(".gguf.eliza1.json"))
+    else:
+        quant_block = {
+            "optimized": False,
+            "scheme": "Q4_K_M",
+            "note": (
+                "Plain llama.cpp Q4_K_M conversion — the PolarQuant/QJL/TurboQuant "
+                "optimization stack has NOT been applied to this candidate's text "
+                "GGUF. The runtime can still load it (the K/V cache quant kernels "
+                "stay available); a future re-stage applies the full stack."
+            ),
+        }
 
     # --- drafter GGUF (honest provenance) ---
     drafter_dest = out / "dflash" / f"drafter-{tier}.gguf"
@@ -399,8 +412,7 @@ def main(argv: list[str] | None = None) -> int:
         require_publish_ready=False,
     )
     # Carry the text quant sidecar info into the manifest for the runtime.
-    if quant_block:
-        manifest.setdefault("textQuant", quant_block)
+    manifest["textQuant"] = quant_block
 
     (out / "eliza-1.manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
@@ -412,7 +424,10 @@ def main(argv: list[str] | None = None) -> int:
     (out / "checksums" / "SHA256SUMS").write_text("\n".join(lines) + "\n")
 
     # --- README ---
-    (out / "README.md").write_text(_render_readme(tier, manifest, args.drafter_source))
+    (out / "README.md").write_text(
+        _render_readme(tier, manifest, args.drafter_source, optimized=optimized,
+                       eval_results=eval_results)
+    )
 
     print(f"staged {tier} bundle at {out}")
     print(f"  text sha256={text_sha}")
@@ -420,7 +435,49 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _render_readme(tier: str, manifest: dict[str, Any], drafter_source: str) -> str:
+def _render_readme(
+    tier: str,
+    manifest: dict[str, Any],
+    drafter_source: str,
+    *,
+    optimized: bool,
+    eval_results: dict[str, Any],
+) -> str:
+    params = "1.7B" if tier == "1_7b" else "0.6B"
+    base_repo = f"{drafter_source.split('/')[0]}/Qwen3-{params}"
+    if optimized:
+        text_para = (
+            f"- **Text GGUF** (`text/eliza-1-{tier}-32k.gguf`): a **real fine-tune** "
+            "— APOLLO full-parameter SFT on the Eliza-1 training corpus, then run "
+            "through the PolarQuant / QJL / TurboQuant optimization stack and "
+            "converted to GGUF via the elizaOS/llama.cpp fork. The body is `Q8_0` "
+            "(the fork's converter does not yet emit `q4_polar`); the K/V cache uses "
+            "QJL / TurboQuant slots. "
+        )
+    else:
+        text_para = (
+            f"- **Text GGUF** (`text/eliza-1-{tier}-32k.gguf`): a **real fine-tune** "
+            "(APOLLO SFT, smoke/slice run), converted to GGUF via the elizaOS/"
+            "llama.cpp fork as a **plain `Q4_K_M`** — the PolarQuant / QJL / "
+            "TurboQuant optimization stack has **not** been applied to this "
+            "candidate yet (see `textQuant` in the manifest). "
+        )
+    text_para += (
+        f"Text backbone is a documented substitute for the not-yet-published "
+        f"`Qwen3.5-{params}` (actual base: `{base_repo}`)."
+    )
+    ev = eval_results or {}
+    te = ev.get("text_eval")
+    vr = ev.get("voice_rtf")
+    aw = ev.get("asr_wer")
+    da = ev.get("dflash_acceptance")
+    eval_line = (
+        f"  Latest eval-suite numbers (CPU stand-in engine): text_eval={te}, "
+        f"voice_rtf={vr}, asr_wer={aw}, dflash_acceptance={da}, "
+        f"e2e_loop_ok={ev.get('e2e_loop_ok')}, thirty_turn_ok={ev.get('thirty_turn_ok')}."
+        if ev else
+        "  Eval suite has not been run against this bundle yet."
+    )
     return f"""---
 library_name: gguf
 tags: [eliza, elizaos, eliza-1, gguf, on-device, candidate]
@@ -436,13 +493,7 @@ release bar (every supported backend kernel-verified, every eval green) is met.
 
 ## What is real vs stand-in
 
-- **Text GGUF** (`text/eliza-1-{tier}-32k.gguf`): a **real fine-tune** — APOLLO
-  full-parameter SFT on the Eliza-1 training corpus, then run through the
-  PolarQuant / QJL / TurboQuant optimization stack and converted to GGUF via the
-  elizaOS/llama.cpp fork. The body is `Q8_0` (the fork's converter does not yet
-  emit `q4_polar`); the K/V cache uses QJL / TurboQuant slots. Text backbone is a
-  documented substitute for the not-yet-published `Qwen3.5-{'1.7B' if tier=='1_7b' else '0.6B'}`
-  (actual base: `{drafter_source.split('/')[0]}/Qwen3-{'1.7B' if tier=='1_7b' else '0.6B'}`).
+{text_para}
 - **Voice / ASR / VAD / cache**: the **frozen `elizaos/eliza-1-assets` bytes** —
   OmniVoice (TTS), Qwen3-ASR-0.6B, Silero-VAD v5.1.2, the default speaker
   preset. Not fine-tuned. Licenses in `licenses/`.
@@ -461,9 +512,10 @@ release bar (every supported backend kernel-verified, every eval green) is met.
 ## Not verified (why this is a candidate, not `defaultEligible`)
 
 - Metal / iOS / Android kernel-verify; the full per-platform dispatch evidence.
-- Voice-RTF, ASR-WER, VAD-latency, expressive-voice, DFlash-acceptance, e2e /
-  30-turn loop — the eval-suite numbers in `evals/aggregate.json` are CPU
-  stand-ins and are **poor**; recorded honestly, not faked.
+- Voice-RTF, ASR-WER, VAD-latency, expressive-voice, e2e / 30-turn loop are
+  measured only on a CPU stand-in engine and the TTS/ASR numbers are **poor**;
+  recorded honestly in `evals/aggregate.json`, not faked.
+{eval_line}
 
 See `eliza-1.manifest.json` for the full machine-readable contract.
 """
