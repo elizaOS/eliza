@@ -778,7 +778,7 @@ describe("planToolCalls and tool-call probes", () => {
   it("rejects contaminated tool-call answers that include another identifier", async () => {
     const client: ModelClient = {
       chat: async () => ({
-        content: "The fetch_metric result was WRONG1-11, then OKAY22-22.",
+        content: "The fetch_metric result was DEAD00-11, then ABC123-22.",
       }),
     };
 
@@ -791,7 +791,7 @@ describe("planToolCalls and tool-call probes", () => {
         id: "tool_25",
         turn: 25,
         toolName: "fetch_metric",
-        toolValue: "OKAY22-22",
+        toolValue: "ABC123-22",
         question: "What did the fetch_metric tool return at turn 25?",
       },
     });
@@ -803,7 +803,7 @@ describe("planToolCalls and tool-call probes", () => {
   it("accepts isolated tool-call answers with explanatory text", async () => {
     const client: ModelClient = {
       chat: async () => ({
-        content: "The fetch_metric result at turn 25 was OKAY22-22.",
+        content: "The fetch_metric result at turn 25 was ABC123-22.",
       }),
     };
 
@@ -816,7 +816,7 @@ describe("planToolCalls and tool-call probes", () => {
         id: "tool_25",
         turn: 25,
         toolName: "fetch_metric",
-        toolValue: "OKAY22-22",
+        toolValue: "ABC123-22",
         question: "What did the fetch_metric tool return at turn 25?",
       },
     });
