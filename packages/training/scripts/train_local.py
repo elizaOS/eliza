@@ -730,6 +730,28 @@ def main() -> int:
     if isinstance(resume_arg, str) and resume_arg.strip().lower() in ("true", "1", "yes"):
         resume_arg = True  # let Trainer pick the latest checkpoint-N/ under out_dir
     if resume_arg:
+        # torch>=2.6 defaults torch.load(weights_only=True), which refuses to
+        # unpickle the APOLLO optimizer state (it carries GradientProjector /
+        # APOLLOAdamW state objects). The checkpoint is our own — allowlist the
+        # APOLLO classes so Trainer can restore the optimizer.
+        try:
+            import torch  # noqa: PLC0415
+            import apollo_torch  # noqa: PLC0415
+            from apollo_torch.random_projector import GradientProjector  # noqa: PLC0415
+            safe = [GradientProjector]
+            for name in ("APOLLOAdamW", "QAPOLLOAdamW"):
+                obj = getattr(apollo_torch, name, None)
+                if obj is not None:
+                    safe.append(obj)
+            try:
+                from apollo_torch.svd_projector import GradientProjector as SVDGradientProjector  # noqa: PLC0415
+                safe.append(SVDGradientProjector)
+            except Exception:  # noqa: BLE001
+                pass
+            torch.serialization.add_safe_globals(safe)
+            log.info("allowlisted %d APOLLO classes for torch.load (resume)", len(safe))
+        except Exception as e:  # noqa: BLE001
+            log.warning("could not allowlist APOLLO classes for resume: %s", e)
         log.info("resuming from checkpoint: %s", resume_arg)
         trainer.train(resume_from_checkpoint=resume_arg)
     else:
