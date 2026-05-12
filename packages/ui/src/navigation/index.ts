@@ -27,8 +27,9 @@ export const APPS_ENABLED =
 export const STREAM_ENABLED = true;
 /** Companion tab — enabled by default; opt-out via VITE_ENABLE_COMPANION_MODE=false. */
 export const COMPANION_ENABLED =
-  String(import.meta.env?.VITE_ENABLE_COMPANION_MODE ?? "true").toLowerCase() !==
-  "false";
+  String(
+    import.meta.env?.VITE_ENABLE_COMPANION_MODE ?? "true",
+  ).toLowerCase() !== "false";
 
 /** Built-in tab identifiers. */
 export type BuiltinTab =
