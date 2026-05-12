@@ -30,6 +30,11 @@ export class HyperdClient {
     this.maxUsdcPerCall = config.maxUsdcPerCall;
 
     const account = privateKeyToAccount(config.buyerPrivateKey);
+    // USDC has 6 decimals on Base. HYPERD_MAX_USDC_PER_CALL is denominated in
+    // whole USDC ($0.25 = 250000 atomic units). Round down at the boundary to
+    // avoid off-by-one overruns.
+    const maxAtomicUnits = BigInt(Math.floor(config.maxUsdcPerCall * 1_000_000));
+
     const wrapped = wrapFetchWithPaymentFromConfig(globalThis.fetch, {
       schemes: [
         {
@@ -37,6 +42,32 @@ export class HyperdClient {
           client: new ExactEvmScheme(account),
         },
       ],
+      // Enforce HYPERD_MAX_USDC_PER_CALL. Without a selector,
+      // wrapFetchWithPaymentFromConfig signs whatever amount the server
+      // requests in its 402 challenge — a misbehaving or compromised
+      // server could drain the buyer wallet in a single call. We accept
+      // the first requirement at or below the cap; if none qualify, throw
+      // so the wrap surfaces the refusal as a fetch error instead of a
+      // quiet overpayment.
+      paymentRequirementsSelector: (_x402Version, requirements) => {
+        const acceptable = requirements.filter((r) => {
+          try {
+            return BigInt(r.amount) <= maxAtomicUnits;
+          } catch {
+            return false;
+          }
+        });
+        if (acceptable.length === 0) {
+          const cheapest = requirements.reduce((min, r) =>
+            BigInt(r.amount) < BigInt(min.amount) ? r : min,
+          );
+          const usd = (Number(cheapest.amount) / 1_000_000).toFixed(4);
+          throw new Error(
+            `[plugin-hyperd] Server requested ${cheapest.amount} atomic units (~$${usd} USDC) but HYPERD_MAX_USDC_PER_CALL is $${config.maxUsdcPerCall}. Raise the cap or refuse the call.`,
+          );
+        }
+        return acceptable[0];
+      },
     });
     this.paidFetch = wrapped as PaidFetch;
   }
