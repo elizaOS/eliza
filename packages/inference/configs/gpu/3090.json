@@ -1,0 +1,87 @@
+{
+  "$schema": "./gpu-config.schema.json",
+  "id": "rtx-3090",
+  "name": "NVIDIA GeForce RTX 3090",
+  "match_names": ["RTX 3090", "GeForce RTX 3090", "RTX 3090 Ti"],
+  "vram_gb": 24,
+  "compute_capability": "8.6",
+  "arch": "ampere",
+  "memory_bandwidth_gbs": 936,
+  "fp8": false,
+  "fp4": false,
+  "flash_attn_3": false,
+  "llama_server_flags": {
+    "n_gpu_layers": 999,
+    "ctx_size": 65536,
+    "batch_size": 2048,
+    "ubatch_size": 512,
+    "n_parallel": 4,
+    "cache_type_k": "q8_0",
+    "cache_type_v": "q4_polar",
+    "flash_attn": true,
+    "split_mode": "none",
+    "main_gpu": 0,
+    "mlock": true,
+    "no_mmap": false,
+    "no_kv_offload": false,
+    "ctx_checkpoints": 8,
+    "ctx_checkpoint_interval": 8192,
+    "draft_max": 16,
+    "draft_min": 4,
+    "draft_p_min": 0.5
+  },
+  "bundle_recommendations": {
+    "text-1.7b": {
+      "ctx_size": 32768,
+      "max_parallel": 8,
+      "cache_type_k": "q8_0",
+      "cache_type_v": "q4_0"
+    },
+    "text-7b": {
+      "ctx_size": 32768,
+      "max_parallel": 4
+    },
+    "text-27b": {
+      "ctx_size": 16384,
+      "max_parallel": 2,
+      "no_kv_offload": false
+    },
+    "voice": {
+      "ctx_size": 8192,
+      "max_parallel": 4,
+      "batch_size": 1024,
+      "ubatch_size": 256
+    },
+    "eliza-1-2b": {
+      "ctx_size": 32768,
+      "max_parallel": 8
+    },
+    "eliza-1-4b": {
+      "ctx_size": 65536,
+      "max_parallel": 4
+    },
+    "eliza-1-9b": {
+      "ctx_size": 65536,
+      "max_parallel": 4
+    },
+    "eliza-1-27b": {
+      "ctx_size": 32768,
+      "max_parallel": 2
+    }
+  },
+  "expected_metrics": {
+    "ttfa_p50_ms": 320,
+    "ttfa_p95_ms": 500,
+    "rtf": 0.55,
+    "tokens_per_second_decode": 95,
+    "_provenance": "extrapolated"
+  },
+  "known_limits": [
+    "no FP8 tensor cores",
+    "no FP4",
+    "flash-attn-3 unsupported (Hopper-only)",
+    "qjl1_256 K kernel not built for sm_86 — q8_0 K fallback",
+    "27B + ctx >= 32k requires single slot and is tight on 24 GiB"
+  ],
+  "_provenance": "extrapolated; numbers derived from VRAM + mem-bw math in SPECS.md"
+}

@@ -3,19 +3,32 @@
  * voice-bench CLI.
  *
  *   voice-bench --bundle eliza-1-1.7b --backend metal --scenario all --runs 3 --output results.json
+ *   voice-bench gpu                # detect host GPU and print the autotune plan
+ *   voice-bench gpu --bundle eliza-1-9b
  *
  * Currently only the mock driver is wired. Wiring the real pipeline is
  * a follow-up: see README.md "Wiring the real pipeline" section.
  */
 
 import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { MockPipelineDriver } from "../src/mock-driver.ts";
 import { parseCliArgs, runBench } from "../src/runner.ts";
 import { evaluateGates } from "../src/gates.ts";
 import type { BenchRun } from "../src/types.ts";
 
 async function main(): Promise<void> {
-  const args = parseCliArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+
+  // Subcommand: `voice-bench gpu` — detect the host GPU and print the
+  // autotune plan as JSON (no model load, no benchmark run). Safe to run
+  // on a CPU-only host: prints `{ nvidiaPresent: false }`.
+  if (argv[0] === "gpu") {
+    await gpuSubcommand(argv.slice(1));
+    return;
+  }
+
+  const args = parseCliArgs(argv);
 
   if (args.backend !== "mock") {
     process.stderr.write(
@@ -58,6 +71,99 @@ async function main(): Promise<void> {
     process.stderr.write("[voice-bench] gate FAIL\n");
     process.exit(1);
   }
+}
+
+interface DetectedGpuLite {
+  nvidiaPresent: boolean;
+  name?: string;
+  totalMemoryMiB?: number;
+}
+
+/** Probe `nvidia-smi`. Mirrors `gpu-detect.ts` in app-core but stays
+ *  in this package so the bench harness has no app-core dep. */
+function probeNvidiaSmi(): DetectedGpuLite {
+  const r = spawnSync(
+    "nvidia-smi",
+    ["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
+    { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "pipe"] },
+  );
+  if (r.error || r.status !== 0) return { nvidiaPresent: false };
+  const firstLine = r.stdout.split(/\r?\n/).find((l) => l.trim() !== "");
+  if (!firstLine) return { nvidiaPresent: false };
+  const parts = firstLine.split(",").map((p) => p.trim());
+  if (parts.length < 2) return { nvidiaPresent: false };
+  const memMiBRaw = Number.parseInt(parts[1] ?? "", 10);
+  return {
+    nvidiaPresent: true,
+    name: parts[0] ?? "",
+    totalMemoryMiB: Number.isFinite(memMiBRaw) ? memMiBRaw : 0,
+  };
+}
+
+async function gpuSubcommand(argv: string[]): Promise<void> {
+  const args: Record<string, string> = {};
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (!a || !a.startsWith("--")) continue;
+    const eq = a.indexOf("=");
+    if (eq !== -1) {
+      args[a.slice(2, eq)] = a.slice(eq + 1);
+    } else {
+      const next = argv[i + 1];
+      if (next && !next.startsWith("--")) {
+        args[a.slice(2)] = next;
+        i++;
+      } else {
+        args[a.slice(2)] = "true";
+      }
+    }
+  }
+
+  const gpu = probeNvidiaSmi();
+  if (!gpu.nvidiaPresent) {
+    const out = {
+      nvidiaPresent: false,
+      note: "No NVIDIA GPU detected (or nvidia-smi missing). Voice-bench will fall back to the catalog defaults.",
+    };
+    process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
+    return;
+  }
+
+  // Load the matching JSON config from `packages/inference/configs/gpu/`
+  // by name pattern. We do the matching inline so this CLI has no
+  // @elizaos/app-core dep.
+  const name = (gpu.name ?? "").toLowerCase();
+  let configFile: string | null = null;
+  if (name.includes("h200")) configFile = "h200.json";
+  else if (name.includes("rtx 5090") || name.includes("rtx5090"))
+    configFile = "5090.json";
+  else if (name.includes("rtx 4090") || name.includes("rtx4090"))
+    configFile = "4090.json";
+  else if (name.includes("rtx 3090") || name.includes("rtx3090"))
+    configFile = "3090.json";
+
+  let config: unknown = null;
+  if (configFile) {
+    const fullPath = new URL(
+      `../../configs/gpu/${configFile}`,
+      import.meta.url,
+    ).pathname;
+    if (existsSync(fullPath)) {
+      config = JSON.parse(readFileSync(fullPath, "utf8"));
+    }
+  }
+
+  const out = {
+    nvidiaPresent: true,
+    detected: gpu,
+    profileFile: configFile,
+    config,
+    bundle: args.bundle ?? null,
+    note: configFile
+      ? undefined
+      : "GPU detected but no exact-match profile. Run gpu-autotune.selectGpuConfig() from app-core for VRAM-bucket fallback.",
+  };
+  process.stdout.write(`${JSON.stringify(out, null, 2)}\n`);
 }
 
 main().catch((err) => {
