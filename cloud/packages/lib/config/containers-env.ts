@@ -96,7 +96,6 @@ export const containersEnv = {
    * Default agent image when a caller asks for the canonical Eliza agent
    * flavor without specifying a tag. Operators can pin a specific tag here
    * without code changes.
-   *
    */
   defaultAgentImage(): string {
     return this.defaultAgentImageOverride() ?? "ghcr.io/elizaos/eliza:stable";

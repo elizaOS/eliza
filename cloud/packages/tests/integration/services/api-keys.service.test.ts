@@ -680,5 +680,34 @@ describe("ApiKeysService", () => {
 
       expect(await apiKeysService.validateApiKey(plainKey)).toBeNull();
     });
+
+    test("revokeForAgent is a no-op when no key exists for the sandbox", async () => {
+      // Unprovisioned-then-deleted agents hit this path: deleteAgent calls
+      // revokeForAgent unconditionally, so it must tolerate missing keys.
+      await apiKeysService.revokeForAgent(uuidv4());
+    });
+
+    test("revokeForAgent only touches the target sandbox's key", async () => {
+      const sandboxA = uuidv4();
+      const sandboxB = uuidv4();
+
+      const a = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxA,
+      });
+      const b = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxB,
+      });
+
+      await apiKeysService.revokeForAgent(sandboxA);
+
+      expect(await apiKeysService.validateApiKey(a.plainKey)).toBeNull();
+      expect((await apiKeysService.validateApiKey(b.plainKey))?.id).toBe(
+        b.apiKey.id,
+      );
+    });
   });
 });

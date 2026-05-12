@@ -243,7 +243,7 @@ export class ApiKeysService {
 
   // Sandbox-scoped keys are named "agent-sandbox:<id>". Listing/revoking by that
   // canonical name is enough — no need for a separate metadata column today.
-  static agentApiKeyName(agentSandboxId: string): string {
+  private static agentApiKeyName(agentSandboxId: string): string {
     return `agent-sandbox:${agentSandboxId}`;
   }
 

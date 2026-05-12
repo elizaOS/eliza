@@ -4,6 +4,7 @@ import { cache } from "@/lib/cache/client";
 import { OPENROUTER_DEFAULT_TEXT_MODEL } from "@/lib/models";
 import {
   type ManagedElizaEnvironmentResult,
+  type PrepareManagedElizaSharedEnvironmentParams,
   prepareManagedElizaSharedEnvironment,
   resolveCloudPublicUrl,
   resolveElizaAppUrl,
@@ -167,12 +168,9 @@ async function ensureManagedOnboarding(
   });
 }
 
-export async function prepareManagedElizaEnvironment(params: {
-  existingEnv?: Record<string, string> | null;
-  organizationId: string;
-  userId: string;
-  agentSandboxId: string;
-}): Promise<ManagedElizaEnvironmentResult> {
+export async function prepareManagedElizaEnvironment(
+  params: PrepareManagedElizaSharedEnvironmentParams,
+): Promise<ManagedElizaEnvironmentResult> {
   return prepareManagedElizaSharedEnvironment(params);
 }
 
