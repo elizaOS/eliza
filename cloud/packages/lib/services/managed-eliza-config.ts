@@ -114,12 +114,9 @@ export function mergeManagedAllowedOrigins(existingValue?: string): string {
   return [...merged].join(",");
 }
 
-export async function prepareManagedElizaBaseEnvironment(params: {
-  existingEnv?: Record<string, string> | null;
-  organizationId: string;
-  userId: string;
-  agentSandboxId: string;
-}): Promise<ManagedElizaBaseEnvironmentResult> {
+export async function prepareManagedElizaBaseEnvironment(
+  params: PrepareManagedElizaSharedEnvironmentParams,
+): Promise<ManagedElizaBaseEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
   const { plainKey: agentApiKey } = await apiKeysService.createForAgent({
     organizationId: params.organizationId,

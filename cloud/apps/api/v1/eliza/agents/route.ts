@@ -170,7 +170,7 @@ app.post("/", async (c) => {
     agentConfig: parsed.data.characterId
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig,
-    environmentVars: parsed.data.environmentVars ?? {},
+    environmentVars: parsed.data.environmentVars,
   });
 
   const managedEnvironment = await prepareManagedElizaEnvironment({
