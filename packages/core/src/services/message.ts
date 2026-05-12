@@ -3192,6 +3192,62 @@ export function extractPlanActionsCallFromText(text: unknown): {
 	return null;
 }
 
+/**
+ * Scan a free-form text blob for the LAST well-formed `{action, params}` or
+ * canonical `{task, agentType, ...}` JSON call shape and return it.
+ *
+ * Background: Cerebras-served reasoning models (gpt-oss-120b, qwen-3-235b)
+ * often emit a self-correction sequence in plain text content when running
+ * in native-tools mode — they "try" a call, notice an enum/schema mismatch,
+ * comment on it, and then emit the corrected call shape. The corrected
+ * shape is the model's actual structured intent (trajectory ground truth);
+ * the surrounding prose is alignment artifact. `extractPlanActionsCallFromText`
+ * fails closed on whole-string match, so any prose at all defeats it.
+ *
+ * This is structural extraction, not regex-on-prose-for-routing: we are
+ * retrieving a JSON call shape (the model's actual decision) that should
+ * have arrived via the function-call API. Shaw's rule against regex-on-LLM-
+ * text targets fixes that read prose to override structured fields — this
+ * is the opposite (reading prose to recover the structured field the API
+ * dropped).
+ *
+ * Strategy: balance braces across the text, accumulate candidate JSON
+ * objects, try to parse each, pick the last one that validates as a call
+ * shape under the same contract as `extractPlanActionsCallFromText`.
+ */
+function extractEmbeddedCallShapeFromText(text: unknown): {
+	name: string;
+	params: Record<string, unknown>;
+} | null {
+	if (typeof text !== "string" || text.length === 0) return null;
+	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+	const candidates: string[] = [];
+	let depth = 0;
+	let start = -1;
+	for (let i = 0; i < withoutThink.length; i++) {
+		const ch = withoutThink[i];
+		if (ch === "{") {
+			if (depth === 0) start = i;
+			depth++;
+		} else if (ch === "}") {
+			depth--;
+			if (depth === 0 && start !== -1) {
+				candidates.push(withoutThink.slice(start, i + 1));
+				start = -1;
+			}
+			if (depth < 0) {
+				depth = 0;
+				start = -1;
+			}
+		}
+	}
+	for (let i = candidates.length - 1; i >= 0; i--) {
+		const extracted = extractPlanActionsCallFromText(candidates[i]);
+		if (extracted) return extracted;
+	}
+	return null;
+}
+
 function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
@@ -3359,7 +3415,9 @@ function parseMessageHandlerModelOutput(
 function synthesizePrefiredToolCallFromText(
 	raw: string | undefined | null,
 ): MessageHandlerResult | null {
-	const extracted = extractPlanActionsCallFromText(raw);
+	const extracted =
+		extractPlanActionsCallFromText(raw) ??
+		extractEmbeddedCallShapeFromText(raw);
 	if (!extracted) return null;
 	return {
 		processMessage: "RESPOND",
@@ -3406,12 +3464,14 @@ function synthesizeSimpleReplyFromPlainText(
 	// parsing contract. When extraction succeeds, route the turn through
 	// the planner dispatch with `prefiredToolCall` set so the action
 	// actually executes instead of being shipped as message text.
-	const prefiredToolCall = extractPlanActionsCallFromText(replyText);
+	const prefiredToolCall =
+		extractPlanActionsCallFromText(replyText) ??
+		extractEmbeddedCallShapeFromText(replyText);
 	if (prefiredToolCall) {
 		return {
 			processMessage: "RESPOND",
 			thought:
-				"Recovered planner action from response-handler content (PLAN_ACTIONS-in-text); dispatching directly.",
+				"Recovered planner action from response-handler content (PLAN_ACTIONS-in-text or embedded JSON call shape); dispatching directly.",
 			plan: {
 				contexts: ["general"],
 				candidateActions: [prefiredToolCall.name],
