@@ -88,7 +88,10 @@ export class DuetSink {
   /** @param {Float32Array} pcm @param {number} sampleRate */
   write(pcm, sampleRate) {
     if (!(pcm instanceof Float32Array) || pcm.length === 0) return;
-    const sr = Number.isFinite(sampleRate) && sampleRate > 0 ? sampleRate : this.sourceRate;
+    const sr =
+      Number.isFinite(sampleRate) && sampleRate > 0
+        ? sampleRate
+        : this.sourceRate;
     this._totalWritten += pcm.length;
     this._buffered += pcm.length;
     this._lastWriteAt = Date.now();

@@ -38,12 +38,12 @@
     "@capacitor/haptics": "8.0.2",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.0",
-    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.3",
     "@elizaos/capacitor-phone": "2.0.0-beta.1",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/plugin-browser": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
