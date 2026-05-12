@@ -7,7 +7,7 @@
 import { TEST_CORPUS } from "../corpus";
 import type { TrustBenchmarkHandler } from "../types";
 
-const corpusMap = new Map(TEST_CORPUS.map((tc) => [tc.id, tc]));
+const _corpusMap = new Map(TEST_CORPUS.map((tc) => [tc.id, tc]));
 
 /**
  * Finds matching test case by input text and returns ground truth.

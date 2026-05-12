@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { existsSync } from "node:fs";
+import { describe, expect, it } from "vitest";
 
 import {
   DFLASH_BINARY_PATH,

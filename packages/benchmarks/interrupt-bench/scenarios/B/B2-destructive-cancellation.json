@@ -9,19 +9,29 @@
     "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
     "users": [{ "id": "alice", "role": "OWNER" }],
     "openThreads": [
-      { "id": "thread-send-bob", "owner": "alice", "status": "active", "instruction": "draft and send email to bob@example.com about lunch tomorrow", "roomId": "dm-alice", "pendingExternalActions": ["email.send"] }
+      {
+        "id": "thread-send-bob",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "draft and send email to bob@example.com about lunch tomorrow",
+        "roomId": "dm-alice",
+        "pendingExternalActions": ["email.send"]
+      }
     ],
     "scheduledTasks": [],
     "memory": []
   },
   "script": [
-    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "WAIT dont send it" }
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "WAIT dont send it"
+    }
   ],
   "quiesceAfterMs": 3000,
   "expectedFinalState": {
-    "threads": [
-      { "id": "thread-send-bob", "status": "stopped" }
-    ],
+    "threads": [{ "id": "thread-send-bob", "status": "stopped" }],
     "scheduledTasks": [],
     "repliesByChannel": {
       "dm-alice": { "count": { "min": 1, "max": 1 }, "shortAck": true }

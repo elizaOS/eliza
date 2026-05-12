@@ -21,10 +21,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "SecureNet",
-      "VPN"
-    ],
+    "required_outputs": ["SecureNet", "VPN"],
     "first_question_fallback": {
       "canned_answer": "Work tag is fine; I'll add it as a work contact.",
       "applies_when": "agent asks which tag to apply"
@@ -53,9 +50,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "dev_03@example.test"
-    ],
+    "required_outputs": ["dev_03@example.test"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -77,9 +72,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "work"
-    ],
+    "required_outputs": ["work"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -101,9 +94,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "+1415"
-    ],
+    "required_outputs": ["+1415"],
     "first_question_fallback": {
       "canned_answer": "Sure, I'll look for that prefix.",
       "applies_when": "agent asks which prefix to use"
@@ -130,10 +121,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "John Doe",
-      "strategy"
-    ],
+    "required_outputs": ["John Doe", "strategy"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -161,10 +149,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Mia",
-      "family"
-    ],
+    "required_outputs": ["Mia", "family"],
     "first_question_fallback": {
       "canned_answer": "Family tag noted; I'll add her as a sibling.",
       "applies_when": "agent asks about relationship type"
@@ -194,10 +179,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Creative Buzz",
-      "Instagram"
-    ],
+    "required_outputs": ["Creative Buzz", "Instagram"],
     "first_question_fallback": {
       "canned_answer": "Work tag is fine; I\u2019ll add the Instagram collaborator.",
       "applies_when": "agent asks which tag to use"
@@ -222,9 +204,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "no email"
-    ],
+    "required_outputs": ["no email"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -246,9 +226,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Acme"
-    ],
+    "required_outputs": ["Acme"],
     "first_question_fallback": {
       "canned_answer": "I\u2019ll filter by Acme Corp.",
       "applies_when": "agent asks which company to filter"
@@ -279,10 +257,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Lena",
-      "mentor"
-    ],
+    "required_outputs": ["Lena", "mentor"],
     "first_question_fallback": {
       "canned_answer": "Mentor tag noted; I\u2019ll add Dr. Ortiz.",
       "applies_when": "agent asks which tag to apply"
@@ -311,9 +286,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "+14155559999"
-    ],
+    "required_outputs": ["+14155559999"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -335,10 +308,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "family",
-      "no phone"
-    ],
+    "required_outputs": ["family", "no phone"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -366,10 +336,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Alpha",
-      "client"
-    ],
+    "required_outputs": ["Alpha", "client"],
     "first_question_fallback": {
       "canned_answer": "Client tag confirmed; I\u2019ll add the new business contact.",
       "applies_when": "agent asks which tag to use"
@@ -396,10 +363,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Emily",
-      "product launch"
-    ],
+    "required_outputs": ["Emily", "product launch"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -421,9 +385,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "@example.test"
-    ],
+    "required_outputs": ["@example.test"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -451,10 +413,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Maya",
-      "volunteer"
-    ],
+    "required_outputs": ["Maya", "volunteer"],
     "first_question_fallback": {
       "canned_answer": "Volunteer tag noted; I\u2019ll add Maya as a volunteer.",
       "applies_when": "agent asks which tag to apply"
@@ -479,9 +438,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "friend"
-    ],
+    "required_outputs": ["friend"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -509,10 +466,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Global Supplies",
-      "supplier"
-    ],
+    "required_outputs": ["Global Supplies", "supplier"],
     "first_question_fallback": {
       "canned_answer": "Supplier tag confirmed; I\u2019ll add the new supplier.",
       "applies_when": "agent asks which tag to use"
@@ -542,9 +496,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Beta Industries"
-    ],
+    "required_outputs": ["Beta Industries"],
     "first_question_fallback": {
       "canned_answer": "Yes, I\u2019ll update the company to Beta Industries.",
       "applies_when": "agent asks for confirmation before changing company"
@@ -571,10 +523,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Sarah",
-      "stress"
-    ],
+    "required_outputs": ["Sarah", "stress"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -602,10 +551,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "EventCo",
-      "planner"
-    ],
+    "required_outputs": ["EventCo", "planner"],
     "first_question_fallback": {
       "canned_answer": "Work tag noted; I\u2019ll add the event planner.",
       "applies_when": "agent asks which tag to apply"
@@ -630,9 +576,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "no notes"
-    ],
+    "required_outputs": ["no notes"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -660,10 +604,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Laura",
-      "advisor"
-    ],
+    "required_outputs": ["Laura", "advisor"],
     "first_question_fallback": {
       "canned_answer": "Advisor tag confirmed; I\u2019ll add Laura as my legal advisor.",
       "applies_when": "agent asks which tag to apply"
@@ -692,9 +633,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "+14155556666"
-    ],
+    "required_outputs": ["+14155556666"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -718,10 +657,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Mark",
-      "budget"
-    ],
+    "required_outputs": ["Mark", "budget"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -743,9 +679,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "supplier"
-    ],
+    "required_outputs": ["supplier"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -773,10 +707,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Ethan",
-      "academic"
-    ],
+    "required_outputs": ["Ethan", "academic"],
     "first_question_fallback": {
       "canned_answer": "Academic tag noted; I\u2019ll add Dr. Wu.",
       "applies_when": "agent asks which tag to apply"
@@ -803,10 +734,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Anna",
-      "garden"
-    ],
+    "required_outputs": ["Anna", "garden"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -834,10 +762,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Maya Liu",
-      "speaker"
-    ],
+    "required_outputs": ["Maya Liu", "speaker"],
     "first_question_fallback": {
       "canned_answer": "Speaker tag confirmed; I\u2019ll add Prof. Liu.",
       "applies_when": "agent asks which tag to apply"

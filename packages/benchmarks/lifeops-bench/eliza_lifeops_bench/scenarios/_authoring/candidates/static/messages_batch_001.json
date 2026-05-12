@@ -18,10 +18,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Jordan",
-      "10 mins"
-    ],
+    "required_outputs": ["Jordan", "10 mins"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -46,9 +43,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "team-updates"
-    ],
+    "required_outputs": ["team-updates"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -73,10 +68,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "project-alpha",
-      "deploying"
-    ],
+    "required_outputs": ["project-alpha", "deploying"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -100,9 +92,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Zoe"
-    ],
+    "required_outputs": ["Zoe"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -126,9 +116,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Liam"
-    ],
+    "required_outputs": ["Liam"],
     "first_question_fallback": {
       "canned_answer": "Just a short bullet list, no need for full transcripts.",
       "applies_when": "agent asks about summary length or format"
@@ -156,10 +144,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Aisha",
-      "birthday"
-    ],
+    "required_outputs": ["Aisha", "birthday"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -184,9 +169,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Discord"
-    ],
+    "required_outputs": ["Discord"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -210,9 +193,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Carlos"
-    ],
+    "required_outputs": ["Carlos"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -237,10 +218,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Emily",
-      "promotion"
-    ],
+    "required_outputs": ["Emily", "promotion"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -265,9 +243,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "family"
-    ],
+    "required_outputs": ["family"],
     "first_question_fallback": {
       "canned_answer": "Just a short bullet list, no need for full transcripts.",
       "applies_when": "agent asks about summary length or format"
@@ -295,10 +271,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "book-club",
-      "Thursday"
-    ],
+    "required_outputs": ["book-club", "Thursday"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -323,9 +296,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "iMessage"
-    ],
+    "required_outputs": ["iMessage"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -350,10 +321,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Drew",
-      "report"
-    ],
+    "required_outputs": ["Drew", "report"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -377,9 +345,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Nina"
-    ],
+    "required_outputs": ["Nina"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -404,9 +370,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "project-x"
-    ],
+    "required_outputs": ["project-x"],
     "first_question_fallback": {
       "canned_answer": "A short bullet list is fine; no need for verbatim quotes.",
       "applies_when": "agent asks about summary length or format"
@@ -434,9 +398,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "announcements"
-    ],
+    "required_outputs": ["announcements"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -461,10 +423,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Grace",
-      "1pm"
-    ],
+    "required_outputs": ["Grace", "1pm"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -488,9 +447,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "jordan-fans"
-    ],
+    "required_outputs": ["jordan-fans"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -515,9 +472,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "family"
-    ],
+    "required_outputs": ["family"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -542,10 +497,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Mike",
-      "project"
-    ],
+    "required_outputs": ["Mike", "project"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -569,9 +521,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "anniversary"
-    ],
+    "required_outputs": ["anniversary"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

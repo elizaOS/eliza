@@ -7,8 +7,8 @@
  * including messages, trading calls, tokens, and user statistics.
  */
 
-import { promises as fs } from "fs";
-import path from "path";
+import { promises as fs } from "node:fs";
+import path from "node:path";
 
 // Native token to filter out
 const NATIVE_TOKEN = "AI16Z";
@@ -101,7 +101,7 @@ class TrenchesDataset {
     // Try to load users with metrics first
     try {
       return await this.loadJSON("users_with_metrics.json");
-    } catch (error) {
+    } catch (_error) {
       return await this.loadJSON("users.json");
     }
   }
@@ -140,7 +140,7 @@ class TrenchesDataset {
       );
       const content = await fs.readFile(filepath, "utf-8");
       return JSON.parse(content);
-    } catch (error) {
+    } catch (_error) {
       console.error(`Price history not found for token: ${tokenAddress}`);
       return null;
     }
