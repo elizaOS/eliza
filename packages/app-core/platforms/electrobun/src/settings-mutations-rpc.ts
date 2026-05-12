@@ -79,12 +79,16 @@ async function sendJson<T>(
 	parse: (value: unknown) => T | null,
 ): Promise<T | null> {
 	try {
-		const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+		const init: RequestInit = {
 			method,
-			headers:
-				body === undefined ? undefined : { "Content-Type": "application/json" },
-			body: body === undefined ? undefined : JSON.stringify(body),
 			signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+		};
+		if (body !== undefined) {
+			init.headers = { "Content-Type": "application/json" };
+			init.body = JSON.stringify(body);
+		}
+		const response = await fetch(`http://127.0.0.1:${port}${pathname}`, {
+			...init,
 		});
 		if (!response.ok) return null;
 		return parse(await response.json());
