@@ -7,6 +7,7 @@ import { findCatalogModel } from "./catalog";
 import { Downloader } from "./downloader";
 import type { Eliza1DeviceCaps } from "./manifest";
 import { listInstalledModels } from "./registry";
+import { readAssignments } from "./assignments";
 import type { DownloadJob } from "./types";
 
 function eliza1Manifest(overrides: {
@@ -347,6 +348,8 @@ describe("local inference downloader status", () => {
     expect(companion.companionFor).toBe(model.id);
     expect(companion.path.endsWith("dflash/drafter-0_6b.gguf")).toBe(true);
     expect(companion.bundleRoot).toBe(bundleRoot);
+    expect(main.bundleVerifiedAt).toBeUndefined();
+    expect(await readAssignments()).toEqual({});
   });
 
   it("restarts single-file partial downloads when a server ignores Range", async () => {

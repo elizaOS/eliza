@@ -2436,8 +2436,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const usage = diffSnapshots(before, after, responseUsage);
     const maxTokens =
       typeof payload.max_tokens === "number" ? payload.max_tokens : null;
+    const metricsCanProveDflashActivity =
+      before.scrapeOk === true &&
+      after.scrapeOk === true &&
+      before.hasGenerationCounters === true &&
+      after.hasGenerationCounters === true;
     if (
       shouldRequireActiveDflashForRequest(this.loadedPlan, maxTokens) &&
+      metricsCanProveDflashActivity &&
       (usage.dflash_drafted_tokens ?? 0) <= 0
     ) {
       throw new Error(
