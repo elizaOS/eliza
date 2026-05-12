@@ -53,6 +53,42 @@ packages/training/benchmarks` 140 passed / 1 skipped. Full table in
 ("Verify status as of 2026-05-12"). The §3 build gates and the hardware-gated
 items below are unchanged.
 
+**Full `linux-x64-cuda` ggml-cuda integration build — VERIFIED-HERE 2026-05-12.**
+The "remaining for CUDA: full ggml-cuda integration build (blocked on host RAM
+contention this wave)" line from `kernel-contract.json` is now closed for the
+non-fused target:
+
+- Install: `~/.eliza/local-inference/bin/dflash/linux-x64-cuda/` (forkCommit
+  `a61c93aaa5` = v1.2.0-eliza, builtAt `2026-05-12T17:16:58Z`,
+  `libggml-cuda.so.0.9.7` 473 MB with real `sm_120a` SASS, all 5 binaries
+  ldd-clean via `$ORIGIN` rpath).
+- `make cuda-verify cuda-verify-fused` against this real install: **8/8 + 1920/1920
+  PASS** on the RTX 5080 Laptop (max diff ≤ 9.5e-6 / 4.47e-7).
+- `llama-bench -ngl 99 -p 512 -n 128 [-d 16000]` on the eliza-1-{0_6b,1_7b}
+  bundle text GGUFs + base Qwen3-{0.6B,1.7B}-Q8_0:
+  - 0_6b bundle (Q3_K_M) d=0: pp512 **19932** / tg128 **345.5** t/s.
+  - 0_6b bundle d=16000: pp512 **1956** / tg128 **108.5** t/s.
+  - 1_7b bundle (Q4_K_M) d=0: pp512 **11931** / tg128 **194.7** t/s.
+  - 1_7b bundle d=16000: pp512 **1797** / tg128 **84.9** t/s.
+  - base 0.6B-Q8_0 d=0: pp512 **20979** / tg128 **356** t/s.
+  - base 1.7B-Q8_0 d=0: pp512 **12414** / tg128 **159** t/s.
+- `llama-server -ngl 99 --port 19998 --metrics` boots clean (4 GPU slots,
+  `/health → ok`, chat template loaded). `POST /completion` 32-token decode:
+  **420.57 tps decode / 1092.66 tps prefill** on the 0_6b bundle.
+- `cuda_runner.sh --gen-check` against the installed `libggml-cuda.so` fails
+  with "no cache-type alias for turbo3" — this is the **non-fused** build
+  (`CAPABILITIES.json` reports `dflash: false`, `missingRequiredKernels:
+  ["dflash"]`); the `--cache-type-k tbq3_0/...` aliases are added by the
+  `dflash`/`fused`-build patch path. The `linux-x64-cuda-fused` build (which
+  carries those aliases) is queued — once installed, `cuda_runner.sh` will
+  produce a `passRecordable: true` JSON and item 6 in the
+  hardware-gated list can be closed.
+
+Evidence: `verify/cuda-runtime-dispatch-evidence.json` (`fullIntegrationBuild`
+block), `~/.eliza/local-inference/bin/dflash/linux-x64-cuda/CAPABILITIES.json`,
+`/tmp/cuda-verify.log` (8/8 + 1920/1920), `/tmp/cuda-llama-bench-*.log` (the
+six bench rows above), `/tmp/cuda-completion.json` (the /completion smoke).
+
 ## Current Runtime Truth
 
 | Area | Status | Evidence |

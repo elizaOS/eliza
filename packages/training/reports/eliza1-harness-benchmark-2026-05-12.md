@@ -24,14 +24,14 @@ HF-transformers CPU runs on `data/final/test.jsonl` (35-row smoke buckets); "tex
 score" is the GGUF-perplexity → 0..1 gate metric; tok/s is CPU `llama-bench -t12 -p512
 -n128` (and the Vulkan/RTX5080 column where available).
 
-| model / kernel | text format_ok | reply parse-errs | claude_distill format% | eliza_bench tps_gen | native_tool_call | action-sel acc | personality PASS% | text-eval score (ppl→0..1) | gen tps CPU d0 (pp512 / tg128) | gen tps RTX5080-Vulkan d0 (pp512 / tg128) | gen tps d16k | voice RTF (CPU) | ASR WER | dflash accept% | guided-decode forced-token % | kernel-verify |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **base Qwen3-0.6B** (no SFT, stand-in base) | 0.0857 | 8 | 27.3% | 68.5 | n=0¹ | n/r² | n/r² | — | n/r³ | n/r | n/r | — | — | — | — | n/a |
-| **test-SFT 0_6b** (`apollo-1778551769`, 8k slice, 1ep, Q4_K_M) | **0.20** | **0** | **63.6%** | **90.9** | n=0¹ | n/r² | n/r² | — | **500 / 75.6** | n/r | n/r | — | — | — | — | n/a (no sidecars) |
-| **eliza1-bundle 0_6b** (Qwen3-0.6B Q3_K_M re-host + PolarQuant/QJL/TurboQuant sidecars; GPU GGUF body **Q8_0**, q4_polar deferred) | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r² | n/r² | **0.2779** (ppl 71.4) | 331 / 77.7 (Q3KM); 432 / 61.1 (Q8 body) | **3421 / 194** | n/r⁵ | 8.62⁶ | 1.0⁷ | **0.87**⁸ | 28% (static) | **CPU pass / CUDA runtime-ready⁹ / Vulkan pass / Metal needs-hw** |
-| **1_7b base** (Qwen3-1.7B, SFT in progress @ seq2048 — no fine-tune artifact) | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| **eliza1-bundle 1_7b** (Qwen3-1.7B Q4_K_M re-host + sidecars; GGUF body Q4_K_M) | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r² | n/r² | **0.328** | 219 / 39.6 | **1317 / 112** | n/r⁵ | 5.91⁶ | 1.0⁷ | 0.55⁸ | 28% (static) | same as 0_6b |
-| **full-corpus SFT 0_6b** (`apollo-fullcorpus-1778563093`, 68,297 rows, 1ep) | **🔄 in flight** | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 (auto-chained at tail) |
+| model / kernel | text format_ok | reply parse-errs | claude_distill format% | eliza_bench tps_gen | native_tool_call | action-sel acc | personality PASS% | text-eval score (ppl→0..1) | gen tps CPU d0 (pp512 / tg128) | gen tps RTX5080 CUDA d0 (pp512 / tg128) | gen tps RTX5080-Vulkan d0 (pp512 / tg128) | gen tps RTX5080 CUDA d16000 (pp512 / tg128) | voice RTF (CPU) | ASR WER | dflash accept% | guided-decode forced-token % | kernel-verify |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **base Qwen3-0.6B-Q8_0** (no SFT, stand-in base) | 0.0857 | 8 | 27.3% | 68.5 | n=0¹ | n/r² | n/r² | — | n/r³ | **20979 / 356.3**¹⁰ | n/r | **1968 / 107.0**¹⁰ | — | — | — | — | n/a |
+| **test-SFT 0_6b** (`apollo-1778551769`, 8k slice, 1ep, Q4_K_M) | **0.20** | **0** | **63.6%** | **90.9** | n=0¹ | n/r² | n/r² | — | **500 / 75.6** | n/r¹¹ | n/r | n/r¹¹ | — | — | — | — | n/a (no sidecars) |
+| **eliza1-bundle 0_6b** (Qwen3-0.6B Q3_K_M re-host + PolarQuant/QJL/TurboQuant sidecars; GPU GGUF body **Q8_0**, q4_polar deferred) | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r² | n/r² | **0.2779** (ppl 71.4) | 331 / 77.7 (Q3KM); 432 / 61.1 (Q8 body) | **19932 / 345.5**¹⁰ (Q3KM, ngl 99) | **3421 / 194** | **1956 / 108.5**¹⁰ | 8.62⁶ | 1.0⁷ | **0.87**⁸ | 28% (static) | **CPU pass / CUDA verified-here⁹ / Vulkan pass / Metal needs-hw** |
+| **1_7b base Q8_0** (Qwen3-1.7B, SFT in progress @ seq2048 — no fine-tune artifact) | — | — | — | — | — | — | — | — | — | **12414 / 158.7**¹⁰ | — | **1790 / 80.0**¹⁰ | — | — | — | — | — |
+| **eliza1-bundle 1_7b** (Qwen3-1.7B Q4_K_M re-host + sidecars; GGUF body Q4_K_M) | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r⁴ | n/r² | n/r² | **0.328** | 219 / 39.6 | **11931 / 194.7**¹⁰ (Q4KM, ngl 99) | **1317 / 112** | **1797 / 84.9**¹⁰ | 5.91⁶ | 1.0⁷ | 0.55⁸ | 28% (static) | same as 0_6b |
+| **full-corpus SFT 0_6b** (`apollo-fullcorpus-1778563093`, 68,297 rows, 1ep) | **🔄 in flight** | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 | 🔄 (auto-chained at tail) |
 
 ¹ `data/final/test.jsonl` has no native-tool-call rows → the bench's `response` bucket is empty (n=0) for every model; not a failure, a corpus gap.
 ² action-selection accuracy and personality PASS% need a **live LLM provider + a judge model**; neither is wired in this headless context → not run (`ELIZA_RUN_ACTION_BENCHMARK=1` + a provider, and `personality-bench` `src/runner.ts` needs trajectory run dirs + a judge LLM).
@@ -41,7 +41,11 @@ score" is the GGUF-perplexity → 0..1 gate metric; tok/s is CPU `llama-bench -t
 ⁶ Voice RTF >> 1.0: the bundle's omnivoice **stand-in** TTS GGUF on CPU through `llama-server /v1/audio/speech`; the ≤0.5 gate is a GPU/Metal target. ASR RTF (content-independent, meaningful) ≈ **0.76 CPU on 0_6b**.
 ⁷ ASR WER = 1.0 everywhere: the stand-in ASR GGUF + the stand-in TTS that synthesizes the clips both have near-zero quality on this corpus — WER reflects stand-in quality, not eventual fused-ASR accuracy. Needs real WAV+.txt pairs **and** the tokenizer-fused Qwen3-ASR weights.
 ⁸ dflash acceptance is measured with the **stamp-only same-size** bundled "drafter" (essentially the target model) → an **upper bound** on acceptance / lower bound on the eventual real-drafter speedup. The 0_6b clears the 0.6 floor (0.87); the 1_7b (0.55) is **below** its 0.65 floor — the larger target makes each rejected round costlier.
-⁹ CUDA runtime-ready = `make cuda-verify cuda-verify-fused` 8/8 numeric match on the RTX 5080 (Blackwell cc 12.0, driver 580.142, CUDA 13.0; nvcc 12.0 → sm_90 PTX JIT'd to sm_120). Re-verified 2026-05-12 alongside the in-flight SFT (short runs, no contention).
+⁹ CUDA verified-here = `make cuda-verify cuda-verify-fused` 8/8 + 1920/1920 fused on the RTX 5080 (Blackwell sm_120, driver 580.142, CUDA 12.8 nvcc V12.8.93 → **real `sm_120a` cubins**, no PTX JIT). `cuda-verify` max diff 7.6e-6; `cuda-verify-fused` max diff 4.47e-7 (1920/1920 across 4 n_heads/n_kv cases). Re-verified 2026-05-12 against the just-installed `linux-x64-cuda` build (forkCommit `a61c93aaa5`, fork v1.2.0-eliza, builtAt `2026-05-12T17:16:58Z`) — `libggml-cuda.so.0.9.7` 473 MB, `llama-bench` + `llama-server` ldd-clean via `$ORIGIN` rpath. **`llama-server` smoke verified**: 4 GPU slots loaded, `/health → ok`, `POST /completion` returns 32 tokens at 420.6 tps decode / 1092.7 tps prefill on the 0_6b bundle.
+
+¹⁰ CUDA `llama-bench` on the **non-fused linux-x64-cuda** install (`-ngl 99`, default thread count). d0 = no prefill prior context; d16000 = `-d 16000` (16k-token prefill context, then pp512/tg128 to measure long-context regression). Numbers from this re-run on the freed-up RTX 5080 (no SFT contention) on 2026-05-12 ~13:50 PDT, build_id `a61c93a (1)`.
+
+¹¹ test-SFT 0_6b GGUF (`final-Q4_K_M.gguf`) is at `checkpoints/eliza-1-0_6b-apollo-1778551769/milady-optimized-gpu/final-Q4_K_M.gguf` — same Qwen3-0.6B arch as the bundle row above; CUDA tg/pp would be within noise of the Q4 bundle numbers. CUDA on this GGUF was not re-run (no new info vs the bundle Q4 row).
 
 Memory: eliza1-bundle 0_6b peak RSS **957 MB** (phone-class) vs 1_7b **2334 MB**.
 Embedding (Matryoshka, dim 1024): single-text 14.4 ms on Metal/M4Max; dim-128 keeps
