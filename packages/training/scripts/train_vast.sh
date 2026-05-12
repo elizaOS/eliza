@@ -244,11 +244,11 @@ PIPELINE="${PIPELINE:-sft}"
 case "$PIPELINE" in
   sft|dpo)
     case "$REGISTRY_KEY" in
-      qwen3.5-2b|qwen3.5-9b)
+      qwen3.5-2b|qwen3.5-4b|qwen3.5-9b)
         DEFAULT_GPU_TARGET="blackwell6000-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
-      qwen3.6-27b)
+      qwen3.5-27b|qwen3.6-27b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
@@ -264,11 +264,11 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="h200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
-      qwen3.5-9b)
+      qwen3.5-4b|qwen3.5-9b)
         DEFAULT_GPU_TARGET="h200-4x"
         DEFAULT_FSDP_WORLD_SIZE=4
         ;;
-      qwen3.6-27b)
+      qwen3.5-27b|qwen3.6-27b)
         DEFAULT_GPU_TARGET="h200-8x"
         DEFAULT_FSDP_WORLD_SIZE=8
         ;;
@@ -337,8 +337,8 @@ BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 # 100/bucket for 27B unless caller overrides.
 if [ -z "${BENCH_MAX_PER_BUCKET:-}" ]; then
   case "$REGISTRY_KEY" in
-    qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
-    *)           BENCH_MAX_PER_BUCKET=200 ;;
+    qwen3.5-27b|qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
+    *)                       BENCH_MAX_PER_BUCKET=200 ;;
   esac
 fi
 
@@ -658,7 +658,7 @@ run_remote() {
   # ~25 GB on this hardware tier. Refuse the combo and point operators at
   # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
   # FSDP-4 leaves real headroom).
-  if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
+  if { [ "$REGISTRY_KEY" = "qwen3.5-27b" ] || [ "$REGISTRY_KEY" = "qwen3.6-27b" ]; } \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
      && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"
@@ -951,9 +951,9 @@ provision_and_train() {
         # against the same auto-pick table as the runtime default block.
         local _sft_default
         case "$REGISTRY_KEY" in
-          qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
-          qwen3.6-27b)           _sft_default="b200-2x" ;;
-          *)                     _sft_default="blackwell6000-2x" ;;
+          qwen3.5-2b|qwen3.5-4b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
+          qwen3.5-27b|qwen3.6-27b)          _sft_default="b200-2x" ;;
+          *)                                _sft_default="blackwell6000-2x" ;;
         esac
         log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"
         log "       --registry-key $REGISTRY_KEY \\"
