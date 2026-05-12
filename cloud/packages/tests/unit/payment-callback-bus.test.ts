@@ -217,4 +217,12 @@ describe("payment-callback-bus", () => {
     await bus.publish(makeSettled("pr_recfail"));
     expect(delivered).toBe(true);
   });
+
+  test("recordProviderEvent de-dupes provider event ids per bus instance", () => {
+    const bus = createPaymentCallbackBus();
+
+    expect(bus.recordProviderEvent("stripe", "evt_1")).toBe(true);
+    expect(bus.recordProviderEvent("stripe", "evt_1")).toBe(false);
+    expect(bus.recordProviderEvent("x402", "evt_1")).toBe(true);
+  });
 });
