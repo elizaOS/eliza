@@ -12,9 +12,6 @@ export const deviceFilesystemPlugin: Plugin = {
 
 export default deviceFilesystemPlugin;
 
-export { deviceListDirAction } from "./actions/list-dir.js";
-export { deviceFileReadAction } from "./actions/read.js";
-export { deviceFileWriteAction } from "./actions/write.js";
 export { normalizeDevicePath } from "./path.js";
 export {
 	DeviceFilesystemBridge,

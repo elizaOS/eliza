@@ -6,11 +6,11 @@ import { describe, expect, it, vi } from "vitest";
 
 import { SandboxService, SessionCwdService } from "../services/index.js";
 import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
-import { bashAction } from "./bash.js";
+import { shellAction } from "./bash.js";
 
 interface RuntimeOptions {
   blockedPaths?: string;
-  bashTimeoutMs?: number;
+  shellTimeoutMs?: number;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
@@ -21,8 +21,8 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   const settings: Record<string, unknown> = {};
   if (opts.blockedPaths)
     settings.CODING_TOOLS_BLOCKED_PATHS = opts.blockedPaths;
-  if (opts.bashTimeoutMs !== undefined)
-    settings.CODING_TOOLS_BASH_TIMEOUT_MS = opts.bashTimeoutMs;
+  if (opts.shellTimeoutMs !== undefined)
+    settings.CODING_TOOLS_SHELL_TIMEOUT_MS = opts.shellTimeoutMs;
 
   const services = new Map<string, unknown>();
   const runtime = {
@@ -50,10 +50,10 @@ function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
   } as Memory;
 }
 
-describe("bashAction", () => {
+describe("shellAction", () => {
   it("runs a simple foreground command (echo hello)", async () => {
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,
@@ -71,7 +71,7 @@ describe("bashAction", () => {
     await fs.mkdir(blocked, { recursive: true });
     try {
       const { runtime } = await makeRuntime({ blockedPaths: blocked });
-      const result = await bashAction.handler!(
+      const result = await shellAction.handler!(
         runtime,
         makeMessage(),
         undefined,
@@ -86,7 +86,7 @@ describe("bashAction", () => {
 
   it("returns a timeout failure when the command exceeds its budget", async () => {
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,
@@ -99,7 +99,7 @@ describe("bashAction", () => {
   it("respects an explicit cwd", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,
@@ -111,7 +111,7 @@ describe("bashAction", () => {
 
   it("returns command_failed when the command exits non-zero", async () => {
     const { runtime } = await makeRuntime();
-    const result = await bashAction.handler!(
+    const result = await shellAction.handler!(
       runtime,
       makeMessage(),
       undefined,

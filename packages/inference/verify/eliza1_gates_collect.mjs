@@ -118,6 +118,11 @@ function newestReport(dir, prefix) {
 
 /** Newest (by mtime) recursive file matching `prefix*.json`, or null. */
 function newestReportRecursive(dir, prefix) {
+  return newestReportRecursiveWhere(dir, prefix, () => true);
+}
+
+/** Newest (by mtime) recursive file matching `prefix*.json` and predicate. */
+function newestReportRecursiveWhere(dir, prefix, predicate) {
   if (!fs.existsSync(dir)) return null;
   const matches = [];
   const stack = [dir];
@@ -137,10 +142,8 @@ function newestReportRecursive(dir, prefix) {
   matches.sort((a, b) => b.mtime - a.mtime);
   for (const match of matches) {
     try {
-      return {
-        path: match.full,
-        data: JSON.parse(fs.readFileSync(match.full, "utf8")),
-      };
+      const data = JSON.parse(fs.readFileSync(match.full, "utf8"));
+      if (predicate(data)) return { path: match.full, data };
     } catch {
       // Try the next newest report if this one was partially written.
     }
@@ -204,6 +207,11 @@ async function main() {
     path.join(REPORTS_ROOT, "local-e2e"),
     "e2e-loop-",
   );
+  const e2eEnduranceLoop = newestReportRecursiveWhere(
+    path.join(REPORTS_ROOT, "local-e2e"),
+    "e2e-loop-",
+    (data) => (data?.summary?.turns ?? data?.request?.turns ?? 0) >= 30,
+  );
 
   const e2eDflashDrafted = e2eLoop?.data?.summary?.dflashDraftedTotal;
   const e2eDflashAccepted = e2eLoop?.data?.summary?.dflashAcceptedTotal;
@@ -231,7 +239,7 @@ async function main() {
     null;
   const thirtyTurnOk =
     endurance?.data?.summary?.thirtyTurnOk ??
-    e2eLoop?.data?.thirtyTurnOk ??
+    e2eEnduranceLoop?.data?.thirtyTurnOk ??
     null;
   const e2eLoopOk =
     endurance?.data?.summary?.e2eLoopOk ??
@@ -375,6 +383,9 @@ async function main() {
         ? path.relative(process.cwd(), endurance.path)
         : null,
       e2eLoop: e2eLoop ? path.relative(process.cwd(), e2eLoop.path) : null,
+      e2eEnduranceLoop: e2eEnduranceLoop
+        ? path.relative(process.cwd(), e2eEnduranceLoop.path)
+        : null,
       mobileRss: mobileRss
         ? path.relative(process.cwd(), mobileRss.path)
         : null,

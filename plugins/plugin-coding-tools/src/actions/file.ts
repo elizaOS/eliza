@@ -83,18 +83,6 @@ const FILE_OPERATION_ALIASES: Record<string, FileOperation> = {
   dir: "ls",
 };
 
-const DEVICE_FILE_OPERATION_ALIASES: Record<string, FileOperation> = {
-  device_file_read: "read",
-  read_device_file: "read",
-  device_read_file: "read",
-  device_file_write: "write",
-  write_device_file: "write",
-  device_write_file: "write",
-  device_list_dir: "ls",
-  list_device_dir: "ls",
-  device_ls: "ls",
-};
-
 function readFileTarget(options: unknown): FileTarget {
   for (const key of ["target", "scope", "source"]) {
     const raw = readStringParam(options, key);
@@ -109,21 +97,17 @@ function readFileRouting(
   options: unknown,
 ): { operation: FileOperation; target: FileTarget } | undefined {
   const explicitTarget = readFileTarget(options);
-  for (const key of ["action", "subaction", "op", "operation", "verb"]) {
-    const raw = readStringParam(options, key);
-    if (!raw) continue;
-    const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
-    if ((FILE_OPERATIONS as readonly string[]).includes(normalized)) {
-      return {
-        operation: normalized as FileOperation,
-        target: explicitTarget,
-      };
-    }
-    const deviceAlias = DEVICE_FILE_OPERATION_ALIASES[normalized];
-    if (deviceAlias) return { operation: deviceAlias, target: "device" };
-    const alias = FILE_OPERATION_ALIASES[normalized];
-    if (alias) return { operation: alias, target: explicitTarget };
+  const raw = readStringParam(options, "action");
+  if (!raw) return undefined;
+  const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
+  if ((FILE_OPERATIONS as readonly string[]).includes(normalized)) {
+    return {
+      operation: normalized as FileOperation,
+      target: explicitTarget,
+    };
   }
+  const alias = FILE_OPERATION_ALIASES[normalized];
+  if (alias) return { operation: alias, target: explicitTarget };
   return undefined;
 }
 
@@ -269,19 +253,7 @@ export const fileAction: Action = {
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
-  similes: [
-    "READ",
-    "WRITE",
-    "EDIT",
-    "GREP",
-    "GLOB",
-    "LS",
-    "READ_FILE",
-    "WRITE_FILE",
-    "EDIT_FILE",
-    "FILE_OPERATION",
-    "FILE_IO",
-  ],
+  similes: ["FILE_OPERATION", "FILE_IO"],
   description:
     "Read, write, edit, search, find, or list files through one FILE action. Choose action=read/write/edit/grep/glob/ls. Use target=device for device-filesystem reads, writes, and directory lists; workspace paths must be absolute unless an operation explicitly defaults to the session cwd.",
   descriptionCompressed:

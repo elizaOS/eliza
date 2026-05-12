@@ -55,13 +55,11 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     }
   });
 
-  it("FILE exposes the former file leaf actions as similes", () => {
+  it("FILE exposes only canonical file umbrella similes", () => {
     const fileAction = (codingToolsPlugin.actions ?? []).find(
       (action) => action.name === "FILE",
     );
-    expect(fileAction?.similes).toEqual(
-      expect.arrayContaining(["READ", "WRITE", "EDIT", "GREP", "GLOB", "LS"]),
-    );
+    expect(fileAction?.similes).toEqual(["FILE_OPERATION", "FILE_IO"]);
   });
 
   it("each action has the required fields", () => {
@@ -88,6 +86,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
   });
 
   it("does not export removed actions or service constants", () => {
+    expect("bashAction" in pluginModule).toBe(false);
     expect("BASH_AST_SERVICE" in pluginModule).toBe(false);
     expect("OS_SANDBOX_SERVICE" in pluginModule).toBe(false);
     expect("SHELL_TASK_SERVICE" in pluginModule).toBe(false);

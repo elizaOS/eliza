@@ -93,7 +93,7 @@ describe("FILE target=device", () => {
     });
   });
 
-  it("routes directory listing through legacy device operation aliases", async () => {
+  it("routes directory listing through FILE action=ls target=device", async () => {
     const bridge = {
       read: async () => "",
       write: async () => {},
@@ -107,7 +107,7 @@ describe("FILE target=device", () => {
       buildRuntime(bridge),
       message,
       undefined,
-      { parameters: { action: "DEVICE_LIST_DIR", path: "" } },
+      { parameters: { action: "ls", target: "device", path: "" } },
     );
 
     expect(result.success).toBe(true);

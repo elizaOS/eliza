@@ -168,9 +168,13 @@ function launchIosSimulatorApp() {
 }
 
 function writeDefaultsString(domainPath, key, value) {
+  // Capacitor Preferences stores the default group as `CapacitorStorage.<key>`
+  // in iOS UserDefaults. The JS API strips that prefix; simulator pre-seed has
+  // to write the native key directly because the app is not running yet.
+  const nativeKey = `CapacitorStorage.${key}`;
   requireExec(
     "defaults",
-    ["write", domainPath, key, "-string", value],
+    ["write", domainPath, nativeKey, "-string", value],
     `Failed to write iOS preference ${key}.`,
   );
 }

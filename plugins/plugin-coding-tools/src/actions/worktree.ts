@@ -39,16 +39,14 @@ const WORKTREE_OPERATION_ALIASES: Record<string, WorktreeOperation> = {
 };
 
 function readWorktreeOperation(options: unknown): WorktreeOperation | undefined {
-  for (const key of ["action", "subaction", "op", "operation", "verb"]) {
-    const raw = readStringParam(options, key);
-    if (!raw) continue;
-    const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
-    if ((WORKTREE_OPERATIONS as readonly string[]).includes(normalized)) {
-      return normalized as WorktreeOperation;
-    }
-    const alias = WORKTREE_OPERATION_ALIASES[normalized];
-    if (alias) return alias;
+  const raw = readStringParam(options, "action");
+  if (!raw) return undefined;
+  const normalized = raw.trim().toLowerCase().replace(/-/g, "_");
+  if ((WORKTREE_OPERATIONS as readonly string[]).includes(normalized)) {
+    return normalized as WorktreeOperation;
   }
+  const alias = WORKTREE_OPERATION_ALIASES[normalized];
+  if (alias) return alias;
   return undefined;
 }
 
@@ -57,12 +55,7 @@ export const worktreeAction: Action = {
   contexts: [...CODING_TOOLS_CONTEXTS],
   contextGate: { anyOf: [...CODING_TOOLS_CONTEXTS] },
   roleGate: { minRole: "ADMIN" },
-  similes: [
-    "ENTER_WORKTREE",
-    "EXIT_WORKTREE",
-    "GIT_WORKTREE_ADD",
-    "GIT_WORKTREE_REMOVE",
-  ],
+  similes: ["GIT_WORKTREE"],
   description:
     "Manage the current git worktree stack. Choose action=enter to create and switch into an isolated worktree, or action=exit to leave the current worktree and optionally remove it.",
   descriptionCompressed: "Git worktree umbrella: action=enter/exit.",

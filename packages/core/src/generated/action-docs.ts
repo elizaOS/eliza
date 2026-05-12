@@ -4351,13 +4351,7 @@ export const allActionsSpec = {
 			],
 			descriptionCompressed:
 				"File operations umbrella: action=read/write/edit/grep/glob/ls, optional target=device.",
-			similes: [
-				"READ_FILE",
-				"WRITE_FILE",
-				"EDIT_FILE",
-				"FILE_OPERATION",
-				"FILE_IO",
-			],
+			similes: ["FILE_OPERATION", "FILE_IO"],
 			exampleCalls: [
 				{
 					user: "Use FILE with the provided parameters.",
@@ -6836,7 +6830,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed: "Run a shell command synchronously.",
-			similes: ["BASH", "EXEC", "RUN_COMMAND"],
+			similes: ["EXEC", "RUN_COMMAND"],
 			exampleCalls: [
 				{
 					user: "Use SHELL with the provided parameters.",
@@ -8437,7 +8431,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed: "Git worktree umbrella: action=enter/exit.",
-			similes: ["GIT_WORKTREE_ADD", "GIT_WORKTREE_REMOVE"],
+			similes: ["GIT_WORKTREE"],
 			exampleCalls: [
 				{
 					user: "Use WORKTREE with the provided parameters.",

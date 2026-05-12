@@ -59,7 +59,7 @@ export const shellAction: Action = {
   contexts: [...CODING_TOOLS_CONTEXTS],
   roleGate: { minRole: "OWNER" },
   contextGate: { anyOf: ["code", "terminal", "automation"] },
-  similes: ["BASH", "EXEC", "RUN_COMMAND"],
+  similes: ["EXEC", "RUN_COMMAND"],
   description:
     "Execute a shell command via the configured local shell. Runs synchronously in the session cwd by default. Returns stdout, stderr, and exit code. Hard timeout kills the command. Paths under the configured blocklist are off-limits as cwd.",
   descriptionCompressed: "Run a shell command synchronously.",
@@ -159,7 +159,7 @@ export const shellAction: Action = {
 
     const defaultTimeout = readPositiveIntSetting(
       runtime,
-      "CODING_TOOLS_BASH_TIMEOUT_MS",
+      "CODING_TOOLS_SHELL_TIMEOUT_MS",
       DEFAULT_TIMEOUT_MS,
     );
     const timeout = clampTimeout(
@@ -269,5 +269,3 @@ export const shellAction: Action = {
     ],
   ],
 };
-
-export const bashAction = shellAction;
