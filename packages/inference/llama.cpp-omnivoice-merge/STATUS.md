@@ -80,27 +80,46 @@ commit at the parent level — the orchestrator owns parent-repo commits.
 
 ## Patch 0002 — vendor omnivoice subtree
 
-**Status:** NOT STARTED. Still example-only at
-`0002-vendor-omnivoice-tree.example.patch`.
+**Status:** applied locally on submodule branch `eliza/omnivoice-build-flag`,
+NOT pushed. cmake configure verified (no build). Parent gitlink bumped.
 
-**Scope outline:**
-- `git mv` (or `cp -r` on the fork branch) of `packages/inference/omnivoice.cpp/src/*`
-  into `packages/inference/llama.cpp/tools/omnivoice/src/`.
-- Same for `omnivoice.cpp/tools/omnivoice-tts.cpp` and `omnivoice-codec.cpp` into
-  `tools/omnivoice/tools/`.
-- Copy public header `omnivoice.h` into `tools/omnivoice/include/`.
-- Add `tools/omnivoice/CMakeLists.txt` defining `omnivoice_lib` (STATIC),
-  `omnivoice` (SHARED, gated on `OMNIVOICE_SHARED`), `omnivoice-tts`, and
-  `omnivoice-codec`. Each links against `llama` to transitively pull GGML +
-  backends.
-- Do NOT touch `backend.h` in this patch — that's 0003. Patch 0002 should still
-  build (the backend wedge replacement is a separate, surgical change).
+Three submodule commits stacked on patch 0001 (`fc722d397`):
 
-Verification for 0002:
-- `cmake -B build -DLLAMA_BUILD_OMNIVOICE=ON` configures (no FATAL_ERROR).
-- `cmake --build build --target omnivoice_lib` compiles.
-- `cmake --build build --target omnivoice-tts omnivoice-codec` compiles.
-- `bundled tests/abi-c` test passes from the new path.
+- `1c5e595e6` — `omnivoice: vendor src/, tools/, public header into tools/omnivoice/`
+- `059962fec` — `omnivoice: vendor tests/abi-c.c into tools/omnivoice/tests/`
+- `5b82434d7` — `omnivoice: wire tools/omnivoice/ into LLAMA_BUILD_OMNIVOICE build`
+
+`tools/omnivoice/CMakeLists.txt` defines `omnivoice_lib` (STATIC), opt-in
+`omnivoice` (SHARED, gated on `OMNIVOICE_SHARED`), `omnivoice-tts`,
+`omnivoice-codec`, and `omnivoice-test-abi-c`. Top-level CMakeLists +
+`tools/CMakeLists.txt` both wire `add_subdirectory(omnivoice)` when
+`LLAMA_BUILD_OMNIVOICE=ON` — the FATAL_ERROR from patch 0001 was replaced
+with the live add_subdirectory wiring.
+
+### Verification — configure only (no build)
+
+```
+cmake -B /tmp/g1-omni-vendor-cfg-final -S packages/inference/llama.cpp \
+      -DLLAMA_CURL=OFF -DLLAMA_BUILD_OMNIVOICE=ON \
+      -DLLAMA_METAL=OFF -DGGML_METAL=OFF -DLLAMA_NATIVE=OFF
+```
+
+Result: `Configuring done (16.4s)` / `Generating done (0.7s)` / `Build files
+written`. All four omnivoice targets have generated Makefiles. **PASS.**
+
+**NOTE:** `cmake --build` was intentionally NOT run — compiling the
+GGML kernels uses many GB of RAM (operator OOM'd earlier in the session).
+The real build verification belongs in CI
+(`.github/workflows/build-omnivoice.yml`) once patch 0003 lands and the
+submodule branch is pushed.
+
+### Aside — submodule has unrelated merge debt
+
+The submodule's `milady/main` carries an unresolved upstream merge
+(e.g. `<<<<<<<` markers in `ggml/CMakeLists.txt`). Independent of the
+omnivoice work and visible at session start. Does not block patches
+0002/0003: the omnivoice branch is rooted on the rebrand merge commit
+`11f645f0e`, before the conflicted upstream merge.
 
 ## Patch 0003 — replace omnivoice backend wedge
 
