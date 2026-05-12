@@ -1664,14 +1664,7 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
     !mtmd.includes('aud_beg = "<|audio_start|>";') ||
     !mtmd.includes('proj == PROJECTOR_TYPE_QWEN3A')
   ) {
-    mtmd = replaceRequired(
-      mtmd,
-      `        if (proj == PROJECTOR_TYPE_QWEN2A) {
-            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
-            aud_beg = "<|audio_bos|>";
-            aud_end = "<|audio_eos|>";
-`,
-      `        if (proj == PROJECTOR_TYPE_QWEN3A) {
+    const replacement = `        if (proj == PROJECTOR_TYPE_QWEN3A) {
             // <|audio_start|> ... (embeddings replacing <|audio_pad|>) ... <|audio_end|>
             aud_beg = "<|audio_start|>";
             aud_end = "<|audio_end|>";
@@ -1680,9 +1673,27 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
             // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
             aud_beg = "<|audio_bos|>";
             aud_end = "<|audio_eos|>";
-`,
-      "mtmd.cpp qwen3a audio special tokens",
-    );
+`;
+    const qwen2OnlyAnchor = `        if (proj == PROJECTOR_TYPE_QWEN2A) {
+            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
+            aud_beg = "<|audio_bos|>";
+            aud_end = "<|audio_eos|>";
+`;
+    const currentCombinedAnchor = `        if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN3A || proj == PROJECTOR_TYPE_QWEN25O) {
+            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
+            aud_beg = "<|audio_bos|>";
+            aud_end = "<|audio_eos|>";
+`;
+    if (mtmd.includes(qwen2OnlyAnchor)) {
+      mtmd = mtmd.replace(qwen2OnlyAnchor, replacement);
+    } else {
+      mtmd = replaceRequired(
+        mtmd,
+        currentCombinedAnchor,
+        replacement,
+        "mtmd.cpp qwen3a audio special tokens",
+      );
+    }
   }
   if (mtmd !== fs.readFileSync(mtmdPath, "utf8")) {
     fs.writeFileSync(mtmdPath, mtmd, "utf8");

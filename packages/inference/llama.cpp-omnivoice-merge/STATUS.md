@@ -123,10 +123,63 @@ omnivoice work and visible at session start. Does not block patches
 
 ## Patch 0003 — replace omnivoice backend wedge
 
-**Status:** NOT STARTED. Still example-only at
-`0003-replace-backend-wedge.example.patch`.
+**Status:** applied locally on submodule branch `eliza/omnivoice-build-flag`,
+NOT pushed.
 
-Scope: rewrite `tools/omnivoice/src/backend.h` to consume the llama.cpp
-backend pair from a `llama_context` instead of allocating its own. This is
-the only invasive change in the merge — see PLAN.md "Audit of omnivoice src/"
-for the full file inventory.
+Scope: rewrote `tools/omnivoice/src/backend.h` and `tools/omnivoice/src/omnivoice.cpp`
+to consume the llama.cpp backend pair from a `llama_context` instead of
+allocating its own. This is the only invasive change in the merge — see
+PLAN.md "Audit of omnivoice src/" for the full file inventory.
+
+### Files changed
+
+- `tools/omnivoice/src/backend.h` — complete rewrite (172 lines → 219 lines)
+  - Removed: `g_backend_cache`, `g_backend_refs` module-level globals
+  - Removed: `backend_cpu_n_threads()`, `cpu_backend_new()` helpers
+  - Removed: `backend_init()` (refcounted, allocated own GPU + CPU)
+  - Removed: `backend_release()` (freed GPU + CPU on refcount → 0)
+  - Added: `BackendPairOwned` struct — carries `BackendPair` + `owns_gpu`/`owns_cpu` flags
+  - Added: `backend_init_auto()` — standalone replacement for `backend_init()`;
+    calls `ggml_backend_load_all()` (idempotent), scans `ggml_backend_dev_count()`
+    devices by `ggml_backend_dev_type()`, returns `BackendPairOwned`
+  - Added: `backend_auto_free()` — frees only handles with `owns_* == true`
+  - Added: `backend_release()` shim — no-op compatibility wrapper
+  - Added: `omnivoice_backend_from_llama(llama_context * ctx)` — C++ factory;
+    calls `ctx->get_sched()` → `ggml_backend_sched_get_n_backends()` →
+    `ggml_backend_sched_get_backend()` → `ggml_backend_dev_type()` to identify
+    GPU and CPU handles; returns borrowed `BackendPairOwned` (`owns_* = false`)
+  - Kept: `backend_sched_new()` unchanged
+  - Kept: `BackendPair` struct unchanged (field names, types, layout)
+
+- `tools/omnivoice/src/omnivoice.cpp` — targeted changes (341 lines → 296 lines
+  before guard + comment additions; net ~+30 lines with patch commentary)
+  - Added `#if defined(LLAMA_BUILD_OMNIVOICE) / #include "llama-context.h"` block
+    (provides `llama_context` definition for `omnivoice_backend_from_llama`)
+  - `ov_context` struct: added `BackendPairOwned owned_bp` field alongside
+    existing `BackendPair bp` (convenience alias)
+  - `ov_init()`: `backend_init("LM")` → `backend_init_auto("LM")` + set `ov->bp = ov->owned_bp.bp`
+  - `ov_free()`: `backend_release(ov->bp.backend, ov->bp.cpu_backend)` →
+    `backend_auto_free(ov->owned_bp)`
+  - All other functions (ov_synthesize, ov_duration_sec_to_tokens, etc.) unchanged
+
+### llama.cpp API used for backend extraction
+
+`omnivoice_backend_from_llama()` chain:
+1. `llama_context::get_sched()` → `ggml_backend_sched_t` (C++ method, `llama-context.h`)
+2. `ggml_backend_sched_get_n_backends(sched)` → count (`ggml-backend.h` line 324)
+3. `ggml_backend_sched_get_backend(sched, i)` → `ggml_backend_t` (`ggml-backend.h` line 325)
+4. `ggml_backend_get_device(b)` → `ggml_backend_dev_t` (`ggml-backend.h` line 118)
+5. `ggml_backend_dev_type(dev)` → `GGML_BACKEND_DEVICE_TYPE_GPU` / `_IGPU` / `_CPU`
+   (`ggml-backend.h` line 182)
+
+### Commit in submodule
+
+```
+git -C packages/inference/llama.cpp commit -m "omnivoice: patch 0003 - backend wedge replacement (consume llama_context backend)"
+```
+
+### Required to push (NOT done by this agent)
+
+```
+git -C packages/inference/llama.cpp push origin eliza/omnivoice-build-flag
+```
