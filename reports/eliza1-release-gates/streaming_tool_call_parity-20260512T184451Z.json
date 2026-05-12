@@ -1,0 +1,32 @@
+{
+  "gate": "streaming_tool_call_parity",
+  "status": "fail",
+  "completedAt": "2026-05-12T18:44:51.269Z",
+  "baseUrl": "http://ssh3.vast.ai:11983",
+  "model": "vast/eliza-1-27b-256k",
+  "standIn": true,
+  "modelArtifact": "unsloth/Qwen3.6-27B-GGUF/Qwen3.6-27B-UD-Q3_K_XL.gguf",
+  "nonStreamingToolCalls": [
+    {
+      "name": "record_probe",
+      "arguments": "{\"code\":\"eliza-stream-parity\",\"value\":7}"
+    }
+  ],
+  "streamingToolCalls": [
+    {
+      "name": "record_probe",
+      "arguments": "{\"code\":\"eliza-stream-parity\",\"value\":7}"
+    }
+  ],
+  "usageParity": false,
+  "nonStreamingUsage": {
+    "prompt_tokens": 310,
+    "completion_tokens": 13,
+    "total_tokens": 323
+  },
+  "streamingUsage": null,
+  "nonStreamingLatencyMs": 7046,
+  "streamingFirstByteMs": 693,
+  "streamingLatencyMs": 7061,
+  "summary": "non-stream 200; stream 200; tool parity true; usage parity false"
+}

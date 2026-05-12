@@ -1,0 +1,135 @@
+# H200 — Hopper, 141 GiB HBM3e, sm_90, 4.8 TB/s, FP8 supported.
+#
+# Per-bundle recommended llama-server flags. Source of truth for the runtime
+# is `packages/shared/src/local-inference/gpu-profiles.ts`; this file extends
+# those card-level defaults with per-bundle overrides + TPS expectations.
+#
+# All TPS numbers are *estimates* — they have not been measured on real
+# hardware. The H200 is the marquee config: Eliza-1 27B at 1M context with
+# QJL K + Polar V KV quant fully resident in HBM3e. NVLink/SXM
+# multi-card setups are *out of scope* per the single-GPU framing; see
+# `docs/eliza-1-gpu-tier.md` for the constraint discussion.
+
+gpu_id: h200
+gpu_arch: sm_90
+vram_gb: 141
+mem_bandwidth_gbps: 4800
+fp8_supported: true
+fp4_supported: false
+nvlink: true                       # SXM has NVLink, but single-GPU only here
+
+bundle_recommendations:
+  # Small bundles are present for completeness, but the H200 is wasted on
+  # anything below 9B. Operators should pick 27b / 27b-256k / 27b-1m.
+  eliza-1-0_8b:
+    n_gpu_layers: -1
+    ctx_size: 32768
+    parallel: 64
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: turbo3_0
+    kv_cache_v: turbo4_0
+    flash_attention: true
+    estimated_decode_tps: 1100
+    estimated_prefill_tps: 90000
+    notes: "Tiny model on a server GPU. Useful only for batch eval."
+  eliza-1-2b:
+    n_gpu_layers: -1
+    ctx_size: 32768
+    parallel: 32
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: turbo3_0
+    kv_cache_v: turbo4_0
+    flash_attention: true
+    estimated_decode_tps: 780
+    estimated_prefill_tps: 56000
+    notes: "Useful only for batch eval or burst chat."
+  eliza-1-4b:
+    n_gpu_layers: -1
+    ctx_size: 131072
+    parallel: 32
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 560
+    estimated_prefill_tps: 30000
+    notes: "4B at 128k, 32 parallel slots — generous."
+  eliza-1-9b:
+    n_gpu_layers: -1
+    ctx_size: 131072
+    parallel: 32
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 320
+    estimated_prefill_tps: 17000
+    notes: "9B at 128k — high-throughput option for multi-tenant chat."
+  eliza-1-27b:
+    n_gpu_layers: -1
+    ctx_size: 131072
+    parallel: 16
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 130
+    estimated_prefill_tps: 4500
+    notes: "27B at 128k — comfortable fit; recommended default for H200 chat."
+  eliza-1-27b-256k:
+    n_gpu_layers: -1
+    ctx_size: 262144
+    parallel: 8
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 95
+    estimated_prefill_tps: 3200
+    notes: "27B at 256k — KV ~20 GiB; resident in HBM3e."
+  eliza-1-27b-1m:
+    # The marquee config. ~17 GiB weights + ~80 GiB KV at 1M (QJL K + Polar V
+    # ≈ 80 KiB/token quantized) + ~40 GiB headroom for activations, drafter,
+    # and parallel slots. NO CPU spill.
+    n_gpu_layers: -1
+    ctx_size: 1048576
+    parallel: 4
+    batch_size: 4096
+    ubatch_size: 1024
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 55
+    estimated_prefill_tps: 1800
+    notes: "1M-token context, fully resident in 141 GiB HBM3e. The only good home for this bundle."
+
+dflash:
+  enabled: true
+  draft_min: 8
+  draft_max: 32
+  draft_gpu_layers: -1
+
+verify_recipe:
+  build_target: linux-x64-cuda
+  cuda_arch: 90
+  cmake_flags:
+    - "-DGGML_CUDA=ON"
+    - "-DCMAKE_CUDA_ARCHITECTURES=90a"     # `a` variant for full Hopper feature set
+    - "-DGGML_CUDA_F16=ON"
+    - "-DGGML_CUDA_FA_ALL_QUANTS=ON"
+  expected_kernels:
+    - turbo3
+    - turbo4
+    - turbo3_tcq
+    - qjl_full
+    - polarquant
+    - dflash
+  unavailable_kernels: []
+  smoke_bundle: eliza-1-27b-1m
+  tolerance_pct: 10

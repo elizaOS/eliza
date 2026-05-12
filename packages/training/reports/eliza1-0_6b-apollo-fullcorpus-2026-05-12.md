@@ -1,0 +1,409 @@
+# eliza-1-0_6b — full-corpus APOLLO SFT (2026-05-12, IN FLIGHT)
+
+Follow-up to `reports/eliza1-0_6b-apollo-sft-2026-05-11.md` (the 8k-sample
+test-SFT that beat base `Qwen3-0.6B` on every metric but did not clear the
+absolute `format_ok` publish floor — that floor is calibrated for a full-corpus
+run, which this is).
+
+## 1. Have / need / missing (at launch)
+
+- **Have:** the `qwen3-0.6b` recipe (`scripts/training/model_registry.py` — ChatML,
+  seq 4096, `apollo_mini` rank-1, bf16, grad-checkpointing, lr 1e-5, micro_batch 1
+  / grad_accum 8); `train_local.py` + `run_pipeline.py` (full chain: SFT → gate
+  bench → PolarQuant/QJL/TurboQuant quant → eliza1 sidecar bundle); `.venv` with
+  torch 2.11+cu130, transformers 5.7, trl 1.3, Liger (Triton runtime now JIT-works
+  on this host — unlike the test-SFT run); the two source corpora
+  (`datasets/eliza1-sft-0_6b/{train,val,test}.jsonl` = 1436/71/78 benchmark-aligned
+  rows, `data/final/{train,val,test}.jsonl` = 66861/3824/3641 broad-mix rows).
+- **Need:** an idle GPU for ~9 GPU-h (turned out ~30 h wall on the 80 W RTX 5080
+  Laptop — the combined corpus's `data/final` trajectory rows are ~2.6× longer on
+  average than the test-SFT slice, and there are 8.5× as many rows).
+- **Missing / blocked:** Nebius H200 — `nebius iam whoami` still hangs on
+  browser-SSO federation in this headless context (re-verified at launch), and
+  `run-on-cloud.sh --provider nebius` is fail-closed → fell back to the local RTX
+  5080. The HF model repo (`elizaos/eliza-1-0_6b`) does not yet exist (PUBLISH
+  agent #46 creates it) — so this run stages everything + a manifest for #46.
+
+## 2. Corpus built
+
+`scripts/build_eliza1_fullcorpus.py` → `data/final-eliza1-fullcorpus/` (gitignored):
+
+| split | rows | source order | sha256 |
+|---|---:|---|---|
+| train | 68,297 | `eliza1-sft-0_6b/train.jsonl` (1,436) AHEAD of `data/final/train.jsonl` (66,861) | `475477b372e17b6d65d0beba3f35e379aa3e08b832ad7f0996ed4681695cb889` |
+| val | 3,895 | `eliza1-sft-0_6b/val.jsonl` (71) + `data/final/val.jsonl` (3,824) | `d4fbd5989214509326a12838348231808543b08202382d9370a949dffdbfc30f` |
+| test | 3,719 | `eliza1-sft-0_6b/test.jsonl` (78) + `data/final/test.jsonl` (3,641) | `19de77256b48210a3a2dce3d0da282c2aa4f561f4f51df5688f05ce2cf7483d3` |
+
+Every row was run through `format_for_training.format_record` at build time; all
+75,911 input rows are train_local-compatible (chat_messages + legacy_eliza_record
+shapes). Benchmark-aligned rows go first so the cosine-warmup early steps see the
+structured ACTION / tool-call / personality rows the publish gates measure. The
+held-out val/test are the merged (larger) sets — they include the benchmark-aligned
+rows so the gate bench covers the structured-output buckets.
+
+## 3. SFT run params
+
+```
+accelerate launch (1 process) scripts/run_pipeline.py
+  --registry-key qwen3-0.6b
+  --run-name eliza-1-0_6b-apollo-fullcorpus-1778563093
+  --train-file data/final-eliza1-fullcorpus/train.jsonl
+  --val-file   data/final-eliza1-fullcorpus/val.jsonl
+  --test-file  data/final-eliza1-fullcorpus/test.jsonl
+  --epochs 1 --eval-mode full --bench-per-bucket 200
+  --skip-base-bench --skip-throughput-bench
+```
+
+| param | value |
+|---|---|
+| base | `Qwen/Qwen3-0.6B` |
+| optimizer | `apollo_mini` (rank-1, scale 128, fp32 moments) |
+| seq_len / micro_batch / grad_accum | 4096 / 1 / 8 (eff. batch 8) |
+| dtype / grad checkpointing / Liger | bf16 / on / **on** (FLCE chunked-CE; Triton JIT works on this host) |
+| lr / scheduler / warmup | 1e-5 / cosine / 0.03 |
+| epochs / total steps | 1 / 8,538 |
+| completion_only_loss | off (Liger active → loss over the full ChatML sequence; chat-template + EOS align targets) |
+| GPU | RTX 5080 Laptop (sm_120, 16 GB, 80 W cap) |
+| step rate | ~12.7 s/it ⇒ ~30 h wall |
+| log | `packages/training/checkpoints_run_eliza-1-0_6b-apollo-fullcorpus-1778563093.log` |
+| output dir | `packages/training/checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/` |
+
+Status at last checkpoint of this report: ~step 500/8538, loss ~22 → ~11 through
+the LR warmup, then plateauing ~10–12 around LR 1e-5 (grad_norm 40–140, clipped).
+First mid-run eval (step 500 over the 3,895-row val set) was running. **Train loss
+~11 is high vs the test-SFT's eval_loss 1.315** — but the test-SFT was 1 full epoch
+over 8k rows; this run is at 0.06 epoch. Watch the step-500/1000/… `eval_loss`: if
+it does not fall toward ≲2 by ~epoch 0.3–0.5, the recipe needs more LR or 2 epochs
+(see §6).
+
+## 4. GPU coordination outcome
+
+GPU was idle (4 MiB, 0 %) at launch — the CUDA-FINISH agent (#39) had finished its
+verify/build runs. No poll-wait was needed. Nebius H200 not used (headless auth
+unavailable, re-verified). Trade-off accepted: this run monopolizes the RTX 5080
+for ~30 h; #39 and any other GPU job must queue behind it (or kill it — see resume
+command below).
+
+## 5. Resume / monitor (run is mid-flight)
+
+Monitor:
+```bash
+tail -f packages/training/checkpoints_run_eliza-1-0_6b-apollo-fullcorpus-1778563093.log | tr '\r' '\n'
+nvidia-smi
+```
+
+If killed and you need to restart from scratch (no resumable checkpoint was
+requested — `--save-steps 500 --save-total-limit 3` writes `checkpoint-N/` dirs
+under the output dir, so `accelerate launch … --resume_from_checkpoint <dir>` is
+possible if the run is interrupted; otherwise re-launch the §3 command). If an
+operator has fixed Nebius headless auth, the H200 alternative is:
+```bash
+NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf> \
+REGISTRY_KEY=qwen3-0.6b \
+bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay
+```
+(point its `--train-file`/`--val-file`/`--test-file` at the
+`data/final-eliza1-fullcorpus/` splits, or rebuild them remotely with
+`scripts/build_eliza1_fullcorpus.py` after rsyncing both source corpora).
+
+## 6. What happens at completion (run_pipeline.py auto-chains)
+
+1. `final/` HF safetensors + tokenizer + `chat_template.jinja` saved.
+2. Stage 3: post-train bench (`eliza_bench.py` + `native_tool_call_bench.py`,
+   `--eval-mode full`, 200/bucket) → `benchmarks/<run>/finetuned/`.
+3. Stage 4: `evals/aggregate.json` + `gate_report.json` — **check `format_ok` ≥
+   0.70** (the `0_6b` `format_ok` gate in `benchmarks/eliza1_gates.yaml`,
+   `required: true, provisional: false`).
+4. Stage 5: PolarQuant + fused-TurboQuant + QJL quant against the new `final/`.
+5. Stage 6b: eliza1-typed GGUF bundle via `optimize_for_eliza1.py` (Q4_POLAR
+   weights sidecar + QJL1_256 K-cache + TBQ V-cache + `eliza1_manifest.json`),
+   plus the Q4_K_M GGUF (`final-gguf-q4_k_m/`).
+6. **If `format_ok` clears 0.70:** re-run `scripts/quantization/gguf_eliza1_apply.py`
+   against `final/` if the bundle stage didn't already, then — if `elizaos/eliza-1-0_6b`
+   exists — push `final/` + Q4_K_M GGUF + the eliza1 sidecar bundle there
+   (`HF_TOKEN` env), model card → "full-corpus APOLLO SFT, clears the format_ok
+   gate"; update `benchmarks/MODELS_STATUS.md` + release evidence. If the repo
+   doesn't exist, stage + manifest for PUBLISH #46.
+7. **If `format_ok` does NOT clear 0.70:** keep the checkpoint, document the gap
+   (train loss plateau ⇒ try lr 2e-5 or 2 epochs; or a data-mix tweak — the
+   `data/final` rows dominate 49:1 over the benchmark-aligned rows, so upsample
+   `eliza1-sft-0_6b` 5–10× if format coverage is the gap), and recommend the next
+   step rather than publishing.
+
+Side-by-side table (base vs test-SFT vs full-corpus) to be filled in once Stage 4
+lands — the base + test-SFT columns are in
+`reports/eliza1-0_6b-apollo-sft-2026-05-11.manifest.json::benchmark_table`.
+
+## 7. Next step
+
+The full-corpus SFT is running on the RTX 5080 (~30 h ETA from 2026-05-12 ~22:20
+UTC start). When it finishes, `run_pipeline.py` produces the gate report and the
+quant bundle automatically; whoever picks this up should read
+`checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/gate_report.json`, fill in
+the §6 table, and either publish (gate green) or iterate (gate red, per §6.7).
+
+Progress check (2026-05-12 ~02:00 UTC): step ~960/8538 (~11 %), loss plateau
+~10–12 around LR 1e-5, mid-run `eval_loss` 1.43 at step 500 (vs the test-SFT's
+final 1.315 — on track; this run is still <0.1 epoch in).
+
+## 8. Corpus addendum — structured_decode + voice_emotion tasks (2026-05-12, WS-3)
+
+The combined corpus this run trains on (`data/final-eliza1-fullcorpus/`) was
+built *before* the cross-cluster corpus additions landed, so it does **not**
+contain explicit Stage-1 response-envelope rows or voice-emotion rows. After
+this run, `build_eliza1_sft_0_6b.py` has been extended (commit on `develop`
+2026-05-12) with two new task generators:
+
+- `structured_decode` — the W3 flat JSON response envelope `@elizaos/core`
+  `buildResponseGrammar` constrains (`{"shouldRespond":"RESPOND|IGNORE|STOP",
+  "thought":...,"replyText":...,"contexts":[...],"contextSlices":[...],
+  "candidateActions":[...],"parentActionHints":[...],"requiresTool":<bool>,
+  "extract":{...}}`; `shouldRespond` dropped on direct DM/voice/API channels),
+  key order matching `packages/core/src/runtime/response-grammar.ts::
+  STAGE1_ENVELOPE_KEYS`. On-wire form is JSON (not "TOON"), matching the
+  runtime model call. Deterministic seed rows + Cerebras `gpt-oss-120b`
+  augmentation. ~250 rows in `datasets/eliza1-sft-0_6b/train.jsonl`.
+- `voice_emotion` — spoken replies with omnivoice-singing inline expressive
+  tags in `replyText` (`[happy]` `[sad]` `[angry]` `[nervous]` `[calm]`
+  `[excited]` `[whisper]` `[singing]` + non-verbals `[laughter]` `[sigh]`).
+  ~245 rows.
+
+**If this run's `format_ok` clears 0.70** → publish as planned (§6.6); the
+augmented corpus is the *next* iteration's improvement, not a blocker.
+**If it falls short** → the iteration is: rebuild the combined corpus from the
+*new* `eliza1-sft-0_6b` (now with the envelope rows that `format_ok` actually
+measures — the test-SFT mix never emitted the envelope at all, which is why
+`format_pct` was 0%), upsample `eliza1-sft-0_6b` 5–10× over `data/final`, and
+re-run (locally or on the H200 — see §9). The full-corpus run on the H200 was
+not launched this session because (a) the in-flight RTX-5080 run is healthy and
+11 % done, (b) `train_vast.sh`'s `run_remote` hardcodes
+`--fsdp_transformer_layer_cls_to_wrap Qwen3_5DecoderLayer` (the 0.6b/1.7b tiers
+are `Qwen3DecoderLayer`) and rsyncs only `data/final/` (not the combined
+corpus), and (c) `train_nebius.sh` is written against an older `nebius compute
+instance create` flag set (`--project-id` / `--boot-disk-spec`; the current CLI
+wants `--parent-id` / `--resources-platform` / `--boot-disk-*`). Both cloud
+credentials (vast `VAST_API_KEY`, nebius federation token) are present and the
+CLIs authenticate (`vastai show instances`, `nebius iam tenant list` both
+succeed) — the gap is the orchestration-script update + a babysat run window,
+not the creds.
+
+## 9. H200 run — exact resume (when an operator can babysit it)
+
+```bash
+# Option A — Nebius (after patching train_nebius.sh to the current CLI):
+NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf> \
+REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_PRESET=gpu-h200x1 FSDP_WORLD_SIZE=1 \
+bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay
+# Then on the remote box rebuild the combined corpus before training:
+#   uv run python scripts/build_eliza1_fullcorpus.py
+#   (and point train at data/final-eliza1-fullcorpus/{train,val,test}.jsonl)
+
+# Option B — Vast (canonical; fix the FSDP wrap class + corpus rsync first, or
+# run train_local.py directly inside tmux on the remote):
+VAST_API_KEY=<key> ELIZA_VAST_MAX_USD=30 \
+bash packages/training/scripts/train_vast.sh provision-and-train --registry-key qwen3-0.6b --epochs 3
+```
+
+## 10. H200 run launched (2026-05-12 ~10:30 UTC) — `train_nebius.sh` rewritten
+
+The operator re-authenticated Nebius. `scripts/train_nebius.sh` was rewritten
+against the live `nebius` CLI v0.12 (`instance create` now wants `--parent-id`
+/ `--resources-platform gpu-h200-sxm` / `--resources-preset 1gpu-16vcpu-200gb`
+/ an *existing* boot disk created from the `mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8`
+public image / a real subnet / ssh keys via `--cloud-init-user-data`). A cheap
+CPU-instance smoke (`bash scripts/train_nebius.sh smoke`) verified the
+provision→ssh→teardown path. Then the 0_6b full-corpus run was launched:
+
+- VM: `eliza-train-h200-0_6b` (`computeinstance-e00zzb9z10n4jpr11z`), NVIDIA
+  H200 (141 GB), driver 570.211.01 / CUDA 12.8.
+- Corpus: `data/final-eliza1-fullcorpus/` rebuilt **on the H200** from the
+  current `datasets/eliza1-sft-0_6b/` (which now *does* contain the
+  `structured_decode` + `voice_emotion` envelope rows the `format_ok` gate
+  measures) + `data/final/`, with **`ELIZA1_FULLCORPUS_UPSAMPLE=8`** — the
+  benchmark-aligned slice (1257 valid train rows) is repeated 8× to fight the
+  ~49:1 dilution by the broad mix. Result: train 76 917 / val 3 909 / test
+  3 700 rows. The combined corpus mixes ChatML (`{"messages":[...]}`) rows,
+  which `validate_corpus.py` (a *native-record* schema validator) can't parse,
+  so the run uses `--allow-unvalidated-corpus` (the build-time
+  `format_for_training.format_record` gate vets every row). The in-flight
+  RTX-5080 run (§7, run `eliza-1-0_6b-apollo-fullcorpus-1778563093`) is **not**
+  using the upsampled corpus and lacks the envelope rows — so this H200 run is
+  the candidate to clear `format_ok ≥ 0.70`; the local run continues for now as
+  a fallback and is **superseded** if the H200 run clears the gate.
+- torch fix: the project pins torch 2.11+cu130, which needs driver ≥580 — too
+  new for the Nebius image's 570.x. `train_nebius.sh`'s remote runner detects
+  `torch.cuda.is_available()==False` and swaps to **torch 2.11.0+cu128**
+  (ABI-compatible with liger/bitsandbytes/apollo), removing the leftover cu13
+  nvidia stack and force-refreshing `nvidia-cusparselt-cu12`.
+- `run_pipeline.py` chain on the H200: corpus gate (warn-only) → base bench
+  (`native_tool_call_bench.py` + `eliza_bench.py`, 200/bucket — note: these
+  bench scripts run the 0.6B *on CPU* in this env, ~30 min) → APOLLO full-SFT
+  on the GPU (1 epoch, lr 1e-5, seq 4096, Liger) → `gate_report.json` → PolarQuant
+  + fused-TurboQuant + QJL quant → eliza1-typed GGUF bundle. Results fetched to
+  `checkpoints/<run>/` + `benchmarks/<run>/` + `reports/`, then VM+disk torn down.
+- Resume / monitor: `tmux attach -t elizatrain` on the VM (ssh `ubuntu@<vm-ip>`,
+  `bash scripts/train_nebius.sh ip`); log `/opt/training/run_<run-name>.log`.
+  Re-launch from scratch:
+  ```bash
+  NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf> HF_TOKEN=<hf> \
+  REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_PRESET=gpu-h200x1 SYNC_FULLCORPUS_SOURCES=1 \
+  ELIZA1_FULLCORPUS_UPSAMPLE=8 ALLOW_UNVALIDATED_CORPUS=1 \
+  TRAIN_FILE=data/final-eliza1-fullcorpus/train.jsonl VAL_FILE=data/final-eliza1-fullcorpus/val.jsonl TEST_FILE=data/final-eliza1-fullcorpus/test.jsonl \
+  RUN_NAME=eliza-1-0_6b-apollo-fullcorpus-h200-$(date +%s) NEBIUS_VM_NAME=eliza-train-h200-0_6b \
+  bash packages/training/scripts/train_nebius.sh full
+  ```
+  (or the granular `provision` / `sync` / `run` / `fetch` / `teardown` steps —
+  the corpus is ~1 GB and the Nebius eu-north1 uplink is ~3.4 Mbps, so prefer
+  `scp`-ing a `tar czf` of `data/final/{train,val,test}.jsonl` +
+  `datasets/eliza1-sft-0_6b/{train,val,test}.jsonl` into `/opt/training/` before
+  `sync`, which then matches & skips).
+
+### Caveats / known issues for whoever picks this up
+
+- The H200 run was launched with `train_nebius.sh run` (not `full`), so there is
+  no built-in fetch+teardown at the tail. A side watcher `/tmp/nebius-finish.sh`
+  on the build host polls `/opt/training/run_<run>.log` for the
+  `RUN_PIPELINE_EXIT=` sentinel, then runs `train_nebius.sh fetch` + prints
+  `checkpoints/<run>/gate_report.json` + `train_nebius.sh teardown`. If that
+  process is gone, run those three steps by hand (`NEBIUS_PROJECT_ID=... HF_TOKEN=...
+  REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_NAME=eliza-train-h200-0_6b RUN_NAME=eliza-1-0_6b-apollo-fullcorpus-h200-1778581740
+  bash scripts/train_nebius.sh fetch && ... teardown`) — **don't leave the H200
+  billing**.
+- `eliza_bench.py` / `native_tool_call_bench.py` run the 0.6B *on CPU* on this
+  Nebius image (transformers/accelerate falls back: "Device 0 seems unavailable"),
+  so the base + finetuned benchmark passes are slow (~30–60 min each on the
+  16-vCPU box) even though `train_local.py`'s SFT itself runs on the H200. Setting
+  `CUDA_VISIBLE_DEVICES=0` in the runner did not change it — the actual cause is
+  in `eliza_bench.py`'s model placement (`device_map="auto"` not landing on the
+  H200 here); not chased further this session. If you re-launch, `BENCHMARK_AFTER=0`
+  passes `--skip-base-bench` to halve the wall time (the base column for the
+  delta is in `reports/eliza1-0_6b-apollo-sft-2026-05-11.manifest.json::benchmark_table`).
+- When the run completes: read `checkpoints/<run>/gate_report.json` — `format_ok ≥
+  0.70` (the `0_6b` floor). GREEN → re-run `scripts/quantization/gguf_eliza1_apply.py`
+  against the new `final/`, assemble the eliza1 bundle, **push `final/` + Q4_K_M
+  GGUF + the eliza1 sidecar bundle to `elizaos/eliza-1-0_6b`** (exists; 200) with a
+  "full-corpus APOLLO SFT, clears the format_ok gate, base-v1 candidate" model
+  card, update `evidence/release.json` + `benchmarks/MODELS_STATUS.md` + the
+  harness benchmark report's full-corpus column, and **kill the local run**
+  (`pkill -f fullcorpus-1778563093`). RED → the iteration is to make the new
+  `datasets/eliza1-sft-0_6b/` rows pass `validate_corpus.py` (they're ChatML, so
+  `validate_corpus.py` can't even parse them — that validator is native-record
+  only; the build-time `format_for_training.format_record` gate is what vets
+  ChatML) and/or bump `ELIZA1_FULLCORPUS_UPSAMPLE` higher (was 8), then re-run.
+- Other tiers (`1_7b` → `--tier 1_7b`, `4b` → `--tier 4b` [HF repo `elizaos/eliza-1-4b`
+  returns 401 — create it or it's private], `9b` → `--tier 9b`): same flow,
+  single H200, `bash scripts/train_nebius.sh full` with `REGISTRY_KEY=qwen3-1.7b /
+  qwen3-4b / qwen3.5-9b` and a fresh `NEBIUS_VM_NAME` + `RUN_NAME`. Use the
+  *broad* `data/final/` corpus (not the upsampled combined one) unless the 0_6b
+  gate result says otherwise — those tiers don't have the `format_pct=0%` history
+  the 0_6b test-SFT had.
+- **27b / 27b-256k / 27b-1m — HELD, needs explicit operator confirmation.** The
+  Nebius H200 platform (`gpu-h200-sxm`) has no 2-GPU preset; the only multi-GPU
+  preset is `8gpu-128vcpu-1600gb` (8× H200), so a Nebius 27b run rents 8× H200
+  + FSDP. At Nebius H200 list pricing (~$3.50–4/GPU-h), 8× ≈ **~$28–32/h**; a 1-epoch
+  27b SFT at 65 k context is ~6–10 GPU-h aggregate ⇒ ~$30–40 of compute, plus
+  ~$5–10 idle for provision + the slow bench passes ⇒ **~$40–50 total**. Vast
+  (`scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b`) can
+  target a 2× or 4× H200/B200 box and is cheaper for 27b — prefer it. Commands
+  held (do NOT run without confirmation):
+  ```bash
+  # Nebius 27b (8x H200, expensive):
+  NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HUGGING_FACE_HUB_TOKEN=<hf> HF_TOKEN=<hf> \
+  bash packages/training/scripts/cloud/run-on-cloud.sh --provider nebius --task train --gpu h200 --tier 27b --yes-i-will-pay
+  # (27b-256k / 27b-1m: same, --tier 27b-256k / --tier 27b-1m — longer context, even more GPU-h)
+  # Preferred: Vast 27b (2x/4x H200 or B200):
+  VAST_API_KEY=<key> bash packages/training/scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b --epochs 1
+  ```
+
+## 11. H200 run relaunched 2026-05-12 ~12:18 UTC — torch-on-CPU bug fixed; local run killed
+
+The first H200 launch (§10) silently trained on **CPU**: `train_nebius.sh`'s boot-time
+torch swap to `2.11.0+cu128` (the Nebius image's 570.x driver can't run the
+project-pinned `2.11.0+cu130`) *did* run and verified `cuda OK on NVIDIA H200`, but
+`run_pipeline.py`'s internal `uv run --extra train python scripts/{train_local,benchmark/*}.py`
+calls **re-sync the venv from the cu130-pinned lockfile**, clobbering the swap — so the
+base bench and then `train_local.py` came up `device=cpu ... no GPU detected` (a 77 k-row
+CPU SFT = days, H200 idle). Killed at ~12:17 UTC before it wasted GPU-hours.
+
+Fix (committed to `train_nebius.sh`): the torch swap is now an idempotent
+`torch_swap_cu128()` function called at boot **and** again right before `run_pipeline.py`,
+and after the first swap the runner exports `UV_NO_SYNC=1 UV_FROZEN=1` so every later
+`uv run` (incl. the subprocesses `run_pipeline.py` spawns) uses the in-place-swapped
+`.venv` instead of re-resolving. Verified on the live VM: `UV_NO_SYNC=1 uv run … → torch
+2.11.0+cu128 True`; a bare `uv run` (no env) still clobbers it → the fix is load-bearing.
+
+Relaunched on the **same VM** (`eliza-train-h200-0_6b`), **same run name**
+(`eliza-1-0_6b-apollo-fullcorpus-h200-1778581740`, log overwritten), corpus already on
+disk (`SYNC_FULLCORPUS_SOURCES=0`, `data/final-eliza1-fullcorpus/` = 76 917 train rows,
+`ELIZA1_FULLCORPUS_UPSAMPLE=8`, `ALLOW_UNVALIDATED_CORPUS=1`), **`BENCHMARK_AFTER=0`**
+(`--skip-base-bench` — the ~1.4 h CPU base bench was already eaten by the broken first
+launch; the base column for the delta is in `reports/eliza1-0_6b-apollo-sft-2026-05-11.manifest.json`).
+SFT confirmed training **on the H200** at 12:18 UTC: `device=cuda torch=2.11.0+cu128`,
+2.2 GB GPU resident, 127 W. Caveat: **Liger disabled** — the Nebius image lacks
+`python3.12-dev` headers so Triton's runtime probe fails to compile `cuda_utils.c`; the
+SFT falls back to HF defaults (slower / more memory, but the 0.6B at seq 4096 fits the
+H200 easily — not a correctness issue). `apt install python3.12-dev` + relaunch would
+re-enable Liger if speed matters.
+
+**Local fallback SFT (`eliza-1-0_6b-apollo-fullcorpus-1778563093`, RTX 5080, ~12 %,
+non-upsampled corpus, no envelope rows) — killed 2026-05-12 ~12:22 UTC** once the H200
+SFT was confirmed on the GPU; checkpoints 500/1000 retained under
+`packages/training/checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/`. The H200 run
+(`…-h200-1778581740`) supersedes it.
+
+Watcher: `/tmp/nebius-finish-v3.sh` (16 h timeout, `fetch` → print `gate_report.json` →
+`teardown` on `RUN_PIPELINE_EXIT=`, `teardown` on timeout).
+
+## 12. H200 run ABORTED ~13:00 UTC — VM torn down by a spurious sentinel; restart needed
+
+The relaunch (§11) hit a *second* GPU-placement bug: `train_local.py` uses
+`device_map="auto"`, which on this Nebius image makes accelerate's `infer_auto_device_map`
+silently place the whole model on **CPU** ("Device 0 seems unavailable" — the same failure
+`eliza_bench.py` has here). Result: single-threaded CPU training at ~10 s/it (≈26–31 h ETA)
+with the GPU at 0 % util holding only the (unused) optimizer states (~14 GB). Killed.
+
+Fix committed: `train_local.py` now honours `ELIZA_NO_DEVICE_MAP=1` (skip `device_map="auto"`,
+load to CPU then `.to("cuda")` explicitly — the single-GPU 0.6B–9B tiers fit a `from_pretrained`
+load fine; the 27B FSDP path always loads to CPU so it's unaffected) plus a safety net that
+`.to(device)`s the model if it ended up on CPU; `train_nebius.sh`'s runner exports
+`ELIZA_NO_DEVICE_MAP=1`. **Not yet verified to actually light up the GPU** — the relaunch
+that carried this fix never reached a training step before the VM died (see below).
+
+Then a process-management mistake compounded it: I killed/relaunched the run several times
+(`tmux kill-session -t elizatrain` then a new `train_nebius.sh run`). Each tmux kill makes
+the prior session's wrapper (`bash .run_pipeline.sh … | tee $log; echo RUN_PIPELINE_EXIT=$? >> $log`)
+write a spurious `RUN_PIPELINE_EXIT=<nonzero>` to the run log — which the side watcher then
+read as "pipeline done" and ran `train_nebius.sh fetch` + **`teardown`**, deleting the H200
+VM + boot disk **while a fresh relaunch was mid-tokenization**. Also: a `train_nebius.sh sync`
+in between rsynced the *local* (non-upsampled, 68 297-row) `data/final-eliza1-fullcorpus/`
+over the remote's correct 76 917-row upsampled corpus — fixed by rebuilding it on the remote
+(`build_eliza1_fullcorpus.py` with `ELIZA1_FULLCORPUS_UPSAMPLE=8` → 76 917 / 3 909 / 3 700)
+before the doomed relaunch. **Net: no checkpoint produced; the H200 instance + disk are
+torn down (verified `nebius instance list` / `disk list` empty → billing stopped).**
+
+**Local fallback SFT killed ~12:22 UTC** (checkpoints 500/1000 retained under
+`packages/training/checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/`) — and *not*
+re-launched, since the H200 is the intended path and the fixes below should make a fresh
+H200 run fast.
+
+### Restart recipe (clean, single invocation — do NOT manually kill/relaunch mid-run)
+
+```bash
+NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HF_TOKEN=<hf> HUGGING_FACE_HUB_TOKEN=<hf> \
+REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_PRESET=gpu-h200x1 NEBIUS_VM_NAME=eliza-train-h200-0_6b \
+RUN_NAME=eliza-1-0_6b-apollo-fullcorpus-h200-$(date +%s) \
+SYNC_FULLCORPUS_SOURCES=1 ELIZA1_FULLCORPUS_UPSAMPLE=8 ALLOW_UNVALIDATED_CORPUS=1 BENCHMARK_AFTER=0 \
+TRAIN_FILE=data/final-eliza1-fullcorpus/train.jsonl VAL_FILE=data/final-eliza1-fullcorpus/val.jsonl TEST_FILE=data/final-eliza1-fullcorpus/test.jsonl \
+bash packages/training/scripts/train_nebius.sh full
+```
+
+`full` = provision → sync (rsyncs the patched `train_local.py` + `train_nebius.sh`; with
+`SYNC_FULLCORPUS_SOURCES=1` it rsyncs `data/final/` + `datasets/eliza1-sft-0_6b/` and the
+remote runner rebuilds the upsampled corpus) → run (boot torch-swap to cu128 + `UV_NO_SYNC=1`
++ `ELIZA_NO_DEVICE_MAP=1` + `--skip-base-bench`) → fetch → teardown (`full` has a trap that
+tears down on exit). **First action after the run boots: ssh in, wait for `train_local.py`
+to start stepping, and confirm `nvidia-smi` shows >50 % GPU util and ~≤2 s/it** — if it's
+still ~10 s/it with GPU 0 %, the `ELIZA_NO_DEVICE_MAP` path didn't take and needs another
+look (check the `loading model … device_map=False` / `moving model to cuda` log lines).
+Optional speedup: `apt install python3.12-dev` on the VM before training to re-enable Liger.
+Then: monitor → gate (`format_ok ≥ 0.70`) → quant → push to `elizaos/eliza-1-0_6b` if green.

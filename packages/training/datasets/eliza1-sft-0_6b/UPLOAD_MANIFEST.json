@@ -1,0 +1,24 @@
+{
+  "schema": "eliza.hf_dataset_upload_manifest.v1",
+  "for_agent": "#46 publish",
+  "target": {
+    "repo_id": "elizaos/eliza-1-0_6b-sft",
+    "repo_type": "dataset",
+    "private_on_create": true,
+    "license": "apache-2.0"
+  },
+  "source_dir": "packages/training/datasets/eliza1-sft-0_6b/",
+  "files": [
+    { "local": "README.md", "remote": "README.md", "role": "dataset_card" },
+    { "local": "train.jsonl", "remote": "train.jsonl", "role": "split:train", "sha256": "399ea58e4073c5f5bb77be7c7def9e8b3eb1b9b5a4633ab2cf24f871ec90eb90" },
+    { "local": "val.jsonl", "remote": "val.jsonl", "role": "split:validation", "sha256": "016a032f5a06a19433cc04f9510826210bd8615286e5f56bfd3ac17db5b277f5" },
+    { "local": "test.jsonl", "remote": "test.jsonl", "role": "split:test", "sha256": "2a6cf8dd3b0bfb82f2a9d28408bb4b7d64b58552f4ab286b186a31028b36481c" },
+    { "local": "manifest.json", "remote": "manifest.json", "role": "build_manifest", "sha256": "2327a01e94267e149a2b6b1b0f6bd5e92e0f60f5564c5a79e6b211c767d41d98" }
+  ],
+  "do_not_upload": ["UPLOAD_MANIFEST.json", "*.errors.jsonl"],
+  "notes": [
+    "Self-contained ChatML SFT dataset for the eliza-1-0_6b base. ~1.6k rows, ~0.75 MB total — small curated set, no real user PII (privacy filter ran; see manifest.json::privacy_filter).",
+    "Hashes above are the committed files at build time (seed 20260511). If the FINETUNE agent #45 re-runs the builder, regenerate this manifest with scripts/build_eliza1_sft_0_6b.py and re-hash.",
+    "Existing publisher scripts/publish_dataset_to_hf.py is wired to data/final/; this dataset is small enough to push with `hf upload elizaos/eliza-1-0_6b-sft <source_dir> --repo-type dataset` or by adding a 'eliza1-sft-0_6b' bundle to that script's allowlist."
+  ]
+}
