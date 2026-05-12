@@ -9,6 +9,10 @@ from hermes_adapter.bfcl import build_bfcl_agent_fn
 from hermes_adapter.clawbench import build_clawbench_agent_fn
 from hermes_adapter.client import HermesClient, MessageResponse
 from hermes_adapter.swe_bench import build_swe_bench_agent_fn
+from hermes_adapter.terminal_bench import (
+    HermesTerminalAgent,
+    build_terminal_bench_agent_fn,
+)
 from hermes_adapter.env_runner import (
     ENV_MODULES,
     HermesEnvResult,
@@ -30,6 +34,8 @@ __all__ = [
     "build_bfcl_agent_fn",
     "build_clawbench_agent_fn",
     "build_swe_bench_agent_fn",
+    "build_terminal_bench_agent_fn",
+    "HermesTerminalAgent",
 ]
 
 # LifeOpsBench bridge — only useful when eliza_lifeops_bench.types is present
