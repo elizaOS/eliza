@@ -4,7 +4,6 @@
 // resolve. Every export is a noop / empty stub.
 
 const noop = () => undefined;
-const asyncNoop = async () => undefined;
 export const clearCloudSecrets = noop;
 export const ensureCloudTtsApiKeyAlias = noop;
 export const getCloudSecret = noop;

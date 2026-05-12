@@ -214,7 +214,11 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
         ? {
             ...this.metadata.turn,
             ...update.turn,
-            source: update.turn?.source ?? update.source ?? this.metadata.turn?.source ?? source,
+            source:
+              update.turn?.source ??
+              update.source ??
+              this.metadata.turn?.source ??
+              source,
             primarySpeaker:
               update.turn?.primarySpeaker ??
               update.speaker ??

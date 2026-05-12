@@ -113,9 +113,9 @@ describe("splitTranscriptToTokens", () => {
 describe("MissingAsrTranscriber", () => {
   it("throws VoiceStartupError instead of falling back (AGENTS.md §3)", async () => {
     const t = new MissingAsrTranscriber("no asr region");
-    expect(() => t.feed({ pcm: new Float32Array(0), sampleRate: 16_000, timestampMs: 0 })).toThrow(
-      VoiceStartupError,
-    );
+    expect(() =>
+      t.feed({ pcm: new Float32Array(0), sampleRate: 16_000, timestampMs: 0 }),
+    ).toThrow(VoiceStartupError);
     await expect(t.flush()).rejects.toThrow(VoiceStartupError);
   });
 
