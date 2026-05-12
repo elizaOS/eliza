@@ -575,8 +575,22 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
       temperature: options.temperature ?? 0.7,
       top_p: options.topP ?? 0.9,
     };
-    if (options.stopSequences && options.stopSequences.length > 0) {
-      params.stop = options.stopSequences;
+    // llama-cpp-capacitor@0.1.5 drops the stop array on the JNI side
+    // (cparams.antiprompt.clear() with no repopulate). Pass it anyway for
+    // future builds, and rely on JS-side post-processing to trim output.
+    // For Llama-3 GGUFs always inject <|eot_id|>: published quants are
+    // inconsistent about eos_token_id=128009 metadata, so the model rambles
+    // past its natural turn boundary to maxTokens without an explicit stop.
+    const effectiveStop = [...(options.stopSequences ?? [])];
+    if (
+      this.loadedPath &&
+      /llama.?3/i.test(this.loadedPath) &&
+      !effectiveStop.includes("<|eot_id|>")
+    ) {
+      effectiveStop.push("<|eot_id|>");
+    }
+    if (effectiveStop.length > 0) {
+      params.stop = effectiveStop;
     }
     if (options.stream) {
       params.emit_partial_completion = true;
@@ -619,8 +633,20 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
         ? Math.round(result.timings.predicted_ms)
         : Date.now() - started;
 
+    // JS-side safety trim: when the native plugin didn't honor the stop array,
+    // the model emits the stop token as plain text and continues. Trim at the
+    // first matching stop sequence to guarantee a clean turn boundary.
+    let text = result.text;
+    for (const stop of effectiveStop) {
+      const idx = text.indexOf(stop);
+      if (idx !== -1) {
+        text = text.slice(0, idx);
+        break;
+      }
+    }
+
     return {
-      text: result.text,
+      text,
       promptTokens: result.tokens_evaluated,
       outputTokens: result.tokens_predicted,
       durationMs: duration,
