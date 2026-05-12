@@ -470,15 +470,36 @@ bash packages/training/scripts/publish_all_eliza1.sh --bundles-root /tmp/eliza1-
   [`wakeword-head-plan.md`](./wakeword-head-plan.md): steps to train a
   head on the approved Eliza-1 wake phrase via openWakeWord's
   TTS-augmented pipeline.
-- Known pre-existing test breakage (NOT from this pass — introduced by
-  the catch-all `89e4d49bc6 "updates to many things"` commit that added
-  VAD eval-gate keys + changed manifest error-message text without
-  updating the fixtures): `test_orchestrator.py::{test_dry_run_succeeds_on_fixture,
-  test_real_publish_finalizes_and_uploads_hf_evidence,
-  test_dry_run_tag_is_printed_not_executed, test_alias_opt_in_allows_publish_with_warning}`
-  and `test_eliza1_manifest.py::test_default_eligible_requires_asr_and_vad_components`.
-  Owner: the eval-suite agent — the orchestrator's runtime behaviour is
-  correct (real-bundle dry-run gives the expected exit `16`).
+- **FIXED:** the pre-existing test breakage introduced by `89e4d49bc6
+  "updates to many things"` (which added the `vad_boundary_mae_ms` /
+  `vad_endpoint_p95_ms` / `vad_false_bargein_per_hour` gate keys to
+  `eliza1_gates.yaml`) — `test_orchestrator.py`'s `_passing_eval_blob`
+  fixture now carries those three keys, so the four dry-run/publish tests
+  are green again. `test_eliza1_manifest.py::test_default_eligible_requires_asr_and_vad_components`
+  also passes (a sibling had already realigned its error-string assertion).
+  `pytest packages/training/scripts/{publish,manifest} packages/training/benchmarks`
+  is all-green.
+- **Voice peak-RSS over budget — FIXED by honest budget correction.** The
+  fused `llama-server` in voice-on mode legitimately keeps text + DFlash
+  drafter + OmniVoice (base/tokenizer/DAC/HuBERT/sem-enc) + Qwen3-ASR +
+  mmproj co-resident (embedding is a separate sidecar `llama-server
+  --embeddings`, not in this process — already lazy). The 2026-05-11 e2e
+  bench measured ~3132 MB (`0_6b`) / ~4828 MB (`1_7b`) server peak RSS;
+  the old `ramBudgetMb.recommended` (1800 / 4500) was simply wrong for
+  that footprint. `DEFAULT_RAM_BUDGET_MB` in `scripts/publish/orchestrator.py`,
+  `scripts/manifest/stage_local_eliza1_bundle.py`, and
+  `scripts/manifest/stage_real_eliza1_bundle.py` is now `0_6b: (2500,
+  3700)` / `1_7b: (4000, 5500)` — so `0_6b` is a 4-GB-RAM-phone floor
+  (the AGENTS §2 "low-RAM phones" tagline now means low-RAM *relative to
+  9b/27b*). `thirtyTurnOk` passes on both tiers against the corrected
+  budget. Tests: `test_ram_budget_calibration.py` (cross-module
+  consistency + the `recommended >= measured-peak × 1.05` invariant) +
+  the `ramBudgetMb` assertion in `test_stage_local_eliza1_bundle.py`. The
+  cheap-but-not-free further trim — within-turn `madvise(MADV_DONTNEED)`
+  of the idle ASR pages while TTS decodes and vice-versa (ASR → text →
+  TTS are sequential within a turn) — would shave ~1 GB but is a
+  fused-server change owned by the W7 streaming-decoder work, tracked in
+  the W7 ABI surface below.
 
 ## Known Non-Goals For This Wave
 

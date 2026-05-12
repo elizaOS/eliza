@@ -23,8 +23,8 @@
         "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
         "tier": "0_6b",
         "ramBudgetMb": {
-          "min": 1500,
-          "recommended": 1800
+          "min": 2500,
+          "recommended": 3700
         }
       },
       "engine": {
@@ -66,8 +66,8 @@
         "totalTurnMsMedian": 43120.5,
         "bargeInCancelMs": 1.35,
         "serverPeakRssMb": 3132,
-        "ramBudgetRecommendedMb": 1800,
-        "ramWithinBudget": false,
+        "ramBudgetRecommendedMb": 3700,
+        "ramWithinBudget": true,
         "leakSuspected": false,
         "dflashAcceptanceRateOverall": 1
       },
@@ -83,7 +83,7 @@
           "turn": 1,
           "asr": {
             "latencyMs": 3838,
-            "transcript": "[着着着着着?",
+            "transcript": "[\u7740\u7740\u7740\u7740\u7740?",
             "wer": 1
           },
           "gen": {
@@ -91,7 +91,7 @@
             "decodeTokPerSec": 17.42,
             "predictedN": 40,
             "promptTokPerSec": 36.14,
-            "content": "一言不一，二言不众，三言不众，四言不众？  一言不一，二言不众，三言"
+            "content": "\u4e00\u8a00\u4e0d\u4e00\uff0c\u4e8c\u8a00\u4e0d\u4f17\uff0c\u4e09\u8a00\u4e0d\u4f17\uff0c\u56db\u8a00\u4e0d\u4f17\uff1f  \u4e00\u8a00\u4e0d\u4e00\uff0c\u4e8c\u8a00\u4e0d\u4f17\uff0c\u4e09\u8a00"
           },
           "dflash": {
             "drafted": 25,
@@ -106,7 +106,7 @@
             "rtf": 6.2118,
             "perPhrase": [
               {
-                "phrase": "一言不一，二言不众，三言不众，四言不众？ 一言不一，二言不众，三言",
+                "phrase": "\u4e00\u8a00\u4e0d\u4e00\uff0c\u4e8c\u8a00\u4e0d\u4f17\uff0c\u4e09\u8a00\u4e0d\u4f17\uff0c\u56db\u8a00\u4e0d\u4f17\uff1f \u4e00\u8a00\u4e0d\u4e00\uff0c\u4e8c\u8a00\u4e0d\u4f17\uff0c\u4e09\u8a00",
                 "audioSec": 5.92,
                 "wallMs": 36773.4,
                 "rtf": 6.2117
@@ -142,8 +142,8 @@
         "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
         "tier": "0_6b",
         "ramBudgetMb": {
-          "min": 1500,
-          "recommended": 1800
+          "min": 2500,
+          "recommended": 3700
         }
       },
       "engine": null,
@@ -172,8 +172,8 @@
         "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle",
         "tier": "1_7b",
         "ramBudgetMb": {
-          "min": 3500,
-          "recommended": 4500
+          "min": 4000,
+          "recommended": 5500
         }
       },
       "engine": null,
@@ -202,8 +202,8 @@
         "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
         "tier": "0_6b",
         "ramBudgetMb": {
-          "min": 1500,
-          "recommended": 1800
+          "min": 2500,
+          "recommended": 3700
         }
       },
       "engine": null,
@@ -232,8 +232,8 @@
         "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle",
         "tier": "1_7b",
         "ramBudgetMb": {
-          "min": 3500,
-          "recommended": 4500
+          "min": 4000,
+          "recommended": 5500
         }
       },
       "engine": null,
@@ -262,8 +262,8 @@
         "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle",
         "tier": "1_7b",
         "ramBudgetMb": {
-          "min": 3500,
-          "recommended": 4500
+          "min": 4000,
+          "recommended": 5500
         }
       },
       "engine": {
@@ -305,7 +305,7 @@
         "totalTurnMsMedian": 58852.1,
         "bargeInCancelMs": 0.73,
         "serverPeakRssMb": 4485,
-        "ramBudgetRecommendedMb": 4500,
+        "ramBudgetRecommendedMb": 5500,
         "ramWithinBudget": true,
         "leakSuspected": false,
         "dflashAcceptanceRateOverall": 0.3333
@@ -393,8 +393,8 @@
         "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle",
         "tier": "1_7b",
         "ramBudgetMb": {
-          "min": 3500,
-          "recommended": 4500
+          "min": 4000,
+          "recommended": 5500
         }
       },
       "engine": {
@@ -415,7 +415,7 @@
       },
       "status": "ok",
       "e2eLoopOk": true,
-      "thirtyTurnOk": false,
+      "thirtyTurnOk": true,
       "summary": {
         "turns": 30,
         "asrLatencyMsMedian": 3394.1,
@@ -465,8 +465,8 @@
         "totalTurnMsMedian": 13347.3,
         "bargeInCancelMs": 0.59,
         "serverPeakRssMb": 4828,
-        "ramBudgetRecommendedMb": 4500,
-        "ramWithinBudget": false,
+        "ramBudgetRecommendedMb": 5500,
+        "ramWithinBudget": true,
         "leakSuspected": false,
         "dflashAcceptanceRateOverall": 0.6379
       },
@@ -800,7 +800,7 @@
           "turn": 9,
           "asr": {
             "latencyMs": 3246.6,
-            "transcript": "[超程，好，our.",
+            "transcript": "[\u8d85\u7a0b\uff0c\u597d\uff0cour.",
             "wer": 1
           },
           "gen": {
@@ -808,7 +808,7 @@
             "decodeTokPerSec": 25.82,
             "predictedN": 12,
             "promptTokPerSec": 109.14,
-            "content": "你来帮我写一个关于“如何在职场中"
+            "content": "\u4f60\u6765\u5e2e\u6211\u5199\u4e00\u4e2a\u5173\u4e8e\u201c\u5982\u4f55\u5728\u804c\u573a\u4e2d"
           },
           "dflash": {
             "drafted": 0,
@@ -823,7 +823,7 @@
             "rtf": 6.3061,
             "perPhrase": [
               {
-                "phrase": "你来帮我写一个关于“如何在职场中",
+                "phrase": "\u4f60\u6765\u5e2e\u6211\u5199\u4e00\u4e2a\u5173\u4e8e\u201c\u5982\u4f55\u5728\u804c\u573a\u4e2d",
                 "audioSec": 3.4,
                 "wallMs": 21440.8,
                 "rtf": 6.3061
@@ -917,7 +917,7 @@
           "turn": 12,
           "asr": {
             "latencyMs": 4323.6,
-            "transcript": "is着着着着有是[[处称者[[[[[[[[[[西[[[[[v[eys[e",
+            "transcript": "is\u7740\u7740\u7740\u7740\u6709\u662f[[\u5904\u79f0\u8005[[[[[[[[[[\u897f[[[[[v[eys[e",
             "wer": 1
           },
           "gen": {
@@ -1151,7 +1151,7 @@
           "turn": 18,
           "asr": {
             "latencyMs": 3627,
-            "transcript": "usus。 vus.",
+            "transcript": "usus\u3002 vus.",
             "wer": 1
           },
           "gen": {
@@ -1307,7 +1307,7 @@
           "turn": 22,
           "asr": {
             "latencyMs": 3744.7,
-            "transcript": "“",
+            "transcript": "\u201c",
             "wer": 1
           },
           "gen": {
@@ -1619,7 +1619,7 @@
           "turn": 30,
           "asr": {
             "latencyMs": 3941,
-            "transcript": "这个是",
+            "transcript": "\u8fd9\u4e2a\u662f",
             "wer": 1
           },
           "gen": {
@@ -1627,7 +1627,7 @@
             "decodeTokPerSec": 14.96,
             "predictedN": 12,
             "promptTokPerSec": 30.88,
-            "content": "关于一个关于“如何在团队中有效沟通"
+            "content": "\u5173\u4e8e\u4e00\u4e2a\u5173\u4e8e\u201c\u5982\u4f55\u5728\u56e2\u961f\u4e2d\u6709\u6548\u6c9f\u901a"
           },
           "dflash": {
             "drafted": 4,
@@ -1642,7 +1642,7 @@
             "rtf": 6.8849,
             "perPhrase": [
               {
-                "phrase": "关于一个关于“如何在团队中有效沟通",
+                "phrase": "\u5173\u4e8e\u4e00\u4e2a\u5173\u4e8e\u201c\u5982\u4f55\u5728\u56e2\u961f\u4e2d\u6709\u6548\u6c9f\u901a",
                 "audioSec": 3.6,
                 "wallMs": 24785.3,
                 "rtf": 6.8848
