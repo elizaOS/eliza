@@ -792,11 +792,26 @@ async function computeTaskAgentFrameworkState(
 
   const opencodeReady = hasOpencodeBinary();
   const opencodeLocalMode = isOpencodeLocalMode();
+  // Mirror the auto-detect logic in `buildOpencodeSpawnConfig`: any
+  // recognized provider API key auto-derives a working opencode config.
+  // List must stay in sync with `OPENCODE_PROVIDER_ENV_MAPPINGS` in
+  // `agent-credentials.ts`. The OPENAI_API_KEY case is a fallback —
+  // the spawn config builder uses OPENAI_BASE_URL when set to distinguish
+  // openai-direct vs an openai-compatible third party.
+  const opencodeAutoDetectedProvider = [
+    "OPENROUTER_API_KEY",
+    "CEREBRAS_API_KEY",
+    "GROQ_API_KEY",
+    "TOGETHER_API_KEY",
+    "DEEPSEEK_API_KEY",
+    "OPENAI_API_KEY",
+  ].find((key) => Boolean(readConfigEnvKey(key)?.trim()));
   const opencodeAuthReady =
     opencodeReady &&
     (cloudReady ||
       opencodeLocalMode ||
-      Boolean(readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL")));
+      Boolean(readConfigEnvKey("PARALLAX_OPENCODE_BASE_URL")) ||
+      Boolean(opencodeAutoDetectedProvider));
   const opencodeReason = !opencodeReady
     ? "CLI not detected"
     : opencodeAuthReady
@@ -804,7 +819,9 @@ async function computeTaskAgentFrameworkState(
         ? "ready to use Eliza Cloud as the model provider"
         : opencodeLocalMode
           ? "ready to use a local model provider (PARALLAX_OPENCODE_LOCAL)"
-          : "ready to use the configured OpenCode provider"
+          : opencodeAutoDetectedProvider
+            ? `ready to use the auto-detected provider (${opencodeAutoDetectedProvider})`
+            : "ready to use the configured OpenCode provider"
       : "installed but no model provider is configured (set PARALLAX_OPENCODE_LOCAL=1 for local Ollama, pair Eliza Cloud, or set PARALLAX_OPENCODE_BASE_URL)";
   inventory.push({
     id: "opencode",

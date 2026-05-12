@@ -9,6 +9,135 @@ const OPENCODE_LOCAL_DEFAULT_BASE_URL = "http://localhost:11434/v1";
 const OPENCODE_OPENAI_COMPATIBLE_NPM = "@ai-sdk/openai-compatible";
 
 /**
+ * Standard provider env-var → OpenAI-compatible endpoint mapping. Used to
+ * auto-derive a working OpenCode config when the user has set a normal
+ * provider API key (the same env var they'd use for direct API access)
+ * but hasn't set any `PARALLAX_OPENCODE_*` variables.
+ *
+ * Order is priority: the first env-var with a non-empty value wins. Order
+ * is provider-quality + clarity (OpenRouter first because it's the
+ * "any-model" provider; Cerebras second because it's the fastest
+ * inference; etc.). The OpenAI fallback runs last so a user who has
+ * `OPENAI_API_KEY` set as a generic secret doesn't accidentally route to
+ * openai.com when they actually meant a different provider.
+ *
+ * The `defaultModel` is a non-reasoning, fast, generally-available model
+ * for each provider so opencode sessions just work without per-model
+ * tuning. Users can override via `PARALLAX_OPENCODE_MODEL_POWERFUL` (which
+ * takes precedence over this default).
+ */
+interface OpencodeProviderEnvMapping {
+  envKey: string;
+  providerId: string;
+  providerLabel: string;
+  baseURL: string;
+  defaultModel: string;
+}
+
+const OPENCODE_PROVIDER_ENV_MAPPINGS: readonly OpencodeProviderEnvMapping[] = [
+  {
+    envKey: "OPENROUTER_API_KEY",
+    providerId: "openrouter",
+    providerLabel: "OpenRouter",
+    baseURL: "https://openrouter.ai/api/v1",
+    defaultModel: "meta-llama/llama-3.3-70b-instruct",
+  },
+  {
+    envKey: "CEREBRAS_API_KEY",
+    providerId: "cerebras",
+    providerLabel: "Cerebras",
+    baseURL: "https://api.cerebras.ai/v1",
+    defaultModel: "llama-3.3-70b",
+  },
+  {
+    envKey: "GROQ_API_KEY",
+    providerId: "groq",
+    providerLabel: "Groq",
+    baseURL: "https://api.groq.com/openai/v1",
+    defaultModel: "llama-3.3-70b-versatile",
+  },
+  {
+    envKey: "TOGETHER_API_KEY",
+    providerId: "together",
+    providerLabel: "Together AI",
+    baseURL: "https://api.together.xyz/v1",
+    defaultModel: "meta-llama/Llama-3.3-70B-Instruct-Turbo",
+  },
+  {
+    envKey: "DEEPSEEK_API_KEY",
+    providerId: "deepseek",
+    providerLabel: "DeepSeek",
+    baseURL: "https://api.deepseek.com/v1",
+    defaultModel: "deepseek-chat",
+  },
+] as const;
+
+/**
+ * Inspect the runtime for a recognized provider env var and synthesize
+ * an OpenCode config for it. Returns null when no provider is detected.
+ *
+ * Resolution order:
+ *   1. Each provider in `OPENCODE_PROVIDER_ENV_MAPPINGS` (first match wins).
+ *   2. Generic `OPENAI_API_KEY` + custom `OPENAI_BASE_URL` (third-party
+ *      OpenAI-compatible endpoint like a private deployment).
+ *   3. Generic `OPENAI_API_KEY` alone → openai.com direct.
+ *
+ * Step 2/3 are last so users with multiple keys set get their explicit
+ * provider preference (cerebras > openai-as-fallback).
+ */
+function detectOpencodeProviderFromEnv(
+  runtime: IAgentRuntime,
+): (OpencodeProviderEnvMapping & { apiKey: string }) | null {
+  const settingOrEnv = (key: string): string | undefined => {
+    const fromSetting = runtime.getSetting(key);
+    if (typeof fromSetting === "string" && fromSetting.trim()) {
+      return fromSetting.trim();
+    }
+    const fromEnv = readConfigEnvKey(key);
+    if (fromEnv?.trim()) return fromEnv.trim();
+    return undefined;
+  };
+
+  for (const mapping of OPENCODE_PROVIDER_ENV_MAPPINGS) {
+    const apiKey = settingOrEnv(mapping.envKey);
+    if (apiKey) return { ...mapping, apiKey };
+  }
+
+  const openaiKey = settingOrEnv("OPENAI_API_KEY");
+  if (openaiKey) {
+    const customBase = settingOrEnv("OPENAI_BASE_URL");
+    if (customBase) {
+      try {
+        const hostname = new URL(customBase).hostname.toLowerCase();
+        const isOpenAIDirect = hostname === "api.openai.com";
+        if (!isOpenAIDirect) {
+          return {
+            envKey: "OPENAI_API_KEY",
+            providerId: "openai-compatible",
+            providerLabel: `OpenAI-compatible (${hostname})`,
+            baseURL: customBase,
+            defaultModel: settingOrEnv("OPENAI_LARGE_MODEL") ?? "gpt-4o-mini",
+            apiKey: openaiKey,
+          };
+        }
+      } catch {
+        // Malformed URL — fall through to openai-direct.
+      }
+    }
+    return {
+      envKey: "OPENAI_API_KEY",
+      providerId: "openai",
+      providerLabel: "OpenAI",
+      baseURL: "https://api.openai.com/v1",
+      defaultModel: settingOrEnv("OPENAI_LARGE_MODEL") ?? "gpt-4o-mini",
+      apiKey: openaiKey,
+    };
+  }
+
+  return null;
+}
+
+/**
  * Codex per-spawn config.toml snippet that forces a custom OpenAI provider
  * with `supports_websockets = false`.
  *
@@ -142,12 +271,18 @@ export interface OpencodeSpawnConfig {
 
 /**
  * Build the per-spawn OpenCode config (fed via OPENCODE_CONFIG_CONTENT).
- * Three modes — verified live against an OpenAI-compatible Eliza-1 endpoint:
+ * Resolution order (first match wins):
  *   1. Cloud: PARALLAX_LLM_PROVIDER=cloud + paired Eliza Cloud key.
  *   2. Local: PARALLAX_OPENCODE_LOCAL=1 (and/or PARALLAX_OPENCODE_BASE_URL).
  *   3. User-config: PARALLAX_OPENCODE_MODEL_POWERFUL alone — defers to
  *      whatever providers the user has in ~/.config/opencode/opencode.json.
- * Returns null when no mode can produce a usable config.
+ *   4. **Auto-detect**: a recognized provider env var (CEREBRAS_API_KEY,
+ *      OPENROUTER_API_KEY, GROQ_API_KEY, TOGETHER_API_KEY, DEEPSEEK_API_KEY,
+ *      or OPENAI_API_KEY[+OPENAI_BASE_URL]) — the user's normal API-key env
+ *      becomes a fully working opencode config, no `PARALLAX_OPENCODE_*`
+ *      vars required. This is the "BYO key on any device" path.
+ * Returns null when no mode produces a usable config (no key, no local
+ * server, no user-configured opencode model).
  */
 export function buildOpencodeSpawnConfig(
   runtime: IAgentRuntime,
@@ -235,17 +370,52 @@ export function buildOpencodeSpawnConfig(
     };
   }
 
-  if (!userPowerful?.trim()) return null;
-  const config: Record<string, unknown> = {
+  if (userPowerful?.trim()) {
+    const config: Record<string, unknown> = {
+      $schema: "https://opencode.ai/config.json",
+      model: userPowerful.trim(),
+      ...(userFast?.trim() ? { small_model: userFast.trim() } : {}),
+    };
+    return {
+      configContent: JSON.stringify(config),
+      providerLabel: "User-configured opencode.json",
+      providerId: "user",
+      model: userPowerful.trim(),
+      smallModel: userFast?.trim() || undefined,
+    };
+  }
+
+  // Mode 4: auto-detect from a standard provider env var. This is the
+  // "BYO API key" path — users only need their normal CEREBRAS_API_KEY /
+  // OPENROUTER_API_KEY / etc. and opencode just works.
+  const detected = detectOpencodeProviderFromEnv(runtime);
+  if (!detected) return null;
+  const powerful = userPowerful?.trim() || detected.defaultModel;
+  const fast = userFast?.trim();
+  const autoConfig = {
     $schema: "https://opencode.ai/config.json",
-    model: userPowerful.trim(),
-    ...(userFast?.trim() ? { small_model: userFast.trim() } : {}),
+    provider: {
+      [detected.providerId]: {
+        npm: OPENCODE_OPENAI_COMPATIBLE_NPM,
+        name: detected.providerLabel,
+        options: { baseURL: detected.baseURL, apiKey: detected.apiKey },
+        models: {
+          [powerful]: { name: powerful },
+          ...(fast && fast !== powerful ? { [fast]: { name: fast } } : {}),
+        },
+      },
+    },
+    model: `${detected.providerId}/${powerful}`,
+    ...(fast && fast !== powerful
+      ? { small_model: `${detected.providerId}/${fast}` }
+      : {}),
   };
   return {
-    configContent: JSON.stringify(config),
-    providerLabel: "User-configured opencode.json",
-    providerId: "user",
-    model: userPowerful.trim(),
-    smallModel: userFast?.trim() || undefined,
+    configContent: JSON.stringify(autoConfig),
+    providerLabel: `${detected.providerLabel} (auto-detected from ${detected.envKey})`,
+    providerId: detected.providerId,
+    model: `${detected.providerId}/${powerful}`,
+    smallModel:
+      fast && fast !== powerful ? `${detected.providerId}/${fast}` : undefined,
   };
 }
