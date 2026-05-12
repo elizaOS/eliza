@@ -233,9 +233,11 @@ export function createHandleResponseTool(options?: {
 				: HANDLE_RESPONSE_DESCRIPTION),
 		type: "function",
 		strict: true,
-		parameters: options?.parameters ?? (options?.directMessage
-			? HANDLE_RESPONSE_DIRECT_SCHEMA
-			: HANDLE_RESPONSE_SCHEMA),
+		parameters:
+			options?.parameters ??
+			(options?.directMessage
+				? HANDLE_RESPONSE_DIRECT_SCHEMA
+				: HANDLE_RESPONSE_SCHEMA),
 	};
 }
 

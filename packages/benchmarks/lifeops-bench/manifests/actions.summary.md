@@ -1,6 +1,6 @@
 # LifeOps Action Manifest — Summary
 
-Generated: 2026-05-11T18:41:25.903Z
+Generated: 2026-05-12T01:28:57.675Z
 Filter: include=[app-contacts, app-lifeops, app-phone, plugin-bluebubbles, plugin-imessage, plugin-todos] exclude=[none] tags=[any] domains=[any] capabilities=[any] surfaces=[any] excludeRisks=[none]
 Total actions: 150
 
@@ -111,19 +111,19 @@ Total actions: 150
 
 | Action | Plugin | Risk | Capabilities | Surfaces | Description |
 | --- | --- | :---: | --- | --- | --- |
-| `ENTITY` | @elizaos/app-lifeops | — | read, write, update, delete | internal | people+relationships: add\|list\|set_identity\|set_relationship\|log_interaction\|me… |
+| `ENTITY` | @elizaos/app-lifeops | — | read, write, update, delete | internal | people+relationships: create\|read\|set_identity\|set_relationship\|log_interaction… |
 
 ### domain:focus
 
 | Action | Plugin | Risk | Capabilities | Surfaces | Description |
 | --- | --- | :---: | --- | --- | --- |
-| `BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
-| `BLOCK_BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
-| `BLOCK_LIST_ACTIVE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
-| `BLOCK_RELEASE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
-| `BLOCK_REQUEST_PERMISSION` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
-| `BLOCK_STATUS` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
-| `BLOCK_UNBLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock specific phone apps + desktop websites (NOT calendar time-blocks)… |
+| `BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focu… |
+| `BLOCK_BLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focu… |
+| `BLOCK_LIST_ACTIVE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focu… |
+| `BLOCK_RELEASE` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focu… |
+| `BLOCK_REQUEST_PERMISSION` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focu… |
+| `BLOCK_STATUS` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focu… |
+| `BLOCK_UNBLOCK` | @elizaos/app-lifeops | risk:irreversible | write, update, delete, read, execute | device | block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focu… |
 | `PRIORITIZE` | @elizaos/app-lifeops | — | read | internal | prioritize: rank_todos\|rank_threads\|rank_decisions; topN ranking by urgency × i… |
 | `PRIORITIZE_RANK_DECISIONS` | @elizaos/app-lifeops | — | read | internal | prioritize: rank_todos\|rank_threads\|rank_decisions; topN ranking by urgency × i… |
 | `PRIORITIZE_RANK_THREADS` | @elizaos/app-lifeops | — | read | internal | prioritize: rank_todos\|rank_threads\|rank_decisions; topN ranking by urgency × i… |

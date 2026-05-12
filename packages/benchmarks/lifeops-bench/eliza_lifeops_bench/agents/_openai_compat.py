@@ -65,9 +65,10 @@ def client_response_to_message_turn(response: ClientResponse) -> MessageTurn:
     they round-trip cleanly through ``runner._extract_actions_from_turn``
     and ``runner._extract_tool_call_id``.
 
-    Per-turn cost / latency / token telemetry is attached as extra attrs on
-    the dataclass instance — the runner reads them via ``getattr`` with a
-    default of 0.
+    Per-turn cost / latency / token telemetry lands on the ``MessageTurn``
+    dataclass fields directly. ``cost_usd`` stays :data:`None` when the
+    provider couldn't price the call (unknown model) — per AGENTS.md Cmd
+    #8, no silent ``0.0`` fallback.
     """
     tool_calls: list[dict[str, Any]] = []
     for tc in response.tool_calls:
@@ -81,18 +82,18 @@ def client_response_to_message_turn(response: ClientResponse) -> MessageTurn:
                 },
             }
         )
-    turn = MessageTurn(
+    cost = (
+        float(response.cost_usd) if response.cost_usd is not None else None
+    )
+    return MessageTurn(
         role="assistant",
         content=response.content or "",
         tool_calls=tool_calls if tool_calls else None,
+        cost_usd=cost,
+        latency_ms=float(response.latency_ms),
+        input_tokens=int(response.usage.prompt_tokens),
+        output_tokens=int(response.usage.completion_tokens),
     )
-    # Telemetry the runner reads via getattr. Setting extra attrs on a
-    # non-frozen dataclass is allowed; the runner expects these names.
-    turn.cost_usd = float(response.cost_usd)  # type: ignore[attr-defined]
-    turn.latency_ms = int(response.latency_ms)  # type: ignore[attr-defined]
-    turn.input_tokens = int(response.usage.prompt_tokens)  # type: ignore[attr-defined]
-    turn.output_tokens = int(response.usage.completion_tokens)  # type: ignore[attr-defined]
-    return turn
 
 
 class OpenAICompatAgent:
@@ -147,7 +148,11 @@ class OpenAICompatAgent:
         # has its own per-scenario error handling and needs to see the
         # actual failure.
         response = await self.client.complete(call)
-        self.total_cost_usd += float(response.cost_usd)
+        if response.cost_usd is not None:
+            # Unpriced calls (model not in pricing table) skip the
+            # accumulator so it tracks only billable spend — not a silent
+            # ``+0`` that would conflate "free" with "unpriced".
+            self.total_cost_usd += float(response.cost_usd)
         self.total_input_tokens += int(response.usage.prompt_tokens)
         self.total_output_tokens += int(response.usage.completion_tokens)
         return client_response_to_message_turn(response)

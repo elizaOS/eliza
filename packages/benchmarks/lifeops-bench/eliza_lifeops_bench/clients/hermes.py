@@ -207,11 +207,19 @@ def _parse_hermes_response_text(text: str) -> tuple[str | None, list[ToolCall]]:
     return text, []
 
 
-def _compute_cost_usd(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """Compute USD cost for a Hermes call. Returns 0.0 for unknown models."""
+def _compute_cost_usd(
+    model: str, prompt_tokens: int, completion_tokens: int
+) -> float | None:
+    """Compute USD cost for a Hermes call.
+
+    Returns :data:`None` when ``model`` is not in :data:`HERMES_PRICING` —
+    per AGENTS.md Cmd #8 an unpriced model stays nullable, not a silent
+    free ``0.0``. Operators hosting non-default Hermes variants should
+    extend ``HERMES_PRICING`` rather than rely on a fallback.
+    """
     pricing = HERMES_PRICING.get(model)
     if pricing is None:
-        return 0.0
+        return None
     return (
         prompt_tokens / 1_000_000.0 * pricing["input_per_million_usd"]
         + completion_tokens / 1_000_000.0 * pricing["output_per_million_usd"]

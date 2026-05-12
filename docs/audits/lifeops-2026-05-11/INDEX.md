@@ -87,15 +87,15 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
 
 ### Wave 5 — verify + close gaps
 - [~] W5-A full multi-tier run (small / mid / large / frontier) — concurrent
+  - [`wave-5a-gap-list.md`](./wave-5a-gap-list.md) — post-rebuild gap inventory
 - [~] W5-B delta vs. baseline, optimizer improvement >= 20pp — concurrent
 - [x] W5-C final REPORT.md + INDEX.md close-out
   - `docs/audits/lifeops-2026-05-11/REPORT.md` (this commit)
 
 ## Follow-ups
 
-- **W5-A gap list** — `docs/audits/lifeops-2026-05-11/wave-5a-gap-list.md`
-  lands when the W5-A multi-tier validation run completes. Link will be
-  added under "Wave 5 follow-ups" once committed.
+- **W5-A gap list** — [`wave-5a-gap-list.md`](./wave-5a-gap-list.md)
+  (committed 2026-05-11; P0=0, P1=3 real fixes + 4 no-ops, P2=5, P3=6).
 - **Wave-3 P0/P1 follow-ups** — full list in
   [`REPORT.md`](./REPORT.md) "Known issues + follow-ups" and
   [`rebaseline-report.md`](./rebaseline-report.md). Headline items:

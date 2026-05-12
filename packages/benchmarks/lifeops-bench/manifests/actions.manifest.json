@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-05-11T18:41:25.903Z",
+  "generated_at": "2026-05-12T01:28:57.675Z",
   "filter": {
     "include": [
       "app-contacts",
@@ -22,7 +22,7 @@
       "type": "function",
       "function": {
         "name": "BLOCK",
-        "description": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+        "description": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -141,7 +141,7 @@
       "type": "function",
       "function": {
         "name": "BLOCK_BLOCK",
-        "description": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+        "description": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -260,7 +260,7 @@
       "type": "function",
       "function": {
         "name": "BLOCK_LIST_ACTIVE",
-        "description": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+        "description": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -379,7 +379,7 @@
       "type": "function",
       "function": {
         "name": "BLOCK_RELEASE",
-        "description": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+        "description": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -498,7 +498,7 @@
       "type": "function",
       "function": {
         "name": "BLOCK_REQUEST_PERMISSION",
-        "description": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+        "description": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -617,7 +617,7 @@
       "type": "function",
       "function": {
         "name": "BLOCK_STATUS",
-        "description": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+        "description": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -736,7 +736,7 @@
       "type": "function",
       "function": {
         "name": "BLOCK_UNBLOCK",
-        "description": "block/unblock specific phone apps + desktop websites (NOT calendar time-blocks); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+        "description": "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
         "parameters": {
           "type": "object",
           "properties": {
@@ -849,6 +849,59 @@
         "surface:device"
       ],
       "_risk": "risk:irreversible",
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "BOOK_TRAVEL",
+        "description": "Search or prepare travel options without booking.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "intent": {
+              "type": "string"
+            },
+            "origin": {
+              "type": "string"
+            },
+            "destination": {
+              "type": "string"
+            },
+            "departureDate": {
+              "type": "string"
+            },
+            "returnDate": {
+              "type": "string"
+            },
+            "passengers": {
+              "type": "number"
+            }
+          },
+          "required": [],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:travel",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:travel",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
       "_cost": null
     },
     {
@@ -1174,7 +1227,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -1189,7 +1242,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -1405,7 +1458,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -1420,7 +1473,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -1636,7 +1689,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -1651,7 +1704,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -1867,7 +1920,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -1882,7 +1935,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -2098,7 +2151,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -2113,7 +2166,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -2329,7 +2382,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -2344,7 +2397,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -2560,7 +2613,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -2575,7 +2628,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -2791,7 +2844,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -2806,7 +2859,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -3022,7 +3075,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -3037,7 +3090,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -3253,7 +3306,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -3268,7 +3321,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -3484,7 +3537,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -3499,7 +3552,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -3715,7 +3768,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Event title when creating a calendar event."
+              "description": "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }"
             },
             "query": {
               "type": "string",
@@ -3730,7 +3783,7 @@
             },
             "details": {
               "type": "object",
-              "description": "details: calendarId start end (ISO-8601) eventId newTitle description location attendees timeMin timeMax timeZone — for create/update/delete_event only",
+              "description": "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. `title` is FLAT/TOP-LEVEL — never put it inside details. Time fields use `start`/`end` (aliases startAt/endAt). Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
               "properties": {
                 "calendarId": {
                   "type": "string"
@@ -5627,9 +5680,21 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "enum": [
+                "request_signature",
+                "request_approval",
+                "track_deadline",
+                "upload_asset",
+                "collect_id",
+                "close_request"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "description": "Legacy alias for action. Prefer action for new planner output.",
               "enum": [
                 "request_signature",
                 "request_approval",
@@ -5732,9 +5797,21 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "enum": [
+                "request_signature",
+                "request_approval",
+                "track_deadline",
+                "upload_asset",
+                "collect_id",
+                "close_request"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "description": "Legacy alias for action. Prefer action for new planner output.",
               "enum": [
                 "request_signature",
                 "request_approval",
@@ -5837,9 +5914,21 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "enum": [
+                "request_signature",
+                "request_approval",
+                "track_deadline",
+                "upload_asset",
+                "collect_id",
+                "close_request"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "description": "Legacy alias for action. Prefer action for new planner output.",
               "enum": [
                 "request_signature",
                 "request_approval",
@@ -5942,9 +6031,21 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "enum": [
+                "request_signature",
+                "request_approval",
+                "track_deadline",
+                "upload_asset",
+                "collect_id",
+                "close_request"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "description": "Legacy alias for action. Prefer action for new planner output.",
               "enum": [
                 "request_signature",
                 "request_approval",
@@ -6047,9 +6148,21 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "enum": [
+                "request_signature",
+                "request_approval",
+                "track_deadline",
+                "upload_asset",
+                "collect_id",
+                "close_request"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "description": "Legacy alias for action. Prefer action for new planner output.",
               "enum": [
                 "request_signature",
                 "request_approval",
@@ -6152,9 +6265,21 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "enum": [
+                "request_signature",
+                "request_approval",
+                "track_deadline",
+                "upload_asset",
+                "collect_id",
+                "close_request"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "description": "Legacy alias for action. Prefer action for new planner output.",
               "enum": [
                 "request_signature",
                 "request_approval",
@@ -6257,9 +6382,21 @@
         "parameters": {
           "type": "object",
           "properties": {
+            "action": {
+              "type": "string",
+              "description": "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "enum": [
+                "request_signature",
+                "request_approval",
+                "track_deadline",
+                "upload_asset",
+                "collect_id",
+                "close_request"
+              ]
+            },
             "subaction": {
               "type": "string",
-              "description": "Which document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+              "description": "Legacy alias for action. Prefer action for new planner output.",
               "enum": [
                 "request_signature",
                 "request_approval",
@@ -6358,16 +6495,16 @@
       "type": "function",
       "function": {
         "name": "ENTITY",
-        "description": "people+relationships: add|list|set_identity|set_relationship|log_interaction|merge; follow-up cadence → SCHEDULED_TASK",
+        "description": "people+relationships: create|read|set_identity|set_relationship|log_interaction|merge; rolodex CRUD → CONTACT; follow-up cadence → SCHEDULED_TASK",
         "parameters": {
           "type": "object",
           "properties": {
             "action": {
               "type": "string",
-              "description": "ENTITY op: add | list | log_interaction | set_identity | set_relationship | merge (e.g. add, list, set_identity)",
+              "description": "ENTITY op: create | read | log_interaction | set_identity | set_relationship | merge (e.g. create, read, set_identity)",
               "enum": [
-                "add",
-                "list",
+                "create",
+                "read",
                 "log_interaction",
                 "set_identity",
                 "set_relationship",
@@ -6490,6 +6627,64 @@
         "capability:write",
         "capability:update",
         "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "HEALTH",
+        "description": "Read health data without mutating state.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps HEALTH discriminator.",
+              "enum": [
+                "by_metric",
+                "summary",
+                "trends"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "metric": {
+              "type": "string"
+            },
+            "date": {
+              "type": "string"
+            },
+            "days": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:health",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:health",
+      "_capabilities": [
+        "capability:read"
       ],
       "_surfaces": [
         "surface:internal"
@@ -6758,6 +6953,454 @@
       "_domain": null,
       "_capabilities": [
         "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE",
+        "description": "Bench umbrella verb for LIFE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE discriminator.",
+              "enum": [
+                "create",
+                "complete",
+                "snooze",
+                "review",
+                "delete",
+                "update",
+                "skip"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_COMPLETE",
+        "description": "Complete a target, usually a reminder. Include target.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_COMPLETE discriminator.",
+              "enum": [
+                "complete"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_CREATE",
+        "description": "Create personal life records such as reminders, alarms, workouts, or health metrics. Use subaction=create and put typed fields in details.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_CREATE discriminator.",
+              "enum": [
+                "create"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:write",
+        "capability:schedule",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:write",
+        "capability:schedule"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_DELETE",
+        "description": "Bench umbrella verb for LIFE_DELETE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_DELETE discriminator.",
+              "enum": [
+                "delete"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:delete",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_REVIEW",
+        "description": "Review life records without mutating state.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_REVIEW discriminator.",
+              "enum": [
+                "review"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_SKIP",
+        "description": "Bench umbrella verb for LIFE_SKIP.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_SKIP discriminator.",
+              "enum": [
+                "skip"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_SNOOZE",
+        "description": "Snooze a reminder-like target. Include target and minutes.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_SNOOZE discriminator.",
+              "enum": [
+                "snooze"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "minutes": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "LIFE_UPDATE",
+        "description": "Bench umbrella verb for LIFE_UPDATE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps LIFE_UPDATE discriminator.",
+              "enum": [
+                "update"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "details": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:reminders",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:reminders",
+      "_capabilities": [
+        "capability:update"
       ],
       "_surfaces": [
         "surface:internal"
@@ -7119,6 +7762,371 @@
     {
       "type": "function",
       "function": {
+        "name": "MONEY_DASHBOARD",
+        "description": "Read the financial dashboard.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_DASHBOARD discriminator.",
+              "enum": [
+                "dashboard"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_LIST_TRANSACTIONS",
+        "description": "List financial transactions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_LIST_TRANSACTIONS discriminator.",
+              "enum": [
+                "list_transactions"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            },
+            "merchantContains": {
+              "type": "string"
+            },
+            "onlyDebits": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_RECURRING_CHARGES",
+        "description": "List recurring charges.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_RECURRING_CHARGES discriminator.",
+              "enum": [
+                "recurring_charges"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SPENDING_SUMMARY",
+        "description": "Summarize spending.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SPENDING_SUMMARY discriminator.",
+              "enum": [
+                "spending_summary"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "windowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_AUDIT",
+        "description": "Audit subscriptions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SUBSCRIPTION_AUDIT discriminator.",
+              "enum": [
+                "subscription_audit"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "queryWindowDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_CANCEL",
+        "description": "Cancel a subscription. Include confirmed=true only when the user has authorized cancellation.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SUBSCRIPTION_CANCEL discriminator.",
+              "enum": [
+                "subscription_cancel"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "serviceName": {
+              "type": "string"
+            },
+            "serviceSlug": {
+              "type": "string"
+            },
+            "confirmed": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:delete",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:delete"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "MONEY_SUBSCRIPTION_STATUS",
+        "description": "Read subscription status.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps MONEY_SUBSCRIPTION_STATUS discriminator.",
+              "enum": [
+                "subscription_status"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "serviceName": {
+              "type": "string"
+            },
+            "serviceSlug": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:finance",
+        "capability:read",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:finance",
+      "_capabilities": [
+        "capability:read"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "OWNER_ALARMS",
         "description": "owner alarms: action=create|update|delete|complete|skip|snooze|review",
         "parameters": {
@@ -7151,7 +8159,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7163,7 +8171,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -7242,7 +8250,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7254,7 +8262,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -7333,7 +8341,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7345,7 +8353,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -7424,7 +8432,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7436,7 +8444,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -7515,7 +8523,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7527,7 +8535,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -7606,7 +8614,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7618,7 +8626,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -7697,7 +8705,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7709,7 +8717,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -7788,7 +8796,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -7800,7 +8808,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -9484,7 +10492,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -9496,7 +10504,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -9572,7 +10580,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -9584,7 +10592,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -9660,7 +10668,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -9672,7 +10680,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -9748,7 +10756,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -9760,7 +10768,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -9836,7 +10844,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -9848,7 +10856,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10232,7 +11240,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10244,7 +11252,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10323,7 +11331,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10335,7 +11343,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10414,7 +11422,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10426,7 +11434,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10505,7 +11513,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10517,7 +11525,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10596,7 +11604,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10608,7 +11616,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10687,7 +11695,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10699,7 +11707,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10778,7 +11786,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10790,7 +11798,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10869,7 +11877,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10881,7 +11889,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -10962,7 +11970,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -10974,7 +11982,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11055,7 +12063,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11067,7 +12075,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11148,7 +12156,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11160,7 +12168,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11241,7 +12249,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11253,7 +12261,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11334,7 +12342,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11346,7 +12354,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11427,7 +12435,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11439,7 +12447,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11520,7 +12528,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11532,7 +12540,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11613,7 +12621,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11625,7 +12633,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11706,7 +12714,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11718,7 +12726,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -11799,7 +12807,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -11811,7 +12819,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -12825,7 +13833,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -12837,7 +13845,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -12916,7 +13924,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -12928,7 +13936,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -13007,7 +14015,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -13019,7 +14027,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -13098,7 +14106,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -13110,7 +14118,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -13189,7 +14197,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -13201,7 +14209,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -13280,7 +14288,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -13292,7 +14300,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -13371,7 +14379,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -13383,7 +14391,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -13462,7 +14470,7 @@
             },
             "title": {
               "type": "string",
-              "description": "Item title when known."
+              "description": "Item title — TOP-LEVEL (flat) field. NEVER place title inside `details`. Example: { action: 'create', kind: 'definition', title: 'Pick up uniforms', details: { kind: 'reminder', due: '2026-05-11T09:00:00Z', listId: 'list_personal' } }."
             },
             "target": {
               "type": "string",
@@ -13474,7 +14482,7 @@
             },
             "details": {
               "type": "object",
-              "description": "Structured schedule, cadence, notes, or other extracted details.",
+              "description": "Structured schedule/cadence/notes — put `due` (ISO-8601 timestamp), `listId`, `kind` (reminder|alarm|habit|routine|todo), `cadence`, `description`, `metadata` HERE inside `details`. `title` is FLAT/TOP-LEVEL — NEVER nest it here. Example create-a-reminder: { action:'create', kind:'definition', title:'Pick up uniforms', details:{ kind:'reminder', due:'2026-05-11T09:00:00Z', listId:'list_personal' } }.",
               "properties": {},
               "required": [],
               "additionalProperties": true
@@ -16915,6 +17923,191 @@
     {
       "type": "function",
       "function": {
+        "name": "SCHEDULED_TASK_CREATE",
+        "description": "Create a scheduled task. Include kind, trigger, promptInstructions, and other structured task fields when known.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps SCHEDULED_TASK_CREATE discriminator.",
+              "enum": [
+                "create"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "promptInstructions": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "string"
+            },
+            "ownerVisible": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:meta",
+        "capability:schedule",
+        "capability:write",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:schedule",
+        "capability:write"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHEDULED_TASK_SNOOZE",
+        "description": "Bench umbrella verb for SCHEDULED_TASK_SNOOZE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps SCHEDULED_TASK_SNOOZE discriminator.",
+              "enum": [
+                "snooze"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "minutes": {
+              "type": "number"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:meta",
+        "capability:schedule",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:schedule",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "SCHEDULED_TASK_UPDATE",
+        "description": "Bench umbrella verb for SCHEDULED_TASK_UPDATE.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subaction": {
+              "type": "string",
+              "description": "LifeOps SCHEDULED_TASK_UPDATE discriminator.",
+              "enum": [
+                "update"
+              ]
+            },
+            "intent": {
+              "type": "string"
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "trigger": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "subaction"
+          ],
+          "additionalProperties": false
+        },
+        "strict": true
+      },
+      "_plugin": "@elizaos/lifeops-bench",
+      "_tags": [
+        "domain:meta",
+        "capability:schedule",
+        "capability:update",
+        "surface:internal"
+      ],
+      "_contexts": [
+        "general"
+      ],
+      "_priority": 100,
+      "_examples_count": 0,
+      "_domain": "domain:meta",
+      "_capabilities": [
+        "capability:schedule",
+        "capability:update"
+      ],
+      "_surfaces": [
+        "surface:internal"
+      ],
+      "_risk": null,
+      "_cost": null
+    },
+    {
+      "type": "function",
+      "function": {
         "name": "TODO",
         "description": "todos: write|create|update|complete|cancel|delete|list|clear; user-scoped (entityId)",
         "parameters": {
@@ -16933,10 +18126,6 @@
                 "list",
                 "clear"
               ]
-            },
-            "subaction": {
-              "type": "string",
-              "description": "Legacy alias for action."
             },
             "id": {
               "type": "string",

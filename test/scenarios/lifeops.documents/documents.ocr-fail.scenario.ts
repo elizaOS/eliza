@@ -152,7 +152,7 @@ export default scenario({
               {
                 id: "attached-scanned-receipt",
                 url: `file://${FAKE_PDF_PATH}`,
-                contentType: "application/pdf",
+                contentType: "document",
                 title: "scanned-receipt-2025-11-01.pdf",
                 description:
                   "Scanned PDF receipt; image-only with no text layer.",
