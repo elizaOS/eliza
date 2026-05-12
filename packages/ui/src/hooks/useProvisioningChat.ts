@@ -51,6 +51,7 @@ export function useProvisioningChat(
   const isContainerReady = containerStatus === "running" && bridgeUrl !== null;
 
   // Poll provisioning agent status every 5 seconds.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: cloudApiBase triggers client re-creation
   React.useEffect(() => {
     if (isContainerReady) return;
     if (containerStatus === "error") return;
