@@ -39,7 +39,7 @@
       "completion_tokens": 478,
       "llm_call_count": 2,
       "prompt_tokens": 208,
-      "total_tokens": 686
+      "total_tokens": 36782
     },
     "total_tasks": 1,
     "trajectory_summary": {
@@ -68,7 +68,7 @@
     "completion_tokens": 478,
     "llm_call_count": 2,
     "prompt_tokens": 208,
-    "total_tokens": 686
+    "total_tokens": 36782
   },
   "trajectory_summary": {
     "files": 2,
@@ -77,5 +77,5 @@
     "turns": 2
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T19:41:35.392498+00:00"
+  "updated_at": "2026-05-12T01:34:00Z"
 }

@@ -81,7 +81,7 @@ export function DatabaseView({
     setErrorMessage("");
     try {
       const { tables: t } = await client.getDatabaseTables();
-      setTables(t);
+      setTables(Array.isArray(t) ? t : []);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "error";
       // Don't show error if database is simply not connected (cloud mode, agent not running)

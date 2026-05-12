@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 TIMESTAMP=$(python3 -c 'import time; print(int(time.time() * 1000))')
 
-PROFILE="groq"
+PROFILE="${VOICEBENCH_PROFILE:-mock}"
 ITERATIONS=""
 RUN_TS=true
 OUT_DIR="${RESULTS_DIR}"

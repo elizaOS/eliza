@@ -196,6 +196,7 @@ function makeApp(fixture: GameFixture) {
 async function installGameRoutes(page: Page, fixture: GameFixture) {
   let run = makeRun(fixture);
   let launched = false;
+  const app = makeApp(fixture);
   const messages: string[] = [];
 
   await installDefaultAppRoutes(page);
@@ -208,7 +209,19 @@ async function installGameRoutes(page: Page, fixture: GameFixture) {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([makeApp(fixture)]),
+      body: JSON.stringify([app]),
+    });
+  });
+
+  await page.route("**/api/catalog/apps", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([app]),
     });
   });
 

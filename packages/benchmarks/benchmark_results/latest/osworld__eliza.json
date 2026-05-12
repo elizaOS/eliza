@@ -6,10 +6,10 @@
   "benchmark_directory": "OSWorld",
   "benchmark_id": "osworld",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": true,
@@ -17,10 +17,10 @@
     "action_space": "pyautogui",
     "agent": "eliza",
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
     "model": "gpt-oss-120b",
     "observation_type": "screenshot_a11y_tree",
@@ -34,19 +34,19 @@
     },
     "return_code": 0,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 3,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "total_tasks": 1,
     "trajectory_summary": {
       "files": 3,
-      "turns": 3,
       "prompt_chars": 221,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 3
     }
   },
   "model": "gpt-oss-120b",
@@ -63,19 +63,19 @@
   "score": 1.0,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 3,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 3,
-    "turns": 3,
     "prompt_chars": 221,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 3
   },
   "unit": "ratio",
-  "updated_at": "2026-05-11T14:03:02.137935+00:00"
+  "updated_at": "2026-05-12T01:34:00Z"
 }

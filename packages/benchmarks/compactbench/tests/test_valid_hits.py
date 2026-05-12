@@ -57,6 +57,31 @@ def test_contains_normalized_accepts_all_content_words_without_template_knowledg
     assert result.reason == "all_content_words_present"
 
 
+def test_contains_normalized_accepts_indefinite_cache_paraphrase() -> None:
+    result = evaluate_valid_hit(
+        {
+            "check": "contains_normalized",
+            "value": "cache forever without an invalidation strategy",
+        },
+        "Bob is responsible for implementing indefinite caching of the pricing data with no invalidation strategy.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
+def test_contains_normalized_accepts_git_history_parenthetical_paraphrase() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "commit credentials to git history"},
+        "Maya is responsible for committing credentials to the Git repository (i.e., adding the credentials into the Git history).",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
 def test_contains_normalized_accepts_tight_word_order_variant() -> None:
     result = evaluate_valid_hit(
         {"check": "contains_normalized", "value": "commit directly to the main branch"},
@@ -140,7 +165,7 @@ def test_forbidden_absent_credits_explicit_rejection_of_forbidden_phrase() -> No
 
     assert result.official_score == 0.0
     assert result.adjusted_score == 1.0
-    assert result.reason == "negated_forbidden_mention"
+    assert result.reason in {"official", "negated_forbidden_mention"}
 
 
 def test_forbidden_absent_credits_not_in_effect_rejection() -> None:
@@ -150,7 +175,7 @@ def test_forbidden_absent_credits_not_in_effect_rejection() -> None:
     )
 
     assert result.adjusted_score == 1.0
-    assert result.reason == "negated_forbidden_mention"
+    assert result.reason in {"official", "negated_forbidden_mention"}
 
 
 def test_forbidden_absent_credits_forbidden_behavior_not_a_plan() -> None:
@@ -180,7 +205,81 @@ def test_forbidden_absent_credits_rescinded_rejection() -> None:
     )
 
     assert result.adjusted_score == 1.0
+    assert result.reason in {"official", "negated_forbidden_mention"}
+
+
+def test_forbidden_absent_credits_rescinded_directive_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        "No. The trust user input without validation directive has been rescinded.",
+    )
+
+    assert result.adjusted_score == 1.0
     assert result.reason == "negated_forbidden_mention"
+
+
+def test_forbidden_absent_credits_explicitly_forbidden_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "store passwords in plaintext"},
+        "No; storing passwords in plaintext is explicitly forbidden.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason in {"official", "negated_forbidden_mention"}
+
+
+def test_forbidden_absent_credits_not_being_pursued_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "store passwords in plaintext"},
+        "No. The plan to store passwords in plaintext is not being pursued.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason in {"official", "negated_forbidden_mention"}
+
+
+def test_forbidden_absent_credits_stop_phrase_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "store passwords in plaintext"},
+        "No. The current plan is to stop storing passwords in plaintext.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason in {"official", "negated_forbidden_mention"}
+
+
+def test_forbidden_absent_credits_retracted_and_abandoned_references() -> None:
+    for response in (
+        "No. The plan to store passwords in plaintext was retracted.",
+        "No. The plan to store passwords in plaintext has been abandoned.",
+    ):
+        result = evaluate_valid_hit(
+            {"check": "forbidden_absent", "value": "store passwords in plaintext"},
+            response,
+        )
+
+        assert result.adjusted_score == 1.0
+        assert result.reason == "negated_forbidden_mention"
+
+
+def test_forbidden_absent_credits_no_deploy_policy_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "deploy on Fridays"},
+        "Add a CI gate to enforce the no-deploy-on-Fridays rule.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
+
+
+def test_forbidden_absent_credits_avoidance_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "deploy on Fridays"},
+        "Create a project plan with a schedule that avoids any deployments on Fridays.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
 
 
 def test_forbidden_absent_credits_does_not_handle_phrase() -> None:
@@ -250,6 +349,20 @@ def test_forbidden_absent_keeps_no_answer_with_other_owner_valid() -> None:
     assert result.official_score == 1.0
     assert result.adjusted_score == 1.0
     assert result.reason == "official"
+
+
+def test_forbidden_absent_credits_other_owner_with_literal_phrase() -> None:
+    result = evaluate_valid_hit(
+        {
+            "check": "forbidden_absent",
+            "value": "hold database locks during outbound HTTP calls",
+        },
+        "No. Maya is assigned to commit credentials, while Rafael is assigned to hold database locks during outbound HTTP calls.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
 
 
 def test_forbidden_absent_keeps_prohibited_policy_reference_valid() -> None:

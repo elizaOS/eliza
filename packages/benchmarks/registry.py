@@ -2238,7 +2238,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.eliza-format.cli",
+            "benchmarks.eliza_format.cli",
             "--provider",
             provider,
             "--out",

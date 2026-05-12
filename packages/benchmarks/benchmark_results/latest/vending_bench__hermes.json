@@ -6,20 +6,20 @@
   "benchmark_directory": "vending-bench",
   "benchmark_id": "vending_bench",
   "cache_metrics": {
-    "cache_read_input_tokens": 0,
     "cache_creation_input_tokens": 0,
-    "turns_with_cached_field": 0,
-    "cache_hit_ratio": 0.0
+    "cache_hit_ratio": 0.0,
+    "cache_read_input_tokens": 0,
+    "turns_with_cached_field": 0
   },
   "error": null,
   "higher_is_better": true,
   "metrics": {
     "avg_net_worth": "467.88",
     "cache_metrics": {
-      "cache_read_input_tokens": 0,
       "cache_creation_input_tokens": 0,
-      "turns_with_cached_field": 0,
-      "cache_hit_ratio": 0.0
+      "cache_hit_ratio": 0.0,
+      "cache_read_input_tokens": 0,
+      "turns_with_cached_field": 0
     },
     "coherence_score": 1.0,
     "max_net_worth": "467.88",
@@ -32,18 +32,18 @@
     "profitability_rate": 0,
     "return_code": 0,
     "token_metrics": {
+      "avg_completion_tokens": 0.0,
+      "avg_prompt_tokens": 0.0,
+      "completion_tokens": 0,
       "llm_call_count": 0,
       "prompt_tokens": 0,
-      "completion_tokens": 0,
-      "total_tokens": 0,
-      "avg_prompt_tokens": 0.0,
-      "avg_completion_tokens": 0.0
+      "total_tokens": 0
     },
     "trajectory_summary": {
       "files": 3,
-      "turns": 0,
       "prompt_chars": 0,
-      "repeated_prefixes": []
+      "repeated_prefixes": [],
+      "turns": 0
     }
   },
   "model": "gpt-oss-120b",
@@ -60,19 +60,19 @@
   "score": 467.88,
   "status": "succeeded",
   "token_metrics": {
+    "avg_completion_tokens": 0.0,
+    "avg_prompt_tokens": 0.0,
+    "completion_tokens": 0,
     "llm_call_count": 0,
     "prompt_tokens": 0,
-    "completion_tokens": 0,
-    "total_tokens": 0,
-    "avg_prompt_tokens": 0.0,
-    "avg_completion_tokens": 0.0
+    "total_tokens": 0
   },
   "trajectory_summary": {
     "files": 3,
-    "turns": 0,
     "prompt_chars": 0,
-    "repeated_prefixes": []
+    "repeated_prefixes": [],
+    "turns": 0
   },
   "unit": "usd",
-  "updated_at": "2026-05-11T14:03:03.144741+00:00"
+  "updated_at": "2026-05-12T01:34:00Z"
 }

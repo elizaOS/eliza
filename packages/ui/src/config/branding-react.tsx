@@ -4,8 +4,8 @@
  * exports from `@elizaos/shared` without pulling React into the runtime.
  */
 import { createContext, useContext } from "react";
-import type { BrandingConfig } from "./branding.ts";
-import { DEFAULT_BRANDING } from "./branding.ts";
+import type { BrandingConfig } from "./branding-base.ts";
+import { DEFAULT_BRANDING } from "./branding-base.ts";
 
 export const BrandingContext = createContext<BrandingConfig | undefined>(
   undefined,

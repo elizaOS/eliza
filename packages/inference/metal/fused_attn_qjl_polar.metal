@@ -1,4 +1,4 @@
-// AUTHORED — hardware-verify pending (no Apple HW on the authoring machine).
+// Hardware-verified on Apple M4 Max via `make metal-verify-fused`.
 //
 // Fused attention: QJL-K score + Q4_POLAR-V mix, online softmax that never
 // materializes the per-token score vector. Metal Shading Language. The Polar
@@ -6,8 +6,8 @@
 // reports/porting/2026-05-11/fused-attn-op-contract.md (§1, §2: block_q4_polar
 // V; §3: op_params[2] = v_use_qjl) and the C reference eliza_fused_attn_qjl_polar()
 // in packages/inference/verify/qjl_polar_ref.c. Mirrors the hardware-verified
-// Vulkan port fused_attn_qjl_polar.comp (Intel ARL Mesa ANV); this is the Metal
-// version.
+// Vulkan port fused_attn_qjl_polar.comp (Intel ARL Mesa ANV); this Metal version
+// is also hardware-verified on Apple M4 Max runtime JIT.
 //
 // Same K side and same online-softmax structure as fused_attn_qjl_tbq.metal;
 // the only difference is the V decode — one block_q4_polar (82 B) per token

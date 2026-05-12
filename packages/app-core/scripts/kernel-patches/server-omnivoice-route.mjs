@@ -62,6 +62,7 @@ function audioSpeechBlock() {
 ${SENTINEL}
 #ifdef MILADY_FUSE_OMNIVOICE
 #include "omnivoice.h"
+#include <algorithm>
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
@@ -76,17 +77,18 @@ namespace milady_omnivoice {
 static std::string g_model_path;
 static std::string g_codec_path;
 
-static std::string env_or(const char * name, const std::string & fallback) {
+static std::string cli_or_env(const std::string & cli, const char * name) {
+    if (!cli.empty()) return cli;
     const char * v = std::getenv(name);
     if (v && v[0] != '\\0') return std::string(v);
-    return fallback;
+    return std::string();
 }
 
 static std::string resolved_model_path() {
-    return env_or("ELIZA_OMNIVOICE_MODEL", g_model_path);
+    return cli_or_env(g_model_path, "ELIZA_OMNIVOICE_MODEL");
 }
 static std::string resolved_codec_path() {
-    return env_or("ELIZA_OMNIVOICE_CODEC", g_codec_path);
+    return cli_or_env(g_codec_path, "ELIZA_OMNIVOICE_CODEC");
 }
 
 static std::mutex      g_mu;
@@ -194,6 +196,51 @@ static server_http_res_ptr error_res(int status, const std::string & message) {
     return res;
 }
 
+static int env_int_clamped(const char * name, int fallback, int lo, int hi) {
+    const char * v = std::getenv(name);
+    if (!v || v[0] == '\\0') return fallback;
+    char * end = nullptr;
+    long parsed = std::strtol(v, &end, 10);
+    if (end == v) return fallback;
+    return (int) std::max((long) lo, std::min((long) hi, parsed));
+}
+
+static int json_int_clamped(const json & in, const char * name, int fallback, int lo, int hi) {
+    if (!in.contains(name)) return fallback;
+    try {
+        if (in[name].is_number_integer()) {
+            const int v = in[name].get<int>();
+            return std::max(lo, std::min(hi, v));
+        }
+        if (in[name].is_string()) {
+            const std::string s = in[name].get<std::string>();
+            char * end = nullptr;
+            long parsed = std::strtol(s.c_str(), &end, 10);
+            if (end != s.c_str()) return (int) std::max((long) lo, std::min((long) hi, parsed));
+        }
+    } catch (...) {
+    }
+    return fallback;
+}
+
+static float json_float_positive(const json & in, const char * name, float fallback) {
+    if (!in.contains(name)) return fallback;
+    try {
+        if (in[name].is_number()) {
+            const float v = in[name].get<float>();
+            return v > 0.0f ? v : fallback;
+        }
+        if (in[name].is_string()) {
+            const std::string s = in[name].get<std::string>();
+            char * end = nullptr;
+            float parsed = std::strtof(s.c_str(), &end);
+            if (end != s.c_str() && parsed > 0.0f) return parsed;
+        }
+    } catch (...) {
+    }
+    return fallback;
+}
+
 // handler_t for POST /v1/audio/speech.
 static server_http_context::handler_t audio_speech_handler() {
     return [](const server_http_req & req) -> server_http_res_ptr {
@@ -231,6 +278,16 @@ static server_http_context::handler_t audio_speech_handler() {
         ov_tts_params tp;
         ov_tts_default_params(&tp);
         tp.text = text.c_str();
+        int mg_steps = env_int_clamped("ELIZA_OMNIVOICE_MG_NUM_STEP", tp.mg_num_step, 4, 64);
+        mg_steps = json_int_clamped(in, "num_step", mg_steps, 4, 64);
+        mg_steps = json_int_clamped(in, "num_steps", mg_steps, 4, 64);
+        mg_steps = json_int_clamped(in, "steps", mg_steps, 4, 64);
+        tp.mg_num_step = mg_steps;
+        const float duration_sec = json_float_positive(in, "duration", 0.0f);
+        if (duration_sec > 0.0f) {
+            const int frames = ov_duration_sec_to_tokens(ctx, duration_sec);
+            if (frames > 0) tp.T_override = frames;
+        }
         ov_audio audio = {};
         ov_status st;
         {
@@ -274,7 +331,46 @@ static server_http_context::handler_t audio_speech_handler() {
  */
 function patchServerSource(source, serverPath) {
   if (source.includes(SENTINEL)) {
-    return source.replace("ov_audio audio = { nullptr, 0 };", "ov_audio audio = {};");
+    const start = source.indexOf(SENTINEL);
+    const endMarker = `// end ${SENTINEL}`;
+    const end = source.indexOf(endMarker, start);
+    if (start !== -1 && end !== -1) {
+      const afterEnd = source.indexOf("\n", end);
+      return (
+        source.slice(0, start) +
+        audioSpeechBlock().trimStart() +
+        source.slice(afterEnd === -1 ? source.length : afterEnd + 1)
+      );
+    }
+    return source
+      .replace(
+        `static std::string env_or(const char * name, const std::string & fallback) {
+    const char * v = std::getenv(name);
+    if (v && v[0] != '\\0') return std::string(v);
+    return fallback;
+}
+
+static std::string resolved_model_path() {
+    return env_or("ELIZA_OMNIVOICE_MODEL", g_model_path);
+}
+static std::string resolved_codec_path() {
+    return env_or("ELIZA_OMNIVOICE_CODEC", g_codec_path);
+}`,
+        `static std::string cli_or_env(const std::string & cli, const char * name) {
+    if (!cli.empty()) return cli;
+    const char * v = std::getenv(name);
+    if (v && v[0] != '\\0') return std::string(v);
+    return std::string();
+}
+
+static std::string resolved_model_path() {
+    return cli_or_env(g_model_path, "ELIZA_OMNIVOICE_MODEL");
+}
+static std::string resolved_codec_path() {
+    return cli_or_env(g_codec_path, "ELIZA_OMNIVOICE_CODEC");
+}`,
+      )
+      .replace("ov_audio audio = { nullptr, 0 };", "ov_audio audio = {};");
   }
 
   // 1) Insert the namespace block after the include section. server.cpp's
@@ -370,10 +466,11 @@ export function patchServerOmnivoiceRoute(cacheDir, { dryRun = false } = {}) {
   const original = fs.readFileSync(serverPath, "utf8");
   if (original.includes(SENTINEL)) {
     const patched = patchServerSource(original, serverPath);
-    if (!dryRun && patched !== original) {
-      fs.writeFileSync(serverPath, patched, "utf8");
+    if (patched !== original) {
+      if (!dryRun) fs.writeFileSync(serverPath, patched, "utf8");
       console.log(
-        `[dflash-build] refreshed ${path.relative(cacheDir, serverPath)} ` +
+        `[dflash-build] ${dryRun ? "(dry-run) would refresh" : "refreshed"} ` +
+          `${path.relative(cacheDir, serverPath)} ` +
           `omnivoice /v1/audio/speech route (sentinel present)`,
       );
       return;

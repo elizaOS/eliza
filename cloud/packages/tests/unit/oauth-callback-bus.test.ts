@@ -9,16 +9,11 @@ mock.module("@/lib/utils/logger", () => ({
   },
 }));
 
-import {
-  createOAuthCallbackBus,
-  type OAuthCallbackEvent,
-} from "@/lib/services/oauth-callback-bus";
+import { createOAuthCallbackBus, type OAuthCallbackEvent } from "@/lib/services/oauth-callback-bus";
 
 function makeReceived(
   intentId: string,
-  overrides: Partial<
-    Extract<OAuthCallbackEvent, { name: "OAuthCallbackReceived" }>
-  > = {},
+  overrides: Partial<Extract<OAuthCallbackEvent, { name: "OAuthCallbackReceived" }>> = {},
 ): OAuthCallbackEvent {
   return {
     name: "OAuthCallbackReceived",
@@ -83,14 +78,9 @@ describe("oauth-callback-bus", () => {
 
   test("waitFor resolves on the next matching event", async () => {
     const bus = createOAuthCallbackBus();
-    const promise = bus.waitFor(
-      { intentId: "i_wait", names: ["OAuthCallbackReceived"] },
-      1000,
-    );
+    const promise = bus.waitFor({ intentId: "i_wait", names: ["OAuthCallbackReceived"] }, 1000);
     await bus.publish(makeFailed("i_wait"));
-    await bus.publish(
-      makeReceived("i_wait", { scopesGranted: ["calendar.readonly"] }),
-    );
+    await bus.publish(makeReceived("i_wait", { scopesGranted: ["calendar.readonly"] }));
     const event = await promise;
     expect(event.name).toBe("OAuthCallbackReceived");
     if (event.name === "OAuthCallbackReceived") {
@@ -135,10 +125,7 @@ describe("oauth-callback-bus", () => {
 
   test("waitFor cleans up its subscription on resolve and on timeout", async () => {
     const bus = createOAuthCallbackBus();
-    const p1 = bus.waitFor(
-      { intentId: "i_clean", names: ["OAuthCallbackReceived"] },
-      1000,
-    );
+    const p1 = bus.waitFor({ intentId: "i_clean", names: ["OAuthCallbackReceived"] }, 1000);
     await bus.publish(makeReceived("i_clean"));
     await p1;
 

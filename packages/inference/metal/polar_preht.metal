@@ -1,4 +1,4 @@
-// AUTHORED — hardware-verify pending (no Apple HW on the authoring machine).
+// Hardware-verified on Apple M4 Max via `make metal-verify-fused`.
 //
 // kernel_attn_score_q4_polar_preht_f32 (+ _multi) — Polar V-cache score against
 // a pre-Hadamarded query, in the attention-score ABI (q_head / n_kv /

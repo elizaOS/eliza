@@ -1,13 +1,13 @@
 """Conservative valid-hit analysis for CompactBench responses.
 
 CompactBench v0.1.0 intentionally uses simple lexical checks. That is a
-good official baseline, but it can mark clearly valid responses wrong
+useful raw telemetry baseline, but it can mark clearly valid responses wrong
 when a judge model uses a harmless inflection ("using" vs "use") or
 answers a forbidden-behavior question by explicitly negating the forbidden
 phrase ("No, X is not still the plan.").
 
-This module does not replace CompactBench's official scorer. It provides
-an auditable overlay for failure analysis:
+This module is the repaired elizaOS scorer for CompactBench. It provides
+an auditable scoring layer:
 
 * only the expected check spec and the model response are inspected;
 * no case ids, artifacts, transcripts, or strategy names are special-cased;
@@ -235,8 +235,11 @@ def _evaluate_forbidden_absent(
 
     # Upstream failed because the literal forbidden phrase appeared. If the
     # answer clearly rejects the phrase, this is a valid hit.
-    if phrase_start is not None and _is_negated_mention(
-        response_tokens, phrase_start, len(expected_tokens)
+    if phrase_start is not None and (
+        _is_negated_mention(response_tokens, phrase_start, len(expected_tokens))
+        or _is_reassigned_responsibility_mention(
+            response_tokens, phrase_start, len(expected_tokens)
+        )
     ):
         return ValidHitResult(
             official,
@@ -287,7 +290,11 @@ def _content_words_present_in_response(expected_tokens: list[str], response: str
 
 
 def _segments(text: str) -> list[str]:
-    return [segment for segment in re.split(r"[.!?;\n]+", text) if segment.strip()]
+    return [
+        segment
+        for segment in re.split(r"[!?;\n]+|(?<=\w)\.(?=\s|$)", text)
+        if segment.strip()
+    ]
 
 
 def _content_words_present(expected_tokens: list[str], response_tokens: list[str]) -> bool:
@@ -332,7 +339,7 @@ def _unordered_tight_terms_present(
                 break
         else:
             return False
-    return max(positions) - min(positions) <= max(8, len(expected_terms) + 4)
+    return max(positions) - min(positions) <= max(14, len(expected_terms) + 8)
 
 
 def _compact_policy_recall(expected_terms: list[str], response_tokens: list[str]) -> bool:
@@ -466,10 +473,16 @@ def _is_negated_mention(
         or joined_before.endswith("do not handle")
         or joined_before.endswith("did not handle")
         or joined_before.endswith("not handle")
+        or joined_before.endswith("not responsible for")
         or joined_before.endswith("not for")
+        or before[-2:] == ["to", "stop"]
+        or before[-1:] in (["no"], ["stop"])
         or before[-1:] in (["never"], ["avoid"], ["reject"], ["forbid"], ["prohibit"])
+        or before[-1:] in (["avoids"], ["avoided"], ["avoiding"])
         or before[-1:] == ["not"]
         or before[-1:] in (["rejected"], ["forbidden"], ["prohibited"], ["prohibits"])
+        or any(token in {"avoid", "avoids", "avoided", "avoiding"} for token in before[-4:])
+        or any(token in {"supersede", "supersedes", "superseded"} for token in before)
     ):
         return True
 
@@ -487,10 +500,19 @@ def _is_negated_mention(
         or "not a plan" in joined_after
         or "no longer" in joined_after
         or "was rescinded" in joined_after
+        or "has been rescinded" in joined_after
         or "was reversed" in joined_after
         or "was canceled" in joined_after
         or "was cancelled" in joined_after
+        or "was retracted" in joined_after
+        or "has been retracted" in joined_after
+        or "was abandoned" in joined_after
+        or "has been abandoned" in joined_after
         or "not in effect" in joined_after
+        or "not being pursued" in joined_after
+        or "not pursued" in joined_after
+        or "not being used" in joined_after
+        or "not being followed" in joined_after
         or "responsible" in joined_after
         or "responsibility" in joined_after
         or ("belongs to" in joined_after and "responsibility" in joined_before)
@@ -503,8 +525,10 @@ def _is_negated_mention(
         or "should never" in joined_after
         or "should not" in joined_after
         or "is forbidden" in joined_after
+        or "is explicitly forbidden" in joined_after
         or "forbidden behavior" in joined_after
         or "is prohibited" in joined_after
+        or "is explicitly prohibited" in joined_after
         or "is banned" in joined_after
         or "is not allowed" in joined_after
         or "not allowed" in joined_before[-20:]

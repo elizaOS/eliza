@@ -1,4 +1,4 @@
-// AUTHORED — hardware-verify pending (no Apple HW on the authoring machine).
+// Hardware-verified on Apple M4 Max via `make metal-verify-fused`.
 //
 // Fused attention: QJL-K score + TBQ3-V mix, online softmax that never
 // materializes the per-token score vector. Metal Shading Language. Ports
@@ -7,8 +7,9 @@
 // reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md (Part 2),
 // byte-faithful to the C reference eliza_fused_attn_qjl_tbq3() in
 // packages/inference/verify/qjl_polar_ref.c (bit-exact to fused_attn_qjl_tbq_ref
-// in the milady-llama-cpp fork). Hardware-verified bit-for-bit on the Vulkan
-// port (fused_attn_qjl_tbq.comp, Intel ARL Mesa ANV); this is the Metal mirror.
+// in the milady-llama-cpp fork). Hardware-verified bit-for-bit on both the
+// Vulkan port (fused_attn_qjl_tbq.comp, Intel ARL Mesa ANV) and this Metal
+// mirror (Apple M4 Max runtime JIT).
 //
 // One threadgroup per (q_head, q_pos); threadgroup size MUST be 32 (one Apple
 // SIMD-group — every other shader in this dir relies on simd_sum covering the

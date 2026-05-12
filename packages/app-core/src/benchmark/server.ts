@@ -1150,10 +1150,13 @@ export async function startBenchmarkServer() {
         lifeops: buildLifeOpsBenchmarkContext(backend, previousTurns),
       });
 
-      const composedPrompt = composeBenchmarkPrompt({
-        text: userText,
-        context: benchmarkContext,
-      });
+      // The ELIZA_BENCHMARK provider already renders the full LifeOps clock,
+      // world snapshot, tool manifest, and previous tool results. Duplicating
+      // that JSON into the user message balloons Cerebras prompts and can leave
+      // the TS bridge waiting on a huge outbound model call. Keep the message
+      // itself to the user's benchmark instruction and let the provider carry
+      // the structured context.
+      const composedPrompt = userText.trim();
 
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),

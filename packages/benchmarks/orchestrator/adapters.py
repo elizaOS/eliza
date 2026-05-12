@@ -54,48 +54,15 @@ IGNORED_BENCHMARK_DIRS = {
 }
 
 
-# Tri-agent harness compatibility map. Lookup is by benchmark id; anything
-# not listed defaults to ("eliza",). The runner marks a (benchmark, harness)
-# pair whose harness is not in this set as ``incompatible`` (no error).
-AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
-    # Eliza-only (domain-specific):
-    "solana": ("eliza",),
-    "evm": ("eliza",),
-    "hyperliquid": ("eliza",),
-    "hyperliquid_bench": ("eliza",),
-    "hyperliquidbench": ("eliza",),
-    "experience": ("eliza",),
-    "social_alpha": ("eliza",),
-    # Tri-compatible (agent-agnostic single-shot / scenario):
-    "bfcl": ("eliza", "openclaw", "hermes"),
-    "action_calling": ("eliza", "openclaw", "hermes"),
-    "agentbench": ("eliza", "openclaw", "hermes"),
-    "mind2web": ("eliza", "openclaw", "hermes"),
-    "visualwebbench": ("eliza", "openclaw", "hermes"),
-    "tau_bench": ("eliza", "openclaw", "hermes"),
-    "context_bench": ("eliza", "openclaw", "hermes"),
-    "lifeops_bench": ("eliza", "openclaw", "hermes"),
-    "loca_bench": ("eliza", "openclaw", "hermes"),
-    "clawbench": ("eliza", "openclaw", "hermes"),
-    "openclaw_bench": ("eliza", "openclaw"),
-    "mint": ("eliza", "openclaw", "hermes"),
-    "terminal_bench": ("eliza", "hermes", "openclaw"),
-    "swe_bench": ("eliza", "hermes"),
-    "swe_bench_orchestrated": ("eliza", "hermes"),
-    "osworld": ("eliza", "hermes"),
-    # Hermes-native envs:
-    "hermes_tblite": ("eliza", "openclaw", "hermes"),
-    "hermes_terminalbench_2": ("eliza", "openclaw", "hermes"),
-    "hermes_yc_bench": ("eliza", "openclaw", "hermes"),
-    "hermes_swe_env": ("eliza", "openclaw", "hermes"),
-    # TypeScript/package-local benchmark suites:
-    "interrupt_bench": ("eliza", "openclaw", "hermes"),
-    "personality_bench": ("eliza", "openclaw", "hermes"),
-}
+# Harness compatibility lookup. The benchmark matrix is intentionally
+# tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
+# OpenClaw comparison unless a future adapter adds a hard exclusion here.
+ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ("eliza",))
+    return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 
 def _is_benchmark_directory(path: Path) -> bool:
@@ -1157,11 +1124,59 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         args.append("--resume")
     if ctx.request.extra_config.get("score") is True:
         args.append("--score")
+    if ctx.request.extra_config.get("analyze_valid_hits", True) is not False:
+        args.append("--analyze-valid-hits")
+        args.extend(
+            [
+                "--valid-hit-output",
+                str(ctx.output_root / "compactbench-results.valid-hits.jsonl"),
+            ]
+        )
     return args
 
 
 def _score_from_compactbench(path: Path) -> ScoreSummary:
     import json
+
+    valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
+    if valid_path.exists():
+        analysis_end: dict[str, Any] | None = None
+        for line in valid_path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(item, dict) and item.get("event") == "analysis_end":
+                analysis_end = item
+        if analysis_end is not None:
+            raw = analysis_end.get("overall_score")
+            score = float(raw) if isinstance(raw, (int, float)) else None
+            return ScoreSummary(
+                score=score,
+                unit="ratio",
+                higher_is_better=True,
+                metrics={
+                    "overall_score": raw,
+                    "benchmark_quality_score": analysis_end.get(
+                        "benchmark_quality_score"
+                    ),
+                    "raw_lexical_overall_score": analysis_end.get(
+                        "raw_lexical_overall_score"
+                    ),
+                    "valid_false_negatives": analysis_end.get("valid_false_negatives"),
+                    "semantic_false_positives": analysis_end.get(
+                        "semantic_false_positives"
+                    ),
+                    "failures_remaining": analysis_end.get("failures_remaining"),
+                    "repaired_expected_conflicts": analysis_end.get(
+                        "repaired_expected_conflicts"
+                    ),
+                    "removed_invalid_items": analysis_end.get("removed_invalid_items"),
+                    "judge_refusals": analysis_end.get("judge_refusals"),
+                },
+            )
 
     run_end: dict[str, Any] | None = None
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():

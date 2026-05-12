@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -14,9 +14,7 @@ const serverPreload = "./packages/tests/e2e/preload.ts";
 const dbPreload = "./packages/tests/load-env.ts";
 const timeoutMs = process.env.CLOUD_INTEGRATION_TIMEOUT_MS || "120000";
 
-const isolatedServerFiles = new Set([
-  "packages/tests/integration/oauth-api.test.ts",
-]);
+const isolatedServerFiles = new Set(["packages/tests/integration/oauth-api.test.ts"]);
 const isolatedDbFiles = new Set([
   "packages/tests/integration/services/organizations.service.test.ts",
 ]);
@@ -36,11 +34,7 @@ function walk(dir) {
 }
 
 function isDbOnlyFile(file) {
-  return (
-    file.includes("/db/") ||
-    file.includes("/financial/") ||
-    file.includes("/services/")
-  );
+  return file.includes("/db/") || file.includes("/financial/") || file.includes("/services/");
 }
 
 function run(label, preload, files) {
@@ -48,18 +42,12 @@ function run(label, preload, files) {
     return;
   }
 
-  console.log(`[cloud-integration] START ${label} (${files.length} file${files.length === 1 ? "" : "s"})`);
+  console.log(
+    `[cloud-integration] START ${label} (${files.length} file${files.length === 1 ? "" : "s"})`,
+  );
   const result = spawnSync(
     bun,
-    [
-      "test",
-      "--max-concurrency=1",
-      "--preload",
-      preload,
-      ...files,
-      "--timeout",
-      timeoutMs,
-    ],
+    ["test", "--max-concurrency=1", "--preload", preload, ...files, "--timeout", timeoutMs],
     {
       cwd: cloudRoot,
       env: process.env,
@@ -78,16 +66,10 @@ function run(label, preload, files) {
 
 const allFiles = walk(integrationRoot);
 const serverFiles = allFiles.filter(
-  (file) =>
-    !isDbOnlyFile(file) &&
-    !isolatedServerFiles.has(file) &&
-    !isolatedDbFiles.has(file),
+  (file) => !isDbOnlyFile(file) && !isolatedServerFiles.has(file) && !isolatedDbFiles.has(file),
 );
 const dbFiles = allFiles.filter(
-  (file) =>
-    isDbOnlyFile(file) &&
-    !isolatedServerFiles.has(file) &&
-    !isolatedDbFiles.has(file),
+  (file) => isDbOnlyFile(file) && !isolatedServerFiles.has(file) && !isolatedDbFiles.has(file),
 );
 
 run("server-backed integration", serverPreload, serverFiles);

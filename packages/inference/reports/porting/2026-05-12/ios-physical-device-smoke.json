@@ -1,0 +1,24 @@
+{
+  "status": "failed",
+  "startedAt": "2026-05-12T01:40:02.760Z",
+  "finishedAt": "2026-05-12T01:40:06.877Z",
+  "device": null,
+  "xcframework": null,
+  "skippedVoiceAbi": false,
+  "failClosed": {
+    "physicalDeviceOnly": true,
+    "requiresIosArm64XcframeworkSlice": true,
+    "requiresRuntimeSymbols": true,
+    "requiresVoiceAbi": true,
+    "capturesXcodebuildOutput": true
+  },
+  "toolchain": null,
+  "xcodebuild": null,
+  "blocker": {
+    "category": "unknown",
+    "detail": "xcodegen generate failed with null"
+  },
+  "resultBundlePath": null,
+  "derivedDataPath": null,
+  "error": "xcodegen generate failed with null"
+}

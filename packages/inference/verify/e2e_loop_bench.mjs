@@ -66,6 +66,7 @@ function parseArgs(argv) {
     nPredict: Number.parseInt(process.env.ELIZA_E2E_N_PREDICT || "40", 10),
     enduranceNPredict: Number.parseInt(process.env.ELIZA_E2E_ENDURANCE_N_PREDICT || "12", 10),
     ttsAllPhrases: process.env.ELIZA_E2E_TTS_ALL_PHRASES === "1",
+    ttsSteps: Number.parseInt(process.env.ELIZA_E2E_TTS_STEPS || "8", 10),
     threads: Number.parseInt(
       process.env.ELIZA_E2E_THREADS || String(Math.min(os.cpus().length, 12)),
       10,
@@ -103,6 +104,7 @@ function parseArgs(argv) {
     else if (a === "--n-predict") args.nPredict = Number.parseInt(next(), 10);
     else if (a === "--endurance-n-predict") args.enduranceNPredict = Number.parseInt(next(), 10);
     else if (a === "--tts-all-phrases") args.ttsAllPhrases = true;
+    else if (a === "--tts-steps") args.ttsSteps = Number.parseInt(next(), 10);
     else if (a === "--threads") args.threads = Number.parseInt(next(), 10);
     else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
     else if (a === "--ngl") args.ngl = next();
@@ -644,7 +646,7 @@ async function streamCompletion(port, prompt, nPredict, turnTimeoutS) {
 // TTS phrase synthesis via /v1/audio/speech (raw f32 PCM)
 // --------------------------------------------------------------------------
 
-async function synthPhrasePcm(port, text, turnTimeoutS) {
+async function synthPhrasePcm(port, text, turnTimeoutS, ttsSteps = 8) {
   const t0 = performance.now();
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), turnTimeoutS * 1000);
@@ -652,7 +654,7 @@ async function synthPhrasePcm(port, text, turnTimeoutS) {
     const res = await fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ input: text, response_format: "pcm" }),
+      body: JSON.stringify({ input: text, response_format: "pcm", num_step: ttsSteps }),
       signal: ctrl.signal,
     });
     if (!res.ok) {
@@ -675,7 +677,7 @@ async function synthPhrasePcm(port, text, turnTimeoutS) {
 // --------------------------------------------------------------------------
 
 async function runTurn(opts, turnIdx) {
-  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn, ttsAllPhrases } = opts;
+  const { port, ffiCtx, ffi, s, wav, refText, nPredict, turnTimeoutS, logFn, ttsAllPhrases, ttsSteps } = opts;
   const turnT0 = performance.now();
 
   // 1) ASR: feed the WAV's mono PCM (resampled to 16 kHz) to the FFI.
@@ -740,7 +742,7 @@ async function runTurn(opts, turnIdx) {
   let firstPhrasePcm = null;
   const ttsLoopT0 = performance.now();
   for (const ph of phrases) {
-    const r = await synthPhrasePcm(port, ph, turnTimeoutS);
+    const r = await synthPhrasePcm(port, ph, turnTimeoutS, ttsSteps);
     ttsRuns.push({ phrase: ph, audioSec: r.audioSec, wallMs: r.wallMs, rtf: r.rtf });
     if (firstPhrasePcm === null) firstPhrasePcm = r;
   }
@@ -900,7 +902,7 @@ async function main() {
       cpuModel: os.cpus()[0]?.model || null,
       totalMemMb: Math.round(os.totalmem() / 1024 / 1024),
     },
-    request: { tier, backend: args.backend, turns: args.turns, nPredict: args.nPredict },
+    request: { tier, backend: args.backend, turns: args.turns, nPredict: args.nPredict, ttsSteps: args.ttsSteps },
     bundle: { dir: bundleDir, tier, ramBudgetMb: files.manifest?.ramBudgetMb ?? null },
     engine: engine.ok ? { dir: engine.dir, backend: engine.backend, fused: true, caps: engine.caps?.kernels ?? null } : null,
   };
@@ -936,7 +938,7 @@ async function main() {
   //     use them as the "mic" input. Reference text drives WER.
   const REF_PHRASES = [
     "What is the capital of France?",
-    "Schedule a meeting for tomorrow at three in the afternoon.",
+    "Schedule a meeting for tomorrow afternoon.",
     "Tell me a short fact about the ocean.",
   ];
   let micWavs = []; // { file, samples, sampleRate, refText }
@@ -985,7 +987,7 @@ async function main() {
     } else {
       for (let i = 0; i < REF_PHRASES.length; i += 1) {
         const ph = REF_PHRASES[i];
-        const r = await synthPhrasePcm(port, ph, args.turnTimeoutS);
+        const r = await synthPhrasePcm(port, ph, args.turnTimeoutS, args.ttsSteps);
         const w16 = resampleLinear(r.samples, r.sampleRate, 16000);
         const file = path.join(tmpDir, `mic-${i}.wav`);
         writeWav16(file, w16, 16000);
@@ -1038,6 +1040,7 @@ async function main() {
           nPredict: fullTurn ? args.nPredict : args.enduranceNPredict,
           turnTimeoutS: args.turnTimeoutS, logFn,
           ttsAllPhrases: args.ttsAllPhrases ? true : fullTurn,
+          ttsSteps: args.ttsSteps,
         },
         t + 1,
       );

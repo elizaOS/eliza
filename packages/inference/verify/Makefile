@@ -292,12 +292,12 @@ metal-verify-multiblock: metal_verify reference-test
 # (eliza_fused_attn_qjl_tbq3 / eliza_fused_attn_qjl_polar / eliza_polar_mul_mv).
 # 1e-3 absolute tolerance.
 #
-# AUTHORED — hardware-verify pending: the kernels are byte-faithful mirrors of
-# the hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
-# Intel ARL Mesa ANV). They require an Apple-Silicon Mac to run this target; until
-# then the fused_attn Metal capability bit stays not-runtime-ready (fused_attn is
-# an optimization on top of the five required kernels — AGENTS.md §3 — not a
-# required kernel).
+# Hardware-verified on Apple M4 Max: the kernels are byte-faithful mirrors of the
+# hardware-verified Vulkan ports (vulkan/fused_attn_*.comp, vulkan/polar_preht.comp,
+# Intel ARL Mesa ANV). This standalone fixture gate still does not make the
+# fused_attn Metal capability runtime-ready; that requires a built-fork Metal
+# graph-dispatch smoke. fused_attn is an optimization on top of the five required
+# kernels — AGENTS.md §3 — not a required kernel.
 # Backend-neutral contract: reports/porting/2026-05-11/fused-attn-op-contract.md
 # Metal-specific design: reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md
 metal-verify-fused: metal_verify reference-test
