@@ -555,13 +555,12 @@ export const personalAssistantAction: Action = {
   name: "PERSONAL_ASSISTANT",
   similes: [
     "ASSISTANT",
-    "BOOK_TRAVEL",
     "SCHEDULING",
     "SCHEDULING_NEGOTIATION",
     "SIGN_DOCUMENT",
     "DOCUSIGN",
     // PRD action-catalog aliases. Travel workflows resolve to action=book_travel
-    // (via the BOOK_TRAVEL handler) on PERSONAL_ASSISTANT.
+    // on PERSONAL_ASSISTANT.
     // See packages/docs/action-prd-map.md.
     "TRAVEL_CAPTURE_PREFERENCES",
     "TRAVEL_BOOK_FLIGHT",
