@@ -453,6 +453,8 @@ export class VoiceScheduler {
     this.clearAgentSpeaking();
     this.clearPhraseFlushTimer();
     this.ringBuffer.drain();
+    this.prefixQueue.clear();
+    this.lastCommittedTokenIndex = 0;
     this.chunker.reset();
     for (const inflight of this.inFlight.values()) {
       inflight.cancelSignal.cancelled = true;
@@ -463,6 +465,12 @@ export class VoiceScheduler {
 
   private async dispatchPhrase(phrase: Phrase): Promise<void> {
     this.rollback.track(phrase);
+    // Advance the divergence-point cursor. Tokens up to toIndex are now
+    // "committed" — a barge-in rollback keeps audio for them.
+    this.lastCommittedTokenIndex = Math.max(
+      this.lastCommittedTokenIndex,
+      phrase.toIndex,
+    );
     this.events.onPhrase?.(phrase);
     this.emitTelemetry({
       type: "phrase-dispatch",
@@ -527,7 +535,7 @@ export class VoiceScheduler {
         phrase: phraseTelemetry(phrase),
         inFlightPhrases: this.inFlight.size,
       });
-      if (isStreamingTtsBackend(this.backend)) {
+      if (this.streamingTtsActive && isStreamingTtsBackend(this.backend)) {
         const cancelled = await this.synthesizePhraseStream(
           phrase,
           cancelSignal,
@@ -611,6 +619,18 @@ export class VoiceScheduler {
           pcm.length * 4, // Float32: 4 bytes per sample
           { backend: ttsBackendName },
         );
+        // Tag the chunk with its phrase token range and enqueue it for
+        // prefix-preserving barge-in rollback. The chunk covers the full
+        // phrase range — sub-phrase token attribution is not available from
+        // the streaming TTS ABI, so all chunks of a phrase carry the same
+        // [fromIndex, toIndex]. Rollback at phrase granularity is still a
+        // large improvement over dropping all in-flight audio.
+        const taggedChunk: TaggedAudioChunk = {
+          pcm,
+          tokenRange: [phrase.fromIndex, phrase.toIndex],
+          durationMs: chunkDurationMs,
+        };
+        this.prefixQueue.enqueue(taggedChunk);
         this.commitAudio(
           {
             phraseId: phrase.id,
