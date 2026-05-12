@@ -141,7 +141,7 @@ function ensureGeneratedToolchain(info) {
     "  OUTPUT_VARIABLE IOS_SDK_PATH",
     "  OUTPUT_STRIP_TRAILING_WHITESPACE",
     ")",
-    String.raw`set(ENV{IOS_SYSROOT} "${IOS_SDK_PATH}")`,
+    ['set(ENV{IOS_SYSROOT} "${', 'IOS_SDK_PATH}")'].join(""),
     "",
   ].join("\n");
   fs.writeFileSync(out, contents);

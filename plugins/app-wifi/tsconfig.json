@@ -28,6 +28,7 @@
       "@elizaos/core": ["../../packages/core/src/index.node.ts"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/capacitor-wifi": [
         "../../packages/native-plugins/wifi/src/index.ts"
       ],

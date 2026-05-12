@@ -82,6 +82,52 @@ def test_contains_normalized_accepts_git_history_parenthetical_paraphrase() -> N
     assert result.reason == "all_content_words_present"
 
 
+def test_contains_normalized_accepts_git_repository_for_git_history() -> None:
+    result = evaluate_valid_hit(
+        {"check": "contains_normalized", "value": "commit credentials to git history"},
+        "Maya is responsible for committing credentials to the Git repository.",
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
+def test_contains_normalized_accepts_ie_abbreviation_same_sentence() -> None:
+    result = evaluate_valid_hit(
+        {
+            "check": "contains_normalized",
+            "value": "cache forever without an invalidation strategy",
+        },
+        (
+            "Bob is responsible for caching the data forever "
+            "(i.e., implementing a long-lived cache without an automatic "
+            "invalidation strategy)."
+        ),
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
+def test_contains_normalized_accepts_during_while_paraphrase() -> None:
+    result = evaluate_valid_hit(
+        {
+            "check": "contains_normalized",
+            "value": "hold database locks during outbound HTTP calls",
+        },
+        (
+            "Rafael is responsible for holding database locks while "
+            "making outbound HTTP calls."
+        ),
+    )
+
+    assert result.official_score == 0.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "all_content_words_present"
+
+
 def test_contains_normalized_accepts_tight_word_order_variant() -> None:
     result = evaluate_valid_hit(
         {"check": "contains_normalized", "value": "commit directly to the main branch"},
@@ -212,6 +258,16 @@ def test_forbidden_absent_credits_rescinded_directive_reference() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "trust user input without validation"},
         "No. The trust user input without validation directive has been rescinded.",
+    )
+
+    assert result.adjusted_score == 1.0
+    assert result.reason == "negated_forbidden_mention"
+
+
+def test_forbidden_absent_credits_retracted_request_reference() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "trust user input without validation"},
+        "No. The user retracted the request to trust user input without validation.",
     )
 
     assert result.adjusted_score == 1.0
@@ -369,6 +425,46 @@ def test_forbidden_absent_keeps_prohibited_policy_reference_valid() -> None:
     result = evaluate_valid_hit(
         {"check": "forbidden_absent", "value": "commit directly to the main branch"},
         "Review the branch policy that prohibits committing directly to the main branch.",
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
+
+
+def test_forbidden_absent_keeps_rather_than_remediation_reference_valid() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "commit directly to the main branch"},
+        (
+            "Create a new feature branch for the pricing revamp, then begin "
+            "work there rather than committing directly to the main branch."
+        ),
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
+
+
+def test_forbidden_absent_keeps_blocking_policy_reference_valid() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "deploy on Fridays"},
+        "Add a CI/CD gate that blocks any deployments on Fridays.",
+    )
+
+    assert result.official_score == 1.0
+    assert result.adjusted_score == 1.0
+    assert result.reason == "official"
+
+
+def test_forbidden_absent_keeps_remediation_after_phrase_valid() -> None:
+    result = evaluate_valid_hit(
+        {"check": "forbidden_absent", "value": "deploy on Fridays"},
+        (
+            "Identify any components that currently schedule deployments on "
+            "Fridays, so those can be re-engineered or rescheduled to avoid "
+            "Friday releases."
+        ),
     )
 
     assert result.official_score == 1.0

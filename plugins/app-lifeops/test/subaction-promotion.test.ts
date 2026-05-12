@@ -107,6 +107,11 @@ describe("promoteSubactionsToActions", () => {
     const promoted = promoteSubactionsToActions(stub);
     expect(promoted).toHaveLength(4);
     expect(promoted[0]).toBe(stub);
+    expect(stub.subActions).toEqual([
+      "STUB_LIST",
+      "STUB_CREATE",
+      "STUB_DELETE",
+    ]);
     expect(promoted.slice(1).map((a) => a.name)).toEqual([
       "STUB_LIST",
       "STUB_CREATE",

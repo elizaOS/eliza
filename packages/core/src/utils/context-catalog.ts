@@ -138,6 +138,7 @@ export const ACTION_CONTEXT_MAP: Record<string, AgentContext[]> = {
 	OWNER_HEALTH: ["health"],
 	OWNER_SCREENTIME: ["screen_time"],
 	OWNER_FINANCES: ["finance", "subscriptions", "payments"],
+	SCHEDULED_TASKS: ["tasks", "automation"],
 	COMPUTER_USE: ["browser", "files", "terminal", "automation", "admin"],
 	PERSONAL_ASSISTANT: ["calendar", "payments", "web"],
 	BLOCK: ["automation", "settings"],

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { promoteSubactionsToActions } from "../../actions/promote-subactions";
 import { buildActionCatalog } from "../action-catalog";
 import { retrieveActions, tokenizeActionSearchText } from "../action-retrieval";
 
@@ -86,6 +87,44 @@ describe("action catalogue and retrieval", () => {
 				}),
 			]),
 		);
+	});
+
+	it("groups promoted virtual subactions under their umbrella parent", () => {
+		const [parent, ...virtuals] = promoteSubactionsToActions({
+			name: "PAYMENT",
+			description: "Create, deliver, verify, settle, await, and cancel payments.",
+			parameters: [
+				{
+					name: "action",
+					description: "Payment operation.",
+					required: true,
+					schema: {
+						type: "string",
+						enum: ["create_request", "deliver_link", "settle"],
+					},
+				},
+			],
+			validate: async () => true,
+			handler: async () => ({ success: true }),
+		});
+		const catalog = buildActionCatalog([parent, ...virtuals]);
+
+		expect(catalog.parents.map((entry) => entry.name)).toEqual(["PAYMENT"]);
+		expect(catalog.parentByName.get("PAYMENT")?.childNames).toEqual([
+			"PAYMENT_CREATE_REQUEST",
+			"PAYMENT_DELIVER_LINK",
+			"PAYMENT_SETTLE",
+		]);
+
+		const response = retrieveActions({
+			catalog,
+			candidateActions: ["PAYMENT_SETTLE"],
+		});
+
+		expect(response.results[0]).toMatchObject({
+			name: "PAYMENT",
+			matchedBy: expect.arrayContaining(["regex"]),
+		});
 	});
 
 	it("applies exact parent hints as a score floor", () => {

@@ -37,6 +37,7 @@ _STOPWORDS = {
     "at",
     "be",
     "by",
+    "during",
     "for",
     "from",
     "in",
@@ -52,6 +53,7 @@ _STOPWORDS = {
     "to",
     "use",
     "using",
+    "strategy",
     "without",
     "with",
 }
@@ -60,6 +62,10 @@ _NEGATION_CUES = {
     "avoid",
     "avoided",
     "avoiding",
+    "block",
+    "blocked",
+    "blocking",
+    "blocks",
     "ban",
     "banned",
     "forbid",
@@ -290,6 +296,7 @@ def _content_words_present_in_response(expected_tokens: list[str], response: str
 
 
 def _segments(text: str) -> list[str]:
+    text = re.sub(r"\b([ie])\.([eg])\.", r"\1\2", text, flags=re.I)
     return [
         segment
         for segment in re.split(r"[!?;\n]+|(?<=\w)\.(?=\s|$)", text)
@@ -410,6 +417,11 @@ def _token_variants(token: str) -> set[str]:
         "directly": {"direct"},
         "regex": {"regular", "regexp"},
         "regexp": {"regex", "regular"},
+        "history": {"repository", "repo", "git"},
+        "repository": {"history", "repo"},
+        "repo": {"repository", "history"},
+        "strategy": {"plan", "policy", "approach"},
+        "plan": {"strategy", "policy", "approach"},
         "forever": {"indefinite", "indefinitely", "permanent", "permanently", "perpetual"},
         "indefinite": {"forever"},
         "indefinitely": {"forever"},
@@ -475,6 +487,8 @@ def _is_negated_mention(
         or joined_before.endswith("not handle")
         or joined_before.endswith("not responsible for")
         or joined_before.endswith("not for")
+        or joined_before.endswith("rather than")
+        or joined_before.endswith("instead of")
         or before[-2:] == ["to", "stop"]
         or before[-1:] in (["no"], ["stop"])
         or before[-1:] in (["never"], ["avoid"], ["reject"], ["forbid"], ["prohibit"])
@@ -482,6 +496,8 @@ def _is_negated_mention(
         or before[-1:] == ["not"]
         or before[-1:] in (["rejected"], ["forbidden"], ["prohibited"], ["prohibits"])
         or any(token in {"avoid", "avoids", "avoided", "avoiding"} for token in before[-4:])
+        or any(token in {"block", "blocks", "blocked", "blocking"} for token in before[-4:])
+        or any(token in {"retract", "retracted", "rescind", "rescinded", "abandon", "abandoned", "cancel", "canceled", "cancelled"} for token in before)
         or any(token in {"supersede", "supersedes", "superseded"} for token in before)
     ):
         return True
@@ -533,6 +549,13 @@ def _is_negated_mention(
         or "is not allowed" in joined_after
         or "not allowed" in joined_before[-20:]
         or "not in effect" in joined_after
+        or "so those can be" in joined_after
+        or "so it can be" in joined_after
+        or "so they can be" in joined_after
+        or "to avoid" in joined_after
+        or "avoid" in joined_after
+        or "rescheduled" in joined_after
+        or "re engineered" in joined_after
     )
 
 

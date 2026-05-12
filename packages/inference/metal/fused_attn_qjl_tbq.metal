@@ -29,12 +29,12 @@
 //   head-dim V, not the rotated representation, unlike the standalone
 //   kernel_turbo3_dot score path which deliberately skips the uncondition).
 //
-// Online softmax: pass 1 walks the KV tokens once maintaining a thread-uniform
-// running (m, l); pass 2 walks them again, re-deriving w_t = exp(raw_t - m)/l
-// and FMAing the decoded V block into the shared output accumulator. Because
-// (m, l) are known before pass 2 the running rescale factor is always 1.0 —
-// the same simplification the C reference uses. Algebraically identical to the
-// FlashAttention rescaling form.
+// Online softmax: one pass walks KV once, maintaining thread-uniform running
+// (m, l). When m increases, the shared output accumulator is rescaled by
+// corr = exp(m_old - m_new), then the current decoded V block is FMAed with
+// w = exp(raw - m_new). After the loop, the accumulator is divided by l.
+// This is algebraically identical to the two-pass reference but avoids
+// recomputing every QJL score on Metal.
 //
 // kv_tile (op-param): KV positions per online-softmax tile. 0 == whole range;
 // the verify path passes 0 and walks the full range — matching the C reference
@@ -217,32 +217,31 @@ kernel void kernel_fused_attn_qjl_tbq3_f32(
     // output we walk the same masked set. q's absolute position:
     uint q_abs = args.q_pos_base + q_pos;
 
-    // --- Pass 1: running (m, l) over the KV tokens (thread-uniform). ---
-    float m = -INFINITY;
+    // --- Single online-softmax pass over the KV tokens. The running (m, l)
+    //     are thread-uniform: qjl_score_one_token returns the same raw score
+    //     to every lane after the cooperative simd_sum. ---
+    float m = -1.0e30f;
     float l = 0.0f;
-    for (uint t = 0u; t < args.n_kv; t++) {
-        if (args.causal != 0u && t > q_abs) break;
-        float raw = qjl_score_one_token(q_sketch, pk_head, h_q, q_pos, args.n_heads, t, sm_scale, tid);
-        float new_m = max(m, raw);
-        l = l * exp(m - new_m) + exp(raw - new_m);
-        m = new_m;
-    }
-    float inv_l = (l > 0.0f) ? (1.0f / l) : 0.0f;
-    if (!isfinite(m) || !(l > 0.0f)) {
-        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0f;
-        return;
-    }
-
-    // --- Pass 2: V-mix. w_t = exp(raw_t - m)/l; running rescale corr == 1.0. ---
     for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0f;
     threadgroup_barrier(mem_flags::mem_threadgroup);
     for (uint t = 0u; t < args.n_kv; t++) {
         if (args.causal != 0u && t > q_abs) break;
         float raw = qjl_score_one_token(q_sketch, pk_head, h_q, q_pos, args.n_heads, t, sm_scale, tid);
-        float w = exp(raw - m) * inv_l;
+        float new_m = max(m, raw);
+        float corr = exp(m - new_m);
+        float w = exp(raw - new_m);
+        l = l * corr + w;
+        m = new_m;
         threadgroup_barrier(mem_flags::mem_threadgroup);   // tbq_buf reused per token
-        tbq3_decode_token_into_acc(pv_head + (size_t)t * TBQ_PER_TOKEN, tbq_buf, acc_o, w, 1.0f, tid);
+        tbq3_decode_token_into_acc(pv_head + (size_t)t * TBQ_PER_TOKEN, tbq_buf, acc_o, w, corr, tid);
     }
+    if (!isfinite(m) || m <= -1.0e29f || !(l > 0.0f)) {
+        for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0f;
+        return;
+    }
+    float inv_l = 1.0f / l;
+    for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] *= inv_l;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
 
     // Write out. Lane 0 writes all 128 elements serially — the shared
     // accumulator is fully settled by the decode helper's trailing barrier,

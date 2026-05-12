@@ -1022,7 +1022,11 @@ def build_lifeops_records(
                         if result_idx < len(tool_calls)
                         else f"call_{result_idx}"
                     )
-                    tool_call_id = str(raw_result.get("tool_call_id") or fallback_call_id)
+                    # The LifeOpsBench result stores executable actions
+                    # without the original provider tool-call id. The
+                    # prepared assistant call id is therefore the canonical
+                    # id the request history must reference.
+                    tool_call_id = str(fallback_call_id or raw_result.get("tool_call_id"))
                     content = content_to_text(raw_result.get("content"))
                     if not content.strip() and "payload" in raw_result:
                         content = json.dumps(raw_result.get("payload"), sort_keys=True, default=str)

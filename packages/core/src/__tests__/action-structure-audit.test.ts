@@ -33,7 +33,6 @@ const RETIRED_GENERATED_ACTION_NAMES = [
 	"PASSWORD_MANAGER",
 	"GOOGLE_CALENDAR",
 	"NOSTR_PUBLISH_PROFILE",
-	"PAYMENT",
 	"PLACE_CALL",
 	"READ_ATTACHMENT",
 	"SHELL_COMMAND",
@@ -118,6 +117,12 @@ const PAGE_DELEGATE_REPLACES = [
 	"OWNER_ACTIONS",
 ] as const;
 
+const REQUIRED_OWNER_SURFACE_ACTION_NAMES = [
+	"SCHEDULED_TASKS",
+	"CREDENTIALS",
+	"PERSONAL_ASSISTANT",
+] as const;
+
 const LEGACY_DISCRIMINATORS = new Set([
 	"subaction",
 	"op",
@@ -133,6 +138,20 @@ describe("action structure audit guards", () => {
 		for (const retired of RETIRED_GENERATED_ACTION_NAMES) {
 			expect(names.has(retired), retired).toBe(false);
 		}
+	});
+
+	it("keeps canonical owner surfaces present in generated canonical docs", () => {
+		const names = new Set(allActionDocs.map((action) => action.name));
+		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
+		for (const name of REQUIRED_OWNER_SURFACE_ACTION_NAMES) {
+			expect(retired.has(name), `${name} must not be marked retired`).toBe(
+				false,
+			);
+			expect(names.has(name), `${name} must be generated`).toBe(true);
+		}
+		expect(retired.has("PAYMENT"), "PAYMENT is not a retired parent").toBe(
+			false,
+		);
 	});
 
 	it("requires schemas with legacy discriminator aliases to expose action", () => {
