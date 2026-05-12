@@ -18,7 +18,11 @@ import type {
   BackendPlan,
   LocalInferenceBackend,
 } from "./backend";
-import { gpuLayersForKvOffload } from "./backend";
+import {
+  gpuLayersForKvOffload,
+  localAllowStockKv,
+  warnReducedOptimizationLocalMode,
+} from "./backend";
 import {
   buildModelHash,
   type CacheStatsEntry,
