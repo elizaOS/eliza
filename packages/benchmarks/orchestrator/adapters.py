@@ -1572,9 +1572,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "rlm_bench": {
             "mode": "eliza",
             "tasks_per_config": 1,
-            "context_lengths": [1000, 10000],
-            "max_iterations": 5,
-            "max_depth": 3,
+            "context_lengths": [1000],
+            "max_iterations": 3,
+            "max_depth": 2,
+            "no_oolong": True,
         },
         "mint": {
             "agent": "eliza",
