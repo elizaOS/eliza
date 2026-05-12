@@ -483,12 +483,16 @@ export const Eliza1ManifestSchema = z
     // candidates whenever both are available.
     releaseChannel: z.enum(ELIZA_1_RELEASE_CHANNELS).optional(),
     defaultEligible: z.boolean(),
-    // Optional. Free-text quant tag emitted by the publish-side manifest
-    // builder (e.g. `"Q3_K_S"`, `"Q4_K_M"`). Not consumed by the runtime
-    // validator — declared here so a manifest carrying it is not rejected
-    // by Zod's default strip behaviour silently masking a real publish
-    // field. Accepted as a permissive string.
-    textQuant: z.string().min(1).optional(),
+    // Optional. Quant metadata emitted by the publish-side manifest
+    // builder. May be either a free-text tag (`"Q3_K_S"`, `"Q4_K_M"`) or a
+    // structured object describing the optimization recipe (PolarQuant +
+    // QJL block layout, per-layer outlier counts, etc.). Not consumed by
+    // the runtime validator — declared here so a manifest carrying it is
+    // accepted instead of being stripped or rejected. The schema is
+    // intentionally permissive: the publish-side tool is the source of
+    // truth for the shape, and the runtime only needs the manifest to
+    // round-trip cleanly.
+    textQuant: z.union([z.string().min(1), z.record(z.string(), z.unknown())]).optional(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
   // re-reading the manifest. Example: `id: "eliza-1-9b"`.
