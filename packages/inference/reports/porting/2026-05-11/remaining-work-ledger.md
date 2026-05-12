@@ -188,13 +188,59 @@ The lowest-duplication design is lazy regional loading from one bundle:
   mode, startup fails. Voice-off mode may run without mapping voice assets only
   if the selected mode explicitly disables voice.
 
+## W7 — the ABI surface the fused streaming decoder must implement
+
+The runtime fallback chain is **sane and complete without streaming**:
+`createStreamingTranscriber()` (`voice/transcriber.ts`) tries
+`FfiStreamingTranscriber` → `FfiBatchTranscriber` → `WhisperCppStreamingTranscriber`
+in order. The fused `linux-x64-cpu-fused` build exports the ABI-v2 symbols but
+the streaming entries are honest stubs: `eliza_inference_asr_stream_supported()
+== 0` and `eliza_inference_tts_stream_supported() == 0`, so `tryFusedStreaming()`
+returns `null` and `FfiBatchTranscriber` (the chunked sliding-window decode over
+the batch `eliza_inference_asr_transcribe`, contract-clean against the
+`StreamingTranscriber` interface) is the preferred path until streaming lands.
+Batch TTS (`eliza_inference_tts_synthesize` → `/v1/audio/speech`) and batch ASR
+both work. `eliza_inference_cancel_tts` is a no-op on the batch-only build (the
+JS side falls back to draining the PCM ring + an HTTP abort, which is correct,
+just not as tight as a kernel-boundary cancel). Nothing in the runtime *requires*
+streaming to function — voice mode runs on the batch path today.
+
+When W7 implements the fused streaming decoder, the contract (declared in
+`packages/app-core/scripts/omnivoice-fuse/ffi.h`, the JS bindings in
+`voice/ffi-bindings.ts`) is:
+
+- **Streaming ASR:** `eliza_inference_asr_stream_supported()` → 1;
+  `_asr_stream_open(ctx, sample_rate_hz)` → handle; `_asr_stream_feed(handle, pcm,
+  n_samples)`; `_asr_stream_partial(handle, max_tokens, out…)` → running partial
+  text + token ids (text vocab — shared with the backbone per §1, so finished
+  tokens inject directly); `_asr_stream_finish(handle, …)` → final;
+  `_asr_stream_close(handle)`.
+- **Streaming TTS + cancel:** `eliza_inference_tts_stream_supported()` → 1;
+  `_tts_synthesize_stream(ctx, text, on_chunk, …)` with `on_chunk` returning
+  non-zero → cancel; `_cancel_tts(ctx)` → hard-cancel the in-flight forward pass
+  at the next kernel boundary (the barge-in path, §4).
+- **Native DFlash verifier callback:** `eliza_inference_set_verifier_callback(ctx,
+  cb, user)` where `cb(accepted_lo, accepted_hi, rejected_lo, rejected_hi, user)`
+  reports exact target-accepted and rejected token ranges in the *output* stream,
+  so the phrase chunker's rollback queue drops not-yet-spoken audio precisely —
+  not the OpenAI-delta surrogate the JS layer synthesizes today.
+
+Each is additive — a v1 caller is unaffected; the v2 symbols already exist as
+stubs reporting `*_supported() == 0`, so a probe-then-pick caller never has to
+call the streaming entry and catch `ELIZA_ERR_NOT_IMPLEMENTED`. Cheap RAM trim
+that rides on this work: have the fused server `madvise(MADV_DONTNEED)` the idle
+ASR pages while the streaming TTS decoder runs and vice-versa (ASR → text → TTS
+are sequential within a turn) — ~1 GB on `0_6b`, which would let the
+`ramBudgetMb.recommended` come back down toward the pre-correction figure.
+
 ## Performance Work Still Worth Doing
 
 0. **Native DFlash verifier event stream.** The JS layer now starts TTS from
    streamed accepted text deltas and the backend callback already carries
    verifier-shaped accept events. For the fastest rollback-safe voice path, the
    fused native runtime still needs to expose exact target-accepted and
-   rejected-token events directly, not only synthesized OpenAI deltas.
+   rejected-token events directly, not only synthesized OpenAI deltas. (Exact
+   ABI in the "W7" section above.)
 1. **Fuse QJL score + softmax + TBQ-V mix.** The CPU fork already has
    `GGML_OP_FUSED_ATTN_QJL_TBQ`. Porting that fused shape to Metal/Vulkan/CUDA
    is more valuable than wiring isolated Turbo dot kernels because it avoids
@@ -481,15 +527,26 @@ bash packages/training/scripts/publish_all_eliza1.sh --bundles-root /tmp/eliza1-
   *Closes the "have the recommendation engine consult
   manifest.kernels.verifiedBackends; canSetAsDefault is not yet called"
   item above.*
-- Wake-word: the shipped `wake/hey-eliza.onnx` is the upstream
-  openWakeWord `hey_jarvis` head renamed (it fires on "hey jarvis", not
-  the Eliza-1 wake phrase). `isPlaceholderWakeWordHead` /
-  `OPENWAKEWORD_PLACEHOLDER_HEADS = {hey-eliza, hey_jarvis}` mark it; the
-  engine emits a one-time warning whenever a voice session enables a
-  placeholder head. New doc
-  [`wakeword-head-plan.md`](./wakeword-head-plan.md): steps to train a
-  head on the approved Eliza-1 wake phrase via openWakeWord's
-  TTS-augmented pipeline.
+- Wake-word: the default Eliza-1 wake phrase is now documented as
+  **"hey eliza"** (a two-word, four-syllable phrase the openWakeWord
+  TTS-augmented pipeline handles well; replaceable). The training
+  pipeline is runnable —
+  [`packages/training/scripts/wakeword/train_eliza1_wakeword_head.py`](../../../../training/scripts/wakeword/train_eliza1_wakeword_head.py)
+  (front-end download → embedding featurization → dense head + BCE →
+  ONNX export with the runtime's `[1, 16, 96]` → scalar contract →
+  provenance JSON), unit-tested in `test_train_eliza1_wakeword_head.py`
+  (head arch, threshold picker, ONNX export shape, a miniature
+  train→export fit). A *full* real run (~30k positives across many
+  voices/speeds/pitches + a real negative corpus + the openWakeWord
+  front-end graphs) needs network and a permissive TTS that this dev box
+  can't produce in a reasonable timeframe, so the recipe + the partial
+  (unit-tested) run is what landed; `wakeword-head-plan.md` carries the
+  exact full-run command. The shipped `wake/hey-eliza.onnx` is still the
+  upstream `hey_jarvis` head renamed (fires on "hey jarvis"), so
+  `OPENWAKEWORD_PLACEHOLDER_HEADS = {hey-eliza, hey_jarvis}` is unchanged
+  and the engine still warns on every session that enables it — remove
+  `hey-eliza` from that set only once a head trained by the script ships
+  in bundles. Wake word stays opt-in, off by default, local-mode only.
 - **FIXED:** the pre-existing test breakage introduced by `89e4d49bc6
   "updates to many things"` (which added the `vad_boundary_mae_ms` /
   `vad_endpoint_p95_ms` / `vad_false_bargein_per_hour` gate keys to

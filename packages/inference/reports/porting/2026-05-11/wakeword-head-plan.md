@@ -36,18 +36,48 @@ feature, until a real head is trained.
   cases + a network-gated real-ONNX-graph smoke that downloads the
   upstream `melspectrogram`/`embedding`/`hey_jarvis` graphs).
 
+## Default wake phrase: "hey eliza" (documented; replaceable)
+
+The default Eliza-1 wake phrase is **"hey eliza"** — a two-word,
+four-syllable phrase the openWakeWord TTS-augmented pipeline handles
+well. This is the documented default; it is replaceable by passing a
+different `--phrase` to the training script and re-pointing
+`OPENWAKEWORD_DEFAULT_HEAD` / `WAKEWORD_FILES`. The runtime already
+defaults to `OPENWAKEWORD_DEFAULT_HEAD = "hey-eliza"`; until a head
+trained by the script below ships, `wake/hey-eliza.onnx` is the upstream
+`hey_jarvis` head renamed and stays in `OPENWAKEWORD_PLACEHOLDER_HEADS`
+(the engine warns on every session that enables it).
+
 ## What is NOT done
 
-- No head trained on the **approved Eliza-1 wake phrase**. The approved
-  phrase itself is a product decision and is **not chosen here** — pick
-  it before training (a two-or-three-syllable phrase that openWakeWord's
-  TTS-augmented pipeline handles well; "hey eliza" is the obvious
-  candidate but the placeholder filename is *not* a commitment).
+- No head **trained** on "hey eliza" has shipped yet. The training
+  pipeline is now runnable —
+  [`packages/training/scripts/wakeword/train_eliza1_wakeword_head.py`](../../../../training/scripts/wakeword/train_eliza1_wakeword_head.py)
+  — but a full real run needs network (the openWakeWord front-end graphs)
+  and a real negative corpus plus a permissively-licensed TTS for ~30k
+  positive clips, which this dev box can't produce in a reasonable
+  timeframe. The script's pure pieces (head architecture, threshold
+  picker, ONNX export shape, a miniature train→export fit) are unit-
+  tested in `test_train_eliza1_wakeword_head.py`.
 - The wake-word head is not in any bundle manifest's
   `kernels`/`evals`/lineage block as a first-class component — it is an
   optional `wake/` asset only. It does not gate `defaultEligible`.
 
-## Plan — train a head on the approved Eliza-1 wake phrase
+## Plan — train a head on the default Eliza-1 wake phrase ("hey eliza")
+
+The pipeline below is implemented in
+[`train_eliza1_wakeword_head.py`](../../../../training/scripts/wakeword/train_eliza1_wakeword_head.py).
+Full real run on the training box:
+
+```
+uv run --extra train python -m scripts.wakeword.train_eliza1_wakeword_head \
+    --phrase "hey eliza" \
+    --positives-dir /data/wakeword/hey-eliza-positives \
+    --negatives-dir /data/wakeword/negatives \
+    --out wake/hey-eliza.onnx \
+    --provenance wake/hey-eliza.provenance.json \
+    --epochs 30
+```
 
 openWakeWord (Apache-2.0, https://github.com/dscripka/openWakeWord)
 trains a small dense head on top of the frozen, model-agnostic
@@ -56,9 +86,10 @@ that changes per wake phrase; the front-end graphs ship as-is.
 
 Steps (run on the training box, not in the runtime repo):
 
-1. **Choose the phrase.** Confirm the approved Eliza-1 wake phrase with
-   the product owner. Record it in the bundle manifest's lineage notes
-   when the head ships.
+1. **Phrase.** The default is **"hey eliza"** (see above). The training
+   script defaults to it (`--phrase "hey eliza"`); pass a different value
+   to retrain on a different phrase. Record the phrase in the bundle
+   manifest's lineage notes when the head ships.
 
 2. **Synthesize positives.** Use openWakeWord's
    `openwakeword.data.generate_samples` / the `piper-sample-generator`
