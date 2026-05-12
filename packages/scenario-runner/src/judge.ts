@@ -12,7 +12,7 @@ import { ModelType, logger } from "@elizaos/core";
 import { isCerebrasEvalEnabled } from "../../../plugins/app-lifeops/test/helpers/lifeops-eval-model.ts";
 import {
   CerebrasJudge,
-  extractBalancedJsonObject as extractBalancedJsonObjectShared,
+  extractBalancedJsonObject,
   type JudgeResponse,
 } from "./cerebras-judge.ts";
 
@@ -41,13 +41,6 @@ export interface JudgeResult {
   raw?: string;
 }
 
-/**
- * Re-export for callers (e.g. lifeops-live-judge) that pulled the
- * balanced-object scanner from this module before the consolidation. The
- * canonical implementation now lives in cerebras-judge.ts.
- */
-export const extractBalancedJsonObject = extractBalancedJsonObjectShared;
-
 function judgeResponseToResult(
   response: JudgeResponse,
 ): JudgeResult | null {
@@ -65,7 +58,7 @@ function judgeResponseToResult(
 function parseJudgeJson(raw: string): JudgeResult | null {
   // Kept for the non-Cerebras path (runtime.useModel fallback). Uses the
   // same tolerant parser the shared CerebrasJudge transport uses.
-  const balanced = extractBalancedJsonObjectShared(raw);
+  const balanced = extractBalancedJsonObject(raw);
   if (!balanced) return null;
   let parsed: Record<string, unknown>;
   try {
