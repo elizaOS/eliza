@@ -45,7 +45,7 @@ export default scenario({
       ladderKey: "less_chatty",
       direction: "terser",
       escalationStepTurnIndices: [0, 2],
-      probeTurnIndices: [1],
+      probeTurnIndices: [1, 3, 4],
     },
   },
   turns: [
@@ -69,6 +69,20 @@ export default scenario({
       name: "escalation-step-2",
       room: "main",
       text: "Still too much. Less. I mean it.",
+    },
+    // probe after escalation step 2; agent should reflect current level
+    {
+      kind: "message",
+      name: "probe-after-step-2",
+      room: "main",
+      text: "Real quick — what should I look for when buying running shoes?",
+    },
+    // probe after escalation step 2; verify tone holds across a second question
+    {
+      kind: "message",
+      name: "probe-after-step-2b",
+      room: "main",
+      text: "Real quick — what are the symptoms of a vitamin D deficiency?",
     },
   ],
 });

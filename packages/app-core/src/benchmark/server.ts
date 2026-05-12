@@ -1492,6 +1492,12 @@ export async function startBenchmarkServer() {
       }
 
       const key = sessionKey(session);
+      // Aggregate personality_audit_log entries from every trajectory step so
+      // callers can inspect the full-session mutation history in one response.
+      const steps = trajectoriesBySession.get(key) ?? [];
+      const aggregatedAuditLog = steps.flatMap(
+        (s) => s.personality_audit_log ?? [],
+      );
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -1500,10 +1506,95 @@ export async function startBenchmarkServer() {
           task_id: session.taskId,
           room_id: session.roomId,
           relay_room_id: session.relayRoomId,
-          steps: trajectoriesBySession.get(key) ?? [],
+          steps,
           outbox: outboxBySession.get(key) ?? [],
+          ...(aggregatedAuditLog.length > 0
+            ? { auditLog: aggregatedAuditLog }
+            : {}),
         }),
       );
+      return;
+    }
+
+    // P1-11: surfaced personality_audit_log to the test runner so post-hoc
+    // analysis can verify what personality state was actually modified.
+    // The path accepts both /:sessionId (benchmark:taskId format) and query
+    // params (?benchmark=...&task_id=...) for parity with other endpoints.
+    if (
+      req.method === "GET" &&
+      (pathname === "/api/benchmark/audit-log" ||
+        /^\/api\/benchmark\/audit-log\//.test(pathname))
+    ) {
+      try {
+        // Try to extract sessionId from path segment first.
+        const pathSessionId = pathname.startsWith(
+          "/api/benchmark/audit-log/",
+        )
+          ? decodeURIComponent(pathname.slice("/api/benchmark/audit-log/".length))
+          : "";
+        let session: ReturnType<typeof resolveSession> = null;
+        if (pathSessionId) {
+          // pathSessionId is "benchmark:taskId" — parse it out.
+          const colonIdx = pathSessionId.indexOf(":");
+          if (colonIdx > 0) {
+            const bk = pathSessionId.slice(0, colonIdx);
+            const tid = pathSessionId.slice(colonIdx + 1);
+            session = resolveSession(tid, bk, false);
+          }
+        }
+        if (!session) {
+          const context = extractRecord({
+            benchmark:
+              requestUrl.searchParams.get("benchmark") ?? undefined,
+            task_id:
+              requestUrl.searchParams.get("task_id") ??
+              requestUrl.searchParams.get("taskId") ??
+              undefined,
+          });
+          const taskId = extractTaskId(context);
+          const benchmark = extractBenchmarkName(context);
+          session =
+            resolveSession(taskId, benchmark, false) ??
+            getLastSession() ??
+            null;
+        }
+
+        if (!session) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "session not found" }));
+          return;
+        }
+
+        const key = sessionKey(session);
+        const sessionSteps = trajectoriesBySession.get(key) ?? [];
+        // Flatten per-turn personality_audit_log into a single list, tagged
+        // with the turn number so callers know which turn each entry came from.
+        const auditLog = sessionSteps.flatMap((step) =>
+          (step.personality_audit_log ?? []).map((entry) => ({
+            turn: step.step,
+            action: entry.action,
+            subaction: entry.action,
+            field: entry.scope,
+            oldValue: null,
+            newValue: entry.actorId,
+            ...entry,
+          })),
+        );
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            sessionId: key,
+            auditLog,
+          }),
+        );
+      } catch (err: unknown) {
+        elizaLogger.error(
+          `[bench] Audit-log error: ${formatUnknownError(err)}`,
+        );
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: "Internal benchmark error" }));
+      }
       return;
     }
 
