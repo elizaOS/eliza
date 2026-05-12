@@ -80,7 +80,6 @@ export * from "./hooks/useWhatsAppPairing.ts";
 export * from "./i18n/index.ts";
 export * from "./navigation/index.ts";
 export * from "./onboarding/flow.ts";
-export * from "./onboarding/deep-link-handler.ts";
 export * from "./onboarding/mobile-runtime-mode.ts";
 export * from "./onboarding/pre-seed-local-runtime.ts";
 export * from "./onboarding/reload-into-runtime-picker.ts";

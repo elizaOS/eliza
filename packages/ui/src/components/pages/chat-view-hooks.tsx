@@ -692,14 +692,17 @@ export function useChatVoiceController(options: {
     pending.firstTokenAtMs = firstTokenAtMs;
     setVoiceLatency((prev) => ({
       assistantFirstMessageId:
-        prev?.assistantFirstMessageId ?? pending.assistantFirstMessageId ?? null,
+        prev?.assistantFirstMessageId ??
+        pending.assistantFirstMessageId ??
+        null,
       firstSegmentCached: prev?.firstSegmentCached ?? null,
       speechEndToFirstTokenMs: Math.max(
         0,
         Math.round(firstTokenAtMs - pending.speechEndedAtMs),
       ),
       speechEndToVoiceStartMs: prev?.speechEndToVoiceStartMs ?? null,
-      assistantStreamToVoiceStartMs: prev?.assistantStreamToVoiceStartMs ?? null,
+      assistantStreamToVoiceStartMs:
+        prev?.assistantStreamToVoiceStartMs ?? null,
     }));
   }, [chatFirstTokenReceived]);
 

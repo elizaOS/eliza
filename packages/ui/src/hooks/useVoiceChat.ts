@@ -66,13 +66,13 @@ import {
   MAX_CACHED_SEGMENTS,
   matchesVoiceLocale,
   normalizeSpeechLocale,
+  type QueueAssistantSpeechOptions,
   resolveEffectiveVoiceConfig,
   resolveVoiceMode,
   resolveVoiceProxyEndpoint,
   type SpeakTask,
   type SpeechRecognitionInstance,
   type SpeechRecognitionResultEvent,
-  type QueueAssistantSpeechOptions,
   TALKMODE_STOP_SETTLE_MS,
   toArrayBuffer,
   type VoiceCaptureMode,
@@ -91,11 +91,11 @@ import {
 
 export { nextIdleMouthOpen } from "../voice/voice-chat-playback";
 export type {
+  QueueAssistantSpeechOptions,
+  VoiceAssistantSpeechTelemetry,
   VoiceCaptureMode,
   VoiceChatOptions,
   VoiceChatState,
-  QueueAssistantSpeechOptions,
-  VoiceAssistantSpeechTelemetry,
   VoicePlaybackStartEvent,
   VoiceSessionMode,
   VoiceSpeakerMetadata,

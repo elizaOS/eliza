@@ -1970,7 +1970,8 @@ async function forwardToAgentCloudChat(
   const completionTokens = Number.isFinite(record.completionTokens)
     ? (record.completionTokens as number)
     : 0;
-  const modelId = typeof record.modelId === "string" ? record.modelId : undefined;
+  const modelId =
+    typeof record.modelId === "string" ? record.modelId : undefined;
   return {
     text: textValue,
     promptTokens,

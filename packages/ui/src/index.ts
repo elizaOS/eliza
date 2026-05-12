@@ -3,7 +3,6 @@
 // (Node refuses ".css" extensions). Renderers must opt-in explicitly.
 
 export * from "./App";
-export * from "./api";
 export type {
   AppLaunchDiagnostic,
   AppLaunchDiagnosticSeverity,
@@ -34,16 +33,17 @@ export type {
   InstalledAppInfo,
   TradePermissionMode,
 } from "./api";
+export * from "./api";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export * from "./bridge";
 export * from "./character-catalog";
 export * from "./chat";
-export * from "./components";
 export type {
   DocumentImageCompressionPlatform,
   DocumentImageUploadFile,
 } from "./components";
+export * from "./components";
 export {
   autoLabel,
   ENV_KEY_ACRONYMS,
@@ -58,7 +58,6 @@ export * from "./components/composites";
 export * from "./components/composites/page-panel";
 export * from "./components/pages/vector-browser-utils";
 export * from "./components/primitives";
-export * from "./config";
 export type {
   ActionConfirm,
   ActionDefinition,
@@ -116,6 +115,7 @@ export type {
   ValidationFunction,
   VisibilityOperator,
 } from "./config";
+export * from "./config";
 export {
   appNameInterpolationVars,
   buildPluginConfigUiSpec,
@@ -151,7 +151,6 @@ export {
 } from "./config";
 export * from "./content-packs";
 export * from "./desktop-runtime";
-export * from "./events";
 export type {
   AppDocumentEventName,
   AppEmoteEventDetail,
@@ -164,6 +163,7 @@ export type {
   ElizaWindowEventName,
   NetworkStatusChangeDetail,
 } from "./events";
+export * from "./events";
 export {
   AGENT_READY_EVENT,
   APP_EMOTE_EVENT,
@@ -197,7 +197,6 @@ export * from "./lib/floating-layers";
 export * from "./lib/utils";
 export * from "./navigation";
 export * from "./onboarding/mobile-runtime-mode";
-export * from "./onboarding/deep-link-handler";
 export * from "./onboarding/pre-seed-local-runtime";
 export * from "./onboarding-config";
 export * from "./platform";
@@ -212,7 +211,6 @@ export {
 } from "./state";
 export * from "./themes/apply-theme";
 export * from "./types";
-export * from "./utils";
 export type {
   BrowserTabKit,
   BrowserTabKitCursorPoint,
@@ -229,6 +227,7 @@ export type {
   RateLimiterOptions,
   StreamingUpdateResult,
 } from "./utils";
+export * from "./utils";
 export {
   BROWSER_TAB_PRELOAD_SCRIPT,
   clearElizaApiBase,

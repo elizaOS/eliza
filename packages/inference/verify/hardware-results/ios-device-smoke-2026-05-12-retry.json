@@ -1,7 +1,7 @@
 {
   "status": "failed",
-  "startedAt": "2026-05-12T02:20:22.429Z",
-  "finishedAt": "2026-05-12T02:20:26.457Z",
+  "startedAt": "2026-05-12T02:19:47.787Z",
+  "finishedAt": "2026-05-12T02:19:50.946Z",
   "device": null,
   "xcframework": null,
   "skippedVoiceAbi": false,
@@ -16,11 +16,11 @@
   "xcodebuild": null,
   "blocker": {
     "category": "no-connected-physical-device",
-    "detail": "[ios-smoke] no connected physical iOS device found. Connect, unlock, trust the iPhone/iPad, enable Developer Mode, then rerun.\nOffline physical iOS devices seen:\n  - Shaw’s iPhone (26.3.1) 00008130-001955E91EF8001C\n  - Shaw’s iPhone (unknown) C9130C48-48F1-5DC3-98E9-8BACE231D047"
+    "detail": "[ios-smoke] requested physical iOS device is not connected: 00008130-001955E91EF8001C\nRequested device is present but offline: Shaw’s iPhone (26.3.1) 00008130-001955E91EF8001C"
   },
   "resultBundlePath": null,
   "derivedDataPath": null,
-  "error": "[ios-smoke] no connected physical iOS device found. Connect, unlock, trust the iPhone/iPad, enable Developer Mode, then rerun.\nOffline physical iOS devices seen:\n  - Shaw’s iPhone (26.3.1) 00008130-001955E91EF8001C\n  - Shaw’s iPhone (unknown) C9130C48-48F1-5DC3-98E9-8BACE231D047",
+  "error": "[ios-smoke] requested physical iOS device is not connected: 00008130-001955E91EF8001C\nRequested device is present but offline: Shaw’s iPhone (26.3.1) 00008130-001955E91EF8001C",
   "connectedPhysicalDevices": [],
   "offlinePhysicalDevices": [
     {

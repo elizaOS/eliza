@@ -465,7 +465,9 @@ export function DatabaseView({
                 variant="surface"
                 className="mt-4 min-h-[18rem] rounded-3xl px-5 py-10"
                 title={t("databaseview.DatabaseNotAvailab")}
-                description={statusLoadError || t("databaseview.TheDatabaseViewer")}
+                description={
+                  statusLoadError || t("databaseview.TheDatabaseViewer")
+                }
               />
             </div>
           ) : view === "tables" ? (

@@ -21,11 +21,12 @@
 
 import type { MutableRefObject } from "react";
 import { useEffect } from "react";
-import { client, type ConversationMessage } from "../api";
+import { type ConversationMessage, client } from "../api";
 import { APP_PAUSE_EVENT, APP_RESUME_EVENT } from "../events";
 
 /** Storage key for the last-known active conversation id. */
-export const ACTIVE_CONVERSATION_STORAGE_KEY = "eliza:chat:activeConversationId";
+export const ACTIVE_CONVERSATION_STORAGE_KEY =
+  "eliza:chat:activeConversationId";
 
 interface UseAppLifecycleEventsParams {
   activeConversationIdRef: MutableRefObject<string | null>;
@@ -132,7 +133,9 @@ export function useAppLifecycleEvents({
       if (last && last.role === "assistant" && last.text === "") {
         setConversationMessages((prev) =>
           prev.map((message) =>
-            message.id === last.id ? { ...message, interrupted: true } : message,
+            message.id === last.id
+              ? { ...message, interrupted: true }
+              : message,
           ),
         );
       }
