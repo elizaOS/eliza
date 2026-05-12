@@ -114,6 +114,92 @@ export interface DesktopRuntimeModeInfo {
   externalApiSource?: string | null;
 }
 
+export type DesktopCarrotPermissionTag =
+  | `host:${"windows" | "tray" | "notifications" | "storage"}`
+  | `bun:${"read" | "write" | "env" | "run" | "ffi" | "addons" | "worker"}`
+  | `isolation:${"shared-worker" | "isolated-process"}`;
+
+export interface DesktopCarrotPermissionGrant {
+  host?: Partial<
+    Record<"windows" | "tray" | "notifications" | "storage", boolean>
+  >;
+  bun?: Partial<
+    Record<
+      "read" | "write" | "env" | "run" | "ffi" | "addons" | "worker",
+      boolean
+    >
+  >;
+  isolation?: "shared-worker" | "isolated-process";
+}
+
+export interface DesktopCarrotViewInfo {
+  relativePath: string;
+  hidden?: boolean;
+  title: string;
+  width: number;
+  height: number;
+  titleBarStyle?: "hidden" | "hiddenInset" | "default";
+  transparent?: boolean;
+  viewUrl: string;
+}
+
+export interface DesktopCarrotListEntry {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  mode: "window" | "background";
+  permissions: DesktopCarrotPermissionTag[];
+  status: "installed" | "broken";
+  devMode: boolean;
+}
+
+export interface DesktopInstalledCarrotSnapshot {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  mode: "window" | "background";
+  status: "installed" | "broken";
+  sourceKind: "prototype" | "local" | "artifact";
+  currentHash: string | null;
+  installedAt: number;
+  updatedAt: number;
+  lastBuildAt: number | null;
+  lastBuildError: string | null;
+  requestedPermissions: DesktopCarrotPermissionGrant;
+  grantedPermissions: DesktopCarrotPermissionGrant;
+  view: DesktopCarrotViewInfo;
+  worker: { relativePath: string };
+  remoteUIs?: Record<string, { name: string; path: string }>;
+}
+
+export interface DesktopCarrotStoreSnapshot {
+  version: 1;
+  carrots: DesktopInstalledCarrotSnapshot[];
+}
+
+export type DesktopCarrotWorkerState =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "error";
+
+export interface DesktopCarrotWorkerStatus {
+  id: string;
+  state: DesktopCarrotWorkerState;
+  startedAt: number | null;
+  stoppedAt: number | null;
+  error: string | null;
+}
+
+export interface DesktopCarrotLogsSnapshot {
+  id: string;
+  path: string;
+  text: string;
+  truncated: boolean;
+}
+
 export interface WorkspaceFolderPickResult {
   canceled: boolean;
   path: string;
@@ -198,6 +284,122 @@ export async function getDesktopRuntimeMode(): Promise<DesktopRuntimeModeInfo | 
   return invokeDesktopBridgeRequest<DesktopRuntimeModeInfo>({
     rpcMethod: "desktopGetRuntimeMode",
     ipcChannel: "desktop:getRuntimeMode",
+  });
+}
+
+export async function getDesktopCarrotStoreRoot(): Promise<string | null> {
+  const result = await invokeDesktopBridgeRequest<{ storeRoot: string }>({
+    rpcMethod: "carrotGetStoreRoot",
+    ipcChannel: "carrot:getStoreRoot",
+  });
+  return result?.storeRoot ?? null;
+}
+
+export async function listDesktopCarrots(): Promise<
+  DesktopCarrotListEntry[] | null
+> {
+  const result = await invokeDesktopBridgeRequest<{
+    carrots: DesktopCarrotListEntry[];
+  }>({
+    rpcMethod: "carrotList",
+    ipcChannel: "carrot:list",
+  });
+  return result?.carrots ?? null;
+}
+
+export async function getDesktopCarrotStoreSnapshot(): Promise<DesktopCarrotStoreSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopCarrotStoreSnapshot>({
+    rpcMethod: "carrotGetStoreSnapshot",
+    ipcChannel: "carrot:getStoreSnapshot",
+  });
+}
+
+export async function getDesktopCarrot(
+  id: string,
+): Promise<DesktopInstalledCarrotSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopInstalledCarrotSnapshot>({
+    rpcMethod: "carrotGet",
+    ipcChannel: "carrot:get",
+    params: { id },
+  });
+}
+
+export async function installDesktopCarrotFromDirectory(options: {
+  sourceDir: string;
+  devMode?: boolean;
+  permissionsGranted?: DesktopCarrotPermissionGrant;
+}): Promise<DesktopInstalledCarrotSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopInstalledCarrotSnapshot>({
+    rpcMethod: "carrotInstallFromDirectory",
+    ipcChannel: "carrot:installFromDirectory",
+    params: options,
+  });
+}
+
+export async function uninstallDesktopCarrot(id: string): Promise<{
+  removed: boolean;
+  carrot: DesktopCarrotListEntry | null;
+} | null> {
+  return invokeDesktopBridgeRequest<{
+    removed: boolean;
+    carrot: DesktopCarrotListEntry | null;
+  }>({
+    rpcMethod: "carrotUninstall",
+    ipcChannel: "carrot:uninstall",
+    params: { id },
+  });
+}
+
+export async function startDesktopCarrotWorker(
+  id: string,
+): Promise<DesktopCarrotWorkerStatus | null> {
+  return invokeDesktopBridgeRequest<DesktopCarrotWorkerStatus>({
+    rpcMethod: "carrotStartWorker",
+    ipcChannel: "carrot:startWorker",
+    params: { id },
+  });
+}
+
+export async function stopDesktopCarrotWorker(
+  id: string,
+): Promise<DesktopCarrotWorkerStatus | null> {
+  return invokeDesktopBridgeRequest<DesktopCarrotWorkerStatus>({
+    rpcMethod: "carrotStopWorker",
+    ipcChannel: "carrot:stopWorker",
+    params: { id },
+  });
+}
+
+export async function getDesktopCarrotWorkerStatus(
+  id: string,
+): Promise<DesktopCarrotWorkerStatus | null> {
+  return invokeDesktopBridgeRequest<DesktopCarrotWorkerStatus>({
+    rpcMethod: "carrotGetWorkerStatus",
+    ipcChannel: "carrot:getWorkerStatus",
+    params: { id },
+  });
+}
+
+export async function listDesktopCarrotWorkerStatuses(): Promise<
+  DesktopCarrotWorkerStatus[] | null
+> {
+  const result = await invokeDesktopBridgeRequest<{
+    workers: DesktopCarrotWorkerStatus[];
+  }>({
+    rpcMethod: "carrotListWorkerStatuses",
+    ipcChannel: "carrot:listWorkerStatuses",
+  });
+  return result?.workers ?? null;
+}
+
+export async function getDesktopCarrotLogs(
+  id: string,
+  maxBytes?: number,
+): Promise<DesktopCarrotLogsSnapshot | null> {
+  return invokeDesktopBridgeRequest<DesktopCarrotLogsSnapshot>({
+    rpcMethod: "carrotGetLogs",
+    ipcChannel: "carrot:getLogs",
+    params: { id, ...(maxBytes === undefined ? {} : { maxBytes }) },
   });
 }
 

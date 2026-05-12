@@ -52,8 +52,7 @@ export const readOnboardingStatusViaHttp: AgentJsonReader<
 	}>(port, "/api/onboarding/status");
 	if (!raw) return null;
 	const complete = raw.complete === true;
-	const cloudProvisioned =
-		raw.cloudProvisioned === true ? true : undefined;
+	const cloudProvisioned = raw.cloudProvisioned === true ? true : undefined;
 	return cloudProvisioned ? { complete, cloudProvisioned } : { complete };
 };
 
@@ -112,8 +111,7 @@ export const readOnboardingOptionsViaHttp: AgentJsonReader<
 		inventoryProviders: coerceOptionList(raw.inventoryProviders),
 		sharedStyleRules:
 			typeof raw.sharedStyleRules === "string" ? raw.sharedStyleRules : "",
-		githubOAuthAvailable:
-			raw.githubOAuthAvailable === true ? true : undefined,
+		githubOAuthAvailable: raw.githubOAuthAvailable === true ? true : undefined,
 	};
 };
 

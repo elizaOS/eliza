@@ -21,7 +21,9 @@ export type AgentHealthSnapshot = Pick<
 	"phase" | "lastError" | "pluginsLoaded" | "pluginsFailed" | "database"
 >;
 
-export type AgentHealthReader = (port: number) => Promise<AgentHealthSnapshot | null>;
+export type AgentHealthReader = (
+	port: number,
+) => Promise<AgentHealthSnapshot | null>;
 
 /** Default reader: in-process HTTP fetch against the agent child's /api/health. */
 export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (

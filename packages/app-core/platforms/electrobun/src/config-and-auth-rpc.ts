@@ -223,7 +223,7 @@ function readUnauthorizedBody(
 
 export const readAuthMeViaHttp: AuthMeReader = async (port) => {
 	const raw = await fetchJsonRaw(port, "/api/auth/me");
-	if (!raw || !raw.body || typeof raw.body !== "object") return null;
+	if (!raw?.body || typeof raw.body !== "object") return null;
 	const body = raw.body as Record<string, unknown>;
 
 	if (raw.status === 401) {

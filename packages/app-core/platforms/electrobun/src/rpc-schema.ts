@@ -13,6 +13,12 @@
  */
 
 import type {
+	CarrotListEntry,
+	CarrotPermissionGrant,
+	CarrotStoreSnapshot,
+	InstalledCarrotSnapshot,
+} from "@elizaos/electrobun-carrots";
+import type {
 	BrowserWorkspaceSnapshot,
 	BrowserWorkspaceTab,
 	NavigateBrowserWorkspaceTabRequest,
@@ -542,6 +548,22 @@ export type TradePermissionMode =
 	| "agent-auto"
 	| "disabled";
 
+export type SettingsConfigSnapshot = Record<string, unknown>;
+
+export interface AgentAutomationModeSnapshot {
+	mode: AgentAutomationMode;
+	options: AgentAutomationMode[];
+}
+
+export interface TradePermissionModeSnapshot {
+	mode: TradePermissionMode;
+	tradePermissionMode: TradePermissionMode;
+	options?: TradePermissionMode[];
+	ok?: boolean;
+	canUserLocalExecute?: boolean;
+	canAgentAutoTrade?: boolean;
+}
+
 export interface AgentSelfStatusSnapshot {
 	generatedAt: string;
 	state: AgentStatusState;
@@ -697,6 +719,34 @@ export interface CorePluginEntry {
 export interface CorePluginsSnapshot {
 	core: CorePluginEntry[];
 	optional: CorePluginEntry[];
+}
+
+export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
+
+export interface CarrotWorkerStatus {
+	id: string;
+	state: CarrotWorkerState;
+	startedAt: number | null;
+	stoppedAt: number | null;
+	error: string | null;
+}
+
+export interface CarrotInstallFromDirectoryRequest {
+	sourceDir: string;
+	devMode?: boolean;
+	permissionsGranted?: CarrotPermissionGrant;
+}
+
+export interface CarrotUninstallResult {
+	removed: boolean;
+	carrot: CarrotListEntry | null;
+}
+
+export interface CarrotLogsSnapshot {
+	id: string;
+	path: string;
+	text: string;
+	truncated: boolean;
 }
 
 export interface DesktopStartupDiagnostics {
@@ -958,6 +1008,50 @@ export type ElizaDesktopRPCSchema = {
 				params: undefined;
 				response: CorePluginsSnapshot;
 			};
+			carrotGetStoreRoot: {
+				params: undefined;
+				response: { storeRoot: string };
+			};
+			carrotList: {
+				params: undefined;
+				response: { carrots: CarrotListEntry[] };
+			};
+			carrotGetStoreSnapshot: {
+				params: undefined;
+				response: CarrotStoreSnapshot;
+			};
+			carrotGet: {
+				params: { id: string };
+				response: InstalledCarrotSnapshot | null;
+			};
+			carrotInstallFromDirectory: {
+				params: CarrotInstallFromDirectoryRequest;
+				response: InstalledCarrotSnapshot;
+			};
+			carrotUninstall: {
+				params: { id: string };
+				response: CarrotUninstallResult;
+			};
+			carrotStartWorker: {
+				params: { id: string };
+				response: CarrotWorkerStatus;
+			};
+			carrotStopWorker: {
+				params: { id: string };
+				response: CarrotWorkerStatus;
+			};
+			carrotGetWorkerStatus: {
+				params: { id: string };
+				response: CarrotWorkerStatus | null;
+			};
+			carrotListWorkerStatuses: {
+				params: undefined;
+				response: { workers: CarrotWorkerStatus[] };
+			};
+			carrotGetLogs: {
+				params: { id: string; maxBytes?: number };
+				response: CarrotLogsSnapshot;
+			};
 			/**
 			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the
 			 * `/api/health` plugin/db counters and the in-process runtime phase.
@@ -991,7 +1085,27 @@ export type ElizaDesktopRPCSchema = {
 			 * redacted in-memory config. Same data as `GET /api/config`.
 			 */
 			getConfig: { params: undefined; response: ConfigSnapshot };
+			updateConfig: {
+				params: SettingsConfigSnapshot;
+				response: SettingsConfigSnapshot;
+			};
 			getConfigSchema: { params: undefined; response: ConfigSchemaSnapshot };
+			getAgentAutomationMode: {
+				params: undefined;
+				response: AgentAutomationModeSnapshot;
+			};
+			setAgentAutomationMode: {
+				params: { mode: AgentAutomationMode };
+				response: AgentAutomationModeSnapshot;
+			};
+			getTradePermissionMode: {
+				params: undefined;
+				response: TradePermissionModeSnapshot;
+			};
+			setTradePermissionMode: {
+				params: { mode: TradePermissionMode };
+				response: TradePermissionModeSnapshot;
+			};
 			/**
 			 * Typed counterpart to `client.getAuthStatus()` — pairing/auth
 			 * gate state. Same data as `GET /api/auth/status`. The
@@ -1909,6 +2023,8 @@ export type ElizaDesktopRPCSchema = {
 			desktopManagedWindowsChanged: {
 				windows: DesktopManagedWindowSnapshot[];
 			};
+			carrotStoreChanged: { snapshot: CarrotStoreSnapshot };
+			carrotWorkerChanged: { status: CarrotWorkerStatus };
 
 			// Canvas: Window events
 			canvasWindowEvent: {
@@ -2028,6 +2144,13 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"agent:postReset": "agentPostReset",
 	"agent:postCloudDisconnect": "agentPostCloudDisconnect",
 	"agent:cloudDisconnectWithConfirm": "agentCloudDisconnectWithConfirm",
+	"agent:getConfig": "getConfig",
+	"agent:updateConfig": "updateConfig",
+	"agent:getConfigSchema": "getConfigSchema",
+	"agent:getAgentAutomationMode": "getAgentAutomationMode",
+	"agent:setAgentAutomationMode": "setAgentAutomationMode",
+	"agent:getTradePermissionMode": "getTradePermissionMode",
+	"agent:setTradePermissionMode": "setTradePermissionMode",
 
 	// Desktop: Tray
 	"desktop:createTray": "desktopCreateTray",
@@ -2107,6 +2230,19 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
 	"desktop:openAppWindow": "desktopOpenAppWindow",
 	"desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
+
+	// Carrots
+	"carrot:getStoreRoot": "carrotGetStoreRoot",
+	"carrot:list": "carrotList",
+	"carrot:getStoreSnapshot": "carrotGetStoreSnapshot",
+	"carrot:get": "carrotGet",
+	"carrot:installFromDirectory": "carrotInstallFromDirectory",
+	"carrot:uninstall": "carrotUninstall",
+	"carrot:startWorker": "carrotStartWorker",
+	"carrot:stopWorker": "carrotStopWorker",
+	"carrot:getWorkerStatus": "carrotGetWorkerStatus",
+	"carrot:listWorkerStatuses": "carrotListWorkerStatuses",
+	"carrot:getLogs": "carrotGetLogs",
 
 	// Browser Workspace
 	"browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
@@ -2308,6 +2444,8 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
 	"desktop:windowClose": "desktopWindowClose",
 	"desktop:shutdownStarted": "desktopShutdownStarted",
 	"desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
+	"carrot:storeChanged": "carrotStoreChanged",
+	"carrot:workerChanged": "carrotWorkerChanged",
 	"canvas:windowEvent": "canvasWindowEvent",
 	"talkmode:audioChunkPush": "talkmodeAudioChunkPush",
 	"talkmode:stateChanged": "talkmodeStateChanged",
