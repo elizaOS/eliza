@@ -320,6 +320,17 @@ def main() -> int:
     ap.set_defaults(publish=False)
     ap.add_argument("--bundle-dir", default=None,
                     help="Assembled bundle dir for --publish.")
+    ap.add_argument(
+        "--release-channel", choices=("recommended", "base-v1"), default=None,
+        help="Channel passed to the publish orchestrator at stage 7. Default: "
+             "auto — `recommended` if the held-out text-quality gate is green "
+             "and the run produced a fine-tuned bundle, else `base-v1`.",
+    )
+    ap.add_argument(
+        "--metal-verification", default=None,
+        help="Path to a metal_verify.json recorded on a verified Metal host; "
+             "passed to the publish orchestrator at stage 7.",
+    )
     ap.add_argument("--bench-per-bucket", type=int, default=200)
     ap.add_argument("--skip-base-bench", action="store_true")
     ap.add_argument("--skip-finetune", action="store_true")
@@ -760,15 +771,44 @@ def main() -> int:
                      tp["ggufs"][0]["backend"] if tp["ggufs"] else "?")
 
     # ───────────── stage 7: publish ───────────────────────────────────
+    # Auto-publish hook: when this is a --publish run and the eval gate cleared
+    # (checked at stage 4b above — a red/un-computable gate already aborted),
+    # hand the assembled bundle to scripts.publish.orchestrator. The orchestrator
+    # re-checks the §3/§6/§7 contract (layout → release evidence → kernel verify →
+    # eval gates → manifest → README → HF push) and refuses-on-red; it never
+    # bypasses a gate. The channel defaults to `recommended` when the held-out
+    # text-quality gate is green (a fine-tune that beat baseline) and to
+    # `base-v1` otherwise (upstream-base, kernel-optimized, not a recommended
+    # default). HF_TOKEN is read from the environment by the orchestrator.
     if args.publish:
-        rc = run([
+        channel = args.release_channel
+        if channel is None:
+            text_quality_green = any(
+                g.get("name") in ("held_out_text_quality", "text_quality",
+                                  "eliza_bench", "held_out_quality")
+                and g.get("passed") is True
+                for g in (gate_blob.get("gates") or [])
+            )
+            channel = "recommended" if text_quality_green else "base-v1"
+        cmd = [
             "uv", "run", "python", "-m", "scripts.publish.orchestrator",
             "--tier", tier_id,
             "--bundle-dir", str(args.bundle_dir),
-        ], cwd=ROOT)
-        summary["stages"]["publish"] = {"exit": rc}
-        if rc != 0:
-            log.error("publish orchestrator failed (exit=%d)", rc)
+        ]
+        if channel == "base-v1":
+            cmd.append("--base-v1")
+        if args.metal_verification:
+            cmd += ["--metal-verification", str(args.metal_verification)]
+        log.info("stage 7: publish channel=%s", channel)
+        rc = run(cmd, cwd=ROOT)
+        summary["stages"]["publish"] = {"exit": rc, "channel": channel}
+        repo_id = getattr(entry, "eliza_repo_id", None) or f"elizaos/eliza-1-{tier_id}"
+        if rc == 0:
+            log.info("published: https://huggingface.co/%s (channel=%s)", repo_id, channel)
+        else:
+            log.error("publish orchestrator failed (exit=%d) — blocked on a gate; "
+                      "see the [stage N/7] lines above for which one", rc)
+            log.error("blocked: %s (exit=%d, channel=%s)", repo_id, rc, channel)
 
     summary["finished"] = time.time()
     summary["elapsed_s"] = summary["finished"] - summary["started"]
