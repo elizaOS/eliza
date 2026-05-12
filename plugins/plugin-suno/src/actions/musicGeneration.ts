@@ -1,10 +1,4 @@
-import type {
-    ActionResult,
-    HandlerCallback,
-    IAgentRuntime,
-    Memory,
-    State,
-} from '@elizaos/core';
+import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { SunoProvider } from '../providers/suno';
 
 export type SunoMusicSubaction = 'generate' | 'custom_generate' | 'extend';
@@ -130,7 +124,7 @@ export const sunoGenerateMusicHandler = async (
         const text = `Music generation unavailable: ${
             error instanceof Error ? error.message : String(error)
         }`;
-        await callback?.({ text, error });
+        await callback?.({ text, error: text });
         return { success: false, text, error: text };
     }
 

@@ -12,21 +12,26 @@ import {
 	AgentNotReadyError,
 	type AuthMeReader,
 	type AuthStatusReader,
+	type ConfigReader,
+	type ConfigSchemaReader,
 	composeAuthMeSnapshot,
 	composeAuthStatusSnapshot,
+	composeConfigSchemaSnapshot,
 	composeConfigSnapshot,
-	type ConfigReader,
 	readAuthMeViaHttp,
 	readAuthStatusViaHttp,
+	readConfigSchemaViaHttp,
 	readConfigViaHttp,
 } from "./config-and-auth-rpc";
 import type {
 	AuthMeSnapshot,
 	AuthStatusSnapshot,
+	ConfigSchemaSnapshot,
 	ConfigSnapshot,
 } from "./rpc-schema";
 
 const noConfigReader: ConfigReader = async () => null;
+const noConfigSchemaReader: ConfigSchemaReader = async () => null;
 const noStatusReader: AuthStatusReader = async () => null;
 const noMeReader: AuthMeReader = async () => null;
 
@@ -80,6 +85,56 @@ describe("getConfig typed RPC", () => {
 	it("readConfigViaHttp returns null on 500", async () => {
 		installFetch(() => new Response("server error", { status: 500 }));
 		expect(await readConfigViaHttp(31337)).toBeNull();
+	});
+});
+
+describe("getConfigSchema typed RPC", () => {
+	it("throws AgentNotReadyError when port is null", async () => {
+		await expect(
+			composeConfigSchemaSnapshot(null, noConfigSchemaReader),
+		).rejects.toBeInstanceOf(AgentNotReadyError);
+	});
+
+	it("forwards a valid config schema response", async () => {
+		const reader: ConfigSchemaReader = async () => ({
+			schema: { type: "object" },
+			uiHints: { theme: { label: "Theme" } },
+			version: "1",
+			generatedAt: "2026-05-12T00:00:00.000Z",
+		});
+		const snap = await composeConfigSchemaSnapshot(31337, reader);
+		const _typed: ConfigSchemaSnapshot = snap;
+		void _typed;
+		expect(snap.schema).toEqual({ type: "object" });
+		expect(snap.uiHints).toEqual({ theme: { label: "Theme" } });
+	});
+
+	it("readConfigSchemaViaHttp returns null when required fields are missing", async () => {
+		installFetch(() =>
+			Response.json({
+				schema: { type: "object" },
+				uiHints: {},
+				version: "1",
+			}),
+		);
+		expect(await readConfigSchemaViaHttp(31337)).toBeNull();
+	});
+
+	it("readConfigSchemaViaHttp captures the schema envelope", async () => {
+		installFetch(() =>
+			Response.json({
+				schema: { type: "object" },
+				uiHints: { cloud: { label: "Cloud" } },
+				version: "1",
+				generatedAt: "2026-05-12T00:00:00.000Z",
+			}),
+		);
+		expect(await readConfigSchemaViaHttp(31337)).toEqual({
+			schema: { type: "object" },
+			uiHints: { cloud: { label: "Cloud" } },
+			version: "1",
+			generatedAt: "2026-05-12T00:00:00.000Z",
+		});
 	});
 });
 
@@ -150,9 +205,7 @@ describe("getAuthMe typed RPC", () => {
 		if (!result) return;
 		const _typed: AuthMeSnapshot = result;
 		void _typed;
-		expect(result.unauthorized?.reason).toBe(
-			"remote_password_not_configured",
-		);
+		expect(result.unauthorized?.reason).toBe("remote_password_not_configured");
 		expect(result.unauthorized?.access.mode).toBe("remote");
 		expect(result.identity).toBeUndefined();
 	});
@@ -185,9 +238,9 @@ describe("getAuthMe typed RPC", () => {
 	it("returns null on non-401 non-2xx — composer then throws AgentNotReadyError", async () => {
 		installFetch(() => new Response("server error", { status: 500 }));
 		const reader: AuthMeReader = async (port) => readAuthMeViaHttp(port);
-		await expect(
-			composeAuthMeSnapshot(31337, reader),
-		).rejects.toBeInstanceOf(AgentNotReadyError);
+		await expect(composeAuthMeSnapshot(31337, reader)).rejects.toBeInstanceOf(
+			AgentNotReadyError,
+		);
 	});
 
 	it("AgentNotReadyError carries the method name", async () => {

@@ -74,6 +74,7 @@
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
+      "@elizaos/workflows": ["../workflows/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],

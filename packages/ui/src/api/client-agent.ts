@@ -1445,6 +1445,15 @@ ElizaClient.prototype.getConfig = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.getConfigSchema = async function (this: ElizaClient) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<ConfigSchemaResponse>({
+      rpcMethod: "getConfigSchema",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch("/api/config/schema");
 };
 
