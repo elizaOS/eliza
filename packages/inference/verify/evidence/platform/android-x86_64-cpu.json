@@ -1,0 +1,150 @@
+{
+  "schemaVersion": 1,
+  "backend": "cpu",
+  "platform": "android",
+  "arch": "x86_64",
+  "target": "android-x86_64-cpu",
+  "status": "pass",
+  "runtimeReady": true,
+  "passRecordable": true,
+  "exitCode": 0,
+  "runner": "manual: cross-compile gen_fixture (NDK x86_64-linux-android24-clang) -> adb push -> adb shell ./gen_fixture --self-test; full vulkan_verify fixture suite cross-compiled and run for SwiftShader diagnostic (software ICD, NOT recordable hardware evidence per fail-closed rule)",
+  "evidenceDate": "2026-05-12",
+  "atCommit": "0ae9ff6983bdfbd45369c4aacb88d2ef9bf13d56",
+  "forkCommit": "03fc58ef9af8b7c77d04724b3caf0736b2f46408",
+  "forkCommitFromCapabilities": "536ff214dbe3b67bd87e26a9dd568907c6a872dd",
+  "sourceOfTruth": "Runtime-ready for the CPU backend means the in-tree C reference path (the same arithmetic the fork CPU ops dispatch to) executes correctly on a real Android x86_64 ELF when run on a Cuttlefish (cvd) virtual device under KVM. gen_fixture --self-test exercises turbo3 + turbo4 + turbo3_tcq + qjl + polar + polar+QJL-residual + tbq3_0/tbq4_0 V-cache round-trip + fused-attn QJL-K -> softmax -> V-mix parity at fp32 precision. Scores match the host-built reference bit-for-bit (-2.501480 / -23.721790 / -4.822659 / 3.696591 / -1.994053 / -1.438744). The fork-built llama-server cross-binary loads on the cvd and exposes the full Eliza-1 KV-cache-type whitelist (tbq3_0, tbq4_0, qjl1_256, q4_polar, tbq3_tcq).",
+  "host": {
+    "kind": "cuttlefish",
+    "kernel": "Linux localhost 6.12.38-android16-5-g501f58f107ab-ab13974591 #1 SMP PREEMPT Thu Aug 21 21:28:12 UTC 2025 x86_64 Toybox",
+    "abi": "x86_64",
+    "buildFingerprint": "generic/milady_cf_x86_64_phone/vsoc_x86_64_only:Baklava/BP4A.251205.006/eng.shaw:userdebug/test-keys",
+    "sdkVersion": "36",
+    "cpu": "Intel(R) Core(TM) Ultra 9 275HX (passthrough; AVX/AVX2/FMA/F16C/AVX-VNNI/VAES/GFNI/PCLMUL flags visible)",
+    "cvd": "1.53.0 (VCS ac10ece828fc57cb378c91d744727d0b4543b3a3)",
+    "adbDevice": "0.0.0.0:6520",
+    "hypervisor": "KVM (host: Ubuntu 24.04, kernel 6.17, /dev/kvm crw-rw---- root kvm; run user in kvm + cvdnetwork groups)"
+  },
+  "requirements": {
+    "ndk": "android-ndk r29.0.13113456 (linux-x86_64 host)",
+    "compiler": "Android Clang 20.0.0 (b718bcaf8c198c82f3021447d943401e3ab5bd54), target x86_64-unknown-linux-android24",
+    "buildScript": "packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-x86_64-cpu (NDK + cmake; -DANDROID_ABI=x86_64; AVX/AVX2/FMA/F16C forced)",
+    "verifyHarness": "packages/inference/verify/gen_fixture.c + verify/qjl_polar_ref.c + reference/turbo_kernels.c cross-compiled with the NDK clang as a static x86_64-linux-android24 ELF; pushed to /data/local/tmp/eliza-x86_64-verify and run via adb shell"
+  },
+  "target_artifact": {
+    "installDir": "~/.eliza/local-inference/bin/dflash/android-x86_64-cpu/",
+    "files": [
+      { "path": "llama-server", "size": 89675920, "sha256": "e0bb4b2859b6f7c0ef2d7f289cc4be5e3aa59d4781ea14c5971e7d7267994843" },
+      { "path": "llama-bench", "size": 5698600, "sha256": "3eb718c8433abff6c05c9b625dc863caf86f5e6cd20989a8ee118b6be448766c" },
+      { "path": "llama-completion", "size": 64772136, "sha256": "beb3b78085c263bbd402c73a9229a5a51d43b2112338397ac35b810378779cc7" },
+      { "path": "libllama.so", "size": 33737528, "sha256": "ec8046b3b6ecfa11b5ea16d513403d5d7e88d23d473ef9ca789816243ef7f26c" },
+      { "path": "libggml.so", "size": 1709464, "sha256": "a889dced9922c504b5a04b5b8d613c2d9c767ab11d7044341d420df8409354ee" },
+      { "path": "libggml-base.so", "size": 6616072, "sha256": "c83a9f607ea0e1a5cad2e1a694433880c54ac2ced9d29d67af7ffd35ac7d2805" },
+      { "path": "libggml-cpu.so", "size": 5722656, "sha256": "155230ef35233ecdab6cd2d22a3339c1283d6fcb0ab4a59adac3d269449921d0" }
+    ],
+    "deviceCheck": "LD_LIBRARY_PATH=. ./llama-server --help loads on cvd-1 and prints the full Eliza-1 KV-cache-type whitelist (tbq3_0, tbq4_0, qjl1_256, q4_polar, tbq3_tcq) and the fork version banner 'version: 4 (536ff214) built with Clang 20.0.0 for Android x86_64'.",
+    "loaderRequirement": "libomp.so from the NDK clang runtime ($NDK/toolchains/llvm/prebuilt/linux-x86_64/lib/clang/20/lib/linux/x86_64/libomp.so) must be co-located with libggml-cpu.so; tracked in install-dir alongside the other sidecars. This is the same dependency as on the host build."
+  },
+  "verify_harness": {
+    "sha256": "d060e1b04fd5a5e7626789cd621b339d0fb9d7ae38936837416dc1ed2550bc3d",
+    "kind": "gen_fixture (C reference parity, --self-test mode)",
+    "remotePath": "/data/local/tmp/eliza-x86_64-verify/gen_fixture_android_x86_64",
+    "exitCode": 0,
+    "output": "[self-test] turbo3=-2.501480 turbo4=-23.721790 turbo3_tcq=-4.822659 qjl=3.696591 polar=-1.994053 polar_qjl=-1.438744 (all finite; fused-attn + tbq V-cache parity OK)"
+  },
+  "host_baseline": {
+    "command": "make -C packages/inference/verify reference-test",
+    "exitCode": 0,
+    "output": "[self-test] turbo3=-2.501480 turbo4=-23.721790 turbo3_tcq=-4.822659 qjl=3.696591 polar=-1.994053 polar_qjl=-1.438744 (all finite; fused-attn + tbq V-cache parity OK)",
+    "parity": "bit-identical with cvd output (same scores, same kernel order)"
+  },
+  "kernels": {
+    "turbo3": {
+      "runtimeCapabilityKey": "turbo3",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "(KV cache type GGML_TYPE_TBQ3_0; consumed via attention path) — C reference parity verified",
+      "scoreFromCvd": -2.501480,
+      "scoreFromHost": -2.501480,
+      "maxDiff": 0.0,
+      "evidenceDate": "2026-05-12"
+    },
+    "turbo4": {
+      "runtimeCapabilityKey": "turbo4",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "(KV cache type GGML_TYPE_TBQ4_0; consumed via attention path) — C reference parity verified",
+      "scoreFromCvd": -23.721790,
+      "scoreFromHost": -23.721790,
+      "maxDiff": 0.0,
+      "evidenceDate": "2026-05-12"
+    },
+    "turbo3_tcq": {
+      "runtimeCapabilityKey": "turbo3_tcq",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "(KV cache type GGML_TYPE_TBQ3_TCQ; long-context only; consumed via attention path) — C reference parity verified",
+      "scoreFromCvd": -4.822659,
+      "scoreFromHost": -4.822659,
+      "maxDiff": 0.0,
+      "evidenceDate": "2026-05-12"
+    },
+    "qjl": {
+      "runtimeCapabilityKey": "qjl_full",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_QJL — C reference parity verified",
+      "scoreFromCvd": 3.696591,
+      "scoreFromHost": 3.696591,
+      "maxDiff": 0.0,
+      "evidenceDate": "2026-05-12"
+    },
+    "polar": {
+      "runtimeCapabilityKey": "polarquant",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_POLAR (use_qjl=0) — C reference parity verified",
+      "scoreFromCvd": -1.994053,
+      "scoreFromHost": -1.994053,
+      "maxDiff": 0.0,
+      "evidenceDate": "2026-05-12"
+    },
+    "polar_qjl": {
+      "runtimeCapabilityKey": "polarquant",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_POLAR (use_qjl=1, QJL residual) — C reference parity verified",
+      "scoreFromCvd": -1.438744,
+      "scoreFromHost": -1.438744,
+      "maxDiff": 0.0,
+      "evidenceDate": "2026-05-12"
+    },
+    "fused_attn": {
+      "runtimeCapabilityKey": "fused_attn",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_FUSED_ATTN_QJL_TBQ — fused-attn + tbq V-cache parity OK (gen_fixture --self-test final assertion)",
+      "evidenceDate": "2026-05-12"
+    },
+    "dflash": {
+      "runtimeCapabilityKey": "dflash",
+      "status": "needs-runtime-smoke",
+      "runtimeReady": false,
+      "note": "DFlash speculative decode is a server-side execution mode (not a kernel correctness check). The fork llama-server + llama-speculative-simple cross-binaries are present on the cvd ELF; a runtime smoke against a staged Eliza-1 GGUF (in-app or pushed via adb) is the unblocking step. Not part of the kernel-contract C reference."
+    }
+  },
+  "graphRoutes": [
+    { "label": "GGML_OP_ATTN_SCORE_QJL", "runtimeReady": true, "status": "runtime-ready", "maxDiff": 0.0, "via": "C reference + KV cache-type whitelist on Android x86_64 fork binary" },
+    { "label": "GGML_OP_ATTN_SCORE_TBQ/turbo3", "runtimeReady": true, "status": "runtime-ready", "maxDiff": 0.0, "via": "C reference + KV cache-type whitelist on Android x86_64 fork binary" },
+    { "label": "GGML_OP_ATTN_SCORE_TBQ/turbo4", "runtimeReady": true, "status": "runtime-ready", "maxDiff": 0.0, "via": "C reference + KV cache-type whitelist on Android x86_64 fork binary" },
+    { "label": "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq", "runtimeReady": true, "status": "runtime-ready", "maxDiff": 0.0, "via": "C reference + KV cache-type whitelist on Android x86_64 fork binary" },
+    { "label": "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0", "runtimeReady": true, "status": "runtime-ready", "maxDiff": 0.0, "via": "C reference + KV cache-type whitelist on Android x86_64 fork binary" },
+    { "label": "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1", "runtimeReady": true, "status": "runtime-ready", "maxDiff": 0.0, "via": "C reference + KV cache-type whitelist on Android x86_64 fork binary" },
+    { "label": "GGML_OP_FUSED_ATTN_QJL_TBQ", "runtimeReady": true, "status": "runtime-ready", "maxDiff": 0.0, "via": "C reference (fused-attn parity assertion in gen_fixture --self-test)" }
+  ],
+  "caveats": [
+    "Real, finite, deterministic CPU reference scores — bit-identical to the host build — proven on a Cuttlefish (cvd) virtual device running an x86_64 Android image under KVM. cvd CPU is host CPU passthrough (Intel Core Ultra 9 275HX with AVX2 + AVX-VNNI), so this is the right ABI and the right SIMD baseline for ChromeOS x86_64 + Android-emulator + Cuttlefish CI use-cases.",
+    "This evidence covers C reference parity (kernel-contract.json kernels.*.runtimeStatus.cpu for turbo3/turbo4/turbo3_tcq/qjl/polar) on the Android x86_64 ABI; it does NOT cover a full DFlash spec-decode end-to-end smoke against a staged Eliza-1 GGUF. The next gate (chat-completion against a staged model in the privileged APK) is documented in PLATFORM_MATRIX.md and remains 'needs-hardware' until aosp/build-aosp.mjs --launch stages a model.",
+    "android-x86_64-vulkan on cvd is SwiftShader (LLVM 16.0.0; vendor 0x1ae0 = Google software rasterizer). All 8 vulkan_verify cases (turbo3, turbo4, turbo3_tcq, qjl, polar x2, polar_preht x2) PASS on the cvd SwiftShader path with max diff < 1e-5 — recorded as DIAGNOSTIC-ONLY, NOT runtime-ready, per the kernel-contract fail-closed software-ICD rule. Real Android x86_64 Vulkan graph dispatch needs a ChromeOS x86_64 GPU silicon (Adreno/Mali under ARCVM) or a passed-through host GPU via crosvm gfxstream — not exercised here."
+  ]
+}
