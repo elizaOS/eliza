@@ -3,7 +3,7 @@ import type {
   ModelOption,
   SubscriptionProviderStatus,
 } from "@elizaos/shared";
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
 import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react";
 import type { PluginParamDef } from "../../api";

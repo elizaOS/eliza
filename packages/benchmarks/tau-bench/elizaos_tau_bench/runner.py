@@ -5,6 +5,7 @@ Benchmark runner for Tau-bench.
 import asyncio
 import json
 import logging
+import os
 import time
 import tracemalloc
 from dataclasses import asdict
@@ -99,10 +100,13 @@ class TauBenchRunner:
         self._trajectory: TauBenchTrajectoryIntegration | None = None
 
         if self._bridge_mode:
-            logger.info("[TauBenchRunner] Running with Eliza TypeScript bridge")
+            logger.info(
+                "[TauBenchRunner] Running with %s harness",
+                self._selected_harness(),
+            )
             if config.enable_trajectory_logging:
                 logger.warning(
-                    "[TauBenchRunner] Local Python trajectory logging is not available in bridge mode; "
+                    "[TauBenchRunner] Local Python trajectory logging is not available in real-agent mode; "
                     "continuing without trajectory export"
                 )
         elif config.enable_trajectory_logging:
@@ -126,6 +130,48 @@ class TauBenchRunner:
             self._bridge_manager = ElizaServerManager()
             self._bridge_manager.start()
         return self._bridge_manager
+
+    def _selected_harness(self) -> str:
+        harness = (
+            os.environ.get("BENCHMARK_HARNESS")
+            or os.environ.get("ELIZA_BENCH_HARNESS")
+            or "eliza"
+        ).strip().lower()
+        if harness in {"eliza", "hermes", "openclaw"}:
+            return harness
+        return "eliza"
+
+    def _create_agent(self, executor: ToolExecutor) -> TauAgentType:
+        if self.config.use_mock:
+            return MockTauAgent(
+                executor=executor,
+                max_turns=self.config.max_turns_per_task,
+            )
+
+        harness = self._selected_harness()
+        if harness == "hermes":
+            from hermes_adapter.tau_bench import HermesTauAgent
+
+            return HermesTauAgent(
+                executor=executor,
+                max_turns=self.config.max_turns_per_task,
+            )
+        if harness == "openclaw":
+            from openclaw_adapter.tau_bench import OpenClawTauAgent
+
+            return OpenClawTauAgent(
+                executor=executor,
+                max_turns=self.config.max_turns_per_task,
+            )
+
+        from eliza_adapter.tau_bench import ElizaTauAgent
+
+        bridge_manager = self._ensure_bridge_manager()
+        return ElizaTauAgent(
+            executor=executor,
+            max_turns=self.config.max_turns_per_task,
+            client=bridge_manager.client,
+        )
 
     async def run_benchmark(self) -> TauBenchReport:
         """Run the complete Tau-bench evaluation."""
@@ -224,21 +270,7 @@ class TauBenchRunner:
             if not task.policy_constraints:
                 task.policy_constraints = environment.get_policy_constraints()
 
-            # Create agent: mock locally, or route through the eliza TS bridge.
-            if self.config.use_mock:
-                agent = MockTauAgent(
-                    executor=executor,
-                    max_turns=self.config.max_turns_per_task,
-                )
-            else:
-                from eliza_adapter.tau_bench import ElizaTauAgent
-
-                bridge_manager = self._ensure_bridge_manager()
-                agent = ElizaTauAgent(
-                    executor=executor,
-                    max_turns=self.config.max_turns_per_task,
-                    client=bridge_manager.client,
-                )
+            agent = self._create_agent(executor)
 
             # Initialize agent (connects to LLM if not mock)
             await agent.initialize()

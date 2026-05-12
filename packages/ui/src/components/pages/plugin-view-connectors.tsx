@@ -1,14 +1,8 @@
-import {
-  Button,
-  PagePanel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  StatusBadge,
-  Switch,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { PagePanel } from "../composites/page-panel";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { StatusBadge } from "../ui/status-badge";
+import { Switch } from "../ui/switch";
 import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import {

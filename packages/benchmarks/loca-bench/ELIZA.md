@@ -50,6 +50,20 @@ The audit fails non-zero if trajectories are missing, aggregate counts do not
 match per-task files, token usage is missing, or tool call/result pairs are
 unbalanced.
 
+The audit also writes capped `review_records` for manual inspection. Each record
+contains the last model input/output previews, expected answer or long-context
+target summary, scoring reason, compaction event counts, and token usage.
+
+## OpenClaw Harness Status
+
+`BENCHMARK_HARNESS=openclaw` now fails closed by default. The documented
+OpenClaw CLI accepts a single `--message` turn, so it cannot preserve LOCA's
+full OpenAI `messages` plus `tools` payload and should not be scored as native
+agent parity. For a clearly labeled provider-level smoke path only, set
+`LOCA_OPENCLAW_MODE=direct-openai-compatible`; that path preserves messages and
+tools through the OpenAI-compatible request body but is not an OpenClaw CLI
+compaction/runtime comparison.
+
 ## Synthetic Long-Context Fixture
 
 Use this when changing compaction logic. It creates a LOCA-shaped trajectory

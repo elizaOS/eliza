@@ -7,7 +7,7 @@
  * graph.
  */
 
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import {

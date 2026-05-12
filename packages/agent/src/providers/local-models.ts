@@ -114,31 +114,31 @@ export const LOCAL_MODEL_REGISTRY: Record<ModelType, LocalModelConfig[]> = {
   llm: [
     {
       type: "llm",
-      modelId: "elizaos/eliza-1-lite-0_6b",
+      modelId: "elizaos/eliza-1-0_8b",
       name: "Eliza-1 lite",
       sizeInMb: 512,
-      requiredFiles: ["text/eliza-1-lite-0_6b-32k.gguf"],
+      requiredFiles: ["text/eliza-1-0_8b-32k.gguf"],
     },
     {
       type: "llm",
-      modelId: "elizaos/eliza-1-mobile-1_7b",
+      modelId: "elizaos/eliza-1-2b",
       name: "Eliza-1 mobile",
       sizeInMb: 1229,
-      requiredFiles: ["text/eliza-1-mobile-1_7b-32k.gguf"],
+      requiredFiles: ["text/eliza-1-2b-32k.gguf"],
     },
     {
       type: "llm",
-      modelId: "elizaos/eliza-1-desktop-9b",
+      modelId: "elizaos/eliza-1-9b",
       name: "Eliza-1 desktop",
       sizeInMb: 5529,
-      requiredFiles: ["text/eliza-1-desktop-9b-64k.gguf"],
+      requiredFiles: ["text/eliza-1-9b-64k.gguf"],
     },
     {
       type: "llm",
-      modelId: "elizaos/eliza-1-pro-27b",
+      modelId: "elizaos/eliza-1-27b",
       name: "Eliza-1 pro",
       sizeInMb: 17203,
-      requiredFiles: ["text/eliza-1-pro-27b-128k.gguf"],
+      requiredFiles: ["text/eliza-1-27b-128k.gguf"],
     },
   ],
   tts: [
@@ -197,10 +197,10 @@ export const LOCAL_MODEL_REGISTRY: Record<ModelType, LocalModelConfig[]> = {
   embedding: [
     {
       type: "embedding",
-      modelId: "elizaos/eliza-1-lite-0_6b",
+      modelId: "elizaos/eliza-1-0_8b",
       name: "Eliza-1 lite embeddings",
       sizeInMb: 512,
-      requiredFiles: ["text/eliza-1-lite-0_6b-32k.gguf"],
+      requiredFiles: ["text/eliza-1-0_8b-32k.gguf"],
     },
   ],
 };

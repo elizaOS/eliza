@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import type {
   ActiveModelState,
   CatalogModel,
@@ -6,6 +5,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
   computeFit,
@@ -31,6 +31,7 @@ interface ModelCardProps {
   onVerify?: (modelId: string) => void;
   /** When present, a "Redownload" button appears on installed models. */
   onRedownload?: (modelId: string) => void;
+  downloadDisabledReason?: string;
   busy: boolean;
 }
 
@@ -52,6 +53,7 @@ export function ModelCard({
   onUninstall,
   onVerify,
   onRedownload,
+  downloadDisabledReason,
   busy,
 }: ModelCardProps) {
   const fit = computeFit(model, hardware);
@@ -106,9 +108,10 @@ export function ModelCard({
           <Button
             size="sm"
             onClick={() => onDownload(model.id)}
-            disabled={busy || fit === "wontfit"}
+            disabled={busy || fit === "wontfit" || !!downloadDisabledReason}
+            title={downloadDisabledReason}
           >
-            Download
+            {downloadDisabledReason ? "Download unavailable" : "Download"}
           </Button>
         )}
         {downloading && (

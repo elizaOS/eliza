@@ -2,6 +2,10 @@ import { Buffer } from "node:buffer";
 import process from "node:process";
 import readline from "node:readline";
 
+import type { IAgentRuntime } from "@elizaos/core";
+
+import { dispatchRoute } from "../api/dispatch-route.ts";
+
 interface BridgeRequest {
   id?: unknown;
   method?: unknown;
@@ -38,7 +42,22 @@ interface HttpRequestPayload {
 }
 
 interface IosBridgeBackend {
-  port: number;
+  /**
+   * The runtime is the canonical entry point for IPC routing. `dispatchRoute`
+   * runs the matched route handler directly, with no loopback HTTP hop.
+   */
+  runtime: IAgentRuntime;
+  /**
+   * Fallback ephemeral HTTP server used only for routes that haven't been
+   * migrated onto `runtime.routes` yet (hardcoded handlers in
+   * `packages/agent/src/api/server.ts`). New code SHOULD register routes via
+   * the plugin Route contract so dispatchRoute handles them in-process.
+   *
+   * Phase 0 keeps the fallback to preserve behavior; later waves will move
+   * each hardcoded endpoint onto runtime.routes and the fallback can be
+   * removed entirely.
+   */
+  fallbackPort: number;
   close: () => Promise<void>;
 }
 
@@ -120,6 +139,12 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   const { startApiServer } = await import("../api/server.ts");
 
   const runtime = await bootElizaRuntime();
+  // Phase 0 still spins up an ephemeral loopback server for routes that
+  // haven't been moved onto `runtime.routes` yet (hardcoded handlers in
+  // server.ts). `fetchBackend` prefers `dispatchRoute` (no loopback hop) and
+  // only falls through to the server for unmigrated routes. As waves of
+  // plugins move onto the canonical Route contract, this server becomes
+  // dead code and is removed.
   const server = await startApiServer({
     port: 0,
     runtime,
@@ -127,9 +152,48 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   });
 
   return {
-    port: server.port,
+    runtime,
+    fallbackPort: server.port,
     close: server.close,
   };
+}
+
+function splitPathAndQuery(rawPath: string): {
+  pathname: string;
+  query: Record<string, string | string[]>;
+} {
+  const qIndex = rawPath.indexOf("?");
+  if (qIndex < 0) return { pathname: rawPath, query: {} };
+  const pathname = rawPath.slice(0, qIndex);
+  const params = new URLSearchParams(rawPath.slice(qIndex + 1));
+  const query: Record<string, string | string[]> = {};
+  for (const key of params.keys()) {
+    const all = params.getAll(key);
+    query[key] = all.length <= 1 ? (all[0] ?? "") : all;
+  }
+  return { pathname, query };
+}
+
+function payloadBodyAsRaw(payload: HttpRequestPayload): unknown {
+  if (typeof payload.bodyBase64 === "string") {
+    return Buffer.from(payload.bodyBase64, "base64");
+  }
+  if (payload.bodyEncoding === "base64" && typeof payload.body === "string") {
+    return Buffer.from(payload.body, "base64");
+  }
+  return payload.body;
+}
+
+function statusTextForCode(status: number): string {
+  if (status === 200) return "OK";
+  if (status === 201) return "Created";
+  if (status === 204) return "No Content";
+  if (status === 400) return "Bad Request";
+  if (status === 401) return "Unauthorized";
+  if (status === 403) return "Forbidden";
+  if (status === 404) return "Not Found";
+  if (status === 500) return "Internal Server Error";
+  return "";
 }
 
 async function fetchBackend(
@@ -156,21 +220,73 @@ async function fetchBackend(
     typeof payload.timeoutMs === "number" && payload.timeoutMs > 0
       ? Math.min(payload.timeoutMs, 30 * 60_000)
       : undefined;
+
+  // ── Canonical path: in-process dispatchRoute (no loopback hop) ──────────
+  // Treats every authenticated bridge call as authorized — the bridge is the
+  // local app talking to its own runtime via a sealed PTY, no external
+  // attacker can inject frames here.
+  const { pathname, query } = splitPathAndQuery(rawPath);
+  const result = await dispatchRoute({
+    runtime: backend.runtime,
+    method,
+    path: pathname,
+    headers,
+    query,
+    body: payloadBodyAsRaw(payload),
+    inProcess: true,
+    isAuthorized: () => true,
+  });
+
+  if (result) {
+    const responseHeaders = result.headers ?? {};
+    let bodyBytes: Buffer;
+    if (result.body == null) {
+      bodyBytes = Buffer.alloc(0);
+    } else if (typeof result.body === "string") {
+      bodyBytes = Buffer.from(result.body, "utf8");
+    } else if (Buffer.isBuffer(result.body)) {
+      bodyBytes = result.body;
+    } else if (result.body instanceof Uint8Array) {
+      bodyBytes = Buffer.from(result.body);
+    } else {
+      bodyBytes = Buffer.from(JSON.stringify(result.body), "utf8");
+      if (
+        !Object.keys(responseHeaders).some(
+          (k) => k.toLowerCase() === "content-type",
+        )
+      ) {
+        responseHeaders["content-type"] = "application/json; charset=utf-8";
+      }
+    }
+    return {
+      status: result.status,
+      statusText: statusTextForCode(result.status),
+      headers: responseHeaders,
+      body: bodyBytes.toString("utf8"),
+      bodyBase64: bodyBytes.toString("base64"),
+      bodyEncoding: "utf-8",
+    };
+  }
+
+  // ── Fallback: loopback HTTP for routes not yet on runtime.routes ───────
   const controller = timeoutMs ? new AbortController() : null;
   const timeout = controller
     ? setTimeout(() => controller.abort(), timeoutMs)
     : null;
 
   try {
-    const response = await fetch(`http://127.0.0.1:${backend.port}${rawPath}`, {
-      method,
-      headers,
-      body:
-        method === "GET" || method === "HEAD"
-          ? undefined
-          : bodyToFetchBody(payload),
-      signal: controller?.signal,
-    });
+    const response = await fetch(
+      `http://127.0.0.1:${backend.fallbackPort}${rawPath}`,
+      {
+        method,
+        headers,
+        body:
+          method === "GET" || method === "HEAD"
+            ? undefined
+            : bodyToFetchBody(payload),
+        signal: controller?.signal,
+      },
+    );
     const bytes = Buffer.from(await response.arrayBuffer());
     return {
       status: response.status,
@@ -268,7 +384,7 @@ async function dispatchBridgeRequest(
   const method = typeof request.method === "string" ? request.method : "";
   switch (method) {
     case "status":
-      return { ready: true, apiPort: backend.port };
+      return { ready: true, apiPort: backend.fallbackPort };
     case "http_request":
     case "http_fetch":
       return fetchBackend(
@@ -347,7 +463,7 @@ export async function runIosBridgeCli(
     writeProtocolLine({
       type: "ready",
       ok: true,
-      result: { ready: true, apiPort: backend.port },
+      result: { ready: true, apiPort: backend.fallbackPort },
     });
   } catch (err) {
     writeProtocolLine({

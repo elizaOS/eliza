@@ -359,27 +359,6 @@ function logNativePluginUnavailable(pluginName: string, error: unknown): void {
   );
 }
 
-function parseSmokeJsonBody(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const body = (value as { body?: unknown }).body;
-  if (typeof body !== "string") return null;
-  try {
-    return JSON.parse(body);
-  } catch {
-    return null;
-  }
-}
-
-function assertSmokeHttpOk(label: string, value: unknown): void {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error(`${label} did not return an object`);
-  }
-  const status = (value as { status?: unknown }).status;
-  if (typeof status !== "number" || status < 200 || status >= 300) {
-    throw new Error(`${label} returned HTTP ${String(status ?? "unknown")}`);
-  }
-}
-
 async function writeIosFullBunSmokeResult(
   result: Record<string, unknown>,
 ): Promise<void> {
@@ -396,6 +375,34 @@ async function writeIosFullBunSmokeResult(
     key: IOS_FULL_BUN_SMOKE_RESULT_KEY,
     value,
   });
+}
+
+async function fetchIosFullBunSmokeJson<T>(
+  label: string,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("accept")) headers.set("accept", "application/json");
+  const response = await fetch(`${MOBILE_LOCAL_AGENT_API_BASE}${path}`, {
+    ...init,
+    headers,
+  });
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `${label} returned HTTP ${response.status}: ${text.slice(0, 500)}`,
+    );
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw new Error(
+      `${label} returned invalid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 async function runIosFullBunSmokeIfRequested(): Promise<void> {
@@ -425,26 +432,17 @@ async function runIosFullBunSmokeIfRequested(): Promise<void> {
   });
 
   try {
-    const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
-    const started = await ElizaBunRuntime.start({
-      engine: "bun",
-      argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
-      env: {
-        ELIZA_PLATFORM: "ios",
-        ELIZA_MOBILE_PLATFORM: "ios",
-        ELIZA_IOS_LOCAL_BACKEND: "1",
-        ELIZA_IOS_FULL_BUN_SMOKE: "1",
-        ELIZA_HEADLESS: "1",
-        ELIZA_API_BIND: "127.0.0.1",
-        LOG_LEVEL: "error",
-      },
-    });
-    if (!started.ok) {
+    const fetchHealth = await fetchIosFullBunSmokeJson<{
+      ready?: unknown;
+      runtime?: unknown;
+    }>("WebView fetch bridge /api/health", "/api/health");
+    if (fetchHealth.ready !== true || fetchHealth.runtime !== "ok") {
       throw new Error(
-        started.error ?? "ElizaBunRuntime.start returned ok=false",
+        `WebView fetch bridge /api/health returned unexpected body: ${JSON.stringify(fetchHealth)}`,
       );
     }
 
+    const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
     const status = await ElizaBunRuntime.getStatus();
     if (!status.ready || status.engine !== "bun") {
       throw new Error(
@@ -456,80 +454,39 @@ async function runIosFullBunSmokeIfRequested(): Promise<void> {
       method: "status",
       args: { timeoutMs: 60_000 },
     });
-    const health = await ElizaBunRuntime.call({
-      method: "http_request",
-      args: {
-        method: "GET",
-        path: "/api/health",
-        headers: { accept: "application/json" },
-        timeoutMs: 120_000,
-      },
-    });
-    assertSmokeHttpOk("full Bun /api/health", health.result);
-    const healthJson = parseSmokeJsonBody(health.result) as {
-      ready?: unknown;
-      runtime?: unknown;
-    } | null;
-    if (
-      !healthJson ||
-      healthJson.ready !== true ||
-      healthJson.runtime !== "ok"
-    ) {
-      throw new Error(
-        `full Bun /api/health returned unexpected body: ${JSON.stringify(healthJson)}`,
-      );
-    }
 
-    const fetchHealthResponse = await fetch(
-      `${MOBILE_LOCAL_AGENT_API_BASE}/api/health`,
-      { headers: { accept: "application/json" } },
-    );
-    if (!fetchHealthResponse.ok) {
-      throw new Error(
-        `WebView fetch bridge /api/health returned HTTP ${fetchHealthResponse.status}`,
-      );
-    }
-    const fetchHealth = (await fetchHealthResponse.json()) as {
-      ready?: unknown;
-      runtime?: unknown;
-    };
-    if (fetchHealth.ready !== true || fetchHealth.runtime !== "ok") {
-      throw new Error(
-        `WebView fetch bridge /api/health returned unexpected body: ${JSON.stringify(fetchHealth)}`,
-      );
-    }
-
-    const created = await ElizaBunRuntime.call({
-      method: "http_request",
-      args: {
-        method: "POST",
-        path: "/api/conversations",
-        headers: {
-          accept: "application/json",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ title: "iOS Full Bun Smoke" }),
-        timeoutMs: 120_000,
-      },
-    });
-    assertSmokeHttpOk("full Bun POST /api/conversations", created.result);
-    const createdJson = parseSmokeJsonBody(created.result) as {
+    const created = await fetchIosFullBunSmokeJson<{
       conversation?: { id?: unknown };
-    } | null;
-    const conversationId = createdJson?.conversation?.id;
+    }>("WebView fetch bridge POST /api/conversations", "/api/conversations", {
+      method: "POST",
+      headers: {
+        accept: "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ title: "iOS Full Bun Smoke" }),
+    });
+    const conversationId = created.conversation?.id;
     if (typeof conversationId !== "string" || !conversationId) {
       throw new Error("full Bun conversation create did not return an id");
     }
 
-    const sendMessage = await ElizaBunRuntime.call({
-      method: "send_message",
-      args: {
-        message: "iOS full Bun simulator smoke",
-        conversationId,
-        metadata: { smoke: "ios-full-bun" },
-        timeoutMs: 180_000,
+    const sendMessage = await fetchIosFullBunSmokeJson<Record<string, unknown>>(
+      "WebView fetch bridge POST /api/conversations/:id/messages",
+      `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          text: "iOS full Bun simulator smoke",
+          channelType: "DM",
+          source: "ios-local",
+          metadata: { smoke: "ios-full-bun" },
+        }),
       },
-    });
+    );
 
     await writeIosFullBunSmokeResult({
       ok: true,
@@ -537,10 +494,9 @@ async function runIosFullBunSmokeIfRequested(): Promise<void> {
       finishedAt: new Date().toISOString(),
       runtimeStatus: status,
       bridgeStatus: bridgeStatus.result,
-      health: healthJson,
       fetchHealth,
       conversationId,
-      sendMessage: sendMessage.result,
+      sendMessage,
     });
   } catch (error) {
     await writeIosFullBunSmokeResult({
@@ -783,7 +739,7 @@ function handleDeepLink(url: string): void {
             );
             break;
           }
-          if (!isTrustedApiBaseUrl(validatedUrl)) {
+          if (!isTrustedDeepLinkApiBaseUrl(validatedUrl)) {
             console.warn(
               `${APP_LOG_PREFIX} Rejected untrusted gateway URL host:`,
               validatedUrl.hostname,
@@ -798,6 +754,7 @@ function handleDeepLink(url: string): void {
             kind: "remote",
             apiBase: validatedUrl.href,
             token,
+            allowPublicHttps: true,
           });
           dispatchAppEvent(CONNECT_EVENT, {
             gatewayUrl: connection.apiBase,
@@ -990,16 +947,47 @@ function isTrustedPrivateHttpHost(host: string): boolean {
   );
 }
 
-function isTrustedApiBaseUrl(parsed: URL): boolean {
-  const host = parsed.hostname;
+function isLoopbackApiHost(host: string): boolean {
   return (
     host === "localhost" ||
     host === "127.0.0.1" ||
     host === "[::1]" ||
-    host === "::1" ||
-    host === window.location.hostname ||
+    host === "::1"
+  );
+}
+
+function isCurrentOriginHost(host: string): boolean {
+  return typeof window !== "undefined" && host === window.location.hostname;
+}
+
+function isConfiguredCloudApiHost(host: string): boolean {
+  const configured = IOS_RUNTIME_ENV_CONFIG.cloudApiBase;
+  if (!configured) return false;
+  try {
+    return host === new URL(configured).hostname;
+  } catch {
+    return false;
+  }
+}
+
+function isTrustedApiBaseUrl(parsed: URL): boolean {
+  const host = parsed.hostname;
+  return (
+    isLoopbackApiHost(host) ||
+    isCurrentOriginHost(host) ||
     parsed.protocol === "https:" ||
     (parsed.protocol === "http:" && isTrustedPrivateHttpHost(host))
+  );
+}
+
+function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  const host = parsed.hostname;
+  return (
+    isLoopbackApiHost(host) ||
+    isCurrentOriginHost(host) ||
+    isConfiguredCloudApiHost(host) ||
+    isTrustedPrivateHttpHost(host)
   );
 }
 

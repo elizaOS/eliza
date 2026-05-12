@@ -128,8 +128,23 @@ export function PromptInputProvider({
 
   // ----- attachments state (global when wrapped)
   const [attachements, setAttachements] = useState<(FileUIPart & { id: string })[]>([]);
+  const attachmentsRef = useRef(attachements);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    attachmentsRef.current = attachements;
+  }, [attachements]);
+
+  useEffect(() => {
+    return () => {
+      for (const file of attachmentsRef.current) {
+        if (file.url) {
+          URL.revokeObjectURL(file.url);
+        }
+      }
+    };
+  }, []);
 
   const add = useCallback((files: File[] | FileList) => {
     const incoming = Array.from(files);
@@ -434,7 +449,12 @@ export const PromptInput = ({
 
   // ----- Local attachments (only used when no provider)
   const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
+  const itemsRef = useRef(items);
   const files = usingProvider ? controller.attachments.files : items;
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const openFileDialogLocal = useCallback(() => {
     inputRef.current?.click();
@@ -609,13 +629,13 @@ export const PromptInput = ({
 
   useEffect(() => {
     return () => {
-      if (!usingProvider) {
-        for (const f of files) {
-          if (f.url) URL.revokeObjectURL(f.url);
+      for (const file of itemsRef.current) {
+        if (file.url) {
+          URL.revokeObjectURL(file.url);
         }
       }
     };
-  }, [usingProvider, files]);
+  }, []);
 
   const handleChange: ChangeEventHandler<HTMLInputElement> = (event) => {
     if (event.currentTarget.files) {

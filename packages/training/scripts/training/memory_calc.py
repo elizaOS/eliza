@@ -188,7 +188,7 @@ def _kv_k_bytes_per_elem(quant: KvKQuant) -> float:
     `head_dim=128` (Qwen3 / Llama-3 / Qwen3.5 small models) the realized
     ratio is `head_dim*2 / (proj_dim/8 + 2) = 256/34 = 7.53×`, validated by
     the QJL agent's calibration probe on real K activations from
-    Qwen/Qwen3-0.8B. We use 0.272 bytes/elem (= 2/7.53) here so the
+    Qwen/Qwen3-0.6B. We use 0.272 bytes/elem (= 2/7.53) here so the
     published budgets reflect reality, not the marketing number.
     """
     return {KvKQuant.BF16: 2.0, KvKQuant.QJL_1BIT: 2.0 / 7.53}[quant]
@@ -372,13 +372,13 @@ def estimate_infer(shape: ModelShape, cfg: InferConfig) -> MemoryBreakdown:
 # Architectural facts pulled directly from the Qwen3.5 / Qwen3.6 HF
 # `config.json` (`text_config` block — these are multimodal image-text
 # checkpoints whose LM-side hyperparameters live nested). The eliza-1
-# series ships three sizes: 2B (local), 9B (workstation), 27B (cloud).
+# series ships four sizes: 0.8B/2B (local), 9B (workstation), 27B (cloud).
 # Hybrid 3:1 linear:full attention pattern is the same across all three.
 SHAPES: dict[str, ModelShape] = {
     # qwen3.5-0.8b is the smoke-only base (`smoke_full_stack.sh`); not part of
     # the eliza-1 production lineup but the preflight checker resolves it
     # when an operator provisions with `REGISTRY_KEY=qwen3.5-0.8b`. Numbers
-    # from Qwen/Qwen3-0.8B config.json (vanilla full-attention transformer,
+    # from Qwen/Qwen3.5-0.8B config.json (vanilla full-attention transformer,
     # no hybrid GDN — full_attn_layers == num_layers).
     "qwen3.5-0.8b": ModelShape(
         name="qwen3.5-0.8b", params_total=596_049_920,

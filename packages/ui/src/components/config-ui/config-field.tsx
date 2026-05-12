@@ -1,15 +1,8 @@
-import {
-  Button,
-  Checkbox,
-  CONFIG_SELECT_FLOATING_LAYER_NAME,
-  CONFIG_SELECT_FLOATING_LAYER_Z_INDEX,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Switch,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { CONFIG_SELECT_FLOATING_LAYER_NAME, CONFIG_SELECT_FLOATING_LAYER_Z_INDEX } from "../../lib/floating-layers";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { Switch } from "../ui/switch";
 import { ChevronDown, X } from "lucide-react";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";

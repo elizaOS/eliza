@@ -1,10 +1,5 @@
-import {
-  cn,
-  Field,
-  FieldDescription,
-  FieldLabel,
-  FieldMessage,
-} from "@elizaos/ui";
+import { cn } from "../../lib/utils";
+import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";
 import type * as React from "react";
 
 export const onboardingDetailStackClassName =

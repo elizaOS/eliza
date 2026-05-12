@@ -1,13 +1,11 @@
-import {
-  ChatAttachmentStrip,
-  ChatComposer,
-  ChatComposerShell,
-  ChatSourceIcon,
-  ChatThreadLayout,
-  ChatTranscript,
-  TypingIndicator,
-  useIntervalWhenDocumentVisible,
-} from "@elizaos/ui";
+import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
+import { ChatComposer } from "../composites/chat/chat-composer";
+import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
+import { ChatSourceIcon } from "../composites/chat/chat-source";
+import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
+import { ChatTranscript } from "../composites/chat/chat-transcript";
+import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import {
   type ChangeEvent,
   type DragEvent,

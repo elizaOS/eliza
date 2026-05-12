@@ -36,6 +36,7 @@ const requiredSymbols = [
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
 ];
+const allowedExportedSymbols = new Set(requiredSymbols);
 
 function argValue(name, fallback = null) {
   const prefix = `${name}=`;
@@ -179,6 +180,20 @@ function validateEngineBinary(binary) {
   const missing = requiredSymbols.filter((symbol) => !output.includes(symbol));
   if (missing.length > 0) {
     fail(`${binary} is missing required ABI symbols: ${missing.join(", ")}`);
+  }
+  const exportedSymbols = output
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/).at(-1))
+    .filter((symbol) => symbol?.startsWith("_"));
+  const unexpected = exportedSymbols.filter(
+    (symbol) => !allowedExportedSymbols.has(symbol),
+  );
+  if (unexpected.length > 0) {
+    fail(
+      `${binary} exports non-ABI symbols: ${unexpected
+        .slice(0, 24)
+        .join(", ")}${unexpected.length > 24 ? ", ..." : ""}`,
+    );
   }
 }
 
@@ -663,6 +678,8 @@ function linkFramework({ buildDir, webkitPath, info }) {
   fs.rmSync(stageRoot, { recursive: true, force: true });
   fs.mkdirSync(frameworkDir, { recursive: true });
   writeFrameworkMetadata(frameworkDir);
+  const exportedSymbolsList = path.join(stageRoot, "exported-symbols.txt");
+  fs.writeFileSync(exportedSymbolsList, `${requiredSymbols.join("\n")}\n`);
 
   const sdkPath = runCapture("xcrun", [
     "--sdk",
@@ -686,6 +703,7 @@ function linkFramework({ buildDir, webkitPath, info }) {
     path.join(webkitPath, "include"),
     "-install_name",
     `@rpath/${frameworkName}.framework/${frameworkName}`,
+    `-Wl,-exported_symbols_list,${exportedSymbolsList}`,
     "-o",
     binary,
     shimSource,

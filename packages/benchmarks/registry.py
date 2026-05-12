@@ -51,11 +51,11 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
             raw_no_gt = error_analysis.get("no_ground_truth")
             if isinstance(raw_no_gt, (int, float)):
                 no_ground_truth = int(raw_no_gt)
-        if no_ground_truth:
-            raise ValueError(
-                "bfcl: sample produced no evaluable ground-truth tests "
-                f"(no_ground_truth={no_ground_truth})"
-            )
+        detail = f" (no_ground_truth={no_ground_truth})" if no_ground_truth else ""
+        raise ValueError(
+            "bfcl: result produced no evaluable ground-truth tests"
+            f"{detail}; refusing to publish a zero-task score"
+        )
 
     return ScoreExtraction(
         score=overall,
@@ -764,6 +764,11 @@ def _score_from_scambench_json(data: JSONValue) -> ScoreExtraction:
             "legit_help_rate": metrics.get("legit_help_rate") or 0,
             "n_scam": metrics.get("n_scam") or 0,
             "n_legit": metrics.get("n_legit") or 0,
+            "n": metrics.get("n") or (
+                (metrics.get("n_scam") or 0) + (metrics.get("n_legit") or 0)
+            ),
+            "processed_records": metrics.get("processed_records") or 0,
+            "interrupted": root.get("interrupted") is True,
         },
     )
 
@@ -1009,8 +1014,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         local_data = extra.get("local_data")
         if isinstance(local_data, str) and local_data.strip():
             args.extend(["--local-data", local_data])
-        if extra.get("no_report") is True:
-            args.append("--no-report")
+        # The orchestrator scores BFCL from the generated bfcl_results_*.json.
+        # Do not forward no_report here: it suppresses the result file and
+        # turns a valid run into an unscoreable harness failure.
         if extra.get("no_exec") is True:
             args.append("--no-exec")
         return args
@@ -1067,18 +1073,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"} or provider_name in {
-            "eliza",
-            "cerebras",
-            "openai",
-            "groq",
-            "openrouter",
-            "vllm",
-        }:
+        if agent in {"eliza", "hermes", "openclaw"} or provider_name == "eliza":
             args.extend(["--provider", "eliza"])
         elif provider_name in {"mock", ""}:
             args.extend(["--provider", "mock"])
-        elif provider_name in {"openai", "groq", "openrouter"}:
+        elif provider_name in {"openai", "groq", "openrouter", "cerebras"}:
             args.extend(["--provider", provider_name])
             if model.model:
                 args.extend(["--model", model.model])
@@ -1312,6 +1311,53 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             return find_latest_file(output_dir, glob_pattern="**/gaia-results-latest.json")
         except FileNotFoundError:
             return find_latest_file(output_dir, glob_pattern="**/gaia-results_*.json")
+
+    def _gaia_orchestrated_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        args = [
+            python,
+            "-m",
+            "elizaos_gaia.orchestrated",
+            "--output",
+            str(output_dir),
+        ]
+        if model.model:
+            args.extend(["--model", model.model])
+        if model.temperature is not None:
+            args.extend(["--temperature", str(model.temperature)])
+        dataset = extra.get("dataset")
+        if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
+            args.extend(["--dataset", dataset])
+        elif not os.getenv("HF_TOKEN"):
+            args.extend(["--dataset", "sample"])
+        dataset_path = extra.get("dataset_path")
+        if isinstance(dataset_path, str) and dataset_path.strip():
+            args.extend(["--dataset-path", dataset_path.strip()])
+        max_q = extra.get("max_questions")
+        if isinstance(max_q, int) and max_q > 0:
+            args.extend(["--max-questions", str(max_q)])
+        else:
+            args.extend(["--max-questions", "3"])
+        execution_mode = extra.get("execution_mode")
+        if isinstance(execution_mode, str) and execution_mode.strip():
+            args.extend(["--execution-mode", execution_mode.strip()])
+        providers = extra.get("providers")
+        if isinstance(providers, list):
+            provider_values = [str(p) for p in providers if str(p).strip()]
+            if provider_values:
+                args.extend(["--providers", *provider_values])
+        if extra.get("matrix") is True:
+            args.append("--matrix")
+        required_caps = extra.get("required_capabilities")
+        if isinstance(required_caps, list) and required_caps:
+            args.extend(["--required-capabilities", ",".join(str(c) for c in required_caps)])
+        elif isinstance(required_caps, str) and required_caps.strip():
+            args.extend(["--required-capabilities", required_caps.strip()])
+        if extra.get("strict_capabilities") is True:
+            args.append("--strict-capabilities")
+        return args
+
+    def _gaia_orchestrated_result(output_dir: Path) -> Path:
+        return output_dir / "gaia-orchestrated-latest.json"
 
     def _tau_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         args = [
@@ -2339,10 +2385,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
         tool_choice = extra.get("tool_choice")
-        if isinstance(tool_choice, str) and tool_choice in {"auto", "required"}:
+        if isinstance(tool_choice, str) and tool_choice in {"auto", "required", "none"}:
             args.extend(["--tool-choice", tool_choice])
         else:
-            args.extend(["--tool-choice", "required"])
+            args.extend(["--tool-choice", "none"])
         return args
 
     def _abliteration_robustness_result(output_dir: Path) -> Path:
@@ -2385,6 +2431,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         temperature = extra.get("temperature")
         if isinstance(temperature, (int, float)) and not isinstance(temperature, bool) and temperature >= 0:
             args.extend(["--temperature", str(float(temperature))])
+        tool_choice = extra.get("tool_choice")
+        if isinstance(tool_choice, str) and tool_choice in {"auto", "required"}:
+            args.extend(["--tool-choice", tool_choice])
         return args
 
     def _action_calling_result(output_dir: Path) -> Path:
@@ -2587,9 +2636,15 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         mode = extra.get("mode")
         if isinstance(mode, str) and mode.strip():
             args.extend(["--mode", mode.strip()])
+        suite = extra.get("suite")
+        if isinstance(suite, str) and suite in {"smoke", "core", "full"}:
+            args.extend(["--suite", suite])
         scenario = extra.get("scenario")
         if isinstance(scenario, str) and scenario.strip():
             args.extend(["--scenario", scenario.strip()])
+        limit = extra.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
         seeds = extra.get("seeds")
         if isinstance(seeds, int) and seeds > 0:
             args.extend(["--seeds", str(seeds)])
@@ -2833,8 +2888,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 paths=(),
                 notes="Uses the GAIA runner with orchestrator profile defaults; safe sample/mock runs avoid gated HF access and provider keys.",
             ),
-            build_command=_gaia_cmd,
-            locate_result=_gaia_result,
+            build_command=_gaia_orchestrated_cmd,
+            locate_result=_gaia_orchestrated_result,
             extract_score=_score_from_gaia_json,
         ),
         BenchmarkDefinition(

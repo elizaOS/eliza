@@ -24,6 +24,31 @@ import type {
   VoiceTtsCancelReason,
 } from "./types";
 
+/**
+ * T2 — per-phrase TTS chunk-size telemetry, emitted once per
+ * `synthesizePhraseStream` call when `SchedulerEvents.onChunkMetrics` is
+ * wired. `chunks` is the in-arrival-order distribution of streamed PCM
+ * chunks (size in PCM bytes assuming Float32 samples, duration in ms
+ * derived from samples / sampleRate). Used to debug T1-class chunk-size
+ * pathologies and to verify T3 time-budget effects.
+ */
+export interface TtsPhraseChunkMetrics {
+  phraseId: number;
+  /** Order-preserving list of per-chunk sizes. Empty when no chunks landed. */
+  chunks: ReadonlyArray<{
+    chunkBytes: number;
+    chunkDurationMs: number;
+  }>;
+  /** Sum of chunk durations in ms. */
+  totalDurationMs: number;
+  /** Sum of chunk bytes. */
+  totalBytes: number;
+  /** Whether the phrase synthesis was cancelled mid-stream. */
+  cancelled: boolean;
+}
+
+export type TtsChunkMetricsListener = (metrics: TtsPhraseChunkMetrics) => void;
+
 export interface SchedulerEvents {
   onPhrase?(phrase: Phrase): void;
   onRollback?(phraseId: number, range: RejectedTokenRange): void;
@@ -41,6 +66,13 @@ export interface SchedulerEvents {
   onTtsResume?(): void;
   /** Structured scheduler telemetry for latency, cache, rollback, and barge-in metrics. */
   onTelemetry?: VoiceSchedulerTelemetryListener;
+  /**
+   * T2 — per-phrase TTS chunk-size distribution. Optional; when set, the
+   * scheduler emits one summary per streamed phrase synthesis (success or
+   * cancelled). Lets test harnesses and metrics consumers verify T1/T3
+   * effects without scraping the audio bus.
+   */
+  onChunkMetrics?: TtsChunkMetricsListener;
 }
 
 export interface SchedulerDeps {
@@ -509,6 +541,8 @@ export class VoiceScheduler {
     let totalSamples = 0;
     let sampleRate = 0;
     let firstAudio = true;
+    // T2 — per-chunk size distribution. Float32 samples => 4 bytes/sample.
+    const chunkSamples: Array<{ samples: number; sampleRate: number }> = [];
     const result = await backend.synthesizeStream({
       phrase,
       preset: this.preset,
@@ -525,6 +559,10 @@ export class VoiceScheduler {
         parts.push(pcm);
         totalSamples += pcm.length;
         sampleRate = chunk.sampleRate;
+        chunkSamples.push({
+          samples: pcm.length,
+          sampleRate: chunk.sampleRate,
+        });
         this.commitAudio(
           {
             phraseId: phrase.id,
@@ -552,6 +590,29 @@ export class VoiceScheduler {
           sampleRate,
         });
       }
+    }
+    // T2 — fire the chunk-size telemetry callback. Done unconditionally so
+    // a cancelled phrase still reports what it did stream (helps debug
+    // barge-in latency). Float32 samples occupy 4 bytes each.
+    if (this.events.onChunkMetrics) {
+      const chunks = chunkSamples.map((c) => ({
+        chunkBytes: c.samples * 4,
+        chunkDurationMs:
+          c.sampleRate > 0 ? (c.samples / c.sampleRate) * 1000 : 0,
+      }));
+      let totalDurationMs = 0;
+      let totalBytes = 0;
+      for (const c of chunks) {
+        totalDurationMs += c.chunkDurationMs;
+        totalBytes += c.chunkBytes;
+      }
+      this.events.onChunkMetrics({
+        phraseId: phrase.id,
+        chunks,
+        totalDurationMs,
+        totalBytes,
+        cancelled,
+      });
     }
     return cancelled;
   }

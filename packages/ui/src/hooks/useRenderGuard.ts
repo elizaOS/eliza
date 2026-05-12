@@ -44,7 +44,12 @@ function readEnvValue(key: string): boolean | string | undefined {
 
 function isRenderTelemetryEnabled(): boolean {
   const explicit = readEnvValue("VITE_ELIZA_RENDER_TELEMETRY");
-  if (explicit === "0" || explicit === "false") return false;
+  if (explicit === false || explicit === "0" || explicit === "false") {
+    return false;
+  }
+  if (explicit === true || explicit === "1" || explicit === "true") {
+    return true;
+  }
 
   const nodeEnv =
     typeof process !== "undefined" ? process.env.NODE_ENV : undefined;

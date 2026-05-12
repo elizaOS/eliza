@@ -606,7 +606,9 @@ export class VadDetector {
     this.fastPauseHangoverMs = config.fastPauseHangoverMs ?? 100;
     this.fastEndpointEnabled = config.fastEndpointEnabled ?? false;
     this.endHangoverMs = Math.max(
-      this.fastEndpointEnabled ? this.fastPauseHangoverMs : this.pauseHangoverMs,
+      this.fastEndpointEnabled
+        ? this.fastPauseHangoverMs
+        : this.pauseHangoverMs,
       config.endHangoverMs ?? 700,
     );
     this.minSpeechMs = config.minSpeechMs ?? 250;

@@ -149,10 +149,33 @@ function kvCacheForContext(
   };
 }
 
+/**
+ * Per-tier `--ctx-checkpoints N --ctx-checkpoint-interval M` defaults for
+ * upstream llama.cpp's mid-prefill snapshot feature (used by the voice
+ * optimistic-rollback path). Larger tiers retain more snapshots since the
+ * context window is larger and each checkpoint costs proportionally less
+ * relative to a full restart. The server-side flag is conditional on a
+ * runtime probe — these are catalog defaults only.
+ */
+function ctxCheckpointsForTier(id: Eliza1TierId): {
+  ctxCheckpoints: number;
+  ctxCheckpointInterval: number;
+} {
+  if (id === "eliza-1-0_6b" || id === "eliza-1-1_7b") {
+    return { ctxCheckpoints: 4, ctxCheckpointInterval: 4096 };
+  }
+  if (id === "eliza-1-4b" || id === "eliza-1-9b") {
+    return { ctxCheckpoints: 8, ctxCheckpointInterval: 8192 };
+  }
+  // 27b tiers — including extended-context 256k/1m.
+  return { ctxCheckpoints: 16, ctxCheckpointInterval: 8192 };
+}
+
 function runtimeFor(
   id: Eliza1TierId,
   contextLength: number,
 ): CatalogModel["runtime"] {
+  const ctxCkpt = ctxCheckpointsForTier(id);
   return {
     preferredBackend: "llama-server",
     optimizations: {
@@ -160,6 +183,8 @@ function runtimeFor(
       flashAttention: true,
       mlock: contextLength >= 131072,
       requiresKernel: requiredKernelsForContext(contextLength),
+      ctxCheckpoints: ctxCkpt.ctxCheckpoints,
+      ctxCheckpointInterval: ctxCkpt.ctxCheckpointInterval,
     },
     kvCache: kvCacheForContext(contextLength),
     dflash: {
@@ -314,6 +339,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-9b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-9b"),
     runtime: runtimeFor("eliza-1-9b", 65536),
+    gpuProfile: "rtx-3090",
     blurb:
       "eliza-1-9b - laptop / 24 GB phone / 48 GB Mac default with text, voice, and vision in the optimized local runtime.",
   },
@@ -343,6 +369,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-27b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b"),
     runtime: runtimeFor("eliza-1-27b", 131072),
+    gpuProfile: "rtx-4090",
     blurb:
       "eliza-1-27b - 96 GB+ Mac and high-VRAM desktop default with text, voice, vision, and 128k context.",
   },
@@ -372,6 +399,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-27b-256k-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b-256k"),
     runtime: runtimeFor("eliza-1-27b-256k", 262144),
+    gpuProfile: "rtx-5090",
     blurb:
       "eliza-1-27b-256k - workstation tier with the largest context window in the line.",
   },
@@ -401,8 +429,9 @@ export const MODEL_CATALOG: CatalogModel[] = [
     companionModelIds: ["eliza-1-27b-1m-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b-1m"),
     runtime: runtimeFor("eliza-1-27b-1m", 1_048_576),
+    gpuProfile: "h200",
     blurb:
-      "eliza-1-27b-1m - GH200-class server tier with a 1M-token context window.",
+      "eliza-1-27b-1m - H200-class server tier with a 1M-token context window and memory-optimized KV cache layout for 141 GiB HBM3e hosts.",
   },
   drafterCompanion({
     id: "eliza-1-27b-1m",
@@ -423,6 +452,16 @@ export function buildHuggingFaceResolveUrlForPath(
   model: CatalogModel,
   filePath: string,
 ): string {
+  if (model.hub === "modelscope") {
+    const base =
+      process.env.ELIZA_MODELSCOPE_BASE_URL?.trim().replace(/\/+$/, "") ||
+      "https://www.modelscope.cn";
+    const encodedPath = filePath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/");
+    return `${base}/models/${model.hfRepo}/resolve/master/${encodedPath}`;
+  }
   const base =
     process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
     "https://huggingface.co";

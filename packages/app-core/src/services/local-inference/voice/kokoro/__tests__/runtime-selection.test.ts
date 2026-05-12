@@ -146,15 +146,15 @@ describe("readVoiceBackendModeFromEnv", () => {
   });
 
   it("parses each valid value", () => {
-    expect(
-      readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "kokoro" }),
-    ).toBe("kokoro");
+    expect(readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "kokoro" })).toBe(
+      "kokoro",
+    );
     expect(
       readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "OMNIVOICE" }),
     ).toBe("omnivoice");
-    expect(
-      readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "auto" }),
-    ).toBe("auto");
+    expect(readVoiceBackendModeFromEnv({ ELIZA_TTS_BACKEND: "auto" })).toBe(
+      "auto",
+    );
   });
 
   it("throws on an invalid value", () => {

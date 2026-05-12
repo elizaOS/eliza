@@ -1,16 +1,8 @@
-import {
-  Button,
-  Input,
-  SaveFooter,
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-  Textarea,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { SaveFooter } from "../ui/save-footer";
+import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "../ui/select";
+import { Textarea } from "../ui/textarea";
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type VoiceConfig } from "../../api";

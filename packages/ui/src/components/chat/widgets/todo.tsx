@@ -1,4 +1,4 @@
-import { Badge } from "@elizaos/ui";
+import { Badge } from "../../ui/badge";
 import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../api";

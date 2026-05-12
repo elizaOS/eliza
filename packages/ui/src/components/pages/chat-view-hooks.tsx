@@ -1,4 +1,5 @@
-import { useDocumentVisibility, useTimeout } from "@elizaos/ui";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
+import { useTimeout } from "../../hooks/useTimeout";
 import {
   useCallback,
   useEffect,

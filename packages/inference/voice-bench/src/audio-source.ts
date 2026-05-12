@@ -243,52 +243,58 @@ export class SyntheticAudioSource {
     const frameMs = (hop / this.sampleRate) * 1000;
     let cursor = 0;
     let elapsed = 0;
-    return new Promise<void>((resolve) => {
-      const pumpOnce = (): void => {
-        if (!this._running) {
-          resolve();
-          return;
-        }
-        if (cursor >= total) {
-          this._running = false;
-          resolve();
-          return;
-        }
-        const end = Math.min(cursor + hop, total);
-        const slice = pcm.subarray(cursor, end);
-        // If the slice is short (last frame), pad to hop with zeros so the
-        // VAD always sees its expected window size.
-        let frame: Float32Array;
-        if (slice.length === hop) {
-          frame = slice;
-        } else {
-          frame = new Float32Array(hop);
-          frame.set(slice);
-        }
-        const payload: BenchPcmFrame = {
-          pcm: frame,
-          sampleRate: this.sampleRate,
-          timestampMs: elapsed,
-        };
-        for (const l of this.listeners) {
-          try {
-            l(payload);
-          } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            for (const errL of this.errorListeners) errL(error);
-          }
-        }
-        cursor = end;
-        elapsed += frameMs;
-        if (this.realtime) {
-          this.timer = setTimeout(pumpOnce, frameMs);
-        } else {
-          // Yield to the event loop so listeners can do async work.
-          this.timer = setTimeout(pumpOnce, 0);
-        }
+    const emitFrame = (): boolean => {
+      if (!this._running) return false;
+      if (cursor >= total) {
+        this._running = false;
+        return false;
+      }
+      const end = Math.min(cursor + hop, total);
+      const slice = pcm.subarray(cursor, end);
+      // If the slice is short (last frame), pad to hop with zeros so the
+      // VAD always sees its expected window size.
+      let frame: Float32Array;
+      if (slice.length === hop) {
+        frame = slice;
+      } else {
+        frame = new Float32Array(hop);
+        frame.set(slice);
+      }
+      const payload: BenchPcmFrame = {
+        pcm: frame,
+        sampleRate: this.sampleRate,
+        timestampMs: elapsed,
       };
-      pumpOnce();
-    });
+      for (const l of this.listeners) {
+        try {
+          l(payload);
+        } catch (err) {
+          const error = err instanceof Error ? err : new Error(String(err));
+          for (const errL of this.errorListeners) errL(error);
+        }
+      }
+      cursor = end;
+      elapsed += frameMs;
+      return true;
+    };
+    if (this.realtime) {
+      return new Promise<void>((resolve) => {
+        const pumpOnce = (): void => {
+          if (!emitFrame()) {
+            resolve();
+            return;
+          }
+          this.timer = setTimeout(pumpOnce, frameMs);
+        };
+        pumpOnce();
+      });
+    }
+    // Non-realtime: pump synchronously, yielding to the event loop only
+    // periodically so listeners' microtasks (await) still progress. This
+    // keeps the unit-test path well under 50 ms per fixture.
+    while (emitFrame()) {
+      // Tight loop — pure CPU.
+    }
   }
 
   async stop(): Promise<void> {

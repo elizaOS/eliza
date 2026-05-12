@@ -33,8 +33,8 @@ Qwen3 dense base shapes (from each base model's `config.json`; the registry's
 
 | Eliza-1 tier      | base model        | layers | kv heads | head_dim | native ctx (`max_position_embeddings`) | GGUF (quant)        |
 | ----------------- | ----------------- | -----: | -------: | -------: | -------------------------------------: | ------------------- |
-| `eliza-1-0_6b`    | Qwen3.5-0.6B        |     28 |        8 |      128 |                                  40960 | ~0.5 GB (Q3_K_M)    |
-| `eliza-1-1_7b`    | Qwen3.5-1.7B        |     28 |        8 |      128 |                                  40960 | ~1.4 GB (Q4-class)  |
+| `eliza-1-0_6b`    | Qwen3.5-0.6B        |     28 |        8 |      128 |                                  40960 | ~0.7 GB (Q4-class)  |
+| `eliza-1-1_7b`      | Qwen3.5-1.7B          |     28 |        8 |      128 |                                  40960 | ~1.5 GB (Q4-class)  |
 | `eliza-1-4b`*     | Qwen3.5-4B          |     36 |        8 |      128 |                                  40960 | ~2.6 GB (Q4_K_M)    |
 | `eliza-1-9b`†     | (aspirational)    |      8‡ |        4 |      256 |                          64k → 1M (ext) | ~5.4 GB (Q4_K_M)    |
 | `eliza-1-27b`†    | (aspirational)    |     16‡ |        4 |      256 |                         128k → 1M (ext) | ~16.8 GB (Q4_K_M)   |

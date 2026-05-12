@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import type { CSSProperties } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import {

@@ -28,10 +28,10 @@ import type {
 } from "../types";
 import type { KokoroRuntime } from "./kokoro-runtime";
 import { resolvePhonemizer } from "./phonemizer";
-import {
-  type KokoroBackendOptions,
-  type KokoroPhonemizer,
-  type KokoroVoicePack,
+import type {
+  KokoroBackendOptions,
+  KokoroPhonemizer,
+  KokoroVoicePack,
 } from "./types";
 import { resolveKokoroVoiceOrDefault } from "./voices";
 

@@ -1,14 +1,9 @@
-import {
-  Button,
-  Checkbox,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  Spinner,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Spinner } from "../ui/spinner";
 import { AlertTriangle, Download, Upload } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { setDeveloperMode, useApp, useIsDeveloperMode } from "../../state";

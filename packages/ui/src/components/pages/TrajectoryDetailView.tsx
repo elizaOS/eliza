@@ -1,16 +1,9 @@
-import {
-  PagePanel,
-  type PipelineNode,
-  type PipelineStageId,
-  type TrajectoryCacheMetric,
-  TrajectoryCacheStats,
-  TrajectoryContextDiffList,
-  type TrajectoryContextDiffSummary,
-  TrajectoryEventTimeline,
-  TrajectoryLlmCallCard,
-  TrajectoryPipelineGraph,
-  type TrajectoryTimelineEvent,
-} from "@elizaos/ui";
+import { PagePanel } from "../composites/page-panel";
+import { type PipelineNode, type PipelineStageId, TrajectoryPipelineGraph } from "../composites/trajectories/trajectory-pipeline-graph";
+import { type TrajectoryCacheMetric, TrajectoryCacheStats } from "../composites/trajectories/trajectory-cache-stats";
+import { TrajectoryContextDiffList, type TrajectoryContextDiffSummary } from "../composites/trajectories/trajectory-context-diff-list";
+import { TrajectoryEventTimeline, type TrajectoryTimelineEvent } from "../composites/trajectories/trajectory-event-timeline";
+import { TrajectoryLlmCallCard } from "../composites/trajectories/trajectory-llm-call-card";
 import {
   Brain,
   CheckCircle,

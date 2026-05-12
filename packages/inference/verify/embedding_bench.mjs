@@ -5,7 +5,7 @@
  *
  * Per `packages/inference/AGENTS.md` §1 the embedding model is either the
  * text backbone with `--pooling last` (`0_6b`) or a dedicated
- * `embedding/eliza-1-embedding.gguf` (Qwen3-Embedding-0.6B) on the larger
+ * `embedding/eliza-1-embedding.gguf` (Qwen3.5-Embedding-0.6B) on the larger
  * tiers. This harness drives a `llama-server --embeddings --pooling last`
  * over a GGUF and measures:
  *   - cold-load time of the embedding region (spawn → /health),
@@ -101,7 +101,7 @@ function resolveModel(opts) {
       }
     }
   }
-  // Qwen3-Embedding-0.6B lineage stand-in (also the 0_6b text backbone base).
+  // Qwen3.5-Embedding-0.6B lineage stand-in (also the 0_6b text backbone base).
   candidates.push(path.join("/tmp", "eliza1-eval-models", "Qwen3-0.6B-Q8_0.gguf"));
   candidates.push(path.join(modelsRoot, "eliza-1-0_6b.bundle", "text", "eliza-1-0_6b-32k.gguf"));
   candidates.push(path.join(modelsRoot, "SmolLM2-360M-Instruct-Q4_K_M.gguf"));
@@ -233,7 +233,7 @@ async function main() {
       status: "skipped",
       reason: !bin
         ? "no llama-server binary found (build one: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu)"
-        : "no embedding GGUF found (point --model at an embedding/ GGUF or Qwen3-Embedding-0.6B / Qwen3-0.6B)",
+        : "no embedding GGUF found (point --model at an embedding/ GGUF or Qwen3.5-Embedding-0.6B / Qwen3-0.6B)",
       resolved: { bin, model },
     };
     fs.writeFileSync(reportPath, JSON.stringify(skipped, null, 2));
@@ -401,7 +401,7 @@ async function main() {
       note:
         "Server: llama-server --embeddings --pooling last over the GGUF. " +
         "`pairwise_ranking_pearson_vs_full` is the Pearson correlation between the corpus's pairwise-cosine matrix at the truncated width and at the full width — a cheap offline proxy for retrieval-ranking preservation when MTEB isn't available. " +
-        "On 0_6b the GGUF IS the text backbone (pooled-text mode); on 1_7b+ it should be the dedicated embedding/eliza-1-embedding.gguf (Qwen3-Embedding-0.6B).",
+        "On 0_6b the GGUF IS the text backbone (pooled-text mode); on 1_7b+ it should be the dedicated embedding/eliza-1-embedding.gguf (Qwen3.5-Embedding-0.6B).",
     };
   } catch (err) {
     result = {

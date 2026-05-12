@@ -94,6 +94,15 @@ export async function expectNoRenderTelemetryErrors(
   page: Page,
   label: string,
 ): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      }),
+  );
+  await page.waitForTimeout(50);
   const errors = await page.evaluate<RenderTelemetryIssue[]>((errorsKey) => {
     const value = (window as Window & Record<string, unknown>)[errorsKey];
     return Array.isArray(value) ? (value as RenderTelemetryIssue[]) : [];
@@ -282,6 +291,8 @@ function emptyWalletTradingProfile(url: URL) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  await installRenderTelemetryGuard(page);
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,
@@ -392,6 +403,74 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         enabled: false,
         cloudVoiceProxyAvailable: false,
         hasApiKey: false,
+      }),
+    });
+  });
+
+  await page.route("**/api/wallet/addresses", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ evmAddress: null, solanaAddress: null }),
+    });
+  });
+
+  await page.route("**/api/wallet/balances", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ evm: null, solana: null }),
+    });
+  });
+
+  await page.route("**/api/wallet/nfts", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ evm: [], solana: null }),
+    });
+  });
+
+  await page.route("**/api/wallet/config", async (route) => {
+    const method = route.request().method();
+    if (method === "PUT") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true }),
+      });
+      return;
+    }
+    if (method !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        selectedRpcProviders: {
+          evm: "eliza-cloud",
+          bsc: "eliza-cloud",
+          solana: "eliza-cloud",
+        },
+        evmAddress: null,
+        solanaAddress: null,
+        cloudManagedAccess: false,
+        evmChains: [],
+        wallets: [],
       }),
     });
   });

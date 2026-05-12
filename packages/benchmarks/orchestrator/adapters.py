@@ -70,9 +70,9 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # implementations through a Python bridge. Hermes/OpenClaw rows would be
     # misleading labels unless explicit per-agent compactor methods are added.
     "compactbench": ("eliza",),
-    # Eliza/Hermes preserve full OpenAI chat/tool payloads through the LOCA
-    # proxy. The current OpenClaw CLI adapter only receives the last user text
-    # plus a session id, so its LOCA rows are not comparable yet.
+    # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
+    # is an explicit provider-level smoke mode, not native OpenClaw agent
+    # parity, so keep it out of cross-agent result matrices.
     "loca_bench": ("eliza", "hermes"),
     # ConfigBench currently has an in-process Eliza handler plus oracle/mock
     # handlers. Hermes/OpenClaw rows were previously scored against the
@@ -85,6 +85,13 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # VoiceBench currently instantiates the local TypeScript runtime directly;
     # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
     "voicebench": ("eliza",),
+    # These tracks are native hermes-agent environments invoked through
+    # hermes_adapter/run_env_cli.py. Eliza/OpenClaw labels would still run the
+    # Hermes loop, so keep them Hermes-only until separate env drivers exist.
+    "hermes_tblite": ("hermes",),
+    "hermes_terminalbench_2": ("hermes",),
+    "hermes_yc_bench": ("hermes",),
+    "hermes_swe_env": ("hermes",),
 }
 
 
@@ -619,6 +626,9 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     concurrency = ctx.request.extra_config.get("concurrency")
     if isinstance(concurrency, int) and concurrency > 0:
         args.extend(["--concurrency", str(concurrency)])
+    random_seed = ctx.request.extra_config.get("random_seed", ctx.request.extra_config.get("seed"))
+    if isinstance(random_seed, int):
+        args.extend(["--random-seed", str(random_seed)])
     return args
 
 
@@ -1062,6 +1072,8 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
             "revenue_efficiency": data.get("revenue_efficiency"),
             "resilience_score": data.get("resilience_score"),
             "failed_scenarios": data.get("failed_scenarios"),
+            "total_instances": len(data.get("scenarios", [])) if isinstance(data.get("scenarios"), list) else 0,
+            "interrupted": data.get("interrupted") is True,
         },
     )
 
@@ -1170,7 +1182,10 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
 def _score_from_compactbench(path: Path) -> ScoreSummary:
     import json
 
-    valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
+    if path.name.endswith(".valid-hits.jsonl"):
+        valid_path = path
+    else:
+        valid_path = path.with_name(f"{path.stem}.valid-hits.jsonl")
     if not valid_path.exists():
         raise ValueError(
             "compactbench repaired valid-hit analysis is required; "
@@ -1324,6 +1339,27 @@ def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[st
     max_context_size = ctx.request.extra_config.get("max_context_size")
     if isinstance(max_context_size, int) and max_context_size > 0:
         env["MAX_CONVERSATION_TOKENS"] = str(max_context_size)
+    timeout = ctx.request.extra_config.get("timeout")
+    if isinstance(timeout, int) and timeout > 10:
+        env["LOCA_HARNESS_TIMEOUT_S"] = str(max(5, min(timeout - 5, 240)))
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    if harness == "openclaw":
+        openclaw_thinking = ctx.request.extra_config.get("openclaw_thinking")
+        if isinstance(openclaw_thinking, str) and openclaw_thinking.strip():
+            env["LOCA_OPENCLAW_THINKING"] = openclaw_thinking.strip()
+        else:
+            reasoning_effort = ctx.request.extra_config.get("reasoning_effort")
+            if isinstance(reasoning_effort, str) and reasoning_effort.strip():
+                env["LOCA_OPENCLAW_THINKING"] = reasoning_effort.strip()
+        # LOCA relies on native OpenAI chat/tool payloads. OpenClaw's CLI
+        # transport flattens those into text, so use the adapter's direct
+        # OpenAI-compatible path for this benchmark-specific bridge.
+        env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
+        env["OPENCLAW_USE_CLI"] = "0"
     return env
 
 
@@ -1467,6 +1503,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "agentbench": {
             "elizaos": True,
         },
+        "context_bench": {
+            "quick": True,
+            "context_lengths": [1024],
+            "positions": ["middle"],
+            "tasks_per_position": 1,
+        },
         "rlm_bench": {
             "mode": "eliza",
             "tasks_per_config": 1,
@@ -1525,6 +1567,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "hermes_swe_env": {
             "max_tasks": 1,
+        },
+        "scambench": {
+            "max_examples": 2,
+            "max_new_tokens": 128,
         },
     }
     registry_dir_map = {
@@ -1812,6 +1858,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             env_builder=_env_woobench,
             result_patterns=["woobench_*.json"],
             score_extractor=_score_from_woobench,
+            default_extra_config={
+                "scenario": "skeptic_tarot_01",
+                "concurrency": 1,
+                "evaluator": "heuristic",
+                "random_seed": 1,
+            },
         ),
         _make_extra_adapter(
             adapter_id="evm",

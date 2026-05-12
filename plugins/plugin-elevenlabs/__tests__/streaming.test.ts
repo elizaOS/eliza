@@ -103,11 +103,11 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
-    expect(ttsHandler).toBeDefined();
+    if (!ttsHandler) throw new Error("TEXT_TO_SPEECH model missing");
 
     const runtime = createFakeRuntime();
     // The plugin handler signature accepts (runtime, input).
-    const result = (await ttsHandler!(
+    const result = (await ttsHandler(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
       "hello world",
     )) as Uint8Array;
@@ -135,12 +135,13 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    if (!ttsHandler) throw new Error("TEXT_TO_SPEECH model missing");
     const runtime = createFakeRuntime({
       ELEVENLABS_VOICE_ID: "voice-XYZ",
       ELEVENLABS_OUTPUT_FORMAT: "pcm_16000",
     });
 
-    await ttsHandler!(
+    await ttsHandler(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
       { text: "stream me" },
     );
@@ -162,9 +163,10 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    if (!ttsHandler) throw new Error("TEXT_TO_SPEECH model missing");
     const runtime = createFakeRuntime();
 
-    await ttsHandler!(
+    await ttsHandler(
       runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
       { text: "override format", format: "pcm_16000" },
     );
@@ -182,10 +184,11 @@ describe("plugin-elevenlabs TTS streaming", () => {
 
     const { elevenLabsPlugin } = await import("../src/index.js");
     const ttsHandler = elevenLabsPlugin.models?.TEXT_TO_SPEECH;
+    if (!ttsHandler) throw new Error("TEXT_TO_SPEECH model missing");
     const runtime = createFakeRuntime();
 
     await expect(
-      ttsHandler!(
+      ttsHandler(
         runtime as unknown as Parameters<NonNullable<typeof ttsHandler>>[0],
         "fail me",
       ),

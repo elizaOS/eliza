@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/ui";
+import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
 import type { FormEvent } from "react";
 
 export type GameOperatorEventTone =

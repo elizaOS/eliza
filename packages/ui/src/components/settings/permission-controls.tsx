@@ -1,5 +1,7 @@
 import { PERMISSION_IDS } from "@elizaos/shared";
-import { Button, StatusBadge, Switch } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { StatusBadge } from "../ui/status-badge";
+import { Switch } from "../ui/switch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type AllPermissionsState,

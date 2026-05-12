@@ -73,15 +73,8 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
   type ChangeEvent,
   type ReactNode,

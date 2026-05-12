@@ -7,6 +7,12 @@ export default defineConfig({
       "@elizaos/core": fileURLToPath(
         new URL("../../packages/core/src/index.node.ts", import.meta.url)
       ),
+      "@elizaos/plugin-local-inference": fileURLToPath(
+        new URL("../plugin-local-inference/src/index.ts", import.meta.url)
+      ),
+      "@elizaos/plugin-capacitor-bridge": fileURLToPath(
+        new URL("../plugin-capacitor-bridge/src/index.ts", import.meta.url)
+      ),
     },
   },
   test: {

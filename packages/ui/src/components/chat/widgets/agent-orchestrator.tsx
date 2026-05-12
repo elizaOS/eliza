@@ -16,7 +16,7 @@
  * plugin just provides the backend capabilities it consumes.
  */
 
-import { Button } from "@elizaos/ui";
+import { Button } from "../../ui/button";
 import {
   Activity,
   AlertTriangle,

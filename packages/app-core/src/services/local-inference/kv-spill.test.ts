@@ -189,6 +189,9 @@ describe("estimateQuantizedKvBytesPerToken", () => {
     expect(estimateQuantizedKvBytesPerToken("0.6B")).toBeLessThan(
       estimateQuantizedKvBytesPerToken("9B"),
     );
+    expect(estimateQuantizedKvBytesPerToken("1.7B")).toBeGreaterThan(
+      estimateQuantizedKvBytesPerToken("0.6B"),
+    );
     expect(estimateQuantizedKvBytesPerToken("27B")).toBeGreaterThan(
       estimateQuantizedKvBytesPerToken("9B"),
     );

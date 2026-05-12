@@ -1,4 +1,4 @@
-import { ChatConversationRenameDialog } from "@elizaos/ui";
+import { ChatConversationRenameDialog } from "../composites/chat/chat-conversation-rename-dialog";
 import { useEffect, useState } from "react";
 import { useApp } from "../../state";
 

@@ -1,4 +1,7 @@
-import { Button, cn, Spinner, StatusBadge } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { cn } from "../../lib/utils";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";

@@ -12,7 +12,7 @@
  * each with its own bespoke setup surface.
  */
 
-import { Switch } from "@elizaos/ui";
+import { Switch } from "../ui/switch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PluginInfo } from "../../api";
 import {

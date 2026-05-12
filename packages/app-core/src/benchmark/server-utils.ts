@@ -81,6 +81,43 @@ export interface BenchmarkTrajectoryStep {
    * cache-hit and token analysis. Older trajectory readers ignore it.
    */
   usage?: BenchmarkTurnUsage;
+  /**
+   * Native OpenAI-compatible projection of captured Eliza action calls.
+   * Benchmark adapters consume this instead of re-parsing prose or planner
+   * params, so a result labeled "Eliza" proves the runtime emitted a real
+   * action/tool call.
+   */
+  toolCalls?: BenchmarkToolCall[];
+  metadata?: BenchmarkTurnMetadata;
+  nativeTrajectory?: unknown;
+}
+
+export interface BenchmarkToolCall {
+  id: string;
+  type: "function";
+  function: {
+    name: string;
+    arguments: string;
+  };
+}
+
+export interface BenchmarkTurnMetadata {
+  agent_label: "eliza";
+  benchmark: string;
+  task_id: string;
+  room_id: UUID;
+  relay_room_id: UUID;
+  trajectory_step: number;
+  trajectory_endpoint: string;
+  diagnostics_endpoint: string;
+  native_trajectory_step_id: string | null;
+  model_provider: string | null;
+  model_name: string | null;
+  compaction_strategy: string | null;
+  compaction_threshold_tokens: number | null;
+  auto_compact: string | null;
+  tool_schema_count: number;
+  tool_names: string[];
 }
 
 export interface CuaServiceLike {
@@ -381,6 +418,128 @@ export function capturedActionToParams(
   }
 
   return { BENCHMARK_ACTION: benchmarkParams };
+}
+
+export function capturedActionsToToolCalls(
+  capturedActions: CapturedAction[],
+): BenchmarkToolCall[] {
+  const calls: BenchmarkToolCall[] = [];
+  for (const action of capturedActions) {
+    const name = capturedActionToolName(action);
+    if (!name) continue;
+    calls.push({
+      id: `call_benchmark_${calls.length}`,
+      type: "function",
+      function: {
+        name,
+        arguments: stableJsonStringify(capturedActionArguments(action)),
+      },
+    });
+  }
+  return calls;
+}
+
+function capturedActionToolName(action: CapturedAction): string | null {
+  if (typeof action.toolName === "string" && action.toolName.trim()) {
+    return action.toolName.trim();
+  }
+  if (typeof action.command === "string" && action.command.trim()) {
+    return action.command.trim();
+  }
+  if (typeof action.operation === "string" && action.operation.trim()) {
+    return action.operation.trim();
+  }
+  const params = isRecord(action.params) ? action.params : undefined;
+  const paramTool = params?.tool_name;
+  if (typeof paramTool === "string" && paramTool.trim()) {
+    return paramTool.trim();
+  }
+  const paramCommand = params?.command;
+  if (typeof paramCommand === "string" && paramCommand.trim()) {
+    return paramCommand.trim();
+  }
+  return null;
+}
+
+function capturedActionArguments(
+  action: CapturedAction,
+): Record<string, unknown> {
+  if (isRecord(action.arguments)) {
+    return action.arguments;
+  }
+  const params = isRecord(action.params) ? { ...action.params } : {};
+  delete params.tool_name;
+  delete params.command;
+  return params;
+}
+
+function stableJsonStringify(value: Record<string, unknown>): string {
+  return JSON.stringify(sortJson(value));
+}
+
+function sortJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortJson);
+  }
+  if (!isRecord(value)) {
+    return value;
+  }
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, item]) => [key, sortJson(item)]),
+  );
+}
+
+export function benchmarkTurnMetadata(params: {
+  session: BenchmarkSession;
+  step: number;
+  context?: Record<string, unknown>;
+  nativeTrajectoryStepId?: string;
+}): BenchmarkTurnMetadata {
+  const tools = Array.isArray(params.context?.tools)
+    ? params.context.tools.filter(isRecord)
+    : [];
+  return {
+    agent_label: "eliza",
+    benchmark: params.session.benchmark,
+    task_id: params.session.taskId,
+    room_id: params.session.roomId,
+    relay_room_id: params.session.relayRoomId,
+    trajectory_step: params.step,
+    trajectory_endpoint: `/api/benchmark/trajectory?benchmark=${encodeURIComponent(params.session.benchmark)}&task_id=${encodeURIComponent(params.session.taskId)}`,
+    diagnostics_endpoint: `/api/benchmark/diagnostics?benchmark=${encodeURIComponent(params.session.benchmark)}&task_id=${encodeURIComponent(params.session.taskId)}`,
+    native_trajectory_step_id: params.nativeTrajectoryStepId ?? null,
+    model_provider:
+      process.env.BENCHMARK_MODEL_PROVIDER ??
+      process.env.ELIZA_PROVIDER ??
+      null,
+    model_name:
+      process.env.BENCHMARK_MODEL_NAME ??
+      process.env.CEREBRAS_MODEL ??
+      process.env.LARGE_MODEL ??
+      null,
+    compaction_strategy: process.env.ELIZA_CONVERSATION_COMPACTOR ?? null,
+    compaction_threshold_tokens:
+      numberFromEnv("ELIZA_COMPACTION_THRESHOLD_TOKENS") ??
+      numberFromEnv("MAX_CONVERSATION_TOKENS"),
+    auto_compact: process.env.AUTO_COMPACT ?? null,
+    tool_schema_count: tools.length,
+    tool_names: tools.map(toolSchemaName).filter((name) => name.length > 0),
+  };
+}
+
+function numberFromEnv(name: string): number | null {
+  const raw = process.env[name]?.trim();
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
+
+function toolSchemaName(tool: Record<string, unknown>): string {
+  const fn = isRecord(tool.function) ? tool.function : undefined;
+  const raw = tool.name ?? fn?.name;
+  return typeof raw === "string" ? raw : "";
 }
 
 export function sessionKey(session: BenchmarkSession): string {

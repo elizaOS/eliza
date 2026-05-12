@@ -66,6 +66,26 @@ class TestBFCLRunner:
         assert runner.config == config
         assert runner.dataset is not None
 
+    def test_runner_initializes_hermes_provider(self, config: BFCLConfig) -> None:
+        """Hermes provider should use the Hermes BFCL adapter, not the generic fallback."""
+        runner = BFCLRunner(config, provider="hermes", model="gpt-oss-120b")
+
+        assert runner.agent.__class__.__name__ == "HermesBFCLAgent"
+        assert runner._provider == "hermes"
+
+    def test_runner_respects_hermes_harness_env_for_orchestrator(
+        self,
+        config: BFCLConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Orchestrator labels Hermes rows through env even when command provider is eliza."""
+        monkeypatch.setenv("BENCHMARK_HARNESS", "hermes")
+
+        runner = BFCLRunner(config, provider="eliza", model="gpt-oss-120b")
+
+        assert runner.agent.__class__.__name__ == "HermesBFCLAgent"
+        assert runner._provider == "hermes"
+
     @pytest.mark.asyncio
     async def test_mock_agent_returns_expected(self, config: BFCLConfig) -> None:
         """Test mock agent returns expected calls."""

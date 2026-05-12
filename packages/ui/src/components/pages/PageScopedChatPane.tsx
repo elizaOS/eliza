@@ -1,4 +1,6 @@
-import { ChatAttachmentStrip, ChatComposer, Spinner } from "@elizaos/ui";
+import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
+import { ChatComposer } from "../composites/chat/chat-composer";
+import { Spinner } from "../ui/spinner";
 import { RotateCcw, Sparkles } from "lucide-react";
 import {
   type ChangeEvent,

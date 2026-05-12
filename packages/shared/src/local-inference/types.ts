@@ -11,8 +11,13 @@
  * the type contracts live here.
  */
 
-/** Agent slot ids the runtime maps to a local model. */
-export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";
+/** Agent slot ids the runtime maps to a local model/provider. */
+export type AgentModelSlot =
+  | "TEXT_SMALL"
+  | "TEXT_LARGE"
+  | "TEXT_EMBEDDING"
+  | "TEXT_TO_SPEECH"
+  | "TRANSCRIPTION";
 
 /** Subset of `AgentModelSlot` that participates in text generation. */
 export type TextGenerationSlot = Extract<
@@ -24,6 +29,8 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
   "TEXT_EMBEDDING",
+  "TEXT_TO_SPEECH",
+  "TRANSCRIPTION",
 ];
 
 export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
@@ -200,6 +207,31 @@ export interface LocalRuntimeOptimizations {
    * provide these kernels.
    */
   requiresKernel?: LocalRuntimeKernel[];
+  /**
+   * Number of mid-prefill KV checkpoints the server retains for rollback.
+   * Maps to upstream llama-server `--ctx-checkpoints N` (default 8 upstream).
+   * Required by the voice loop's optimistic-rollback path: snapshots taken at
+   * `speech-pause` so the slot can be restored if the user resumes within
+   * the rollback window. Server-side flag is gated by a runtime probe — set
+   * here only as a catalog default.
+   */
+  ctxCheckpoints?: number;
+  /**
+   * Token interval between mid-prefill KV checkpoints. Maps to
+   * `--ctx-checkpoint-interval M` (default 8192 upstream). Larger contexts
+   * benefit from larger intervals to keep checkpoint count bounded.
+   */
+  ctxCheckpointInterval?: number;
+  /**
+   * Opt this bundle into the native DFlash accept/reject event protocol
+   * (see `docs/dflash-native-events-protocol.md`). When true AND the
+   * running llama-server advertises `capabilities.dflashNativeEvents` on
+   * `/health`, the JS side consumes structured `dflash` events from each
+   * SSE chunk instead of synthesizing accept events from text deltas.
+   * Defaults to false — the legacy synthesis path is what runs in
+   * production until the fork's native emission is merged and verified.
+   */
+  nativeDflashEvents?: boolean;
 }
 
 export interface LocalRuntimeAcceleration {
@@ -256,8 +288,10 @@ export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-1_7b". */
+  /** Repo slug on the selected hub, e.g. "elizaos/eliza-1-1_7b". */
   hfRepo: string;
+  /** Source hub. Omitted means Hugging Face for backward compatibility. */
+  hub?: "huggingface" | "modelscope";
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
   /**
@@ -275,11 +309,11 @@ export interface CatalogModel {
   bundleManifestSha256?: string;
   params:
     | "360M"
-    | "0.6B"
     | "0.8B"
+    | "0.6B"
     | "1B"
-    | "1.7B"
     | "2B"
+    | "1.7B"
     | "3B"
     | "4B"
     | "7B"
@@ -341,6 +375,18 @@ export interface CatalogModel {
   };
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
+  /**
+   * Suggested single-GPU profile id for this bundle. Populated for tiers
+   * we have hand-tuned profiles for; absent on tiers where the catalog
+   * defaults already fit any supported card. The recommender uses this to
+   * pick a bundle when the host's GPU matches the profile.
+   *
+   * Single-GPU only — multi-GPU / tensor-parallel deployments are
+   * explicitly out of scope (see `local-inference/gpu-profiles.ts`). The
+   * type is duplicated here rather than imported from `gpu-profiles.ts` to
+   * avoid an import cycle between the two leaf modules.
+   */
+  gpuProfile?: "rtx-3090" | "rtx-4090" | "rtx-5090" | "h200";
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";

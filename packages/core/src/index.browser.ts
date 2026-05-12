@@ -9,7 +9,6 @@
 export * from "./actions";
 export * from "./api/http-helpers";
 export * from "./api/route-helpers";
-export * from "./app-registry";
 // Export core modules (all browser-compatible after refactoring)
 export * from "./app-route-plugin-registry";
 export * from "./build-variant";
@@ -41,6 +40,7 @@ export * from "./memory";
 export * from "./prompts";
 export * from "./roles";
 export * from "./runtime";
+export * from "./runtime/conversation-compaction-hook";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
 export * from "./runtime/execute-planned-tool-call";
@@ -90,8 +90,37 @@ export { formatError } from "./utils/format-error";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 
-export function resolveStateDir(): string {
-	return "/.eliza";
+function readBrowserEnv(
+	env: Record<string, string | undefined> | undefined,
+	key: string,
+): string | undefined {
+	const value = env?.[key]?.trim();
+	return value && value.length > 0 ? value : undefined;
+}
+
+export function getElizaNamespace(
+	env: Record<string, string | undefined> = (
+		globalThis as { process?: { env?: Record<string, string | undefined> } }
+	).process?.env ?? {},
+): string {
+	return readBrowserEnv(env, "ELIZA_NAMESPACE") ?? "eliza";
+}
+
+export function resolveUserPath(input: string): string {
+	const trimmed = input.trim();
+	if (!trimmed) return trimmed;
+	if (trimmed.startsWith("~/")) return `/${trimmed.slice(2)}`;
+	return trimmed;
+}
+
+export function resolveStateDir(
+	env: Record<string, string | undefined> = (
+		globalThis as { process?: { env?: Record<string, string | undefined> } }
+	).process?.env ?? {},
+): string {
+	return (
+		readBrowserEnv(env, "ELIZA_STATE_DIR") ?? `/.${getElizaNamespace(env)}`
+	);
 }
 
 export async function runPluginMigrations(): Promise<void> {}

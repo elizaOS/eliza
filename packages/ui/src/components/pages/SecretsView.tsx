@@ -1,13 +1,7 @@
-import {
-  Button,
-  ContentLayout,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  Input,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";

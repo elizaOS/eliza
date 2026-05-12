@@ -1,8 +1,4 @@
-import {
-  type WorkspaceMobileSidebarControl,
-  type WorkspaceMobileSidebarControls,
-  WorkspaceMobileSidebarControlsContext,
-} from "@elizaos/ui";
+import { type WorkspaceMobileSidebarControl, type WorkspaceMobileSidebarControls, WorkspaceMobileSidebarControlsContext } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls";
 import {
   PanelLeftClose,
   PanelLeftOpen,

@@ -1,11 +1,9 @@
 import type { MessageExampleGroup } from "@elizaos/core";
-import {
-  Button,
-  PageLayout,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import {
   BookOpen,
   Brain,

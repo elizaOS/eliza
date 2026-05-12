@@ -24,7 +24,9 @@ enum {
 
 static pthread_mutex_t g_call_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t g_error_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t g_state_mutex = PTHREAD_MUTEX_INITIALIZER;
 static int g_running = 0;
+static int g_starting = 0;
 static uint64_t g_next_id = 1;
 static int g_stdin_read_fd = -1;
 static int g_stdin_write_fd = -1;
@@ -42,10 +44,24 @@ static char g_last_error[ELIZA_LAST_ERROR_BYTES] = {0};
 static void close_fd(int *fd);
 static void set_last_error(const char *fmt, ...);
 
+static void mark_engine_stopped(void) {
+  pthread_mutex_lock(&g_state_mutex);
+  g_running = 0;
+  g_starting = 0;
+  pthread_mutex_unlock(&g_state_mutex);
+}
+
+static void mark_engine_ready(void) {
+  pthread_mutex_lock(&g_state_mutex);
+  g_running = 1;
+  g_starting = 0;
+  pthread_mutex_unlock(&g_state_mutex);
+}
+
 static void on_bun_exit(uint32_t code) {
   g_bun_exited = 1;
   g_bun_exit_code = code;
-  g_running = 0;
+  mark_engine_stopped();
   set_last_error("Bun exited before ios-bridge readiness with code %u", code);
   close_fd(&g_stdout_write_fd);
   close_fd(&g_stderr_write_fd);
@@ -300,12 +316,35 @@ static char *dirname_dup(const char *path) {
   return out;
 }
 
+static char *join_path_dup(const char *base, const char *leaf) {
+  if (!base || !base[0]) return xstrdup(leaf);
+  if (!leaf || !leaf[0]) return xstrdup(base);
+  size_t base_len = strlen(base);
+  size_t leaf_len = strlen(leaf);
+  int needs_slash = base[base_len - 1] != '/';
+  char *out = (char *)malloc(base_len + (size_t)needs_slash + leaf_len + 1);
+  if (!out) return NULL;
+  memcpy(out, base, base_len);
+  size_t offset = base_len;
+  if (needs_slash) out[offset++] = '/';
+  memcpy(out + offset, leaf, leaf_len);
+  out[offset + leaf_len] = '\0';
+  return out;
+}
+
 static void ensure_default_env(const char *app_support_dir, const char *bundle_path) {
   if (app_support_dir && app_support_dir[0]) {
     mkdir(app_support_dir, 0700);
     setenv("HOME", app_support_dir, 1);
     setenv("ELIZA_HOME", app_support_dir, 1);
     setenv("ELIZA_IOS_APP_SUPPORT_DIR", app_support_dir, 1);
+    setenv("ELIZA_STATE_DIR", app_support_dir, 0);
+    setenv("ELIZA_WORKSPACE_DIR", app_support_dir, 0);
+    char *pglite_dir = join_path_dup(app_support_dir, ".elizadb");
+    if (pglite_dir) {
+      setenv("PGLITE_DATA_DIR", pglite_dir, 0);
+      free(pglite_dir);
+    }
   }
   if (bundle_path && bundle_path[0]) {
     setenv("ELIZA_IOS_AGENT_BUNDLE", bundle_path, 1);
@@ -517,18 +556,68 @@ static void free_argv(char **argv, int argc) {
 }
 
 static char **default_argv(const char *bundle_path, int *argc_out) {
-  char **argv = (char **)calloc(4, sizeof(char *));
+  char **argv = (char **)calloc(5, sizeof(char *));
   if (!argv) return NULL;
   argv[0] = xstrdup("bun");
-  argv[1] = xstrdup(bundle_path);
-  argv[2] = xstrdup("ios-bridge");
-  argv[3] = xstrdup("--stdio");
-  if (!argv[0] || !argv[1] || !argv[2] || !argv[3]) {
-    free_argv(argv, 4);
+  argv[1] = xstrdup("--no-install");
+  argv[2] = xstrdup(bundle_path);
+  argv[3] = xstrdup("ios-bridge");
+  argv[4] = xstrdup("--stdio");
+  if (!argv[0] || !argv[1] || !argv[2] || !argv[3] || !argv[4]) {
+    free_argv(argv, 5);
     return NULL;
   }
-  *argc_out = 4;
+  *argc_out = 5;
   return argv;
+}
+
+static int option_consumes_value(const char *arg) {
+  if (!arg || arg[0] != '-') return 0;
+  if (strchr(arg, '=')) return 0;
+  return strcmp(arg, "--cwd") == 0 || strcmp(arg, "--env-file") == 0 ||
+      strcmp(arg, "--preload") == 0 || strcmp(arg, "--conditions") == 0 ||
+      strcmp(arg, "--port") == 0 || strcmp(arg, "-r") == 0 ||
+      strcmp(arg, "--require") == 0;
+}
+
+static int find_script_arg_index(char **argv, int argc) {
+  for (int i = 1; i < argc; i++) {
+    const char *arg = argv[i];
+    if (!arg) continue;
+    if (strstr(arg, "agent-bundle") || strstr(arg, ".js")) return i;
+  }
+  for (int i = 1; i < argc; i++) {
+    const char *arg = argv[i];
+    if (!arg || arg[0] == '\0') continue;
+    if (arg[0] == '-') {
+      if (option_consumes_value(arg)) i++;
+      continue;
+    }
+    return i;
+  }
+  return -1;
+}
+
+static int insert_bundle_arg(char ***argv_inout, int *argc_inout, const char *bundle_path) {
+  char **argv = *argv_inout;
+  int argc = *argc_inout;
+  int insert_at = 1;
+  while (insert_at < argc) {
+    const char *arg = argv[insert_at];
+    if (!arg || arg[0] != '-') break;
+    insert_at++;
+    if (option_consumes_value(arg) && insert_at < argc) insert_at++;
+  }
+
+  char **grown = (char **)realloc(argv, (size_t)(argc + 1) * sizeof(char *));
+  if (!grown) return -1;
+  argv = grown;
+  for (int i = argc; i > insert_at; i--) argv[i] = argv[i - 1];
+  argv[insert_at] = xstrdup(bundle_path);
+  if (!argv[insert_at]) return -1;
+  *argv_inout = argv;
+  *argc_inout = argc + 1;
+  return 0;
 }
 
 static char **parse_argv_json(const char *json, const char *bundle_path, int *argc_out) {
@@ -585,9 +674,15 @@ static char **parse_argv_json(const char *json, const char *bundle_path, int *ar
     return default_argv(bundle_path, argc_out);
   }
 
-  free(argv[1]);
-  argv[1] = xstrdup(bundle_path);
-  if (!argv[1]) {
+  int script_index = find_script_arg_index(argv, argc);
+  if (script_index >= 0) {
+    free(argv[script_index]);
+    argv[script_index] = xstrdup(bundle_path);
+    if (!argv[script_index]) {
+      free_argv(argv, argc);
+      return NULL;
+    }
+  } else if (insert_bundle_arg(&argv, &argc, bundle_path) != 0) {
     free_argv(argv, argc);
     return NULL;
   }
@@ -599,6 +694,10 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
   int64_t deadline = monotonic_ms() + timeout_ms;
   for (;;) {
     int64_t remaining = deadline - monotonic_ms();
+    if (g_bun_exited) {
+      set_last_error("Bun exited before ios-bridge readiness with code %u", g_bun_exit_code);
+      return -1;
+    }
     if (remaining <= 0) {
       if (g_bun_exited) {
         set_last_error("Bun exited before ios-bridge readiness with code %u", g_bun_exit_code);
@@ -608,16 +707,15 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
       return -2;
     }
     int timed_out = 0;
-    char *line = read_line_timeout(stdout_fd, (int)remaining, &timed_out);
+    int read_timeout = remaining > 250 ? 250 : (int)remaining;
+    char *line = read_line_timeout(stdout_fd, read_timeout, &timed_out);
     if (!line) {
       if (timed_out) {
         if (g_bun_exited) {
           set_last_error("Bun exited before ios-bridge readiness with code %u", g_bun_exit_code);
           return -1;
-        } else {
-          set_last_error("ios-bridge did not become ready within %dms", timeout_ms);
-          return -2;
         }
+        continue;
       }
       if (g_last_error[0] == '\0') {
         set_last_error("ios-bridge closed before readiness");
@@ -655,12 +753,25 @@ int32_t eliza_bun_engine_start(
     const char *argv_json,
     const char *env_json,
     const char *app_support_dir) {
-  if (g_running) return 0;
+  pthread_mutex_lock(&g_state_mutex);
+  if (g_running) {
+    pthread_mutex_unlock(&g_state_mutex);
+    return 0;
+  }
+  if (g_starting) {
+    pthread_mutex_unlock(&g_state_mutex);
+    set_last_error("ElizaBunEngine is already starting");
+    return -2;
+  }
+  g_starting = 1;
+  pthread_mutex_unlock(&g_state_mutex);
+
   set_last_error("");
   g_bun_exited = 0;
   g_bun_exit_code = 0;
   if (!bundle_path || bundle_path[0] == '\0') {
     set_last_error("bundle_path is required");
+    mark_engine_stopped();
     return -1;
   }
 
@@ -669,12 +780,14 @@ int32_t eliza_bun_engine_start(
   int stderr_pipe[2] = {-1, -1};
   if (pipe(stdin_pipe) != 0) {
     set_last_error("failed to create stdin pipe: %s", strerror(errno));
+    mark_engine_stopped();
     return -1;
   }
   if (pipe(stdout_pipe) != 0) {
     set_last_error("failed to create stdout pipe: %s", strerror(errno));
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
+    mark_engine_stopped();
     return -1;
   }
   if (pipe(stderr_pipe) != 0) {
@@ -683,6 +796,7 @@ int32_t eliza_bun_engine_start(
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);
     close(stdout_pipe[1]);
+    mark_engine_stopped();
     return -1;
   }
 
@@ -699,6 +813,7 @@ int32_t eliza_bun_engine_start(
     close(stdout_pipe[1]);
     close(stderr_pipe[0]);
     close(stderr_pipe[1]);
+    mark_engine_stopped();
     return -1;
   }
 
@@ -718,6 +833,7 @@ int32_t eliza_bun_engine_start(
     close(stdout_pipe[1]);
     close(stderr_pipe[0]);
     close(stderr_pipe[1]);
+    mark_engine_stopped();
     return -1;
   }
 
@@ -740,12 +856,12 @@ int32_t eliza_bun_engine_start(
     return ready;
   }
 
-  g_running = 1;
+  mark_engine_ready();
   return 0;
 }
 
 int32_t eliza_bun_engine_stop(void) {
-  g_running = 0;
+  mark_engine_stopped();
   close_fd(&g_stdin_write_fd);
   close_fd(&g_stdin_read_fd);
   close_fd(&g_stdout_read_fd);

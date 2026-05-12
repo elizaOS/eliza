@@ -1,15 +1,8 @@
-import {
-  Button,
-  cn,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-  Spinner,
-  StatusBadge,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { cn } from "../../lib/utils";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import { Check, ChevronDown, RefreshCw, UserRound } from "lucide-react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
 import {

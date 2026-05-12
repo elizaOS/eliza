@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PermissionId } from "../../api";
 import {

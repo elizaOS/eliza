@@ -1,4 +1,4 @@
-import { PageLayout } from "@elizaos/ui";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";

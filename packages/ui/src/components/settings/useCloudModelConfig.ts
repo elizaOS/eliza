@@ -13,7 +13,7 @@ import {
   normalizeServiceRoutingConfig,
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
-import { useTimeout } from "@elizaos/ui";
+import { useTimeout } from "../../hooks/useTimeout";
 import { useCallback, useMemo, useState } from "react";
 import { client, type OnboardingOptions } from "../../api";
 import {

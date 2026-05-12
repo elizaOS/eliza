@@ -1,4 +1,5 @@
-import { cn, Input } from "@elizaos/ui";
+import { cn } from "../../lib/utils";
+import { Input } from "../ui/input";
 import { Pencil } from "lucide-react";
 import {
   type FormEvent,

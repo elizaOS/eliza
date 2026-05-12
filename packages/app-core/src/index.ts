@@ -27,11 +27,14 @@ export * from "./registry";
 // authoritative on the Node barrel to avoid ambiguous star re-exports.
 export { type ConfigField, getPlugins } from "./registry";
 export * from "./runtime/android-avf-microdroid-bridge";
+export * from "./runtime/app-core-runtime-hooks";
 export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
 export * from "./runtime/eliza";
+export * from "./runtime/ensure-local-inference-handler";
+export * from "./runtime/mode/runtime-mode";
 export * from "./runtime/mobile-safe-runtime";
 export * from "./security/agent-vault-id";
 export * from "./security/hydrate-wallet-keys-from-platform-store";

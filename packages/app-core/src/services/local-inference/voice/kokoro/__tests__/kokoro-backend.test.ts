@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { KokoroTtsBackend } from "../kokoro-backend";
-import { KokoroMockRuntime } from "../kokoro-runtime";
-import type { KokoroPhonemizer } from "../types";
-import { KOKORO_DEFAULT_VOICE_ID } from "../voices";
 import type {
   AudioSink,
   Phrase,
   SpeakerPreset,
   TtsPcmChunk,
 } from "../../types";
+import { KokoroTtsBackend } from "../kokoro-backend";
+import { KokoroMockRuntime } from "../kokoro-runtime";
+import type { KokoroPhonemizer } from "../types";
+import { KOKORO_DEFAULT_VOICE_ID } from "../voices";
 
 function fixedPhonemizer(): KokoroPhonemizer {
   return {
@@ -37,10 +37,10 @@ function makePhrase(text: string): Phrase {
   };
 }
 
-function makeBackend(opts?: {
-  totalSamples?: number;
-  chunkCount?: number;
-}): { backend: KokoroTtsBackend; runtime: KokoroMockRuntime } {
+function makeBackend(opts?: { totalSamples?: number; chunkCount?: number }): {
+  backend: KokoroTtsBackend;
+  runtime: KokoroMockRuntime;
+} {
   const runtime = new KokoroMockRuntime({
     sampleRate: 24000,
     totalSamples: opts?.totalSamples ?? 9600, // 0.4s
@@ -63,7 +63,10 @@ function makeBackend(opts?: {
 
 describe("KokoroTtsBackend", () => {
   it("streams PCM chunks and emits a zero-length final tail", async () => {
-    const { backend, runtime } = makeBackend({ totalSamples: 9600, chunkCount: 4 });
+    const { backend, runtime } = makeBackend({
+      totalSamples: 9600,
+      chunkCount: 4,
+    });
     const chunks: TtsPcmChunk[] = [];
     const result = await backend.synthesizeStream({
       phrase: makePhrase("hello"),

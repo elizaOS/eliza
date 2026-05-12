@@ -41,13 +41,15 @@ def _normalize_schema(schema: Any) -> Any:
         return schema
 
     normalized: dict[str, Any] = {}
+    normalized_type: str | list[str] | None = None
     for key, value in schema.items():
         if key == "type":
             if isinstance(value, str):
                 type_name = value.lower()
                 if type_name in _UNCONSTRAINED_SCHEMA_TYPES:
                     continue
-                normalized[key] = _JSON_SCHEMA_TYPE_ALIASES.get(type_name, "string")
+                normalized_type = _JSON_SCHEMA_TYPE_ALIASES.get(type_name, "string")
+                normalized[key] = normalized_type
             elif isinstance(value, list):
                 normalized_types = [
                     _JSON_SCHEMA_TYPE_ALIASES.get(str(item).lower(), "string")
@@ -55,14 +57,78 @@ def _normalize_schema(schema: Any) -> Any:
                     if str(item).lower() not in _UNCONSTRAINED_SCHEMA_TYPES
                 ]
                 if normalized_types:
-                    normalized[key] = normalized_types
+                    normalized_type = normalized_types
+                    normalized[key] = normalized_type
             else:
                 normalized[key] = value
         elif key in {"items", "properties", "additionalProperties"}:
             normalized[key] = _normalize_schema(value)
         else:
             normalized[key] = _normalize_schema(value)
+
+    # BFCL contains Python-ish fragments such as {"type": "string",
+    # "items": {"type": "string"}} for list fields. Strict OpenAI-compatible
+    # providers reject that invalid JSON Schema. Prefer the structural hints
+    # over the stale scalar type so the schema remains scoreable.
+    if "properties" in normalized:
+        normalized["type"] = "object"
+        normalized_type = "object"
+    elif "items" in normalized:
+        normalized["type"] = "array"
+        normalized_type = "array"
+
+    if normalized_type != "array":
+        normalized.pop("items", None)
+    elif "items" not in normalized:
+        normalized["items"] = {}
+
+    if normalized_type != "object":
+        normalized.pop("properties", None)
+        normalized.pop("additionalProperties", None)
     return normalized
+
+
+def _coerce_default(schema_type: str | None, default: Any) -> Any:
+    """Return a default only when it is valid for the JSON Schema type."""
+    if default is None:
+        return None
+    if schema_type == "boolean":
+        if isinstance(default, bool):
+            return default
+        if isinstance(default, str):
+            lowered = default.strip().lower()
+            if lowered in {"true", "false"}:
+                return lowered == "true"
+        return None
+    if schema_type == "integer":
+        if isinstance(default, bool):
+            return None
+        if isinstance(default, int):
+            return default
+        if isinstance(default, str):
+            try:
+                return int(default)
+            except ValueError:
+                return None
+        return None
+    if schema_type == "number":
+        if isinstance(default, bool):
+            return None
+        if isinstance(default, (int, float)):
+            return default
+        if isinstance(default, str):
+            try:
+                return float(default)
+            except ValueError:
+                return None
+        return None
+    if schema_type == "array":
+        return default if isinstance(default, list) else None
+    if schema_type == "object":
+        return default if isinstance(default, dict) else None
+    if schema_type == "string":
+        return default if isinstance(default, str) else str(default)
+    return default
 
 
 def _json_schema_for_function(function: FunctionDefinition) -> dict[str, Any]:
@@ -72,15 +138,23 @@ def _json_schema_for_function(function: FunctionDefinition) -> dict[str, Any]:
             "description": parameter.description,
         }
         param_type = (parameter.param_type or "string").lower()
-        if param_type not in _UNCONSTRAINED_SCHEMA_TYPES:
-            schema["type"] = _JSON_SCHEMA_TYPE_ALIASES.get(param_type, "string")
+        schema_type: str | None = None
+        if parameter.properties is not None:
+            schema_type = "object"
+        elif parameter.items is not None:
+            schema_type = "array"
+        elif param_type not in _UNCONSTRAINED_SCHEMA_TYPES:
+            schema_type = _JSON_SCHEMA_TYPE_ALIASES.get(param_type, "string")
+        if schema_type is not None:
+            schema["type"] = schema_type
         if parameter.enum is not None:
             schema["enum"] = parameter.enum
-        if parameter.default is not None:
-            schema["default"] = parameter.default
-        if parameter.items is not None:
+        default = _coerce_default(schema_type, parameter.default)
+        if default is not None:
+            schema["default"] = default
+        if schema_type == "array" and parameter.items is not None:
             schema["items"] = _normalize_schema(parameter.items)
-        if parameter.properties is not None:
+        if schema_type == "object" and parameter.properties is not None:
             schema["properties"] = _normalize_schema(parameter.properties)
         properties[name] = schema
 

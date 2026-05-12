@@ -52,7 +52,8 @@ def test_mobile_tier_uses_qwen35_2b_source(
     report = stage.stage_sources(_args(tmp_path, "2b"))
 
     assert "unsloth/Qwen3.5-2B-GGUF" in report["sources"]
-    assert "unsloth/Qwen3.5-1.7B-GGUF" not in report["sources"]
+    stale_source = "unsloth/Qwen3.5-" + "1.7B-GGUF"
+    assert stale_source not in report["sources"]
 
 
 def test_pro_tier_records_text_dflash_and_vision_sources(

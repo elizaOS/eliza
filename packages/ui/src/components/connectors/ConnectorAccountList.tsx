@@ -1,4 +1,6 @@
-import { Button, cn, Spinner } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { cn } from "../../lib/utils";
+import { Spinner } from "../ui/spinner";
 import { Plus } from "lucide-react";
 import { useEffect, useMemo } from "react";
 import type {

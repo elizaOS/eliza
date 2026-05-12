@@ -61,6 +61,46 @@ export type ElizaInferenceContextHandle = bigint;
 /** Opaque pointer to a native Silero VAD session. */
 export type NativeVadHandle = bigint;
 
+/** Opaque pointer to a streaming-LLM session. */
+export type LlmStreamHandle = bigint;
+
+/**
+ * Per-session config handed to `llmStreamOpen`. Mirrors
+ * `eliza_llm_stream_config_t` in `ffi-streaming-llm.h`.
+ */
+export interface LlmStreamConfig {
+  maxTokens: number;
+  temperature: number;
+  topP: number;
+  topK: number;
+  repeatPenalty: number;
+  /** Pinned slot id; -1 disables pinning. */
+  slotId: number;
+  /** Optional prompt cache key used to derive a slot when `slotId === -1`. */
+  promptCacheKey: string | null;
+  /** DFlash drafter bounds; `0` for either disables speculative decoding. */
+  draftMin: number;
+  draftMax: number;
+  /** Absolute path of the drafter GGUF; null disables speculative decoding. */
+  dflashDrafterPath: string | null;
+}
+
+/**
+ * One step of streaming LLM output. `tokens` is the batch of accepted text
+ * model token ids the runtime committed this step (>= 1; > 1 only when the
+ * DFlash drafter is active and the verifier accepted multiple drafts).
+ * `text` is the detokenized text for those tokens. `done` is `true` only
+ * on the final step (EOS reached). `drafterDrafted` and `drafterAccepted`
+ * are populated when the drafter is active.
+ */
+export interface LlmStreamStep {
+  tokens: number[];
+  text: string;
+  done: boolean;
+  drafterDrafted: number;
+  drafterAccepted: number;
+}
+
 /**
  * One streaming-TTS chunk delivered to the `onChunk` callback passed to
  * `ttsSynthesizeStream`. `pcm` is a *view* over the library's buffer —
@@ -230,6 +270,51 @@ export interface ElizaInferenceFfi {
   /** Close + free a streaming ASR session. Idempotent on already-closed handles. */
   asrStreamClose(stream: bigint): void;
 
+  /* ---- Streaming LLM (additive on top of ABI v3) ---------------- */
+
+  /**
+   * True when this build exports the streaming LLM symbols
+   * (`eliza_inference_llm_stream_*`). Transitional builds may load
+   * without them; the runner uses this to pick between the FFI streaming
+   * path and the HTTP `llama-server` path.
+   */
+  llmStreamSupported?(): boolean;
+  /**
+   * Open a streaming-LLM session against `ctx`. Failure throws
+   * `VoiceLifecycleError`. Close exactly once via `llmStreamClose`.
+   */
+  llmStreamOpen?(args: {
+    ctx: ElizaInferenceContextHandle;
+    config: LlmStreamConfig;
+  }): LlmStreamHandle;
+  /** Feed a batch of pre-tokenized prompt tokens before the first `next`. */
+  llmStreamPrefill?(args: {
+    stream: LlmStreamHandle;
+    tokens: Int32Array;
+  }): void;
+  /**
+   * Pull the next streaming step. Returns `null` when the runtime declined
+   * to emit tokens this call (rare — drafter rejected everything and the
+   * verifier had nothing to commit); poll again. `step.done === true` is
+   * the final step.
+   */
+  llmStreamNext?(args: {
+    stream: LlmStreamHandle;
+    maxTokensPerStep?: number;
+    maxTextBytes?: number;
+  }): LlmStreamStep;
+  /** Cancel in-flight generation; the next `_next` returns CANCELLED. */
+  llmStreamCancel?(stream: LlmStreamHandle): void;
+  /** Persist the session's slot KV state to disk. */
+  llmStreamSaveSlot?(args: { stream: LlmStreamHandle; filename: string }): void;
+  /** Restore a previously-saved slot KV file. Call before the first prefill/next. */
+  llmStreamRestoreSlot?(args: {
+    stream: LlmStreamHandle;
+    filename: string;
+  }): void;
+  /** Close + free a streaming-LLM session. Idempotent on already-closed handles. */
+  llmStreamClose?(stream: LlmStreamHandle): void;
+
   /** Best-effort dispose for the binding itself (closes the dlopen handle). */
   close(): void;
 }
@@ -371,6 +456,41 @@ interface BunFfiSymbols {
   ) => number;
   eliza_inference_asr_stream_close: (stream: bigint) => void;
   eliza_inference_free_string: (str: bigint | number) => void;
+  // Streaming LLM (additive). Optional — transitional builds may omit.
+  eliza_inference_llm_stream_open?: (
+    ctx: bigint,
+    cfg: unknown,
+    outErr: unknown,
+  ) => unknown;
+  eliza_inference_llm_stream_prefill?: (
+    stream: bigint,
+    tokens: unknown,
+    nTokens: bigint | number,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_llm_stream_next?: (
+    stream: bigint,
+    tokensOut: unknown,
+    tokensCapacity: bigint | number,
+    numTokensOut: unknown,
+    textOut: unknown,
+    textCapacity: bigint | number,
+    drafterDraftedOut: unknown,
+    drafterAcceptedOut: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_llm_stream_cancel?: (stream: bigint) => number;
+  eliza_inference_llm_stream_save_slot?: (
+    stream: bigint,
+    filename: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_llm_stream_restore_slot?: (
+    stream: bigint,
+    filename: unknown,
+    outErr: unknown,
+  ) => number;
+  eliza_inference_llm_stream_close?: (stream: bigint) => void;
 }
 
 interface BunFfiLib {
@@ -465,6 +585,52 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
     eliza_inference_vad_reset: { args: [T.usize, T.ptr], returns: T.i32 },
     eliza_inference_vad_close: { args: [T.usize], returns: T.void },
   };
+  // Streaming LLM (additive on top of v3). Bound opportunistically — when
+  // absent the runner falls back to the HTTP `llama-server` path.
+  let llmStreamSymbolsAvailable = true;
+  const llmStreamDefs = {
+    eliza_inference_llm_stream_open: {
+      // ctx (ptr), cfg (ptr to eliza_llm_stream_config_t), out_error (ptr)
+      args: [T.ptr, T.ptr, T.ptr],
+      returns: T.ptr,
+    },
+    eliza_inference_llm_stream_prefill: {
+      args: [T.usize, T.ptr, T.usize, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_next: {
+      // stream, tokens_out, tokens_cap, num_tokens_out, text_out,
+      // text_cap, drafter_drafted_out, drafter_accepted_out, out_error
+      args: [
+        T.usize,
+        T.ptr,
+        T.usize,
+        T.ptr,
+        T.ptr,
+        T.usize,
+        T.ptr,
+        T.ptr,
+        T.ptr,
+      ],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_cancel: {
+      args: [T.usize],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_save_slot: {
+      args: [T.usize, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_restore_slot: {
+      args: [T.usize, T.ptr, T.ptr],
+      returns: T.i32,
+    },
+    eliza_inference_llm_stream_close: {
+      args: [T.usize],
+      returns: T.void,
+    },
+  };
   const coreDefs = {
     eliza_inference_abi_version: { args: [], returns: T.cstring },
     eliza_inference_create: {
@@ -529,20 +695,31 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
     // `usize`, while `ptr` is for JS-owned ArrayBuffer pointers.
     eliza_inference_free_string: { args: [T.usize], returns: T.void },
   };
+  // Try the maximal symbol set first (core + vad + streaming-llm), then
+  // fall back through core+vad, then core-only. Each fallback flips a
+  // sentinel so the corresponding `*Supported()` probe reports false
+  // instead of trying to call a missing symbol.
   try {
     lib = ffi.dlopen(dylibPath, {
       ...coreDefs,
       ...nativeVadDefs,
+      ...llmStreamDefs,
     });
-  } catch (err) {
+  } catch {
     try {
-      lib = ffi.dlopen(dylibPath, coreDefs);
-      nativeVadSymbolsAvailable = false;
-    } catch {
-      throw new VoiceLifecycleError(
-        "kernel-missing",
-        `[ffi-bindings] Failed to open libelizainference at ${dylibPath}: ${formatFfiError(err)}`,
-      );
+      lib = ffi.dlopen(dylibPath, { ...coreDefs, ...nativeVadDefs });
+      llmStreamSymbolsAvailable = false;
+    } catch (err) {
+      try {
+        lib = ffi.dlopen(dylibPath, coreDefs);
+        nativeVadSymbolsAvailable = false;
+        llmStreamSymbolsAvailable = false;
+      } catch {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          `[ffi-bindings] Failed to open libelizainference at ${dylibPath}: ${formatFfiError(err)}`,
+        );
+      }
     }
   }
 
@@ -972,10 +1149,206 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
       lib.symbols.eliza_inference_asr_stream_close(stream);
     },
 
+    /* ---- Streaming LLM (additive on top of v3) ----------------- */
+
+    llmStreamSupported(): boolean {
+      // Symbols are bound at dlopen — if the fallback path stripped them
+      // out, the runtime never advertises support.
+      return (
+        llmStreamSymbolsAvailable &&
+        typeof lib.symbols.eliza_inference_llm_stream_open === "function"
+      );
+    },
+
+    llmStreamOpen({ ctx, config }) {
+      const open = lib.symbols.eliza_inference_llm_stream_open;
+      if (!llmStreamSymbolsAvailable || typeof open !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_llm_stream_open is not exported by this build",
+        );
+      }
+      const err = makeOutErr();
+      // Marshal the config struct into a Buffer. Layout (8-byte aligned):
+      //   off  0 : i32  max_tokens
+      //   off  4 : f32  temperature
+      //   off  8 : f32  top_p
+      //   off 12 : i32  top_k
+      //   off 16 : f32  repeat_penalty
+      //   off 20 : i32  slot_id
+      //   off 24 : ptr  prompt_cache_key
+      //   off 32 : i32  draft_min
+      //   off 36 : i32  draft_max
+      //   off 40 : ptr  dflash_drafter_path
+      //   sizeof = 48
+      const buf = Buffer.alloc(48);
+      buf.writeInt32LE(config.maxTokens, 0);
+      buf.writeFloatLE(config.temperature, 4);
+      buf.writeFloatLE(config.topP, 8);
+      buf.writeInt32LE(config.topK, 12);
+      buf.writeFloatLE(config.repeatPenalty, 16);
+      buf.writeInt32LE(config.slotId, 20);
+      const keyArg = cstr(config.promptCacheKey);
+      const drafterArg = cstr(config.dflashDrafterPath);
+      buf.writeBigUInt64LE(toPtrBigInt(keyArg.ptr), 24);
+      buf.writeInt32LE(config.draftMin, 32);
+      buf.writeInt32LE(config.draftMax, 36);
+      buf.writeBigUInt64LE(toPtrBigInt(drafterArg.ptr), 40);
+      const handle = open(ctx, ffi.ptr(buf), err.ptr);
+      if (isNullPointer(handle)) {
+        const message =
+          takeError(err.buf) ??
+          "[ffi-bindings] eliza_inference_llm_stream_open returned NULL with no diagnostic";
+        throw new VoiceLifecycleError("kernel-missing", message);
+      }
+      return handle as LlmStreamHandle;
+    },
+
+    llmStreamPrefill({ stream, tokens }) {
+      const prefill = lib.symbols.eliza_inference_llm_stream_prefill;
+      if (!llmStreamSymbolsAvailable || typeof prefill !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_llm_stream_prefill is not exported by this build",
+        );
+      }
+      const err = makeOutErr();
+      const rc = prefill(
+        stream,
+        ffi.ptr(tokens),
+        BigInt(tokens.length),
+        err.ptr,
+      );
+      if (rc !== ELIZA_OK) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_llm_stream_prefill rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+    },
+
+    llmStreamNext({ stream, maxTokensPerStep, maxTextBytes }) {
+      const next = lib.symbols.eliza_inference_llm_stream_next;
+      if (!llmStreamSymbolsAvailable || typeof next !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_llm_stream_next is not exported by this build",
+        );
+      }
+      const err = makeOutErr();
+      const tokenCap = maxTokensPerStep ?? 32;
+      const textCap = maxTextBytes ?? 1024;
+      const tokensOut = new Int32Array(tokenCap);
+      const numTokensOut = new BigUint64Array(1);
+      const textOut = new Uint8Array(textCap);
+      const drafterDrafted = new Int32Array(1);
+      const drafterAccepted = new Int32Array(1);
+      const rc = next(
+        stream,
+        ffi.ptr(tokensOut),
+        BigInt(tokenCap),
+        ffi.ptr(numTokensOut),
+        ffi.ptr(textOut),
+        BigInt(textCap),
+        ffi.ptr(drafterDrafted),
+        ffi.ptr(drafterAccepted),
+        err.ptr,
+      );
+      if (rc < 0) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_llm_stream_next rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+      const n = Number(numTokensOut[0] ?? 0n);
+      const tokens = Array.from(tokensOut.subarray(0, Math.min(n, tokenCap)));
+      const nul = textOut.indexOf(0, 0);
+      const len = nul >= 0 ? nul : textCap;
+      const text = Buffer.from(
+        textOut.buffer,
+        textOut.byteOffset,
+        len,
+      ).toString("utf8");
+      return {
+        tokens,
+        text,
+        done: rc === 1,
+        drafterDrafted: drafterDrafted[0] ?? 0,
+        drafterAccepted: drafterAccepted[0] ?? 0,
+      };
+    },
+
+    llmStreamCancel(stream) {
+      const cancel = lib.symbols.eliza_inference_llm_stream_cancel;
+      if (!llmStreamSymbolsAvailable || typeof cancel !== "function") {
+        // Cancel is best-effort — a build without the symbol just means
+        // the runtime cannot interrupt mid-step. The next `_next` call
+        // will still finish normally; the caller drops the result.
+        return;
+      }
+      cancel(stream);
+    },
+
+    llmStreamSaveSlot({ stream, filename }) {
+      const save = lib.symbols.eliza_inference_llm_stream_save_slot;
+      if (!llmStreamSymbolsAvailable || typeof save !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_llm_stream_save_slot is not exported by this build",
+        );
+      }
+      const err = makeOutErr();
+      const fnameArg = cstr(filename);
+      const rc = save(stream, fnameArg.ptr, err.ptr);
+      if (rc !== ELIZA_OK) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_llm_stream_save_slot rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+    },
+
+    llmStreamRestoreSlot({ stream, filename }) {
+      const restore = lib.symbols.eliza_inference_llm_stream_restore_slot;
+      if (!llmStreamSymbolsAvailable || typeof restore !== "function") {
+        throw new VoiceLifecycleError(
+          "kernel-missing",
+          "[ffi-bindings] eliza_inference_llm_stream_restore_slot is not exported by this build",
+        );
+      }
+      const err = makeOutErr();
+      const fnameArg = cstr(filename);
+      const rc = restore(stream, fnameArg.ptr, err.ptr);
+      if (rc !== ELIZA_OK) {
+        const message =
+          takeError(err.buf) ??
+          `[ffi-bindings] eliza_inference_llm_stream_restore_slot rc=${rc}`;
+        throw new VoiceLifecycleError(failureCode(rc), message);
+      }
+    },
+
+    llmStreamClose(stream) {
+      lib.symbols.eliza_inference_llm_stream_close?.(stream);
+    },
+
     close(): void {
       lib.close();
     },
   };
+
+  /**
+   * Convert a Bun-FFI pointer value (`unknown` per the lazy types) to the
+   * bigint the marshalled config struct stores in its `const char *`
+   * slots. NULL inputs translate to `0n`. Used by `llmStreamOpen` to
+   * inline the cstr pointers into the config buffer.
+   */
+  function toPtrBigInt(value: unknown): bigint {
+    if (value === null || value === undefined) return 0n;
+    if (typeof value === "bigint") return value;
+    if (typeof value === "number") return BigInt(value);
+    // Bun returns its internal pointer object that coerces to bigint.
+    return BigInt(value as unknown as number);
+  }
 
   /**
    * Shared body for `asr_stream_partial` / `asr_stream_finish` — both

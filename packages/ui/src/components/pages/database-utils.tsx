@@ -1,4 +1,5 @@
-import { Badge, Button } from "@elizaos/ui";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { useEffect, useRef } from "react";
 import type { ColumnInfo } from "../../api";
 import { useApp } from "../../state";

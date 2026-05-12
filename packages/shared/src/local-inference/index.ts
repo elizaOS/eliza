@@ -77,3 +77,12 @@ export {
   type VerifyState,
   verifyInstalledModel,
 } from "./verify.js";
+export {
+  GPU_PROFILE_IDS,
+  GPU_PROFILES,
+  type GpuProfile,
+  type GpuProfileId,
+  type KvCacheType,
+  matchGpuProfile,
+  reservedHeadroomGb,
+} from "./gpu-profiles.js";

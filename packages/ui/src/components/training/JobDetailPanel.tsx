@@ -1,4 +1,4 @@
-import { Button } from "@elizaos/ui";
+import { Button } from "../ui/button";
 import { ChevronDown, ChevronUp, Loader2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { BudgetPanel } from "./BudgetPanel";

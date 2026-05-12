@@ -1,14 +1,8 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  Input,
-  SaveFooter,
-  Switch,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
+import { Input } from "../ui/input";
+import { SaveFooter } from "../ui/save-footer";
+import { Switch } from "../ui/switch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   client,

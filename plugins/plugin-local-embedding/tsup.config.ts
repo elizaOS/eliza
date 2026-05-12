@@ -8,18 +8,5 @@ export default defineConfig({
   clean: true,
   format: ["esm"],
   dts: true,
-  noExternal: ["eventemitter3", "ipull"], // Only bundle pure JS packages
-  external: [
-    "dotenv",
-    "fs",
-    "path",
-    "https",
-    "http",
-    "events",
-    "@elizaos/core",
-    "zod",
-    "node-llama-cpp",
-    "onnxruntime-node",
-    "@huggingface/transformers",
-  ],
+  external: ["@elizaos/core", "@elizaos/plugin-local-inference"],
 });

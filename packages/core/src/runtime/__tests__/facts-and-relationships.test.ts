@@ -292,7 +292,7 @@ describe("runFactsAndRelationshipsStage", () => {
 			extract: {
 				facts: [
 					"by the way thanks",
-					"my api key is csk-8c9hf68jfm6h955kx492dtnm8jwn682n6exhew4jpe85vwy6",
+					"my api key is csk-redaction-test-token-000000000000",
 				],
 				relationships: [],
 			},
@@ -314,7 +314,7 @@ describe("runFactsAndRelationshipsStage", () => {
 					{
 						subject: "user",
 						predicate: "owns_api_key",
-						object: "csk-8c9hf68jfm6h955kx492dtnm8jwn682n6exhew4jpe85vwy6",
+						object: "csk-redaction-test-token-000000000000",
 					},
 				],
 			},

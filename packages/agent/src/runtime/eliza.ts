@@ -122,6 +122,11 @@ type AppCoreRuntimeModule = {
     options: AccountPoolCredentialsOptions,
   ) => Promise<void> | void;
   startAccountPoolKeepAlive: () => void;
+  ensureLocalInferenceHandler?: (runtime: AgentRuntime) => Promise<void> | void;
+  resolveRuntimeMode?: (config: unknown) => {
+    mode: "local" | "local-only" | "cloud" | "remote";
+    remoteApiBaseError: string | null;
+  };
   getBuildVariant: () => "store" | "direct";
   isStoreBuild: () => boolean;
 };
@@ -136,6 +141,40 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   return import(
     /* webpackIgnore: true */ "@elizaos/app-core"
   ) as Promise<AppCoreRuntimeModule>;
+}
+
+async function ensureAppCoreLocalInferenceHandlers(
+  runtime: AgentRuntime,
+  context: string,
+): Promise<void> {
+  try {
+    const appCoreRuntime = await importAppCoreRuntime();
+    if (typeof appCoreRuntime.ensureLocalInferenceHandler !== "function") {
+      logger.debug(
+        `[eliza] ${context}: app-core local inference bootstrap unavailable`,
+      );
+      return;
+    }
+    await appCoreRuntime.ensureLocalInferenceHandler(runtime);
+  } catch (err) {
+    logger.warn(
+      `[eliza] ${context}: local inference pre-registration skipped: ${formatError(err)}`,
+    );
+  }
+}
+
+async function assertRemoteDeploymentTargetIsAllowed(
+  config: ElizaConfig,
+  deploymentTarget: { runtime?: string },
+): Promise<void> {
+  if (deploymentTarget.runtime !== "remote") return;
+  const appCoreRuntime = await importAppCoreRuntime();
+  const snapshot = appCoreRuntime.resolveRuntimeMode?.(config);
+  if (snapshot?.mode === "remote" && snapshot.remoteApiBaseError) {
+    throw new Error(
+      `[eliza] Remote mode target rejected: ${snapshot.remoteApiBaseError}`,
+    );
+  }
 }
 
 import { buildCharacterFromConfig } from "./build-character-config.ts";
@@ -3033,6 +3072,7 @@ export async function startEliza(
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
+  await assertRemoteDeploymentTargetIsAllowed(config, deploymentTarget);
 
   // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
   // policy is incompatible with running an embedded local AgentRuntime, so
@@ -3504,33 +3544,15 @@ export async function startEliza(
   });
   installRuntimeMethodBindings(runtime);
 
-  // 7a. Mobile local inference must be registered before runtime.initialize().
-  // Runtime services probe TEXT_EMBEDDING during init; registering the local
-  // handler only after startEliza() returns leaves mobile local mode booting
-  // with "no provider" diagnostics and disabled embedding services.
-  if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
-    try {
-      const { ensureAospLocalInferenceHandlers } = await import(
-        "@elizaos/plugin-aosp-local-inference"
-      );
-      await ensureAospLocalInferenceHandlers(runtime);
-    } catch (err) {
-      logger.warn(
-        `[eliza] AOSP local inference pre-registration skipped: ${formatError(err)}`,
-      );
-    }
-  } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
-    try {
-      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge"
-      );
-      await ensureMobileDeviceBridgeInferenceHandlers(runtime);
-    } catch (err) {
-      logger.warn(
-        `[eliza] Mobile device bridge pre-registration skipped: ${formatError(err)}`,
-      );
-    }
-  }
+  // 7a. Local inference must be registered before runtime.initialize().
+  // Runtime services probe TEXT_EMBEDDING during init, and voice surfaces need
+  // the same local-mode default provider as text generation. The app-core
+  // bootstrap handles desktop Eliza-1, AOSP, Capacitor, and device bridge
+  // loaders, then no-ops outside local/local-only mode.
+  await ensureAppCoreLocalInferenceHandlers(
+    runtime,
+    "local inference pre-registration",
+  );
 
   // 7b. Pre-register plugin-sql so the adapter is ready before other plugins init.
   //     This is OPTIONAL — without it, some features (memory, todos) won't work.
@@ -4088,6 +4110,10 @@ export async function startEliza(
             },
           });
           installRuntimeMethodBindings(newRuntime);
+          await ensureAppCoreLocalInferenceHandlers(
+            newRuntime,
+            "Hot-reload local inference pre-registration",
+          );
 
           // Pre-register plugin-sql + local-embedding before initialize()
           // to avoid the same race condition as the initial startup.

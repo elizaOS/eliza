@@ -26,19 +26,12 @@ import type {
   LinkedAccountConfig,
   LinkedAccountProviderId,
 } from "@elizaos/shared";
-import {
-  Button,
-  cn,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  Spinner,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { cn } from "../../lib/utils";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Spinner } from "../ui/spinner";
 import {
   type FormEvent,
   useCallback,

@@ -53,6 +53,18 @@ def _capability_report(provider: str, required: list[str]) -> dict[str, object]:
     }
 
 
+def _parse_required_capabilities(values: list[str]) -> list[str]:
+    required: list[str] = []
+    seen: set[str] = set()
+    for raw_value in values:
+        for capability in str(raw_value).split(","):
+            normalized = capability.strip()
+            if normalized and normalized not in seen:
+                required.append(normalized)
+                seen.add(normalized)
+    return required
+
+
 async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[str, object]:
     provider_output = Path(args.output) / provider_label
     provider_output.mkdir(parents=True, exist_ok=True)
@@ -101,7 +113,7 @@ async def _main() -> int:
             os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
             os.environ.setdefault("ELIZA_BENCH_URL", f"http://localhost:{server_mgr.port}")
 
-        required = [str(cap) for cap in args.required_capabilities if str(cap).strip()]
+        required = _parse_required_capabilities(args.required_capabilities)
         capability_reports = {
             provider: _capability_report(provider, required)
             for provider in args.providers

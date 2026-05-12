@@ -1,4 +1,5 @@
-import { cn, Field, FieldDescription, FieldLabel } from "@elizaos/ui";
+import { cn } from "../../lib/utils";
+import { Field, FieldDescription, FieldLabel } from "../ui/field";
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 

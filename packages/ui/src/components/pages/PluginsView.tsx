@@ -25,15 +25,13 @@ import {
 
 export { paramsToSchema } from "./plugin-list-utils";
 
-import {
-  Button,
-  PageLayoutHeader,
-  PagePanel,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useLinkedSidebarSelection,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { PluginCard } from "./PluginCard";
 import {

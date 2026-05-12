@@ -57,7 +57,7 @@ function speechProxy(
     const t = i / SAMPLE_RATE;
     // Envelope: 25 ms attack, 50 ms decay around 50 ms syllables.
     const syllable = (Math.sin(2 * Math.PI * 5 * t) + 1) * 0.5; // 5 Hz syllable
-    const env = Math.min(1, syllable * 1.4) * Math.exp(-((t % 0.2) - 0.1) ** 2 * 60);
+    const env = Math.min(1, syllable * 1.4) * Math.exp(-(((t % 0.2) - 0.1) ** 2) * 60);
     const noise = (rng() - 0.5) * 2;
     const tone = 0.6 * Math.sin(2 * Math.PI * f1 * t) +
       0.4 * Math.sin(2 * Math.PI * f2 * t);

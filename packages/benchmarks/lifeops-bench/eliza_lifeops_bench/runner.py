@@ -115,9 +115,46 @@ def _execute_action(action: Action, world: LifeWorld) -> dict[str, Any]:
 
 def _initial_user_content(scenario: Scenario) -> str:
     return (
-        f"Current benchmark time: {scenario.now_iso}. "
-        "Interpret relative dates against this timestamp, not the wall-clock date.\n\n"
+        _benchmark_clock_context(scenario.now_iso)
+        + "\n\n"
         f"{scenario.instruction}"
+    )
+
+
+def _benchmark_clock_context(now_iso: str) -> str:
+    """Render deterministic date context for model-facing benchmark prompts."""
+    now = _try_parse_iso(now_iso)
+    if now is None:
+        return (
+            f"Current benchmark time: {now_iso}. "
+            "Interpret relative dates against this timestamp, not the wall-clock date."
+        )
+
+    weekday_name = now.strftime("%A")
+    today = now.date()
+    day_names = (
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday",
+    )
+    anchors: list[str] = []
+    for index, day_name in enumerate(day_names):
+        delta = (index - now.weekday()) % 7
+        if delta == 0:
+            delta = 7
+        anchors.append(f"{day_name}={today + timedelta(days=delta)}")
+
+    return (
+        f"Current benchmark time: {now_iso} ({weekday_name}, {today}). "
+        "Interpret relative dates against this timestamp, not the wall-clock date. "
+        "For bare weekday names, use the next occurrence after the benchmark time. "
+        "Upcoming weekday anchors: "
+        + ", ".join(anchors)
+        + "."
     )
 
 
@@ -403,6 +440,62 @@ def _registry_tool_for_action(action_name: str) -> dict[str, Any] | None:
     return {"type": "function", "function": sanitized_function}
 
 
+def _with_calendar_date_anchor(
+    tool: dict[str, Any],
+    action_name: str,
+    now_iso: str,
+) -> dict[str, Any]:
+    """Add benchmark-clock guidance to calendar tool descriptions and date fields."""
+    if not action_name.startswith("CALENDAR"):
+        return tool
+    now = _try_parse_iso(now_iso)
+    if now is None:
+        return tool
+
+    thursday_delta = (3 - now.weekday()) % 7
+    if thursday_delta == 0:
+        thursday_delta = 7
+    next_thursday = (now + timedelta(days=thursday_delta)).date().isoformat()
+    anchor = (
+        f" Benchmark clock is {now_iso}; resolve relative dates from that clock. "
+        f"For example, bare 'Thursday' resolves to {next_thursday}."
+    )
+
+    patched = deepcopy(tool)
+    function = patched.get("function")
+    if not isinstance(function, dict):
+        return patched
+    description = str(function.get("description") or "")
+    if anchor not in description:
+        function["description"] = description + anchor
+
+    parameters = function.get("parameters")
+    properties = (
+        parameters.get("properties")
+        if isinstance(parameters, dict)
+        else None
+    )
+    if isinstance(properties, dict):
+        for field in (
+            "startAt",
+            "endAt",
+            "start",
+            "end",
+            "timeMin",
+            "timeMax",
+            "windowStart",
+            "windowEnd",
+            "date",
+            "when",
+        ):
+            schema = properties.get(field)
+            if isinstance(schema, dict):
+                field_description = str(schema.get("description") or "")
+                if anchor not in field_description:
+                    schema["description"] = (field_description + anchor).strip()
+    return patched
+
+
 def _sanitize_registry_parameters(
     action_name: str, schema: dict[str, Any]
 ) -> dict[str, Any]:
@@ -478,23 +571,29 @@ def build_tool_manifest(_world: LifeWorld) -> list[dict[str, Any]]:
             continue
         registry_tool = _registry_tool_for_action(action_name)
         if registry_tool is not None:
-            tools.append(registry_tool)
+            tools.append(
+                _with_calendar_date_anchor(registry_tool, action_name, _world.now_iso)
+            )
             continue
         tools.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": action_name,
-                    "description": _TOOL_DESCRIPTIONS.get(
-                        action_name,
-                        (
-                            "Execute this LifeOps action when the user request "
-                            "requires it."
+            _with_calendar_date_anchor(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": action_name,
+                        "description": _TOOL_DESCRIPTIONS.get(
+                            action_name,
+                            (
+                                "Execute this LifeOps action when the user request "
+                                "requires it."
+                            ),
                         ),
-                    ),
-                    "parameters": _tool_parameters_for_action(action_name),
+                        "parameters": _tool_parameters_for_action(action_name),
+                    },
                 },
-            }
+                action_name,
+                _world.now_iso,
+            )
         )
     return tools
 

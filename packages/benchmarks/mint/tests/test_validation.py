@@ -4,7 +4,7 @@ Tests for input validation across MINT benchmark components.
 
 import pytest
 
-from benchmarks.mint.types import MINTCategory, MINTConfig
+from benchmarks.mint.types import MINTCategory, MINTConfig, MINTTask
 from benchmarks.mint.dataset import MINTDataset
 from benchmarks.mint.agent import MINTAgent
 from benchmarks.mint.feedback import FeedbackGenerator
@@ -100,6 +100,22 @@ class TestAgentValidation:
 
         agent = MINTAgent(temperature=-0.5)  # Too low
         assert agent.temperature >= 0.0
+
+    def test_local_agent_does_not_use_ground_truth_by_default(self) -> None:
+        """Local heuristic mode must not score from task labels."""
+        task = MINTTask(
+            id="test-001",
+            category=MINTCategory.INFORMATION_SEEKING,
+            description="Non-arithmetic task",
+            initial_prompt="Name the hidden code.",
+            ground_truth="SECRET-CODE",
+        )
+
+        agent = MINTAgent()
+        assert agent._local_answer(task) is None
+
+        mock_agent = MINTAgent(allow_ground_truth_mock=True)
+        assert mock_agent._local_answer(task) == "SECRET-CODE"
 
 
 class TestFeedbackGeneratorValidation:

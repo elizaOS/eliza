@@ -1,4 +1,4 @@
-import { SegmentedControl } from "@elizaos/ui";
+import { SegmentedControl } from "../ui/segmented-control";
 import type { ReactNode } from "react";
 import { useApp } from "../../state";
 import { DatabaseView } from "./DatabaseView";

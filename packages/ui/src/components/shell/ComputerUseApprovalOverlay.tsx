@@ -1,11 +1,6 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  StatusBadge,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
+import { StatusBadge } from "../ui/status-badge";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
 import { useApp } from "../../state";

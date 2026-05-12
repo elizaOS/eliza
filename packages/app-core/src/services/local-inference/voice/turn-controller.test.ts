@@ -478,4 +478,35 @@ describe("VoiceTurnController", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(h.generateCalls).toHaveLength(1);
   });
+
+  it("C2: prewarmOnIdle fires the prewarm without blocking the caller", async () => {
+    // Hold the prewarm open so we can confirm prewarmOnIdle returned
+    // synchronously (i.e. did not await).
+    let releasePrewarm: () => void = () => {};
+    const pending = new Promise<void>((resolve) => {
+      releasePrewarm = resolve;
+    });
+    const h = makeHarness();
+    h.prewarm.mockImplementationOnce(async () => {
+      await pending;
+    });
+    const ret = h.controller.prewarmOnIdle();
+    expect(ret).toBeUndefined();
+    expect(h.prewarm).toHaveBeenCalledTimes(1);
+    expect(h.prewarm).toHaveBeenCalledWith("room-1");
+    // The prewarm is still in flight — the caller is not blocked on it.
+    releasePrewarm();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.events.errors).toEqual([]);
+  });
+
+  it("C2: prewarmOnIdle errors surface via onError, do not throw to the caller", async () => {
+    const h = makeHarness();
+    h.prewarm.mockRejectedValueOnce(new Error("idle prewarm failed"));
+    expect(() => h.controller.prewarmOnIdle()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.events.errors.map((e) => e.message)).toContain(
+      "idle prewarm failed",
+    );
+  });
 });

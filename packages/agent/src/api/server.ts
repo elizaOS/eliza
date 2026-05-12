@@ -210,6 +210,7 @@ import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
 import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
+import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import { pushWithBatchEvict } from "./memory-bounds.ts";
 import { handleMemoryRoutes } from "./memory-routes.ts";
 import { handleMiscRoutes } from "./misc-routes.ts";
@@ -224,7 +225,6 @@ import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
 import { handleRelationshipsRoutes } from "./relationships-routes.ts";
-import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
 import {
   isPublicRuntimePluginRoute,
   tryHandleRuntimePluginRoute,

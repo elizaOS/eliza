@@ -21,7 +21,7 @@
  *
  * Build: make -C verify cpu-simd-bench   (requires the plugin libs built;
  *        the Makefile target builds them via cmake first).
- * Run:   ./cpu_simd_bench [--n N] [--runs R] [--warmup W]
+ * Run:   ./cpu_simd_bench [--n N] [--runs R] [--warmup W] [--verify-only]
  *                         [--threads "1 4 8 16 24"] [--out FILE]
  */
 
@@ -141,8 +141,67 @@ static const char *bench_backend_name(void) {
 #endif
 }
 
+static int compare_outputs(const char *name, const float *got, const float *ref, long n, float tol) {
+    float max_diff = 0.0f;
+    long max_idx = -1;
+    for (long i = 0; i < n; i++) {
+        const float diff = fabsf(got[i] - ref[i]);
+        if (!isfinite(got[i]) || diff > max_diff) {
+            max_diff = diff;
+            max_idx = i;
+        }
+        if (!isfinite(got[i]) || diff > tol) {
+            fprintf(stderr,
+                    "[cpu_simd_bench] VERIFY FAIL %s idx=%ld got=%+.8f ref=%+.8f diff=%.3e tol=%.3e\n",
+                    name, i, got[i], ref[i], diff, tol);
+            return 0;
+        }
+    }
+    fprintf(stderr,
+            "[cpu_simd_bench] VERIFY PASS %s n=%ld max_diff=%.3e idx=%ld tol=%.3e\n",
+            name, n, max_diff, max_idx, tol);
+    return 1;
+}
+
+static int verify_simd_outputs(void) {
+    const long n_qjl = (long)N_HEADS * g_ntok;
+    const long n_polar = (long)N_HEADS * g_ntok;
+    float *ref = malloc((size_t)((n_qjl > n_polar ? n_qjl : n_polar)) * sizeof(float));
+    if (!ref) {
+        fprintf(stderr, "[cpu_simd_bench] OOM allocating verify buffer\n");
+        return 0;
+    }
+
+    qjl_score_qk_ref(g_q_sketch_f32, g_k_qjl, N_HEADS, N_KV_HEADS, g_ntok, ref);
+    (void)run_qjl_fp32(1);
+    if (!compare_outputs("qjl_score_fp32", g_qjl_scores, ref, n_qjl, 1e-3f)) {
+        free(ref);
+        return 0;
+    }
+
+    qjl_score_qk_i8_ref(g_q_sketch_i8, g_k_qjl, N_HEADS, N_KV_HEADS, g_ntok, ref);
+    (void)run_qjl_i8(1);
+    if (!compare_outputs("qjl_score_i8", g_qjl_scores, ref, n_qjl, 1e-5f)) {
+        free(ref);
+        return 0;
+    }
+
+    for (long r = 0; r < n_polar; r++) {
+        ggml_vec_dot_q4_polar_preht_f32_ref(QK_POLAR, ref + r, g_k_polar + r, g_q_preht, 1);
+    }
+    (void)run_polar_preht(1);
+    if (!compare_outputs("polar_preht_dot", g_polar_scores, ref, n_polar, 1e-5f)) {
+        free(ref);
+        return 0;
+    }
+
+    free(ref);
+    return 1;
+}
+
 int main(int argc, char **argv) {
     int ntok = DEFAULT_NTOK, runs = 5, warmup = 1;
+    int verify_only = 0;
     const char *out_path = NULL;
     int threads[16] = {1, 4, 8, 16, 24}; int nthreads = 5;
     for (int i = 1; i < argc; i++) {
@@ -150,6 +209,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "--runs")    && i+1 < argc) runs    = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--warmup")  && i+1 < argc) warmup  = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--out")     && i+1 < argc) out_path= argv[++i];
+        else if (!strcmp(argv[i], "--verify-only")) verify_only = 1;
         else if (!strcmp(argv[i], "--threads") && i+1 < argc) {
             nthreads = 0; char *s = argv[++i]; char *tok = strtok(s, " ,");
             while (tok && nthreads < 16) { threads[nthreads++] = atoi(tok); tok = strtok(NULL, " ,"); }
@@ -200,6 +260,12 @@ int main(int argc, char **argv) {
     polar_hadamard_inplace(g_q_preht);
     free(keys); free(psrc); free(proj);
 
+    if (!verify_simd_outputs()) return 2;
+    if (verify_only) {
+        fprintf(stderr, "[cpu_simd_bench] VERIFY PASS all SIMD outputs\n");
+        return 0;
+    }
+
     Bench benches[] = {
         { "qjl_score_i8",       run_qjl_i8,       N_HEADS * ntok },
         { "qjl_score_fp32",     run_qjl_fp32,     N_HEADS * ntok },
@@ -241,6 +307,7 @@ int main(int argc, char **argv) {
             fprintf(fp, "  \"backend\": \"%s\",\n", bench_backend_name());
             fprintf(fp, "  \"qjl_active_simd\": \"%s\",\n", qjl_active_simd());
             fprintf(fp, "  \"polarquant_active_simd\": \"%s\",\n", polarquant_active_simd());
+            fprintf(fp, "  \"verified\": true,\n");
             fprintf(fp, "  \"workload\": { \"n_heads\": %d, \"n_kv_heads\": %d, \"n_tokens\": %d, \"polar_rows\": %ld },\n",
                     N_HEADS, N_KV_HEADS, ntok, nrows);
             fprintf(fp, "  \"runs\": %d, \"warmup\": %d,\n", runs, warmup);

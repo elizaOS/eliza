@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
   ELIZA_1_TIER_IDS,
@@ -6,8 +6,43 @@ import {
   findCatalogModel,
   MODEL_CATALOG,
 } from "./catalog";
+import {
+  filterSettingsDefaultLocalModels,
+  isSettingsDefaultLocalModel,
+} from "./catalog-policy";
+import {
+  getLocalModelSearchProvider,
+  listLocalModelSearchProviders,
+  searchLocalModelProvider,
+} from "./custom-search";
 import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
+import type { CatalogModel } from "./types";
+
+function jsonResponse(body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function catalogFixture(overrides: Partial<CatalogModel>): CatalogModel {
+  const base = MODEL_CATALOG.find((model) =>
+    isSettingsDefaultLocalModel(model),
+  );
+  if (!base) throw new Error("missing Eliza-1 fixture");
+  return {
+    ...base,
+    companionModelIds: undefined,
+    runtime: undefined,
+    sourceModel: undefined,
+    ...overrides,
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("local inference catalog", () => {
   it("ships exactly the Eliza-1 size tiers", () => {
@@ -160,5 +195,109 @@ describe("local inference catalog", () => {
     expect(picked.id).toBe(FIRST_RUN_DEFAULT_MODEL_ID);
     expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(picked.id)).toBe(true);
     expect(picked.displayName).toMatch(/^(?:Eliza-1\b|eliza-1-)/);
+  });
+
+  it("filters injected non-Eliza and hidden entries out of settings defaults", () => {
+    const eliza = catalogFixture({});
+    const nonEliza = catalogFixture({
+      id: "qwen-custom-7b",
+      displayName: "Qwen custom 7B",
+      hfRepo: "Qwen/Qwen-custom-7B-GGUF",
+      ggufFile: "qwen-custom-7b.gguf",
+    });
+    const hiddenEliza = catalogFixture({
+      id: "eliza-1-2b-drafter",
+      hiddenFromCatalog: true,
+      runtimeRole: "dflash-drafter",
+    });
+
+    expect(isSettingsDefaultLocalModel(eliza)).toBe(true);
+    expect(isSettingsDefaultLocalModel(nonEliza)).toBe(false);
+    expect(isSettingsDefaultLocalModel(hiddenEliza)).toBe(false);
+    expect(
+      filterSettingsDefaultLocalModels([nonEliza, hiddenEliza, eliza]).map(
+        (model) => model.id,
+      ),
+    ).toEqual([eliza.id]);
+  });
+});
+
+describe("local model custom search providers", () => {
+  it("registers Hugging Face and ModelScope as explicit providers", () => {
+    expect(
+      listLocalModelSearchProviders().map((provider) => provider.id),
+    ).toEqual(["huggingface", "modelscope"]);
+    expect(getLocalModelSearchProvider("huggingface").downloadSupported).toBe(
+      true,
+    );
+    expect(getLocalModelSearchProvider("modelscope")).toMatchObject({
+      searchSupported: true,
+      downloadSupported: false,
+    });
+  });
+
+  it("wraps ModelScope GGUF results without enabling downloads", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (
+        url ===
+        "https://www.modelscope.cn/api/v1/models/acme/test-model/repo/files?Revision=master&Recursive=true"
+      ) {
+        return jsonResponse({
+          Code: 200,
+          Data: {
+            Files: [{ Path: "test-model-q4_k_m.gguf", Size: 512 }],
+          },
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await searchLocalModelProvider(
+      "modelscope",
+      "acme/test-model",
+      1,
+    );
+
+    expect(response.results).toHaveLength(1);
+    expect(response.results[0]).toMatchObject({
+      providerId: "modelscope",
+      download: {
+        supported: false,
+        reason: "ModelScope direct downloads are not implemented in this build.",
+      },
+    });
+    expect(response.results[0]?.model.id).toMatch(/^modelscope:/);
+  });
+
+  it("wraps Hugging Face GGUF results as downloadable explicit search results", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://huggingface.co/api/models?")) {
+        return jsonResponse([{ id: "Qwen/Qwen3.5-0.6B-GGUF" }]);
+      }
+      if (
+        url === "https://huggingface.co/api/models/Qwen%2FQwen3.5-0.6B-GGUF"
+      ) {
+        return jsonResponse({
+          id: "Qwen/Qwen3.5-0.6B-GGUF",
+          tags: ["gguf"],
+          siblings: [{ rfilename: "qwen3.5-0.6b-q4_k_m.gguf", size: 512 }],
+          pipeline_tag: "text-generation",
+        });
+      }
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await searchLocalModelProvider("huggingface", "qwen", 1);
+
+    expect(response.results).toHaveLength(1);
+    expect(response.results[0]).toMatchObject({
+      providerId: "huggingface",
+      download: { supported: true },
+    });
+    expect(response.results[0]?.model.id).toMatch(/^hf:/);
   });
 });

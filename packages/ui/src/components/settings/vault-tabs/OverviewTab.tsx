@@ -7,7 +7,9 @@
  * only renders the rows + the editable preference state.
  */
 
-import { Button, Input, Label } from "@elizaos/ui";
+import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
 import {
   AlertCircle,
   CheckCircle2,

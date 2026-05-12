@@ -10,9 +10,11 @@ import threading
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
-from eliza_adapter.client import ElizaClient
-
 logger = logging.getLogger(__name__)
+
+
+class UnsupportedHarnessPath(RuntimeError):
+    """Raised when a requested cross-agent harness path is not comparable."""
 
 
 class HarnessOpenAIProxy:
@@ -25,6 +27,7 @@ class HarnessOpenAIProxy:
     """
 
     def __init__(self, host: str = "127.0.0.1") -> None:
+        self.harness_name = _selected_harness_name()
         self.client = _build_client()
         self.client.reset("loca-bench", "loca_bench")
         self.session_id = f"loca-bench-{uuid4().hex[:12]}"
@@ -33,6 +36,7 @@ class HarnessOpenAIProxy:
             _HarnessHandler,
             self.client,
             self.session_id,
+            self.harness_name,
         )
         self._thread = threading.Thread(
             target=self._server.serve_forever,
@@ -59,12 +63,14 @@ class _HarnessHTTPServer(ThreadingHTTPServer):
         self,
         server_address: tuple[str, int],
         request_handler_class: type[BaseHTTPRequestHandler],
-        client: ElizaClient,
+        client: Any,
         session_id: str,
+        harness_name: str,
     ) -> None:
         super().__init__(server_address, request_handler_class)
         self.client = client
         self.session_id = session_id
+        self.harness_name = harness_name
 
 
 class _HarnessHandler(BaseHTTPRequestHandler):
@@ -76,17 +82,19 @@ class _HarnessHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = self._read_json()
+            context = _context_from_payload(payload, self.server.session_id)
             response = self.server.client.send_message(
                 _last_user_text(payload.get("messages")),
-                context={
-                    "benchmark": "loca_bench",
-                    "messages": payload.get("messages", []),
-                    "system_prompt": _first_system_text(payload.get("messages")),
-                    "tools": payload.get("tools", []),
-                    "session_id": self.server.session_id,
-                },
+                context=context,
             )
-            self._write_json(200, _chat_completion_payload(payload, response))
+            self._write_json(
+                200,
+                _chat_completion_payload(
+                    payload,
+                    response,
+                    harness_name=self.server.harness_name,
+                ),
+            )
         except Exception as exc:  # pragma: no cover - exercised by live harnesses
             logger.exception("LOCA harness proxy failed")
             self._write_json(500, {"error": {"message": str(exc)}})
@@ -111,7 +119,12 @@ class _HarnessHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def _chat_completion_payload(payload: Mapping[str, Any], response: Any) -> dict[str, Any]:
+def _chat_completion_payload(
+    payload: Mapping[str, Any],
+    response: Any,
+    *,
+    harness_name: str = "",
+) -> dict[str, Any]:
     tool_calls = _openai_tool_calls(response.params.get("tool_calls"))
     message: dict[str, Any] = {
         "role": "assistant",
@@ -121,10 +134,13 @@ def _chat_completion_payload(payload: Mapping[str, Any], response: Any) -> dict[
     if tool_calls:
         message["tool_calls"] = tool_calls
         finish_reason = "tool_calls"
+    metadata = response.params.get("eliza_metadata")
+    if isinstance(metadata, Mapping):
+        message["metadata"] = dict(metadata)
     usage = response.params.get("usage") if isinstance(response.params, Mapping) else None
     if not isinstance(usage, Mapping):
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    return {
+    out = {
         "id": "chatcmpl-loca-harness",
         "object": "chat.completion",
         "created": 0,
@@ -137,6 +153,65 @@ def _chat_completion_payload(payload: Mapping[str, Any], response: Any) -> dict[
             }
         ],
         "usage": dict(usage),
+    }
+    metadata = _response_metadata(harness_name, response)
+    if metadata:
+        out["benchmark_metadata"] = metadata
+    return out
+
+
+def _selected_harness_name() -> str:
+    return (
+        os.environ.get("BENCHMARK_HARNESS")
+        or os.environ.get("ELIZA_BENCH_HARNESS")
+        or "eliza"
+    ).strip().lower()
+
+
+def _context_from_payload(
+    payload: Mapping[str, Any],
+    session_id: str,
+) -> dict[str, object]:
+    messages = payload.get("messages", [])
+    tools = payload.get("tools", [])
+    context: dict[str, object] = {
+        "benchmark": "loca_bench",
+        "messages": messages if isinstance(messages, list) else [],
+        "system_prompt": _first_system_text(messages),
+        "tools": tools if isinstance(tools, list) else [],
+        "session_id": session_id,
+    }
+    for key in (
+        "tool_choice",
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "max_completion_tokens",
+        "reasoning_effort",
+    ):
+        value = payload.get(key)
+        if value is not None:
+            context[key] = value
+    return context
+
+
+def _response_metadata(harness_name: str, response: Any) -> dict[str, Any]:
+    if harness_name == "hermes":
+        from eliza_loca.hermes_harness import hermes_loca_metadata
+
+        return hermes_loca_metadata(response)
+    if harness_name == "openclaw":
+        params = getattr(response, "params", {})
+        meta = params.get("_meta") if isinstance(params, Mapping) else {}
+        adapter_meta = meta.get("openclaw_adapter") if isinstance(meta, Mapping) else None
+        return {
+            "benchmark_harness": "openclaw",
+            "adapter": "openclaw-adapter",
+            "openclaw_adapter": adapter_meta if isinstance(adapter_meta, Mapping) else {},
+        }
+    return {
+        "benchmark_harness": harness_name or "eliza",
+        "adapter": f"{harness_name or 'eliza'}-adapter",
     }
 
 
@@ -155,18 +230,35 @@ def _build_client() -> Any:
         or "gpt-oss-120b"
     ).strip()
     if harness == "hermes":
-        from hermes_adapter.client import HermesClient
+        from eliza_loca.hermes_harness import build_hermes_loca_client
 
-        return HermesClient(provider=provider, model=model, timeout_s=timeout_s)
+        return build_hermes_loca_client(
+            provider=provider,
+            model=model,
+            timeout_s=timeout_s,
+        )
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient
 
+        mode = os.environ.get("LOCA_OPENCLAW_MODE", "").strip().lower()
+        if mode not in {"direct-openai-compatible", "native-openai", "native"}:
+            raise UnsupportedHarnessPath(
+                "OpenClaw LOCA native path is not enabled: the documented "
+                "OpenClaw CLI accepts a single --message turn and does not "
+                "preserve LOCA's full OpenAI messages/tools payload. Set "
+                "LOCA_OPENCLAW_MODE=direct-openai-compatible only for an "
+                "explicit provider-level smoke path; do not score it as "
+                "OpenClaw agent parity."
+            )
         return OpenClawClient(
             provider=provider,
             model=model,
             thinking_level=os.environ.get("LOCA_OPENCLAW_THINKING", "low"),
             timeout_s=timeout_s,
+            direct_openai_compatible=True,
         )
+    from eliza_adapter.client import ElizaClient
+
     return ElizaClient()
 
 
@@ -239,4 +331,4 @@ def _content_text(value: object) -> str:
     return str(value)
 
 
-__all__ = ["HarnessOpenAIProxy"]
+__all__ = ["HarnessOpenAIProxy", "UnsupportedHarnessPath"]

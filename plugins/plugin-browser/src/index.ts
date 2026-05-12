@@ -30,6 +30,16 @@ export * from "./routes/bridge.js";
 export * from "./schema.js";
 export * from "./service.js";
 export {
+  type BrowserCaptureHooks,
+  getBrowserCaptureHooks,
+  registerBrowserCaptureHooks,
+} from "./browser-capture-hooks.js";
+export {
+  type BrowserWorkspaceHooks,
+  getBrowserWorkspaceHooks,
+  registerBrowserWorkspaceHooks,
+} from "./browser-workspace-hooks.js";
+export {
   FRAME_FILE,
   startBrowserCapture,
   stopBrowserCapture,

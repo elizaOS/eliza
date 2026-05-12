@@ -190,6 +190,7 @@ export function VrmViewer(props: VrmViewerProps) {
   const companionHalfFramerateModeRef = useRef<CompanionHalfFramerateMode>(
     props.companionHalfFramerateMode ?? "when_saving_power",
   );
+  const environmentThemeRef = useRef(props.environmentTheme);
   const revealStartedRef = useRef(false);
   const debugRegistryIdRef = useRef(
     `vrm-viewer-${Math.random().toString(36).slice(2, 10)}`,
@@ -208,6 +209,7 @@ export function VrmViewer(props: VrmViewerProps) {
     props.companionAnimateWhenHidden ?? false;
   companionHalfFramerateModeRef.current =
     props.companionHalfFramerateMode ?? "when_saving_power";
+  environmentThemeRef.current = props.environmentTheme;
 
   const applyVisibilityAndBackgroundPolicy = useEffectEvent(() => {
     const engine = engineRef.current;
@@ -360,8 +362,8 @@ export function VrmViewer(props: VrmViewerProps) {
     void engine.whenReady().then(
       () => {
         if (!mountedRef.current) return;
-        if (props.environmentTheme) {
-          engine.setEnvironmentTheme(props.environmentTheme);
+        if (environmentThemeRef.current) {
+          engine.setEnvironmentTheme(environmentThemeRef.current);
         }
         resize();
         applyDesktopBatteryPolicy();

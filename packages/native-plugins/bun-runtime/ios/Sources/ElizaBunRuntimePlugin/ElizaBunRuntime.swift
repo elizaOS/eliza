@@ -55,6 +55,10 @@ public final class ElizaBunRuntime {
         queue.async { [weak self] in
             guard let self = self else { return }
             RuntimeQueue.current = self.queue
+            if self.isRunning {
+                completion(.success(StartOutcome(bridgeVersion: self.bridgeVersion ?? BridgeInstaller.version)))
+                return
+            }
             do {
                 try self.bootstrap(
                     bundlePath: bundlePath,

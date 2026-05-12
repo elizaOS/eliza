@@ -232,13 +232,16 @@ echo "[android-vulkan-smoke] compiling verifier for arm64-v8a API ${ANDROID_API}
   -static-libstdc++ -lvulkan -lm -o "$OUT_DIR/vulkan_verify"
 
 echo "[android-vulkan-smoke] compiling SPIR-V with $GLSLC"
-for shader in turbo3 turbo4 turbo3_tcq qjl polar polar_preht; do
+for shader in turbo3 turbo4 turbo3_tcq qjl polar polar_preht fused_attn_qjl_tbq fused_attn_qjl_polar; do
   "$GLSLC" --target-env=vulkan1.1 --target-spv=spv1.3 \
     -fshader-stage=compute "../vulkan/${shader}.comp" -o "$OUT_DIR/spv/${shader}.spv"
 done
 
 cp fixtures/turbo3.json fixtures/turbo4.json fixtures/turbo3_tcq.json \
-  fixtures/qjl.json fixtures/polar.json fixtures/polar_qjl.json "$OUT_DIR/fixtures/"
+  fixtures/qjl.json fixtures/polar.json fixtures/polar_qjl.json \
+  fixtures/fused_attn_qjl_tbq.json fixtures/fused_attn_qjl_tbq_causal.json \
+  fixtures/fused_attn_qjl_polar.json fixtures/fused_attn_qjl_polar_causal.json \
+  "$OUT_DIR/fixtures/"
 
 adb_cmd() {
   if [[ -n "$ADB_SERIAL" ]]; then
@@ -295,6 +298,10 @@ run_remote polar polar
 run_remote polar polar_qjl
 run_remote polar_preht polar
 run_remote polar_preht polar_qjl
+run_remote fused_attn_qjl_tbq fused_attn_qjl_tbq
+run_remote fused_attn_qjl_tbq fused_attn_qjl_tbq_causal
+run_remote fused_attn_qjl_polar fused_attn_qjl_polar
+run_remote fused_attn_qjl_polar fused_attn_qjl_polar_causal
 
 echo "[android-vulkan-smoke] standalone Vulkan fixtures passed on Android device."
 
@@ -324,6 +331,7 @@ const requiredRoutes = [
   "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq",
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0",
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1",
+  "GGML_OP_FUSED_ATTN_QJL_TBQ",
 ];
 const requiredCapabilities = [
   "turbo3",
@@ -331,6 +339,7 @@ const requiredCapabilities = [
   "turbo3_tcq",
   "qjl_full",
   "polarquant",
+  "fused_attn_qjl_tbq",
 ];
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 if (data.backend !== "vulkan") failures.push(`backend=${data.backend}`);
@@ -380,7 +389,7 @@ const kernelEvidenceOk =
 
 if (!routeEvidenceOk && !kernelEvidenceOk) {
   failures.push(
-    "missing full six-route graphRoutes evidence or five-capability kernels evidence with finite maxDiff",
+    "missing full seven-route graphRoutes evidence or six-capability kernels evidence with finite maxDiff",
   );
 }
 if (failures.length) {

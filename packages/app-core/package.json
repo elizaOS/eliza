@@ -60,6 +60,16 @@
       "types": "./dist/platform/empty-node-module.d.ts",
       "import": "./dist/platform/empty-node-module.js",
       "default": "./dist/platform/empty-node-module.js"
+    },
+    "./services/local-inference/ffi-streaming-runner": {
+      "types": "./dist/services/local-inference/ffi-streaming-runner.d.ts",
+      "import": "./dist/services/local-inference/ffi-streaming-runner.js",
+      "default": "./dist/services/local-inference/ffi-streaming-runner.js"
+    },
+    "./services/local-inference/voice/ffi-bindings": {
+      "types": "./dist/services/local-inference/voice/ffi-bindings.d.ts",
+      "import": "./dist/services/local-inference/voice/ffi-bindings.js",
+      "default": "./dist/services/local-inference/voice/ffi-bindings.js"
     }
   },
   "peerDependencies": {
@@ -170,9 +180,11 @@
     "react-test-renderer": "^19.2.4",
     "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
-    "vitest": "^4.0.18"
+    "vitest": "^4.0.18",
+    "yaml": "^2.8.2"
   },
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts"

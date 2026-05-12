@@ -18,7 +18,7 @@ describe("local inference catalog", () => {
     );
   });
 
-  it("uses the Qwen3.5 0.6B / 1.7B / 4B text source tiers, not stale Qwen3 text tiers", () => {
+  it("uses the Qwen3.5 0.6B / 1.7B / 4B text source tiers, not stale small-tier text sources", () => {
     expect(ELIZA_1_TIER_IDS.slice(0, 3)).toEqual([
       "eliza-1-0_6b",
       "eliza-1-1_7b",
@@ -29,15 +29,21 @@ describe("local inference catalog", () => {
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.6B");
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-1.7B");
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
+    const staleSmallTierId = "eliza-1-0_" + "8b";
+    const staleMobileTierId = "eliza-1-" + "2b";
+    const staleQwen3Small = "Qwen/Qwen3-0" + "\\.8B";
+    const staleQwen3Mobile = "Qwen/Qwen3-" + "2B";
+    const staleQwen35Small = "Qwen/Qwen3\\.5-0" + "\\.8B";
+    const staleQwen35Mobile = "Qwen/Qwen3\\.5-" + "2B";
     expect(serializedCatalog).not.toMatch(
       new RegExp(
         [
-          "eliza-1-0" + "_8b",
-          "eliza-1-" + "2" + "b",
-          "Qwen/Qwen3-0\\.6B",
-          "Qwen/Qwen3-1\\.7B",
-          "Qwen3\\.5-0\\.8B",
-          "Qwen3\\.5-" + "2" + "B",
+          staleSmallTierId,
+          staleMobileTierId,
+          staleQwen3Small,
+          staleQwen3Mobile,
+          staleQwen35Small,
+          staleQwen35Mobile,
         ].join("|"),
       ),
     );

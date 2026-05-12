@@ -2,7 +2,11 @@ import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
+import {
+  CORE_PLUGINS,
+  createElizaPlugin,
+  flushTrajectoryWrites,
+} from "@elizaos/agent";
 import {
   AgentRuntime,
   type Content,
@@ -10,6 +14,7 @@ import {
   type Memory,
   type MessageProcessingResult,
   type Plugin,
+  runWithTrajectoryContext,
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
@@ -32,7 +37,9 @@ import {
   type BenchmarkSession,
   type BenchmarkTrajectoryStep,
   type BenchmarkTurnUsage,
+  benchmarkTurnMetadata,
   capturedActionToParams,
+  capturedActionsToToolCalls,
   coerceActions,
   coerceParams,
   composeBenchmarkPrompt,
@@ -345,6 +352,28 @@ async function collectSessionDiagnostics(
     evaluators: evaluatorNames,
     actions: actionNames,
   };
+}
+
+async function loadNativeTrajectoryStep(
+  runtime: AgentRuntime,
+  stepId: string,
+): Promise<unknown> {
+  try {
+    await flushTrajectoryWrites(runtime);
+    const service = runtime.getService("trajectories") as
+      | { getTrajectoryDetail?: (trajectoryId: string) => Promise<unknown> }
+      | null
+      | undefined;
+    if (typeof service?.getTrajectoryDetail !== "function") {
+      return null;
+    }
+    return await service.getTrajectoryDetail(stepId);
+  } catch (err: unknown) {
+    elizaLogger.debug(
+      `[bench] Could not load native trajectory ${stepId}: ${formatUnknownError(err)}`,
+    );
+    return null;
+  }
 }
 
 // Proper robust server implementation
@@ -1544,6 +1573,10 @@ export async function startBenchmarkServer() {
           const key = sessionKey(session);
           const trajectory = trajectoriesBySession.get(key) ?? [];
           const startedAt = Date.now();
+          const trajectoryStep = trajectory.length + 1;
+          const nativeTrajectoryStepId = stringToUuid(
+            `benchmark-native-trajectory:${key}:${trajectoryStep}:${startedAt}`,
+          );
 
           await ensureBenchmarkSessionContext(runtime, session);
 
@@ -1562,6 +1595,7 @@ export async function startBenchmarkServer() {
               metadata: {
                 benchmark: session.benchmark,
                 taskId: session.taskId,
+                trajectoryStepId: nativeTrajectoryStepId,
                 ...(context ? { contextJson: JSON.stringify(context) } : {}),
               },
             },
@@ -1593,10 +1627,20 @@ export async function startBenchmarkServer() {
           activeUsageBuffer = turnUsageBuffer;
           const result = await (async () => {
             try {
-              return await messageService.handleMessage(
-                runtime,
-                incomingMessage,
-                callback,
+              return await runWithTrajectoryContext(
+                {
+                  trajectoryStepId: nativeTrajectoryStepId,
+                  runId: key,
+                  roomId: session.roomId,
+                  messageId: incomingMessage.id,
+                  purpose: "benchmark",
+                },
+                () =>
+                  messageService.handleMessage(
+                    runtime,
+                    incomingMessage,
+                    callback,
+                  ),
               );
             } finally {
               setBenchmarkContext(null);
@@ -1633,10 +1677,25 @@ export async function startBenchmarkServer() {
               .map((action) => capturedActionToParams(action).BENCHMARK_ACTION)
               .filter(Boolean);
           }
+          const toolCalls = capturedActionsToToolCalls(capturedActions);
+          if (toolCalls.length > 0) {
+            params.tool_calls = toolCalls;
+          }
           const finishedAt = Date.now();
+          const metadata = benchmarkTurnMetadata({
+            session,
+            step: trajectoryStep,
+            context: benchmarkContext,
+            nativeTrajectoryStepId,
+          });
+          params.eliza_metadata = metadata;
+          const nativeTrajectory = await loadNativeTrajectoryStep(
+            runtime,
+            nativeTrajectoryStepId,
+          );
 
           trajectory.push({
-            step: trajectory.length + 1,
+            step: trajectoryStep,
             startedAt,
             finishedAt,
             inputText: text,
@@ -1647,6 +1706,9 @@ export async function startBenchmarkServer() {
             actions,
             params,
             usage: turnUsage,
+            toolCalls,
+            metadata,
+            nativeTrajectory,
           });
           trajectoriesBySession.set(key, trajectory);
 
@@ -1658,6 +1720,9 @@ export async function startBenchmarkServer() {
               actions,
               params,
               captured_actions: capturedActions,
+              tool_calls: toolCalls,
+              usage: turnUsage,
+              metadata,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,

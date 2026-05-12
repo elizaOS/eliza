@@ -270,6 +270,19 @@ export class VoiceTurnController {
 
   // --- prewarm -----------------------------------------------------------
 
+  /**
+   * C2 — public idle prewarm entry point. Callers (e.g. the UI when a
+   * conversation opens) invoke this to materialize the KV cache for the
+   * response-handler stable prefix BEFORE the user starts speaking, so the
+   * first speech-start has nothing left to do. Fire-and-forget: the
+   * returned promise is `void` because we don't want callers blocking on
+   * prewarm; failures surface via `onError` exactly like the speech-start
+   * path. Idempotent — repeated calls just re-prewarm.
+   */
+  prewarmOnIdle(): void {
+    void this.firePrewarm();
+  }
+
   private async firePrewarm(): Promise<void> {
     if (!this.deps.prewarm) return;
     try {

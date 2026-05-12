@@ -18,8 +18,10 @@ from elizaos_experience_bench.types import (
     BenchmarkConfig,
     BenchmarkResult,
     BenchmarkSuite,
+    ElizaAgentMetrics,
     HardCaseCategoryMetrics,
     HardCaseMetrics,
+    RetrievalMetrics,
 )
 
 

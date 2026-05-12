@@ -24,8 +24,12 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "call", returnType: CAPPluginReturnPromise),
     ]
 
-    private static let fullBunSmokeRequestKey = "CapacitorStorage.eliza:ios-full-bun-smoke:request"
-    private static let fullBunSmokeResultKey = "CapacitorStorage.eliza:ios-full-bun-smoke:result"
+    // Native-only smoke is intentionally separate from the WebView smoke key.
+    // The WebView smoke exercises the production Capacitor call path; using the
+    // same key here races two full Bun runtimes and PGlite rejects the duplicate
+    // database owner.
+    private static let fullBunSmokeRequestKey = "CapacitorStorage.eliza:ios-full-bun-native-smoke:request"
+    private static let fullBunSmokeResultKey = "CapacitorStorage.eliza:ios-full-bun-native-smoke:result"
     private var runtime: ElizaBunRuntime?
     private var nativeSmokeStarted = false
 
@@ -171,7 +175,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             bundlePath: nil,
             polyfillPath: nil,
             engine: "bun",
-            argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
+            argv: ["bun", "--no-install", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
             env: [
                 "ELIZA_PLATFORM": "ios",
                 "ELIZA_MOBILE_PLATFORM": "ios",
@@ -299,8 +303,10 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
                 self.writeFullBunSmokeFailure(error)
             case .success(let sendMessage):
                 self.writeFullBunSmokeProgress([
+                    "ok": true,
                     "phase": "native-complete",
                     "nativeOnly": true,
+                    "finishedAt": self.isoTimestamp(),
                     "engine": runtime.engineMode,
                     "bridgeVersion": runtime.bridgeVersion ?? NSNull(),
                     "bridgeStatus": Self.jsonSafe(bridgeStatus),
@@ -359,6 +365,10 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         writeFullBunSmokeResult(result)
+        if result["ok"] as? Bool == true {
+            UserDefaults.standard.removeObject(forKey: Self.fullBunSmokeRequestKey)
+            UserDefaults.standard.synchronize()
+        }
     }
 
     private func writeFullBunSmokeResult(_ result: [String: Any]) {

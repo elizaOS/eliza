@@ -8,10 +8,7 @@
 
 import { logger } from "@elizaos/core";
 import { coerceEmotion, emotionToOmnivoiceKeyword } from "./emotion-local";
-import {
-  OmnivoiceContext,
-  OV_TTS_PARAMS_LAYOUT,
-} from "./ffi";
+import { type OmnivoiceContext, OV_TTS_PARAMS_LAYOUT } from "./ffi";
 import type {
   OmnivoiceSynthesisResult,
   OmnivoiceSynthesizeOptions,
@@ -79,37 +76,73 @@ export async function runSynthesis(
       view.setInt32(fields.T_override.offset, opts.frameOverride, true);
     }
     if (typeof opts.chunkDurationSec === "number") {
-      view.setFloat32(fields.chunk_duration_sec.offset, opts.chunkDurationSec, true);
+      view.setFloat32(
+        fields.chunk_duration_sec.offset,
+        opts.chunkDurationSec,
+        true,
+      );
     }
     if (typeof opts.chunkThresholdSec === "number") {
-      view.setFloat32(fields.chunk_threshold_sec.offset, opts.chunkThresholdSec, true);
+      view.setFloat32(
+        fields.chunk_threshold_sec.offset,
+        opts.chunkThresholdSec,
+        true,
+      );
     }
     if (typeof opts.denoise === "boolean") {
       view.setUint8(fields.denoise.offset, opts.denoise ? 1 : 0);
     }
     if (typeof opts.preprocessPrompt === "boolean") {
-      view.setUint8(fields.preprocess_prompt.offset, opts.preprocessPrompt ? 1 : 0);
+      view.setUint8(
+        fields.preprocess_prompt.offset,
+        opts.preprocessPrompt ? 1 : 0,
+      );
     }
     if (opts.maskgit) {
       const m = opts.maskgit;
-      if (typeof m.numStep === "number") view.setInt32(fields.mg_num_step.offset, m.numStep, true);
-      if (typeof m.guidanceScale === "number") view.setFloat32(fields.mg_guidance_scale.offset, m.guidanceScale, true);
-      if (typeof m.tShift === "number") view.setFloat32(fields.mg_t_shift.offset, m.tShift, true);
-      if (typeof m.layerPenaltyFactor === "number") view.setFloat32(fields.mg_layer_penalty_factor.offset, m.layerPenaltyFactor, true);
-      if (typeof m.positionTemperature === "number") view.setFloat32(fields.mg_position_temperature.offset, m.positionTemperature, true);
-      if (typeof m.classTemperature === "number") view.setFloat32(fields.mg_class_temperature.offset, m.classTemperature, true);
+      if (typeof m.numStep === "number")
+        view.setInt32(fields.mg_num_step.offset, m.numStep, true);
+      if (typeof m.guidanceScale === "number")
+        view.setFloat32(fields.mg_guidance_scale.offset, m.guidanceScale, true);
+      if (typeof m.tShift === "number")
+        view.setFloat32(fields.mg_t_shift.offset, m.tShift, true);
+      if (typeof m.layerPenaltyFactor === "number")
+        view.setFloat32(
+          fields.mg_layer_penalty_factor.offset,
+          m.layerPenaltyFactor,
+          true,
+        );
+      if (typeof m.positionTemperature === "number")
+        view.setFloat32(
+          fields.mg_position_temperature.offset,
+          m.positionTemperature,
+          true,
+        );
+      if (typeof m.classTemperature === "number")
+        view.setFloat32(
+          fields.mg_class_temperature.offset,
+          m.classTemperature,
+          true,
+        );
       if (typeof m.seed !== "undefined") {
         view.setBigUint64(fields.mg_seed.offset, BigInt(m.seed), true);
       }
     }
     if (opts.reference?.audio24k) {
-      const refBuf = new Uint8Array(opts.reference.audio24k.buffer.slice(
-        opts.reference.audio24k.byteOffset,
-        opts.reference.audio24k.byteOffset + opts.reference.audio24k.byteLength,
-      ));
+      const refBuf = new Uint8Array(
+        opts.reference.audio24k.buffer.slice(
+          opts.reference.audio24k.byteOffset,
+          opts.reference.audio24k.byteOffset +
+            opts.reference.audio24k.byteLength,
+        ),
+      );
       retain(refBuf);
       view.setBigUint64(fields.ref_audio_24k.offset, ffi.ptr(refBuf), true);
-      view.setInt32(fields.ref_n_samples.offset, opts.reference.audio24k.length, true);
+      view.setInt32(
+        fields.ref_n_samples.offset,
+        opts.reference.audio24k.length,
+        true,
+      );
     }
     if (opts.reference?.text) {
       const rtxt = encodeCString(opts.reference.text);

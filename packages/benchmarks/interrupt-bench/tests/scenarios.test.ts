@@ -10,6 +10,7 @@
 import { describe, expect, it } from "vitest";
 import { loadScenarios } from "../src/scenarios.ts";
 import { runScenario } from "../src/evaluator.ts";
+import type { ScriptedLlmProvider } from "../src/llm-scripted.ts";
 
 describe("scenarios", () => {
   const all = loadScenarios();
@@ -63,4 +64,34 @@ describe("scenarios", () => {
       expect(result.score).toBeGreaterThanOrEqual(0.7);
     });
   }
+
+  it("flags addressedTo leaks across room boundaries", async () => {
+    const scenario = all.find((s) => s.id === "D1-cross-channel-leak");
+    expect(scenario).toBeDefined();
+    const leakingProvider: ScriptedLlmProvider = ({ message }) => ({
+      parsed: {
+        shouldRespond: "RESPOND",
+        contexts: [],
+        intents: [],
+        candidateActionNames: [],
+        replyText: "Paris.",
+        facts: [],
+        relationships: [],
+        addressedTo: [message.channel === "dm-bob" ? "alice" : message.sender],
+        threadOps: [],
+      },
+      latencyMs: 10,
+    });
+
+    const result = await runScenario(scenario!, {
+      mode: "scripted",
+      scripted: leakingProvider,
+    });
+
+    expect(result.boundaryViolated).toBe(true);
+    expect(result.axes.boundary.raw).toBe(0);
+    expect(result.trace.some((event) => event.type === "boundary_violation")).toBe(
+      true,
+    );
+  });
 });

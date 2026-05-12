@@ -19,6 +19,8 @@ type RuntimeOverrides = Partial<AgentRuntime> & {
   messageService?: NonNullable<AgentRuntime["messageService"]>;
 };
 
+type MessageService = NonNullable<AgentRuntime["messageService"]>;
+
 function createRuntime(overrides: RuntimeOverrides = {}): AgentRuntime {
   const runtime = {
     agentId: stringToUuid("streaming-agent"),
@@ -53,6 +55,32 @@ function createChatMessage(text: string) {
   });
 }
 
+function createStreamingMessageService(
+  tokens: string[],
+  delayMs: number,
+): MessageService {
+  return {
+    async handleMessage(_runtime, _message, _callback, options) {
+      for (const token of tokens) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        await options?.onStreamChunk?.(token);
+      }
+      return {
+        didRespond: true,
+        responseContent: { text: tokens.join("") },
+        responseMessages: [],
+      };
+    },
+    shouldRespond: () => ({
+      shouldRespond: true,
+      skipEvaluation: true,
+      reason: "streaming-test",
+    }),
+    deleteMessage: async () => undefined,
+    clearChannel: async () => undefined,
+  };
+}
+
 describe("generateChatResponse token streaming", () => {
   it("forwards onStreamChunk deltas to caller onChunk in order", async () => {
     // Tokens chosen so no token's prefix matches the prior token's suffix —
@@ -62,30 +90,7 @@ describe("generateChatResponse token streaming", () => {
     const tokens = ["Once ", "upon ", "a ", "midnight ", "dreary."];
 
     const runtime = createRuntime({
-      messageService: {
-        handleMessage: vi.fn(
-          async (
-            _runtime: unknown,
-            _message: unknown,
-            _callback: unknown,
-            options: unknown,
-          ) => {
-            const opts = options as {
-              onStreamChunk?: (chunk: string) => Promise<void> | void;
-            };
-            for (const token of tokens) {
-              // Tiny delay between deltas mimics provider streaming pacing.
-              await new Promise((resolve) => setTimeout(resolve, 1));
-              await opts.onStreamChunk?.(token);
-            }
-            return {
-              didRespond: true,
-              responseContent: { text: tokens.join("") },
-              responseMessages: [],
-            };
-          },
-        ),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      messageService: createStreamingMessageService(tokens, 1),
     });
 
     const chunks: string[] = [];
@@ -133,29 +138,7 @@ describe("generateChatResponse token streaming", () => {
     const tokens = ["alpha", " beta", " gamma"];
 
     const runtime = createRuntime({
-      messageService: {
-        handleMessage: vi.fn(
-          async (
-            _runtime: unknown,
-            _message: unknown,
-            _callback: unknown,
-            options: unknown,
-          ) => {
-            const opts = options as {
-              onStreamChunk?: (chunk: string) => Promise<void> | void;
-            };
-            for (const token of tokens) {
-              await new Promise((resolve) => setTimeout(resolve, 5));
-              await opts.onStreamChunk?.(token);
-            }
-            return {
-              didRespond: true,
-              responseContent: { text: tokens.join("") },
-              responseMessages: [],
-            };
-          },
-        ),
-      } as NonNullable<AgentRuntime["messageService"]>,
+      messageService: createStreamingMessageService(tokens, 5),
     });
 
     let runningTotal = "";

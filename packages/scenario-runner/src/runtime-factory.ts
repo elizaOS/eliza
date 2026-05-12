@@ -227,7 +227,7 @@ export async function createScenarioRuntime(
 
   // Skip @elizaos/plugin-local-embedding by default and register a
   // deterministic zero-vector TEXT_EMBEDDING stub instead. The bundled
-  // `eliza-1-lite-0_6b-32k.gguf` is fetched from a gated HuggingFace repo on
+  // `eliza-1-0_8b-32k.gguf` is fetched from a gated HuggingFace repo on
   // first generation; without HF credentials each turn produces a fresh
   // 401-spam burst (LFS URL + Standard URL × ±GGUF suffix × every retry). The
   // scenario runner doesn't score on semantic retrieval, so a zero vector is

@@ -409,7 +409,7 @@ function generateReport(entries, nameGroups, structuralOverlaps) {
   }
 
   if (subsets.length > 0) {
-    ln("### 2b. Subset/Superset Relationships");
+    ln("### 1_7b. Subset/Superset Relationships");
     ln();
     for (const o of subsets) {
       const arrow = o.relation === "subset" ? "⊆" : "⊇";

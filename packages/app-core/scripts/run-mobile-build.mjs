@@ -127,6 +127,7 @@ const androidAgentSpikeDir = path.join(
 const IOS_BUN_ENGINE_FRAMEWORK_NAME = "ElizaBunEngine";
 const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
   "_eliza_bun_engine_abi_version",
+  "_eliza_bun_engine_last_error",
   "_eliza_bun_engine_start",
   "_eliza_bun_engine_stop",
   "_eliza_bun_engine_call",

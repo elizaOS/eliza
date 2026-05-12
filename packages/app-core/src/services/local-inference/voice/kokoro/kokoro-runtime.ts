@@ -41,8 +41,8 @@ import { createHash } from "node:crypto";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import {
-  KokoroModelMissingError,
   type KokoroModelLayout,
+  KokoroModelMissingError,
   type KokoroPhonemeSequence,
   type KokoroVoicePack,
 } from "./types";
@@ -122,7 +122,10 @@ interface OrtTensor {
 
 interface OrtModule {
   InferenceSession: {
-    create(modelPath: string, opts?: Record<string, unknown>): Promise<OrtSession>;
+    create(
+      modelPath: string,
+      opts?: Record<string, unknown>,
+    ): Promise<OrtSession>;
   };
   Tensor: new (
     type: string,
@@ -163,8 +166,12 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
     ort: OrtModule;
     session: OrtSession;
   }> {
-    if (this.session && this.ort) return { ort: this.ort, session: this.session };
-    const modelPath = path.join(this.opts.layout.root, this.opts.layout.modelFile);
+    if (this.session && this.ort)
+      return { ort: this.ort, session: this.session };
+    const modelPath = path.join(
+      this.opts.layout.root,
+      this.opts.layout.modelFile,
+    );
     if (!existsSync(modelPath)) {
       throw new KokoroModelMissingError(
         `[kokoro] ONNX model not found at ${modelPath}. Download from ${KOKORO_ONNX_MODEL_URL} and place under <bundleRoot>/${this.opts.layout.modelFile}.`,
@@ -216,7 +223,7 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
       sampleRate: this.sampleRate,
       isFinal: true,
     });
-    return { cancelled: want === true || args.cancelSignal.cancelled === true };
+    return { cancelled: want === true || Boolean(args.cancelSignal.cancelled) };
   }
 
   private async loadVoiceStyle(voice: KokoroVoicePack): Promise<Float32Array> {
@@ -230,7 +237,10 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
     }
     const { readFile } = await import("node:fs/promises");
     const buf = await readFile(file);
-    const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+    const ab = buf.buffer.slice(
+      buf.byteOffset,
+      buf.byteOffset + buf.byteLength,
+    );
     const arr = new Float32Array(ab);
     if (arr.length !== voice.dim) {
       throw new KokoroModelMissingError(
@@ -417,14 +427,14 @@ export interface KokoroPythonRuntimeOptions {
 export class KokoroPythonRuntime implements KokoroRuntime {
   readonly id = "python" as const;
   readonly sampleRate: number;
-  private readonly opts: KokoroPythonRuntimeOptions;
 
   constructor(opts: KokoroPythonRuntimeOptions) {
-    this.opts = opts;
     this.sampleRate = opts.layout.sampleRate;
   }
 
-  async synthesize(_args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }> {
+  async synthesize(
+    _args: KokoroRuntimeInputs,
+  ): Promise<{ cancelled: boolean }> {
     // The eval driver in `packages/training` is the canonical caller and
     // already wires `child_process.spawn`. Surfacing a clear error here
     // keeps the production runtime from accidentally enabling this path.

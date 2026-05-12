@@ -1,4 +1,5 @@
-import { Button, Z_SYSTEM_BANNER } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Z_SYSTEM_BANNER } from "../../lib/floating-layers";
 import { useEffect, useRef } from "react";
 import { useApp } from "../../state";
 

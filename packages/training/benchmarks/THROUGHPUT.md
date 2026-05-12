@@ -2,7 +2,7 @@
 
 Measured 2026-05-11 on an **RTX 5080 Laptop GPU** (16 GB, Blackwell sm_120,
 driver 580.142, CUDA 13.0 runtime / nvcc 12.0 toolkit) + an Intel Arrow Lake-U
-CPU (8 threads used). Historical model: `eliza-1-0_6b` (Qwen3.5-0.6B arch,
+CPU (8 threads used). Historical model: `eliza-1-0_8b` (Qwen3.5-0.8B arch,
 596 M params). This predates the Qwen3.5 tier migration; it is retained as a
 measurement record, not release evidence for the current `eliza-1-0_8b` tier.
 `run_pipeline.py` stage 6c writes a per-run `checkpoints/<run>/evals/throughput.json`

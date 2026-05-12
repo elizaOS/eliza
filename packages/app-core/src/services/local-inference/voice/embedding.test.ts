@@ -53,7 +53,7 @@ describe("resolveLocalEmbeddingSource", () => {
     const embPath = path.join(
       bundleRoot,
       EMBEDDING_DIR_REL_PATH,
-      "qwen3-embedding-0.6b.gguf",
+      "qwen3.5-embedding-0.6b.gguf",
     );
     mkdirSync(path.dirname(embPath), { recursive: true });
     writeFileSync(embPath, "gguf");

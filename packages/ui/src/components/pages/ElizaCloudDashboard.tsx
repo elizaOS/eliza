@@ -1,12 +1,7 @@
-import {
-  Button,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Switch,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import {
   ArrowLeft,
   CreditCard,

@@ -442,6 +442,7 @@ async function ensureUiDistReady(): Promise<void> {
     env: {
       ...process.env,
       FORCE_COLOR: "0",
+      VITE_ELIZA_RENDER_TELEMETRY: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

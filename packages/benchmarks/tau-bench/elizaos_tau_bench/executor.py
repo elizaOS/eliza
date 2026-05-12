@@ -43,6 +43,13 @@ class ToolExecutor:
         start_time = time.time()
         try:
             tool_call.result = await self.environment.execute_tool(tool_call)
+            if (
+                isinstance(tool_call.result, dict)
+                and "error" in tool_call.result
+                and tool_call.status == ToolCallStatus.CORRECT
+            ):
+                tool_call.status = ToolCallStatus.EXECUTION_ERROR
+                tool_call.error_message = str(tool_call.result["error"])
             tool_call.execution_time_ms = (time.time() - start_time) * 1000
         except Exception as e:
             tool_call.status = ToolCallStatus.EXECUTION_ERROR

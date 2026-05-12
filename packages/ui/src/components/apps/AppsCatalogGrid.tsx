@@ -1,4 +1,4 @@
-import { Skeleton } from "@elizaos/ui";
+import { Skeleton } from "../ui/skeleton";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";

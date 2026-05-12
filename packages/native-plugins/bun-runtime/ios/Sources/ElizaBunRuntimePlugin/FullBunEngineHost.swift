@@ -57,6 +57,7 @@ final class FullBunEngineHost {
         env: [String: String],
         appSupportDir: String
     ) throws {
+        if running { return }
         try load()
         guard let startFn else {
             throw makeError("ElizaBunEngine missing start symbol")

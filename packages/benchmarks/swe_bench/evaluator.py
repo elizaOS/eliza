@@ -98,14 +98,34 @@ class SWEBenchEvaluator:
                 tests_failed=[],
                 success=False,
                 duration_seconds=time.time() - start_time,
-                tokens_used=0,
+                tokens_used=None,
                 error="No patch generated",
             )
 
         # Check if Docker is available and enabled
         if not self.use_docker or not await self.check_docker_available():
-            logger.warning("Docker not available, performing basic patch validation only")
-            return await self._basic_validation(instance, patch, start_time)
+            # P0c: No Docker means we cannot actually run the tests. Returning a
+            # similarity-based "success" was leakage + soft-threshold cheating.
+            # Surface ``incompatible`` so the orchestrator publication gate sees
+            # ``success=False`` and routes the result accordingly.
+            reason = (
+                "Docker unavailable and use_docker=False; SWE-bench cannot "
+                "execute tests without Docker. Refusing to fall back to "
+                "ground-truth-leakage similarity scoring."
+            )
+            logger.warning(reason)
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch=patch,
+                patch_status=PatchStatus.GENERATED,
+                tests_passed=[],
+                tests_failed=[],
+                success=False,
+                duration_seconds=time.time() - start_time,
+                tokens_used=None,
+                error=reason,
+                status="incompatible",
+            )
 
         try:
             return await self._harness_evaluation(instance, patch, start_time)
@@ -119,7 +139,7 @@ class SWEBenchEvaluator:
                 tests_failed=[],
                 success=False,
                 duration_seconds=time.time() - start_time,
-                tokens_used=0,
+                tokens_used=None,
                 error=f"Evaluation error: {str(e)}",
             )
 
@@ -290,7 +310,7 @@ class SWEBenchEvaluator:
                     tests_failed=[],
                     success=False,
                     duration_seconds=time.time() - start_time,
-                    tokens_used=0,
+                    tokens_used=None,
                     error=(
                         "Harness did not produce a report.json. "
                         f"Exit code={process.returncode}. stderr tail:\n{stderr[-4000:]}"
@@ -342,70 +362,10 @@ class SWEBenchEvaluator:
                 tests_failed=tests_failed,
                 success=resolved,
                 duration_seconds=time.time() - start_time,
-                tokens_used=0,
+                tokens_used=None,
                 error=error,
             )
 
-    async def _basic_validation(
-        self,
-        instance: SWEBenchInstance,
-        patch: str,
-        start_time: float,
-    ) -> SWEBenchResult:
-        """Perform basic patch validation without Docker."""
-        # Check if patch looks valid
-        is_valid_patch = (
-            patch.strip().startswith("diff --git")
-            or patch.strip().startswith("---")
-            or "@@" in patch
-        )
-
-        if not is_valid_patch:
-            return SWEBenchResult(
-                instance_id=instance.instance_id,
-                generated_patch=patch,
-                patch_status=PatchStatus.NOT_GENERATED,
-                tests_passed=[],
-                tests_failed=[],
-                success=False,
-                duration_seconds=time.time() - start_time,
-                tokens_used=0,
-                error="Invalid patch format",
-            )
-
-        # Count number of files changed
-        files_changed = patch.count("diff --git")
-        quality = SimplePatchEvaluator().evaluate_patch_quality(
-            patch,
-            instance.patch,
-        )
-        try:
-            success_threshold = float(
-                os.environ.get("SWE_BENCH_BASIC_SUCCESS_THRESHOLD", "0.35")
-            )
-        except ValueError:
-            success_threshold = 0.35
-        basic_success = quality.similarity >= success_threshold
-
-        return SWEBenchResult(
-            instance_id=instance.instance_id,
-            generated_patch=patch,
-            patch_status=PatchStatus.GENERATED,
-            tests_passed=["basic_patch_quality"] if basic_success else [],
-            tests_failed=[],
-            success=basic_success,
-            duration_seconds=time.time() - start_time,
-            tokens_used=0,
-            error=None
-            if basic_success
-            else (
-                "Basic validation only (Docker not available). "
-                f"Patch modifies {files_changed} file(s); "
-                f"quality={quality.similarity:.3f}, "
-                f"file_overlap={quality.file_overlap:.3f}, "
-                f"line_overlap={quality.line_overlap:.3f}."
-            ),
-        )
 
     def _parse_test_results(self, logs: str) -> tuple[list[str], list[str]]:
         """Parse test results from Docker logs."""

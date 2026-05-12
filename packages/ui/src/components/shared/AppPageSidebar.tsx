@@ -1,4 +1,5 @@
-import { Sidebar, type SidebarProps } from "@elizaos/ui";
+import { Sidebar } from "../composites/sidebar/sidebar-root";
+import type { SidebarProps } from "../composites/sidebar/sidebar-types";
 import { PanelLeftClose } from "lucide-react";
 import * as React from "react";
 import { useCallback, useMemo, useState } from "react";

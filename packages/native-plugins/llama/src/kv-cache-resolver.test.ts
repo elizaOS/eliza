@@ -5,7 +5,7 @@ import {
   resolveKvCacheType,
 } from "./kv-cache-resolver";
 
-const ELIZA_1_MODEL = "/data/local/tmp/eliza-1-mobile-1_7b-32k.gguf";
+const ELIZA_1_MODEL = "/data/local/tmp/eliza-1-2b-32k.gguf";
 
 describe("readEnvKvCacheType", () => {
   it("returns recognised values verbatim", () => {

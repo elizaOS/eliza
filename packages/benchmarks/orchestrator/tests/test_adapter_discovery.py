@@ -11,6 +11,7 @@ from benchmarks.orchestrator.adapters import (
     _score_from_app_eval,
     _score_from_compactbench,
     _score_from_loca_bench,
+    _score_from_woobench,
     discover_adapters,
 )
 from benchmarks.orchestrator.runner import (
@@ -19,7 +20,7 @@ from benchmarks.orchestrator.runner import (
     _required_env_for_request,
 )
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
-from benchmarks.registry import get_benchmark_registry
+from benchmarks.registry import _score_from_bfcl_json, get_benchmark_registry
 
 
 def _workspace_root() -> Path:
@@ -44,6 +45,118 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["hyperliquid_bench"].directory == "HyperliquidBench"
     assert adapters["eliza_replay"].directory == "eliza-adapter"
     assert adapters["gaia_orchestrated"].directory == "gaia"
+    assert adapters["rlm_bench"].directory == "rlm-bench"
+    assert adapters["osworld"].directory == "OSWorld"
+
+
+def test_hermes_native_envs_are_hermes_only() -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+
+    for benchmark_id in (
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+    ):
+        adapter = adapters[benchmark_id]
+        assert adapter.directory == "hermes-adapter"
+        assert adapter.agent_compatibility == ("hermes",)
+        assert _is_harness_compatible(adapter, "hermes") is True
+        assert _is_harness_compatible(adapter, "eliza") is False
+        assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gaia_orchestrated"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {
+            "dataset": "sample",
+            "max_questions": 2,
+            "providers": ["claude-code", "codex"],
+            "required_capabilities": ["research.web_search", "research.docs_lookup"],
+            "strict_capabilities": True,
+        },
+    )
+
+    assert command[command.index("-m") + 1] == "elizaos_gaia.orchestrated"
+    assert command[command.index("--max-questions") + 1] == "2"
+    assert command[command.index("--providers") + 1 : command.index("--providers") + 3] == [
+        "claude-code",
+        "codex",
+    ]
+    assert "--strict-capabilities" in command
+    assert entry.locate_result(tmp_path) == tmp_path / "gaia-orchestrated-latest.json"
+
+
+def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
+    tmp_path: Path,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "mint"
+    ]
+
+    harness_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes"},
+    )
+    direct_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {},
+    )
+
+    assert harness_command[harness_command.index("--provider") + 1] == "eliza"
+    assert direct_command[direct_command.index("--provider") + 1] == "cerebras"
+
+
+def test_lifeops_registry_forwards_suite_and_limit(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "lifeops_bench"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"suite": "smoke", "limit": 1, "agent": "eliza"},
+    )
+
+    assert command[command.index("--suite") + 1] == "smoke"
+    assert command[command.index("--limit") + 1] == "1"
+
+
+def test_bfcl_registry_always_writes_scoreable_json(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "bfcl"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes", "sample": 1, "no_report": True, "no_exec": True},
+    )
+
+    assert "--no-report" not in command
+    assert "--no-exec" in command
+    assert command[command.index("--sample") + 1] == "1"
+
+
+def test_bfcl_score_rejects_zero_task_results() -> None:
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_bfcl_json(
+            {
+                "metrics": {
+                    "overall_score": 0.0,
+                    "total_tests": 0,
+                    "error_analysis": {},
+                }
+            }
+        )
 
 
 def test_openclaw_registry_command_and_result_locator(tmp_path: Path) -> None:
@@ -176,6 +289,102 @@ def test_compactbench_score_prefers_repaired_valid_hit_analysis(tmp_path: Path) 
     assert score.metrics["scorer_name"] == "repaired_valid_hits"
 
 
+def test_scambench_orchestrator_default_is_tiny_bridge_smoke(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["scambench"]
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("scambench",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config=dict(adapter.default_extra_config),
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--max-examples") + 1] == "2"
+    assert command[command.index("--max-new-tokens") + 1] == "128"
+    assert command[command.index("--out") + 1] == str(tmp_path / "out")
+
+
+def test_woobench_orchestrator_default_is_single_heuristic_scenario(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["woobench"]
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("woobench",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config=dict(adapter.default_extra_config),
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--scenario") + 1] == "skeptic_tarot_01"
+    assert command[command.index("--evaluator") + 1] == "heuristic"
+    assert command[command.index("--concurrency") + 1] == "1"
+    assert command[command.index("--random-seed") + 1] == "1"
+
+
+def test_woobench_score_extractor_marks_interrupted_for_quarantine(tmp_path: Path) -> None:
+    result_path = tmp_path / "woobench_smoke.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "overall_score": 12.5,
+                "revenue_efficiency": 0.0,
+                "resilience_score": 0.0,
+                "failed_scenarios": 1,
+                "interrupted": True,
+                "scenarios": [{"scenario_id": "skeptic_tarot_01"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    score = _score_from_woobench(result_path)
+
+    assert score.score == 0.125
+    assert score.metrics["interrupted"] is True
+    assert score.metrics["total_instances"] == 1
+
+
+def test_compactbench_score_accepts_valid_hit_file_from_locator(tmp_path: Path) -> None:
+    valid = tmp_path / "compactbench-results.valid-hits.jsonl"
+    valid.write_text(
+        "\n".join(
+            [
+                '{"event":"analysis_start"}',
+                '{"event":"analysis_end","overall_score":0.8}',
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    score = _score_from_compactbench(valid)
+
+    assert score.score == 0.8
+    assert score.metrics["scorer_name"] == "repaired_valid_hits"
+
+
 def test_compactbench_score_requires_repaired_valid_hit_analysis(tmp_path: Path) -> None:
     raw = tmp_path / "compactbench-results.jsonl"
     raw.write_text(
@@ -216,7 +425,38 @@ def test_compare_label_still_runs_multi_harness_adapters() -> None:
     assert _is_harness_compatible(adapter, "compare") is True
 
 
-def test_loca_adapter_excludes_openclaw_until_full_transcript_adapter_exists(tmp_path: Path) -> None:
+def test_context_bench_adapter_defaults_to_smoke_command(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["context_bench"]
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("context_bench",),
+            agent="eliza",
+            provider="groq",
+            model="kimi-k2",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert "--quick" in command
+    assert command[command.index("--context-lengths") + 1] == "1024"
+    assert command[command.index("--positions") + 1] == "middle"
+    assert command[command.index("--tasks-per-position") + 1] == "1"
+
+
+def test_loca_adapter_gates_openclaw_until_native_loca_adapter_exists(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["loca_bench"]
     ctx = ExecutionContext(
         workspace_root=_workspace_root(),
@@ -225,13 +465,14 @@ def test_loca_adapter_excludes_openclaw_until_full_transcript_adapter_exists(tmp
         run_root=tmp_path,
         request=RunRequest(
             benchmarks=("loca_bench",),
-            agent="eliza",
+            agent="openclaw",
             provider="cerebras",
             model="gpt-oss-120b",
             extra_config={
                 "max_context_size": 1_000_000,
                 "reset_size": 500_000,
                 "reasoning_effort": "low",
+                "timeout": 120,
                 "allow_empty": True,
             },
         ),
@@ -244,12 +485,21 @@ def test_loca_adapter_excludes_openclaw_until_full_transcript_adapter_exists(tmp
     env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
 
     assert adapter.agent_compatibility == ("eliza", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
     assert _is_harness_compatible(adapter, "openclaw") is False
     assert "--allow-empty" not in command
     assert command[command.index("--max-context-size") + 1] == "1000000"
     assert command[command.index("--reset-size") + 1] == "500000"
     assert command[command.index("--reasoning-effort") + 1] == "low"
     assert env["MAX_CONVERSATION_TOKENS"] == "1000000"
+    assert env["LOCA_HARNESS_TIMEOUT_S"] == "115"
+    # If a developer force-runs the unsupported OpenClaw smoke path, the env
+    # must make the direct OpenAI-compatible transport explicit. Compatibility
+    # gating above keeps this out of normal cross-agent matrices.
+    assert env["LOCA_OPENCLAW_THINKING"] == "low"
+    assert env["OPENCLAW_DIRECT_OPENAI_COMPAT"] == "1"
+    assert env["OPENCLAW_USE_CLI"] == "0"
 
 
 def test_lifeops_required_env_tracks_static_vs_live_modes() -> None:
@@ -371,6 +621,40 @@ def test_action_calling_score_accepts_native_metrics() -> None:
     assert score.score == 1.0
     assert score.metrics["native_tool_calls_ok"] == 1.0
     assert score.metrics["generation_source"] == "captured_action"
+
+
+def test_action_calling_registry_command_forwards_tool_choice(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "action-calling"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="vllm", model="local-tools"),
+        {"tool_choice": "required", "max_examples": 1},
+    )
+
+    assert command[command.index("--tool-choice") + 1] == "required"
+
+
+def test_abliteration_registry_command_defaults_to_no_tool_choice(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "abliteration-robustness"
+    ]
+
+    default_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="vllm", model="local-abliterated"),
+        {},
+    )
+    explicit_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="vllm", model="local-abliterated"),
+        {"tool_choice": "auto"},
+    )
+
+    assert default_command[default_command.index("--tool-choice") + 1] == "none"
+    assert explicit_command[explicit_command.index("--tool-choice") + 1] == "auto"
 
 
 def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> None:

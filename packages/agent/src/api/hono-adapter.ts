@@ -11,11 +11,7 @@
  * handlers will be migrated onto `runtime.routes` in later phases.
  */
 
-import type {
-  IAgentRuntime,
-  Route,
-  RouteHandlerResult,
-} from "@elizaos/core";
+import type { IAgentRuntime, Route, RouteHandlerResult } from "@elizaos/core";
 import { Hono } from "hono";
 import { stream as honoStream } from "hono/streaming";
 
@@ -87,9 +83,7 @@ function headersToRecord(headers: Headers): Record<string, string> {
   return out;
 }
 
-function searchParamsToQuery(
-  url: URL,
-): Record<string, string | string[]> {
+function searchParamsToQuery(url: URL): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of url.searchParams.keys()) {
     const all = url.searchParams.getAll(key);
@@ -119,81 +113,85 @@ export function mountRoutesOnHono(
     const honoPath = toHonoPath(route.path);
 
     // Hono's app[method] signature is uniform across verbs.
-    (app as unknown as Record<string, (path: string, handler: (c: unknown) => unknown) => void>)
-      [method](honoPath, async (c: unknown) => {
-        const ctx = c as {
-          req: { raw: Request; param: () => Record<string, string> };
-          newResponse: (
-            body: BodyInit | null,
-            init?: ResponseInit,
-          ) => Response;
-        };
-        const request = ctx.req.raw;
-        const url = new URL(request.url);
-        const params = ctx.req.param();
-        const body = await readBodyForDispatch(request, request.method);
-        const result: RouteHandlerResult | null = await dispatchRoute({
-          runtime,
-          method: request.method,
-          path: url.pathname,
-          headers: headersToRecord(request.headers),
-          query: searchParamsToQuery(url),
-          body,
-          inProcess: false,
-          isAuthorized: () => options.isAuthorized(request),
-        }).catch((err: unknown): RouteHandlerResult => ({
+    (
+      app as unknown as Record<
+        string,
+        (path: string, handler: (c: unknown) => unknown) => void
+      >
+    )[method](honoPath, async (c: unknown) => {
+      const ctx = c as {
+        req: { raw: Request; param: () => Record<string, string> };
+        newResponse: (body: BodyInit | null, init?: ResponseInit) => Response;
+      };
+      const request = ctx.req.raw;
+      const url = new URL(request.url);
+      const params = ctx.req.param();
+      const body = await readBodyForDispatch(request, request.method);
+      const result: RouteHandlerResult | null = await dispatchRoute({
+        runtime,
+        method: request.method,
+        path: url.pathname,
+        headers: headersToRecord(request.headers),
+        query: searchParamsToQuery(url),
+        body,
+        inProcess: false,
+        isAuthorized: () => options.isAuthorized(request),
+      }).catch(
+        (err: unknown): RouteHandlerResult => ({
           status: 500,
           headers: { "content-type": "application/json; charset=utf-8" },
           body: {
             error: err instanceof Error ? err.message : "Internal server error",
           },
-        }));
+        }),
+      );
 
-        if (result === null) {
-          // Should be unreachable — Hono only invokes this handler on a match.
-          void params;
-          return ctx.newResponse("Not Found", { status: 404 });
-        }
+      if (result === null) {
+        // Should be unreachable — Hono only invokes this handler on a match.
+        void params;
+        return ctx.newResponse("Not Found", { status: 404 });
+      }
 
-        const headers = new Headers(result.headers ?? {});
-        if (result.stream) {
-          return (
-            honoStream as unknown as (
-              c: unknown,
-              cb: (stream: {
-                write: (chunk: string | Uint8Array) => Promise<void>;
-                close: () => Promise<void>;
-              }) => Promise<void>,
-            ) => Response
-          )(ctx, async (stream) => {
-            for await (const chunk of result.stream!) {
-              await stream.write(chunk);
-            }
-            await stream.close();
-          });
-        }
+      const headers = new Headers(result.headers ?? {});
+      if (result.stream) {
+        const resultStream = result.stream;
+        return (
+          honoStream as unknown as (
+            c: unknown,
+            cb: (stream: {
+              write: (chunk: string | Uint8Array) => Promise<void>;
+              close: () => Promise<void>;
+            }) => Promise<void>,
+          ) => Response
+        )(ctx, async (stream) => {
+          for await (const chunk of resultStream) {
+            await stream.write(chunk);
+          }
+          await stream.close();
+        });
+      }
 
-        let bodyOut: BodyInit | null = null;
-        if (result.body == null) {
-          bodyOut = null;
-        } else if (typeof result.body === "string") {
-          bodyOut = result.body;
-          if (!headers.has("content-type")) {
-            headers.set("content-type", "text/plain; charset=utf-8");
-          }
-        } else if (result.body instanceof Uint8Array) {
-          bodyOut = result.body as unknown as BodyInit;
-          if (!headers.has("content-type")) {
-            headers.set("content-type", "application/octet-stream");
-          }
-        } else {
-          bodyOut = JSON.stringify(result.body);
-          if (!headers.has("content-type")) {
-            headers.set("content-type", "application/json; charset=utf-8");
-          }
+      let bodyOut: BodyInit | null = null;
+      if (result.body == null) {
+        bodyOut = null;
+      } else if (typeof result.body === "string") {
+        bodyOut = result.body;
+        if (!headers.has("content-type")) {
+          headers.set("content-type", "text/plain; charset=utf-8");
         }
-        return ctx.newResponse(bodyOut, { status: result.status, headers });
-      });
+      } else if (result.body instanceof Uint8Array) {
+        bodyOut = result.body as unknown as BodyInit;
+        if (!headers.has("content-type")) {
+          headers.set("content-type", "application/octet-stream");
+        }
+      } else {
+        bodyOut = JSON.stringify(result.body);
+        if (!headers.has("content-type")) {
+          headers.set("content-type", "application/json; charset=utf-8");
+        }
+      }
+      return ctx.newResponse(bodyOut, { status: result.status, headers });
+    });
   }
 }
 

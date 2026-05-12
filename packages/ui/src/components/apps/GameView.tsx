@@ -9,13 +9,10 @@
  */
 
 import { packageNameToAppRouteSlug } from "@elizaos/shared";
-import {
-  Button,
-  Input,
-  useDocumentVisibility,
-  useIntervalWhenDocumentVisible,
-  useTimeout,
-} from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { useDocumentVisibility, useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
+import { useTimeout } from "../../hooks/useTimeout";
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {

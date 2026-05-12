@@ -1,4 +1,5 @@
-import { Button, Input } from "@elizaos/ui";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { createElement } from "react";
 import { useBranding } from "../../config/branding";
 import { useApp } from "../../state";

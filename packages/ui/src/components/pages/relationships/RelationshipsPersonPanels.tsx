@@ -1,4 +1,6 @@
-import { Button, MetaPill, PagePanel } from "@elizaos/ui";
+import { Button } from "../../ui/button";
+import { MetaPill } from "../../composites/page-panel/page-panel-header";
+import { PagePanel } from "../../composites/page-panel";
 import {
   AtSign,
   BadgeCheck,

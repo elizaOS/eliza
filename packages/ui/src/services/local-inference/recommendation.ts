@@ -1,8 +1,8 @@
+import { FIRST_RUN_DEFAULT_MODEL_ID, MODEL_CATALOG } from "./catalog";
 import {
-  DEFAULT_ELIGIBLE_MODEL_IDS,
-  FIRST_RUN_DEFAULT_MODEL_ID,
-  MODEL_CATALOG,
-} from "./catalog";
+  isDefaultLocalModelFamily,
+  isSettingsDefaultLocalModel,
+} from "./catalog-policy";
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
@@ -223,8 +223,7 @@ function fallbackCandidates(
 ): CatalogModel[] {
   const candidates = chatCandidates(catalog).filter(
     (model) =>
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
-      canFit(hardware, model, catalog),
+      isDefaultLocalModelFamily(model) && canFit(hardware, model, catalog),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
@@ -356,16 +355,8 @@ export function recommendForFirstRun(
 ): CatalogModel | null {
   const byId = catalogById(catalog);
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
-  if (preferred && DEFAULT_ELIGIBLE_MODEL_IDS.has(preferred.id))
-    return preferred;
-  return (
-    catalog.find(
-      (model) =>
-        !model.hiddenFromCatalog &&
-        model.runtimeRole !== "dflash-drafter" &&
-        DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id),
-    ) ?? null
-  );
+  if (preferred && isSettingsDefaultLocalModel(preferred)) return preferred;
+  return catalog.find((model) => isSettingsDefaultLocalModel(model)) ?? null;
 }
 
 export function chooseSmallerFallbackModel(
