@@ -119,7 +119,9 @@ def test_canonicalize_granular_action_to_umbrella() -> None:
 
 def test_canonicalize_unknown_granular_is_noop() -> None:
     """Names that don't match a known umbrella stay untouched."""
-    action = Action(name="BLOCK_BLOCK", kwargs={})
+    # `WIDGET_FOO` is a deliberate non-umbrella name. (Previously this used
+    # `BLOCK_BLOCK`, which became a real umbrella alias as of P0-1.)
+    action = Action(name="WIDGET_FOO", kwargs={})
     assert _canonicalize_action(action) is action
 
 
@@ -436,3 +438,237 @@ def test_score_scenario_triviality_guard_still_zeros_no_action() -> None:
     result = _result(state_hash_match=True, agent_actions=[])
     score = score_scenario(result, scenario)
     assert score == 0.0
+
+
+# ---------------------------------------------------------------------------
+# P0-1: extended _UMBRELLA_SUBACTIONS + OWNER_* aliases
+#
+# Each row asserts that a granular emission canonicalizes to the same
+# umbrella shape as the GT, so compare_actions awards >= 0.5 (name match,
+# kwarg overlap not required).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("granular_name", "umbrella", "subaction"),
+    [
+        # LIFE — reminders / alarms write-ops
+        ("LIFE_CREATE", "LIFE", "create"),
+        ("LIFE_COMPLETE", "LIFE", "complete"),
+        ("LIFE_SNOOZE", "LIFE", "snooze"),
+        ("LIFE_REVIEW", "LIFE", "review"),
+        ("LIFE_DELETE", "LIFE", "delete"),
+        ("LIFE_UPDATE", "LIFE", "update"),
+        ("LIFE_SKIP", "LIFE", "skip"),
+        ("LIFE_LIST", "LIFE", "list"),
+        # HEALTH — read-ops
+        ("HEALTH_TODAY", "HEALTH", "today"),
+        ("HEALTH_TREND", "HEALTH", "trend"),
+        ("HEALTH_BY_METRIC", "HEALTH", "by_metric"),
+        ("HEALTH_STATUS", "HEALTH", "status"),
+        # BLOCK — focus/DND
+        ("BLOCK_BLOCK", "BLOCK", "block"),
+        ("BLOCK_UNBLOCK", "BLOCK", "unblock"),
+        ("BLOCK_STATUS", "BLOCK", "status"),
+        ("BLOCK_REQUEST_PERMISSION", "BLOCK", "request_permission"),
+        ("BLOCK_RELEASE", "BLOCK", "release"),
+        ("BLOCK_LIST_ACTIVE", "BLOCK", "list_active"),
+        # ENTITY — contacts
+        ("ENTITY_ADD", "ENTITY", "add"),
+        ("ENTITY_SET_IDENTITY", "ENTITY", "set_identity"),
+        ("ENTITY_LOG_INTERACTION", "ENTITY", "log_interaction"),
+        ("ENTITY_LIST", "ENTITY", "list"),
+        ("ENTITY_MERGE", "ENTITY", "merge"),
+        # SCHEDULED_TASK — delayed-task primitives
+        ("SCHEDULED_TASK_CREATE", "SCHEDULED_TASK", "create"),
+        ("SCHEDULED_TASK_UPDATE", "SCHEDULED_TASK", "update"),
+        ("SCHEDULED_TASK_SNOOZE", "SCHEDULED_TASK", "snooze"),
+        ("SCHEDULED_TASK_CANCEL", "SCHEDULED_TASK", "cancel"),
+        ("SCHEDULED_TASK_COMPLETE", "SCHEDULED_TASK", "complete"),
+        ("SCHEDULED_TASK_LIST", "SCHEDULED_TASK", "list"),
+        # MONEY — finance
+        ("MONEY_DASHBOARD", "MONEY", "dashboard"),
+        ("MONEY_LIST_SOURCES", "MONEY", "list_sources"),
+        ("MONEY_LIST_TRANSACTIONS", "MONEY", "list_transactions"),
+        ("MONEY_SPENDING_SUMMARY", "MONEY", "spending_summary"),
+        ("MONEY_RECURRING_CHARGES", "MONEY", "recurring_charges"),
+        ("MONEY_ADD_SOURCE", "MONEY", "add_source"),
+        ("MONEY_REMOVE_SOURCE", "MONEY", "remove_source"),
+        ("MONEY_IMPORT_CSV", "MONEY", "import_csv"),
+        ("MONEY_SUBSCRIPTION_AUDIT", "MONEY", "subscription_audit"),
+        ("MONEY_SUBSCRIPTION_CANCEL", "MONEY", "subscription_cancel"),
+        ("MONEY_SUBSCRIPTION_STATUS", "MONEY", "subscription_status"),
+        # BOOK_TRAVEL
+        ("BOOK_TRAVEL_SEARCH", "BOOK_TRAVEL", "search"),
+        ("BOOK_TRAVEL_PREPARE", "BOOK_TRAVEL", "prepare"),
+        ("BOOK_TRAVEL_BOOK", "BOOK_TRAVEL", "book"),
+        ("BOOK_TRAVEL_CANCEL", "BOOK_TRAVEL", "cancel"),
+        ("BOOK_TRAVEL_HOLD", "BOOK_TRAVEL", "hold"),
+    ],
+)
+def test_canonicalize_extended_umbrellas(
+    granular_name: str, umbrella: str, subaction: str
+) -> None:
+    """Each new umbrella subaction folds the granular emission into umbrella shape."""
+    canon = _canonicalize_action(Action(name=granular_name, kwargs={}))
+    assert canon.name == umbrella
+    assert canon.kwargs["subaction"] == subaction
+
+
+@pytest.mark.parametrize(
+    ("granular_name", "umbrella", "subaction"),
+    [
+        ("LIFE_CREATE", "LIFE", "create"),
+        ("HEALTH_TODAY", "HEALTH", "today"),
+        ("BLOCK_BLOCK", "BLOCK", "block"),
+        ("ENTITY_ADD", "ENTITY", "add"),
+        ("SCHEDULED_TASK_CREATE", "SCHEDULED_TASK", "create"),
+        ("MONEY_DASHBOARD", "MONEY", "dashboard"),
+        ("BOOK_TRAVEL_SEARCH", "BOOK_TRAVEL", "search"),
+    ],
+)
+def test_compare_actions_extended_umbrella_happy_path(
+    granular_name: str, umbrella: str, subaction: str
+) -> None:
+    """Granular agent emission scores full credit against umbrella GT."""
+    gt = [Action(name=umbrella, kwargs={"subaction": subaction})]
+    predicted = [Action(name=granular_name, kwargs={})]
+    # subaction kwarg is provided by canonicalization, so this is a full match.
+    assert compare_actions(predicted, gt) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    ("granular_name", "umbrella", "wrong_subaction"),
+    [
+        # Granular emission with subaction X, GT with a different subaction
+        # Y in the same umbrella. After canonicalization the names match
+        # (umbrella) but the subaction kwarg disagrees, so partial credit
+        # (0.5) applies and full credit (1.0) does NOT.
+        ("LIFE_CREATE", "LIFE", "delete"),
+        ("HEALTH_TODAY", "HEALTH", "trend"),
+        ("BLOCK_BLOCK", "BLOCK", "unblock"),
+        ("ENTITY_ADD", "ENTITY", "merge"),
+        ("SCHEDULED_TASK_CREATE", "SCHEDULED_TASK", "cancel"),
+        ("MONEY_DASHBOARD", "MONEY", "subscription_audit"),
+        ("BOOK_TRAVEL_SEARCH", "BOOK_TRAVEL", "cancel"),
+    ],
+)
+def test_compare_actions_extended_umbrella_wrong_subaction(
+    granular_name: str, umbrella: str, wrong_subaction: str
+) -> None:
+    """Mismatched subaction within the same umbrella drops to 0.5 (name-only credit)."""
+    gt = [Action(name=umbrella, kwargs={"subaction": wrong_subaction})]
+    predicted = [Action(name=granular_name, kwargs={})]
+    assert compare_actions(predicted, gt) == pytest.approx(0.5)
+
+
+# ---------------------------------------------------------------------------
+# P0-1: OWNER_* surface aliases
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("owner_name", "umbrella", "subaction"),
+    [
+        # OWNER_HEALTH_* → HEALTH(subaction=*)
+        ("OWNER_HEALTH_TODAY", "HEALTH", "today"),
+        ("OWNER_HEALTH_TREND", "HEALTH", "trend"),
+        ("OWNER_HEALTH_BY_METRIC", "HEALTH", "by_metric"),
+        ("OWNER_HEALTH_STATUS", "HEALTH", "status"),
+        # OWNER_ALARMS_* → LIFE(subaction=*) (alarm semantics carried by kwargs)
+        ("OWNER_ALARMS_CREATE", "LIFE", "create"),
+        ("OWNER_ALARMS_COMPLETE", "LIFE", "complete"),
+        ("OWNER_ALARMS_SNOOZE", "LIFE", "snooze"),
+        ("OWNER_ALARMS_LIST", "LIFE", "list"),
+        # OWNER_REMINDERS_* → LIFE(subaction=*)
+        ("OWNER_REMINDERS_CREATE", "LIFE", "create"),
+        ("OWNER_REMINDERS_COMPLETE", "LIFE", "complete"),
+        ("OWNER_REMINDERS_DELETE", "LIFE", "delete"),
+        ("OWNER_REMINDERS_LIST", "LIFE", "list"),
+        # OWNER_FINANCES_* → MONEY(subaction=*)
+        ("OWNER_FINANCES_DASHBOARD", "MONEY", "dashboard"),
+        ("OWNER_FINANCES_LIST_TRANSACTIONS", "MONEY", "list_transactions"),
+        ("OWNER_FINANCES_SPENDING_SUMMARY", "MONEY", "spending_summary"),
+        ("OWNER_FINANCES_SUBSCRIPTION_AUDIT", "MONEY", "subscription_audit"),
+    ],
+)
+def test_canonicalize_owner_surface_aliases(
+    owner_name: str, umbrella: str, subaction: str
+) -> None:
+    """Each `OWNER_<AREA>_<SUB>` folds into its umbrella with subaction=<sub>."""
+    canon = _canonicalize_action(Action(name=owner_name, kwargs={}))
+    assert canon.name == umbrella
+    assert canon.kwargs["subaction"] == subaction
+
+
+@pytest.mark.parametrize(
+    ("owner_name", "umbrella", "subaction"),
+    [
+        ("OWNER_HEALTH_TODAY", "HEALTH", "today"),
+        ("OWNER_ALARMS_CREATE", "LIFE", "create"),
+        ("OWNER_REMINDERS_CREATE", "LIFE", "create"),
+        ("OWNER_FINANCES_DASHBOARD", "MONEY", "dashboard"),
+    ],
+)
+def test_compare_actions_owner_alias_happy_path(
+    owner_name: str, umbrella: str, subaction: str
+) -> None:
+    """Owner-surface emission scores 1.0 against umbrella GT after folding."""
+    gt = [Action(name=umbrella, kwargs={"subaction": subaction})]
+    predicted = [Action(name=owner_name, kwargs={})]
+    assert compare_actions(predicted, gt) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    ("owner_name", "umbrella", "wrong_subaction"),
+    [
+        ("OWNER_HEALTH_TODAY", "HEALTH", "trend"),
+        ("OWNER_ALARMS_CREATE", "LIFE", "delete"),
+        ("OWNER_FINANCES_DASHBOARD", "MONEY", "subscription_audit"),
+    ],
+)
+def test_compare_actions_owner_alias_wrong_subaction(
+    owner_name: str, umbrella: str, wrong_subaction: str
+) -> None:
+    """Owner-surface alias against the wrong subaction lands at 0.5 (name-only credit)."""
+    gt = [Action(name=umbrella, kwargs={"subaction": wrong_subaction})]
+    predicted = [Action(name=owner_name, kwargs={})]
+    assert compare_actions(predicted, gt) == pytest.approx(0.5)
+
+
+def test_canonicalize_personal_assistant_book_travel_alias() -> None:
+    """`PERSONAL_ASSISTANT_BOOK_TRAVEL` folds into the `BOOK_TRAVEL` umbrella."""
+    action = Action(
+        name="PERSONAL_ASSISTANT_BOOK_TRAVEL",
+        kwargs={"subaction": "search", "origin": "SFO", "destination": "JFK"},
+    )
+    canon = _canonicalize_action(action)
+    assert canon.name == "BOOK_TRAVEL"
+    assert canon.kwargs == {
+        "subaction": "search",
+        "origin": "SFO",
+        "destination": "JFK",
+    }
+
+
+def test_compare_actions_personal_assistant_book_travel_matches_umbrella() -> None:
+    """The shorthand emission scores full credit against `BOOK_TRAVEL` GT."""
+    gt = [
+        Action(
+            name="BOOK_TRAVEL",
+            kwargs={"subaction": "search", "origin": "SFO", "destination": "JFK"},
+        )
+    ]
+    predicted = [
+        Action(
+            name="PERSONAL_ASSISTANT_BOOK_TRAVEL",
+            kwargs={"subaction": "search", "origin": "SFO", "destination": "JFK"},
+        )
+    ]
+    assert compare_actions(predicted, gt) == pytest.approx(1.0)
+
+
+def test_canonicalize_unknown_owner_surface_is_noop() -> None:
+    """An `OWNER_<AREA>` not in the alias map is left alone."""
+    action = Action(name="OWNER_LIBRARY_LIST", kwargs={})
+    assert _canonicalize_action(action) is action

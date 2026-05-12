@@ -117,6 +117,96 @@ _UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
             }
         ),
     ),
+    # LIFE umbrella covers reminders + alarms write-ops. hermes/openclaw
+    # frequently emit `LIFE_CREATE` / `LIFE_COMPLETE` granular forms; GT
+    # scenarios use the umbrella `LIFE(subaction=create, ...)` shape.
+    "LIFE": (
+        "subaction",
+        frozenset(
+            {
+                "create",
+                "complete",
+                "snooze",
+                "review",
+                "delete",
+                "update",
+                "skip",
+                "list",
+            }
+        ),
+    ),
+    # HEALTH read-ops (today / trend / by_metric / status). Without this,
+    # `HEALTH_TODAY` from a granular emitter scores 0 against GT
+    # `HEALTH(subaction=today)`.
+    "HEALTH": (
+        "subaction",
+        frozenset({"today", "trend", "by_metric", "status"}),
+    ),
+    # BLOCK umbrella: focus / DND blocking. Note `BLOCK_BLOCK` is the
+    # canonical granular form for the "place a block" verb.
+    "BLOCK": (
+        "subaction",
+        frozenset(
+            {
+                "block",
+                "unblock",
+                "status",
+                "request_permission",
+                "release",
+                "list_active",
+            }
+        ),
+    ),
+    # ENTITY umbrella: contacts / identity surface.
+    "ENTITY": (
+        "subaction",
+        frozenset({"add", "set_identity", "log_interaction", "list", "merge"}),
+    ),
+    # SCHEDULED_TASK is the runner's name for delayed-task primitives.
+    "SCHEDULED_TASK": (
+        "subaction",
+        frozenset({"create", "update", "snooze", "cancel", "complete", "list"}),
+    ),
+    # MONEY umbrella: finance dashboard + transactions + subscription audit.
+    "MONEY": (
+        "subaction",
+        frozenset(
+            {
+                "dashboard",
+                "list_sources",
+                "list_transactions",
+                "spending_summary",
+                "recurring_charges",
+                "add_source",
+                "remove_source",
+                "import_csv",
+                "subscription_audit",
+                "subscription_cancel",
+                "subscription_status",
+            }
+        ),
+    ),
+    # BOOK_TRAVEL umbrella: search/prepare/book/cancel/hold flight + hotel.
+    "BOOK_TRAVEL": (
+        "subaction",
+        frozenset({"search", "prepare", "book", "cancel", "hold"}),
+    ),
+}
+
+
+# Owner-surface aliases. The personal-assistant front controller exposes a
+# parallel `OWNER_<AREA>_<VERB>` naming scheme; folding these into the
+# matching umbrella lets the scorer compare them against the canonical
+# `<UMBRELLA>(subaction=<verb>)` GT shape. Mappings are conservative —
+# only the four areas with an obvious umbrella mapping are aliased.
+_OWNER_SURFACE_ALIASES: dict[str, str] = {
+    "OWNER_HEALTH": "HEALTH",
+    # Both OWNER_ALARMS_* and OWNER_REMINDERS_* fold into LIFE; the
+    # alarm-vs-reminder distinction is carried by other kwargs (e.g.
+    # `kind`), not by a separate umbrella.
+    "OWNER_ALARMS": "LIFE",
+    "OWNER_REMINDERS": "LIFE",
+    "OWNER_FINANCES": "MONEY",
 }
 
 
@@ -126,12 +216,39 @@ def _canonicalize_action(action: Action) -> Action:
     Example: `CALENDAR_CHECK_AVAILABILITY(start=..., end=...)`
              → `CALENDAR(subaction=check_availability, start=..., end=...)`
 
+    Also folds the personal-assistant owner-surface forms
+    (`OWNER_HEALTH_TODAY`, `OWNER_REMINDERS_CREATE`, etc.) and the
+    explicit `PERSONAL_ASSISTANT_BOOK_TRAVEL` shorthand into the matching
+    umbrella so they compare against the canonical GT shape.
+
     A no-op when the action is already in umbrella form or when the name
-    doesn't match a known `<UMBRELLA>_<SUBACTION>` promotion. The
-    discriminator already present in kwargs wins over the one inferred from
-    the name (so an agent that emits both is consistent with itself).
+    doesn't match a known promotion. The discriminator already present in
+    kwargs wins over the one inferred from the name (so an agent that
+    emits both is consistent with itself).
     """
     name = action.name
+
+    # PERSONAL_ASSISTANT_BOOK_TRAVEL is a fixed shorthand for the BOOK_TRAVEL
+    # umbrella with no implicit subaction — leave subaction resolution to
+    # kwargs the agent already provided.
+    if name == "PERSONAL_ASSISTANT_BOOK_TRAVEL":
+        return Action(name="BOOK_TRAVEL", kwargs=dict(action.kwargs))
+
+    # Owner-surface aliases: `OWNER_<AREA>_<SUB>` → `<UMBRELLA>(subaction=<sub>)`.
+    # Check before the generic umbrella loop so e.g. `OWNER_HEALTH_TODAY` is
+    # not accidentally read as an unknown `OWNER` prefix.
+    for owner_prefix, umbrella in _OWNER_SURFACE_ALIASES.items():
+        prefix = f"{owner_prefix}_"
+        if not name.startswith(prefix):
+            continue
+        candidate = name[len(prefix) :].lower()
+        field, subactions = _UMBRELLA_SUBACTIONS[umbrella]
+        if candidate not in subactions:
+            continue
+        new_kwargs = dict(action.kwargs)
+        new_kwargs.setdefault(field, candidate)
+        return Action(name=umbrella, kwargs=new_kwargs)
+
     for umbrella, (field, subactions) in _UMBRELLA_SUBACTIONS.items():
         prefix = f"{umbrella}_"
         if not name.startswith(prefix):
