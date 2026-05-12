@@ -32,7 +32,12 @@
       "voice_rtf": null,
       "asr_wer": null,
       "dflash_accept": null,
-      "kernel_verify": "n/a"
+      "kernel_verify": "n/a",
+      "gen_tps_cuda_rtx5080_d0_pp512": 20978.85,
+      "gen_tps_cuda_rtx5080_d0_tg128": 356.29,
+      "gen_tps_cuda_rtx5080_d16k_pp512": 1967.6,
+      "gen_tps_cuda_rtx5080_d16k_tg128": 106.95,
+      "cuda_bench_note": "non-fused linux-x64-cuda install (forkCommit a61c93aaa5, builtAt 2026-05-12T17:16:58Z, sm_120 native SASS via CUDA 12.8 nvcc), llama-bench -ngl 99 -p 512 -n 128 [-d 16000], 2026-05-12 ~13:50 PDT on freed-up RTX 5080 Laptop (no SFT contention). Base model = /tmp/eliza1-eval-models/Qwen3-0.6B-Q8_0.gguf."
     },
     "testsft_0_6b": {
       "what": "checkpoints/eliza-1-0_6b-apollo-1778551769 — APOLLO-mini full-param SFT, 8000-sample slice, 1 epoch, eval_loss 1.315; GGUF = final-Q4_K_M.gguf (396 MB)",
@@ -68,6 +73,11 @@
       "gen_tps_cpu_d0_tg128_q4polar_q8body": 61.1,
       "gen_tps_vulkan_rtx5080_d0_pp512": 3421.2,
       "gen_tps_vulkan_rtx5080_d0_tg128": 193.9,
+      "gen_tps_cuda_rtx5080_d0_pp512": 19932.12,
+      "gen_tps_cuda_rtx5080_d0_tg128": 345.47,
+      "gen_tps_cuda_rtx5080_d16k_pp512": 1956.05,
+      "gen_tps_cuda_rtx5080_d16k_tg128": 108.5,
+      "cuda_bench_note": "non-fused linux-x64-cuda install (forkCommit a61c93aaa5, builtAt 2026-05-12T17:16:58Z, sm_120 native SASS via CUDA 12.8 nvcc V12.8.93), llama-bench -ngl 99 -p 512 -n 128 [-d 16000] on the bundle text GGUF (Qwen3-0.6B Q3_K_M re-host, 389 MiB). Also verified llama-server /completion 32-token decode at 420.57 tps decode / 1092.66 tps prefill (4-slot GPU server, /health ok). Cuda-verify + cuda-verify-fused (make targets) PASS 8/8 + 1920/1920 against this install (max diff 7.6e-6 / 4.47e-7).",
       "gen_tps_cpu_d16k": null,
       "e2e_loop_decode_tps_cpu_1turn": 17.4,
       "e2e_loop_first_token_ms_cpu": 208.9,
@@ -83,7 +93,12 @@
     },
     "base_qwen3_1_7b": {
       "what": "upstream Qwen/Qwen3-1.7B (eliza-1-1_7b stand-in base); SFT in progress (seq-4096 OOM'd, re-running at seq 2048)",
-      "note": "no fine-tune artifact yet — see eliza1_bundle_1_7b for the GGUF/eval row"
+      "note": "no fine-tune artifact yet — see eliza1_bundle_1_7b for the GGUF/eval row",
+      "gen_tps_cuda_rtx5080_d0_pp512": 12413.50,
+      "gen_tps_cuda_rtx5080_d0_tg128": 158.70,
+      "gen_tps_cuda_rtx5080_d16k_pp512": 1790.21,
+      "gen_tps_cuda_rtx5080_d16k_tg128": 79.96,
+      "cuda_bench_note": "non-fused linux-x64-cuda install (forkCommit a61c93aaa5, sm_120 SASS), llama-bench -ngl 99 -p 512 -n 128 [-d 16000] on /tmp/eliza1-eval-models/Qwen3-1.7B-Q8_0.gguf (1.70 GiB)."
     },
     "eliza1_bundle_1_7b": {
       "what": "~/.eliza/local-inference/models/eliza-1-1_7b.bundle (text = Qwen3-1.7B Q4_K_M re-host, 1.19 GiB) + PolarQuant/QJL/TurboQuant sidecars (GGUF body Q4_K_M)",
@@ -96,6 +111,11 @@
       "gen_tps_cpu_d0_tg128": 39.6,
       "gen_tps_vulkan_rtx5080_d0_pp512": 1317.0,
       "gen_tps_vulkan_rtx5080_d0_tg128": 111.8,
+      "gen_tps_cuda_rtx5080_d0_pp512": 11931.0,
+      "gen_tps_cuda_rtx5080_d0_tg128": 194.7,
+      "gen_tps_cuda_rtx5080_d16k_pp512": 1797.04,
+      "gen_tps_cuda_rtx5080_d16k_tg128": 84.94,
+      "cuda_bench_note": "non-fused linux-x64-cuda install (forkCommit a61c93aaa5, sm_120 SASS), llama-bench -ngl 99 -p 512 -n 128 [-d 16000] on the bundle text GGUF (Qwen3-1.7B Q4_K_M re-host, 1.19 GiB).",
       "gen_tps_cpu_d16k": null,
       "e2e_loop_decode_tps_cpu_1turn": 12.0,
       "e2e_loop_decode_tps_cpu_30turn": 24.2,
