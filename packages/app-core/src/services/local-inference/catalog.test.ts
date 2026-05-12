@@ -191,16 +191,20 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("records 27b-1m text and vision source provenance", () => {
+  it("records 27b-1m text source provenance (vision shipped only on 9b/27b/27b-256k)", () => {
     const model = findCatalogModel("eliza-1-27b-1m");
     expect(model?.sourceModel?.finetuned).toBe(false);
     const components = model?.sourceModel?.components;
+    // The text component for the 27b family points at the published
+    // `batiai/Qwen3.6-27B-GGUF` mirror with the canonical Q4_K_M file.
     expect(components?.text).toEqual({
-      repo: "Qwen/Qwen3.6-27B",
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
     });
-    expect(components?.vision).toEqual({
-      repo: "Qwen/Qwen3.6-27B",
-    });
+    // Vision is only shipped on the 9b / 27b / 27b-256k tiers — the 1m
+    // tier intentionally omits it (KV-cache budget is the constraint at
+    // 1M context). See sourceModelForTier in shared/local-inference/catalog.ts.
+    expect(components?.vision).toBeUndefined();
   });
 
   it("does not leak implementation-family names in visible catalog copy", () => {
