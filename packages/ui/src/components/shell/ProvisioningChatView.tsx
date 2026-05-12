@@ -42,7 +42,8 @@ export function ProvisioningChatView({
   const onContainerReadyRef = React.useRef(onContainerReady);
   onContainerReadyRef.current = onContainerReady;
 
-  // Scroll to bottom whenever messages change.
+  // Scroll to bottom whenever messages change. `messages` is a trigger dep.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: messages triggers scroll-to-bottom
   React.useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
