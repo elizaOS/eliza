@@ -278,6 +278,9 @@ sync_tree() {
 
   if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
     echo "[train_nebius][sync] sending corpus sources (data/final/ + datasets/eliza1-sft-0_6b/) for remote rebuild"
+    # The main rsync above excludes data/final/ and datasets/, so those dirs
+    # don't exist on a fresh VM — rsync won't create 2-deep targets. mkdir first.
+    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/data/final $REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b"
     rsync -avhz --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/"
     rsync -avhz --partial "$ROOT/datasets/eliza1-sft-0_6b/" "$target:$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/"
   else
