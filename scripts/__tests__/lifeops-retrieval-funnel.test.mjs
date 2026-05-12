@@ -33,7 +33,12 @@ const outDir = path.join(tmpRoot, "out");
 fs.mkdirSync(trajectoryDir, { recursive: true });
 fs.mkdirSync(outDir, { recursive: true });
 
-function makeTrajectory({ trajectoryId, correctActions, perStageScores, fusedTopK }) {
+function makeTrajectory({
+  trajectoryId,
+  correctActions,
+  perStageScores,
+  fusedTopK,
+}) {
   return {
     trajectoryId,
     agentId: "agent-test",
@@ -138,23 +143,18 @@ const trajC = {
   ],
 };
 
-fs.writeFileSync(
-  path.join(trajectoryDir, "tj-A.json"),
-  JSON.stringify(trajA),
-);
-fs.writeFileSync(
-  path.join(trajectoryDir, "tj-B.json"),
-  JSON.stringify(trajB),
-);
-fs.writeFileSync(
-  path.join(trajectoryDir, "tj-C.json"),
-  JSON.stringify(trajC),
-);
+fs.writeFileSync(path.join(trajectoryDir, "tj-A.json"), JSON.stringify(trajA));
+fs.writeFileSync(path.join(trajectoryDir, "tj-B.json"), JSON.stringify(trajB));
+fs.writeFileSync(path.join(trajectoryDir, "tj-C.json"), JSON.stringify(trajC));
 
 const outJson = path.join(outDir, "retrieval-funnel.json");
 const outMd = path.join(outDir, "retrieval-funnel.md");
 
-const scriptPath = path.join(REPO_ROOT, "scripts", "lifeops-retrieval-funnel.mjs");
+const scriptPath = path.join(
+  REPO_ROOT,
+  "scripts",
+  "lifeops-retrieval-funnel.mjs",
+);
 
 const result = spawnSync(
   process.execPath,
@@ -226,10 +226,7 @@ assert(
 // B's correct=CALENDAR first appears in `bm25` at rank 4 (lower than
 // fused rank 3 → wait, 3 < 4, so fused wins).
 const hist = report.firstAppearHist;
-assert(
-  hist.exact === 1,
-  `firstAppearHist.exact expected 1, got ${hist.exact}`,
-);
+assert(hist.exact === 1, `firstAppearHist.exact expected 1, got ${hist.exact}`);
 assert(
   hist.fused === 1,
   `firstAppearHist.fused expected 1 (CALENDAR via fused rank 3 < bm25 rank 4), got ${hist.fused}`,

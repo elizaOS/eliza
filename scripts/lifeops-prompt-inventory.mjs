@@ -37,8 +37,14 @@
  * never modifies prompt strings.
  */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -133,7 +139,9 @@ function lineOfIndex(src, index) {
 // supports JS string concatenation: `"foo" +\n "bar"`.
 function extractStringField(block, fieldName, { allowConcat = true } = {}) {
   const single = block.match(
-    new RegExp(`(?:^|[\\n,{])\\s*${fieldName}\\s*:\\s*([\\\`\"'])([\\s\\S]*?)\\1`),
+    new RegExp(
+      `(?:^|[\\n,{])\\s*${fieldName}\\s*:\\s*([\\\`"'])([\\s\\S]*?)\\1`,
+    ),
   );
   if (!single) return null;
   let value = single[2];
@@ -141,7 +149,7 @@ function extractStringField(block, fieldName, { allowConcat = true } = {}) {
   if (allowConcat) {
     // Look for "+ '...'" trailing concatenations.
     while (true) {
-      const tail = block.slice(endIdx).match(/^\s*\+\s*([\`\"'])([\s\S]*?)\1/);
+      const tail = block.slice(endIdx).match(/^\s*\+\s*([`"'])([\s\S]*?)\1/);
       if (!tail) break;
       value += tail[2];
       endIdx += tail[0].length;
@@ -154,7 +162,8 @@ function extractStringField(block, fieldName, { allowConcat = true } = {}) {
 // given source. Returns { name, text, lineNumber }.
 function extractBacktickConsts(source) {
   const out = [];
-  const pattern = /export\s+const\s+([a-zA-Z_$][\w$]*)\s*=\s*`([\s\S]*?)`;\s*$/gm;
+  const pattern =
+    /export\s+const\s+([a-zA-Z_$][\w$]*)\s*=\s*`([\s\S]*?)`;\s*$/gm;
   let match;
   while ((match = pattern.exec(source)) !== null) {
     const [, name, text] = match;
@@ -166,7 +175,14 @@ function extractBacktickConsts(source) {
 }
 
 function extractPlannerTemplate() {
-  const path = join(REPO_ROOT, "packages", "core", "src", "prompts", "planner.ts");
+  const path = join(
+    REPO_ROOT,
+    "packages",
+    "core",
+    "src",
+    "prompts",
+    "planner.ts",
+  );
   const src = readSource(path);
   const consts = extractBacktickConsts(src);
   const tmpl = consts.find((c) => c.name === "plannerTemplate");
@@ -348,7 +364,8 @@ function extractServiceTaskBaselines(allTemplates, plannerTemplate) {
       lastOptimizerArtifact: artifact?.path ?? null,
       lastOptimizerScore: artifact?.parsed?.score ?? null,
       extras: {
-        baselineSource: "packages/prompts/src/index.ts:imageDescriptionTemplate",
+        baselineSource:
+          "packages/prompts/src/index.ts:imageDescriptionTemplate",
         consumedBy: [
           "packages/core/src/features/basic-capabilities/index.ts",
           "packages/core/src/features/basic-capabilities/evaluators/attachment-image-analysis.ts",
@@ -384,7 +401,8 @@ function collectActionSourceFiles() {
     for (const name of entries) {
       const full = join(dir, name);
       const rel = relative(REPO_ROOT, full);
-      if (rel.includes("/node_modules/") || rel.startsWith("node_modules/")) continue;
+      if (rel.includes("/node_modules/") || rel.startsWith("node_modules/"))
+        continue;
       if (rel.includes("/dist/")) continue;
       if (rel.includes("/__tests__/")) continue;
       if (rel.includes("/fixtures/")) continue;
@@ -448,9 +466,9 @@ function extractActionsFromSource() {
       const routingExtract = extractStringField(block, "routingHint");
       const similesMatch = block.match(/similes\s*:\s*\[([\s\S]*?)\]/);
       const similes = similesMatch
-        ? Array.from(similesMatch[1].matchAll(/["'`]([A-Z][A-Z_0-9]*)["'`]/g)).map(
-            (x) => x[1],
-          )
+        ? Array.from(
+            similesMatch[1].matchAll(/["'`]([A-Z][A-Z_0-9]*)["'`]/g),
+          ).map((x) => x[1])
         : [];
       // Parameter extraction: look for `parameters: [` after the name match,
       // grab balanced braces (string-aware) and pull each `{ ... }` object's
@@ -646,12 +664,14 @@ function buildActionEntries() {
       spec?.spec?.descriptionCompressed ??
       spec?.spec?.compressedDescription ??
       null;
-    const similes = action.similes.length > 0 ? action.similes : spec?.spec?.similes ?? [];
+    const similes =
+      action.similes.length > 0 ? action.similes : (spec?.spec?.similes ?? []);
     // Include the source line number when the same action name appears
     // multiple times in the same file (umbrella + parameter-inheritance
     // pattern in OWNER_ROUTINES, for example) so each row gets a unique id.
     const dupCount = sourceActions.filter(
-      (a) => a.actionName === action.actionName && a.filePath === action.filePath,
+      (a) =>
+        a.actionName === action.actionName && a.filePath === action.filePath,
     ).length;
     const baseId =
       dupCount > 1
@@ -692,7 +712,10 @@ function buildActionEntries() {
     }
 
     // Parameters: prefer source declarations, fall back to spec.
-    const params = action.parameters.length > 0 ? action.parameters : (spec?.spec?.parameters ?? []);
+    const params =
+      action.parameters.length > 0
+        ? action.parameters
+        : (spec?.spec?.parameters ?? []);
     for (const param of params) {
       if (!param.description) continue;
       entries.push({
@@ -731,9 +754,14 @@ function buildActionEntries() {
         filePath: specOrigin,
         fileLine: null,
         text: spec.description,
-        compressedText: spec.descriptionCompressed ?? spec.compressedDescription ?? null,
+        compressedText:
+          spec.descriptionCompressed ?? spec.compressedDescription ?? null,
         tokenCount: estimateTokens(spec.description),
-        extras: { actionName: name, source: "spec-catalog", similes: spec.similes ?? [] },
+        extras: {
+          actionName: name,
+          source: "spec-catalog",
+          similes: spec.similes ?? [],
+        },
       });
     }
     for (const param of spec.parameters ?? []) {

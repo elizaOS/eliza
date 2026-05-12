@@ -16,7 +16,7 @@
  * `ignoreDeprecations`.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -88,7 +88,7 @@ const ROLLUP_RUNTIME_BLOCK =
 
 /** @param {string} rollupPath */
 function patchFile(rollupPath) {
-  let src = readFileSync(rollupPath, "utf8");
+  const src = readFileSync(rollupPath, "utf8");
   let next = src;
 
   next = next.replace(BASE_URL_NEEDLE, BASE_URL_REPLACEMENT);

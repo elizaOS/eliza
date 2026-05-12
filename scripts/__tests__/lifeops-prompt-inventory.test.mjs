@@ -21,8 +21,8 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { join, resolve, dirname } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -39,11 +39,10 @@ function assert(cond, msg) {
 }
 
 function run(script) {
-  const result = spawnSync(
-    "node",
-    [join(REPO_ROOT, "scripts", script)],
-    { cwd: REPO_ROOT, encoding: "utf8" },
-  );
+  const result = spawnSync("node", [join(REPO_ROOT, "scripts", script)], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
   if (result.status !== 0) {
     throw new Error(
       `script ${script} exited with status ${result.status}: ${result.stderr || result.stdout}`,
@@ -60,7 +59,10 @@ assert(
   manifest.schemaVersion === "lifeops-prompt-inventory-v1",
   `manifest schemaVersion mismatch: ${manifest.schemaVersion}`,
 );
-assert(typeof manifest.generatedAt === "string", "manifest missing generatedAt");
+assert(
+  typeof manifest.generatedAt === "string",
+  "manifest missing generatedAt",
+);
 assert(Array.isArray(manifest.prompts), "manifest.prompts must be an array");
 assert(
   manifest.counts && typeof manifest.counts === "object",
@@ -68,8 +70,10 @@ assert(
 );
 
 // 2. At least 200 action-* rows.
-const actionRows = manifest.prompts.filter((p) =>
-  typeof p.kind === "string" && (p.kind.startsWith("action-") || p.kind === "routing-hint"),
+const actionRows = manifest.prompts.filter(
+  (p) =>
+    typeof p.kind === "string" &&
+    (p.kind.startsWith("action-") || p.kind === "routing-hint"),
 );
 assert(
   actionRows.length >= 200,
@@ -106,13 +110,20 @@ assert(
 
 // 6. Run the collisions script.
 run("lifeops-action-collisions.mjs");
-assert(existsSync(COLLISIONS_MD), `collision markdown missing at ${COLLISIONS_MD}`);
+assert(
+  existsSync(COLLISIONS_MD),
+  `collision markdown missing at ${COLLISIONS_MD}`,
+);
 const mdContents = readFileSync(COLLISIONS_MD, "utf8");
 assert(
-  mdContents.trim().length > 0 && mdContents.startsWith("# Action description collisions"),
+  mdContents.trim().length > 0 &&
+    mdContents.startsWith("# Action description collisions"),
   "collision markdown empty or missing expected heading",
 );
-assert(existsSync(COLLISIONS_JSON), `collision json missing at ${COLLISIONS_JSON}`);
+assert(
+  existsSync(COLLISIONS_JSON),
+  `collision json missing at ${COLLISIONS_JSON}`,
+);
 const collisionJson = JSON.parse(readFileSync(COLLISIONS_JSON, "utf8"));
 assert(
   collisionJson.schemaVersion === "lifeops-action-collisions-v1",

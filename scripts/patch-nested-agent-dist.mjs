@@ -26,12 +26,7 @@
  * references it after the rewrite).
  */
 
-import {
-  existsSync,
-  readFileSync,
-  readdirSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -48,30 +43,32 @@ let skipped = 0;
 for (const entry of readdirSync(bunCacheDir)) {
   if (!entry.startsWith("@elizaos+agent@")) continue;
 
-  const pkgRoot = join(
-    bunCacheDir,
-    entry,
-    "node_modules",
-    "@elizaos",
-    "agent",
-  );
+  const pkgRoot = join(bunCacheDir, entry, "node_modules", "@elizaos", "agent");
   if (!existsSync(pkgRoot)) continue;
 
   const outerPkgPath = join(pkgRoot, "package.json");
   const distPkgPath = join(pkgRoot, "dist", "package.json");
-  const distSrcIndex = join(pkgRoot, "dist", "packages", "agent", "src", "index.js");
+  const distSrcIndex = join(
+    pkgRoot,
+    "dist",
+    "packages",
+    "agent",
+    "src",
+    "index.js",
+  );
 
-  if (!existsSync(outerPkgPath) || !existsSync(distPkgPath) || !existsSync(distSrcIndex)) {
+  if (
+    !existsSync(outerPkgPath) ||
+    !existsSync(distPkgPath) ||
+    !existsSync(distSrcIndex)
+  ) {
     skipped++;
     continue;
   }
 
   const outer = JSON.parse(readFileSync(outerPkgPath, "utf8"));
   // Idempotency: if `main` already points inside dist/, treat as patched.
-  if (
-    typeof outer.main === "string" &&
-    outer.main.startsWith("./dist/")
-  ) {
+  if (typeof outer.main === "string" && outer.main.startsWith("./dist/")) {
     continue;
   }
 
@@ -118,7 +115,7 @@ for (const entry of readdirSync(bunCacheDir)) {
   };
   delete repaired.files;
 
-  writeFileSync(outerPkgPath, JSON.stringify(repaired, null, 2) + "\n");
+  writeFileSync(outerPkgPath, `${JSON.stringify(repaired, null, 2)}\n`);
   console.log(`[patch-nested-agent-dist] Repaired ${pkgRoot}`);
   patched++;
 }

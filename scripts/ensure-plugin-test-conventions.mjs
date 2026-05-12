@@ -21,9 +21,8 @@
  *   bun run ensure-plugin-test-conventions --check     # exit 1 if any would change (CI)
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readdirSync } from "node:fs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -37,7 +36,7 @@ function findPackageJsonFiles(dir, list = []) {
   const entries = readdirSync(dir, { withFileTypes: true });
   for (const e of entries) {
     const p = join(dir, e.name);
-    const relPath = p.replace(ROOT + "/", "");
+    const relPath = p.replace(`${ROOT}/`, "");
     if (e.name === "node_modules" || e.name === "dist" || e.name === ".git")
       continue;
     if (e.name === "data" || e.name === "stagehand-server") continue;
@@ -95,7 +94,7 @@ function processPackageJson(filePath) {
   let pkg;
   try {
     pkg = JSON.parse(content);
-  } catch (e) {
+  } catch (_e) {
     console.warn("Skip (invalid JSON):", filePath);
     return { changed: false };
   }
@@ -126,9 +125,9 @@ function processPackageJson(filePath) {
   }
 
   if (changed) {
-    const newContent = JSON.stringify(pkg, null, 2) + "\n";
+    const newContent = `${JSON.stringify(pkg, null, 2)}\n`;
     if (CHECK) {
-      console.log("Would change:", filePath.replace(ROOT + "/", ""));
+      console.log("Would change:", filePath.replace(`${ROOT}/`, ""));
       return { changed: true };
     }
     if (!DRY_RUN) {
@@ -136,7 +135,7 @@ function processPackageJson(filePath) {
     }
     console.log(
       DRY_RUN ? "Would update:" : "Updated:",
-      filePath.replace(ROOT + "/", ""),
+      filePath.replace(`${ROOT}/`, ""),
     );
   }
   return { changed };

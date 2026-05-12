@@ -27,11 +27,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
+import {
+  type Browser,
+  type BrowserContext,
+  chromium,
+  type Page,
+} from "playwright";
 import { buildWalletShim } from "../../plugins/plugin-wallet/src/browser-shim/build-shim.ts";
 import { decideTokenMeta, type TokenMeta } from "./cerebras-driver.ts";
 import { makeSolidPng } from "./png-util.ts";
-import { startSignServer, type SignServerHandle } from "./sign-server.ts";
+import { startSignServer } from "./sign-server.ts";
 
 interface CliFlags {
   brief: string;
@@ -163,35 +168,34 @@ async function fillByLabel(
 }
 
 async function snapshotForms(page: Page): Promise<void> {
-  const inputs = await page
-    .locator("input, textarea")
-    .evaluateAll((els) =>
-      els.map((el) => {
-        const e = el as HTMLInputElement;
-        return {
-          tag: e.tagName,
-          type: e.type,
-          name: e.name,
-          id: e.id,
-          placeholder: e.placeholder,
-          ariaLabel: e.getAttribute("aria-label"),
-        };
-      }),
-    );
+  const inputs = await page.locator("input, textarea").evaluateAll((els) =>
+    els.map((el) => {
+      const e = el as HTMLInputElement;
+      return {
+        tag: e.tagName,
+        type: e.type,
+        name: e.name,
+        id: e.id,
+        placeholder: e.placeholder,
+        ariaLabel: e.getAttribute("aria-label"),
+      };
+    }),
+  );
   console.log("[snapshot/inputs]", JSON.stringify(inputs, null, 2));
-  const buttons = await page
-    .locator("button, a[href]")
-    .evaluateAll((els) =>
-      els
-        .map((el) => ({
-          tag: el.tagName,
-          text: (el.textContent ?? "").trim().slice(0, 60),
-          ariaLabel: el.getAttribute("aria-label"),
-          href: el.getAttribute("href"),
-        }))
-        .filter((b) => b.text.length > 0 || b.ariaLabel),
-    );
-  console.log("[snapshot/buttons]", JSON.stringify(buttons.slice(0, 40), null, 2));
+  const buttons = await page.locator("button, a[href]").evaluateAll((els) =>
+    els
+      .map((el) => ({
+        tag: el.tagName,
+        text: (el.textContent ?? "").trim().slice(0, 60),
+        ariaLabel: el.getAttribute("aria-label"),
+        href: el.getAttribute("href"),
+      }))
+      .filter((b) => b.text.length > 0 || b.ariaLabel),
+  );
+  console.log(
+    "[snapshot/buttons]",
+    JSON.stringify(buttons.slice(0, 40), null, 2),
+  );
 }
 
 async function drivePumpFun(
@@ -230,11 +234,7 @@ async function drivePumpFun(
     ["ticker", "symbol"],
     meta.symbol,
   );
-  const filledDesc = await fillByLabel(
-    page,
-    ["description"],
-    meta.description,
-  );
+  const filledDesc = await fillByLabel(page, ["description"], meta.description);
   if (!filledName || !filledSymbol || !filledDesc) {
     warn("form", "some fields not found — dumping form snapshot");
     await snapshotForms(page);
@@ -274,17 +274,18 @@ async function drivePumpFun(
   }
 
   if (flags.dryRun) {
-    warn("dry-run", "stopping before wallet popup. Browser left open for inspection.");
+    warn(
+      "dry-run",
+      "stopping before wallet popup. Browser left open for inspection.",
+    );
     return {};
   }
 
   // 6. Wallet-adapter modal: select Eliza Wallet
   log("wallet", "waiting for wallet-adapter modal …");
-  const adapterClicked = await safeClickByText(
-    page,
-    ["Eliza Wallet"],
-    { timeoutMs: 15_000 },
-  );
+  const adapterClicked = await safeClickByText(page, ["Eliza Wallet"], {
+    timeoutMs: 15_000,
+  });
   if (!adapterClicked) {
     warn("wallet", "didn't find Eliza Wallet in adapter list");
     await snapshotForms(page);
@@ -342,7 +343,10 @@ async function main(): Promise<void> {
   ok("meta", JSON.stringify(meta, null, 2));
 
   // --- 3. generate placeholder icon ---
-  const iconPath = path.join(os.tmpdir(), `eliza-${meta.symbol.toLowerCase()}.png`);
+  const iconPath = path.join(
+    os.tmpdir(),
+    `eliza-${meta.symbol.toLowerCase()}.png`,
+  );
   // colour seeded from symbol so icons are visually distinct between runs
   const seed = [...meta.symbol].reduce(
     (acc, c) => (acc * 31 + c.charCodeAt(0)) >>> 0,
@@ -411,7 +415,9 @@ async function main(): Promise<void> {
         const info = await conn.getAccountInfo(new PublicKey(result.mint));
         ok(
           "verify",
-          info ? `on-chain account exists, owner=${info.owner.toBase58()}` : "not yet visible on RPC",
+          info
+            ? `on-chain account exists, owner=${info.owner.toBase58()}`
+            : "not yet visible on RPC",
         );
       } catch (e) {
         warn("verify", (e as Error).message);
