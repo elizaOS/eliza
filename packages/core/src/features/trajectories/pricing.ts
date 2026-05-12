@@ -243,11 +243,15 @@ export const MODEL_PRICES_USD_PER_M_TOKENS: Record<
  * number gives a safety margin and avoids per-tier lookup that we cannot
  * resolve at compaction-decision time.
  *
- * Keep this table in lockstep with `MODEL_PRICES_USD_PER_M_TOKENS` keys —
- * every priced family should have a window entry so the two lookups agree
- * on what "this model" means. The longest-prefix lookup helper resolves
- * versioned ids (e.g. `claude-haiku-4-5-20251001` → `claude-haiku-4-5`)
- * exactly like `lookupModelPrice`.
+ * This table SHOULD line up with `MODEL_PRICES_USD_PER_M_TOKENS` keys, but
+ * does not have to be a strict superset/subset: the price table sometimes
+ * carries a model under a provider's naming convention (e.g. Groq's
+ * `llama-3.3-70b-versatile`) while the same family appears in the window
+ * table under a different vendor's name (Cerebras's `llama3.1-8b`). When
+ * adding entries, prefer the canonical id the provider returns from
+ * `GET /v1/models` rather than aliasing — the lookup helper's substring
+ * fallback keeps the two tables interoperable for versioned ids without
+ * forcing every alias to be enumerated.
  *
  * Local-tier entries are omitted on purpose: callers building a budget for
  * an Ollama / LM Studio / llama.cpp / local provider should pass an
@@ -283,6 +287,7 @@ export const MODEL_CONTEXT_WINDOW_TOKENS: Record<string, number> = {
 	// Source: https://console.groq.com/docs/models (captured 2026-05-11)
 	"openai/gpt-oss-120b": 131_000,
 	"llama-3.3-70b-versatile": 131_000,
+	"llama-3.1-8b-instant": 131_000,
 };
 
 /**
@@ -302,8 +307,18 @@ export interface ContextWindowLookupResult {
  * `DEFAULT_CONTEXT_WINDOW_TOKENS` (see `runtime/model-input-budget`) or to
  * a provider-supplied number.
  *
- * Uses the same longest-prefix family-key match as `lookupModelPrice` so
- * versioned ids resolve to the family entry.
+ * Matching strategy (parallel to `lookupModelPrice`):
+ *   1. exact key match
+ *   2. longest-key **substring** match — every table key whose
+ *      lowercased form appears anywhere in the lowercased model name is
+ *      a candidate, and the longest such key wins. This handles
+ *      versioned ids like `claude-haiku-4-5-20251001` (resolves to
+ *      `claude-haiku-4-5`) and provider prefixes like `openai/gpt-5.5`
+ *      (resolves to `gpt-5.5`) uniformly. The substring fallback is
+ *      permissive by design: an adversarial / synthetic id such as
+ *      `acme-gpt-oss-120b-finetune` would also match the `gpt-oss-120b`
+ *      entry, which is the right answer when the finetune inherits its
+ *      parent's context window — and a safe under-estimate otherwise.
  */
 export function lookupModelContextWindow(
 	modelName: string | undefined,

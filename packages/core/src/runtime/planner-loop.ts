@@ -1134,6 +1134,16 @@ async function callPlanner(params: {
 	// that crossed the line — not after we've already done another iteration
 	// of bookkeeping. The recorder is observability and can tolerate the
 	// minor reordering; the budget guard is load-bearing.
+	//
+	// CONSEQUENCE for trajectory consumers: when `observePlannerUsage` throws
+	// `TrajectoryLimitExceeded(kind: "trajectory_token_budget")` the call
+	// that crossed the line is intentionally **not** recorded as a planner
+	// stage. The trajectory then ends one stage short of the actual model
+	// activity. Downstream consumers that reconstruct totals from recorded
+	// stages (the trajectory CLI cost report, cost-regression dashboards)
+	// should treat the loop-level `metrics.totalPromptTokens` (populated by
+	// the recorder on `endTrajectory`) as authoritative rather than summing
+	// stage-level usages.
 	if (params.onUsage) {
 		const usage = extractUsage(raw);
 		if (usage) {
