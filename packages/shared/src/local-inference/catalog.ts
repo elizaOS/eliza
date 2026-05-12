@@ -18,7 +18,7 @@
  *
  * Shared-vocabulary note: every text-bearing entry below (the `chat` tier
  * entries AND their `dflash-drafter` companions) carries
- * `tokenizerFamily: "qwen35"` — they are all Qwen3.5/Qwen3.6-lineage and
+ * `tokenizerFamily: "eliza1"` — they are all Qwen3.5/Qwen3.6-lineage and
  * share the same Qwen3.5 vocabulary + merges table. The drafter GGUFs ship *without* their
  * own `tokenizer.ggml.merges`; the runtime injects it from the tier's text
  * GGUF at load time (`resolveDflashDrafter` in
@@ -110,7 +110,7 @@ function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
  * `eliza-1.manifest.json`. Fine-tuning lands in v2.
  *
  * Notes:
- * - 0.8B / 2B / 4B / 9B text use Qwen3.5 Small via the current public GGUF
+ * - 0.6B / 1.7B / 4B / 9B text use Qwen3.5 Small via the current public GGUF
  *   mirrors. 27B uses Qwen3.6. This replaces the old small-tier Qwen3
  *   placeholders; do not relabel those old-vocab files as Eliza-1 release
  *   candidates.
@@ -283,7 +283,7 @@ function drafterCompanion(args: {
     hiddenFromCatalog: true,
     runtimeRole: "dflash-drafter",
     companionForModelId: args.id,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     blurb: "Companion drafter file.",
   };
 }
@@ -303,7 +303,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "small",
     contextLength: 32768,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-0_8b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-0_8b"),
     runtime: runtimeFor("eliza-1-0_8b", 32768),
@@ -334,7 +334,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "small",
     contextLength: 32768,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-2b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-2b"),
     runtime: runtimeFor("eliza-1-2b", 32768),
@@ -365,7 +365,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     contextLength: 65536,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-4b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-4b"),
     runtime: runtimeFor("eliza-1-4b", 65536),
@@ -396,7 +396,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "mid",
     contextLength: 65536,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-9b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-9b"),
     runtime: runtimeFor("eliza-1-9b", 65536),
@@ -427,7 +427,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     contextLength: 131072,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-27b-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b"),
     runtime: runtimeFor("eliza-1-27b", 131072),
@@ -458,7 +458,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     contextLength: 262144,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-27b-256k-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b-256k"),
     runtime: runtimeFor("eliza-1-27b-256k", 262144),
@@ -495,7 +495,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     category: "chat",
     bucket: "large",
     contextLength: 1_048_576,
-    tokenizerFamily: "qwen35",
+    tokenizerFamily: "eliza1",
     companionModelIds: ["eliza-1-27b-1m-drafter"],
     sourceModel: sourceModelForTier("eliza-1-27b-1m"),
     runtime: runtimeFor("eliza-1-27b-1m", 1_048_576),

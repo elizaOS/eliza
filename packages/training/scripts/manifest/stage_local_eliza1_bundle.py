@@ -65,7 +65,7 @@ from scripts.quantization._kernel_manifest import kernel_manifest_fragment
 LOCAL_MODEL_ROOT: Final[Path] = (
     Path.home() / ".eliza" / "local-inference" / "models"
 )
-DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-2b.bundle"
+DEFAULT_BUNDLE_DIR: Final[Path] = LOCAL_MODEL_ROOT / "eliza-1-1_7b.bundle"
 DEFAULT_TEXT_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash" / "Qwen_Qwen3.5-4B-Q4_K_M.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash.gguf",
@@ -80,11 +80,11 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
-VISION_TIERS: Final[set[str]] = {"0_8b", "2b", "4b", "9b", "27b", "27b-256k"}
+VISION_TIERS: Final[set[str]] = {"0_6b", "1_7b", "4b", "9b", "27b", "27b-256k"}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (1800, 2400),
-    "2b": (3500, 5000),
+    "0_6b": (1800, 2400),
+    "1_7b": (3500, 5000),
     "4b": (6000, 8000),
     "9b": (7000, 9500),
     "27b": (24000, 32000),
@@ -1352,7 +1352,7 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", default="2b", choices=tuple(CONTEXTS_BY_TIER))
+    ap.add_argument("--tier", default="1_7b", choices=tuple(CONTEXTS_BY_TIER))
     ap.add_argument("--bundle-dir", type=Path, default=DEFAULT_BUNDLE_DIR)
     ap.add_argument("--text-source", type=Path, default=None)
     ap.add_argument("--drafter-source", type=Path, default=None)

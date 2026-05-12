@@ -37,7 +37,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 // Eliza-1 bundle uses. Exported so runtime code can assert it (a GGUF whose
 // `tokenizer.ggml.tokens` length differs from this is not an Eliza-1 component
 // and the merges-repair / zero-re-tokenization assumptions do not hold).
-export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
+export const ELIZA_1_TOKENIZER_FAMILY = "eliza1" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the

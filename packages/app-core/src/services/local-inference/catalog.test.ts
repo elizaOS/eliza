@@ -88,7 +88,7 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.8B/2B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.6B/1.7B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
@@ -185,7 +185,7 @@ describe("local inference catalog", () => {
       expect(drafter.hiddenFromCatalog).toBe(true);
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
       expect(drafter.companionForModelId).toBeTruthy();
-      expect(drafter.tokenizerFamily).toBe("qwen35");
+      expect(drafter.tokenizerFamily).toBe("eliza1");
     }
   });
 

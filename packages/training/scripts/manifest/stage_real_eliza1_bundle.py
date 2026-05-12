@@ -82,12 +82,12 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 from benchmarks.eliza1_gates import apply_gates
 
-VISION_TIERS: Final[set[str]] = {"0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
-EMBEDDING_TIERS: Final[set[str]] = {"2b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
+VISION_TIERS: Final[set[str]] = {"0_6b", "1_7b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
+EMBEDDING_TIERS: Final[set[str]] = {"1_7b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (1800, 2400),
-    "2b": (3500, 5000),
+    "0_6b": (1800, 2400),
+    "1_7b": (3500, 5000),
     "4b": (6000, 8000),
     "9b": (7000, 9500),
     "27b": (24000, 32000),
@@ -646,7 +646,7 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         )
         assets_mod.stage_assets(assets_args)
 
-    # 2. Stage embedding (non-0_8b) — Qwen3-Embedding-0.6B GGUF.
+    # 2. Stage embedding (non-0_6b) — Qwen3-Embedding-0.6B GGUF.
     has_embedding = tier in EMBEDDING_TIERS
     if has_embedding and not args.skip_assets:
         try:

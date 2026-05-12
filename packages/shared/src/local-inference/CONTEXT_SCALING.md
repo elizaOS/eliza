@@ -33,8 +33,8 @@ Qwen3 dense base shapes (from each base model's `config.json`; the registry's
 
 | Eliza-1 tier      | base model        | layers | kv heads | head_dim | native ctx (`max_position_embeddings`) | GGUF (quant)        |
 | ----------------- | ----------------- | -----: | -------: | -------: | -------------------------------------: | ------------------- |
-| `eliza-1-0_6b`    | Qwen3-0.6B        |     28 |        8 |      128 |                                  40960 | ~0.5 GB (Q3_K_M)    |
-| `eliza-1-1_7b`    | Qwen3-1.7B        |     28 |        8 |      128 |                                  40960 | ~1.2 GB (Q4-class)  |
+| `eliza-1-0_8b`    | Qwen3-0.6B        |     28 |        8 |      128 |                                  40960 | ~0.5 GB (Q3_K_M)    |
+| `eliza-1-2b`    | Qwen3-1.7B        |     28 |        8 |      128 |                                  40960 | ~1.2 GB (Q4-class)  |
 | `eliza-1-4b`*     | Qwen3-4B          |     36 |        8 |      128 |                                  40960 | ~2.6 GB (Q4_K_M)    |
 | `eliza-1-9b`†     | (aspirational)    |      8‡ |        4 |      256 |                          64k → 1M (ext) | ~5.4 GB (Q4_K_M)    |
 | `eliza-1-27b`†    | (aspirational)    |     16‡ |        4 |      256 |                         128k → 1M (ext) | ~16.8 GB (Q4_K_M)   |
@@ -218,7 +218,7 @@ It is tempting to read "0.6B fits 800k tokens of KV on 16 GB" and bump
 a YaRN/RoPE-scaled GGUF. The catalog's `32768` is correct. The win is the
 *runtime* selector raising `contextSize` toward 40960 on roomy devices, not the
 catalog default. (If a RoPE-extended small-tier GGUF ever ships — e.g.
-`eliza-1-0_6b-128k.gguf` with YaRN 4× — *that* gets a `128k` catalog variant,
+`eliza-1-0_8b-128k.gguf` with YaRN 4× — *that* gets a `128k` catalog variant,
 matching the `27b` / `27b-256k` / `27b-1m` pattern.)
 
 ---
@@ -227,12 +227,12 @@ matching the `27b` / `27b-256k` / `27b-1m` pattern.)
 
 How the catalog/harness handles low-RAM hosts today:
 
-- `FIRST_RUN_DEFAULT_MODEL_ID = "eliza-1-1_7b"` — the smallest tier that fits
+- `FIRST_RUN_DEFAULT_MODEL_ID = "eliza-1-2b"` — the smallest tier that fits
   "the broadest range of hardware (modern phone or laptop)". On first run with
   no preference, that's what loads.
-- Hosts that can't fit `eliza-1-1_7b` fall back to `eliza-1-0_6b` via the
-  `mobile` ladder in `recommendation.ts`: `TEXT_SMALL: [0_6b, 1_7b]`,
-  `TEXT_LARGE: [1_7b, 0_6b]`. `canFit` runs `assessRamFit` against the device's
+- Hosts that can't fit `eliza-1-2b` fall back to `eliza-1-0_8b` via the
+  `mobile` ladder in `recommendation.ts`: `TEXT_SMALL: [0_8b, 2b]`,
+  `TEXT_LARGE: [2b, 0_8b]`. `canFit` runs `assessRamFit` against the device's
   *total* RAM (mobile shares GPU memory with system RAM), with the OS headroom
   reserve and a download-size guardrail (`wontFitRatio 0.8`, `tightRatio 0.65`).
 - `assessRamFit` → `resolveRamBudget`: for an installed Eliza-1 bundle it reads

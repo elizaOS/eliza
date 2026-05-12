@@ -34,8 +34,8 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_8b": "Q3_K_M",
-    "2b": "Q4_K_M",
+    "0_6b": "Q3_K_M",
+    "1_7b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
@@ -44,8 +44,8 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 }
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("32k",),
-    "2b": ("32k", "64k"),
+    "0_6b": ("32k",),
+    "1_7b": ("32k", "64k"),
     "4b": ("64k", "128k"),
     "9b": ("64k", "128k"),
     "27b": ("128k", "256k"),
@@ -77,7 +77,7 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (
+    "0_6b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -89,7 +89,7 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-arm64-cpu",
         "windows-arm64-vulkan",
     ),
-    "2b": (
+    "1_7b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",

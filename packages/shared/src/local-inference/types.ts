@@ -256,7 +256,7 @@ export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-1_7b". */
+  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-2b". */
   hfRepo: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
@@ -276,10 +276,10 @@ export interface CatalogModel {
   params:
     | "360M"
     | "0.6B"
-    | "0.6B"
+    | "0.8B"
     | "1B"
     | "1.7B"
-    | "1.7B"
+    | "2B"
     | "3B"
     | "4B"
     | "7B"
@@ -290,7 +290,7 @@ export interface CatalogModel {
     | "21.7B"
     | "24B"
     | "27B"
-    | "31.7B";
+    | "32B";
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */
