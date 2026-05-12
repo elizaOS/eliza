@@ -288,10 +288,17 @@ export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** Repo slug on the selected hub, e.g. "elizaos/eliza-1-1_7b". */
+  /** Repo slug on the selected hub, e.g. "elizaos/eliza-1". */
   hfRepo: string;
   /** Source hub. Omitted means Hugging Face for backward compatibility. */
   hub?: "huggingface" | "modelscope";
+  /**
+   * Optional directory prefix inside `hfRepo` for remote artifact lookup. Eliza-1
+   * uses one model repo (`elizaos/eliza-1`) with each bundle under
+   * `bundles/<tier>/`, while manifest-internal paths remain `text/...`,
+   * `dflash/...`, etc.
+   */
+  hfPathPrefix?: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
   /**
@@ -309,11 +316,12 @@ export interface CatalogModel {
   bundleManifestSha256?: string;
   params:
     | "360M"
-    | "0.8B"
+    | "0.5B"
     | "0.6B"
+    | "0.8B"
     | "1B"
-    | "2B"
     | "1.7B"
+    | "2B"
     | "3B"
     | "4B"
     | "7B"
@@ -387,6 +395,33 @@ export interface CatalogModel {
    * avoid an import cycle between the two leaf modules.
    */
   gpuProfile?: "rtx-3090" | "rtx-4090" | "rtx-5090" | "h200";
+  /**
+   * Text-weight quantization matrix for this tier. `ggufFile` remains the
+   * active/default downloadable artifact; entries here let the recommendation
+   * engine choose a higher-precision GGUF once that artifact is published in
+   * the same model repo.
+   */
+  quantization?: CatalogQuantizationMatrix;
+}
+
+export type CatalogQuantizationId = "q4_k_m" | "q6_k" | "q8_0";
+
+export interface CatalogQuantizationVariant {
+  id: CatalogQuantizationId;
+  label: "4-bit" | "6-bit" | "8-bit";
+  ggufFile: string;
+  sizeGb: number;
+  minRamGb: number;
+  /**
+   * `published` means the app may select/download this GGUF now. `planned`
+   * is recorded in the matrix for release planning but must not be selected.
+   */
+  status: "published" | "planned";
+}
+
+export interface CatalogQuantizationMatrix {
+  defaultVariantId: CatalogQuantizationId;
+  variants: CatalogQuantizationVariant[];
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";
