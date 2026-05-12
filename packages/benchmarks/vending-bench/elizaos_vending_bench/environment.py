@@ -549,8 +549,11 @@ class VendingEnvironment:
         )
         self.state.cash_on_hand -= fees
 
-        # Calculate inventory value
-        inventory_value = self.state.machine.get_total_inventory_value(self.products)
+        # Calculate inventory value, including delivered inventory not yet restocked.
+        inventory_value = (
+            self.state.machine.get_total_inventory_value(self.products)
+            + self.get_delivered_inventory_value()
+        )
 
         # Calculate net worth
         net_worth = self.state.cash_on_hand + self.state.machine.cash_in_machine + inventory_value
@@ -582,8 +585,20 @@ class VendingEnvironment:
 
     def get_net_worth(self) -> Decimal:
         """Calculate current net worth."""
-        inventory_value = self.state.machine.get_total_inventory_value(self.products)
+        inventory_value = (
+            self.state.machine.get_total_inventory_value(self.products)
+            + self.get_delivered_inventory_value()
+        )
         return self.state.cash_on_hand + self.state.machine.cash_in_machine + inventory_value
+
+    def get_delivered_inventory_value(self) -> Decimal:
+        """Calculate cost value of delivered inventory waiting to be restocked."""
+        total = Decimal("0")
+        for delivered in self.state.delivered_inventory:
+            product = self.products.get(delivered.product_id)
+            if product is not None and delivered.quantity > 0:
+                total += product.cost_price * delivered.quantity
+        return total
 
     # ============== Agent Actions ==============
 

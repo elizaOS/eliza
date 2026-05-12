@@ -62,6 +62,20 @@ class TestVendingAgent:
         assert isinstance(items, dict)
         assert items["water"] == 12
 
+    def test_parse_action_tool_call_shape(self) -> None:
+        """Test parsing OpenAI-style action payloads."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"name": "PLACE_ORDER", "arguments": {"supplier_id": "beverage_dist", "items": {"water": 12}}}'
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.PLACE_ORDER
+        assert params["supplier_id"] == "beverage_dist"
+        items = params["items"]
+        assert isinstance(items, dict)
+        assert items["water"] == 12
+
     def test_parse_action_with_code_block(self) -> None:
         """Test parsing action from markdown code block."""
         env = VendingEnvironment(seed=42)
@@ -104,6 +118,19 @@ class TestVendingAgent:
         assert success
         assert "Collected" in result
         assert env.state.machine.cash_in_machine == Decimal("0")
+
+    def test_execute_action_error_result_is_not_successful(self) -> None:
+        """Test environment-level Error strings are surfaced as failed actions."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        result, success = agent._execute_action(
+            ActionType.PLACE_ORDER,
+            {"supplier_id": "missing", "items": {"water": 12}},
+        )
+
+        assert not success
+        assert result.startswith("Error:")
 
     def test_execute_action_advance_day(self) -> None:
         """Test executing ADVANCE_DAY action."""
