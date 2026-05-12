@@ -101,8 +101,10 @@ command and remaining blocker — see
      transcription are covered. **Done on macOS Metal for the local 1.7B
      bundle.** ABI v2 (streaming ASR + streaming TTS + native DFlash
      verifier callback) symbols are present in `prepare.mjs`'s adapter
-     (batch TTS/ASR implemented; the streaming/verifier entries are honest
-     stubs reporting `*_supported() == 0` until W7's fused decoder lands).
+     (batch TTS/ASR + **streaming TTS / `cancel_tts` implemented** as of
+     2026-05-12; streaming ASR + the native DFlash verifier callback remain
+     honest stubs reporting `*_supported() == 0` / `ELIZA_ERR_NOT_IMPLEMENTED`
+     — see the W7 section for the exact remaining gap).
    - Voice mode starts without IPC to a second model process. **Done at the
      spawn layer:** `dflash-server.ts` `resolveFusedDflashBinary()` /
      `candidateBinaryPaths()` prefer the `*-fused` `llama-server` whenever a
@@ -191,48 +193,79 @@ The lowest-duplication design is lazy regional loading from one bundle:
 
 ## W7 — the ABI surface the fused streaming decoder must implement
 
+**Status (2026-05-12): streaming TTS + `cancel_tts` are implemented; streaming
+ASR + the native DFlash verifier callback remain honest stubs.**
+
 The runtime fallback chain is **sane and complete without streaming**:
 `createStreamingTranscriber()` (`voice/transcriber.ts`) tries
 `FfiStreamingTranscriber` → `FfiBatchTranscriber` → `WhisperCppStreamingTranscriber`
-in order. The fused `linux-x64-cpu-fused` build exports the ABI-v2 symbols but
-the streaming entries are honest stubs: `eliza_inference_asr_stream_supported()
-== 0` and `eliza_inference_tts_stream_supported() == 0`, so `tryFusedStreaming()`
-returns `null` and `FfiBatchTranscriber` (the chunked sliding-window decode over
-the batch `eliza_inference_asr_transcribe`, contract-clean against the
-`StreamingTranscriber` interface) is the preferred path until streaming lands.
-Batch TTS (`eliza_inference_tts_synthesize` → `/v1/audio/speech`) and batch ASR
-both work. `eliza_inference_cancel_tts` is a no-op on the batch-only build (the
-JS side falls back to draining the PCM ring + an HTTP abort, which is correct,
-just not as tight as a kernel-boundary cancel). Nothing in the runtime *requires*
-streaming to function — voice mode runs on the batch path today.
+in order. The fused `linux-x64-cpu-fused` build exports the full ABI-v3 surface;
+`eliza_inference_tts_stream_supported() == 1` (real — see below),
+`eliza_inference_asr_stream_supported() == 0` (honest stub), so
+`tryFusedStreaming()` for TTS now opens the streaming path and for ASR returns
+`null` → `FfiBatchTranscriber` (the chunked sliding-window decode over the batch
+`eliza_inference_asr_transcribe`, contract-clean against the
+`StreamingTranscriber` interface) is the ASR path until a true incremental
+decoder lands. Batch TTS (`eliza_inference_tts_synthesize` → `/v1/audio/speech`)
+and batch ASR both still work. Nothing in the runtime *requires* streaming ASR
+to function — voice mode runs on the batch ASR path today.
 
-When W7 implements the fused streaming decoder, the contract (declared in
-`packages/app-core/scripts/omnivoice-fuse/ffi.h`, the JS bindings in
-`voice/ffi-bindings.ts`) is:
+### Implemented (2026-05-12)
 
-- **Streaming ASR:** `eliza_inference_asr_stream_supported()` → 1;
-  `_asr_stream_open(ctx, sample_rate_hz)` → handle; `_asr_stream_feed(handle, pcm,
-  n_samples)`; `_asr_stream_partial(handle, max_tokens, out…)` → running partial
-  text + token ids (text vocab — shared with the backbone per §1, so finished
-  tokens inject directly); `_asr_stream_finish(handle, …)` → final;
-  `_asr_stream_close(handle)`.
-- **Streaming TTS + cancel:** `eliza_inference_tts_stream_supported()` → 1;
-  `_tts_synthesize_stream(ctx, text, on_chunk, …)` with `on_chunk` returning
-  non-zero → cancel; `_cancel_tts(ctx)` → hard-cancel the in-flight forward pass
-  at the next kernel boundary (the barge-in path, §4).
-- **Native DFlash verifier callback:** `eliza_inference_set_verifier_callback(ctx,
-  cb, user)` where `cb(accepted_lo, accepted_hi, rejected_lo, rejected_hi, user)`
-  reports exact target-accepted and rejected token ranges in the *output* stream,
-  so the phrase chunker's rollback queue drops not-yet-spoken audio precisely —
-  not the OpenAI-delta surrogate the JS layer synthesizes today.
+- **Streaming TTS + hard-cancel** — `eliza_inference_tts_stream_supported()` → 1;
+  `_tts_synthesize_stream(ctx, text, on_chunk, …)` drives OmniVoice's existing
+  chunked pipeline (`ov_tts_params.on_chunk` + `ov_tts_params.cancel`, small
+  `chunk_duration_sec` so first-PCM latency is bounded by the first MaskGIT
+  decode of the first phrase, not the whole utterance); `on_chunk` returning
+  non-zero → `OV_STATUS_CANCELLED` → `ELIZA_ERR_CANCELLED`; one final
+  `is_final == 1` terminator call. `_cancel_tts(ctx)` flips a `std::atomic<int>`
+  on the context (NOT under `tts_mutex` — the synthesis thread holds that for
+  the whole pass) that the chunk/cancel callbacks poll, so a barge-in aborts the
+  in-flight forward pass at the next chunk boundary (§4). Bench: `nativeCancelMs
+  ≈ 0.03 ms`, `nativeCancelRc == 0`. Implementation: the generated
+  `eliza-inference-ffi.cpp` template in `omnivoice-fuse/prepare.mjs`.
 
-Each is additive — a v1 caller is unaffected; the v2 symbols already exist as
-stubs reporting `*_supported() == 0`, so a probe-then-pick caller never has to
-call the streaming entry and catch `ELIZA_ERR_NOT_IMPLEMENTED`. Cheap RAM trim
-that rides on this work: have the fused server `madvise(MADV_DONTNEED)` the idle
-ASR pages while the streaming TTS decoder runs and vice-versa (ASR → text → TTS
-are sequential within a turn) — ~1 GB on `0_6b`, which would let the
-`ramBudgetMb.recommended` come back down toward the pre-correction figure.
+### Still stubbed — exact remaining gap
+
+- **Streaming ASR** — `eliza_inference_asr_stream_supported()` stays 0;
+  `_asr_stream_open/feed/partial/finish/close` return `ELIZA_ERR_NOT_IMPLEMENTED`.
+  Why it's not a thin wrapper: the ASR audio encoder is mtmd's
+  `mtmd_helper_eval_chunks` over a single audio bitmap built from the *whole*
+  utterance — there is no incremental-encoder API in mtmd today, so a genuine
+  streaming ASR decoder is a sliding-window-encoder rewrite (re-encode an
+  overlapping window each `feed`, splice the partial transcript), not a
+  per-frame feed. `FfiBatchTranscriber` already does the JS-side equivalent
+  (windowed batch decode), so the runtime is not blocked; the win from a native
+  streaming ASR is lower first-token latency, not capability.
+- **Native DFlash verifier callback** — `eliza_inference_set_verifier_callback`
+  stays `ELIZA_ERR_NOT_IMPLEMENTED`. The fork's speculative loop runs inside
+  `llama-server`, not `libelizainference`, so wiring it needs a `llama-server`
+  hook that streams `EliVerifierEvent`s (accepted ids / rejected `[from,to)` /
+  corrected ids in the output-token domain) out to the FFI consumer — a
+  `server-omnivoice-route.mjs` / fork-side change. Until then the JS scheduler
+  synthesizes verifier events from llama-server SSE deltas, which is correct but
+  not as tight as exact native accept/reject ranges (rollback granularity).
+
+Each remaining symbol is additive — a v3 caller is unaffected; they exist as
+stubs reporting `*_supported() == 0` / `ELIZA_ERR_NOT_IMPLEMENTED`, so a
+probe-then-pick caller never has to call the streaming entry and catch the
+not-implemented error.
+
+### Within-turn RSS trim — wired (host-driven)
+
+`voice/pipeline.ts` now fires an `onAsrPhaseComplete` hook exactly once per
+turn, right after the ASR phase and before the first drafter round (ASR → text
+→ TTS are sequential within a turn, §4). A host wires it to the ASR
+`MmapRegionHandle.evictPages()` (`madvise(MADV_DONTNEED)` on POSIX via
+`ffi.mmapEvict(ctx, "asr")`) to claw back ~1 GB of peak RSS on `0_6b` while TTS
+decodes; the pages page back transparently on the next turn's `feed()`. The
+HTTP-driven `e2e_loop_bench.mjs` harness doesn't go through the FFI runtime path
+that fires it (it drives `/v1/audio/speech` over HTTP), so the trim doesn't show
+in that bench's `serverPeakRssMb` — measure it on a `runVoiceTurn`-driven turn.
+Whoever owns `ramBudgetMb.recommended` in the training/manifest scripts: once a
+runtime-driven turn confirms the ~1 GB drop, `0_6b`'s `recommended` can come
+back down toward the pre-correction figure — do NOT change it on the strength of
+this HTTP-bench number alone.
 
 ## Performance Work Still Worth Doing
 
@@ -669,10 +702,12 @@ bash packages/training/scripts/publish_all_eliza1.sh --bundles-root /tmp/eliza1-
   consistency + the `recommended >= measured-peak × 1.05` invariant) +
   the `ramBudgetMb` assertion in `test_stage_local_eliza1_bundle.py`. The
   cheap-but-not-free further trim — within-turn `madvise(MADV_DONTNEED)`
-  of the idle ASR pages while TTS decodes and vice-versa (ASR → text →
-  TTS are sequential within a turn) — would shave ~1 GB but is a
-  fused-server change owned by the W7 streaming-decoder work, tracked in
-  the W7 ABI surface below.
+  of the idle ASR pages while TTS decodes (ASR → text → TTS are sequential
+  within a turn) — is now wired as the `onAsrPhaseComplete` hook in
+  `voice/pipeline.ts` (host → `asr` `MmapRegionHandle.evictPages()`); ~1 GB
+  on `0_6b` once a `runVoiceTurn`-driven measurement confirms it. See the
+  W7 section below for the wiring + the caveat that the HTTP-driven e2e
+  bench doesn't exercise it.
 
 ## Known Non-Goals For This Wave
 

@@ -315,7 +315,16 @@ The §4 graph is the same on every platform; the *runtime path* differs:
   Vulkan / Metal / CPU):** the spawned fork `llama-server`. The `*-fused`
   build serves `/v1/audio/speech` in the same process as `/completion` +
   the DFlash loop (`dflash-server.ts` prefers it over the stock +
-  `llama-omnivoice-server` two-process path).
+  `llama-omnivoice-server` two-process path). The fused
+  `libelizainference` also exposes the streaming voice ABI:
+  `eliza_inference_tts_synthesize_stream` (OmniVoice's chunked pipeline —
+  PCM chunks emit as they decode) + `eliza_inference_cancel_tts`
+  (hard-cancel an in-flight forward pass at the next chunk boundary, the
+  barge-in path). Streaming ASR (`eliza_inference_asr_stream_*`) and the
+  native DFlash verifier callback are not yet implemented — the runtime
+  uses the windowed-batch ASR adapter (`FfiBatchTranscriber`) and
+  SSE-delta-derived verifier events; both are contract-clean fallbacks,
+  not blockers. (See `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md` §W7.)
 - **iOS / Android:** the **in-process FFI path** —
   `@elizaos/llama-cpp-capacitor`'s `LlamaCpp.xcframework` (iOS) /
   `@elizaos/plugin-aosp-local-inference`'s `compile-libllama.mjs` →

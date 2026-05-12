@@ -29,7 +29,7 @@ Results JSON: `packages/inference/verify/bench_results/e2e_loop_2026-05-11.json`
 
 | dir | fused | backend | `/v1/audio/speech` | `llama-speculative-simple` | streaming ABI |
 |---|---|---|---|---|---|
-| `linux-x64-cpu-fused` | ✓ | cpu | ✓ (mounted) | — (graft drops it) | stubbed (`tts_stream_supported()==0`, `asr_stream_supported()==0`) — batch TTS/ASR work |
+| `linux-x64-cpu-fused` | ✓ | cpu | ✓ (mounted) | — (graft drops it) | **streaming TTS implemented** (`tts_stream_supported()==1`, `cancel_tts` real — see 2026-05-12 update below); `asr_stream_supported()==0` (honest stub — `FfiBatchTranscriber` chunked-window batch path is the ASR path) |
 | `linux-x64-cpu` | — | cpu | — | ✓ | — |
 | `linux-x64-vulkan` | — | vulkan | — | ✓ | — |
 | `windows-x64-cpu`, `android-arm64-{cpu,vulkan}` | — | — | — | — | — |
@@ -57,6 +57,49 @@ WER ≈ 1.0 (an honest finding, not a harness bug).
 `status: "needs-build"` for vulkan/cuda on both tiers — no fused build for
 those backends on this host. CPU rows are real runs against the
 `linux-x64-cpu-fused` build.
+
+### 2026-05-12 update — streaming TTS + real `cancel_tts` (re-run, 0.6B CPU, 1 turn)
+
+The fused `linux-x64-cpu-fused` build was rebuilt with the real streaming-TTS
+ABI: `eliza_inference_tts_synthesize_stream` now drives OmniVoice's existing
+chunked pipeline (`ov_tts_params.on_chunk` / `cancel`), so
+`eliza_inference_tts_stream_supported() == 1` and `eliza_inference_cancel_tts`
+hard-cancels an in-flight forward pass at the next chunk boundary instead of
+being a no-op. ASR streaming stays an honest stub
+(`asr_stream_supported() == 0`) — see the W7 gap note below. Also fixed: the
+post-build `symbol-verify` was inspecting `nm -D` (dynamic) symbols of the
+static-linked `llama-server`, spuriously reporting a "dead /v1/audio/speech
+mount"; it now reads the executable's full symbol table, so `CAPABILITIES.json`
+correctly carries `fused: true` and `resolveFusedDflashBinary()` resolves it.
+
+| metric | value | vs prior |
+|---|---|---|
+| status | `ok`, `e2eLoopOk: true` | — |
+| `requiredOptimizations` | `dflashDraftingActive: true`, **`streamingTtsActive: true`** | streaming was `false` (stub) |
+| ASR latency (FFI batch transcribe) | 9371 ms | (input-dependent; ASR GGUF still stand-in, WER 1.0) |
+| first-token latency | 1880 ms | (cold; prior warm runs were ~60–300 ms) |
+| decode tokens/sec | 23.4 tok/s | ~12–27 prior |
+| DFlash acceptance | 1.000 (33/33) | drafter ≈ copy of target |
+| TTS RTF (median) | 11.8 | ~7 (CPU MaskGIT; phrase-length-dependent) |
+| first-audio (mic-in → first PCM) | ≈24.0 s | ≈19.6 s (different prompt/phrase count) |
+| total turn latency | 24.0 s | — |
+| **barge-in / `cancel_tts`** | **`nativeCancelMs: 0.03 ms`, `nativeCancelRc: 0`** — "build implements streaming TTS — cancel_tts hard-stops an in-flight forward pass at the next kernel boundary" | was a no-op (`ELIZA_OK` on nothing); JS fell back to HTTP-abort surrogate |
+| server peak RSS | 3133 MB (≤ 3700 MB budget) | ~3070 MB — unchanged: the within-turn `madvise(MADV_DONTNEED)` ASR trim is wired as the `onAsrPhaseComplete` hook in `voice/pipeline.ts` but this HTTP-driven bench harness never goes through the FFI runtime path that fires it; a runtime-driven turn (`runVoiceTurn`) where the host wires `onAsrPhaseComplete → asr.evictPages()` is where the ~1 GB trim lands |
+
+Report JSON: `/tmp` run (`e2e_loop` schema v1) — `status: ok`,
+`bargeIn: { ttsStreamSupported: true, nativeCancelMs: 0.03, nativeCancelRc: 0 }`.
+
+**Still gated:** true *incremental* streaming ASR (partial transcripts as audio
+arrives) — `asr_stream_supported()` stays 0. The mtmd audio encoder
+(`mtmd_helper_eval_chunks`) needs the full utterance window before it can emit
+the first token, so a genuine streaming ASR decoder is a sliding-window-encoder
+rewrite, not a thin wrapper; `FfiBatchTranscriber` (the JS-side chunked-window
+adapter over the batch `eliza_inference_asr_transcribe`) already covers the
+`StreamingTranscriber` contract until that lands, so nothing in the runtime is
+blocked. Also still gated: the native DFlash verifier-event callback
+(`eliza_inference_set_verifier_callback` stays `ELIZA_ERR_NOT_IMPLEMENTED`) —
+the JS scheduler synthesizes verifier events from llama-server SSE deltas, which
+is correct but not as tight as exact native accept/reject ranges.
 
 ### 0.6B — CPU (`linux-x64-cpu-fused`, 1 turn, 40-token response)
 
