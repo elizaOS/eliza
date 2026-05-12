@@ -103,6 +103,20 @@ themselves). The model registry still drives `micro_batch` / `grad_accum` /
 
 ### Run status
 
+> **Master harness benchmark (2026-05-12):** one comparison run across every model +
+> kernel artifact on this box — `reports/eliza1-harness-benchmark-2026-05-12.{md,json}`
+> (also published to `elizaos/eliza-1-evals`, top-level `harness-benchmark-2026-05-12.md`).
+> Highlights: test-SFT 0_6b beat base on every text metric (`format_ok` 0.0857→0.20,
+> `claude_distill` format 27.3→63.6%, `reply` parse-errs 8→0); CPU `llama-bench` d0 —
+> test-SFT Q4_K_M 500 pp / 75.6 tg, eliza1-bundle 0_6b Q3_K_M 331 / 77.7, q4_polar/Q8-body
+> 432 / 61.1, 1_7b 219 / 39.6; RTX5080-Vulkan d0 — 0_6b 3421 / 194, 1_7b 1317 / 112;
+> dflash accept 0_6b 0.87 (clears 0.6) / 1_7b 0.55 (misses 0.65); text-eval ppl→0..1
+> 0_6b 0.2779 / 1_7b 0.328 (neither clears the gate — stand-in weights); voice RTF 8.62 /
+> 5.91 (CPU stand-in TTS), ASR WER 1.0 (stand-in chain), guided-decode 28% forced-token
+> (static); kernel-verify CPU pass / CUDA runtime-ready (8/8 RTX 5080) / Vulkan pass /
+> Metal needs-hardware. Full-corpus SFT 0_6b in flight (ETA ~2026-05-13). action-selection
+> + personality benches not run (need a live LLM provider + judge model).
+
 | tier | SFT | GGUF | eliza1-bundle (polarquant+qjl+turboquant) | bench (CUDA, `-fa 1 -b 2048 -ngl 99`) |
 |---|---|---|---|---|
 | `eliza-1-0_6b` | 🔄 **full-corpus run in flight** — APOLLO `apollo_mini` full-param, 1 epoch over the 68,297-row combined corpus (`data/final-eliza1-fullcorpus/`: `datasets/eliza1-sft-0_6b/train.jsonl` ahead of `data/final/train.jsonl`, built by `scripts/build_eliza1_fullcorpus.py`), seq 4096, Liger on, lr 1e-5; run `eliza-1-0_6b-apollo-fullcorpus-1778563093` on the RTX 5080 (~12.7 s/it ⇒ ~30 h wall); `run_pipeline.py --eval-mode full` auto-chains the gate bench + quant + eliza1 bundle at the tail. Log: `checkpoints_run_eliza-1-0_6b-apollo-fullcorpus-1778563093.log`; report `reports/eliza1-0_6b-apollo-fullcorpus-2026-05-12.md`. — _Prior test-SFT (8000 samples / 1 epoch, eval_loss 1.315, `checkpoints/eliza-1-0_6b-apollo-1778551769/final/`): beat base `Qwen3-0.6B` on every metric, regressed none (`format_ok` 0.0857→0.20, `reply` parse-errors 8→0, `claude_distill` format 27.3%→63.6%, gen tps +33%) but did not clear the absolute `format_ok` 0.7 floor on the 35-row smoke corpus → conditional go; `reports/eliza1-0_6b-apollo-sft-2026-05-11.md`._ Nebius H200 fallback (if headless auth gets fixed): `NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec bash scripts/cloud/run-on-cloud.sh --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay`. No DFlash drafter for this tier (no smaller Qwen3 base) → nothing to re-stamp. | ✅ Q4_K_M, 396 MB (test-SFT; full-corpus GGUF pending) | ✅ sidecars on the test-SFT (`polarquant_artifacts.safetensors` + `qjl_config.json` + `turboquant.json` + `eliza1_manifest.json`); GGUF body is **Q8_0**, not native `Q4_POLAR` — `weight_quant.deferred: true` (the fork's `convert_hf_to_gguf.py` doesn't emit `q4_polar` yet; runtime kernels exist). Full-corpus bundle pending the run. | Q4_K_M (test-SFT): ~27.8 k pp512 / ~384 tg128 @ d0, ~6.6 k pp / ~125 tg @ d16k. eliza1-bundle Q8_0: ~31 k pp512 / ~392 tg128 @ d0 |
