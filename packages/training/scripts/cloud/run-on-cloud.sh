@@ -5,21 +5,21 @@
 # set. --dry-run prints the provisioning plan and spends nothing.
 #
 # This wraps the existing primitives instead of duplicating them:
-#   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [implemented here]
-#   * nebius       → `train_nebius.sh` (NEBIUS_*)     [only --task train is
-#                                                      delegated; kernel-verify
-#                                                      and bench on nebius are
-#                                                      not implemented — use the
-#                                                      vast provider for those.
-#                                                      nebius is deprecated; see
-#                                                      train_nebius.sh header.]
-#   * --task train → delegates to ../train_vast.sh provision-and-train
+#   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [kernel-verify/bench/train]
+#   * --task train --provider vast   → ../train_vast.sh provision-and-train
+#   * --task train --provider nebius → ../train_nebius.sh full (NEBIUS_PROJECT_ID;
+#                                      H200 — gpu-h200x1 for 0.6b/1.7b/9b,
+#                                      gpu-h200x2+FSDP for 27b. Emergency
+#                                      fallback; vast is canonical; see
+#                                      train_nebius.sh header.)
+#   * kernel-verify / bench on nebius → not implemented — use --provider vast.
 #
 # Usage:
-#   run-on-cloud.sh --provider vast --task kernel-verify --gpu h100 [--yes-i-will-pay]
-#   run-on-cloud.sh --provider vast --task bench         --gpu rtx4090 --tier 0_6b --yes-i-will-pay
-#   run-on-cloud.sh --provider vast --task train         --gpu b200 --tier 27b --yes-i-will-pay
-#   run-on-cloud.sh --provider vast --task kernel-verify --gpu h100 --dry-run     # no spend
+#   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 [--yes-i-will-pay]
+#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_6b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task train         --gpu b200 --tier 27b --yes-i-will-pay
+#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_6b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 --dry-run     # no spend
 #
 # Tasks:
 #   kernel-verify  build linux-x64-cuda, `make -C packages/inference/verify
