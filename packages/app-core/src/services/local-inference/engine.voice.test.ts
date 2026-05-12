@@ -369,12 +369,16 @@ describe("LocalInferenceEngine voice surface", () => {
   it("direct TEXT_TO_SPEECH returns WAV bytes and preserves singing/emotion tags", async () => {
     writePresetBundle(bundleRoot);
     const backend = new CountingBackend();
+    const telemetry: VoiceSchedulerTelemetryEvent[] = [];
     const engine = new LocalInferenceEngine();
     engine.startVoice({
       bundleRoot,
       useFfiBackend: false,
       backendOverride: backend,
       lifecycleLoaders: lifecycleLoadersOk(),
+      events: {
+        onTelemetry: (event) => telemetry.push(event),
+      },
     });
     await engine.armVoice();
 
@@ -385,6 +389,15 @@ describe("LocalInferenceEngine voice surface", () => {
     expect(backend.texts).toEqual([expressiveText]);
     expect(String.fromCharCode(...wav.subarray(0, 4))).toBe("RIFF");
     expect(String.fromCharCode(...wav.subarray(8, 12))).toBe("WAVE");
+    expect(telemetry.map((event) => event.type)).toEqual([
+      "phrase-cache-miss",
+      "tts-start",
+      "tts-first-audio",
+    ]);
+    expect(telemetry[0]).toMatchObject({
+      type: "phrase-cache-miss",
+      phrase: { text: expressiveText },
+    });
     await engine.stopVoice();
   });
 
