@@ -1643,6 +1643,21 @@ export async function startBenchmarkServer() {
           });
           trajectoriesBySession.set(key, trajectory);
 
+          // Propagate Cerebras / OpenAI token-usage so the Python adapter
+          // (eliza_adapter.client.ElizaClient) can compute per-turn cost.
+          // Shape mirrors the lifeops_bench/message handler so adapter code
+          // reads either endpoint the same way (camelCase keys + nullable
+          // cacheRead/cacheCreation fields). W2-9 surfaced this as the cause
+          // of cost: $0.0000 on eliza runs — the bench server had the data
+          // (turnUsage from MODEL_USED events) but never forwarded it.
+          const usagePayload = {
+            promptTokens: turnUsage.promptTokens,
+            completionTokens: turnUsage.completionTokens,
+            totalTokens: turnUsage.totalTokens,
+            cacheReadInputTokens:
+              turnUsage.cachedTokens > 0 ? turnUsage.cachedTokens : null,
+            cacheCreationInputTokens: null,
+          };
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -1650,6 +1665,7 @@ export async function startBenchmarkServer() {
               thought,
               actions,
               params,
+              usage: usagePayload,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,
