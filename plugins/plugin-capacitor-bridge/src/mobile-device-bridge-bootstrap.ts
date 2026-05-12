@@ -188,7 +188,12 @@ type DeviceOutbound =
 			ok: true;
 			prompt: string | null;
 	  }
-	| { type: "formatChatResult"; correlationId: string; ok: false; error: string }
+	| {
+			type: "formatChatResult";
+			correlationId: string;
+			ok: false;
+			error: string;
+	  }
 	| { type: "pong"; at: number };
 
 type AgentOutbound =
@@ -911,50 +916,51 @@ function resolveEmbeddingDimension(): number {
 // elizaOS v5 message-pipeline calls `runtime.useModel(TEXT_LARGE, params)`
 // with `params.messages` set and `params.prompt` undefined. The native
 // Capacitor llama plugin only accepts a flat string prompt, so we have
-// to render the conversation into the model's chat template ourselves.
-// Llama-3.x (the only GGUF currently bundled in milady-class APKs) uses
-// the chat-template tokens `<|begin_of_text|>`, `<|start_header_id|>`,
-// `<|end_header_id|>`, and `<|eot_id|>` — see
-// https://www.llama.com/docs/model-cards-and-prompt-formats/meta-llama-3/.
+// to render the conversation into something the model can read when the
+// `LlamaCpp.getFormattedChat()` round-trip is unavailable (older plugin
+// builds, GGUFs without `chat_template` metadata, jinja eval failures).
+//
+// This fallback emits plain role-tagged text — no model-family-specific
+// special tokens. Reasoning: when this code runs we don't know which
+// chat template the loaded GGUF expects. Llama-3's `<|start_header_id|>`
+// fed to Qwen3 / Mistral / Phi tokenizes as subword pieces that the
+// model doesn't interpret as turn boundaries, and the small instruct
+// models then drift into pattern-completion garbage (issue #7612).
+//
+// Plain role-tagged text doesn't beat the model's own template, but it
+// is the only model-agnostic format that won't actively mislead the
+// tokenizer. The decoder still terminates via its own EOG tokens; the
+// caller can tighten the stop signal with `params.stopSequences` if the
+// model rambles past its turn.
+//
 // When the params include a legacy `prompt`, pass it through unchanged.
-function flattenChatParamsToLlama3Prompt(params: GenerateTextParams): string {
+function flattenChatParamsToPlainPrompt(params: GenerateTextParams): string {
 	if (typeof params.prompt === "string" && params.prompt.length > 0) {
 		return params.prompt;
 	}
 	const messages = params.messages ?? [];
-	// Do NOT prepend `<|begin_of_text|>` — the underlying llama.cpp
-	// tokenizer auto-adds BOS for Llama-3 chat models. Adding it as text
-	// here results in a duplicated 128000/128000 prefix that confuses
-	// the chat header position prediction (model's first generated
-	// token ends up being `<|start_header_id|>` instead of the
-	// assistant reply content).
 	const parts: string[] = [];
 	const hasSystemMessage = messages.some(
 		(m: { role?: string }) => m.role === "system",
 	);
 	if (!hasSystemMessage && typeof params.system === "string" && params.system) {
-		parts.push(
-			`<|start_header_id|>system<|end_header_id|>\n\n${params.system}<|eot_id|>`,
-		);
+		parts.push(`system:\n${params.system}`);
 	}
 	for (const m of messages) {
 		const content =
 			typeof (m as { content?: unknown }).content === "string"
-				? ((m as { content: string }).content)
+				? (m as { content: string }).content
 				: "";
 		if (!content) continue;
-		const role =
-			((m as { role?: string }).role ?? "user").toLowerCase();
+		const role = ((m as { role?: string }).role ?? "user").toLowerCase();
 		const safeRole =
 			role === "system" || role === "assistant" || role === "user"
 				? role
 				: "user";
-		parts.push(
-			`<|start_header_id|>${safeRole}<|end_header_id|>\n\n${content}<|eot_id|>`,
-		);
+		parts.push(`${safeRole}:\n${content}`);
 	}
-	parts.push("<|start_header_id|>assistant<|end_header_id|>\n\n");
-	return parts.join("");
+	parts.push("assistant:\n");
+	return parts.join("\n\n");
 }
 
 function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
@@ -982,16 +988,14 @@ function makeGenerateHandler(slot: "TEXT_SMALL" | "TEXT_LARGE") {
 		let nativePrompt: string | null = null;
 		if (messagesForTemplate) {
 			try {
-				nativePrompt = await mobileDeviceBridge.formatChat(
-					messagesForTemplate,
-				);
+				nativePrompt = await mobileDeviceBridge.formatChat(messagesForTemplate);
 			} catch (err) {
 				logger.warn(
 					`[mobile-device-bridge] getFormattedChat failed, falling back to flatten: ${err instanceof Error ? err.message : String(err)}`,
 				);
 			}
 		}
-		const prompt = nativePrompt ?? flattenChatParamsToLlama3Prompt(params);
+		const prompt = nativePrompt ?? flattenChatParamsToPlainPrompt(params);
 		return mobileDeviceBridge.generate({
 			prompt,
 			stopSequences: params.stopSequences,
@@ -1018,11 +1022,10 @@ function collectMessagesForNativeTemplate(
 	for (const m of messages) {
 		const content =
 			typeof (m as { content?: unknown }).content === "string"
-				? ((m as { content: string }).content)
+				? (m as { content: string }).content
 				: "";
 		if (!content) continue;
-		const role =
-			((m as { role?: string }).role ?? "user").toLowerCase();
+		const role = ((m as { role?: string }).role ?? "user").toLowerCase();
 		const safeRole =
 			role === "system" || role === "assistant" || role === "user"
 				? role
