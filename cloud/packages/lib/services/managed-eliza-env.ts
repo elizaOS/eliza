@@ -12,14 +12,14 @@ export async function prepareManagedElizaEnvironment(params: {
   existingEnv?: Record<string, string> | null;
   organizationId: string;
   userId: string;
-  /** Sandbox/agent ID — used as STEWARD_AGENT_ID for Docker-backed agents. */
-  sandboxId?: string;
+  sandboxId: string;
 }): Promise<ManagedElizaEnvironmentResult> {
   const existingEnv = { ...(params.existingEnv ?? {}) };
   const sharedEnvironment = await prepareManagedElizaSharedEnvironment({
     existingEnv,
     organizationId: params.organizationId,
     userId: params.userId,
+    agentSandboxId: params.sandboxId,
   });
   const environmentVars: Record<string, string> = {
     ...sharedEnvironment.environmentVars,
@@ -42,12 +42,13 @@ export async function prepareManagedElizaEnvironment(params: {
     environmentVars.STEWARD_AGENT_ID = params.sandboxId;
   }
 
-  const changed = JSON.stringify(existingEnv) !== JSON.stringify(environmentVars);
+  const changed =
+    JSON.stringify(existingEnv) !== JSON.stringify(environmentVars);
 
   return {
     apiToken: environmentVars.ELIZA_API_TOKEN,
     changed,
     environmentVars,
-    userApiKey: sharedEnvironment.userApiKey,
+    agentApiKey: sharedEnvironment.agentApiKey,
   };
 }
