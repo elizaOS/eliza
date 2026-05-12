@@ -1,0 +1,32 @@
+# `action.CALENDAR@packages/prompts/specs/actions/plugins.generated.json.param.intent.description`
+
+- **Kind**: action-parameter
+- **Owner**: spec-only
+- **File**: `packages/prompts/specs/actions/plugins.generated.json`
+- **Token count**: 41
+- **Last optimized**: never
+- **Action**: CALENDAR
+- **Parameter**: intent (required: no)
+
+## Current text
+```
+Natural-language description of the calendar request (e.g. "what is on my calendar today", "do i have any flights this week", "create a meeting tomorrow at 3pm").
+```
+
+## Compressed variant
+```
+none
+```
+
+## Usage stats (latest trajectories)
+- Invocations: 0 (this prompt was not matched in any recent trajectory)
+
+## Sample failure transcripts
+None.
+
+## Suggested edits (heuristic)
+- No compressed variant. Authors should add `descriptionCompressed` — the planner caches both shapes and falls back to the long form when the compressed one is absent.
+
+## Actions
+- Accept a candidate rewrite: `bun run lifeops:prompt-accept -- --id <id> --from <candidate-file>`
+- Freeze (skip future optimization): `bun run lifeops:prompt-freeze -- --id <id>`

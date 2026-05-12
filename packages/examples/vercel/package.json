@@ -1,0 +1,30 @@
+{
+  "name": "@elizaos/vercel-edge-examples",
+  "version": "2.0.0-beta.0",
+  "type": "module",
+  "description": "elizaOS Vercel Edge Function examples (TypeScript)",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "tsc --noEmit",
+    "deploy": "vercel deploy",
+    "deploy:prod": "vercel deploy --prod",
+    "test": "bun run test-client.ts || echo 'Vercel edge tests require running API endpoint - skipping'",
+    "clean": "rm -rf dist .vercel",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "@vercel/node": "^5.1.8",
+    "typescript": "^6.0.3",
+    "vercel": "^53.1.1"
+  }
+}

@@ -1,0 +1,25 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+	"root": false,
+	"files": {
+		"includes": [
+			"__tests__/**",
+			"actions/**",
+			"providers/**",
+			"*.ts",
+			"*.json",
+			"vitest.config.ts"
+		]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"suspicious": {
+				"noExplicitAny": "off"
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true
+	}
+}

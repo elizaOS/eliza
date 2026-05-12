@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0a0a" />
+
+    <!-- Primary SEO. These are duplicated at runtime by react-helmet-async
+         once the SPA mounts; they live here so server-side crawlers and the
+         pre-hydration paint see real metadata. -->
+    <title>Eliza Cloud - Managed Hosting for AI Agents</title>
+    <meta name="description" content="Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud." />
+    <meta name="author" content="Eliza Cloud" />
+    <meta name="creator" content="Eliza Cloud" />
+    <meta name="publisher" content="Eliza Cloud" />
+    <meta name="keywords" content="AI,agents,elizaOS,platform,development,hosting,machine learning,artificial intelligence,LLM,deployment" />
+    <meta name="robots" content="index, follow" />
+    <meta name="googlebot" content="index, follow, max-video-preview:-1, max-image-preview:large, max-snippet:-1" />
+    <link rel="canonical" href="https://www.elizacloud.ai" />
+
+    <!-- OpenGraph -->
+    <meta property="og:title" content="Eliza Cloud - Managed Hosting for AI Agents" />
+    <meta property="og:description" content="Managed hosting, provisioning, billing, and deployment for AI agents" />
+    <meta property="og:url" content="https://www.elizacloud.ai" />
+    <meta property="og:site_name" content="Eliza Cloud" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://www.elizacloud.ai/cloudlogo.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Eliza Cloud" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Eliza Cloud" />
+    <meta name="twitter:description" content="Managed hosting, provisioning, billing, and deployment for AI agents" />
+    <meta name="twitter:image" content="https://www.elizacloud.ai/cloudlogo.png" />
+
+    <!-- Icons / manifest -->
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="shortcut icon" href="/favicon.ico" />
+    <link rel="apple-touch-icon" href="/favicon.ico" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Preconnect to Google Fonts. The CSS @import for DM Mono / Inter is
+         in globals.css; preconnect knocks ~100-150ms off first paint. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- JSON-LD structured data. Mirrors what app/page.tsx emits via Helmet,
+         but inlined so crawlers see it without executing JS. -->
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"Organization","name":"Eliza Cloud","description":"Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud.","url":"https://www.elizacloud.ai","logo":"https://www.elizacloud.ai/og/default.png","sameAs":["https://twitter.com/elizaos","https://github.com/elizaos"],"contactPoint":{"@type":"ContactPoint","contactType":"Customer Support","url":"https://www.elizacloud.ai/dashboard/account"}}
+    </script>
+    <script type="application/ld+json">
+      {"@context":"https://schema.org","@type":"WebApplication","name":"Eliza Cloud","description":"Managed hosting, provisioning, billing, and deployment for AI agents on Eliza Cloud.","url":"https://www.elizacloud.ai","applicationCategory":"DeveloperApplication","operatingSystem":"Web","offers":{"@type":"Offer","price":"0","priceCurrency":"USD","description":"Pay-as-you-go credit system"},"featureList":["AI Text Generation","AI Image Generation","AI Video Generation","Voice Cloning","elizaOS Agent Runtime","Container Deployment","API Access"]}
+    </script>
+  </head>
+  <body class="antialiased selection:bg-[#FF5800] selection:text-white" style="background-color: #0a0a0a; color: #fafafa;">
+    <div id="root"></div>
+    <script>
+      (() => {
+        const root = document.getElementById("root");
+        if (!root) return;
+
+        const prerenderPath = root.dataset.prerenderPath;
+        if (!prerenderPath) return;
+
+        const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
+        if (currentPath === prerenderPath) return;
+
+        root.dataset.prerenderMismatch = "true";
+        if (!currentPath.startsWith("/dashboard")) {
+          root.innerHTML = `
+            <div style="min-height:100vh;background:#0a0a0a;color:#fafafa;font-family:Inter,system-ui,sans-serif;padding:1.5rem;display:grid;gap:1.5rem;align-content:start;">
+              <div style="height:4rem;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.65);"></div>
+              <main style="display:grid;gap:1.5rem;max-width:72rem;width:100%;margin:0 auto;">
+                <div style="display:grid;gap:.5rem;">
+                  <div style="height:2rem;width:16rem;max-width:70%;background:rgba(255,255,255,.08);"></div>
+                  <div style="height:1rem;width:26rem;max-width:100%;background:rgba(255,255,255,.05);"></div>
+                </div>
+                <div style="height:18rem;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);"></div>
+              </main>
+            </div>
+          `;
+          return;
+        }
+
+        root.innerHTML = `
+          <style>
+            @media (max-width: 767px) {
+              .ec-preload-sidebar { display: none !important; }
+              .ec-preload-shell { padding: .75rem !important; }
+              .ec-preload-grid { grid-template-columns: 1fr !important; }
+            }
+          </style>
+          <div style="display:flex;height:100vh;width:100%;background:#0a0a0a;color:#fafafa;font-family:Inter,system-ui,sans-serif;">
+            <div class="ec-preload-sidebar" style="width:18rem;border-right:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.45);padding:.375rem;flex:0 0 18rem;">
+              <div style="height:3.5rem;margin:0 .75rem 1rem;border-bottom:1px solid rgba(255,255,255,.08);"></div>
+              <div style="padding:1rem;display:grid;gap:.75rem;">
+                <div style="height:2.5rem;background:rgba(255,255,255,.08);"></div>
+                <div style="height:2.5rem;background:rgba(255,255,255,.05);"></div>
+                <div style="height:2.5rem;background:rgba(255,255,255,.05);"></div>
+                <div style="height:2.5rem;background:rgba(255,255,255,.05);"></div>
+              </div>
+            </div>
+            <div class="ec-preload-shell" style="flex:1;padding:.75rem;display:flex;flex-direction:column;gap:.75rem;min-width:0;">
+              <div style="height:4rem;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.65);"></div>
+              <main style="flex:1;border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.8);padding:1.5rem;display:grid;gap:1.5rem;align-content:start;">
+                <div style="display:grid;gap:.5rem;">
+                  <div style="height:1.75rem;width:14rem;background:rgba(255,255,255,.08);"></div>
+                  <div style="height:1rem;width:20rem;max-width:100%;background:rgba(255,255,255,.05);"></div>
+                </div>
+                <div class="ec-preload-grid" style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:.75rem;">
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:6rem;background:rgba(255,255,255,.05);"></div>
+                </div>
+                <div style="display:grid;gap:.5rem;">
+                  <div style="height:3rem;background:rgba(255,255,255,.05);"></div>
+                  <div style="height:3rem;background:rgba(255,255,255,.04);"></div>
+                  <div style="height:3rem;background:rgba(255,255,255,.04);"></div>
+                </div>
+              </main>
+            </div>
+          </div>
+        `;
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

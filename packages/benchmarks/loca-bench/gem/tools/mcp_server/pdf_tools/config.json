@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "pdf-tools": {
+      "command": "uvx",
+      "args": [
+        "pdf-tools-mcp",
+        "--workspace_path",
+        ".",
+        "--tempfile_dir",
+        "./.pdf_tools_tempfiles"
+      ]
+    }
+  }
+}

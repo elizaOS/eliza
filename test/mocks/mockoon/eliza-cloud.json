@@ -1,0 +1,1001 @@
+{
+  "uuid": "bbbb1111-aaaa-4000-8000-000000020122",
+  "lastMigration": 33,
+  "name": "lifeops-eliza-cloud-mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 18816,
+  "hostname": "0.0.0.0",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020104",
+      "type": "http",
+      "documentation": "POST api/v1/eliza/auth/token",
+      "method": "post",
+      "endpoint": "api/v1/eliza/auth/token",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020105",
+          "body": "{\n  \"apiKey\": \"elc_test_2026_05_09_shaw\",\n  \"expiresAt\": \"2026-08-09T00:00:00.000Z\",\n  \"agentId\": \"agent-shaw-default\"\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020106",
+          "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020107",
+          "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020108",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020109",
+      "type": "http",
+      "documentation": "GET api/v1/eliza/agents/me",
+      "method": "get",
+      "endpoint": "api/v1/eliza/agents/me",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010a",
+          "body": "{\n  \"id\": \"agent-shaw-default\",\n  \"handle\": \"shaw\",\n  \"displayName\": \"Shaw\",\n  \"tier\": \"pro\",\n  \"monetization\": {\n    \"revShare\": 0.7,\n    \"payoutCadence\": \"monthly\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010b",
+          "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010c",
+          "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010d",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002010e",
+      "type": "http",
+      "documentation": "GET api/v1/eliza/billing/balance",
+      "method": "get",
+      "endpoint": "api/v1/eliza/billing/balance",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002010f",
+          "body": "{\n  \"currency\": \"USD\",\n  \"balance\": 18.42,\n  \"reservedCredits\": 1,\n  \"lastUpdated\": \"2026-05-09T17:30:00.000Z\",\n  \"lifetimeUsage\": 124.6\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020110",
+          "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020111",
+          "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020112",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020113",
+      "type": "http",
+      "documentation": "POST api/v1/eliza/plaid/link-token",
+      "method": "post",
+      "endpoint": "api/v1/eliza/plaid/link-token",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020114",
+          "body": "{\n  \"linkToken\": \"link-sandbox-mock-2026-05-09\",\n  \"expiration\": \"2026-05-09T22:00:00.000Z\",\n  \"environment\": \"sandbox\"\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020115",
+          "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020116",
+          "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020117",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020118",
+      "type": "http",
+      "documentation": "POST api/v1/eliza/paypal/authorize",
+      "method": "post",
+      "endpoint": "api/v1/eliza/paypal/authorize",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020119",
+          "body": "{\n  \"authorizationUrl\": \"https://www.paypal.com/connect?flowEntry=static&client_id=mock&scope=openid\",\n  \"state\": \"state-mock-2026-05-09\"\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011a",
+          "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011b",
+          "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011c",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002011d",
+      "type": "http",
+      "documentation": "POST api/v1/eliza/schedule/sync",
+      "method": "post",
+      "endpoint": "api/v1/eliza/schedule/sync",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011e",
+          "body": "{\n  \"synced\": 12,\n  \"pruned\": 1,\n  \"cursor\": \"cursor-2026-05-09-schedule-end\"\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002011f",
+          "body": "{\n  \"error\": \"rate_limited\",\n  \"message\": \"Too many requests; back off and retry.\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020120",
+          "body": "{\n  \"error\": \"unauthenticated\",\n  \"message\": \"Eliza Cloud API key is missing or expired.\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020121",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020104"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020109"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002010e"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020113"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020118"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002011d"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    {
+      "key": "Content-Type",
+      "value": "application/json"
+    }
+  ],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

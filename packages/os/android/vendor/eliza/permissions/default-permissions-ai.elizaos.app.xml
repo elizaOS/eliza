@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Default runtime-permission grants for ai.elizaos.app.
+
+  PermissionController reads this on first boot to pre-grant the listed
+  dangerous permissions, so Eliza can answer calls / receive SMS / etc.
+  without showing the runtime prompt the moment the user opens the app.
+
+  fixed="true"
+    Permission cannot be revoked by the user from Settings. Use for
+    permissions that are load-bearing for the SMS/Dialer roles —
+    revoking them would leave Eliza installed-but-broken.
+
+  fixed="false"
+    Permission is granted on first boot but the user can revoke it from
+    Settings → Apps → Eliza → Permissions. Use for permissions the
+    user might reasonably want to disable case by case (mic, camera,
+    location).
+
+  Read by PermissionController from /system/etc/default-permissions/.
+  Soong module: see ../permissions/Android.bp (`prebuilt_etc`,
+    sub_dir: "default-permissions").
+-->
+<exceptions>
+    <exception package="ai.elizaos.app">
+        <permission name="android.permission.READ_CALL_LOG" fixed="true" />
+        <permission name="android.permission.WRITE_CALL_LOG" fixed="true" />
+        <permission name="android.permission.READ_PHONE_STATE" fixed="true" />
+        <permission name="android.permission.CALL_PHONE" fixed="true" />
+        <permission name="android.permission.ANSWER_PHONE_CALLS" fixed="true" />
+        <permission name="android.permission.READ_CONTACTS" fixed="true" />
+        <permission name="android.permission.WRITE_CONTACTS" fixed="true" />
+        <permission name="android.permission.READ_SMS" fixed="true" />
+        <permission name="android.permission.SEND_SMS" fixed="true" />
+        <permission name="android.permission.RECEIVE_SMS" fixed="true" />
+        <permission name="android.permission.RECEIVE_MMS" fixed="true" />
+        <permission name="android.permission.RECEIVE_WAP_PUSH" fixed="true" />
+        <permission name="android.permission.RECORD_AUDIO" fixed="false" />
+        <permission name="android.permission.CAMERA" fixed="false" />
+        <permission name="android.permission.ACCESS_FINE_LOCATION" fixed="false" />
+        <permission name="android.permission.ACCESS_COARSE_LOCATION" fixed="false" />
+        <permission name="android.permission.POST_NOTIFICATIONS" fixed="true" />
+    </exception>
+</exceptions>

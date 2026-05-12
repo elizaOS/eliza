@@ -1,0 +1,677 @@
+import type {
+  Action,
+  ActionResult,
+  HandlerCallback,
+  HandlerOptions,
+  IAgentRuntime,
+  Memory,
+  ProviderDataRecord,
+  ProviderValue,
+  State,
+} from "@elizaos/core";
+import { walletSearchAddressHandler } from "../analytics/birdeye/actions/wallet-search-address.js";
+import { tokenInfoHandler } from "../analytics/token-info/action.js";
+import {
+  WALLET_BACKEND_SERVICE_TYPE,
+  type WalletBackendService,
+} from "../services/wallet-backend-service.js";
+import type {
+  WalletRouterFailure,
+  WalletRouterParams,
+  WalletRouterResult,
+  WalletRouterSubaction,
+} from "../types/wallet-router.js";
+import {
+  isWalletRouterSubaction,
+  parseWalletRouterParams,
+} from "../types/wallet-router.js";
+
+const LEGACY_SWAP_ACTIONS = new Set([
+  "SWAP",
+  "SWAP_SOLANA",
+  "WALLET_SWAP",
+  "TOKEN_SWAP",
+]);
+
+const LEGACY_TRANSFER_ACTIONS = new Set([
+  "TRANSFER",
+  "TRANSFER_TOKEN",
+  "WALLET_TRANSFER",
+  "SEND_TOKENS",
+  "PREPARE_TRANSFER",
+]);
+
+const LEGACY_BRIDGE_ACTIONS = new Set(["CROSS_CHAIN_TRANSFER"]);
+const LEGACY_GOV_ACTIONS = new Set(["WALLET_GOV"]);
+const LEGACY_TOKEN_INFO_ACTIONS = new Set(["TOKEN_INFO"]);
+const LEGACY_SEARCH_ADDRESS_ACTIONS = new Set([
+  "BIRDEYE_SEARCH",
+  "BIRDEYE_LOOKUP",
+  "WALLET_SEARCH_ADDRESS",
+]);
+const GOV_OPS = new Set(["propose", "vote", "queue", "execute"]);
+
+const ANALYTICS_SUBACTIONS = ["token_info", "search_address"] as const;
+type WalletAnalyticsSubaction = (typeof ANALYTICS_SUBACTIONS)[number];
+
+const WALLET_SUBACTIONS = [
+  "transfer",
+  "swap",
+  "bridge",
+  "gov",
+  ...ANALYTICS_SUBACTIONS,
+] as const;
+type WalletSubaction = (typeof WALLET_SUBACTIONS)[number];
+
+function isWalletAnalyticsSubaction(
+  value: unknown,
+): value is WalletAnalyticsSubaction {
+  return (
+    typeof value === "string" &&
+    (ANALYTICS_SUBACTIONS as readonly string[]).includes(value)
+  );
+}
+
+function isWalletSubaction(value: unknown): value is WalletSubaction {
+  return isWalletRouterSubaction(value) || isWalletAnalyticsSubaction(value);
+}
+
+function selectedContextMatches(
+  state: State | undefined,
+  contexts: readonly string[],
+): boolean {
+  const selected = new Set<string>();
+  const collect = (value: unknown) => {
+    if (!Array.isArray(value)) return;
+    for (const item of value) {
+      if (typeof item === "string") selected.add(item);
+    }
+  };
+  collect(
+    (state?.values as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  collect(
+    (state?.data as Record<string, unknown> | undefined)?.selectedContexts,
+  );
+  const contextObject = (state?.data as Record<string, unknown> | undefined)
+    ?.contextObject as
+    | {
+        trajectoryPrefix?: { selectedContexts?: unknown };
+        metadata?: { selectedContexts?: unknown };
+      }
+    | undefined;
+  collect(contextObject?.trajectoryPrefix?.selectedContexts);
+  collect(contextObject?.metadata?.selectedContexts);
+  return contexts.some((context) => selected.has(context));
+}
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function legacySubactionFromName(value: unknown): WalletSubaction | undefined {
+  if (typeof value !== "string") return undefined;
+  const upper = value.toUpperCase();
+  if (LEGACY_SWAP_ACTIONS.has(upper)) return "swap";
+  if (LEGACY_TRANSFER_ACTIONS.has(upper)) return "transfer";
+  if (LEGACY_BRIDGE_ACTIONS.has(upper)) return "bridge";
+  if (LEGACY_GOV_ACTIONS.has(upper)) return "gov";
+  if (LEGACY_TOKEN_INFO_ACTIONS.has(upper)) return "token_info";
+  if (LEGACY_SEARCH_ADDRESS_ACTIONS.has(upper)) return "search_address";
+  return undefined;
+}
+
+function normalizedGovOp(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase();
+  return GOV_OPS.has(normalized) ? normalized : undefined;
+}
+
+function normalizeSubactionValue(value: unknown): WalletSubaction | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  if ((WALLET_SUBACTIONS as readonly string[]).includes(normalized as string)) {
+    return normalized as WalletSubaction;
+  }
+  return undefined;
+}
+
+/**
+ * Pull the discriminator from raw params.
+ *
+ * Schema-canonical name is `action`. The dispatcher additionally accepts
+ * `subaction` (legacy) and other historical aliases for compatibility.
+ */
+function resolveSubaction(
+  raw: Record<string, unknown>,
+): WalletSubaction | undefined {
+  const discriminator =
+    normalizeSubactionValue(raw.action) ??
+    normalizeSubactionValue(raw.subaction) ??
+    normalizeSubactionValue(raw.operation) ??
+    normalizeSubactionValue(raw.actionType);
+  if (discriminator) return discriminator;
+
+  const op = normalizedGovOp(raw.op ?? raw.govOp);
+  if (op) return "gov";
+
+  return legacySubactionFromName(raw.action ?? raw.name);
+}
+
+function normalizeRawParams(
+  raw: Record<string, unknown>,
+): Record<string, unknown> {
+  const subaction = resolveSubaction(raw);
+  const op = normalizedGovOp(raw.op ?? raw.govOp);
+  return {
+    subaction,
+    chain: raw.chain ?? raw.fromChain ?? raw.network,
+    toChain:
+      raw.toChain ?? raw.toNetwork ?? raw.destinationChain ?? raw.targetChain,
+    fromToken:
+      raw.fromToken ??
+      raw.inputToken ??
+      raw.inputTokenCA ??
+      raw.inputTokenSymbol ??
+      raw.token ??
+      raw.tokenAddress,
+    toToken:
+      raw.toToken ??
+      raw.outputToken ??
+      raw.outputTokenCA ??
+      raw.outputTokenSymbol,
+    amount: raw.amount,
+    recipient: raw.recipient ?? raw.toAddress ?? raw.to,
+    slippageBps: raw.slippageBps ?? raw.slippage,
+    mode: raw.mode ?? (raw.confirmed === true ? "execute" : undefined),
+    dryRun: raw.dryRun ?? raw.dry_run,
+    op,
+    governor: raw.governor,
+    proposalId: raw.proposalId,
+    support: raw.support,
+    targets: raw.targets,
+    values: raw.values,
+    calldatas: raw.calldatas,
+    description: raw.description,
+  };
+}
+
+function extractRawParams(
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions | Record<string, unknown>,
+): Record<string, unknown> | null {
+  const optionRecord = objectRecord(options);
+  const optionParams = objectRecord(optionRecord?.parameters);
+  if (optionParams) return optionParams;
+
+  if (
+    optionRecord &&
+    ("action" in optionRecord ||
+      "subaction" in optionRecord ||
+      "name" in optionRecord)
+  ) {
+    return optionRecord;
+  }
+
+  const stateRecord = objectRecord(state);
+  const stateParams =
+    objectRecord(stateRecord?.walletRouterParams) ??
+    objectRecord(stateRecord?.walletCanonicalParams);
+  if (stateParams) return stateParams;
+
+  return objectRecord(message.content);
+}
+
+function toProviderValue(value: unknown): ProviderValue {
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (value === undefined) {
+    return undefined;
+  }
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => toProviderValue(item));
+  }
+  if (typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        toProviderValue(item),
+      ]),
+    );
+  }
+  return String(value);
+}
+
+function toProviderRecord(value: unknown): ProviderDataRecord {
+  const converted = toProviderValue(value);
+  return converted && typeof converted === "object" && !Array.isArray(converted)
+    ? (converted as ProviderDataRecord)
+    : { value: converted };
+}
+
+function formatFailure(failure: WalletRouterFailure): string {
+  if (failure.error === "AMBIGUOUS_CHAIN" && failure.candidates?.length) {
+    const chains = failure.candidates
+      .map((candidate) => `${candidate.chain} (${candidate.name})`)
+      .join(", ");
+    return `${failure.detail} Available chains: ${chains}.`;
+  }
+  if (failure.error === "UNSUPPORTED_CHAIN" && failure.candidates?.length) {
+    const chains = failure.candidates
+      .map((candidate) => candidate.chain)
+      .join(", ");
+    return `${failure.detail} Supported chains: ${chains}.`;
+  }
+  return failure.detail;
+}
+
+function resultText(result: WalletRouterResult): string {
+  if (!result.ok) {
+    return formatFailure(result);
+  }
+  const execution = result.result;
+  if (execution.status === "prepared") {
+    const dryRunText = execution.dryRun ? "Dry run prepared" : "Prepared";
+    return `${dryRunText} ${execution.subaction} on ${result.handler.chain}.`;
+  }
+  const id = execution.transactionHash ?? execution.signature;
+  return `Submitted ${execution.subaction} on ${result.handler.chain}${id ? `: ${id}` : "."}`;
+}
+
+function serviceFromRuntime(
+  runtime: IAgentRuntime,
+): WalletBackendService | null {
+  const service = runtime.getService(WALLET_BACKEND_SERVICE_TYPE);
+  if (
+    service &&
+    typeof (service as WalletBackendService).routeWalletAction === "function"
+  ) {
+    return service as WalletBackendService;
+  }
+  return null;
+}
+
+async function parseRouterParams(
+  message: Memory,
+  state?: State,
+  options?: HandlerOptions | Record<string, unknown>,
+): Promise<WalletRouterParams> {
+  const raw = extractRawParams(message, state, options);
+  return parseWalletRouterParams(normalizeRawParams(raw ?? {}));
+}
+
+async function runWalletRouter(
+  runtime: IAgentRuntime,
+  message: Memory,
+  state: State | undefined,
+  options: HandlerOptions | Record<string, unknown> | undefined,
+  callback: HandlerCallback | undefined,
+): Promise<ActionResult> {
+  let params: WalletRouterParams;
+  try {
+    params = await parseRouterParams(message, state, options);
+  } catch (error) {
+    const text = `Invalid wallet parameters: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    await callback?.({ text, content: { error: "INVALID_PARAMS" } });
+    return {
+      success: false,
+      text,
+      data: { error: "INVALID_PARAMS" },
+    };
+  }
+
+  const service = serviceFromRuntime(runtime);
+  if (!service) {
+    const text = "Wallet router service is not available.";
+    await callback?.({ text, content: { error: "SERVICE_UNAVAILABLE" } });
+    return {
+      success: false,
+      text,
+      data: { error: "SERVICE_UNAVAILABLE" },
+    };
+  }
+
+  const routed = await service.routeWalletAction(params);
+  const text = resultText(routed);
+  const data = toProviderRecord(
+    routed.ok
+      ? {
+          ...routed.result,
+          handler: routed.handler,
+        }
+      : {
+          error: routed.error,
+          detail: routed.detail,
+          candidates: routed.candidates,
+        },
+  );
+
+  await callback?.({
+    text,
+    content: {
+      success: routed.ok,
+      ...data,
+    },
+  });
+
+  return {
+    success: routed.ok,
+    text,
+    values: routed.ok
+      ? {
+          walletActionSucceeded: routed.result.status === "submitted",
+          walletActionPrepared: routed.result.status === "prepared",
+          walletChain: routed.handler.chain,
+          walletSubaction: routed.result
+            .subaction satisfies WalletRouterSubaction,
+        }
+      : {
+          walletActionError: routed.error,
+        },
+    data,
+  };
+}
+
+export const walletRouterAction: Action = {
+  name: "WALLET",
+  description:
+    "Route wallet operations through registered chain handlers and analytics providers. Use action=transfer|swap|bridge|gov for on-chain ops (params: chain, toChain, fromToken, toToken, amount, recipient, slippageBps, mode, dryRun); action=token_info for token/market data (params: target, query, address, chain); action=search_address for Birdeye wallet/portfolio lookup (param: address).",
+  descriptionCompressed:
+    "WALLET umbrella: action=transfer|swap|bridge|gov (chain ops) | token_info (market data) | search_address (Birdeye portfolio).",
+  contexts: ["finance", "crypto", "wallet"],
+  contextGate: { anyOf: ["finance", "crypto", "wallet"] },
+  roleGate: { minRole: "USER" },
+  similes: [
+    "SWAP",
+    "SWAP_SOLANA",
+    "TRANSFER",
+    "TRANSFER_TOKEN",
+    "WALLET_SWAP",
+    "WALLET_TRANSFER",
+    "CROSS_CHAIN_TRANSFER",
+    "PREPARE_TRANSFER",
+    "WALLET_ACTION",
+    "WALLET_GOV",
+    "TOKEN_INFO",
+    "BIRDEYE_LOOKUP",
+    "BIRDEYE_SEARCH",
+    "WALLET_SEARCH_ADDRESS",
+  ],
+  parameters: [
+    {
+      name: "action",
+      description:
+        "Wallet operation to perform. Write ops use the chain handler registry; analytics ops use the token-info provider registry.",
+      required: true,
+      schema: { type: "string", enum: [...WALLET_SUBACTIONS] },
+      examples: [
+        "transfer",
+        "swap",
+        "bridge",
+        "gov",
+        "token_info",
+        "search_address",
+      ],
+    },
+    {
+      name: "target",
+      description:
+        "Chain id/name for write ops (source chain for bridge); analytics provider for token_info (dexscreener, birdeye, coingecko). Omit only when one handler/provider supports the action.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["base", "solana", "8453", "dexscreener", "birdeye"],
+    },
+    {
+      name: "toChain",
+      description: "Destination chain for bridge.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["arbitrum", "optimism", "base"],
+    },
+    {
+      name: "fromToken",
+      description: "Source token symbol, native token alias, or token address.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["ETH", "SOL", "USDC"],
+    },
+    {
+      name: "toToken",
+      description:
+        "Destination token symbol, native token alias, or token address.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["USDC", "SOL"],
+    },
+    {
+      name: "amount",
+      description:
+        "Human-readable token amount. Required for transfer, swap, and bridge.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["0.1", "25"],
+    },
+    {
+      name: "recipient",
+      description: "Recipient address for transfer.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["0x742d35Cc6634C0532925a3b844Bc454e4438f44e"],
+    },
+    {
+      name: "slippageBps",
+      description: "Maximum swap slippage in basis points.",
+      required: false,
+      schema: { type: "number" },
+      examples: [100],
+    },
+    {
+      name: "mode",
+      description: "Prepare without submitting, or execute the operation.",
+      required: false,
+      schema: {
+        type: "string",
+        enum: ["prepare", "execute"],
+        default: "prepare",
+      },
+      examples: ["prepare", "execute"],
+    },
+    {
+      name: "dryRun",
+      description: "Return metadata without signing or sending.",
+      required: false,
+      schema: { type: "boolean", default: false },
+      examples: [true, false],
+    },
+    {
+      name: "op",
+      description: "Governance operation when action is gov.",
+      required: false,
+      schema: { type: "string", enum: ["propose", "vote", "queue", "execute"] },
+      examples: ["vote"],
+    },
+    {
+      name: "governor",
+      description: "Governor contract address for governance operations.",
+      required: false,
+      schema: { type: "string" },
+      examples: ["0x742d35Cc6634C0532925a3b844Bc454e4438f44e"],
+    },
+    {
+      name: "proposalId",
+      description: "Proposal id for governance vote, queue, or execute.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "support",
+      description: "Vote support value for governance vote operations.",
+      required: false,
+      schema: { type: "number" },
+      examples: [1],
+    },
+    {
+      name: "targets",
+      description:
+        "Target contract addresses for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "values",
+      description:
+        "Native token values as strings for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "calldatas",
+      description:
+        "Hex calldata values for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "array", items: { type: "string" } },
+    },
+    {
+      name: "description",
+      description:
+        "Proposal description for governance propose, queue, or execute.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "query",
+      description:
+        "Search query, coin id, or token symbol for token_info searches.",
+      required: false,
+      schema: { type: "string" },
+    },
+    {
+      name: "address",
+      description:
+        "Wallet address for search_address; token contract address for token_info token lookups.",
+      required: false,
+      schema: { type: "string" },
+    },
+  ],
+  validate: async (_runtime, message, state, options) => {
+    if (!serviceFromRuntime(_runtime)) {
+      return false;
+    }
+    const raw = extractRawParams(message, state, options);
+    if (raw) {
+      const subaction = resolveSubaction(raw);
+      if (isWalletSubaction(subaction)) {
+        return true;
+      }
+    }
+    if (selectedContextMatches(state, ["finance", "crypto", "wallet"])) {
+      return true;
+    }
+    return false;
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state?: State,
+    options?: HandlerOptions | Record<string, unknown>,
+    callback?: HandlerCallback,
+  ): Promise<ActionResult> => {
+    const raw = extractRawParams(message, state, options) ?? {};
+    const subaction = resolveSubaction(raw);
+
+    if (subaction === "token_info") {
+      return tokenInfoHandler(runtime, message, state, options, callback);
+    }
+    if (subaction === "search_address") {
+      return walletSearchAddressHandler(
+        runtime,
+        message,
+        state,
+        options,
+        callback,
+      );
+    }
+
+    return runWalletRouter(runtime, message, state, options, callback);
+  },
+  examples: [
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Send 0.2 ETH on Base to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Preparing the Base transfer.",
+          action: "WALLET",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Swap 1 SOL to USDC on Solana with a dry run first",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Preparing a Solana swap dry run.",
+          action: "WALLET",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: { text: "Look up the PEPE token on DexScreener" },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Searching DexScreener.",
+          action: "WALLET",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{user1}}",
+        content: {
+          text: "Show the Birdeye portfolio for 9xQeWvG816bUx9EPfWJXn4xHLh1BaK7Z7QXDXuGpS9SW",
+        },
+      },
+      {
+        name: "{{agent}}",
+        content: {
+          text: "Fetching the Birdeye portfolio.",
+          action: "WALLET",
+        },
+      },
+    ],
+  ],
+};
+
+export default walletRouterAction;

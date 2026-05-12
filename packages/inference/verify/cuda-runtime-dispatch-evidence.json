@@ -1,0 +1,98 @@
+{
+  "schemaVersion": 1,
+  "backend": "cuda",
+  "platform": "linux",
+  "sourceOfTruth": "Runtime-ready means a built llama.cpp fork graph route selects the shipped CUDA kernel and a numeric smoke test passes. nvcc compilation and exported symbols are not enough. For turbo3/turbo4 the gate is a built-fork llama-bench run with --cache-type-k tbq3_0/tbq4_0 on real NVIDIA hardware; for qjl/polar/turbo3_tcq (which the fork registers as score-side ops, not --cache-type-k storage aliases — same as the Vulkan path) the gate is make cuda-verify, which ports the same C reference algorithm into __device__ kernels operating on the on-disk fixture byte layouts and matched the references 8/8 on the RTX 5080.",
+  "status": "runtime-ready",
+  "runtimeReady": true,
+  "generatedFrom": "/home/shaw/eliza/eliza/packages/inference/verify/hardware-results/cuda-linux-rtx5080-2026-05-11.json",
+  "target": "linux-x64-cuda",
+  "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, compute capability 12.0; driver 580.142, CUDA runtime 13.0). Build: nvcc 12.0 (distro) — sm_90/89/86/80 SASS + compute_90 PTX, driver JIT-compiles the PTX to sm_120 SASS at load. nvcc >= 12.8 would add native sm_120 SASS.",
+  "atCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
+  "smokeTarget": "cuda-verify",
+  "smokeCommand": "make -C packages/inference/verify cuda-verify cuda-verify-fused",
+  "evidenceDate": "2026-05-11",
+  "kernels": {
+    "turbo3": {
+      "runtimeCapabilityKey": "turbo3",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
+      "smokeTarget": "cuda-verify",
+      "smokeCommand": "make -C packages/inference/verify cuda-verify && llama-bench -ngl 99 --cache-type-k tbq3_0 --cache-type-v tbq3_0 -fa 1",
+      "fixtureScores": 8,
+      "maxDiff": 2.861e-6,
+      "graphRoutes": ["GGML_OP_ATTN_SCORE_TBQ/turbo3 (--cache-type-k tbq3_0, backend=CUDA, pp64 1014 t/s on RTX 5080)"],
+      "evidenceDate": "2026-05-11"
+    },
+    "turbo4": {
+      "runtimeCapabilityKey": "turbo4",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
+      "smokeTarget": "cuda-verify",
+      "smokeCommand": "make -C packages/inference/verify cuda-verify && llama-bench -ngl 99 --cache-type-k tbq4_0 --cache-type-v tbq4_0 -fa 1",
+      "fixtureScores": 8,
+      "maxDiff": 5.722e-6,
+      "graphRoutes": ["GGML_OP_ATTN_SCORE_TBQ/turbo4 (--cache-type-k tbq4_0, backend=CUDA, pp64 1679 t/s on RTX 5080)"],
+      "evidenceDate": "2026-05-11"
+    },
+    "turbo3_tcq": {
+      "runtimeCapabilityKey": "turbo3_tcq",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_TBQ",
+      "smokeTarget": "cuda-verify",
+      "smokeCommand": "make -C packages/inference/verify cuda-verify",
+      "fixtureScores": 8,
+      "maxDiff": 5.722e-6,
+      "graphRoutes": ["GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq (cuda_verify fixture-parity, sliding 9-bit TCQ window decode, backend=CUDA, RTX 5080)"],
+      "evidenceDate": "2026-05-11"
+    },
+    "qjl": {
+      "runtimeCapabilityKey": "qjl_full",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_QJL",
+      "smokeTarget": "cuda-verify",
+      "smokeCommand": "make -C packages/inference/verify cuda-verify",
+      "fixtureScores": 8,
+      "maxDiff": 9.537e-6,
+      "graphRoutes": ["GGML_OP_ATTN_SCORE_QJL (cuda_verify fixture-parity, backend=CUDA, RTX 5080; DP4A int8-sketch cross-check 1.43e-1 round-trip, expected)"],
+      "evidenceDate": "2026-05-11"
+    },
+    "polar": {
+      "runtimeCapabilityKey": "polarquant",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_ATTN_SCORE_POLAR",
+      "smokeTarget": "cuda-verify",
+      "smokeCommand": "make -C packages/inference/verify cuda-verify",
+      "fixtureScores": 16,
+      "maxDiff": 7.629e-6,
+      "graphRoutes": [
+        "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0 (cuda_verify polar.json, backend=CUDA, RTX 5080)",
+        "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1 (cuda_verify polar_qjl.json, backend=CUDA, RTX 5080)"
+      ],
+      "evidenceDate": "2026-05-11"
+    },
+    "fusedAttn": {
+      "capabilityKey": "fused_attn",
+      "status": "runtime-ready",
+      "runtimeReady": true,
+      "graphOp": "GGML_OP_FUSED_ATTN_QJL_TBQ",
+      "smokeTarget": "cuda-verify-fused",
+      "smokeCommand": "make -C packages/inference/verify cuda-verify-fused",
+      "standaloneVerifyTarget": "cuda-verify-fused",
+      "fixtureScores": 1920,
+      "maxDiff": 3.278e-7,
+      "standaloneMaxDiff": 3.278e-7,
+      "graphRoutes": ["GGML_OP_FUSED_ATTN_QJL_TBQ (cuda_verify fused_attn_qjl_tbq.json, 4 GQA/n_kv cases n_kv 64/512/256/128 GQA 1/2/4, backend=CUDA, RTX 5080; production cuda/fused-attn-qjl-tbq.cu compiled into the fork's ggml-cuda/ via -DGGML_CUDA_FUSED_ATTN_QJL=ON and patchCudaKernels)"],
+      "generatedFrom": "/home/shaw/eliza/eliza/packages/inference/verify/hardware-results/cuda-linux-rtx5080-2026-05-11.json",
+      "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell sm_120, compute_90 PTX JIT)",
+      "atCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
+      "note": "Fused QJL-K score -> online softmax -> TBQ3-V mix, score vector never materialized. The standalone cuda/fused-attn-qjl-tbq.cu kernel (P0 shared-mem V-decode + P1 register Q-hoist optimized) compiles into the fork's libggml-cuda via the kernel-patches hook + -DGGML_CUDA_FUSED_ATTN_QJL=ON; the cuda_verify harness ports the same fused algorithm into a __device__ kernel and matched eliza_fused_attn_qjl_tbq3 1920/1920 outputs on the RTX 5080. fused_attn is an optimization on top of the five required kernels (AGENTS.md §3) and is intentionally NOT in requiredRuntimeCapabilityKeys / manifestKernelNames.",
+      "evidenceDate": "2026-05-11"
+    }
+  }
+}

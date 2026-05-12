@@ -1,0 +1,4 @@
+dist/* usr/lib/elizaos-app/dist/
+elizaos-app.mjs usr/lib/elizaos-app/
+package.json usr/lib/elizaos-app/
+plugins.json usr/lib/elizaos-app/

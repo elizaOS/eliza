@@ -1,0 +1,25 @@
+{
+  "id": "localdb",
+  "name": "Localdb",
+  "description": "Simple JSON-based local database storage for elizaOS - no SQL, no migrations",
+  "npmName": "@elizaos/plugin-localdb",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["database", "storage", "localdb"],
+  "config": {},
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "card",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-localdb#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-localdb"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "database"
+}

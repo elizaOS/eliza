@@ -1,0 +1,110 @@
+{
+  "name": "@elizaos/plugin-imessage",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "auto-enable.ts"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts",
+      "capabilities": [
+        "messaging"
+      ]
+    }
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "test:watch": "vitest --config vitest.config.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "lint:check": "bunx @biomejs/biome check .",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "2.0.0-beta.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^22.19.17",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js via main entry point"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "IMESSAGE_CLI_PATH": {
+        "type": "string",
+        "description": "Path to CLI binary",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_DB_PATH": {
+        "type": "string",
+        "description": "Path to database file",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_POLL_INTERVAL_MS": {
+        "type": "number",
+        "description": "Polling interval in milliseconds",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_DM_POLICY": {
+        "type": "string",
+        "description": "DM policy (e.g. allow, deny, allowlist)",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_GROUP_POLICY": {
+        "type": "string",
+        "description": "Group message policy",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_ALLOW_FROM": {
+        "type": "string",
+        "description": "Comma-separated allowed sender list",
+        "required": false,
+        "sensitive": false
+      },
+      "IMESSAGE_ENABLED": {
+        "type": "boolean",
+        "description": "Enable or disable this feature",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

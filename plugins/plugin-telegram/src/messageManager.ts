@@ -1,0 +1,1319 @@
+import fs from "node:fs";
+import {
+  ChannelType,
+  type Content,
+  createUniqueUuid,
+  EventType,
+  type HandlerCallback,
+  type IAgentRuntime,
+  lifeOpsPassiveConnectorsEnabled,
+  logger,
+  type Media,
+  type Memory,
+  type MessagePayload,
+  ModelType,
+  ServiceType,
+  type UUID,
+} from "@elizaos/core";
+import type {
+  Chat,
+  Document,
+  Message,
+  ReactionType,
+  Update,
+} from "@telegraf/types";
+import type { Context, NarrowedContext, Telegraf } from "telegraf";
+import { Markup } from "telegraf";
+import {
+  type TelegramContent,
+  TelegramEventTypes,
+  type TelegramMessageSentPayload,
+  type TelegramReactionReceivedPayload,
+} from "./types";
+import {
+  cleanText,
+  convertMarkdownToTelegram,
+  convertToTelegramButtons,
+} from "./utils";
+
+/**
+ * Interface for structured document processing results.
+ */
+interface DocumentProcessingResult {
+  title: string;
+  fullText: string;
+  formattedDescription: string;
+  fileName: string;
+  mimeType: string | undefined;
+  fileSize: number | undefined;
+  error?: string;
+}
+
+/**
+ * Enum representing different types of media.
+ * @enum { string }
+ * @readonly
+ */
+export enum MediaType {
+  PHOTO = "photo",
+  VIDEO = "video",
+  DOCUMENT = "document",
+  AUDIO = "audio",
+  ANIMATION = "animation",
+}
+
+const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
+
+type PdfTextService = {
+  convertPdfToText(pdfBuffer: Buffer): Promise<string>;
+};
+
+function isPdfTextService(service: unknown): service is PdfTextService {
+  return (
+    typeof service === "object" &&
+    service !== null &&
+    typeof (service as { convertPdfToText?: unknown }).convertPdfToText ===
+      "function"
+  );
+}
+
+type TelegramMediaSender = (
+  chatId: number | string,
+  media: string | { source: fs.ReadStream },
+  extra?: { caption?: string },
+) => Promise<unknown>;
+
+const getChannelType = (chat: Chat): ChannelType => {
+  const chatType = chat.type;
+
+  // Use a switch statement for clarity and exhaustive checks
+  switch (chatType) {
+    case "private":
+      return ChannelType.DM;
+    case "group":
+    case "supergroup":
+    case "channel":
+      return ChannelType.GROUP;
+    default:
+      throw new Error(`Unrecognized Telegram chat type: ${String(chatType)}`);
+  }
+};
+
+/**
+ * Class representing a message manager.
+ * @class
+ */
+export class MessageManager {
+  public bot: Telegraf<Context>;
+  protected runtime: IAgentRuntime;
+  protected accountId: string;
+
+  /**
+   * Constructor for creating a new instance of a BotAgent.
+   *
+   * @param {Telegraf<Context>} bot - The Telegraf instance used for interacting with the bot platform.
+   * @param {IAgentRuntime} runtime - The runtime environment for the agent.
+   */
+  constructor(
+    bot: Telegraf<Context>,
+    runtime: IAgentRuntime,
+    accountId = "default",
+  ) {
+    this.bot = bot;
+    this.runtime = runtime;
+    this.accountId = accountId;
+  }
+
+  private scopedTelegramKey(key: string): string {
+    return this.accountId === "default" ? key : `${this.accountId}:${key}`;
+  }
+
+  /**
+   * Process an image from a Telegram message to extract the image URL and description.
+   *
+   * @param {Message} message - The Telegram message object containing the image.
+   * @returns {Promise<{ description: string } | null>} The description of the processed image or null if no image found.
+   */
+  async processImage(
+    message: Message,
+  ): Promise<{ description: string } | null> {
+    try {
+      let imageUrl: string | null = null;
+
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          messageId: message.message_id,
+        },
+        "Processing image from message",
+      );
+
+      if ("photo" in message && message.photo?.length > 0) {
+        const photo = message.photo[message.photo.length - 1];
+        const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
+        imageUrl = fileLink.toString();
+      } else if (
+        "document" in message &&
+        message.document?.mime_type?.startsWith("image/") &&
+        !message.document?.mime_type?.startsWith("application/pdf")
+      ) {
+        const fileLink = await this.bot.telegram.getFileLink(
+          message.document.file_id,
+        );
+        imageUrl = fileLink.toString();
+      }
+
+      if (imageUrl) {
+        const { title, description } = await this.runtime.useModel(
+          ModelType.IMAGE_DESCRIPTION,
+          imageUrl,
+        );
+        return { description: `[Image: ${title}\n${description}]` };
+      }
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error processing image",
+      );
+    }
+
+    return null;
+  }
+
+  /**
+   * Process a document from a Telegram message to extract the document URL and description.
+   * Handles PDFs and other document types by converting them to text when possible.
+   *
+   * @param {Message} message - The Telegram message object containing the document.
+   * @returns {Promise<{ description: string } | null>} The description of the processed document or null if no document found.
+   */
+  async processDocument(
+    message: Message,
+  ): Promise<DocumentProcessingResult | null> {
+    try {
+      if (!("document" in message) || !message.document) {
+        return null;
+      }
+
+      const document = message.document;
+      const fileLink = await this.bot.telegram.getFileLink(document.file_id);
+      const documentUrl = fileLink.toString();
+
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          fileName: document.file_name,
+          mimeType: document.mime_type,
+          fileSize: document.file_size,
+        },
+        "Processing document",
+      );
+
+      // Centralized document processing based on MIME type
+      const documentProcessor = this.getDocumentProcessor(document.mime_type);
+      if (documentProcessor) {
+        return await documentProcessor(document, documentUrl);
+      }
+
+      // Generic fallback for unsupported types
+      return {
+        title: `Document: ${document.file_name || "Unknown Document"}`,
+        fullText: "",
+        formattedDescription: `[Document: ${document.file_name || "Unknown Document"}\nType: ${document.mime_type || "unknown"}\nSize: ${document.file_size || 0} bytes]`,
+        fileName: document.file_name || "Unknown Document",
+        mimeType: document.mime_type,
+        fileSize: document.file_size,
+      };
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error processing document",
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Get the appropriate document processor based on MIME type.
+   */
+  private getDocumentProcessor(
+    mimeType?: string,
+  ):
+    | ((document: Document, url: string) => Promise<DocumentProcessingResult>)
+    | null {
+    if (!mimeType) {
+      return null;
+    }
+
+    const processors = {
+      "application/pdf": this.processPdfDocument.bind(this),
+      "text/": this.processTextDocument.bind(this), // covers text/plain, text/csv, text/markdown, etc.
+      "application/json": this.processTextDocument.bind(this),
+    };
+
+    for (const [pattern, processor] of Object.entries(processors)) {
+      if (mimeType.startsWith(pattern)) {
+        return processor;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Process PDF documents by converting them to text.
+   */
+  private async processPdfDocument(
+    document: Document,
+    documentUrl: string,
+  ): Promise<DocumentProcessingResult> {
+    try {
+      const pdfServiceCandidate = this.runtime.getService(ServiceType.PDF);
+      const pdfService = isPdfTextService(pdfServiceCandidate)
+        ? pdfServiceCandidate
+        : null;
+      if (!pdfService) {
+        logger.warn(
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "PDF service not available, using fallback",
+        );
+        return {
+          title: `PDF Document: ${document.file_name || "Unknown Document"}`,
+          fullText: "",
+          formattedDescription: `[PDF Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nUnable to extract text content]`,
+          fileName: document.file_name || "Unknown Document",
+          mimeType: document.mime_type,
+          fileSize: document.file_size,
+        };
+      }
+
+      const response = await fetch(documentUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch PDF: ${response.status}`);
+      }
+
+      const pdfBuffer = await response.arrayBuffer();
+      const text = await pdfService.convertPdfToText(Buffer.from(pdfBuffer));
+
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          fileName: document.file_name,
+          charactersExtracted: text.length,
+        },
+        "PDF processed successfully",
+      );
+      return {
+        title: document.file_name || "Unknown Document",
+        fullText: text,
+        formattedDescription: `[PDF Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nText extracted successfully: ${text.length} characters]`,
+        fileName: document.file_name || "Unknown Document",
+        mimeType: document.mime_type,
+        fileSize: document.file_size,
+      };
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          fileName: document.file_name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error processing PDF document",
+      );
+      return {
+        title: `PDF Document: ${document.file_name || "Unknown Document"}`,
+        fullText: "",
+        formattedDescription: `[PDF Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nError: Unable to extract text content]`,
+        fileName: document.file_name || "Unknown Document",
+        mimeType: document.mime_type,
+        fileSize: document.file_size,
+      };
+    }
+  }
+
+  /**
+   * Process text documents by fetching their content.
+   */
+  private async processTextDocument(
+    document: Document,
+    documentUrl: string,
+  ): Promise<DocumentProcessingResult> {
+    try {
+      const response = await fetch(documentUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch text document: ${response.status}`);
+      }
+
+      const text = await response.text();
+
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          fileName: document.file_name,
+          charactersExtracted: text.length,
+        },
+        "Text document processed successfully",
+      );
+      return {
+        title: document.file_name || "Unknown Document",
+        fullText: text,
+        formattedDescription: `[Text Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nText extracted successfully: ${text.length} characters]`,
+        fileName: document.file_name || "Unknown Document",
+        mimeType: document.mime_type,
+        fileSize: document.file_size,
+      };
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          fileName: document.file_name,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error processing text document",
+      );
+      return {
+        title: `Text Document: ${document.file_name || "Unknown Document"}`,
+        fullText: "",
+        formattedDescription: `[Text Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nError: Unable to read content]`,
+        fileName: document.file_name || "Unknown Document",
+        mimeType: document.mime_type,
+        fileSize: document.file_size,
+      };
+    }
+  }
+
+  /**
+   * Processes the message content, documents, and images to generate
+   * processed content and media attachments.
+   *
+   * @param {Message} message The message to process
+   * @returns {Promise<{ processedContent: string; attachments: Media[] }>} Processed content and media attachments
+   */
+  async processMessage(
+    message: Message,
+  ): Promise<{ processedContent: string; attachments: Media[] }> {
+    let processedContent = "";
+    const attachments: Media[] = [];
+
+    // Get message text
+    if ("text" in message && message.text) {
+      processedContent = message.text;
+    } else if ("caption" in message && message.caption) {
+      processedContent = message.caption as string;
+    }
+
+    // Process documents
+    if ("document" in message && message.document) {
+      const document = message.document;
+      const documentInfo = await this.processDocument(message);
+
+      if (documentInfo) {
+        try {
+          const fileLink = await this.bot.telegram.getFileLink(
+            document.file_id,
+          );
+
+          // Use structured data directly instead of regex parsing
+          const title = documentInfo.title;
+          const fullText = documentInfo.fullText;
+
+          // Add document content to processedContent so agent can access it
+          if (fullText) {
+            const documentContent = `\n\n--- DOCUMENT CONTENT ---\nTitle: ${title}\n\nFull Content:\n${fullText}\n--- END DOCUMENT ---\n\n`;
+            processedContent += documentContent;
+          }
+
+          attachments.push({
+            id: document.file_id,
+            url: fileLink.toString(),
+            title,
+            source: document.mime_type?.startsWith("application/pdf")
+              ? "PDF"
+              : "Document",
+            description: documentInfo.formattedDescription,
+            text: fullText,
+          });
+          logger.debug(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              fileName: documentInfo.fileName,
+            },
+            "Document processed successfully",
+          );
+        } catch (error) {
+          logger.error(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              fileName: documentInfo.fileName,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Error processing document",
+          );
+          // Add a fallback attachment even if processing failed
+          attachments.push({
+            id: document.file_id,
+            url: "",
+            title: `Document: ${documentInfo.fileName}`,
+            source: "Document",
+            description: `Document processing failed: ${documentInfo.fileName}`,
+            text: `Document: ${documentInfo.fileName}\nSize: ${documentInfo.fileSize || 0} bytes\nType: ${documentInfo.mimeType || "unknown"}`,
+          });
+        }
+      } else {
+        // Add a basic attachment even if documentInfo is null
+        attachments.push({
+          id: document.file_id,
+          url: "",
+          title: `Document: ${document.file_name || "Unknown Document"}`,
+          source: "Document",
+          description: `Document: ${document.file_name || "Unknown Document"}`,
+          text: `Document: ${document.file_name || "Unknown Document"}\nSize: ${document.file_size || 0} bytes\nType: ${document.mime_type || "unknown"}`,
+        });
+      }
+    }
+
+    // Process images
+    if ("photo" in message && message.photo?.length > 0) {
+      const imageInfo = await this.processImage(message);
+      if (imageInfo) {
+        const photo = message.photo[message.photo.length - 1];
+        const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
+        attachments.push({
+          id: photo.file_id,
+          url: fileLink.toString(),
+          title: "Image Attachment",
+          source: "Image",
+          description: imageInfo.description,
+          text: imageInfo.description,
+        });
+      }
+    }
+
+    logger.debug(
+      {
+        src: "plugin:telegram",
+        agentId: this.runtime.agentId,
+        hasContent: !!processedContent,
+        attachmentsCount: attachments.length,
+      },
+      "Message processed",
+    );
+
+    return { processedContent, attachments };
+  }
+
+  /**
+   * Sends a message in chunks, handling attachments and splitting the message if necessary
+   *
+   * @param {Context} ctx - The context object representing the current state of the bot
+   * @param {TelegramContent} content - The content of the message to be sent
+   * @param {number} [replyToMessageId] - The ID of the message to reply to, if any
+   * @returns {Promise<Message.TextMessage[]>} - An array of TextMessage objects representing the messages sent
+   */
+  async sendMessageInChunks(
+    ctx: Context,
+    content: TelegramContent,
+    replyToMessageId?: number,
+    messageThreadId?: number,
+  ): Promise<Message.TextMessage[]> {
+    if (content.attachments && content.attachments.length > 0) {
+      content.attachments.map(async (attachment: Media) => {
+        const typeMap: { [key: string]: MediaType } = {
+          "image/gif": MediaType.ANIMATION,
+          image: MediaType.PHOTO,
+          doc: MediaType.DOCUMENT,
+          video: MediaType.VIDEO,
+          audio: MediaType.AUDIO,
+        };
+
+        let mediaType: MediaType | undefined;
+
+        for (const prefix in typeMap) {
+          if (attachment.contentType?.startsWith(prefix)) {
+            mediaType = typeMap[prefix];
+            break;
+          }
+        }
+
+        if (!mediaType) {
+          throw new Error(
+            `Unsupported Telegram attachment content type: ${attachment.contentType}`,
+          );
+        }
+
+        await this.sendMedia(
+          ctx,
+          attachment.url,
+          mediaType,
+          attachment.description,
+        );
+      });
+      return [];
+    } else {
+      const chunks = this.splitMessage(content.text ?? "");
+      const sentMessages: Message.TextMessage[] = [];
+
+      const telegramButtons = convertToTelegramButtons(content.buttons ?? []);
+
+      if (!ctx.chat) {
+        logger.error(
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "sendMessageInChunks: ctx.chat is undefined",
+        );
+        return [];
+      }
+      await ctx.telegram.sendChatAction(ctx.chat.id, "typing");
+
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = convertMarkdownToTelegram(chunks[i]);
+        if (!ctx.chat) {
+          logger.error(
+            { src: "plugin:telegram", agentId: this.runtime.agentId },
+            "sendMessageInChunks loop: ctx.chat is undefined",
+          );
+          continue;
+        }
+        const sentMessage = (await ctx.telegram.sendMessage(
+          ctx.chat.id,
+          chunk,
+          {
+            reply_parameters:
+              i === 0 && replyToMessageId
+                ? { message_id: replyToMessageId }
+                : undefined,
+            message_thread_id: messageThreadId,
+            parse_mode: "MarkdownV2",
+            ...Markup.inlineKeyboard(telegramButtons),
+          },
+        )) as Message.TextMessage;
+
+        sentMessages.push(sentMessage);
+      }
+
+      return sentMessages;
+    }
+  }
+
+  /**
+   * Sends media to a chat using the Telegram API.
+   *
+   * @param {Context} ctx - The context object containing information about the current chat.
+   * @param {string} mediaPath - The path to the media to be sent, either a URL or a local file path.
+   * @param {MediaType} type - The type of media being sent (PHOTO, VIDEO, DOCUMENT, AUDIO, or ANIMATION).
+   * @param {string} [caption] - Optional caption for the media being sent.
+   *
+   * @returns {Promise<void>} A Promise that resolves when the media is successfully sent.
+   */
+  async sendMedia(
+    ctx: Context,
+    mediaPath: string,
+    type: MediaType,
+    caption?: string,
+  ): Promise<void> {
+    try {
+      const isUrl = /^(http|https):\/\//.test(mediaPath);
+      const sendFunctionMap: Record<MediaType, TelegramMediaSender> = {
+        [MediaType.PHOTO]: ctx.telegram.sendPhoto.bind(ctx.telegram),
+        [MediaType.VIDEO]: ctx.telegram.sendVideo.bind(ctx.telegram),
+        [MediaType.DOCUMENT]: ctx.telegram.sendDocument.bind(ctx.telegram),
+        [MediaType.AUDIO]: ctx.telegram.sendAudio.bind(ctx.telegram),
+        [MediaType.ANIMATION]: ctx.telegram.sendAnimation.bind(ctx.telegram),
+      };
+
+      const sendFunction = sendFunctionMap[type];
+
+      if (!sendFunction) {
+        throw new Error(`Unsupported media type: ${type}`);
+      }
+
+      if (!ctx.chat) {
+        throw new Error("sendMedia: ctx.chat is undefined");
+      }
+
+      if (isUrl) {
+        // Handle HTTP URLs
+        await sendFunction(ctx.chat.id, mediaPath, { caption });
+      } else {
+        // Handle local file paths
+        if (!fs.existsSync(mediaPath)) {
+          throw new Error(`File not found at path: ${mediaPath}`);
+        }
+
+        const fileStream = fs.createReadStream(mediaPath);
+
+        try {
+          if (!ctx.chat) {
+            throw new Error("sendMedia (file): ctx.chat is undefined");
+          }
+          await sendFunction(ctx.chat.id, { source: fileStream }, { caption });
+        } finally {
+          fileStream.destroy();
+        }
+      }
+
+      logger.debug(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          mediaType: type,
+          mediaPath,
+        },
+        "Media sent successfully",
+      );
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          mediaType: type,
+          mediaPath,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Failed to send media",
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Splits a given text into an array of strings based on the maximum message length.
+   *
+   * @param {string} text - The text to split into chunks.
+   * @returns {string[]} An array of strings with each element representing a chunk of the original text.
+   */
+  private splitMessage(text: string): string[] {
+    const chunks: string[] = [];
+    if (!text) {
+      return chunks;
+    }
+    let currentChunk = "";
+
+    const lines = text.split("\n");
+    for (const line of lines) {
+      if (currentChunk.length + line.length + 1 <= MAX_MESSAGE_LENGTH) {
+        currentChunk += (currentChunk ? "\n" : "") + line;
+      } else {
+        if (currentChunk) {
+          chunks.push(currentChunk);
+        }
+        currentChunk = line;
+      }
+    }
+
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
+    return chunks;
+  }
+
+  /**
+   * Handle incoming messages from Telegram and process them accordingly.
+   * @param {Context} ctx - The context object containing information about the message.
+   * @returns {Promise<void>}
+   */
+  public async handleMessage(ctx: Context): Promise<void> {
+    if (!ctx.message || !ctx.from) {
+      return;
+    }
+
+    const message = ctx.message as Message.TextMessage;
+
+    try {
+      const telegramUserId = ctx.from.id.toString();
+      const entityId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(telegramUserId),
+      ) as UUID;
+
+      const threadId =
+        "is_topic_message" in message && message.is_topic_message
+          ? message.message_thread_id?.toString()
+          : undefined;
+
+      if (!ctx.chat) {
+        logger.error(
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "handleMessage: ctx.chat is undefined",
+        );
+        return;
+      }
+      const telegramRoomid = threadId
+        ? `${ctx.chat.id}-${threadId}`
+        : ctx.chat.id.toString();
+      const telegramChatId = ctx.chat.id.toString();
+      const scopedRoomKey = this.scopedTelegramKey(telegramRoomid);
+      const scopedChatKey = this.scopedTelegramKey(telegramChatId);
+      const roomId = createUniqueUuid(this.runtime, scopedRoomKey) as UUID;
+      const worldId = createUniqueUuid(this.runtime, scopedChatKey) as UUID;
+      const telegramMessageId = message.message_id.toString();
+      const messageId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(telegramMessageId),
+      );
+
+      // Process message content and attachments
+      const { processedContent, attachments } =
+        await this.processMessage(message);
+
+      // Clean processedContent and attachments to avoid NULL characters
+      const cleanedContent = cleanText(processedContent);
+      const cleanedAttachments = attachments.map((att) => ({
+        ...att,
+        text: cleanText(att.text),
+        description: cleanText(att.description),
+        title: cleanText(att.title),
+      }));
+
+      if (!cleanedContent && cleanedAttachments.length === 0) {
+        return;
+      }
+
+      // Get chat type and determine channel type
+      const chat = message.chat as Chat;
+      const channelType = getChannelType(chat);
+
+      await this.runtime.ensureConnection({
+        entityId,
+        roomId,
+        roomName:
+          ("title" in chat && typeof chat.title === "string" && chat.title) ||
+          ("first_name" in chat &&
+            typeof chat.first_name === "string" &&
+            chat.first_name) ||
+          ("username" in chat &&
+            typeof chat.username === "string" &&
+            chat.username) ||
+          telegramRoomid,
+        userName: ctx.from.username,
+        name: ctx.from.first_name,
+        userId: telegramUserId as UUID,
+        source: "telegram",
+        channelId: telegramRoomid,
+        type: channelType,
+        worldId,
+        worldName: telegramRoomid,
+      });
+
+      // Create the memory object
+      const memory: Memory = {
+        id: messageId,
+        entityId,
+        agentId: this.runtime.agentId,
+        roomId,
+        content: {
+          text: cleanedContent || " ",
+          attachments: cleanedAttachments,
+          source: "telegram",
+          metadata: { accountId: this.accountId },
+          channelType,
+          inReplyTo:
+            "reply_to_message" in message && message.reply_to_message
+              ? createUniqueUuid(
+                  this.runtime,
+                  this.scopedTelegramKey(
+                    message.reply_to_message.message_id.toString(),
+                  ),
+                )
+              : undefined,
+        },
+        metadata: {
+          type: "message",
+          source: "telegram",
+          accountId: this.accountId,
+          provider: "telegram",
+          timestamp: message.date * 1000,
+          entityName: ctx.from.first_name,
+          entityUserName: ctx.from.username,
+          fromBot: ctx.from.is_bot,
+          fromId: telegramUserId,
+          sourceId: entityId,
+          chatType: chat.type,
+          messageIdFull: telegramMessageId,
+          sender: {
+            id: telegramUserId,
+            name: ctx.from.first_name,
+            username: ctx.from.username,
+          },
+          telegram: {
+            chatId: telegramChatId,
+            messageId: telegramMessageId,
+            threadId,
+          },
+          telegramUserId,
+          telegramChatId,
+        } satisfies Memory["metadata"],
+        createdAt: message.date * 1000,
+      };
+
+      // Create callback for handling responses
+      const callback: HandlerCallback = async (
+        content: Content,
+        _actionName?: string,
+      ) => {
+        try {
+          // If response is from reasoning do not send it.
+          if (!content.text) {
+            return [];
+          }
+
+          let sentMessages: boolean | Message.TextMessage[] = false;
+          // channelType target === 'telegram'
+          if (content?.channelType === "DM") {
+            sentMessages = [];
+            if (ctx.from) {
+              // FIXME split on 4096 chars
+              const res = await this.bot.telegram.sendMessage(
+                ctx.from.id,
+                content.text,
+              );
+              sentMessages.push(res);
+            }
+          } else {
+            sentMessages = await this.sendMessageInChunks(
+              ctx,
+              content,
+              message.message_id,
+            );
+          }
+
+          if (!Array.isArray(sentMessages)) {
+            return [];
+          }
+
+          const memories: Memory[] = [];
+          for (let i = 0; i < sentMessages.length; i++) {
+            const sentMessage = sentMessages[i];
+
+            const responseMemory: Memory = {
+              id: createUniqueUuid(
+                this.runtime,
+                this.scopedTelegramKey(sentMessage.message_id.toString()),
+              ),
+              entityId: this.runtime.agentId,
+              agentId: this.runtime.agentId,
+              roomId,
+              content: {
+                ...content,
+                source: "telegram",
+                text: sentMessage.text,
+                inReplyTo: messageId,
+                channelType,
+                metadata: { accountId: this.accountId },
+              },
+              metadata: {
+                type: "message",
+                source: "telegram",
+                accountId: this.accountId,
+                provider: "telegram",
+                timestamp: sentMessage.date * 1000,
+                fromBot: true,
+                fromId: this.runtime.agentId,
+                sourceId: this.runtime.agentId,
+                chatType: chat.type,
+                messageIdFull: sentMessage.message_id.toString(),
+                telegram: {
+                  chatId: sentMessage.chat.id,
+                  messageId: sentMessage.message_id.toString(),
+                  threadId,
+                },
+              } satisfies Memory["metadata"],
+              createdAt: sentMessage.date * 1000,
+            };
+
+            await this.runtime.createMemory(responseMemory, "messages");
+            memories.push(responseMemory);
+          }
+
+          return memories;
+        } catch (error) {
+          logger.error(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Error in message callback",
+          );
+          return [];
+        }
+      };
+
+      // Inbound messages are always persisted to memory above. The agent only
+      // auto-generates a reply when TELEGRAM_AUTO_REPLY is explicitly enabled —
+      // default-off prevents the runtime from speaking on the user's behalf.
+      const telegramAutoReplyRaw = this.runtime.getSetting(
+        "TELEGRAM_AUTO_REPLY",
+      );
+      const telegramAutoReply =
+        !lifeOpsPassiveConnectorsEnabled(this.runtime) &&
+        (telegramAutoReplyRaw === true || telegramAutoReplyRaw === "true");
+
+      if (!telegramAutoReply) {
+        try {
+          await this.runtime.createMemory(memory, "messages");
+        } catch (persistError) {
+          logger.warn(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              error:
+                persistError instanceof Error
+                  ? persistError.message
+                  : String(persistError),
+            },
+            "Failed to persist inbound memory while auto-reply is disabled",
+          );
+        }
+        logger.debug(
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "Auto-reply disabled (TELEGRAM_AUTO_REPLY=false); message ingested without response",
+        );
+      } else if (this.runtime.messageService) {
+        await this.runtime.messageService.handleMessage(
+          this.runtime,
+          memory,
+          callback,
+        );
+      } else {
+        logger.error(
+          { src: "plugin:telegram", agentId: this.runtime.agentId },
+          "Message service is not available",
+        );
+        throw new Error(
+          "Message service is not initialized. Ensure the message service is properly configured.",
+        );
+      }
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          chatId: ctx.chat?.id,
+          messageId: ctx.message?.message_id,
+          from: ctx.from?.username || ctx.from?.id,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error handling Telegram message",
+      );
+      throw error;
+    }
+  }
+
+  /**
+   * Handles the reaction event triggered by a user reacting to a message.
+   * @param {NarrowedContext<Context<Update>, Update.MessageReactionUpdate>} ctx The context of the message reaction update
+   * @returns {Promise<void>} A Promise that resolves when the reaction handling is complete
+   */
+  public async handleReaction(
+    ctx: NarrowedContext<Context<Update>, Update.MessageReactionUpdate>,
+  ): Promise<void> {
+    // Ensure we have the necessary data
+    if (!ctx.update.message_reaction || !ctx.from) {
+      return;
+    }
+
+    const reaction = ctx.update.message_reaction;
+    const reactedToMessageId = reaction.message_id;
+
+    const originalMessagePlaceholder: Partial<Message> = {
+      message_id: reactedToMessageId,
+      chat: reaction.chat,
+      from: ctx.from,
+      date: Math.floor(Date.now() / 1000),
+    };
+
+    const reactionType = reaction.new_reaction[0].type;
+    const reactionEmoji = (reaction.new_reaction[0] as ReactionType).type; // Assuming ReactionType has 'type' for emoji
+
+    try {
+      const entityId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(ctx.from.id.toString()),
+      ) as UUID;
+      const roomId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(ctx.chat.id.toString()),
+      );
+
+      const reactionId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(
+          `${reaction.message_id}-${ctx.from.id}-${Date.now()}`,
+        ),
+      );
+
+      // Create reaction memory
+      const memory: Memory = {
+        id: reactionId,
+        entityId,
+        agentId: this.runtime.agentId,
+        roomId,
+        content: {
+          channelType: getChannelType(reaction.chat as Chat),
+          text: `Reacted with: ${reactionType === "emoji" ? reactionEmoji : reactionType}`,
+          source: "telegram",
+          inReplyTo: createUniqueUuid(
+            this.runtime,
+            this.scopedTelegramKey(reaction.message_id.toString()),
+          ),
+          metadata: { accountId: this.accountId },
+        },
+        metadata: {
+          type: "custom",
+          eventType: "reaction",
+          source: "telegram",
+          accountId: this.accountId,
+          provider: "telegram",
+          telegram: {
+            chatId: reaction.chat.id.toString(),
+            messageId: reaction.message_id.toString(),
+          },
+        } satisfies Memory["metadata"],
+        createdAt: Date.now(),
+      };
+
+      // Create callback for handling reaction responses
+      const callback: HandlerCallback = async (content: Content) => {
+        try {
+          // Add null check for content.text
+          const replyText = content.text ?? "";
+          const sentMessage = await ctx.reply(replyText);
+          const responseMemory: Memory = {
+            id: createUniqueUuid(
+              this.runtime,
+              this.scopedTelegramKey(sentMessage.message_id.toString()),
+            ),
+            entityId: this.runtime.agentId,
+            agentId: this.runtime.agentId,
+            roomId,
+            content: {
+              ...content,
+              inReplyTo: reactionId,
+              metadata: { accountId: this.accountId },
+            },
+            metadata: {
+              type: "message",
+              source: "telegram",
+              accountId: this.accountId,
+              provider: "telegram",
+            } satisfies Memory["metadata"],
+            createdAt: sentMessage.date * 1000,
+          };
+          return [responseMemory];
+        } catch (error) {
+          logger.error(
+            {
+              src: "plugin:telegram",
+              agentId: this.runtime.agentId,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            "Error in reaction callback",
+          );
+          return [];
+        }
+      };
+
+      // Let the bootstrap plugin handle the reaction
+      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
+        runtime: this.runtime,
+        message: memory,
+        callback,
+        source: "telegram",
+        accountId: this.accountId,
+        metadata: { accountId: this.accountId },
+        ctx,
+        originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
+        reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
+        originalReaction: reaction.new_reaction[0] as ReactionType,
+      } as TelegramReactionReceivedPayload);
+
+      // Also emit the platform-specific event
+      this.runtime.emitEvent(TelegramEventTypes.REACTION_RECEIVED, {
+        runtime: this.runtime,
+        message: memory,
+        callback,
+        source: "telegram",
+        accountId: this.accountId,
+        metadata: { accountId: this.accountId },
+        ctx,
+        originalMessage: originalMessagePlaceholder as Message, // Cast needed due to placeholder
+        reactionString: reactionType === "emoji" ? reactionEmoji : reactionType,
+        originalReaction: reaction.new_reaction[0] as ReactionType,
+      } as TelegramReactionReceivedPayload);
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error handling reaction",
+      );
+    }
+  }
+
+  /**
+   * Sends a message to a Telegram chat and emits appropriate events
+   * @param {number | string} chatId - The Telegram chat ID to send the message to
+   * @param {Content} content - The content to send
+   * @param {number} [replyToMessageId] - Optional message ID to reply to
+   * @returns {Promise<Message.TextMessage[]>} The sent messages
+   */
+  public async sendMessage(
+    chatId: number | string,
+    content: Content,
+    replyToMessageId?: number,
+    messageThreadId?: number,
+  ): Promise<Message.TextMessage[]> {
+    try {
+      // Create a context-like object for sending
+      const ctx = {
+        chat: { id: chatId },
+        telegram: this.bot.telegram,
+      };
+
+      const sentMessages = await this.sendMessageInChunks(
+        ctx as Context,
+        content,
+        replyToMessageId,
+        messageThreadId,
+      );
+
+      if (!sentMessages?.length) {
+        return [];
+      }
+
+      // Create group ID
+      const roomKey = messageThreadId
+        ? `${chatId.toString()}-${messageThreadId}`
+        : chatId.toString();
+      const roomId = createUniqueUuid(
+        this.runtime,
+        this.scopedTelegramKey(roomKey),
+      );
+
+      // Create memories for the sent messages
+      const memories: Memory[] = [];
+      const contentMetadata =
+        content.metadata &&
+        typeof content.metadata === "object" &&
+        !Array.isArray(content.metadata)
+          ? content.metadata
+          : {};
+      for (const sentMessage of sentMessages) {
+        const memory: Memory = {
+          id: createUniqueUuid(
+            this.runtime,
+            this.scopedTelegramKey(sentMessage.message_id.toString()),
+          ),
+          entityId: this.runtime.agentId,
+          agentId: this.runtime.agentId,
+          roomId,
+          content: {
+            ...content,
+            text: sentMessage.text,
+            source: "telegram",
+            metadata: { ...contentMetadata, accountId: this.accountId },
+            channelType: getChannelType({
+              id:
+                typeof chatId === "string"
+                  ? Number.parseInt(chatId, 10)
+                  : chatId,
+              type: "private", // Default to private, will be overridden if in context
+            } as Chat),
+            ...(messageThreadId
+              ? {
+                  metadata: {
+                    ...contentMetadata,
+                    accountId: this.accountId,
+                    threadId: messageThreadId,
+                  },
+                }
+              : {}),
+          },
+          metadata: {
+            type: "message",
+            source: "telegram",
+            accountId: this.accountId,
+            provider: "telegram",
+            fromBot: true,
+            fromId: this.runtime.agentId,
+            sourceId: this.runtime.agentId,
+            messageIdFull: sentMessage.message_id.toString(),
+            telegram: {
+              chatId: sentMessage.chat.id.toString(),
+              messageId: sentMessage.message_id.toString(),
+              threadId: messageThreadId?.toString(),
+            },
+          } satisfies Memory["metadata"],
+          createdAt: sentMessage.date * 1000,
+        };
+
+        await this.runtime.createMemory(memory, "messages");
+        memories.push(memory);
+      }
+
+      // Emit both generic and platform-specific message sent events
+      if (memories.length > 0) {
+        const firstMemory = memories[0];
+        this.runtime.emitEvent(EventType.MESSAGE_SENT, {
+          runtime: this.runtime,
+          message: firstMemory,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+        } as MessagePayload & {
+          accountId: string;
+          metadata: { accountId: string };
+        });
+
+        // Also emit platform-specific event
+        const telegramMessageSentPayload = {
+          runtime: this.runtime,
+          source: "telegram",
+          accountId: this.accountId,
+          metadata: { accountId: this.accountId },
+          originalMessages: sentMessages,
+          chatId,
+          message: firstMemory,
+        } as TelegramMessageSentPayload & {
+          accountId: string;
+          metadata: { accountId: string };
+        };
+        this.runtime.emitEvent(
+          TelegramEventTypes.MESSAGE_SENT as string,
+          telegramMessageSentPayload,
+        );
+      }
+
+      return sentMessages;
+    } catch (error) {
+      logger.error(
+        {
+          src: "plugin:telegram",
+          agentId: this.runtime.agentId,
+          chatId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Error sending message to Telegram",
+      );
+      return [];
+    }
+  }
+}

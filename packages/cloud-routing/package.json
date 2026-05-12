@@ -1,0 +1,61 @@
+{
+  "name": "@elizaos/cloud-routing",
+  "version": "2.0.0-beta.1",
+  "description": "Cloud-default, local-override routing helper for Eliza Cloud-integrated plugins.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "license": "MIT",
+  "homepage": "https://github.com/elizaOS/eliza",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "packages/cloud-routing"
+  },
+  "keywords": [
+    "elizaos",
+    "cloud",
+    "routing"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json",
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "scripts": {
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run build",
+    "build": "node ../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/cloud-routing",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config ./vitest.config.ts",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format src",
+    "format:fix": "bunx @biomejs/biome format --write src"
+  },
+  "publishConfig": {
+    "access": "public",
+    "directory": "dist"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.0"
+  },
+  "peerDependencies": {
+    "zod": "^4.4.3"
+  }
+}

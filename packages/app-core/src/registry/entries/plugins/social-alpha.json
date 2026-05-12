@@ -1,0 +1,72 @@
+{
+  "id": "social-alpha",
+  "name": "Social Alpha",
+  "description": "Social Alpha Plugin — Tracks token recommendations (shills/FUD), builds trust scores based on P&L outcomes, and exposes a Social Alpha Provider with win rate, rank, and recommender analytics.",
+  "npmName": "@elizaos/plugin-social-alpha",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["social-alpha", "trust-score", "shill-tracker", "social", "alpha"],
+  "config": {
+    "HELIUS_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Helius",
+      "advanced": false
+    },
+    "BIRDEYE_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Birdeye",
+      "advanced": false
+    },
+    "JUPITER_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Jupiter",
+      "advanced": false
+    },
+    "MORALIS_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Moralis",
+      "advanced": false
+    },
+    "COINGECKO_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Coingecko",
+      "advanced": false
+    },
+    "DEXSCREENER_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "API key for Dexscreener",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Layers",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}

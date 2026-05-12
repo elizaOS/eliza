@@ -1,0 +1,8 @@
+# Build artifacts produced by verify/Makefile.
+verify/*.o
+verify/gen_fixture
+verify/vulkan_verify
+verify/metal_verify
+verify/cpu_simd_bench
+verify/*.spv
+vulkan/*.spv

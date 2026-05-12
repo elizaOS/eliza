@@ -1,0 +1,118 @@
+{
+  "name": "@elizaos/plugin-minecraft",
+  "description": "Minecraft automation plugin for ElizaOS (Mineflayer bridge)",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "packageType": "plugin",
+  "platform": "node",
+  "license": "MIT",
+  "keywords": [
+    "plugin",
+    "elizaos",
+    "minecraft",
+    "mineflayer"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elizaos/eliza"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "package.json"
+  ],
+  "dependencies": {
+    "ws": "^8.18.0",
+    "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "2.0.0-beta.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.14",
+    "@types/ws": "^8.5.10",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "dev": "bun --hot build.ts",
+    "test": "vitest run --passWithNoTests",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format ."
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "eliza": {
+    "platforms": [
+      "node"
+    ],
+    "runtime": "node",
+    "platformDetails": {
+      "node": "Node.js only (platform: node)"
+    }
+  },
+  "agentConfig": {
+    "pluginParameters": {
+      "MC_HOST": {
+        "type": "string",
+        "description": "Server host address",
+        "required": false,
+        "sensitive": false
+      },
+      "MC_PORT": {
+        "type": "number",
+        "description": "Minecraft server port",
+        "required": false,
+        "sensitive": false
+      },
+      "MC_SERVER_PORT": {
+        "type": "number",
+        "description": "Local server port",
+        "required": false,
+        "sensitive": false
+      },
+      "MC_USERNAME": {
+        "type": "string",
+        "description": "Minecraft username",
+        "required": false,
+        "sensitive": false
+      },
+      "MC_AUTH": {
+        "type": "string",
+        "description": "Minecraft auth mode (offline/microsoft)",
+        "required": false,
+        "sensitive": false
+      },
+      "MC_VERSION": {
+        "type": "string",
+        "description": "Minecraft version",
+        "required": false,
+        "sensitive": false
+      }
+    }
+  }
+}

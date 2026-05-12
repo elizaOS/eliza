@@ -1,0 +1,223 @@
+---
+title: "Chat Commands"
+sidebarTitle: "Chat Commands"
+description: "In-session commands available in Eliza web chat and dashboard."
+---
+
+Eliza supports several layers of in-session commands: slash commands for the chat interface, runtime commands controlled by configuration, custom command handlers via the hooks system, and plugin-provided commands.
+
+## Slash Commands
+
+These commands are available in the chat input. Press `Tab` to autocomplete a command name.
+
+| Command | Description |
+|---------|-------------|
+| `/model [provider/id]` | Open the model selector overlay, or switch directly to a specific model |
+| `/models` | Alias for `/model` |
+| `/clear` | Clear the chat display and reset to the welcome message |
+| `/help` | Show help information |
+| `/exit` | Quit Eliza |
+| `/quit` | Alias for `/exit` |
+
+When using `/model` without an argument, a centered overlay appears showing all available models with the current selection highlighted. When a `provider/id` is provided (e.g. `/model anthropic/claude-sonnet-4.6`), the model switches immediately without opening the selector. The model selector also shows credential status for each provider when available.
+
+<Info>
+Slash commands are handled within the UI layer. They do not reach the agent runtime or generate chat messages.
+</Info>
+
+## Runtime Command Configuration
+
+Runtime commands are capabilities that operate through the elizaOS agent runtime. They are controlled by the `commands` section in `eliza.json` and can be enabled or disabled independently.
+
+```json eliza.json
+{
+  "commands": {
+    "native": "auto",
+    "nativeSkills": "auto",
+    "text": true,
+    "bash": false,
+    "bashForegroundMs": 2000,
+    "config": false,
+    "debug": false,
+    "restart": false,
+    "useAccessGroups": true
+  }
+}
+```
+
+### Command Settings
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `commands.native` | `boolean \| "auto"` | `"auto"` | Enable native command registration when supported by the messaging platform |
+| `commands.nativeSkills` | `boolean \| "auto"` | `"auto"` | Enable native skill command registration when supported |
+| `commands.text` | `boolean` | `true` | Enable text-based command parsing from chat messages |
+| `commands.bash` | `boolean` | `false` | Allow the bash chat command (`!` prefix or `/bash` alias) |
+| `commands.bashForegroundMs` | `number` | `2000` | How long bash commands run in the foreground before being backgrounded (0 = immediate background) |
+| `commands.config` | `boolean` | `false` | Allow the `/config` command for viewing configuration in-chat |
+| `commands.debug` | `boolean` | `false` | Allow the `/debug` command for runtime diagnostics |
+| `commands.restart` | `boolean` | `false` | Allow restart commands and gateway restart tool actions |
+| `commands.useAccessGroups` | `boolean` | `true` | Enforce access-group allowlists and policies for commands |
+
+<Tabs>
+  <Tab title="Minimal (defaults)">
+    ```json
+    {
+      "commands": {
+        "text": true
+      }
+    }
+    ```
+    Only text-based command parsing is active. No shell access, no config/debug commands.
+  </Tab>
+  <Tab title="Development">
+    ```json
+    {
+      "commands": {
+        "text": true,
+        "bash": true,
+        "config": true,
+        "debug": true,
+        "restart": true
+      }
+    }
+    ```
+    Full access for development and debugging.
+  </Tab>
+  <Tab title="Production">
+    ```json
+    {
+      "commands": {
+        "text": true,
+        "bash": false,
+        "config": false,
+        "debug": false,
+        "restart": false,
+        "useAccessGroups": true
+      }
+    }
+    ```
+    Locked-down configuration with access group enforcement.
+  </Tab>
+</Tabs>
+
+## Custom Command Handlers via Hooks
+
+The hooks system allows you to register custom handlers for command events. Hooks listen for events with a `type` of `"command"` and an `action` matching the command name.
+
+### Event Key Pattern
+
+Hook event keys follow the format `type:action`. For commands:
+
+- `"command:new"` -- matches only the `/new` command
+- `"command:reset"` -- matches only the `/reset` command
+- `"command"` -- matches **all** command events (general handler)
+
+When a command event fires, the dispatcher calls specific handlers first (`command:new`), then general handlers (`command`).
+
+### Registering a Hook Handler
+
+Hooks can be registered through config or programmatically:
+
+```json eliza.json
+{
+  "hooks": {
+    "internal": {
+      "enabled": true,
+      "handlers": [
+        {
+          "event": "command:new",
+          "module": "./hooks/my-new-handler.js",
+          "export": "default"
+        }
+      ]
+    }
+  }
+}
+```
+
+Each handler receives a `HookEvent` object:
+
+```typescript
+interface HookEvent {
+  type: "command" | "session" | "agent" | "gateway";
+  action: string;        // e.g. "new", "reset", "startup"
+  sessionKey: string;    // session where the event occurred
+  timestamp: Date;
+  messages: string[];    // push response messages here
+  context: Record<string, unknown>;
+}
+```
+
+Handlers can push strings into `event.messages` to send replies back to the user.
+
+<Info>
+Hook handlers run sequentially. If multiple handlers are registered for the same event key, they execute in registration order. Errors in one handler are logged but do not prevent subsequent handlers from running.
+</Info>
+
+### Supported Event Types
+
+Beyond commands, the hooks system supports these event types:
+
+| Type | Description |
+|------|-------------|
+| `command` | Chat command events (`command:new`, `command:reset`, etc.) |
+| `session` | Session lifecycle events (`session:start`, `session:end`) |
+| `agent` | Agent lifecycle events (`agent:startup`) |
+| `gateway` | Gateway/webhook events |
+
+## Plugin-Provided Commands
+
+Plugins can extend the command system by registering actions through the elizaOS runtime. When a plugin is loaded, its exported `actions` array is registered with the runtime via `registerAction()`.
+
+Common plugin-provided capabilities include:
+
+- **Shell plugin** (`@elizaos/plugin-shell`) -- provides shell command execution actions
+- **Commands plugin** (`@elizaos/plugin-commands`) -- provides slash command handling
+- **Custom actions** -- any plugin can define actions that respond to specific patterns or intents
+
+Plugins declare their capabilities through the standard elizaOS plugin interface:
+
+```typescript
+export const myPlugin = {
+  name: "my-plugin",
+  description: "Custom commands",
+  actions: [/* action definitions */],
+  services: [/* service definitions */],
+  providers: [/* provider definitions */],
+};
+```
+
+## Web Dashboard Commands
+
+The web Control UI (opened via `eliza dashboard`) provides its own command interface through the API server. Commands sent through the web chat are processed by the same elizaOS runtime, so all runtime commands, hook handlers, and plugin-provided actions are available.
+
+The API server exposes endpoints that the web UI uses to send messages and receive responses. In production, both the UI and API are served on port `2138` (`ELIZA_PORT`). In dev mode, the API runs on a separate port `31337` (`ELIZA_API_PORT`) while the UI stays on `2138`. The agent restart endpoint (`POST /api/agent/restart`) is also available when `commands.restart` is enabled.
+
+## Command Security
+
+<Warning>
+The bash command (`commands.bash`) gives full shell access to whoever can send messages to the agent. Only enable it in trusted, local development environments.
+</Warning>
+
+### Security Levels
+
+Commands are grouped by risk level:
+
+| Level | Commands | Default |
+|-------|----------|---------|
+| **Safe** | Text parsing, native commands | Enabled |
+| **Moderate** | `/config`, `/debug` | Disabled |
+| **Dangerous** | `/bash` (`!` prefix), `/restart` | Disabled |
+
+### Access Groups
+
+When `commands.useAccessGroups` is `true` (the default), commands respect access-group allowlists. This means only users in the appropriate access group can execute specific commands. This is particularly important when the agent is connected to external messaging platforms (Discord, Telegram, Slack, etc.) where untrusted users may send messages.
+
+### Bash Command Behavior
+
+When `commands.bash` is enabled:
+- Users can prefix a message with `!` or use the `/bash` alias to execute shell commands
+- The `bashForegroundMs` setting controls how long a command runs in the foreground before being backgrounded (default: 2000ms, max: 30000ms)
+- Setting `bashForegroundMs` to `0` backgrounds commands immediately
+- Shell output is returned to the chat as a message

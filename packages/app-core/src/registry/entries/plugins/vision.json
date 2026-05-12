@@ -1,0 +1,43 @@
+{
+  "id": "vision",
+  "name": "Vision",
+  "description": "Vision plugin for ElizaOS - provides camera integration and visual awareness",
+  "npmName": "@elizaos/plugin-vision",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["vision", "camera", "ai-vision"],
+  "config": {
+    "CAMERA_NAME": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Name",
+      "help": "Camera name to search for (lowercase partial match)",
+      "advanced": false
+    },
+    "PIXEL_CHANGE_THRESHOLD": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Change Threshold",
+      "help": "Percentage of pixels that must change to trigger VLM update (default: 50)",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Eye",
+    "group": "media",
+    "groupOrder": 8,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media"
+}

@@ -1,0 +1,63 @@
+---
+title: Wallet API
+description: Authenticate and sign up with an Ethereum wallet using SIWE (EIP-4361) or per-request wallet header signature. Get API keys or sign each request without storing a key.
+---
+
+# Wallet API
+
+Use an Ethereum wallet to sign in, get an API key, or authenticate each request without storing a key. Supports agents and headless clients that cannot use browser OAuth or session cookies.
+
+## Why wallet-based API
+
+- **SIWE** (Sign-In With Ethereum): standard EIP-4361 flow to obtain an API key over HTTP. **Why nonce?** Prevents replay; single-use nonce is consumed on verify.
+- **Wallet header signature**: prove ownership on each request with `X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature`. **Why both?** SIWE is for onboarding and key issuance; wallet headers are for clients that prefer not to store a key.
+- **x402 topup** can credit the signer when wallet sig headers are present so the payer and the credited account match.
+
+## Lifecycle
+
+**Onboarding (pick one):**
+
+- **SIWE**: `GET /api/auth/siwe/nonce` → sign message → `POST /api/auth/siwe/verify` → receive `apiKey`, `user`, `organization`. New accounts get initial free credits.
+- **Wallet header**: first request with valid wallet sig headers creates the account (same slug/credits as SIWE).
+- **x402 topup**: `POST /api/v1/topup/10|50|100` with payment; send `walletAddress` in body or use wallet sig headers to credit the signer. New accounts get no free credits (payment only).
+
+**Authenticating requests (pick one):**
+
+- `X-API-Key: <key>` or `Authorization: Bearer <key>`
+- `X-Wallet-Address` + `X-Timestamp` + `X-Wallet-Signature`
+- Steward session cookie or `Authorization: Bearer <steward-jwt>`
+
+## SIWE endpoints
+
+### GET /api/auth/siwe/nonce
+
+Returns `{ nonce, domain, uri, chainId, version, statement }`. Use these to build the EIP-4361 message. Nonce is stored in Redis (5 min TTL); 503 if Redis unavailable. Rate limit: STRICT.
+
+### POST /api/auth/siwe/verify
+
+Body: `{ message, signature }` (full SIWE message string and hex signature). Server validates domain (must match app host), verifies signature, consumes nonce, finds or creates user/org, issues API key. Response: `{ apiKey, address, isNewAccount, user, organization }`. Rate limit: STRICT.
+
+## Wallet header signature
+
+- **X-Wallet-Address**: Ethereum address.
+- **X-Timestamp**: Unix time in milliseconds; must be within ±5 min of server time.
+- **X-Wallet-Signature**: Signature of  
+  `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}`  
+  (so the signature is bound to this request).
+
+Any route that uses `requireAuthOrApiKey` accepts wallet-header auth. If the wallet is unknown, the account is created on first valid signature.
+
+## x402 topup
+
+**POST /api/v1/topup/10**, **/50**, **/100** (x402 payment required):
+
+- With wallet sig headers: credits go to the signer; no body `walletAddress` needed.
+- Without: send **body.walletAddress**; that wallet’s org is credited. New wallets created here do not receive initial free credits.
+
+## CORS and proxy
+
+Wallet headers (`X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature`) are allowed in CORS. The proxy passes requests that have `X-Wallet-Signature` (or API key / Bearer token) through without requiring a browser session so wallet-auth reaches the API.
+
+## See also
+
+- [Authentication](/docs/authentication) — API key, session, wallet, x402 overview.

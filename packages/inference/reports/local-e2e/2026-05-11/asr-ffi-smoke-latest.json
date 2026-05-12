@@ -1,0 +1,16 @@
+{
+  "ok": true,
+  "abi": "1",
+  "dylib": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
+  "bundle": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+  "wav": "/tmp/eliza-asr-hello.wav",
+  "transcript": "Hello world.",
+  "normalizedTranscript": "hello world",
+  "expectedContains": "hello world",
+  "normalizedExpected": "hello world",
+  "sampleRateHz": 16000,
+  "samples": 13568,
+  "acquireMs": 422.66999999999996,
+  "transcribeMs": 201.241292,
+  "totalMs": 656.98175
+}

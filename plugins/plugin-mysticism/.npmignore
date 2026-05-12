@@ -1,0 +1,15 @@
+**/.env
+**/.env.*
+!**/.env.example
+**/.eliza/
+**/.elizadb/
+**/node_modules/
+**/src/
+**/tsconfig.json
+**/tsconfig.*.json
+**/*.tsbuildinfo
+**/__tests__/
+**/*.test.ts
+**/*.spec.ts
+**/.turbo/
+**/.DS_Store

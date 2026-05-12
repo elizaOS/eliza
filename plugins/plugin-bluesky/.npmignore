@@ -1,0 +1,37 @@
+# Source files
+typescript/
+python/
+rust/src/
+rust/tests/
+rust/Cargo.toml
+rust/Cargo.lock
+
+# Config files
+.github/
+.turbo/
+*.config.ts
+tsconfig*.json
+bunfig.toml
+pyproject.toml
+
+# Test files
+__tests__/
+tests/
+*.test.ts
+*.spec.ts
+coverage/
+.coverage
+
+# Development files
+.env*
+.gitignore
+.npmignore
+*.md
+!README.md
+
+
+
+
+
+
+

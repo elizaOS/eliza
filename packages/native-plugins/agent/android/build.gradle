@@ -1,0 +1,30 @@
+ext {
+    junitVersion = project.hasProperty('junitVersion') ? rootProject.ext.junitVersion : '4.13.2'
+    androidxAppCompatVersion = project.hasProperty('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.6.1'
+}
+
+apply plugin: 'com.android.library'
+android {
+    namespace = "ai.eliza.plugins.agent"
+    compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
+    defaultConfig {
+        minSdk project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 22
+        targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 34
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+repositories {
+    google()
+    maven {
+        url = uri(rootProject.ext.has('mavenCentralMirrorUrl') ? rootProject.ext.mavenCentralMirrorUrl : 'https://repo.maven.apache.org/maven2')
+    }
+    mavenCentral()
+}
+
+dependencies {
+    implementation project(':capacitor-android')
+}

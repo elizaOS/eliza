@@ -1,0 +1,203 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-12T01:47:00.088Z",
+  "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 16,
+    "cpuModel": "Apple M4 Max",
+    "totalMemMb": 131072
+  },
+  "request": {
+    "tier": "0_6b",
+    "backend": "metal",
+    "turns": 3,
+    "nPredict": 4,
+    "ttsSteps": 16
+  },
+  "bundle": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+    "tier": "0_6b",
+    "ramBudgetMb": {
+      "min": 1500,
+      "recommended": 1800
+    }
+  },
+  "engine": {
+    "dir": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused",
+    "backend": "metal",
+    "fused": true,
+    "caps": {
+      "dflash": true,
+      "turbo3": true,
+      "turbo4": true,
+      "turbo3_tcq": true,
+      "qjl_full": true,
+      "polarquant": true,
+      "lookahead": true,
+      "ngramDraft": true
+    }
+  },
+  "status": "needs-optimization",
+  "reason": "voice loop completed, but required Eliza-1 optimizations were not all active",
+  "e2eLoopOk": false,
+  "thirtyTurnOk": null,
+  "summary": {
+    "turns": 3,
+    "asrLatencyMsMedian": 242.8,
+    "asrWerMean": 0.0556,
+    "asrWerByTurn": [
+      0,
+      0.1667,
+      0
+    ],
+    "firstTokenMsMedian": 17.1,
+    "firstTokenMsP50": 17.1,
+    "decodeTokPerSecMedian": 37.33,
+    "dflashAcceptanceRateMean": null,
+    "dflashDraftedTotal": 0,
+    "dflashAcceptedTotal": 0,
+    "firstAudioFromMicMsMedian": 2634.7,
+    "firstAudioFromTokenMsMedian": 2374.8,
+    "ttsRtfMedian": 1.4521,
+    "ttsRtfMean": 2.4149,
+    "totalTurnMsMedian": 2634.8,
+    "bargeInCancelMs": 1.17,
+    "serverPeakRssMb": null,
+    "ramBudgetRecommendedMb": 1800,
+    "ramWithinBudget": null,
+    "leakSuspected": false,
+    "dflashAcceptanceRateOverall": null,
+    "flowCompletedOk": true,
+    "optimizationReadyOk": false,
+    "requiredOptimizations": {
+      "dflashDraftingActive": false,
+      "streamingTtsActive": false
+    }
+  },
+  "bargeIn": {
+    "httpAbortMs": 1.17,
+    "nativeCancelMs": 0.03,
+    "nativeCancelRc": 0,
+    "ttsStreamSupported": false,
+    "note": "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in measured as the client/sink-side HTTP abort latency (the PCM-ring-drain surrogate). cancel_tts is a no-op here."
+  },
+  "turns": [
+    {
+      "turn": 1,
+      "asr": {
+        "latencyMs": 204.8,
+        "transcript": "What is the capital of France?",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 15.5,
+        "decodeTokPerSec": 57.89,
+        "predictedN": 4,
+        "promptTokPerSec": 570.13,
+        "content": "The capital of France"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 1,
+        "audioSec": 1.92,
+        "wallMs": 746.9,
+        "rtf": 0.389,
+        "perPhrase": [
+          {
+            "phrase": "The capital of France",
+            "audioSec": 1.92,
+            "wallMs": 746.9,
+            "rtf": 0.389
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 1038.1,
+      "firstAudioFromTokenMs": 817.8,
+      "totalTurnMs": 1038.3
+    },
+    {
+      "turn": 2,
+      "asr": {
+        "latencyMs": 776.4,
+        "transcript": "Schedule a meeting for tomorrow.",
+        "wer": 0.1667
+      },
+      "gen": {
+        "firstTokenMs": 58.4,
+        "decodeTokPerSec": 5.44,
+        "predictedN": 4,
+        "promptTokPerSec": 104.52,
+        "content": "The meeting is to"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 1,
+        "audioSec": 1.8,
+        "wallMs": 9726.6,
+        "rtf": 5.4037,
+        "perPhrase": [
+          {
+            "phrase": "The meeting is to",
+            "audioSec": 1.8,
+            "wallMs": 9726.5,
+            "rtf": 5.4036
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 11299.4,
+      "firstAudioFromTokenMs": 10464.6,
+      "totalTurnMs": 11299.5
+    },
+    {
+      "turn": 3,
+      "asr": {
+        "latencyMs": 242.8,
+        "transcript": "Tell me a short fact about the ocean.",
+        "wer": 0
+      },
+      "gen": {
+        "firstTokenMs": 17.1,
+        "decodeTokPerSec": 37.33,
+        "predictedN": 4,
+        "promptTokPerSec": 551.37,
+        "content": "The ocean is a"
+      },
+      "dflash": {
+        "drafted": 0,
+        "accepted": 0,
+        "acceptanceRate": null
+      },
+      "tts": {
+        "phrases": 1,
+        "totalPhrases": 1,
+        "audioSec": 1.56,
+        "wallMs": 2265.3,
+        "rtf": 1.4521,
+        "perPhrase": [
+          {
+            "phrase": "The ocean is a",
+            "audioSec": 1.56,
+            "wallMs": 2265.3,
+            "rtf": 1.4521
+          }
+        ]
+      },
+      "firstAudioFromMicMs": 2634.7,
+      "firstAudioFromTokenMs": 2374.8,
+      "totalTurnMs": 2634.8
+    }
+  ],
+  "serverLog": "      total time =     123.48 ms /    13 tokens\nstatistics draft: #calls(b,g,a) = 1 1 0, #gen drafts = 0, #acc drafts = 0, #gen tokens = 0, #acc tokens = 0, dur(b,g,a) = 0.000, 89.508, 0.000 ms\nslot      release: id  1 | task 15 | stop processing: n_tokens = 12, truncated = 0\nsrv  update_slots: all slots are idle\nsrv  update_slots: all slots are idle\n[TTS-Long] Single-shot path: T=37 frames (1.48s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=49 N1=6 N2=6 Sref=0 Stgt=37 c_len=49 u_len=37 denoise=0\n[TTS] Prompt: B'=2 K=8 S=49 c_len=49 u_len=37\n[MaskGIT] Start: T=37 K=8 S=49 num_step=16 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n[MaskGIT-Step] 1/16 demask=2 remaining=294\n[MaskGIT-Step] 2/16 demask=3 remaining=291\n[MaskGIT-Step] 3/16 demask=3 remaining=288\n[MaskGIT-Step] 4/16 demask=3 remaining=285\n[MaskGIT-Step] 5/16 demask=4 remaining=281\n[MaskGIT-Step] 6/16 demask=4 remaining=277\n[MaskGIT-Step] 7/16 demask=5 remaining=272\n[MaskGIT-Step] 8/16 demask=6 remaining=266\n[MaskGIT-Step] 9/16 demask=7 remaining=259\n[MaskGIT-Step] 10/16 demask=9 remaining=250\n[MaskGIT-Step] 11/16 demask=12 remaining=238\n[MaskGIT-Step] 12/16 demask=15 remaining=223\n[MaskGIT-Step] 13/16 demask=22 remaining=201\n[MaskGIT-Step] 14/16 demask=33 remaining=168\n[MaskGIT-Step] 15/16 demask=56 remaining=112\n[MaskGIT-Step] 16/16 demask=112 remaining=0\n[MaskGIT] Total LM forward: 495.08 ms across 16 steps (avg 30.94 ms/step)\n[TTS] Decode: K=8 T=37 expected_samples=35520\n[TTS-Long] Post-proc: 35520 -> 37440 samples (1.56s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n"
+}

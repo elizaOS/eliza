@@ -1,0 +1,96 @@
+{
+  "uuid": "00000000-0000-4000-8000-000000twilio0",
+  "lastMigration": 33,
+  "name": "Twilio",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3001,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-000000twilio0",
+      "type": "http",
+      "documentation": "POST Messages",
+      "method": "post",
+      "endpoint": "2010-04-01/Accounts/:sid/Messages.json",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-000000twilio0",
+          "body": "{\"sid\":\"SM{{faker 'string.alphanumeric' length=32}}\",\"status\":\"queued\",\"to\":\"{{body 'To'}}\",\"from\":\"{{body 'From'}}\",\"body\":\"{{body 'Body'}}\",\"date_created\":\"{{now 'iso'}}\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000003-0000-4000-8000-000000twilio0",
+      "type": "http",
+      "documentation": "POST Calls",
+      "method": "post",
+      "endpoint": "2010-04-01/Accounts/:sid/Calls.json",
+      "responses": [
+        {
+          "uuid": "00000004-0000-4000-8000-000000twilio0",
+          "body": "{\"sid\":\"CA{{faker 'string.alphanumeric' length=32}}\",\"status\":\"queued\",\"to\":\"{{body 'To'}}\",\"from\":\"{{body 'From'}}\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [{ "key": "Content-Type", "value": "application/json" }],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    { "type": "route", "uuid": "00000001-0000-4000-8000-000000twilio0" },
+    { "type": "route", "uuid": "00000003-0000-4000-8000-000000twilio0" }
+  ],
+  "folders": [],
+  "data": [],
+  "callbacks": [],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": []
+}

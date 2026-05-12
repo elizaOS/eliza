@@ -1,0 +1,88 @@
+{
+  "name": "@elizaos/app-screenshare",
+  "version": "2.0.0-beta.1",
+  "type": "module",
+  "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
+  "main": "./dist/index.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "dependencies": {
+    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.3",
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-computeruse": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
+    "lucide-react": "^1.0.0"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*"
+  },
+  "agentConfig": {
+    "pluginType": "elizaos:plugin:1.0.0",
+    "pluginParameters": {}
+  },
+  "elizaos": {
+    "kind": "app",
+    "app": {
+      "displayName": "Screen Share",
+      "category": "utility",
+      "heroImage": "assets/hero.svg",
+      "launchType": "connect",
+      "launchUrl": "/api/apps/screenshare/viewer",
+      "capabilities": [
+        "screen-stream",
+        "mouse-control",
+        "keyboard-control",
+        "remote-support"
+      ],
+      "runtimePlugin": "@elizaos/app-screenshare",
+      "bridgeExport": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "viewer": {
+        "url": "/api/apps/screenshare/viewer",
+        "sandbox": "allow-scripts allow-same-origin allow-forms allow-pointer-lock"
+      },
+      "session": {
+        "mode": "spectate-and-steer",
+        "features": [
+          "commands",
+          "telemetry",
+          "suggestions"
+        ]
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

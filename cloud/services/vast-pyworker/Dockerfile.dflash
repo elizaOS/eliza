@@ -1,0 +1,63 @@
+# syntax=docker/dockerfile:1
+#
+# DFlash-capable llama-server image for Vast.ai workers.
+#
+# CUDA:
+#   docker build -f cloud/services/vast-pyworker/Dockerfile.dflash \
+#     --build-arg BACKEND=cuda \
+#     -t ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash .
+#
+# ROCm/HIP:
+#   docker build -f cloud/services/vast-pyworker/Dockerfile.dflash \
+#     --build-arg BASE_IMAGE=rocm/dev-ubuntu-22.04:6.3 \
+#     --build-arg BACKEND=rocm \
+#     -t ghcr.io/YOUR_ORG/buun-llama-cpp:rocm-dflash .
+
+ARG BASE_IMAGE=nvidia/cuda:12.4.1-devel-ubuntu22.04
+FROM ${BASE_IMAGE}
+
+ARG BACKEND=cuda
+ARG BUUN_LLAMA_CPP_REMOTE=https://github.com/spiritbuun/buun-llama-cpp.git
+ARG BUUN_LLAMA_CPP_REF=master
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    cmake \
+    curl \
+    git \
+    ninja-build \
+    python3 \
+    python3-pip \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/build
+RUN git clone --depth=1 --branch "${BUUN_LLAMA_CPP_REF}" "${BUUN_LLAMA_CPP_REMOTE}" buun-llama-cpp
+
+WORKDIR /opt/build/buun-llama-cpp
+RUN set -eux; \
+  case "${BACKEND}" in \
+    cuda) FLAGS="-DGGML_CUDA=ON -DGGML_CUDA_FA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON" ;; \
+    rocm|hip) FLAGS="-DGGML_HIP=ON" ;; \
+    cpu) FLAGS="" ;; \
+    *) echo "unknown BACKEND=${BACKEND}" >&2; exit 1 ;; \
+  esac; \
+  cmake -S . -B build -G Ninja \
+    -DGGML_NATIVE=ON \
+    -DLLAMA_BUILD_TESTS=OFF \
+    ${FLAGS}; \
+  cmake --build build --target llama-server llama-cli llama-speculative-simple -j"$(nproc)"; \
+  mkdir -p /opt/buun-llama-cpp/bin; \
+  cp build/bin/llama-server build/bin/llama-cli build/bin/llama-speculative-simple /opt/buun-llama-cpp/bin/; \
+  find build/bin -maxdepth 1 -type f \( -name 'lib*.so' -o -name 'lib*.so.*' \) -exec cp {} /opt/buun-llama-cpp/bin/ \;; \
+  cp -a gguf-py /opt/buun-llama-cpp/
+
+RUN python3 -m pip install --no-cache-dir huggingface_hub
+
+ENV PATH=/opt/buun-llama-cpp/bin:${PATH}
+ENV PYTHONPATH=/opt/buun-llama-cpp/gguf-py
+ENV LLAMA_SERVER_BIN=/opt/buun-llama-cpp/bin/llama-server
+ENV GGUF_PYTHONPATH=/opt/buun-llama-cpp/gguf-py
+
+CMD ["bash"]

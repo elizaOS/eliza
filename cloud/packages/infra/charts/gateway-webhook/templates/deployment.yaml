@@ -1,0 +1,198 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway-webhook.fullname" . }}
+  namespace: {{ include "gateway-webhook.namespace" . }}
+  labels:
+    {{- include "gateway-webhook.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gateway-webhook.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway-webhook.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.serviceAccount.create }}
+      serviceAccountName: {{ include "gateway-webhook.serviceAccountName" . }}
+      {{- end }}
+      containers:
+        - name: gateway
+          {{- if .Values.image.digest }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          {{- else }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          {{- end }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.containerPort }}
+              name: http
+          {{- if .Values.envFrom }}
+          envFrom:
+            {{- toYaml .Values.envFrom | nindent 12 }}
+          {{- end }}
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: NODE_ENV
+              value: {{ .Values.config.nodeEnv | quote }}
+            - name: PORT
+              value: {{ .Values.config.port | quote }}
+            - name: KEDA_COOLDOWN_SECONDS
+              value: {{ .Values.kedaCooldownSeconds | quote }}
+            {{- if .Values.config.twilioPublicUrl }}
+            - name: TWILIO_PUBLIC_URL
+              value: {{ .Values.config.twilioPublicUrl | quote }}
+            {{- end }}
+            {{- if not .Values.envFrom }}
+            - name: GATEWAY_BOOTSTRAP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.gatewayBootstrapSecret }}
+            - name: KV_REST_API_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.kvRestApiUrl }}
+            - name: KV_REST_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.kvRestApiToken }}
+            - name: ELIZA_CLOUD_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaCloudUrl }}
+            - name: ELIZA_APP_TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppTelegramBotToken }}
+                  optional: true
+            - name: ELIZA_APP_TELEGRAM_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppTelegramWebhookSecret }}
+                  optional: true
+            - name: ELIZA_APP_BLOOIO_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppBlooioApiKey }}
+                  optional: true
+            - name: ELIZA_APP_BLOOIO_WEBHOOK_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppBlooioWebhookSecret }}
+                  optional: true
+            - name: ELIZA_APP_BLOOIO_PHONE_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppBlooioPhoneNumber }}
+                  optional: true
+            - name: ELIZA_APP_TWILIO_ACCOUNT_SID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppTwilioAccountSid }}
+                  optional: true
+            - name: ELIZA_APP_TWILIO_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppTwilioAuthToken }}
+                  optional: true
+            - name: ELIZA_APP_TWILIO_PHONE_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppTwilioPhoneNumber }}
+                  optional: true
+            - name: ELIZA_APP_WHATSAPP_ACCESS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppWhatsappAccessToken }}
+                  optional: true
+            - name: ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppWhatsappPhoneNumberId }}
+                  optional: true
+            - name: ELIZA_APP_WHATSAPP_APP_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppWhatsappAppSecret }}
+                  optional: true
+            - name: ELIZA_APP_WHATSAPP_VERIFY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppWhatsappVerifyToken }}
+                  optional: true
+            - name: ELIZA_APP_WHATSAPP_PHONE_NUMBER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppWhatsappPhoneNumber }}
+                  optional: true
+            - name: ELIZA_APP_DEFAULT_AGENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.elizaAppDefaultAgentId }}
+                  optional: true
+            - name: GATEWAY_INTERNAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.name }}
+                  key: {{ .Values.secrets.keys.gatewayInternalSecret }}
+                  optional: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          lifecycle:
+            preStop:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    curl -sf -X POST http://localhost:{{ .Values.containerPort }}/drain || true
+                    sleep {{ .Values.preStopDrainSleepSeconds }}

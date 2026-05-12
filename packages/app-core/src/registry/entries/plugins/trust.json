@@ -1,0 +1,39 @@
+{
+  "id": "trust",
+  "name": "Trust",
+  "description": "Trust scoring, security signals, and permission helpers built into the elizaOS runtime (enable via enableTrust).",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["trust", "permissions", "security", "rbac"],
+  "config": {
+    "OWNER_ENTITY_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Entity Id",
+      "help": "Entity identifier",
+      "advanced": false
+    },
+    "WORLD_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Id",
+      "help": "World identifier",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Handshake",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}

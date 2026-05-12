@@ -1,0 +1,119 @@
+---
+title: "Configurer un fournisseur"
+sidebarTitle: "Configuration du fournisseur"
+description: "Choisissez un fournisseur pour Eliza et connectez-le."
+---
+
+Un fournisseur est le service de modèle qui répond aux messages de votre agent.
+
+<div id="choose-a-route">
+
+## Choisir une option
+
+</div>
+
+| Option | Quand l'utiliser |
+|--------|------------------|
+| `Cloud API` | vous avez déjà une clé API et vous voulez le chemin de configuration le plus court |
+| `Ollama` | vous voulez Eliza entièrement en local |
+| `Eliza Cloud` | vous voulez un backend géré |
+
+Fournisseurs cloud courants :
+
+- OpenAI
+- Anthropic
+- OpenRouter
+- Gemini
+- Groq
+- xAI
+
+<div id="connect-it-in-eliza">
+
+## Le connecter dans Eliza
+
+</div>
+
+1. Ouvrez `Settings`.
+2. Ouvrez la section fournisseur ou modèle IA.
+3. Choisissez le fournisseur.
+4. Collez la clé API, connectez-vous ou entrez l'URL du serveur local.
+5. Lancez le test de connexion.
+6. Choisissez un modèle si nécessaire.
+
+<div id="ollama">
+
+## Ollama
+
+</div>
+
+Assurez-vous qu'Ollama est en cours d'exécution avant de le tester. Si le modèle n'est pas encore téléchargé, récupérez-le d'abord.
+
+```bash
+ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
+```
+
+<div id="remote-backends">
+
+## Backends distants
+
+</div>
+
+Si vous êtes connecté à un backend Eliza distant, ce backend peut déjà gérer le routage du fournisseur. Dans ce cas, changer une clé locale peut ne rien faire. Voir [Connexion à distance](/fr/user/connect-remotely).
+
+<div id="switching-later">
+
+## Changer plus tard
+
+</div>
+
+Vous pouvez changer de fournisseur plus tard si vous avez besoin d'un équilibre différent entre :
+
+- coût
+- vitesse
+- confidentialité
+- qualité du modèle
+
+Eliza conserve les mêmes conversations et l'état de l'agent pendant le changement de route.
+
+<div id="common-problems">
+
+## Problèmes courants
+
+</div>
+
+<div id="messages-hang">
+
+### Les messages restent en attente
+
+</div>
+
+Vérifiez :
+
+- la clé API
+- le statut du fournisseur
+- le statut du processus Ollama
+- le nom du modèle sélectionné
+
+<div id="voice-works-but-chat-does-not">
+
+### La voix fonctionne mais pas le chat
+
+</div>
+
+Le chat et la voix peuvent utiliser des fournisseurs différents. Corrigez la route du chat séparément.
+
+<div id="a-remote-or-cloud-backend-ignores-your-local-key">
+
+### Un backend distant ou cloud ignore votre clé locale
+
+</div>
+
+Confirmez quelle machine gère le routage du fournisseur.
+
+<div id="next">
+
+## Suivant
+
+</div>
+
+[Changer votre personnage](/fr/user/change-character)

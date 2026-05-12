@@ -1,0 +1,104 @@
+version: 2
+updates:
+  # JS/TS workspace (root). Bun monorepo — pulls all workspace package.json files.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Python benchmarks (kept on weekly cadence; demo / research code)
+  - package-ecosystem: "pip"
+    directory: "/packages/benchmarks/OSWorld"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    ignore:
+      # Transitive via wandb; advisory has no patched version yet (opened 2026-04).
+      - dependency-name: "gitpython"
+      # Transitive via fabric -> paramiko; libsodium 1.0.20 bundled in PyNaCl 1.6.x
+      # already includes the disallowed-inputs fix.
+      - dependency-name: "pynacl"
+
+  - package-ecosystem: "pip"
+    directory: "/packages/benchmarks/solana/solana-gym-env"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+
+  # Rust examples — demo apps, not deployed. Track upstream but ignore
+  # transitive vulns we cannot fix without a major bump of the parent crate.
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/discord/rust/discord-agent"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    ignore:
+      # rustls-webpki 0.102.x is pulled transitively by serenity -> tokio-tungstenite
+      # -> rustls 0.22.x. Fix requires upstream serenity bump.
+      - dependency-name: "rustls-webpki"
+        versions: ["< 0.103"]
+
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/app/tauri/src-tauri"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    ignore:
+      # rand 0.7.3 pulled by deep tauri-codegen graph; no fix in 0.7 line.
+      - dependency-name: "rand"
+        versions: ["< 0.8"]
+      # glib 0.18 pulled by tauri's gtk stack; bumping requires tauri rework.
+      - dependency-name: "glib"
+        versions: ["< 0.19"]
+
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/polymarket/rust/polymarket-demo"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    ignore:
+      # lru 0.12 pulled by alloy-provider 0.8; bump requires alloy major bump.
+      - dependency-name: "lru"
+        versions: ["< 0.13"]
+
+  # Other Rust examples — track but cap PRs.
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/aws/rust"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/a2a/rust"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/bluesky/rust/bluesky-agent"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/chat/rust/chat"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/form/rust/chat"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1
+  - package-ecosystem: "cargo"
+    directory: "/packages/examples/gcp/rust"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 1

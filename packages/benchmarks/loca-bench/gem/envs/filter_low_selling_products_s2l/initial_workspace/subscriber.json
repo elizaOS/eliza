@@ -1,0 +1,52 @@
+{
+  "subscriber_list": [
+    {
+      "email": "amandahuang68@mcpt.com",
+      "name": "Amanda Huang"
+    },
+    {
+      "email": "jenniferzhao86@mcpt.com",
+      "name": "Jennifer Zhao"
+    },
+    {
+      "email": "jessicamiller82@mcpt.com",
+      "name": "Jessica Miller"
+    },
+    {
+      "email": "chrisgarcia38@mcpt.com",
+      "name": "Chris Garcia"
+    },
+    {
+      "email": "lindali87@mcpt.com",
+      "name": "Linda Li"
+    },
+    {
+      "email": "lisadavis61@mcpt.com",
+      "name": "Lisa Davis"
+    },
+    {
+      "email": "kevinzhou84@mcpt.com",
+      "name": "Kevin Zhou"
+    },
+    {
+      "email": "jessicawu43@mcpt.com",
+      "name": "Jessica Wu"
+    },
+    {
+      "email": "mikechen80@mcpt.com",
+      "name": "Mike Chen"
+    },
+    {
+      "email": "williamdavis34@mcpt.com",
+      "name": "William Davis"
+    },
+    {
+      "email": "danieljohnson20@mcpt.com",
+      "name": "Daniel Johnson"
+    },
+    {
+      "email": "mikejohnson2@mcpt.com",
+      "name": "Mike Johnson"
+    }
+  ]
+}

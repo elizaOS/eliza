@@ -1,0 +1,14 @@
+{{- if .Values.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "gateway-webhook.fullname" . }}
+  namespace: {{ include "gateway-webhook.namespace" . }}
+  labels:
+    {{- include "gateway-webhook.labels" . | nindent 4 }}
+spec:
+  maxUnavailable: {{ .Values.pdb.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "gateway-webhook.selectorLabels" . | nindent 6 }}
+{{- end }}

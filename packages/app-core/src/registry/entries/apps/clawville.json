@@ -1,0 +1,27 @@
+{
+  "id": "clawville",
+  "name": "ClawVille",
+  "description": "Sea-themed agent world with skill-learning buildings, NPC chat, and Solana wallet identity.",
+  "npmName": "@elizaos/app-clawville",
+  "source": "bundled",
+  "tags": [],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Gamepad2",
+    "group": "Curated",
+    "groupOrder": 8,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "game",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": [],
+    "curatedSlug": "clawville"
+  }
+}

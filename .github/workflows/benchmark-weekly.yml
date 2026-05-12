@@ -1,0 +1,209 @@
+# Weekly EA + Connector Benchmark
+#
+# Runs the full executive-assistant and connector certification scenario
+# catalogs through the live scenario runner and uploads a markdown + JSON
+# benchmark report as an artifact. Scheduled/default dispatch runs are
+# report-only so the weekly trend capture stays green while the live catalog
+# is still being hardened; manual dispatch can opt into enforcement.
+#
+# Distinct from live-scenarios.yml: weekly cadence, emits a human-readable
+# markdown report suitable for tracking trend lines over time.
+#
+# Required repo secrets (self-documented): identical to live-scenarios.yml.
+#   LLM providers: OPENAI_API_KEY, OPENROUTER_API_KEY, ANTHROPIC_API_KEY,
+#                  GOOGLE_GENERATIVE_AI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY
+#   Google:  GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET,
+#            GOOGLE_OAUTH_REFRESH_TOKEN, GMAIL_TEST_ACCOUNT_EMAIL,
+#            GMAIL_TEST_ACCOUNT_REFRESH_TOKEN
+#   Calendly: CALENDLY_API_TOKEN
+#   Telegram: TELEGRAM_BOT_TOKEN, TELEGRAM_TEST_CHAT_ID, TELEGRAM_API_ID,
+#             TELEGRAM_API_HASH
+#   Discord:  DISCORD_BOT_TOKEN, DISCORD_TEST_GUILD_ID,
+#             DISCORD_TEST_CHANNEL_ID
+#   Signal:   SIGNAL_CLI_URL, SIGNAL_TEST_NUMBER
+#   iMessage: IMESSAGE_BRIDGE_URL, IMESSAGE_TEST_HANDLE
+#   WhatsApp: WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_TEST_CONTACT
+#   Twilio:   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM_NUMBER,
+#             TWILIO_TEST_TO_NUMBER
+#   X:        X_API_KEY, X_API_SECRET, X_ACCESS_TOKEN, X_ACCESS_SECRET,
+#             X_TEST_DM_HANDLE
+#   Push:     NOTIFICATION_RELAY_URL, NOTIFICATION_RELAY_TOKEN
+#   Travel:   TRAVEL_BOOKING_API_KEY
+# Optional:
+#   LIFEOPS_JUDGE_THRESHOLD (workflow input, default 0.8)
+#   SCENARIO_FILTER (workflow input, empty = all cataloged benchmark scenarios)
+#   BENCHMARK_ENFORCE_GATE (workflow input, default false)
+
+name: Benchmark (weekly)
+
+on:
+  schedule:
+    # Mondays 10:00 UTC — after weekend regressions settle.
+    - cron: "0 10 * * 1"
+  workflow_dispatch:
+    inputs:
+      scenario_filter:
+        description: "Comma-separated scenario ids (empty = full benchmark catalog)"
+        required: false
+        type: string
+        default: ""
+      judge_threshold:
+        description: "LLM-judge minimum pass score (0.0 - 1.0)"
+        required: false
+        type: string
+        default: "0.8"
+      enforce_gate:
+        description: "Fail the workflow when benchmark scenarios fail"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: benchmark-weekly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "1.3.13"
+  NODE_VERSION: "22.20.0"
+  ELIZA_LIVE_TEST: "1"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  benchmark:
+    name: EA + connector benchmark
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          submodules: recursive
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+
+      - name: Verify scenario-runner CLI present
+        run: |
+          test -f packages/scenario-runner/src/cli.ts || \
+            { echo "scenario-runner CLI missing"; exit 1; }
+
+      - name: Build benchmark runtime packages
+        # The benchmark executes TypeScript sources directly, but several
+        # workspace packages intentionally export dist/* entry points. Because
+        # dependency installation ignores postinstall scripts, build only the
+        # packages that the live scenario runtime imports through those exports.
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          echo "::group::Build packages/core"
+          bun run --cwd packages/core build
+          echo "::endgroup::"
+
+          provider_package=""
+          if [ -n "${GROQ_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-groq"
+          elif [ -n "${OPENAI_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openai"
+          elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-anthropic"
+          elif [ -n "${GOOGLE_GENERATIVE_AI_API_KEY:-}" ] || [ -n "${GOOGLE_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-google-genai"
+          elif [ -n "${OPENROUTER_API_KEY:-}" ]; then
+            provider_package="plugins/plugin-openrouter"
+          fi
+
+          package_dirs=(
+            plugins/plugin-sql
+            plugins/plugin-agent-skills
+            plugins/plugin-pdf
+            plugins/plugin-telegram
+            plugins/plugin-whatsapp
+            plugins/plugin-signal
+            plugins/plugin-imessage
+          )
+          if [ -n "$provider_package" ]; then
+            package_dirs+=("$provider_package")
+          fi
+
+          for package_dir in "${package_dirs[@]}"; do
+            echo "::group::Build ${package_dir}"
+            bun run --cwd "$package_dir" build
+            echo "::endgroup::"
+          done
+
+      - name: Run benchmark harness
+        id: run
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GOOGLE_OAUTH_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
+          GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GOOGLE_OAUTH_REFRESH_TOKEN: ${{ secrets.GOOGLE_OAUTH_REFRESH_TOKEN }}
+          GMAIL_TEST_ACCOUNT_EMAIL: ${{ secrets.GMAIL_TEST_ACCOUNT_EMAIL }}
+          GMAIL_TEST_ACCOUNT_REFRESH_TOKEN: ${{ secrets.GMAIL_TEST_ACCOUNT_REFRESH_TOKEN }}
+          CALENDLY_API_TOKEN: ${{ secrets.CALENDLY_API_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_TEST_CHAT_ID: ${{ secrets.TELEGRAM_TEST_CHAT_ID }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_TEST_GUILD_ID: ${{ secrets.DISCORD_TEST_GUILD_ID }}
+          DISCORD_TEST_CHANNEL_ID: ${{ secrets.DISCORD_TEST_CHANNEL_ID }}
+          SIGNAL_CLI_URL: ${{ secrets.SIGNAL_CLI_URL }}
+          SIGNAL_TEST_NUMBER: ${{ secrets.SIGNAL_TEST_NUMBER }}
+          IMESSAGE_BRIDGE_URL: ${{ secrets.IMESSAGE_BRIDGE_URL }}
+          IMESSAGE_TEST_HANDLE: ${{ secrets.IMESSAGE_TEST_HANDLE }}
+          WHATSAPP_TOKEN: ${{ secrets.WHATSAPP_TOKEN }}
+          WHATSAPP_PHONE_ID: ${{ secrets.WHATSAPP_PHONE_ID }}
+          WHATSAPP_TEST_CONTACT: ${{ secrets.WHATSAPP_TEST_CONTACT }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          TWILIO_TEST_TO_NUMBER: ${{ secrets.TWILIO_TEST_TO_NUMBER }}
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          X_TEST_DM_HANDLE: ${{ secrets.X_TEST_DM_HANDLE }}
+          NOTIFICATION_RELAY_URL: ${{ secrets.NOTIFICATION_RELAY_URL }}
+          NOTIFICATION_RELAY_TOKEN: ${{ secrets.NOTIFICATION_RELAY_TOKEN }}
+          TRAVEL_BOOKING_API_KEY: ${{ secrets.TRAVEL_BOOKING_API_KEY }}
+          SCENARIO_FILTER: ${{ inputs.scenario_filter }}
+          LIFEOPS_JUDGE_THRESHOLD: ${{ inputs.judge_threshold || '0.8' }}
+          BENCHMARK_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
+          BENCHMARK_REPORT_PATH: artifacts/benchmark-report.md
+        # Trajectory data and ephemeral state land under ~/.eliza per
+        # eliza-native ELIZA_STATE_DIR convention.
+        run: node scripts/run-scenario-benchmark.mjs
+
+      - name: Upload benchmark report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: benchmark-report
+          path: |
+            artifacts/benchmark-report.md
+            artifacts/lifeops-scenario-report.json
+          if-no-files-found: warn
+          retention-days: 90

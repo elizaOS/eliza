@@ -1,0 +1,106 @@
+/**
+ * macOS Electrobun main window uses titleBarStyle "hiddenInset" (no native title bar).
+ *
+ * WHY this file exists:
+ * - Chromium honors -webkit-app-region for drag/no-drag regions.
+ * - System WKWebView often does not — actual move/resize chrome lives in
+ *   apps/app/electrobun/native/macos/window-effects.mm (see docs/guides/electrobun-mac-window-chrome.md).
+ * - We still ship these rules so CEF or future web engines get sensible defaults
+ *   without duplicating policy only in native code.
+ *
+ * html.eliza-electrobun-macos-titlebar is toggled from apps/app/src/main.tsx
+ * and html.eliza-electrobun-custom-titlebar is toggled by Header when the
+ * main macOS Electrobun shell renders its custom titlebar.
+ */
+html.eliza-electrobun-macos-titlebar {
+  /**
+   * Leading inset so the header nav (Chat, Apps, ...) clears the traffic-light
+   * cluster while staying on the same vertical row. Electrobun repositions
+   * the buttons on the existing macOS dev window.
+   */
+  --eliza-macos-frame-left-inset: 80px;
+  --eliza-macos-frame-top-inset: 0px;
+  --eliza-mobile-nav-offset: 0px;
+}
+
+html.eliza-electrobun-macos-titlebar.eliza-electrobun-frameless:not(
+    .eliza-electrobun-custom-titlebar
+  )
+  body {
+  -webkit-app-region: drag;
+}
+
+html.eliza-electrobun-macos-titlebar [data-window-titlebar="true"] {
+  -webkit-app-region: drag;
+}
+
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"],
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"] *,
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"]::before,
+html.eliza-electrobun-macos-titlebar [data-no-window-drag="true"]::after,
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"],
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"] *,
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"]::before,
+html.eliza-electrobun-macos-titlebar [data-no-camera-drag="true"]::after {
+  -webkit-app-region: no-drag;
+}
+
+html.eliza-electrobun-macos-titlebar [data-window-titlebar-padding] {
+  padding-inline-start: max(
+    env(safe-area-inset-left, 0px),
+    var(--eliza-macos-frame-left-inset)
+  );
+  padding-inline-end: 0.75rem;
+  padding-top: max(
+    env(safe-area-inset-top, 0px),
+    var(--eliza-macos-frame-top-inset)
+  );
+}
+
+html.eliza-electrobun-macos-titlebar [data-window-titlebar-banner="true"] {
+  padding-inline-start: max(
+    env(safe-area-inset-left, 0px),
+    var(--eliza-macos-frame-left-inset)
+  );
+}
+
+html.eliza-electrobun-macos-titlebar a,
+html.eliza-electrobun-macos-titlebar button,
+html.eliza-electrobun-macos-titlebar input,
+html.eliza-electrobun-macos-titlebar textarea,
+html.eliza-electrobun-macos-titlebar select,
+html.eliza-electrobun-macos-titlebar option,
+html.eliza-electrobun-macos-titlebar label,
+html.eliza-electrobun-macos-titlebar summary,
+html.eliza-electrobun-macos-titlebar iframe,
+html.eliza-electrobun-macos-titlebar canvas,
+html.eliza-electrobun-macos-titlebar video,
+html.eliza-electrobun-macos-titlebar audio,
+html.eliza-electrobun-macos-titlebar electrobun-wgpu,
+html.eliza-electrobun-macos-titlebar [role="button"],
+html.eliza-electrobun-macos-titlebar [role="link"],
+html.eliza-electrobun-macos-titlebar [role="menuitem"],
+html.eliza-electrobun-macos-titlebar [role="menuitemcheckbox"],
+html.eliza-electrobun-macos-titlebar [role="menuitemradio"],
+html.eliza-electrobun-macos-titlebar [role="option"],
+html.eliza-electrobun-macos-titlebar [role="radio"],
+html.eliza-electrobun-macos-titlebar [role="checkbox"],
+html.eliza-electrobun-macos-titlebar [role="switch"],
+html.eliza-electrobun-macos-titlebar [role="tab"],
+html.eliza-electrobun-macos-titlebar [role="slider"],
+html.eliza-electrobun-macos-titlebar [role="listbox"],
+html.eliza-electrobun-macos-titlebar [role="combobox"],
+html.eliza-electrobun-macos-titlebar [role="spinbutton"],
+html.eliza-electrobun-macos-titlebar [role="textbox"],
+html.eliza-electrobun-macos-titlebar [role="searchbox"],
+html.eliza-electrobun-macos-titlebar [contenteditable="true"],
+html.eliza-electrobun-macos-titlebar [aria-haspopup],
+html.eliza-electrobun-macos-titlebar [data-shell-scroll-region="true"] {
+  -webkit-app-region: no-drag;
+}
+
+/* Onboarding full-screen VRM canvas would otherwise stay no-drag (companion rule above). */
+html.eliza-electrobun-macos-titlebar.eliza-electrobun-frameless .onboarding-screen
+  canvas {
+  -webkit-app-region: drag;
+}

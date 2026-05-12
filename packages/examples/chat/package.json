@@ -1,0 +1,32 @@
+{
+  "name": "@elizaos/example-chat",
+  "version": "2.0.0-beta.0",
+  "description": "Interactive CLI chat with an AI agent using elizaOS - supports OpenAI, Claude, xAI, Gemini, and Groq",
+  "type": "module",
+  "scripts": {
+    "start": "bun run chat.ts",
+    "dev": "bun --watch run chat.ts",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit",
+    "build": "bun run typecheck"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-openai": "workspace:*",
+    "@elizaos/plugin-anthropic": "workspace:*",
+    "@elizaos/plugin-xai": "workspace:*",
+    "@elizaos/plugin-google-genai": "workspace:*",
+    "@elizaos/plugin-groq": "workspace:*",
+    "@elizaos/plugin-sql": "workspace:*",
+    "dotenv": "^17.0.0",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/uuid": "^11.0.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}

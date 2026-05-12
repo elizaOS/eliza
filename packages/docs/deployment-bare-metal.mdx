@@ -1,0 +1,123 @@
+---
+title: Bare-Metal Deployment (systemd)
+sidebarTitle: Bare-Metal
+description: Run Eliza directly on a Linux host as a systemd user service. Best for single-bot VPS deployments using a Claude Max subscription with CLI access.
+---
+
+The Docker-based deployment in [Deployment Guide](/deployment) is the
+right default for most operators. Bare-metal systemd is the better fit
+when:
+
+- You run **one bot on one VPS** against a personal Claude Max
+  subscription (the Anthropic plan that includes `claude` CLI access),
+  and you want the bot to use the same OAuth credentials the `claude`
+  CLI creates when you log in.
+- You want PTY subagents (the bot spawning `claude` itself) to run
+  natively on the host so there is no container-in-container plumbing.
+
+For multi-tenant hosts, managed cloud containers (ECS, Cloud Run), or
+API-key-first deployments, stay with Docker.
+
+## What the bundle installs
+
+All files live under `deploy/systemd/` in the repo:
+
+| File | Role |
+|---|---|
+| `units/eliza.service` | the bot, `Restart=always`, capped restart burst, OAuth refresh before launch |
+| `units/eliza-refresh.{service,timer}` | runs the OAuth helper every 6h to keep the refresh token rolling |
+| `units/eliza-probe.{service,timer}` | active health probe every 5 min — API + agent state + auth log tail |
+| `bin/eliza-refresh-oauth.sh` | reads `~/.claude/.credentials.json`, only calls `claude auth status` if near expiry |
+| `bin/eliza-health-probe.sh` | restarts the unit on failure, exits 0 (restart is the remediation) |
+| `eliza.env.example` | environment template copied to `~/.config/eliza/env` on first install |
+| `install.sh` | idempotent installer |
+
+## Prerequisites
+
+- Linux host with systemd (user sessions + linger). Any modern distro.
+- `bun` in the installing user's `PATH`.
+- `claude` CLI installed and logged in (`claude auth login` once).
+- Not running as root — user-level services only.
+
+## Install
+
+```bash
+git clone https://github.com/eliza-ai/eliza.git
+cd eliza
+./deploy/systemd/install.sh
+```
+
+Pass an absolute path as the first argument if the checkout lives
+somewhere other than where you want the service to run:
+
+```bash
+./deploy/systemd/install.sh /opt/eliza
+```
+
+The installer substitutes the resolved workdir, your `bun` binary path,
+and your log file path into the unit files, places them under
+`~/.config/systemd/user/`, enables linger (will prompt for sudo if
+needed), and starts the service and timers.
+
+On first install it also copies `eliza.env.example` to
+`~/.config/eliza/env`. Edit that file to change port, log path, or the
+OAuth refresh threshold — the bot and helpers read from it on every
+start.
+
+## OAuth refresh behavior
+
+Claude Code OAuth uses rolling refresh tokens: as long as the refresh
+token is exercised periodically, it never expires. The refresh helper
+reads the `expiresAt` field in `~/.claude/.credentials.json` and only
+calls `claude auth status --json` (which hits the auth endpoint and
+rolls the refresh token) when fewer than 60 minutes remain. Otherwise
+it is a no-op. The helper never invokes any model.
+
+This means:
+
+- A freshly (re)started bot always has a valid access token — the
+  `ExecStartPre` line triggers the helper before launch.
+- Long-running bots stay authenticated indefinitely as long as the
+  6-hour refresh timer keeps firing.
+
+If the bot has been offline long enough that the refresh token itself
+has expired, you need to run `claude auth login` once interactively.
+Nothing automated can replace that one-time step.
+
+## Health probe behavior
+
+Every 5 minutes the probe checks:
+
+1. `GET /api/health` returns within 5s.
+2. The response body contains `"agentState":"running"`.
+3. The last 50 log lines do not contain `Authentication failed`.
+
+Any failure triggers `systemctl --user restart eliza.service`. The
+probe itself always exits 0 — a restart is a normal recovery action,
+not a unit failure.
+
+## Logs and observability
+
+| | path |
+|---|---|
+| Bot output | `~/.local/share/eliza/bot.log` (override via `ELIZA_LOG`) |
+| OAuth refresh activity | `~/.local/share/eliza/oauth-refresh.log` |
+| Probe activity | `~/.local/share/eliza/probe.log` (sparse — only restarts and hourly heartbeats) |
+| systemd journal | `journalctl --user -u eliza.service` |
+
+## What this does **not** handle
+
+- **Subscription cancellation / Anthropic account lock.** Restarts cannot fix an inactive subscription.
+- **API-wide rate limits.** The probe will restart on `Authentication failed` but rate-limit-specific throttling would benefit from backoff logic (not implemented).
+- **Refresh token absolute expiry after long absence.** Requires one-time manual `claude auth login`.
+- **Multiple bot instances on one host.** Each install step replaces the user unit file; run under distinct Linux users if you need multi-tenancy.
+
+## Uninstall
+
+```bash
+systemctl --user disable --now eliza.service eliza-refresh.timer eliza-probe.timer
+rm ~/.config/systemd/user/eliza{,-refresh,-probe}.{service,timer}
+rm ~/bin/eliza-refresh-oauth.sh ~/bin/eliza-health-probe.sh
+systemctl --user daemon-reload
+loginctl disable-linger "$USER"   # optional
+```
