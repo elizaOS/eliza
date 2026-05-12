@@ -107,8 +107,10 @@ against the new checkpoint and re-stamped (training/AGENTS.md §2).
 
 ## DFlash vs. the Alternatives
 
-The fork (`~/.cache/eliza-dflash/milady-llama-cpp`) exposes several
-speculative paths via `--spec-type`: `draft` (vanilla draft model),
+The fork (the in-repo submodule `packages/inference/llama.cpp`, or the
+standalone clone at `~/.cache/eliza-dflash/eliza-llama-cpp` when the build
+scripts' override forces one) exposes several speculative paths via
+`--spec-type`: `draft` (vanilla draft model),
 `dflash` (the spiritbuun-branded draft path — *functionally identical to
 `draft`*, it just preserves the AOSP CLI spelling; see
 `common/speculative.cpp`), `eagle3`, and a family of `ngram_*` paths

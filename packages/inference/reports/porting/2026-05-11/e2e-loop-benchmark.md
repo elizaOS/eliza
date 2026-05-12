@@ -222,9 +222,11 @@ targets).
   the generated text is off-topic (e.g. LaTeX) — the loop still exercises the
   full decode + DFlash + TTS path correctly; quality is a v2 (fine-tune)
   concern.
-- The DFlash drafter is a real GGUF but ≈ a copy of the target, so acceptance
-  ≈ 1.0; this is the right *shape* but not a meaningful acceptance number until
-  a trained drafter ships.
+- The DFlash drafter is a real GGUF but ≈ a copy of the target. In the e2e
+  bench (short n_predict, in-server DFlash loop) acceptance lands ~0.89–1.0; in
+  the standalone `llama-speculative-simple` eval (`-n 48`, `--draft-min/max
+  2/6`) it lands 0.87 (0.6B) / 0.55 (1.7B) — high-variance numbers off a
+  near-copy drafter, the right *shape* but not a trained-drafter figure.
 - The ASR GGUF is stand-in quality → round-trip WER ≈ 1.0. Recorded honestly.
 - Server peak RSS exceeds the manifest budget on both tiers because the fused
   process keeps every voice region resident — this is a real publish blocker

@@ -106,7 +106,6 @@ consumers know the V-cache config falls back to the framework default.
 
 ```bash
 HF_TOKEN=hf_xxx \
-LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \
 uv run python scripts/optimize_for_milady.py \
     --base-model elizaos/eliza-1-lite-0_6b \
     --output-dir checkpoints/eliza-1-lite \
@@ -120,10 +119,14 @@ Production runs need:
 
 - A GPU with CUDA for the TurboQuant calibration pass and (optionally)
   the QJL CUDA kernel build under `scripts/quantization/qjl/csrc/`.
-- A local checkout of `elizaOS/llama.cpp` at tag `v1.0.0-eliza` (the in-repo submodule `packages/inference/llama.cpp` already provides this)
-  (commit `08032d57e15574f2a7ca19fc3f29510c8673d590`) at
-  `$LLAMA_CPP_DIR`. The fork is the only place `convert_hf_to_gguf.py`
-  understands `--outtype q4_polar`.
+- A checkout of `elizaOS/llama.cpp` at tag `v1.0.0-eliza` (commit
+  `08032d57e15574f2a7ca19fc3f29510c8673d590`). The `packages/inference/llama.cpp`
+  submodule already provides this (`bun install` inits it via
+  `scripts/ensure-llama-cpp-submodule.mjs`), or a standalone clone at
+  `~/.cache/eliza-dflash/eliza-llama-cpp` when the build scripts' override
+  forces one; set `$LLAMA_CPP_DIR` to point at a different checkout. The
+  fork is the only place `convert_hf_to_gguf.py` understands
+  `--outtype q4_polar`.
 - An `HF_TOKEN` (or `HUGGINGFACE_HUB_TOKEN`) with write access to the
   `elizaos` HF org.
 
