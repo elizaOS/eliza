@@ -265,8 +265,22 @@ class ElizaBridgeExperienceRunner:
 
             response = self._client.send_message(
                 text=(
+                    # P2b fix (keyword-echo): the experience rubric grades
+                    # `agent_keyword_incorporation_rate` by checking whether
+                    # the recalled-experience keywords appear verbatim in the
+                    # agent's response. Eliza was recalling the right memory
+                    # but paraphrasing it (e.g. saying "I tried connection
+                    # pooling" instead of repeating the recorded phrase),
+                    # scoring 0.0 vs hermes 1.0. The hermes prompt is shorter
+                    # and the model defaults to quoting; eliza needs an
+                    # explicit instruction to surface the original phrasing.
                     f"The user is asking about a problem they're facing. "
-                    f"Recall any relevant past experiences and respond.\n\n"
+                    f"Recall any relevant past experiences from memory and respond.\n\n"
+                    f"IMPORTANT: When you recall a past experience, quote the "
+                    f"original learning text verbatim — repeat the exact words "
+                    f"and phrases from the recorded learning rather than "
+                    f"paraphrasing. The user's downstream tooling matches on "
+                    f"keywords from the original memory.\n\n"
                     f"User: {retrieval_message}"
                 ),
                 context={
