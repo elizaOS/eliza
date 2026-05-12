@@ -243,4 +243,32 @@ describe("action structure audit guards", () => {
 			new Set(["get", "set", "delete", "list", "check", "mirror", "request"]),
 		);
 	});
+
+	it("todo atomic leaf names are retired and absent from generated canonical docs", () => {
+		// The five core atomic todo leaves (CREATE_TODO, COMPLETE_TODO, LIST_TODOS,
+		// EDIT_TODO, DELETE_TODO) were removed from packages/core advancedActions.
+		// The canonical todo planner surfaces are:
+		//   - TODO (plugin-todos): general user-scoped todo store
+		//   - OWNER_TODOS (app-lifeops): owner-specific definition-tracking store
+		// Neither is registered in packages/core itself; both are plugin-provided.
+		const TODO_LEAF_NAMES = [
+			"CREATE_TODO",
+			"COMPLETE_TODO",
+			"LIST_TODOS",
+			"EDIT_TODO",
+			"DELETE_TODO",
+		] as const;
+		const retired = new Set<string>(RETIRED_GENERATED_ACTION_NAMES);
+		const generated = new Set(allActionDocs.map((action) => action.name));
+		for (const name of TODO_LEAF_NAMES) {
+			expect(
+				retired.has(name),
+				`${name} must be in the retired-name guard`,
+			).toBe(true);
+			expect(
+				generated.has(name),
+				`${name} must not appear as a top-level action in generated docs`,
+			).toBe(false);
+		}
+	});
 });
