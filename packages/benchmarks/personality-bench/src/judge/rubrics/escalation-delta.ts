@@ -2,7 +2,7 @@
  * @fileoverview escalation rubric.
  *
  * Expected `personalityExpect.options`:
- *  - `direction: "warmer" | "cooler" | "terser" | "looser"`
+ *  - `direction: "warmer" | "cooler" | "terser" | "looser" | "playful"`
  *  - `requireStrictMonotonic?: boolean` — when true, each step must move; when
  *    false (default), only the net delta across the first/last checked turn
  *    must move in the right direction.
@@ -15,10 +15,10 @@ import type {
   PersonalityVerdict,
 } from "../../types.ts";
 import { judgeWithLlm } from "../checks/llm-judge.ts";
-import { tokenCount, warmthScore } from "../checks/phrase.ts";
+import { playfulScore, tokenCount, warmthScore } from "../checks/phrase.ts";
 import { combineVerdict } from "../verdict.ts";
 
-type Direction = "warmer" | "cooler" | "terser" | "looser";
+type Direction = "warmer" | "cooler" | "terser" | "looser" | "playful";
 
 interface EscalationOptions {
   direction: Direction;
@@ -44,6 +44,8 @@ function scoreFor(direction: Direction, text: string): number {
     case "terser":
     case "looser":
       return tokenCount(text);
+    case "playful":
+      return playfulScore(text);
     default:
       return 0;
   }
@@ -53,6 +55,7 @@ function expectedSign(direction: Direction): 1 | -1 {
   switch (direction) {
     case "warmer":
     case "looser":
+    case "playful":
       return 1;
     case "cooler":
     case "terser":
