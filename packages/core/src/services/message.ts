@@ -3324,7 +3324,9 @@ function messageHandlerFromFieldResult(
 	// `prefiredToolCall` is staged on the plan. The planner-loop call site
 	// detects that field and dispatches the action directly, skipping the
 	// planner LLM call that the model just told us was unreachable.
-	const prefiredToolCall = extractPlanActionsCallFromText(rawReplyText);
+	const prefiredToolCall =
+		extractPlanActionsCallFromText(rawReplyText) ??
+		extractEmbeddedCallShapeFromText(rawReplyText);
 	const replyText = prefiredToolCall ? "" : rawReplyText;
 	const augmentedCandidateActions =
 		prefiredToolCall && !candidateActions.includes(prefiredToolCall.name)
