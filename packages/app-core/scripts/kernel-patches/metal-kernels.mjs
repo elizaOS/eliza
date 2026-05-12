@@ -1052,16 +1052,18 @@ export function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
     "attn_score_polar(q, packed_k)",
     "fused_attn_qjl_tbq(q, packed_k, packed_v)",`,
     );
-    c = c.replace(
-      `    [GGML_TYPE_QJL1_256] = {`,
-      `    [GGML_TYPE_TBQ3_TCQ] = {
+    if (!c.includes(`    [GGML_TYPE_TBQ3_TCQ] = {`)) {
+      c = c.replace(
+        `    [GGML_TYPE_QJL1_256] = {`,
+        `    [GGML_TYPE_TBQ3_TCQ] = {
         .type_name                = "tbq3_tcq",
         .blck_size                = QK_TBQ3_TCQ,
         .type_size                = sizeof(block_tbq3_tcq),
         .is_quantized             = true,
     },
     [GGML_TYPE_QJL1_256] = {`,
-    );
+      );
+    }
     c = c.replaceAll(
       `static_assert(GGML_OP_COUNT == 97, "GGML_OP_COUNT != 97");`,
       `static_assert(GGML_OP_COUNT == 99, "GGML_OP_COUNT != 99");`,

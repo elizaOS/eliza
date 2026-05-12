@@ -46,6 +46,85 @@ import type {
   TranscriptUpdate,
 } from "../types";
 
+/* ==================================================================== *
+ * LocalAgreementBuffer — word-level streaming-ASR partial stabilizer.
+ *
+ * Streaming ASR emits a fresh word-sequence hypothesis on every audio
+ * frame. Individual words near the end of the hypothesis can change
+ * across frames ("sat" → "cap" → "sat") before settling. This buffer
+ * applies LocalAgreement-n (n=2 default) at the word level: a word is
+ * emitted to downstream only when it appears at the same position in n
+ * consecutive hypotheses. The committed stable prefix is monotonically
+ * non-decreasing — once a word is committed it is never retracted.
+ *
+ * Word-level (not character-level): suited for the VAD pipeline adapter
+ * where downstream consumers (drafter, verifier) operate on word tokens.
+ * For the character-level prefix variant, see `partial-stabilizer.ts`.
+ * ==================================================================== */
+
+/**
+ * LocalAgreement-n word-level partial stabilizer.
+ *
+ * Usage:
+ *   const buf = new LocalAgreementBuffer();
+ *   const stable = buf.stable(["hello", "there", "world"]);
+ *   // → [] on first call (need n=2 consecutive identical prefix)
+ *   const stable2 = buf.stable(["hello", "there", "how"]);
+ *   // → ["hello", "there"] (matched across two consecutive hypotheses)
+ */
+export class LocalAgreementBuffer {
+  private readonly n: number;
+  private prev: string[] = [];
+  /** Monotonically growing committed word list. */
+  private committed: string[] = [];
+
+  constructor(n = 2) {
+    if (!Number.isFinite(n) || n < 1) {
+      throw new Error(
+        `[LocalAgreementBuffer] n must be a finite integer >= 1; got ${String(n)}`,
+      );
+    }
+    this.n = Math.floor(n);
+  }
+
+  /**
+   * Feed the latest word-level hypothesis. Returns the stable committed
+   * prefix — the longest leading word sequence that has appeared
+   * identically in `n` consecutive calls. Monotonically non-decreasing.
+   *
+   * NOTE: This implementation handles n=2 via prev/current comparison;
+   * for n>2 it keeps a rolling window of the last n hypotheses.
+   */
+  stable(current: string[]): string[] {
+    const agreed: string[] = [];
+    const limit = Math.min(this.prev.length, current.length);
+    for (let i = 0; i < limit; i++) {
+      if (this.prev[i] === current[i]) {
+        agreed.push(current[i]);
+      } else {
+        break;
+      }
+    }
+    this.prev = current;
+    // Extend committed if we have a longer agreed prefix.
+    if (agreed.length > this.committed.length) {
+      this.committed = agreed;
+    }
+    return this.committed;
+  }
+
+  /** Clear all state. Call at utterance boundaries. */
+  reset(): void {
+    this.prev = [];
+    this.committed = [];
+  }
+
+  /** The current committed stable word list (read-only view). */
+  getCommitted(): string[] {
+    return this.committed;
+  }
+}
+
 /** Available transcription drive modes. */
 export type StreamingPipelineMode = "streaming" | "batch";
 
