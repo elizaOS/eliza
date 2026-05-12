@@ -49,10 +49,7 @@
  *   the agent bundle.
  */
 
-import {
-  type ChildProcess,
-  spawn as spawnChild,
-} from "node:child_process";
+import { type ChildProcess, spawn as spawnChild } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
