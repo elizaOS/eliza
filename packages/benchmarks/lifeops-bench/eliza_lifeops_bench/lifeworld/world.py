@@ -37,6 +37,7 @@ from .entities import (
     ReminderList,
     ScheduledTask,
     Subscription,
+    WorkoutRecord,
 )
 
 
@@ -73,6 +74,7 @@ class LifeWorld:
         EntityKind.HEALTH_METRIC: "health_metrics",
         EntityKind.LOCATION_POINT: "location_points",
         EntityKind.SCHEDULED_TASK: "scheduled_tasks",
+        EntityKind.WORKOUT: "workouts",
     }
 
     def __init__(self, *, seed: int, now_iso: str) -> None:
@@ -95,6 +97,7 @@ class LifeWorld:
         self.health_metrics: dict[str, HealthMetric] = {}
         self.location_points: dict[str, LocationPoint] = {}
         self.scheduled_tasks: dict[str, ScheduledTask] = {}
+        self.workouts: dict[str, WorkoutRecord] = {}
 
     # ---------------------------------------------------------------- CRUD
 
@@ -429,6 +432,32 @@ class LifeWorld:
         )
         self.add(EntityKind.NOTE, note)
         return note
+
+    # ---------------------------------------------------- Workout helpers
+
+    def log_workout(
+        self,
+        *,
+        workout_id: str,
+        activity_type: str,
+        duration_minutes: int,
+        calories: int | None = None,
+        source: str = "manual",
+        distance_km: float | None = None,
+        notes: str = "",
+    ) -> WorkoutRecord:
+        workout = WorkoutRecord(
+            id=workout_id,
+            activity_type=activity_type,
+            duration_minutes=duration_minutes,
+            calories=calories,
+            source=source,  # type: ignore[arg-type]
+            recorded_at=self.now_iso,
+            distance_km=distance_km,
+            notes=notes,
+        )
+        self.add(EntityKind.WORKOUT, workout)
+        return workout
 
     # ---------------------------------------------------- ScheduledTask helpers
 

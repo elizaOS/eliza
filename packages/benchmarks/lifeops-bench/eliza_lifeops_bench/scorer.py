@@ -520,6 +520,9 @@ _DISCRIMINATOR_ACTION_ALIASES: dict[str, tuple[str, dict[str, str], frozenset[st
 }
 
 _ACTION_NAME_ALIASES: dict[str, str] = {
+    # Retired action names → canonical replacements.
+    "DEVICE_INTENT": "BLOCK",
+    "LIFEOPS": "LIFE",
     "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
     "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
     "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",

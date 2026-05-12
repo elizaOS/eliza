@@ -458,15 +458,9 @@ export type BundleDefaultEligibility =
   | { canBeDefault: true }
   | {
       canBeDefault: false;
-      /** Distinct, machine-readable reason — surfaced to the UI alongside
-       * the `BundleIncompatibleError` the downloader raises for the same
-       * conditions. `contract-invalid` covers both the historic
-       * "not-default-eligible" case (eval gate not passed for a strict
-       * release) and any other manifest-contract failure caught by
-       * `collectContractErrors`. */
       reason:
         | "no-manifest"
-        | "contract-invalid"
+        | "not-default-eligible"
         | "ram-below-floor"
         | "kernels-unverified-on-device"
         | "not-verified-on-device";
@@ -489,10 +483,9 @@ export type BundleDefaultEligibility =
  *    (`InstalledModel.bundleVerifiedAt` is set) — a materialized-but-unverified
  *    bundle is never auto-selected, per AGENTS.md §7.
  *
- * `manifest.defaultEligible: true` is NOT required at the gate level — a
- * `base-v1-candidate` bundle that passes every above condition is allowed
- * to fill an empty default slot. The recommender prefers a strict release
- * (`defaultEligible: true`) over a candidate when both are installed.
+ * `manifest.defaultEligible: true` is required — the publisher must explicitly
+ * mark the bundle as eligible. The recommender prefers a strict release over a
+ * candidate when both are installed and `defaultEligible: true`.
  */
 export function canBundleBeDefaultOnDevice(
   installed: InstalledModel,
@@ -513,6 +506,13 @@ export function canBundleBeDefaultOnDevice(
       canBeDefault: false,
       reason: "not-verified-on-device",
       detail: `${installed.id}: bundle materialized but the on-device verify pass (load → 1-token text → 1-phrase voice → barge-in) has not run`,
+    };
+  }
+  if (!manifest.defaultEligible) {
+    return {
+      canBeDefault: false,
+      reason: "not-default-eligible",
+      detail: `${installed.id}: manifest.defaultEligible is false`,
     };
   }
   const caps = deviceCapsFromProbe(hardware);
@@ -545,9 +545,10 @@ export function canBundleBeDefaultOnDevice(
   // RAM ok, backend ok — the failure must be a manifest-contract path the
   // validator caught (e.g. a required-eval gate not passed for a strict
   // release, a lineage/files mismatch, an inconsistent provenance block).
+  // All contract failures make the bundle ineligible to be the device default.
   return {
     canBeDefault: false,
-    reason: "contract-invalid",
+    reason: "not-default-eligible",
     detail: `${installed.id}: manifest failed the contract check (an eval gate, kernel-coverage rule, or lineage/files consistency rule)`,
   };
 }

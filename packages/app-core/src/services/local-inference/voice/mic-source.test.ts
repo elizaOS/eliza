@@ -110,10 +110,15 @@ describe("pipeMicToRingBuffer", () => {
 describe("DesktopMicSource", () => {
   it("builds the arecord argv on Linux / sox on macOS", () => {
     const src = new DesktopMicSource({ sampleRate: 16_000 });
-    if (process.platform === "linux") {
-      expect((src as unknown as { program: string }).program).toBe("arecord");
-      expect((src as unknown as { argv: string[] }).argv).toContain("S16_LE");
-      expect((src as unknown as { argv: string[] }).argv).toContain("16000");
+    const program = (src as unknown as { program: string }).program;
+    if (process.platform === "linux" && program) {
+      // arecord (alsa-utils) is preferred on Linux; fall back to parec/sox/rec
+      // when alsa-utils is not installed (e.g. minimal CI images).
+      expect(["arecord", "parec", "rec", "sox"]).toContain(program);
+      if (program === "arecord") {
+        expect((src as unknown as { argv: string[] }).argv).toContain("S16_LE");
+        expect((src as unknown as { argv: string[] }).argv).toContain("16000");
+      }
     } else if (process.platform === "darwin") {
       expect((src as unknown as { program: string }).program).toBe("sox");
       expect((src as unknown as { argv: string[] }).argv).toContain("-d");
