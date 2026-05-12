@@ -14,6 +14,7 @@
  * end-to-end without needing a database.
  */
 
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   FirstRunService,
@@ -174,7 +175,7 @@ describe("J2 — spine + first-run integration", () => {
 
     // Inputs that have an idempotencyKey should resolve to the same taskId.
     for (let i = 0; i < cached.length; i += 1) {
-      if (cached[i]?.input.idempotencyKey) {
+      if (cached[i]!.input.idempotencyKey) {
         expect(secondPass[i]).toBe(firstPass[i]);
       }
     }

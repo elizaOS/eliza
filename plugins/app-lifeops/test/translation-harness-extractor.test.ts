@@ -113,7 +113,7 @@ function runHarness(fixture: string): {
       `Could not locate action name in harness output:\n${stdout}\n${result.stderr}`,
     );
   }
-  const actionName = actionMatch[1]?.trim();
+  const actionName = actionMatch[1]!.trim();
   const arrayBodyMatch = stdout.match(
     /export const \w+: ReadonlyArray<PromptExampleEntry> = (\[[\s\S]*?\n\]);/,
   );

@@ -526,7 +526,7 @@ describe("Real E2E: LifeOps Signal", () => {
         "Signal pairing status",
         async () =>
           req(
-            routeServer?.port,
+            routeServer!.port,
             "GET",
             `/api/lifeops/connectors/signal/pairing-status?sessionId=${encodeURIComponent(sessionId)}`,
           ),
