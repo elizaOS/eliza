@@ -99,8 +99,7 @@ export default scenario({
     judgeRubric({
       name: "push-urgent-bypass-rubric",
       threshold: 0.7,
-      description:
-        "Mom-urgent push fired through DnD on mobile.",
+      description: "Mom-urgent push fired through DnD on mobile.",
     }),
   ],
 });

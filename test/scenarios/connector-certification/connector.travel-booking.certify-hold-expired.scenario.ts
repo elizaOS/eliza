@@ -21,11 +21,7 @@ export default buildConnectorCertificationScenario({
       name: "travel-hold-expired",
       text: "Hold the best flight option and get it ready for approval, but if the supplier hold expired before confirmation, re-price it and queue the updated itinerary instead of pretending the original hold is still valid.",
       responseIncludesAny: ["travel", "hold", "expired", "approval"],
-      acceptedActions: [
-        "CALENDAR",
-        "MESSAGE",
-        "VOICE_CALL",
-      ],
+      acceptedActions: ["CALENDAR", "MESSAGE", "VOICE_CALL"],
       includesAny: ["travel", "hold", "expired", "approval"],
     },
   ],

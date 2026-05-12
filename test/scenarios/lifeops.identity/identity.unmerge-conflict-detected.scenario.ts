@@ -8,7 +8,8 @@ import {
 
 export default scenario({
   id: "identity.unmerge-conflict-detected",
-  title: "Detect a wrong-merge and unmerge while preserving each side's history",
+  title:
+    "Detect a wrong-merge and unmerge while preserving each side's history",
   domain: "lifeops.identity",
   tags: ["lifeops", "identity", "unmerge", "conflict"],
   description:
@@ -34,7 +35,11 @@ export default scenario({
         id: "ent-alex-lee-merged",
         displayName: "Alex Lee",
         handles: [
-          { platform: "gmail", handle: "alex.lee@quanta.com", realPerson: "alex-1" },
+          {
+            platform: "gmail",
+            handle: "alex.lee@quanta.com",
+            realPerson: "alex-1",
+          },
           { platform: "telegram", handle: "@alexlee", realPerson: "alex-2" },
         ],
         mergedAccidentally: true,

@@ -23,13 +23,7 @@ function checkCancelIntent(ctx: ScenarioContext): string | undefined {
   if (!blob.includes("launch checklist")) {
     return `Action payload didn't reference 'launch checklist'. Payload: ${blob.slice(0, 400)}`;
   }
-  const cancelSignals = [
-    "cancel",
-    "delete",
-    "remove",
-    "decline",
-    "drop",
-  ];
+  const cancelSignals = ["cancel", "delete", "remove", "decline", "drop"];
   if (!cancelSignals.some((s) => blob.includes(s))) {
     return `Action payload didn't indicate cancel/delete intent.`;
   }

@@ -36,7 +36,11 @@ export default scenario({
         kind: "trip",
         id: "trip-NYC-2026-q2",
         destination: "JFK",
-        flight: { carrier: "United", flightNumber: "UA245", confirmation: "PNR42X" },
+        flight: {
+          carrier: "United",
+          flightNumber: "UA245",
+          confirmation: "PNR42X",
+        },
         hotel: { name: "Marriott Marquis", confirmation: "MA112233" },
         calendarHolds: [
           { id: "evt-flight-out", title: "United UA245 SFO→JFK" },

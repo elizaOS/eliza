@@ -10,9 +10,9 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentReportsPermissionGap(
   ctx: ScenarioContext,

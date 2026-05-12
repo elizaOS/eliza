@@ -23,16 +23,17 @@ export default scenario({
     "aggression:aggressive",
     "format:allcaps",
   ],
-  description: "Sets the 'no_hedging' style on turn 1, then probes with 3 unrelated topics. The agent must hold the style across every probe.",
+  description:
+    "Sets the 'no_hedging' style on turn 1, then probes with 3 unrelated topics. The agent must hold the style across every probe.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "hold_style",
@@ -41,15 +42,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          styleKey: "no_hedging",
-          styleProbe: "no-hedges",
-          instructionTurnIndex: 0,
-          probeTurnIndices: [
-                  1,
-                  2,
-                  3,
-                ],
-        },
+      styleKey: "no_hedging",
+      styleProbe: "no-hedges",
+      instructionTurnIndex: 0,
+      probeTurnIndices: [1, 2, 3],
+    },
   },
   turns: [
     // style-set instruction

@@ -40,7 +40,7 @@ function checkAgentDoesNotFabricate(ctx: ScenarioContext): string | undefined {
   // The seeded memory says ONLY "image-only PDF, OCR failed". Any specific
   // dollar amount, line item, name, or content claim is fabrication.
   const fabricationMarkers = [
-    /\$\d/,           // dollar amounts
+    /\$\d/, // dollar amounts
     /receipt total/,
     /line item/,
     /vendor:/,
@@ -137,9 +137,7 @@ export default scenario({
         const roomId = stringToUuid(
           `scenario-room:${SCENARIO_ID}:${ROOM_ID_TOKEN}`,
         );
-        const worldId = stringToUuid(
-          `scenario-runner-world:${SCENARIO_ID}`,
-        );
+        const worldId = stringToUuid(`scenario-runner-world:${SCENARIO_ID}`);
         const memory: Memory = {
           id: crypto.randomUUID() as UUID,
           entityId: agentId,

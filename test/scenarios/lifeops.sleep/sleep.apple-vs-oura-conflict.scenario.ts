@@ -23,11 +23,11 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const NIGHT_START_UTC = "2025-11-04T05:00:00.000Z"; // 22:00 Pacific Mon Nov 3
@@ -73,7 +73,16 @@ function checkAgentSurfacesBothSources(
 
   // Reply must reference at least one of the actual durations (7h or 8h)
   // since otherwise the agent invented an unrelated number.
-  const durationSignals = ["7h", "7 h", "7 hour", "seven hour", "8h", "8 h", "8 hour", "eight hour"];
+  const durationSignals = [
+    "7h",
+    "7 h",
+    "7 hour",
+    "seven hour",
+    "8h",
+    "8 h",
+    "8 hour",
+    "eight hour",
+  ];
   if (!durationSignals.some((s) => reply.includes(s))) {
     return `Reply did not surface either of the seeded durations (7h Apple Health / 8h Oura). The agent fabricated a number. Reply: ${reply.slice(0, 400)}`;
   }

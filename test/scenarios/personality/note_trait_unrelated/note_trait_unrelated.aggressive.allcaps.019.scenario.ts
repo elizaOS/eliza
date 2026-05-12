@@ -13,7 +13,8 @@ import { scenario } from "@elizaos/scenario-schema";
 
 export default scenario({
   id: "note_trait_unrelated.aggressive.allcaps.019",
-  title: "note_trait :: first_name_only :: aggressive :: allcaps :: 4-turn (19)",
+  title:
+    "note_trait :: first_name_only :: aggressive :: allcaps :: 4-turn (19)",
   domain: "personality",
   tags: [
     "personality",
@@ -23,35 +24,29 @@ export default scenario({
     "aggression:aggressive",
     "format:allcaps",
   ],
-  description: "User mentions the 'first_name_only' trait on turn 1 inside a benign request. The agent is then probed with 3 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
+  description:
+    "User mentions the 'first_name_only' trait on turn 1 inside a benign request. The agent is then probed with 3 unrelated topics. The trait must be respected on every probe (especially turn 3+).",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "note_trait_unrelated_test",
     expectedBehavior: "trait_respected_on_all_subsequent_unrelated_turns",
     judgeMode: "trait_respected",
-    forbiddenContent: [
-          "mr.",
-          "sir",
-          "ma'am",
-        ],
+    forbiddenContent: ["mr.", "sir", "ma'am"],
     requiredContent: [],
     judgeKwargs: {
-          traitKey: "first_name_only",
-          traitMentionTurnIndex: 0,
-          traitCheckTurnIndices: [
-                  2,
-                  3,
-                ],
-        },
+      traitKey: "first_name_only",
+      traitMentionTurnIndex: 0,
+      traitCheckTurnIndices: [2, 3],
+    },
   },
   turns: [
     // trait mention embedded in unrelated request

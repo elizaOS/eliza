@@ -14,9 +14,7 @@ import {
   seedMeetingPreferences,
 } from "../_helpers/lifeops-seeds.ts";
 
-function checkSleepWindowSurfaced(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkSleepWindowSurfaced(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
   const signals = [
     "sleep",
@@ -38,7 +36,8 @@ function checkSleepWindowSurfaced(
 
 export default scenario({
   id: "calendar.sleep-window-defense",
-  title: "Agent defends a protected 23:00-08:00 sleep window against a 7am call",
+  title:
+    "Agent defends a protected 23:00-08:00 sleep window against a 7am call",
   domain: "lifeops.calendar",
   tags: ["lifeops", "calendar", "sleep", "time-defense"],
   isolation: "per-scenario",

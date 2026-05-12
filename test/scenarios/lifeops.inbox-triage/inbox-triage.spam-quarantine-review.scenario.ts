@@ -16,12 +16,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const FALSE_POSITIVE_TOKEN = "calendar-invite-from-known-domain";
 
@@ -55,15 +55,10 @@ function checkAgentSurfacesFalsePositive(
 
 export default scenario({
   id: "inbox-triage.spam-quarantine-review",
-  title: "Spam quarantine review surfaces likely false-positive among real spam",
+  title:
+    "Spam quarantine review surfaces likely false-positive among real spam",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "spam",
-    "false-positive",
-    "ranking",
-  ],
+  tags: ["lifeops", "inbox-triage", "spam", "false-positive", "ranking"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],

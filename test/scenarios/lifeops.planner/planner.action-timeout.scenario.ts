@@ -19,12 +19,7 @@
  * scenario covers this.
  */
 
-import type {
-  Action,
-  AgentRuntime,
-  Handler,
-  Plugin,
-} from "@elizaos/core";
+import type { Action, AgentRuntime, Handler, Plugin } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
@@ -127,13 +122,7 @@ export default scenario({
   title:
     "Action handler hang triggers timeout that the agent surfaces honestly",
   domain: "lifeops.planner",
-  tags: [
-    "lifeops",
-    "planner",
-    "action-timeout",
-    "robustness",
-    "negative-path",
-  ],
+  tags: ["lifeops", "planner", "action-timeout", "robustness", "negative-path"],
   isolation: "per-scenario",
   requires: {
     plugins: ["scenario-hang-test"],

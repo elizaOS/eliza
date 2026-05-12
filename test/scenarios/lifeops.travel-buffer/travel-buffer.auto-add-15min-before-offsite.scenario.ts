@@ -23,14 +23,7 @@ function checkTravelBufferAdded(ctx: ScenarioContext): string | undefined {
       t: c.result?.text ?? null,
     })),
   ).toLowerCase();
-  const signals = [
-    "travel",
-    "buffer",
-    "15-min",
-    "15 min",
-    "drive",
-    "commute",
-  ];
+  const signals = ["travel", "buffer", "15-min", "15 min", "drive", "commute"];
   if (!signals.some((s) => blob.includes(s))) {
     return `Action payload didn't reference travel buffer. Payload: ${blob.slice(0, 400)}`;
   }

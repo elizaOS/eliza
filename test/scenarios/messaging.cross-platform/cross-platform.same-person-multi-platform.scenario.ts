@@ -62,11 +62,7 @@ export default scenario({
       room: "main",
       text: "Show me everywhere Priya Rao has messaged me recently. She is the same person across Gmail, Signal, Telegram, and WhatsApp.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: [
-          "READ_MESSAGES",
-          "MESSAGE",
-          "MESSAGE",
-        ],
+        acceptedActions: ["READ_MESSAGES", "MESSAGE", "MESSAGE"],
         description:
           "cross-platform conversation lookup for one canonical person",
         includesAny: ["priya", "gmail", "signal", "telegram", "whatsapp"],
@@ -98,11 +94,7 @@ export default scenario({
       type: "custom",
       name: "cross-platform-same-person-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: [
-          "READ_MESSAGES",
-          "MESSAGE",
-          "MESSAGE",
-        ],
+        acceptedActions: ["READ_MESSAGES", "MESSAGE", "MESSAGE"],
         description:
           "cross-platform conversation lookup for one canonical person",
         includesAny: ["priya", "gmail", "signal", "telegram", "whatsapp"],

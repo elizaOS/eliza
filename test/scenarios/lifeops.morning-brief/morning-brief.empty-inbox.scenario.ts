@@ -22,12 +22,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 // LARP-bait substrings that the existing morning-brief fixtures pre-seed —
 // if any of these appear in a reply on an empty inbox, the agent invented
@@ -42,7 +42,9 @@ const FORBIDDEN_FABRICATION_STRINGS = [
   "Suran",
 ];
 
-function checkResponseIsHonestlyEmpty(ctx: ScenarioContext): string | undefined {
+function checkResponseIsHonestlyEmpty(
+  ctx: ScenarioContext,
+): string | undefined {
   const checkin = ctx.actionsCalled.find(
     (action) => action.actionName === "CHECKIN",
   );
@@ -56,9 +58,7 @@ function checkResponseIsHonestlyEmpty(ctx: ScenarioContext): string | undefined 
     return "CHECKIN was called but produced no structured data";
   }
   // The brief reply travels through ctx.turns[0].responseText.
-  const reply = String(
-    ctx.turns?.[0]?.responseText ?? "",
-  ).toLowerCase();
+  const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
   if (reply.length === 0) {
     return "agent returned an empty response on empty-inbox brief";
   }
@@ -97,7 +97,8 @@ function checkResponseIsHonestlyEmpty(ctx: ScenarioContext): string | undefined 
 
 export default scenario({
   id: "morning-brief.empty-inbox",
-  title: "Morning brief on a truly empty inbox reports the empty state honestly",
+  title:
+    "Morning brief on a truly empty inbox reports the empty state honestly",
   domain: "lifeops.morning-brief",
   tags: [
     "lifeops",

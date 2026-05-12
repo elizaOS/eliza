@@ -6,12 +6,10 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
-function checkAgentAsksWhichAccount(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkAgentAsksWhichAccount(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
   const signals = [
     "which calendar",

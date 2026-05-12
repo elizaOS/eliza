@@ -98,9 +98,7 @@ export default scenario({
       name: "whatsapp-reply-send-payload-is-addressed",
       predicate: async (ctx) => {
         const sendActions = ctx.actionsCalled.filter((action) =>
-          ["MESSAGE", "MESSAGE"].includes(
-            action.actionName,
-          ),
+          ["MESSAGE", "MESSAGE"].includes(action.actionName),
         );
         const confirmedSends = sendActions.filter((action) => {
           const blob = JSON.stringify(action).toLowerCase();

@@ -9,7 +9,8 @@ import {
 
 export default scenario({
   id: "push.cancellation-fee-warning-before-skip",
-  title: "Warn about a cancellation fee before letting the user skip an appointment",
+  title:
+    "Warn about a cancellation fee before letting the user skip an appointment",
   domain: "lifeops.push",
   tags: ["lifeops", "push", "risk", "appointment"],
   description:
