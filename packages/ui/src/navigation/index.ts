@@ -21,13 +21,13 @@ import { resolveDefaultLandingTab } from "./main-tab";
 
 /** Apps are enabled by default; opt-out via VITE_ENABLE_APPS=false. */
 export const APPS_ENABLED =
-  String(import.meta.env.VITE_ENABLE_APPS ?? "true").toLowerCase() !== "false";
+  String(import.meta.env?.VITE_ENABLE_APPS ?? "true").toLowerCase() !== "false";
 
 /** Stream routes stay addressable; the nav hides the tab unless streaming is enabled. */
 export const STREAM_ENABLED = true;
 /** Companion tab — enabled by default; opt-out via VITE_ENABLE_COMPANION_MODE=false. */
 export const COMPANION_ENABLED =
-  String(import.meta.env.VITE_ENABLE_COMPANION_MODE ?? "true").toLowerCase() !==
+  String(import.meta.env?.VITE_ENABLE_COMPANION_MODE ?? "true").toLowerCase() !==
   "false";
 
 /** Built-in tab identifiers. */
