@@ -1442,9 +1442,19 @@ export class LocalInferenceEngine {
       null;
     let feedWakeFrame: ((pcm: Float32Array) => void) | null = null;
     if (opts.wakeWord?.enabled) {
-      const { loadBundledWakeWordModel, OpenWakeWordDetector } = await import(
-        "./voice/wake-word"
-      );
+      const {
+        isPlaceholderWakeWordHead,
+        loadBundledWakeWordModel,
+        OPENWAKEWORD_DEFAULT_HEAD,
+        OpenWakeWordDetector,
+      } = await import("./voice/wake-word");
+      const headName =
+        opts.wakeWord.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+      if (isPlaceholderWakeWordHead(headName)) {
+        console.warn(
+          `[voice] wake word head '${headName}' is a PLACEHOLDER (the upstream openWakeWord "hey jarvis" head, renamed) — it fires on "hey jarvis", not the Eliza-1 wake phrase. Experimental, opt-in only; see packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md.`,
+        );
+      }
       const model = await loadBundledWakeWordModel({
         bundleRoot: bridge.bundlePath(),
         ...(opts.wakeWord.head ? { head: opts.wakeWord.head } : {}),

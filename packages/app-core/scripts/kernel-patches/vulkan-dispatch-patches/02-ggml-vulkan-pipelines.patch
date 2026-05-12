@@ -54,6 +54,12 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     vk_pipeline pipeline_milady_turbo4_multi;
     vk_pipeline pipeline_milady_turbo3_tcq_multi;
     vk_pipeline pipeline_milady_qjl_multi;
+    // Device-policy fold factors actually baked into the _multi pipelines above
+    // (see ggml_vk_load_shaders). The runtime dispatch must divide the grid by
+    // exactly these — discrete-GPU classes (NVIDIA, big AMD) want a much larger
+    // fold than the conservative iGPU value. Defaults are the conservative 4.
+    uint32_t milady_vk_tbq_multiblock_factor = 4;
+    uint32_t milady_vk_qjl_multiblock_factor = 4;
     // Fused attention (QJL-K score + V-mix, online softmax, score never
     // materialised) — GGML_OP_FUSED_ATTN_QJL_TBQ + Polar V-mix variant.
     vk_pipeline pipeline_milady_fused_attn_qjl_tbq;
@@ -95,13 +101,26 @@ SENTINEL  MILADY-VK-DISPATCH-PATCH-V1
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar_preht,    "milady_polar_preht",    milady_polar_preht_len,    milady_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
     ggml_vk_create_pipeline(device, device->pipeline_milady_polar_get_rows, "milady_polar_get_rows", milady_polar_get_rows_len, milady_polar_get_rows_data, "main", 2, 2 * sizeof(uint32_t), {1, 1, 1}, {}, 1);
-    // Multi-block variants. constant_id=0 (BLOCKS_PER_WG for the turbo* score
-    // kernels, TOKENS_PER_WG for qjl) — a conservative 4 amortises launch tax
-    // without over-serialising on small grids; sweep per device later.
-    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3_multi,     "milady_turbo3_multi",     milady_turbo3_multi_len,     milady_turbo3_multi_data,     "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
-    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo4_multi,     "milady_turbo4_multi",     milady_turbo4_multi_len,     milady_turbo4_multi_data,     "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
-    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3_tcq_multi, "milady_turbo3_tcq_multi", milady_turbo3_tcq_multi_len, milady_turbo3_tcq_multi_data, "main", 4, 5 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
-    ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_multi,        "milady_qjl_multi",        milady_qjl_multi_len,        milady_qjl_multi_data,        "main", 3, 4 * sizeof(uint32_t), {1, 1, 1}, {4u}, 1);
+    // Multi-block variants. constant_id=0 = BLOCKS_PER_WG (turbo* score) /
+    // TOKENS_PER_WG (qjl). Device-policy table from vulkan_bench
+    // (VK_QUERY_TYPE_TIMESTAMP per-dispatch sweep over {1,2,4,8,16}):
+    //   * NVIDIA discrete (RTX 5080 Laptop, ANV→nvidia ICD): factor 16 for the
+    //     turbo* score kernels (386us→48us at 4k, ~3.2x at 32k) and factor 8
+    //     for QJL (4742us→374us at 4k, ~8.6x at 32k; 16 is a wash vs 8 there,
+    //     8 keeps more WGs in flight under contention) — measured 2026-05-11.
+    //   * Intel Arc/Xe iGPU (Mesa ANV 25.2.8): factor 4 — bandwidth-bound at
+    //     n_kv>=512, the fold is a wash below 32k; only the engage threshold
+    //     moves (see runtime dispatch). Keep 4 (also the conservative
+    //     cross-device default for unprofiled Adreno/Mali/AMD).
+    {
+        const bool milady_vk_discrete = device->vendor_id == VK_VENDOR_ID_NVIDIA;
+        device->milady_vk_tbq_multiblock_factor = milady_vk_discrete ? 16u : 4u;
+        device->milady_vk_qjl_multiblock_factor = milady_vk_discrete ? 8u  : 4u;
+    }
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3_multi,     "milady_turbo3_multi",     milady_turbo3_multi_len,     milady_turbo3_multi_data,     "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {device->milady_vk_tbq_multiblock_factor}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo4_multi,     "milady_turbo4_multi",     milady_turbo4_multi_len,     milady_turbo4_multi_data,     "main", 3, 5 * sizeof(uint32_t), {1, 1, 1}, {device->milady_vk_tbq_multiblock_factor}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_turbo3_tcq_multi, "milady_turbo3_tcq_multi", milady_turbo3_tcq_multi_len, milady_turbo3_tcq_multi_data, "main", 4, 5 * sizeof(uint32_t), {1, 1, 1}, {device->milady_vk_tbq_multiblock_factor}, 1);
+    ggml_vk_create_pipeline(device, device->pipeline_milady_qjl_multi,        "milady_qjl_multi",        milady_qjl_multi_len,        milady_qjl_multi_data,        "main", 3, 4 * sizeof(uint32_t), {1, 1, 1}, {device->milady_vk_qjl_multiblock_factor}, 1);
     // Fused attention: 4 storage buffers (q_sketch, packed_k, packed_v, out).
     //   fused_attn_qjl_tbq  : 6*u32 push (n_heads, n_kv_heads, n_tokens, q_pos, sm_scale_bits, kv_tile)
     //   fused_attn_qjl_polar: 7*u32 push (… + v_use_qjl before kv_tile)

@@ -58,6 +58,27 @@ export const OPENWAKEWORD_DEFAULT_HEAD_REL_PATH = path.join(
   `${OPENWAKEWORD_DEFAULT_HEAD}.onnx`,
 );
 
+/**
+ * Heads that are placeholders, not the trained Eliza-1 wake phrase.
+ *
+ * The `hey-eliza.onnx` currently shipped in bundles is the upstream
+ * openWakeWord `hey_jarvis` head renamed — it fires on "hey jarvis", NOT
+ * "hey eliza". Wake word is opt-in and off by default, so this is an
+ * experimental surface until a real head is trained on the approved
+ * Eliza-1 wake phrase (see
+ * `packages/inference/reports/porting/2026-05-11/wakeword-head-plan.md`).
+ * The engine emits a one-time warning whenever a session enables a
+ * placeholder head so nobody mistakes it for a finished feature.
+ */
+export const OPENWAKEWORD_PLACEHOLDER_HEADS: ReadonlySet<string> = new Set([
+  "hey-eliza",
+  "hey_jarvis",
+]);
+
+export function isPlaceholderWakeWordHead(head: string): boolean {
+  return OPENWAKEWORD_PLACEHOLDER_HEADS.has(head.trim());
+}
+
 /** Audio chunk the streaming pipeline consumes, in samples (80 ms @ 16 kHz). */
 const FRAME_SAMPLES = 1280;
 /** Samples of audio carried between chunks so melspec frames line up. */

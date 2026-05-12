@@ -111,6 +111,7 @@ export {
   createStreamingTranscriber,
   downloadWhisperModel,
   FfiBatchTranscriber,
+  type FfiBatchTranscriberOptions,
   FfiStreamingTranscriber,
   ffiSupportsStreamingAsr,
   makeWhisperCppDecoder,
@@ -156,12 +157,14 @@ export {
   writeVoicePresetFile,
 } from "./voice-preset-format";
 export {
+  isPlaceholderWakeWordHead,
   loadBundledWakeWordModel,
   OPENWAKEWORD_DEFAULT_HEAD,
   OPENWAKEWORD_DEFAULT_HEAD_REL_PATH,
   OPENWAKEWORD_DIR_REL_PATH,
   OPENWAKEWORD_EMBEDDING_REL_PATH,
   OPENWAKEWORD_MELSPEC_REL_PATH,
+  OPENWAKEWORD_PLACEHOLDER_HEADS,
   OpenWakeWordDetector,
   OpenWakeWordModel,
   resolveWakeWordModel,

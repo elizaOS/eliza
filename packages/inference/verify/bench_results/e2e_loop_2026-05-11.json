@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-12T01:50:49.996Z",
+  "runs": [
+    {
+      "schemaVersion": 1,
+      "generatedAt": "2026-05-12T01:49:12.335Z",
+      "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+      "host": {
+        "platform": "linux",
+        "arch": "x64",
+        "cpus": 24,
+        "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+        "totalMemMb": 31440
+      },
+      "request": {
+        "tier": "0_6b",
+        "backend": "cpu",
+        "turns": 1,
+        "nPredict": 40
+      },
+      "bundle": {
+        "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+        "tier": "0_6b",
+        "ramBudgetMb": {
+          "min": 1500,
+          "recommended": 1800
+        }
+      },
+      "engine": {
+        "dir": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused",
+        "backend": "cpu",
+        "backendMismatch": null,
+        "fused": true,
+        "caps": {
+          "dflash": true,
+          "turbo3": true,
+          "turbo4": true,
+          "turbo3_tcq": false,
+          "qjl_full": false,
+          "polarquant": false,
+          "lookahead": true,
+          "ngramDraft": true
+        }
+      },
+      "status": "ok",
+      "e2eLoopOk": true,
+      "thirtyTurnOk": null,
+      "summary": {
+        "turns": 1,
+        "asrLatencyMsMedian": 3838,
+        "asrWerMean": 1,
+        "asrWerByTurn": [
+          1
+        ],
+        "firstTokenMsMedian": 208.9,
+        "firstTokenMsP50": 208.9,
+        "decodeTokPerSecMedian": 17.42,
+        "dflashAcceptanceRateMean": 1,
+        "dflashDraftedTotal": 25,
+        "dflashAcceptedTotal": 25,
+        "firstAudioFromMicMsMedian": 43120.1,
+        "firstAudioFromTokenMsMedian": 39073.1,
+        "ttsRtfMedian": 6.2118,
+        "ttsRtfMean": 6.2118,
+        "totalTurnMsMedian": 43120.5,
+        "bargeInCancelMs": 1.35,
+        "serverPeakRssMb": 3132,
+        "ramBudgetRecommendedMb": 1800,
+        "ramWithinBudget": false,
+        "leakSuspected": false,
+        "dflashAcceptanceRateOverall": 1
+      },
+      "bargeIn": {
+        "httpAbortMs": 1.35,
+        "nativeCancelMs": 0.12,
+        "nativeCancelRc": 0,
+        "ttsStreamSupported": false,
+        "note": "batch-only TTS build (eliza_inference_tts_stream_supported()==0); barge-in measured as the client/sink-side HTTP abort latency (the PCM-ring-drain surrogate). cancel_tts is a no-op here."
+      },
+      "turns": [
+        {
+          "turn": 1,
+          "asr": {
+            "latencyMs": 3838,
+            "transcript": "[着着着着着?",
+            "wer": 1
+          },
+          "gen": {
+            "firstTokenMs": 208.9,
+            "decodeTokPerSec": 17.42,
+            "predictedN": 40,
+            "promptTokPerSec": 36.14,
+            "content": "一言不一，二言不众，三言不众，四言不众？  一言不一，二言不众，三言"
+          },
+          "dflash": {
+            "drafted": 25,
+            "accepted": 25,
+            "acceptanceRate": 1
+          },
+          "tts": {
+            "phrases": 1,
+            "totalPhrases": 1,
+            "audioSec": 5.92,
+            "wallMs": 36773.6,
+            "rtf": 6.2118,
+            "perPhrase": [
+              {
+                "phrase": "一言不一，二言不众，三言不众，四言不众？ 一言不一，二言不众，三言",
+                "audioSec": 5.92,
+                "wallMs": 36773.4,
+                "rtf": 6.2117
+              }
+            ]
+          },
+          "firstAudioFromMicMs": 43120.1,
+          "firstAudioFromTokenMs": 39073.1,
+          "totalTurnMs": 43120.5,
+          "serverPeakRssMb": 3132
+        }
+      ],
+      "serverLog": "[MaskGIT-Step] 12/32 demask=8 remaining=1073\n[MaskGIT-Step] 13/32 demask=9 remaining=1064\n[MaskGIT-Step] 14/32 demask=10 remaining=1054\n[MaskGIT-Step] 15/32 demask=11 remaining=1043\n[MaskGIT-Step] 16/32 demask=12 remaining=1031\n[MaskGIT-Step] 17/32 demask=13 remaining=1018\n[MaskGIT-Step] 18/32 demask=14 remaining=1004\n[MaskGIT-Step] 19/32 demask=16 remaining=988\n[MaskGIT-Step] 20/32 demask=18 remaining=970\n[MaskGIT-Step] 21/32 demask=20 remaining=950\n[MaskGIT-Step] 22/32 demask=23 remaining=927\n[MaskGIT-Step] 23/32 demask=27 remaining=900\n[MaskGIT-Step] 24/32 demask=32 remaining=868\n[MaskGIT-Step] 25/32 demask=38 remaining=830\n[MaskGIT-Step] 26/32 demask=45 remaining=785\n[MaskGIT-Step] 27/32 demask=56 remaining=729\n[MaskGIT-Step] 28/32 demask=70 remaining=659\n[MaskGIT-Step] 29/32 demask=92 remaining=567\n[MaskGIT-Step] 30/32 demask=125 remaining=442\n[MaskGIT-Step] 31/32 demask=179 remaining=263\n[MaskGIT-Step] 32/32 demask=263 remaining=0\n[MaskGIT] Total LM forward: 35256.72 ms across 32 steps (avg 1101.77 ms/step)\n[TTS] Decode: K=8 T=143 expected_samples=137280\n[TTS-Long] Post-proc: 137280 -> 142080 samples (5.92s at 24000 Hz, ref_rms=-1.0000)\nsrv  log_server_r: done request: POST /v1/audio/speech 127.0.0.1 200\n[TTS-Long] Single-shot path: T=326 frames (13.04s), threshold=750 frames\n[Prompt] Built: B'=2 K=8 S=375 N1=6 N2=43 Sref=0 Stgt=326 c_len=375 u_len=326 denoise=0\n[TTS] Prompt: B'=2 K=8 S=375 c_len=375 u_len=326\n[MaskGIT] Start: T=326 K=8 S=375 num_step=32 guidance=2.00 t_shift=0.100 layer_pen=5.00 cls_t=0.00 pos_t=5.00\n"
+    },
+    {
+      "schemaVersion": 1,
+      "generatedAt": "2026-05-12T01:50:49.911Z",
+      "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+      "host": {
+        "platform": "linux",
+        "arch": "x64",
+        "cpus": 24,
+        "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+        "totalMemMb": 31440
+      },
+      "request": {
+        "tier": "0_6b",
+        "backend": "vulkan",
+        "turns": 1,
+        "nPredict": 40
+      },
+      "bundle": {
+        "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+        "tier": "0_6b",
+        "ramBudgetMb": {
+          "min": 1500,
+          "recommended": 1800
+        }
+      },
+      "engine": null,
+      "status": "needs-build",
+      "reason": "no fused vulkan build: no fused vulkan build dir for linux-x64 under /home/shaw/.eliza/local-inference/bin/dflash (have fused: linux-x64-cpu-fused; pass --bin-dir to override)",
+      "e2eLoopOk": false
+    },
+    {
+      "schemaVersion": 1,
+      "generatedAt": "2026-05-12T01:50:49.940Z",
+      "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+      "host": {
+        "platform": "linux",
+        "arch": "x64",
+        "cpus": 24,
+        "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+        "totalMemMb": 31440
+      },
+      "request": {
+        "tier": "1_7b",
+        "backend": "vulkan",
+        "turns": 1,
+        "nPredict": 40
+      },
+      "bundle": {
+        "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+        "tier": "1_7b",
+        "ramBudgetMb": {
+          "min": 3500,
+          "recommended": 4500
+        }
+      },
+      "engine": null,
+      "status": "needs-build",
+      "reason": "no fused vulkan build: no fused vulkan build dir for linux-x64 under /home/shaw/.eliza/local-inference/bin/dflash (have fused: linux-x64-cpu-fused; pass --bin-dir to override)",
+      "e2eLoopOk": false
+    },
+    {
+      "schemaVersion": 1,
+      "generatedAt": "2026-05-12T01:50:49.967Z",
+      "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+      "host": {
+        "platform": "linux",
+        "arch": "x64",
+        "cpus": 24,
+        "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+        "totalMemMb": 31440
+      },
+      "request": {
+        "tier": "0_6b",
+        "backend": "cuda",
+        "turns": 1,
+        "nPredict": 40
+      },
+      "bundle": {
+        "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+        "tier": "0_6b",
+        "ramBudgetMb": {
+          "min": 1500,
+          "recommended": 1800
+        }
+      },
+      "engine": null,
+      "status": "needs-build",
+      "reason": "no fused cuda build: no fused cuda build dir for linux-x64 under /home/shaw/.eliza/local-inference/bin/dflash (have fused: linux-x64-cpu-fused; pass --bin-dir to override)",
+      "e2eLoopOk": false
+    },
+    {
+      "schemaVersion": 1,
+      "generatedAt": "2026-05-12T01:50:49.994Z",
+      "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+      "host": {
+        "platform": "linux",
+        "arch": "x64",
+        "cpus": 24,
+        "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+        "totalMemMb": 31440
+      },
+      "request": {
+        "tier": "1_7b",
+        "backend": "cuda",
+        "turns": 1,
+        "nPredict": 40
+      },
+      "bundle": {
+        "dir": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle",
+        "tier": "1_7b",
+        "ramBudgetMb": {
+          "min": 3500,
+          "recommended": 4500
+        }
+      },
+      "engine": null,
+      "status": "needs-build",
+      "reason": "no fused cuda build: no fused cuda build dir for linux-x64 under /home/shaw/.eliza/local-inference/bin/dflash (have fused: linux-x64-cpu-fused; pass --bin-dir to override)",
+      "e2eLoopOk": false
+    }
+  ]
+}

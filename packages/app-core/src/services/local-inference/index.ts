@@ -66,10 +66,13 @@ export {
 export { buildTextGenerationReadiness } from "./readiness";
 export {
   assessCatalogModelFit,
+  type BundleDefaultEligibility,
+  canBundleBeDefaultOnDevice,
   catalogDownloadSizeBytes,
   catalogDownloadSizeGb,
   chooseSmallerFallbackModel,
   classifyRecommendationPlatform,
+  deviceCapsFromProbe,
   type RecommendationPlatformClass,
   type RecommendedModelSelection,
   recommendForFirstRun,
