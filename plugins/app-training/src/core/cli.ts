@@ -410,13 +410,7 @@ async function cmdExportTrajectories(args: string[]) {
     values.input ??
     process.env.ELIZA_TRAJECTORY_DIR ??
     join(
-<<<<<<< HEAD
-      process.env.ELIZA_STATE_DIR ??
-        process.env.MILADY_STATE_DIR ??
-        join(homedir(), ".eliza"),
-=======
       process.env.ELIZA_STATE_DIR ?? join(homedir(), ".eliza"),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "trajectories",
     );
   const outputDir = values.output ?? "./training-data";
@@ -572,12 +566,8 @@ async function cmdRollbackPrompt(args: string[]) {
     // then ELIZA_STATE_DIR then ~/.eliza. Stay aligned so `rollback-prompt`
     // operates on the same store the runtime + train CLI write to.
     const stateDir =
-<<<<<<< HEAD
-=======
       process.env.ELIZA_STATE_DIR?.trim() ||
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       process.env.ELIZA_STATE_DIR?.trim() ||
-      process.env.MILADY_STATE_DIR?.trim() ||
       join(homedir(), ".eliza");
     service.setStoreRoot(join(stateDir, "optimized-prompts"));
   }
@@ -656,11 +646,7 @@ Commands:
       <task>            Required positional: should_respond | context_routing |
                       action_planner | response | media_description
     --store-root DIR  Override the optimized-prompts store root (default:
-<<<<<<< HEAD
-                      $ELIZA_STATE_DIR / $MILADY_STATE_DIR / ~/.eliza/optimized-prompts)
-=======
                       $ELIZA_STATE_DIR / ~/.eliza/optimized-prompts)
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 Environment:
   ANTHROPIC_API_KEY   Use Claude as teacher model

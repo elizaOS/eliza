@@ -84,22 +84,9 @@ function optionalEnv(env: Record<string, string>, names: string[]): void {
   }
 }
 
-<<<<<<< HEAD
-function resolveManifestPath(manifest: string): string {
-  if (manifest.startsWith("/")) return manifest;
-  return join(MANIFEST_DIR, manifest);
-}
-
-function readVllmManifest(): { name: string; json: string; manifest: VastManifest } {
-  const name = readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json");
-  const path = resolveManifestPath(name);
-  const manifest = JSON.parse(readFileSync(path, "utf8")) as VastManifest;
-  return { name, json: JSON.stringify(manifest), manifest };
-=======
 function readVllmManifest(): LoadedVastManifest {
   const name = readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json");
   return readVastManifest(name);
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 async function vastFetch<T>(

@@ -100,7 +100,7 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.2.0-eliza";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.0.0-eliza";
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
 const SUBMODULE_DIR = path.resolve(
@@ -159,15 +159,6 @@ const SUPPORTED_TARGETS = [
   "linux-aarch64-cuda",
   "android-arm64-cpu",
   "android-arm64-vulkan",
-  // Android x86_64: Chromebooks (ChromeOS Android subsystem / ARCVM),
-  // the Android x86_64 emulator, and — the load-bearing one for CI —
-  // Cuttlefish (cvd) virtual devices, which run on an x86_64 Linux host
-  // under KVM. The fork's CPU kernels already have an AVX2 path
-  // (qjl-cpu / polarquant-cpu), so this is a real target, not a stub.
-  // Built with the NDK toolchain + -DANDROID_ABI=x86_64; cvd smoke
-  // harness: aosp/smoke-cuttlefish.mjs.
-  "android-x86_64-cpu",
-  "android-x86_64-vulkan",
   "darwin-arm64-metal",
   // iOS targets (require macOS host with Xcode). Output is a static .a +
   // headers that the LlamaCpp.xcframework patch in
@@ -200,14 +191,6 @@ const SUPPORTED_TARGETS = [
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "windows-x64-cuda-fused",
-  // Android fused targets — libelizainference (OmniVoice TTS + Qwen3-ASR)
-  // carried alongside libllama in the AAR for the in-process voice path
-  // (mic → VAD → ASR → DFlash text → TTS, no spawned server). Cross-built
-  // with the NDK; device verify (Pixel) is host-gated. android-x86_64
-  // covers the Cuttlefish/Chromebook fused smoke.
-  "android-arm64-cpu-fused",
-  "android-arm64-vulkan-fused",
-  "android-x86_64-cpu-fused",
 ];
 
 // Targets that opt into omnivoice fusion. Membership in this set is
@@ -219,9 +202,6 @@ const FUSED_TARGETS = new Set([
   "linux-x64-vulkan-fused",
   "darwin-arm64-metal-fused",
   "windows-x64-cuda-fused",
-  "android-arm64-cpu-fused",
-  "android-arm64-vulkan-fused",
-  "android-x86_64-cpu-fused",
 ]);
 
 // Strip the "-fused" suffix when one is present, returning the base
@@ -258,9 +238,7 @@ function prependLocalToolDirs() {
   ].filter((dir) => fs.existsSync(dir));
 
   if (candidates.length === 0) return;
-  const current = process.env.PATH
-    ? process.env.PATH.split(path.delimiter)
-    : [];
+  const current = process.env.PATH ? process.env.PATH.split(path.delimiter) : [];
   const merged = [...candidates, ...current].filter(
     (dir, idx, arr) => dir && arr.indexOf(dir) === idx,
   );
@@ -334,104 +312,30 @@ function detectBackend() {
   return "cpu";
 }
 
-// Parse the major.minor CUDA toolkit version reported by `<nvcc> --version`,
-// e.g. "Cuda compilation tools, release 12.8, V12.8.93" -> { major: 12, minor: 8 }.
-// Returns null when the banner can't be parsed.
-function parseNvccBanner(stdout) {
-  const m = (stdout || "").match(/release\s+(\d+)\.(\d+)/i);
+// Parse the major.minor CUDA toolkit version reported by `nvcc --version`,
+// e.g. "Cuda compilation tools, release 12.6, V12.6.20" -> { major: 12, minor: 6 }.
+// Returns null when nvcc is absent or the banner can't be parsed — callers
+// must treat that as "assume the conservative arch list".
+function nvccVersion() {
+  if (!has("nvcc")) return null;
+  const r = tryRun("nvcc", ["--version"], { capture: true });
+  const m = (r.stdout || "").match(/release\s+(\d+)\.(\d+)/i);
   if (!m) return null;
   return { major: Number(m[1]), minor: Number(m[2]) };
 }
 
-// Resolve the *newest* available CUDA toolkit nvcc and its version. Distro
-// installs put nvcc on PATH (often an old `nvidia-cuda-toolkit` build, e.g.
-// 12.0) while a side-by-side toolkit lives under /usr/local/cuda-<ver>/. We
-// want the newest one so sm_100/sm_120 (CUDA >= 12.8) gets native SASS, not a
-// compute_90 PTX JIT. Resolution order, newest wins:
-//   1. $CUDACXX                       (explicit override)
-//   2. $CUDA_HOME/bin/nvcc, $CUDA_PATH/bin/nvcc
-//   3. /usr/local/cuda-*/bin/nvcc     (sorted by version, newest first)
-//   4. /usr/local/cuda/bin/nvcc       (the `cuda` -> `cuda-<ver>` symlink)
-//   5. `nvcc` on PATH
-// Returns { path, version } or null when no nvcc is found.
-let _resolvedNvccCache;
-function resolveNvcc() {
-  if (_resolvedNvccCache !== undefined) return _resolvedNvccCache;
-  const candidates = [];
-  const seen = new Set();
-  const pushCand = (p) => {
-    if (!p || seen.has(p)) return;
-    seen.add(p);
-    if (fs.existsSync(p)) candidates.push(p);
-  };
-  pushCand(process.env.CUDACXX?.trim());
-  for (const root of [process.env.CUDA_HOME, process.env.CUDA_PATH]) {
-    if (root?.trim()) pushCand(path.join(root.trim(), "bin", "nvcc"));
-  }
-  // /usr/local/cuda-12.8, /usr/local/cuda-12.6, ... — newest version first.
-  try {
-    const entries = fs
-      .readdirSync("/usr/local")
-      .filter((d) => /^cuda-\d+\.\d+$/.test(d))
-      .map((d) => {
-        const [, mj, mn] = d.match(/^cuda-(\d+)\.(\d+)$/);
-        return { dir: d, key: Number(mj) * 1000 + Number(mn) };
-      })
-      .sort((a, b) => b.key - a.key);
-    for (const e of entries) pushCand(path.join("/usr/local", e.dir, "bin", "nvcc"));
-  } catch {
-    /* /usr/local not readable — fine, fall through to PATH */
-  }
-  pushCand("/usr/local/cuda/bin/nvcc");
-  // `nvcc` on PATH (resolve to an absolute path via `command -v` so the CMake
-  // -DCMAKE_CUDA_COMPILER pin below is unambiguous).
-  {
-    const r = tryRun(
-      process.platform === "win32" ? "where" : "command",
-      process.platform === "win32" ? ["nvcc"] : ["-v", "nvcc"],
-      { capture: true },
-    );
-    const onPath = (r.stdout || "").split(/\r?\n/)[0]?.trim();
-    pushCand(onPath || (has("nvcc") ? "nvcc" : null));
-  }
-  // Pick the candidate reporting the newest release.
-  let best = null;
-  for (const p of candidates) {
-    const r = tryRun(p, ["--version"], { capture: true });
-    if (r.status !== 0) continue;
-    const v = parseNvccBanner(r.stdout);
-    if (!v) continue;
-    const key = v.major * 1000 + v.minor;
-    if (!best || key > best.key) best = { path: p, version: v, key };
-  }
-  _resolvedNvccCache = best ? { path: best.path, version: best.version } : null;
-  return _resolvedNvccCache;
-}
-
-// Back-compat shim: the major.minor of the resolved nvcc, or null.
-function nvccVersion() {
-  return resolveNvcc()?.version ?? null;
-}
-
 // Build the CUDA fat-binary arch list for cuda/cuda-fused targets. The base
 // list (sm_80..sm_90a) is unconditional; the Blackwell datacenter (sm_100)
-// and consumer (sm_120) architectures are only appended when the resolved
-// nvcc (newest available toolkit — see resolveNvcc) actually knows about
-// them — sm_100/sm_120 first compile in CUDA 12.8, and older nvcc rejects
-// them with "Unsupported gpu architecture". A plain `100`/`120` entry in
-// CMAKE_CUDA_ARCHITECTURES emits *real SASS* (`-gencode arch=compute_120,
-// code=sm_120`), not just PTX — so with CUDA >= 12.8 an RTX 50xx (Blackwell
-// sm_120) launches JIT-free instead of paying a compute_90 PTX JIT on first
-// kernel launch.
+// and consumer (sm_120) virtual architectures are only appended when the
+// installed nvcc actually knows about them — sm_100/sm_120 first compile in
+// CUDA 12.8, and older nvcc rejects them with "Unsupported gpu architecture".
 //   90a -> H200 / GH200 (the only arch with the TMA / WGMMA fast paths)
 //   90  -> H100
 //   89  -> Ada / RTX 4090 / L4
 //   86  -> Ampere consumer / RTX 30xx
 //   80  -> A100 / datacenter Ampere
 //   100 -> Blackwell datacenter (B100/B200/GB200) — CUDA >= 12.8
-//   120 -> Blackwell consumer (RTX 50xx, e.g. RTX 5080 Laptop) — CUDA >= 12.8
-// We always also append `90-virtual` so a future arch with no real SASS in
-// the fat binary still JIT-launches from compute_90 PTX (forward compat).
+//   120 -> Blackwell consumer (RTX 50xx) — CUDA >= 12.8
 // Operators that target an older card (sm_75 Turing, sm_70 Volta) can
 // override via ELIZA_DFLASH_CMAKE_FLAGS=-DCMAKE_CUDA_ARCHITECTURES=... which
 // appends after this list and wins on a CMake conflict.
@@ -439,35 +343,9 @@ function cudaArchListFlag() {
   const archs = ["90a", "90", "89", "86", "80"];
   const v = nvccVersion();
   if (v && (v.major > 12 || (v.major === 12 && v.minor >= 8))) {
-    // Real SASS for both Blackwell arches (no `-virtual` suffix).
     archs.push("100", "120");
   }
-  archs.push("90-virtual");
   return `-DCMAKE_CUDA_ARCHITECTURES=${archs.join(";")}`;
-}
-
-// When the resolved nvcc is NOT the one CMake would find on PATH, pin it
-// explicitly. Without this, a side-by-side /usr/local/cuda-12.8 toolkit is
-// useless on a host whose PATH `nvcc` is an old distro 12.0 — CMake compiles
-// with the old one and cudaArchListFlag's sm_100/sm_120 entries get rejected.
-// Returns [] when nvcc is unresolved or already the PATH default. Also returns
-// the bin dir to prepend to PATH so the toolkit's nvlink/ptxas/fatbinary etc.
-// resolve consistently with the pinned nvcc.
-function cudaCompilerFlags() {
-  const resolved = resolveNvcc();
-  if (!resolved || resolved.path === "nvcc") return { flags: [], binDir: null };
-  const onPathBanner = tryRun("nvcc", ["--version"], { capture: true });
-  const onPathV =
-    onPathBanner.status === 0 ? parseNvccBanner(onPathBanner.stdout) : null;
-  const sameAsPath =
-    onPathV &&
-    onPathV.major === resolved.version.major &&
-    onPathV.minor === resolved.version.minor;
-  if (sameAsPath) return { flags: [], binDir: null };
-  return {
-    flags: [`-DCMAKE_CUDA_COMPILER=${resolved.path}`],
-    binDir: path.dirname(resolved.path),
-  };
 }
 
 // Build the ROCm/HIP fat-binary arch list for rocm targets. gfx1200/gfx1201
@@ -740,79 +618,6 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
 // type-traits table through a registration callback that ggml-cpu fills
 // in at backend-load time. When that lands, this patch becomes a no-op
 // and can be removed.
-// Extend the fork's `--cache-type-k/v` whitelist (`kv_cache_types` in
-// common/arg.cpp) to also accept `qjl1_256`, `q4_polar` and `tbq3_tcq` — the
-// Eliza-1 QJL K-cache, PolarQuant V-cache, and TurboQuant TCQ-3 K-cache types.
-// All three have full ggml type traits (`to_float` / `from_float_ref`) in the
-// fork's `ggml.c` (qjl1_256/q4_polar shipped earlier; tbq3_tcq's type-traits
-// entry — Viterbi `quantize_row_tbq3_tcq_ref` + sliding-9-bit-window
-// `dequantize_row_tbq3_tcq` in ggml-quants.c, codebook in ggml-tcq-codebook.h —
-// landed in this wave). `kv_cache_type_from_str` matches on `ggml_type_name`,
-// so once the type is in this vector `--cache-type-k tbq3_tcq` resolves. The
-// only thing missing was the CLI-arg whitelist; a build that compiled the
-// CPU/Vulkan/CUDA QJL+Polar+TCQ code couldn't actually be told to use them.
-//
-// This is what makes `probeKernels()` (which greps `llama-server --help` for
-// `qjl1_256` / `q4_polar` / `tbq3_tcq`) flip `kernels.qjl_full` /
-// `kernels.polarquant` / `kernels.turbo3_tcq` true on a CPU/Vulkan/CUDA host
-// build — i.e. a `linux-x64-cpu` build's CAPABILITIES.json now advertises
-// {dflash, turbo3, turbo4, turbo3_tcq, qjl_full, polarquant}, which satisfies
-// the `eliza-1-1_7b` runtime kernel set and the `27b`/`27b-256k`/`27b-1m`
-// tiers' `turbo3_tcq` requirement (added at contextLength >= 65536).
-//
-// Idempotent via the `// ELIZA-KV-CACHE-TYPES-V2` sentinel.
-function patchServerKvCacheTypeNames(cacheDir, { dryRun = false } = {}) {
-  const argPath = path.join(cacheDir, "common", "arg.cpp");
-  if (!fs.existsSync(argPath)) {
-    throw new Error(
-      `[dflash-build] patchServerKvCacheTypeNames: ${argPath} missing — fork layout broken`,
-    );
-  }
-  const original = fs.readFileSync(argPath, "utf8");
-  const sentinel = "// ELIZA-KV-CACHE-TYPES-V2";
-  if (original.includes(sentinel)) {
-    return { changed: false, alreadyPatched: true };
-  }
-  // Anchor: the last entry of the kv_cache_types vector before its `};`.
-  // Tolerate a prior V1 patch (qjl1_256 + q4_polar already appended).
-  const anchorV1 = "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n};";
-  const anchorAfterV1 =
-    "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n};";
-  const usingV1Anchor = original.includes(anchorAfterV1);
-  const anchor = usingV1Anchor ? anchorAfterV1 : anchorV1;
-  if (!original.includes(anchor)) {
-    throw new Error(
-      `[dflash-build] patchServerKvCacheTypeNames: anchor not found in ${argPath}; ` +
-        `the elizaOS/llama.cpp fork's kv_cache_types layout changed. Inspect ` +
-        `common/arg.cpp and update the anchor.`,
-    );
-  }
-  const prefix = usingV1Anchor
-    ? "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n"
-    : "    GGML_TYPE_TBQ3_0,\n    GGML_TYPE_TBQ4_0,\n" +
-      "    // ELIZA-KV-CACHE-TYPES-V1 — Eliza-1 QJL K-cache + PolarQuant V-cache\n" +
-      "    GGML_TYPE_QJL1_256,\n    GGML_TYPE_Q4_POLAR,\n";
-  const replacement =
-    prefix +
-    `    ${sentinel} — Eliza-1 TurboQuant TCQ-3 K-cache (full ggml type traits\n` +
-    "    // in ggml.c; Viterbi quantize_row_tbq3_tcq_ref + sliding-window\n" +
-    "    // dequantize_row_tbq3_tcq, required for the 27b 64k+ context tiers)\n" +
-    "    GGML_TYPE_TBQ3_TCQ,\n};";
-  if (dryRun) {
-    console.log(
-      `[dflash-build] (dry-run) would extend kv_cache_types in ${argPath} with ` +
-        `${usingV1Anchor ? "" : "GGML_TYPE_QJL1_256, GGML_TYPE_Q4_POLAR, "}GGML_TYPE_TBQ3_TCQ`,
-    );
-    return { changed: true, dryRun: true };
-  }
-  fs.writeFileSync(argPath, original.replace(anchor, replacement), "utf8");
-  console.log(
-    "[dflash-build] patched common/arg.cpp to accept --cache-type-k/v " +
-      "qjl1_256 / q4_polar / tbq3_tcq",
-  );
-  return { changed: true };
-}
-
 function patchGgmlBaseForWindowsQjl(cacheDir) {
   const cmakeListsPath = path.join(cacheDir, "ggml", "src", "CMakeLists.txt");
   if (!fs.existsSync(cmakeListsPath)) {
@@ -1082,22 +887,6 @@ function cmakeFlagsForTarget(target, ctx) {
     platform === "android" || platform === "windows" || platform === "ios";
   flags.push(`-DGGML_NATIVE=${isCross ? "OFF" : "ON"}`);
 
-  // ELF/Mach-O runtime: bake an `$ORIGIN`-relative RUNPATH into every
-  // produced binary so the install directory (where `llama-server` and its
-  // sidecar shared libs — `libllama`, `libggml*`, `libmtmd`,
-  // `libelizainference` — are copied side by side) is self-contained.
-  // Without this the linker bakes the absolute *build*-tree path, which
-  // breaks once the build tree is removed/moved. macOS gets the same effect
-  // from `makeDarwinInstallSelfContained` (install_name_tool @loader_path);
-  // Windows resolves DLLs from the executable's directory, no rpath needed.
-  if (platform === "linux") {
-    flags.push(
-      "-DCMAKE_BUILD_RPATH_USE_ORIGIN=ON",
-      "-DCMAKE_BUILD_RPATH=$ORIGIN",
-      "-DCMAKE_INSTALL_RPATH=$ORIGIN",
-    );
-  }
-
   // Disable backends we don't want by default; flip the chosen one back on.
   const offByDefault = ["GGML_METAL", "GGML_CUDA", "GGML_HIP", "GGML_VULKAN"];
   for (const name of offByDefault) flags.push(`-D${name}=OFF`);
@@ -1135,12 +924,6 @@ function cmakeFlagsForTarget(target, ctx) {
     // GGML_CUDA_TBQ3_TCQ flags the W4-B fork already carries. Optional
     // (AGENTS.md §3) — fused_attn sits on top of the five required kernels.
     flags.push(...CUDA_KERNEL_CMAKE_FLAGS);
-    // Pin the newest available nvcc (resolveNvcc) when PATH's nvcc is an
-    // older toolkit — otherwise cudaArchListFlag's sm_100/sm_120 entries get
-    // rejected by a stale distro nvcc and we silently lose native Blackwell
-    // SASS. cmakeFlagsForTarget cannot mutate PATH; the caller in build()
-    // prepends ctx.cudaToolkitBinDir before invoking cmake.
-    flags.push(...cudaCompilerFlags().flags);
     // Multi-arch fat-binary pin (see cudaArchListFlag). Without this the
     // build host's GPU (or sm_52 default on a GPU-less host) decides the
     // emitted PTX/SASS — wrong for a redistributable artifact, and the
@@ -1207,30 +990,14 @@ function cmakeFlagsForTarget(target, ctx) {
         "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ~/Android/Sdk/ndk",
       );
     }
-    // arch is the triple's second segment: "arm64" → arm64-v8a (phones),
-    // "x86_64" → x86_64 (Cuttlefish/cvd, Chromebook ARCVM, x86_64 emulator).
-    const androidAbi = arch === "x86_64" ? "x86_64" : "arm64-v8a";
     flags.push(
       `-DCMAKE_TOOLCHAIN_FILE=${path.join(ctx.androidNdk, "build", "cmake", "android.toolchain.cmake")}`,
       `-DANDROID_NDK=${ctx.androidNdk}`,
-      `-DANDROID_ABI=${androidAbi}`,
+      "-DANDROID_ABI=arm64-v8a",
       "-DANDROID_PLATFORM=android-28",
       // CURL is optional for llama-server and not part of the NDK sysroot.
       "-DLLAMA_CURL=OFF",
     );
-    if (androidAbi === "x86_64") {
-      // The x86_64 Android ABI baseline is SSE4.2 only; AVX2 is what the
-      // QJL/Polar CPU kernels need (qjl_score_qk_avx2 etc.). cvd/ChromeOS
-      // x86_64 hosts are all Haswell+ in practice. -DGGML_NATIVE=OFF (a
-      // cross-build can't sniff -march), AVX/AVX2/FMA/F16C on explicitly.
-      flags.push(
-        "-DGGML_NATIVE=OFF",
-        "-DGGML_AVX=ON",
-        "-DGGML_AVX2=ON",
-        "-DGGML_FMA=ON",
-        "-DGGML_F16C=ON",
-      );
-    }
     if (backend === "vulkan" && ctx.androidVulkanInclude) {
       // Mostly informational - the NDK sysroot already exposes vulkan/ on the
       // include path. Pass it explicitly so CMake's FindVulkan succeeds even
@@ -1439,7 +1206,7 @@ function nodeArchToTripleArch(platform) {
   return process.arch;
 }
 
-function _defaultTarget() {
+function defaultTarget() {
   const backend = detectBackend();
   const platform = process.platform === "win32" ? "windows" : process.platform;
   const arch = nodeArchToTripleArch(platform);
@@ -1728,29 +1495,35 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
     patchCudaKernelsImpl(cacheDir, { dryRun });
     patchGgmlCudaForFusedAttn(cacheDir, { dryRun });
   }
-  // llama-server structured-output report + DFlash verifier-stream patch
-  // (Eliza-1 voice swarm, W4): log which of grammar_lazy / json_schema /
-  // response_format / prefill_assistant the fork's server sources carry (the
-  // v1.0.0-eliza fork has all four; a bisected older ref may not — that's a
-  // warning, not a build failure: structured output is an optional HTTP
-  // surface, not a mandatory kernel per AGENTS.md §3), and add the
+  // llama-server structured-output + DFlash verifier-stream patch (Eliza-1
+  // voice swarm, W4): assert grammar_lazy / json_schema / response_format /
+  // prefill_assistant are present in the fork's post-refactor server sources
+  // (tools/server/server-task.cpp + server-common.cpp + …; upstream features —
+  // hard-fail if the fork drifted to a base that predates them), and add the
   // `{ "verifier": { "rejected": [a, b] } }` SSE extension the runtime parses
-<<<<<<< HEAD
-  // for rollback-safe TTS where an anchor exists. Idempotent via the
-=======
   // for rollback-safe TTS. Idempotent via the
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   // `// ELIZA-DFLASH-VERIFIER-STREAM-V1` sentinel. Applies to every target
   // that ships `llama-server` (i.e. not the iOS / EMBED-only library builds).
+  //
+  // ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 is a documented,
+  // local-diagnostics-only escape hatch (e.g. when bisecting against an old
+  // pinned ELIZA_DFLASH_LLAMA_CPP_REF that predates the required upstream
+  // features). It does NOT change the default build path and the resulting
+  // binary is not publishable (the merged-route fused server still serves
+  // text/DFlash + `/v1/audio/speech` from one process — the structured-output
+  // surface is the only thing missing).
   if (!target || !target.startsWith("ios-")) {
-    patchServerStructuredOutputImpl(cacheDir, { dryRun });
-  }
-  // Extend the fork's `--cache-type-k/v` whitelist with qjl1_256 / q4_polar
-  // so a build that compiled the QJL+Polar code (every backend — CPU SIMD
-  // TUs, Metal/Vulkan shaders, CUDA kernels) can actually be told to use
-  // them. Applies to every target that ships `llama-server`. Idempotent.
-  if (!target || !target.startsWith("ios-")) {
-    patchServerKvCacheTypeNames(cacheDir, { dryRun });
+    if (envFlag("ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT")) {
+      console.warn(
+        "[dflash-build] ⚠️  ELIZA_DFLASH_SKIP_SERVER_STRUCTURED_OUTPUT=1 — " +
+          "skipping the llama-server structured-output / verifier-stream patch. " +
+          "This is a local-diagnostics-only hatch (e.g. an old pinned ref that " +
+          "predates the required upstream features); the resulting binary is " +
+          "not publishable.",
+      );
+    } else {
+      patchServerStructuredOutputImpl(cacheDir, { dryRun });
+    }
   }
   // Fused omnivoice TTS: mount `POST /v1/audio/speech` onto the same
   // `llama-server` that serves `/completion` + `/v1/chat/completions` + the
@@ -1760,7 +1533,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   // builds are byte-for-byte unchanged; the cmake-graft separately links
   // `omnivoice-core` into `llama-server` and sets that define for fused
   // targets. Idempotent via the route patch's own sentinel.
-  if (isFusedTarget(target) && !target?.startsWith("ios-")) {
+  if (isFusedTarget(target) && (!target || !target.startsWith("ios-"))) {
     patchServerOmnivoiceRouteImpl(cacheDir, { dryRun });
   }
   // ggml.c (in ggml-base) calls quantize_qjl1_256 /
@@ -2417,7 +2190,7 @@ function buildIosRuntimeSymbolShim({ target, outDir }) {
 //
 // Returns the list of missing-but-required kernels. An empty list means the
 // target satisfies the contract.
-function requiredKernelsMissing(_target, kernels) {
+function requiredKernelsMissing(target, kernels) {
   // Required for every shipped backend.
   const required = [
     "dflash",
@@ -2793,28 +2566,6 @@ function writeCapabilities({
     backend === "vulkan" &&
     (process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1" ||
       process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1");
-  // Build-side companion to the runtime's MILADY_LOCAL_ALLOW_STOCK_KV opt-in
-  // (see backend.ts / dflash-server.ts): when the backend can't yet dispatch
-  // every §3 kernel (e.g. ROCm/HIP — the custom kernels aren't HIP-ported;
-  // a CPU build — the fork's `--cache-type-k` whitelist only exposes
-  // tbq3_0/tbq4_0, not qjl1_256/q4_polar/tbq3_tcq), this lets the build
-  // *complete* (exit 0) instead of throwing, writing `publishable: false` +
-  // `reducedOptimizationLocalMode: true`. The artifact is still NOT
-  // publishable and NOT a default — it's the "works everywhere regardless of
-  // GPU" escape hatch. The default (no env) still throws, preserving §3.
-  //
-  // §3-vs-"works-everywhere" tension: AGENTS.md §3 forbids a "kernels-missing
-  // fallback build". The user's SA-1 directive is "works everywhere". The
-  // reconciliation: the build DISPATCHES the kernels on every backend where
-  // it can (Metal: all 5; CUDA: fork binary; Vulkan: source-patched +
-  // runtime-dispatch evidence; CPU: turbo3/turbo4 via tbq3_0/tbq4_0), and
-  // this opt-in is the loudly-flagged, non-publishable reduced mode for the
-  // rest. defaultEligible bundles still require the verified kernels.
-  const allowReducedKernels =
-    process.env.ELIZA_DFLASH_ALLOW_REDUCED_KERNELS === "1" ||
-    process.env.MILADY_LOCAL_ALLOW_STOCK_KV === "1";
-  const reducedOptimizationLocalMode =
-    missing.length > 0 && allowReducedKernels && !allowUnverifiedVulkanBuild;
   const capabilities = {
     target,
     platform,
@@ -2829,11 +2580,6 @@ function writeCapabilities({
     missingRequiredKernels: missing,
     smokeOnlyIncompleteAllowed:
       missing.length > 0 && allowUnverifiedVulkanBuild,
-    // True when the build completed under ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1
-    // / MILADY_LOCAL_ALLOW_STOCK_KV=1 despite missing §3 kernels. The runtime
-    // honours this together with MILADY_LOCAL_ALLOW_STOCK_KV: load with stock
-    // f16 KV, loud one-time warning. NOT publishable, NOT defaultEligible.
-    reducedOptimizationLocalMode,
     shippedKernels,
     runtimeDispatch,
     binaries,
@@ -2851,27 +2597,13 @@ function writeCapabilities({
       );
       return capabilities;
     }
-    if (reducedOptimizationLocalMode) {
-      console.warn(
-        `\n[dflash-build] ⚠️  target=${target} built in REDUCED-OPTIMIZATION LOCAL MODE — missing §3 kernels: ${missing.join(", ")}.\n` +
-          `  ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1 (or MILADY_LOCAL_ALLOW_STOCK_KV=1) is set, so the build completes\n` +
-          `  with publishable=false + reducedOptimizationLocalMode=true. The runtime will load this binary with\n` +
-          `  stock f16 KV (set MILADY_LOCAL_ALLOW_STOCK_KV=1 there too) and warn loudly. This artifact is NOT\n` +
-          `  publishable and NOT a default — it exists so the voice pipeline RUNS on this backend even though the\n` +
-          `  §3 kernels aren't dispatched here yet. Rebuild without the opt-in (and with the kernels dispatched)\n` +
-          `  for the optimized, publishable path.\n`,
-      );
-      return capabilities;
-    }
     throw new Error(
       `[dflash-build] target=${target} missing required kernels: ${missing.join(", ")}. ` +
         `AGENTS.md §3 forbids shipping an Eliza-1 binary without the full ` +
         `dflash + turbo3 + turbo4 + turbo3_tcq + qjl + polar kernel set. CAPABILITIES.json ` +
         `was written for diagnostic purposes only — the artifact is incomplete ` +
         `and must not be published. Inspect the build log for the failed ` +
-        `patch hook or absent dispatch site, fix the root cause, and rebuild — ` +
-        `or, to ship a runnable reduced-optimization local-mode binary on this ` +
-        `backend, set ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1 (loud warning, not publishable).`,
+        `patch hook or absent dispatch site, fix the root cause, and rebuild.`,
     );
   }
   return capabilities;
@@ -2893,18 +2625,7 @@ function cmakeBuildTargetsFor(target) {
           "llama-server",
           "llama-cli",
           "llama-speculative-simple",
-<<<<<<< HEAD
-          // llama-bench / llama-completion are the non-interactive
-          // generation drivers the verify runners (cuda_runner.sh,
-          // runtime_graph_smoke.sh, linux/android vulkan smokes) use —
-          // the fork's llama-cli is conversation-only and busy-loops on
-          // stdin EOF, so the graph-route check goes through llama-bench
-          // and the GGUF generation check through llama-completion.
-          "llama-bench",
-          "llama-completion",
-=======
           "llama-mtmd-cli",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         ];
 
   // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
@@ -2996,18 +2717,6 @@ function buildTarget({ target, args, ctx }) {
   console.log(`[dflash-build] building target=${target}`);
   applyForkPatches(args.cacheDir, backend, target);
 
-  // When the build pinned a side-by-side CUDA toolkit (resolveNvcc picked a
-  // newer nvcc than PATH's), put that toolkit's bin dir at the front of PATH
-  // for the cmake configure + build so ptxas/nvlink/fatbinary/cicc all match
-  // the pinned nvcc. cudaCompilerFlags() already added -DCMAKE_CUDA_COMPILER.
-  if (backend === "cuda") {
-    const { binDir } = cudaCompilerFlags();
-    if (binDir && !process.env.PATH?.split(path.delimiter).includes(binDir)) {
-      process.env.PATH = `${binDir}${path.delimiter}${process.env.PATH ?? ""}`;
-      console.log(`[dflash-build] cuda: prepended ${binDir} to PATH (pinned toolkit)`);
-    }
-  }
-
   fs.mkdirSync(buildDir, { recursive: true });
   run("cmake", ["-B", buildDir, ...flags], { cwd: args.cacheDir });
 
@@ -3096,13 +2805,7 @@ function buildTarget({ target, args, ctx }) {
       "llama-server",
       "llama-cli",
       "llama-speculative-simple",
-<<<<<<< HEAD
-      // Non-interactive generation drivers the verify runners use.
-      "llama-bench",
-      "llama-completion",
-=======
       "llama-mtmd-cli",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       // Stub fused server emitted only when target is in FUSED_TARGETS.
       // Adding it unconditionally is harmless: the install loop only
       // copies a binary when it actually exists in binDir.
@@ -3221,9 +2924,10 @@ function build(args) {
   // Khronos header repos when needed — cheap, but pointless otherwise.
   const willBuildVulkan =
     args.all ||
-    args.targets?.some(
-      (t) => t.endsWith("-vulkan") || t.endsWith("-vulkan-fused"),
-    ) ||
+    (args.targets &&
+      args.targets.some(
+        (t) => t.endsWith("-vulkan") || t.endsWith("-vulkan-fused"),
+      )) ||
     (!args.targets && (args.backend ?? detectBackend()) === "vulkan");
   // Same idea for the Windows cross path — only probe + write the
   // mingw-w64 toolchain file when at least one windows-x64 target is
@@ -3233,7 +2937,7 @@ function build(args) {
   // MINGW_TOOLCHAIN_FILE pointing at clang/LLVM aarch64-w64-mingw32.
   const willBuildWindows =
     args.all ||
-    args.targets?.some((t) => t.startsWith("windows-x64-")) ||
+    (args.targets && args.targets.some((t) => t.startsWith("windows-x64-"))) ||
     (!args.targets &&
       process.platform !== "win32" &&
       (args.backend ?? detectBackend()) === "cpu" &&
@@ -3305,24 +3009,6 @@ function build(args) {
   for (const target of targets) {
     const compat = targetCompatibility(target, ctx);
     if (!compat.ok) {
-      if (args.dryRun) {
-        // dry-run on a host-incompat target (Linux host, ios/windows-arm64
-        // target, …): print the cmake config the right host (macOS+Xcode /
-        // Windows arm64 MSVC / …) would use, then keep going. The whole
-        // point of a dry-run is to validate the config off-host.
-        console.log(
-          `[dflash-build] (dry-run) target=${target} not buildable on this host (${compat.reason}); printing the config the target host would use:`,
-        );
-        try {
-          buildTarget({ target, args, ctx });
-        } catch (err) {
-          console.log(
-            `[dflash-build] (dry-run) config preview for ${target} stopped: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-        skipped.push({ target, reason: compat.reason });
-        continue;
-      }
       console.log(`[dflash-build] skip target=${target}: ${compat.reason}`);
       skipped.push({ target, reason: compat.reason });
       if (args.targets && args.targets.length > 0 && !args.all) {

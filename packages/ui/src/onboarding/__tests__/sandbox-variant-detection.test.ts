@@ -14,18 +14,10 @@
  * dead-end boot in a `"Failed to connect to /127.0.0.1:31337"` loop.
  *
  * Detection is a pure user-agent test: `MainActivity.applyBrandUserAgentMarkers`
-<<<<<<< HEAD
- * appends an `ElizaOS/<tag>` (or `ElizaOS/<tag>`) token to the WebView
- * UA only when `ro.elizaos.product` / `ro.elizaos.product` is set by
- * the AOSP product makefile. This file pins that contract directly via
- * the exported `isAospElizaUserAgent` helper, and exercises the
- * pre-seed wrapper (`preSeedAndroidLocalRuntimeIfFresh`) end-to-end so a
-=======
  * appends an `ElizaOS/<tag>` token to the WebView UA only when
  * `ro.elizaos.product` is set by the AOSP product makefile. This file pins
  * that contract directly via the exported `isAospElizaUserAgent` helper, and
  * exercises the pre-seed wrapper (`preSeedAndroidLocalRuntimeIfFresh`) end-to-end so a
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
  * regression in either the regex or the navigator plumbing is caught.
  *
  * Resolves item 15 in `docs/QA-onboarding-followups.md`.
@@ -88,17 +80,10 @@ describe("isAospElizaUserAgent — pure detection contract", () => {
     ).toBe(true);
   });
 
-<<<<<<< HEAD
-  it("returns true for the ElizaOS white-label marker", () => {
-    expect(
-      isAospElizaUserAgent(
-        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 ElizaOS/2.4.0 Mobile Safari/537.36",
-=======
   it("returns true for a white-label AOSP UA carrying the base marker", () => {
     expect(
       isAospElizaUserAgent(
         "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 ElizaOS/2.4.0 AcmeOS/2.4.0 Mobile Safari/537.36",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       ),
     ).toBe(true);
   });

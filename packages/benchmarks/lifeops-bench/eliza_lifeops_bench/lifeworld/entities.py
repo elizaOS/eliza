@@ -190,6 +190,7 @@ class ReminderList:
     id: str
     name: str
     source: ReminderSource = "apple-reminders"
+    last_reviewed_at: str | None = None
 
 
 @dataclass(frozen=True)

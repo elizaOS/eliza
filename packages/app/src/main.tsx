@@ -122,11 +122,7 @@ import "@elizaos/app-wallet";
 // Settings / WiFi overlay apps.
 // Each `register` module gates itself on `isElizaOS()` so stock Android, iOS,
 // desktop, and web bundles bring the modules in without registering anything.
-<<<<<<< HEAD
-// On Eliza-derived AOSP images (ElizaOS, ElizaOS, …) the corresponding
-=======
 // On Eliza-derived AOSP images (ElizaOS or a white-label fork) the corresponding
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 // overlay app shows up in the apps catalog and is launchable as a system
 // surface. `@elizaos/app-phone` already side-effect-registers via the
 // `PhoneCompanionApp` named import above, but the explicit imports here keep

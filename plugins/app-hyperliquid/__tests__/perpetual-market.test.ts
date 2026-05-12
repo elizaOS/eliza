@@ -173,15 +173,11 @@ describe("perpetualMarketAction handler", () => {
   ) {
     const runtime = makeRuntime(service);
     const callback = vi.fn() as unknown as HandlerCallback;
-<<<<<<< HEAD
-    const result = await perpetualMarketAction.handler?.(
-=======
     const handler = perpetualMarketAction.handler;
     if (!handler) {
       throw new Error("perpetualMarketAction.handler is required");
     }
     const result = await handler(
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       runtime,
       makeMessage(),
       makeState(["finance"]),

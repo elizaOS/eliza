@@ -79,19 +79,12 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
   });
 
-<<<<<<< HEAD
-  it("falls back to the small Qwen3.5 tier on minimal mobile", () => {
-    // 1_7b needs 4 GB minRam; below that the ladder collapses to the next
-    // tier that fits — eliza-1-0_8b (2 GB minRam, the new small default),
-    // then eliza-1-0_6b. Below 2 GB nothing fits.
-=======
   it("falls back to the 0.6B tier on minimal mobile", () => {
     // 4b needs 8 GB minRam; below that the ladder steps down
     // through 1_7b (4 GB minRam) to 0_6b (2 GB minRam). Below 2 GB
     // nothing fits.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     const cases: Array<[number, string | null]> = [
-      [3.5, "eliza-1-0_8b"],
+      [3.5, "eliza-1-0_6b"],
       [1.5, null],
     ];
 

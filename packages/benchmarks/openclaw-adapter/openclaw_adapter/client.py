@@ -26,10 +26,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from benchmarks.lib.base_benchmark_client import (
-    CEREBRAS_GPT_OSS_120B_PRICING,
-    BaseBenchmarkClient,
-    ModelPricing,
+from ._retry import (
+    MAX_ATTEMPTS,
+    RetryExhaustedError,
+    backoff_seconds,
+    is_retryable_status,
+    parse_retry_after,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,19 +50,7 @@ DEFAULT_BASE_URL_ENV = "CEREBRAS_BASE_URL"
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"
 DEFAULT_THINKING_LEVEL = "medium"
 DEFAULT_TIMEOUT_S = 600.0
-<<<<<<< HEAD
-# Default concurrency. OpenClaw routes to the same Cerebras endpoint as
-# Hermes, so the W2-9 429 ceiling applies here too; callers can raise it.
-_OPENCLAW_DEFAULT_CONCURRENCY = 2
-
-
-def _openclaw_pricing(provider: str, model: str) -> ModelPricing | None:
-    if provider.strip().lower() == "cerebras" and model.strip().lower() == "gpt-oss-120b":
-        return CEREBRAS_GPT_OSS_120B_PRICING
-    return None
-=======
 _ALLOWED_TOOL_CHOICES = {"auto", "required", "none"}
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
@@ -81,9 +71,6 @@ class MessageResponse:
     params: dict[str, object]
 
 
-<<<<<<< HEAD
-class OpenClawClient(BaseBenchmarkClient[MessageResponse]):
-=======
 _CONTROL_CONTEXT_KEYS = {
     "messages",
     "system_prompt",
@@ -283,16 +270,11 @@ def _write_telemetry(
 
 
 class OpenClawClient:
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     """Spawn ``openclaw agent --local --json`` per turn.
 
     The client is stateless. ``reset`` simply records the ``task_id`` and
     ``benchmark`` strings for log correlation; per-turn state belongs to the
     caller (e.g. via ``context['session_id']``).
-
-    Inherits :class:`BaseBenchmarkClient` for shared concurrency / cost /
-    telemetry handling. Default ``concurrency=2`` mirrors hermes-adapter:
-    OpenClaw routes to Cerebras and W2-9 surfaced 429s at higher levels.
     """
 
     def __init__(
@@ -308,23 +290,15 @@ class OpenClawClient:
         base_url_env: str = DEFAULT_BASE_URL_ENV,
         thinking_level: str = DEFAULT_THINKING_LEVEL,
         timeout_s: float = DEFAULT_TIMEOUT_S,
-<<<<<<< HEAD
-        concurrency: int = _OPENCLAW_DEFAULT_CONCURRENCY,
-=======
         temperature: float | None = None,
         reasoning_effort: str | None = None,
         max_tokens: int | None = None,
         direct_openai_compatible: bool = False,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     ) -> None:
-        super().__init__(
-            concurrency=concurrency,
-            pricing=_openclaw_pricing(provider, model),
-            model=model,
-            provider=provider,
-        )
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
+        self.provider = provider
+        self.model = model
         self.api_key_env = api_key_env
         self.base_url = base_url.rstrip("/") if isinstance(base_url, str) and base_url else None
         self.base_url_env = base_url_env
@@ -428,32 +402,6 @@ class OpenClawClient:
         text: str,
         context: Mapping[str, object] | None = None,
     ) -> MessageResponse:
-<<<<<<< HEAD
-        """Spawn one ``openclaw agent --local --json`` turn and parse it.
-
-        Captures per-turn telemetry via the base class so callers can read
-        token counts + cost off ``self.telemetry_history``. OpenClaw exposes
-        usage as ``params['usage']`` (mapped from its ``agentMeta.lastCallUsage``
-        block in :func:`_usage_from_meta`).
-        """
-        started = time.time()
-        try:
-            result = self._send(text, context)
-        finally:
-            finished = time.time()
-        usage_obj = result.params.get("usage") if result.params else None
-        usage_map: Mapping[str, object] | None = (
-            usage_obj if isinstance(usage_obj, Mapping) else None
-        )
-        self.record_telemetry(
-            started_at_epoch=started,
-            finished_at_epoch=finished,
-            usage=usage_map,
-        )
-        return result
-
-    def _send(
-=======
         """Run one OpenClaw turn and parse it.
 
         Normal benchmark runs use the OpenClaw CLI. Tests and lightweight
@@ -471,16 +419,11 @@ class OpenClawClient:
         return self._send_cli(text, context)
 
     def _send_cli(
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         self,
         text: str,
         context: Mapping[str, object] | None,
     ) -> MessageResponse:
-<<<<<<< HEAD
-        """Transport: spawn the CLI and parse JSON. Required by BaseBenchmarkClient."""
-=======
         """Spawn one ``openclaw agent --local --json`` turn and parse it."""
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         argv = self.build_argv(text, context)
         env = self.build_env()
         started = time.monotonic()
@@ -706,6 +649,83 @@ class OpenClawClient:
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
+
+
+def _post_with_retry(
+    *,
+    url: str,
+    body: dict[str, Any],
+    api_key: str,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """POST ``body`` as JSON, retrying on 429/5xx/network errors.
+
+    On 4xx other than 429 the underlying ``HTTPError`` is re-wrapped as a
+    ``RuntimeError`` immediately. After ``MAX_ATTEMPTS`` exhausted retries a
+    :class:`RetryExhaustedError` is raised.
+    """
+    last_status: int | None = None
+    last_error_str = "no attempt completed"
+    for attempt in range(MAX_ATTEMPTS):
+        request = urllib.request.Request(
+            url,
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "Accept-Encoding": "identity",
+                "User-Agent": "eliza-openclaw-benchmark/1.0",
+            },
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:  # nosec B310
+                return json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            status = int(exc.code) if isinstance(exc.code, int) else None
+            detail = exc.read().decode("utf-8", errors="replace")
+            last_status = status
+            last_error_str = detail[:500]
+            if status is None or not is_retryable_status(status):
+                raise RuntimeError(
+                    f"OpenClaw-compatible completion failed (status={status}): {detail}"
+                ) from exc
+            retry_after_raw: str | None = None
+            try:
+                retry_after_raw = exc.headers.get("Retry-After") if exc.headers else None
+            except AttributeError:
+                retry_after_raw = None
+            delay = parse_retry_after(retry_after_raw) or backoff_seconds(attempt)
+        except urllib.error.URLError as exc:
+            last_status = None
+            last_error_str = f"{type(exc).__name__}: {exc.reason!r}"
+            delay = backoff_seconds(attempt)
+        except (TimeoutError, ConnectionError, OSError) as exc:
+            last_status = None
+            last_error_str = f"{type(exc).__name__}: {exc}"
+            delay = backoff_seconds(attempt)
+        if attempt == MAX_ATTEMPTS - 1:
+            raise RetryExhaustedError(
+                attempts=MAX_ATTEMPTS,
+                last_status=last_status,
+                last_error=last_error_str,
+            )
+        logger.warning(
+            "openclaw-adapter retrying POST (attempt %d/%d, status=%s) after %.2fs: %s",
+            attempt + 1,
+            MAX_ATTEMPTS,
+            "net" if last_status is None else last_status,
+            delay,
+            last_error_str[:200],
+        )
+        time.sleep(delay)
+    # Unreachable — the loop always either returns or raises.
+    raise RetryExhaustedError(  # pragma: no cover
+        attempts=MAX_ATTEMPTS,
+        last_status=last_status,
+        last_error=last_error_str,
+    )
 
 
 def _resolve_default_binary() -> Path:

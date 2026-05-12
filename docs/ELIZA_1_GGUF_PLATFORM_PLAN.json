@@ -1,9 +1,5 @@
 {
-<<<<<<< HEAD
-  "0_6b": {
-=======
   "0_8b": {
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "contexts": [
       "32k"
     ],
@@ -11,22 +7,14 @@
       "vad/silero-vad-int8.onnx"
     ],
     "required_files": [
-<<<<<<< HEAD
-      "text/eliza-1-0_6b-32k.gguf",
-=======
       "text/eliza-1-0_8b-32k.gguf",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "tts/omnivoice-base-Q4_K_M.gguf",
       "tts/omnivoice-tokenizer-Q4_K_M.gguf",
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
-<<<<<<< HEAD
-      "dflash/drafter-0_6b.gguf",
-=======
       "vision/mmproj-0_8b.gguf",
       "dflash/drafter-0_8b.gguf",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "dflash/target-meta.json",
       "cache/voice-preset-default.bin",
       "evals/aggregate.json",
@@ -42,10 +30,7 @@
       "licenses/LICENSE.vad",
       "licenses/LICENSE.dflash",
       "licenses/LICENSE.eliza-1",
-<<<<<<< HEAD
-=======
       "licenses/LICENSE.vision",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "checksums/SHA256SUMS",
       "evidence/release.json",
       "quantization/turboquant.json",
@@ -106,106 +91,7 @@
       }
     ],
     "text_quant": "Q3_K_M",
-<<<<<<< HEAD
-    "tier": "0_6b",
-    "voice_quant": "Q4_K_M"
-  },
-  "1_7b": {
-    "contexts": [
-      "32k",
-      "64k"
-    ],
-    "optional_files": [
-      "vad/silero-vad-int8.onnx"
-    ],
-    "required_files": [
-      "text/eliza-1-1_7b-32k.gguf",
-      "text/eliza-1-1_7b-64k.gguf",
-      "tts/omnivoice-base-Q4_K_M.gguf",
-      "tts/omnivoice-tokenizer-Q4_K_M.gguf",
-      "asr/eliza-1-asr.gguf",
-      "asr/eliza-1-asr-mmproj.gguf",
-      "vad/silero-vad-v5.1.2.ggml.bin",
-      "dflash/drafter-1_7b.gguf",
-      "dflash/target-meta.json",
-      "cache/voice-preset-default.bin",
-      "evals/aggregate.json",
-      "evals/metal_verify.json",
-      "evals/vulkan_verify.json",
-      "evals/cpu_reference.json",
-      "evals/metal_dispatch.json",
-      "evals/vulkan_dispatch.json",
-      "evals/cpu_dispatch.json",
-      "licenses/LICENSE.text",
-      "licenses/LICENSE.voice",
-      "licenses/LICENSE.asr",
-      "licenses/LICENSE.vad",
-      "licenses/LICENSE.dflash",
-      "licenses/LICENSE.eliza-1",
-      "checksums/SHA256SUMS",
-      "evidence/release.json",
-      "quantization/turboquant.json",
-      "quantization/fused_turboquant.json",
-      "quantization/qjl_config.json",
-      "quantization/polarquant_config.json"
-    ],
-    "required_platform_evidence": [
-      {
-        "backend": "metal",
-        "evidence_path": "evidence/platform/darwin-arm64-metal.json",
-        "id": "darwin-arm64-metal"
-      },
-      {
-        "backend": "metal",
-        "evidence_path": "evidence/platform/ios-arm64-metal.json",
-        "id": "ios-arm64-metal"
-      },
-      {
-        "backend": "vulkan",
-        "evidence_path": "evidence/platform/linux-x64-vulkan.json",
-        "id": "linux-x64-vulkan"
-      },
-      {
-        "backend": "vulkan",
-        "evidence_path": "evidence/platform/android-adreno-vulkan.json",
-        "id": "android-adreno-vulkan"
-      },
-      {
-        "backend": "vulkan",
-        "evidence_path": "evidence/platform/android-mali-vulkan.json",
-        "id": "android-mali-vulkan"
-      },
-      {
-        "backend": "cpu",
-        "evidence_path": "evidence/platform/linux-x64-cpu.json",
-        "id": "linux-x64-cpu"
-      },
-      {
-        "backend": "cpu",
-        "evidence_path": "evidence/platform/windows-x64-cpu.json",
-        "id": "windows-x64-cpu"
-      },
-      {
-        "backend": "vulkan",
-        "evidence_path": "evidence/platform/windows-x64-vulkan.json",
-        "id": "windows-x64-vulkan"
-      },
-      {
-        "backend": "cpu",
-        "evidence_path": "evidence/platform/windows-arm64-cpu.json",
-        "id": "windows-arm64-cpu"
-      },
-      {
-        "backend": "vulkan",
-        "evidence_path": "evidence/platform/windows-arm64-vulkan.json",
-        "id": "windows-arm64-vulkan"
-      }
-    ],
-    "text_quant": "Q4_K_M",
-    "tier": "1_7b",
-=======
     "tier": "0_8b",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "voice_quant": "Q4_K_M"
   },
   "27b": {
@@ -308,10 +194,7 @@
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
-<<<<<<< HEAD
-=======
       "vision/mmproj-27b-1m.gguf",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       "dflash/drafter-27b-1m.gguf",
       "dflash/target-meta.json",
       "cache/voice-preset-default.bin",
@@ -422,8 +305,6 @@
     "tier": "27b-256k",
     "voice_quant": "Q8_0"
   },
-<<<<<<< HEAD
-=======
   "2b": {
     "contexts": [
       "32k",
@@ -627,7 +508,6 @@
     "tier": "4b",
     "voice_quant": "Q4_K_M"
   },
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "9b": {
     "contexts": [
       "64k",

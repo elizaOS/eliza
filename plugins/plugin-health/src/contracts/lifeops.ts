@@ -1687,10 +1687,20 @@ export interface LifeOpsAwakeProbability {
   computedAt: string;
 }
 
+/** Identifies the health-data provider when a sleep window came from a health
+ *  signal. `"apple_health"` covers HealthKit / health_connect sources.
+ *  `"oura"` is the Oura Ring provider. `"merged"` means two sources overlapped
+ *  for the same night and were combined (e.g. Oura duration + Apple HRV).
+ *  Absent (`null`) when `source === "activity_gap"` or the provider is unknown.
+ */
+export type LifeOpsSleepHealthProvider = "apple_health" | "oura" | "merged" | null;
+
 export interface LifeOpsSleepCycleEvidence {
   startAt: string;
   endAt: string | null;
   source: LifeOpsSleepCycleEvidenceSource;
+  /** Provider provenance for `source === "health"` windows. */
+  healthProvider?: LifeOpsSleepHealthProvider;
   confidence: number;
 }
 

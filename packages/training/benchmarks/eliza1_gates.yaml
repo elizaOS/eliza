@@ -36,28 +36,6 @@ version: 2
 # better". `bool` gates take a boolean measurement and pass when true.
 # ---------------------------------------------------------------------------
 gates:
-  format_ok:
-    op: ">="
-    unit: "parsable-output rate 0..1"
-    manifest_field: null
-    description: >-
-      Fraction of held-out bench rows whose generated output parses into the
-      structurally-required shape for its task type — aggregated across
-      eliza_bench.py (buckets[*].format_ok / n) and native_tool_call_bench.py
-      (buckets[*].structure_ok / n). This is a structural gate, not a quality
-      gate: it measures "did the model emit a well-formed TOON/tool-call
-      document at all", which a published tier should reliably do. Not
-      provisional — it is a real measurement the bench self-reports — but it is
-      ONLY evaluated in `mode: full`; smoke-corpus pipeline runs use the
-      separate `format_ok_floor` (0.5) / `format_ok_not_regressed` structural
-      checks in eliza1_gates.py and a few-hundred-record smoke corpus is not
-      expected to clear the full-mode 0.7 floor.
-    calibration: >-
-      0.70 is a defensible publish floor for a real fine-tune run on the full
-      corpus (the SFT target is parsable-format ≈ 0.95+; a tier that falls below
-      0.7 is broken, not merely under-tuned). Tighten per-tier as real run data
-      lands; leave provisional:false but treat 0.70 as the conservative floor,
-      not the target.
   text_eval:
     op: ">="
     unit: "score 0..1"
@@ -98,60 +76,14 @@ gates:
     op: "<="
     unit: "ms"
     manifest_field: null
-    description: >-
-      Time from the *peer's last-utterance-end* to the response model's first
-      token — re-anchored to the duet harness's `peer-utterance-end` checkpoint
-      (LatencyTracer `ttftFromUtteranceEndMs.p50` from voice-duet-bench-*.json).
-      This is the correct "speech-end → first token" measurement; the older
-      single-agent anchor was `vad-trigger` (`ttftMs`), which starts the clock
-      at energy-rise, not at the peer finishing.
-    calibration: >-
-      BENCHMARK_2026-05-10.md §7 — single-step decode under TurboQuant Q4 +
-      DFlash should land 50–120 ms on M4 Max; 200 ms keeps headroom. Stays
-      provisional until a real-HW duet run (GPU-fused build + WS-4 streaming
-      decoders) calibrates `ttftFromUtteranceEndMs.p50` per tier — the CPU
-      baseline is TTS-dominated and not representative.
+    description: "Time from speech-end to the response model's first token (LatencyTracer ttftMs.p50)."
+    calibration: "BENCHMARK_2026-05-10.md §7 — single-step decode under TurboQuant Q4 + DFlash should land 50–120 ms on M4 Max; 200 ms keeps headroom."
   first_audio_latency_ms:
     op: "<="
     unit: "ms"
     manifest_field: null
-    description: >-
-      Time from the peer's last-utterance-end to the responding agent's first
-      audio (LatencyTracer `firstAudioIntoPeerRingFromUtteranceEndMs.p50` from
-      voice-duet-bench-*.json — the duet replacement for `audio-first-played`,
-      since there are no speakers in the duet). Single-agent runs still use
-      `ttapMs.p50` (`audio-first-played`); the duet anchor is the headline.
-    calibration: "BENCHMARK_2026-05-10.md §7 — loose at 400 ms; tighten once a real-HW duet run reproduces it."
-  duet_round_trip_ms:
-    op: "<="
-    unit: "ms"
-    manifest_field: null
-    description: >-
-      The two-agents-talking round-trip — peer-utterance-end → first audio back
-      in the peer's ring (LatencyTracer `firstAudioIntoPeerRingFromUtteranceEndMs`
-      from `voice-duet.mjs --report`). Same physical quantity as
-      `first_audio_latency_ms` for the duet; kept as a distinct gate so the
-      grind (`verify/voice_duet_sweep.mjs`) and the bench report writer can
-      reference "the duet round-trip" by name.
-    calibration: >-
-      Provisional — thresholds calibrated from the first real 0.6b / 1.7b duet
-      run on a GPU-fused build (the CPU baseline is TTS-dominated ~6–10× RTF and
-      not representative of the shipped path).
-  structured_decode_token_savings_pct:
-    op: ">="
-    unit: "% (forced tokens ÷ would-have-been-generated tokens, ×100)"
-    manifest_field: null
-    description: >-
-      Fraction of Stage-1-envelope tokens the GBNF grammar forces (so guided
-      structured decode fast-forwards them) — `WS-4`'s
-      `verify/guided_decode_token_bench.mjs` counter, surfaced per-run by
-      `voice-duet.mjs --report` (`runMetrics.structuredDecodeTokenSavingsPct`).
-      The static aggregate over the synthetic action set is ≈28% forced; the
-      fork-side fast-forward turns those into ≈28% fewer `decode()` calls.
-    calibration: >-
-      Provisional — 20% is a conservative floor for the synthetic action set
-      (≈28% measured statically); flip provisional:false after a real-HW run
-      with the fork fast-forward consuming `eliza_prefill_plan` reproduces it.
+    description: "Time from speech-end to the first TTS audio chunk played (LatencyTracer ttapMs.p50)."
+    calibration: "BENCHMARK_2026-05-10.md §7 — loose at 400 ms; tighten to 250 ms once the e2e harness reproduces it."
   barge_in_cancel_ms:
     op: "<="
     unit: "ms"
@@ -181,35 +113,17 @@ gates:
     op: ">="
     unit: "ratio 0..1"
     manifest_field: "evals.expressive.tagFaithfulness"
-    description: >-
-      Emotion fidelity across the duet loop — agreement between the emotion
-      agent A *intended* (the dominant inline tag / Stage-1 `emotion` field it
-      emitted) and the emotion agent B's ASR *perceived* in A's speech
-      (`emotionFidelity.accuracy` in voice-duet-bench-*.json). Measured by the
-      duet harness's emotion-fidelity accumulator with an explicit
-      Qwen3-ASR-label↔tag-vocab mapping. **Honest fallback:** if the
-      GGUF-converted Qwen3-ASR doesn't surface an emotion label and no
-      fallback emotion-from-audio classifier is available, the metric is `null`
-      and the artifact records `perceiver: fallback-classifier (unavailable)` —
-      a null result, not a fabricated number; a publish run on such a host
-      records it as needs-data, not a pass.
+    description: "Fraction of emotion/singing tags rendered with the intended affect."
   expressive_mos:
     op: ">="
     unit: "MOS 1..5"
     manifest_field: "evals.expressive.mosExpressive"
-    description: >-
-      Mean opinion score on expressive (emotion/singing) prompts. Requires a
-      human listening panel — `voice-duet.mjs --report` cannot produce this;
-      it stays a separate human-eval gate and is `null` in the duet artifact.
+    description: "Mean opinion score on expressive (emotion/singing) prompts."
   expressive_tag_leakage:
     op: "<="
     unit: "ratio 0..1"
     manifest_field: "evals.expressive.tagLeakage"
-    description: >-
-      Fraction of audio frames where a tag literal ('[happy]') leaked into the
-      spoken output. The duet artifact records `unknownTags` (bracket tokens the
-      model emitted that aren't in the vocab) as a proxy signal; the audio-frame
-      leakage itself needs an ASR transcript of the rendered audio.
+    description: "Fraction of audio frames where a tag literal ('[happy]') leaked into the spoken output."
   peak_rss_mb:
     op: "<="
     unit: "MB"
@@ -245,16 +159,7 @@ dflash:
 # RSS gate is not required for the GH200-class `27b-1m` tier).
 # ---------------------------------------------------------------------------
 tiers:
-<<<<<<< HEAD
-  # 0_8b — Qwen3.5-0.8B backbone, the new smallest local default tier. Same
-  # gate shape as 0_6b (it is only ~30 % larger and shares the consumer-GPU
-  # latency budget); thresholds inherit the 0_6b numbers until a real e2e run
-  # on the 0.8B lands and tightens them.
   0_8b:
-    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
-=======
-  0_8b:
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     text_eval: { threshold: 0.55, required: true, provisional: true }
     voice_rtf: { threshold: 0.5, required: true, provisional: true }
     asr_wer: { threshold: 0.10, required: true, provisional: true }
@@ -264,31 +169,6 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 220, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 450, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
-    barge_in_cancel_ms: { threshold: 80, required: true, provisional: false }
-    thirty_turn_ok: { threshold: true, required: true, provisional: false }
-    e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.60, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.4, required: false, provisional: true }
-    expressive_tag_faithfulness: { threshold: 0.80, required: false, provisional: true }
-    expressive_mos: { threshold: 3.6, required: false, provisional: true }
-    expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
-    peak_rss_mb: { threshold: 2400, required: false, provisional: true, needs_hardware: true }
-    thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
-  0_6b:
-    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
-    text_eval: { threshold: 0.55, required: true, provisional: true }
-    voice_rtf: { threshold: 0.5, required: true, provisional: true }
-    asr_wer: { threshold: 0.10, required: true, provisional: true }
-    vad_latency_ms: { threshold: 20, required: true, provisional: false }
-    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
-    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
-    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
-    first_token_latency_ms: { threshold: 220, required: false, provisional: true }
-    first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 450, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 80, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
@@ -299,12 +179,7 @@ tiers:
     expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
     peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
-<<<<<<< HEAD
-  1_7b:
-    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
-=======
   2b:
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     text_eval: { threshold: 0.60, required: true, provisional: true }
     voice_rtf: { threshold: 0.45, required: true, provisional: true }
     asr_wer: { threshold: 0.08, required: true, provisional: true }
@@ -314,8 +189,6 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 200, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 400, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 70, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
@@ -326,43 +199,9 @@ tiers:
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
     peak_rss_mb: { threshold: 4500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
-<<<<<<< HEAD
-  # 2b — Qwen3.5-2B-Base backbone. Inherits the 1_7b gate shape (mid local
-  # tier on the Qwen3.5 fused-model line); thresholds will be tightened after
-  # a real e2e run lands.
-  2b:
-    format_ok: { threshold: 0.70, required: true, provisional: false }
-    text_eval: { threshold: 0.60, required: true, provisional: true }
-    voice_rtf: { threshold: 0.45, required: true, provisional: true }
-    asr_wer: { threshold: 0.08, required: true, provisional: true }
-    vad_latency_ms: { threshold: 18, required: true, provisional: false }
-    vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
-    vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
-    vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
-    first_token_latency_ms: { threshold: 200, required: false, provisional: true }
-    first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 400, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
-    barge_in_cancel_ms: { threshold: 70, required: true, provisional: false }
-    thirty_turn_ok: { threshold: true, required: true, provisional: false }
-    e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
-    expressive_tag_faithfulness: { threshold: 0.85, required: false, provisional: true }
-    expressive_mos: { threshold: 3.8, required: false, provisional: true }
-    expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
-    peak_rss_mb: { threshold: 5500, required: false, provisional: true, needs_hardware: true }
-    thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
-  # 4b — Qwen/Qwen3.5-4B-Base backbone, mid-local tier.
-  4b:
-    format_ok: { threshold: 0.70, required: true, provisional: false }
-    text_eval: { threshold: 0.62, required: true, provisional: true }
-    voice_rtf: { threshold: 0.45, required: true, provisional: true }
-=======
   4b:
     text_eval: { threshold: 0.62, required: true, provisional: true }
     voice_rtf: { threshold: 0.42, required: true, provisional: true }
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     asr_wer: { threshold: 0.07, required: true, provisional: true }
     vad_latency_ms: { threshold: 18, required: true, provisional: false }
     vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
@@ -370,11 +209,6 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 200, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
-<<<<<<< HEAD
-    duet_round_trip_ms: { threshold: 400, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     barge_in_cancel_ms: { threshold: 65, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
@@ -383,15 +217,9 @@ tiers:
     expressive_tag_faithfulness: { threshold: 0.88, required: false, provisional: true }
     expressive_mos: { threshold: 3.9, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
-<<<<<<< HEAD
-    peak_rss_mb: { threshold: 7500, required: false, provisional: true, needs_hardware: true }
-    thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
-=======
     peak_rss_mb: { threshold: 8000, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 18, required: false, provisional: true, needs_hardware: true }
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   9b:
-    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.65, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.06, required: true, provisional: true }
@@ -401,8 +229,6 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 200, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 400, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
@@ -414,7 +240,6 @@ tiers:
     peak_rss_mb: { threshold: 9500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 15, required: false, provisional: true, needs_hardware: true }
   27b:
-    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
@@ -424,8 +249,6 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 220, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 400, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
@@ -435,7 +258,6 @@ tiers:
     expressive_mos: { threshold: 4.1, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
   27b-256k:
-    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
@@ -445,8 +267,6 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 240, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 420, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 420, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
@@ -456,7 +276,6 @@ tiers:
     expressive_mos: { threshold: 4.1, required: false, provisional: true }
     expressive_tag_leakage: { threshold: 0.02, required: false, provisional: true }
   27b-1m:
-    format_ok: { threshold: 0.70, required: true, provisional: false }  # structural floor; smoke runs use eliza1_gates.py's format_ok_floor instead
     text_eval: { threshold: 0.70, required: true, provisional: true }
     voice_rtf: { threshold: 0.4, required: true, provisional: true }
     asr_wer: { threshold: 0.05, required: true, provisional: true }
@@ -466,8 +285,6 @@ tiers:
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
     first_token_latency_ms: { threshold: 260, required: false, provisional: true }
     first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
-    duet_round_trip_ms: { threshold: 450, required: false, provisional: true }
-    structured_decode_token_savings_pct: { threshold: 20, required: false, provisional: true }
     barge_in_cancel_ms: { threshold: 60, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }

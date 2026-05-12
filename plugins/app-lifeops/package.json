@@ -50,12 +50,7 @@
   "dependencies": {
     "@capacitor/core": "8.3.1",
     "@elizaos/agent": "2.0.0-beta.1",
-<<<<<<< HEAD
-    "@elizaos/app-core": "2.0.0-beta.3",
-    "@elizaos/capacitor-appblocker": "2.0.0-beta.1",
-=======
     "@elizaos/app-core": "2.0.0-beta.1",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "@elizaos/capacitor-calendar": "2.0.0-beta.1",
     "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
     "@elizaos/core": "2.0.0-beta.1",
@@ -69,7 +64,7 @@
     "@elizaos/plugin-whatsapp": "2.0.0-beta.1",
     "@elizaos/scenario-schema": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.2",
+    "@elizaos/ui": "2.0.0-beta.1",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^4.0.1",

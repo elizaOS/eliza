@@ -1655,9 +1655,24 @@ def _u_life_snooze(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
     return {"id": reminder.id, "due_at": reminder.due_at}
 
 
-def _u_life_review(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """LIFE_REVIEW is a read-only listing — no-op for state hash purposes."""
-    return {"subaction": kw.get("subaction", "review"), "ok": True, "noop": True}
+def _u_life_review(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """LIFE_REVIEW stamps last_reviewed_at on the target list (side-effect).
+
+    Even though the primary purpose is a read/listing operation, a review call
+    writes a ``last_reviewed_at`` timestamp to the reminder list so that
+    subsequent review cadence queries can tell when the list was last checked.
+    This is the mutation that makes LIFE_REVIEW a "read_with_side_effects"
+    scenario rather than a pure read.
+    """
+    sub = kw.get("subaction", "review")
+    list_id = kw.get("list_id") or kw.get("listId")
+    if isinstance(list_id, str) and list_id in world.reminder_lists:
+        updated = world.touch_reminder_list_reviewed(list_id)
+        return {"subaction": sub, "ok": True, "list_id": list_id, "last_reviewed_at": updated.last_reviewed_at}
+    # No list_id provided or list not in seed — still stamp all known lists.
+    for lid in list(world.reminder_lists):
+        world.touch_reminder_list_reviewed(lid)
+    return {"subaction": sub, "ok": True, "last_reviewed_at": world.now_iso}
 
 
 def _u_life_delete(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
@@ -1929,19 +1944,155 @@ def _u_scheduled_tasks(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[
     )
 
 
-def _u_health(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """HEALTH umbrella is read-only in the manifest; no-op for state hash."""
-    return {"subaction": kw.get("subaction", "by_metric"), "ok": True, "noop": True}
+def _u_health(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """HEALTH umbrella — read-only for state-hash purposes.
+
+    ``by_metric`` subaction returns deduplicated data points from world health
+    metrics, preferring the most specific source when multiple sources overlap
+    on the same (metric_type, date) key:
+
+      - For sleep metrics: oura > apple-health > fitbit > manual
+      - For steps / other activity metrics: apple-health > oura > fitbit > manual
+
+    The ``source_used`` metadata field indicates which source won the
+    deduplication. All other subactions (summary, trends, today, status) are
+    pure no-ops for state-hash purposes.
+    """
+    subaction = kw.get("subaction", "by_metric")
+    if subaction != "by_metric":
+        return {"subaction": subaction, "ok": True, "noop": True}
+
+    metric_type = (kw.get("metric") or "").strip().lower()
+
+    # Source priority: higher index = higher priority (preferred winner).
+    # Sleep metrics: Oura Ring is the gold standard for sleep tracking.
+    # Activity metrics (steps, calories, …): Apple Health (HealthKit) has
+    # broader device support and is the default on-device aggregator.
+    _SLEEP_SOURCE_PRIORITY: list[str] = [
+        "manual", "fitbit", "apple-health", "oura"
+    ]
+    _ACTIVITY_SOURCE_PRIORITY: list[str] = [
+        "manual", "fitbit", "oura", "apple-health"
+    ]
+    is_sleep_metric = metric_type in {"sleep_hours", "sleep"}
+    source_priority = _SLEEP_SOURCE_PRIORITY if is_sleep_metric else _ACTIVITY_SOURCE_PRIORITY
+
+    def _source_rank(src: str) -> int:
+        try:
+            return source_priority.index(src)
+        except ValueError:
+            return -1  # unknown sources lose to all known ones
+
+    # Collect matching metrics, optionally filtered by metric_type.
+    raw_metrics = list(world.health_metrics.values())
+    if metric_type:
+        raw_metrics = [m for m in raw_metrics if m.metric_type == metric_type]
+
+    # Dedup by (metric_type, date-bucket) — keep the highest-priority source.
+    # Use the date portion of `recorded_at` as the bucket so intraday samples
+    # from different sources for the same calendar day are collapsed.
+    best: dict[tuple[str, str], Any] = {}
+    for m in raw_metrics:
+        date_bucket = m.recorded_at[:10]  # YYYY-MM-DD prefix
+        key = (m.metric_type, date_bucket)
+        existing = best.get(key)
+        if existing is None or _source_rank(m.source) > _source_rank(existing.source):
+            best[key] = m
+
+    data_points = [
+        {
+            "id": m.id,
+            "metric_type": m.metric_type,
+            "value": m.value,
+            "recorded_at": m.recorded_at,
+            "source": m.source,
+        }
+        for m in sorted(best.values(), key=lambda x: x.recorded_at)
+    ]
+
+    # Surface the dominant source so the scorer / agent can inspect provenance.
+    sources_used = sorted({m["source"] for m in data_points})
+    source_used = sources_used[0] if len(sources_used) == 1 else "multi"
+
+    return {
+        "subaction": "by_metric",
+        "ok": True,
+        "metric": metric_type or "all",
+        "data": data_points,
+        "count": len(data_points),
+        "source_used": source_used,
+    }
 
 
-def _u_money_readonly(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+def _u_money_readonly(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
     """MONEY_* read-only verbs — dashboard, list_transactions, list_sources, etc.
 
     Every MONEY_* verb that doesn't mutate state lands here. The MONEY umbrella picks
     the right behavior on ``subaction`` so the same handler is shared
     between e.g. ``MONEY``, ``MONEY_DASHBOARD``, ``MONEY_LIST_TRANSACTIONS``.
+
+    For ``list_transactions``, apply ``category``, ``start_date`` / ``end_date``,
+    and ``merchantContains`` filters so scenarios that pass these params get
+    a real filtered result instead of a no-op that masks incorrect agent calls.
+    State hash is unchanged (read-only), but the result payload now reflects the
+    actual filter — agents that skip filtering get a different (larger) result
+    than agents that correctly narrow by category/date.
     """
-    return {"subaction": kw.get("subaction", "dashboard"), "ok": True, "noop": True}
+    subaction = kw.get("subaction", "dashboard")
+    if subaction != "list_transactions":
+        return {"subaction": subaction, "ok": True, "noop": True}
+
+    # --- list_transactions: filter transactions by category / date range ---
+    transactions = list(world.transactions.values())
+
+    category = (kw.get("category") or "").strip().lower()
+    start_date: str | None = kw.get("start_date") or kw.get("startDate") or None  # type: ignore[assignment]
+    end_date: str | None = kw.get("end_date") or kw.get("endDate") or None  # type: ignore[assignment]
+    merchant_contains: str = (kw.get("merchantContains") or kw.get("merchant") or "").strip().lower()
+    only_debits: bool = bool(kw.get("onlyDebits") or kw.get("only_debits"))
+    window_days: int | None = None
+    raw_window = kw.get("windowDays") or kw.get("window_days")
+    if isinstance(raw_window, (int, float)) and raw_window > 0:
+        window_days = int(raw_window)
+
+    # Resolve window_days into a start_date when no explicit start_date given.
+    if window_days is not None and start_date is None:
+        from datetime import datetime, timedelta, timezone as _tz
+        now_dt = datetime.fromisoformat(world.now_iso.replace("Z", "+00:00"))
+        start_dt = now_dt - timedelta(days=window_days)
+        start_date = start_dt.isoformat()
+
+    filtered = []
+    for txn in transactions:
+        if category and txn.category.lower() != category:
+            continue
+        if merchant_contains and merchant_contains not in txn.merchant.lower():
+            continue
+        if only_debits and txn.amount_cents >= 0:
+            continue
+        posted = txn.posted_at
+        if start_date and posted < start_date:
+            continue
+        if end_date and posted > end_date:
+            continue
+        filtered.append(
+            {
+                "id": txn.id,
+                "merchant": txn.merchant,
+                "category": txn.category,
+                "amount_cents": txn.amount_cents,
+                "posted_at": txn.posted_at,
+                "is_pending": txn.is_pending,
+            }
+        )
+
+    filtered.sort(key=lambda t: t["posted_at"], reverse=True)
+    return {
+        "subaction": "list_transactions",
+        "ok": True,
+        "transactions": filtered,
+        "count": len(filtered),
+    }
 
 
 def _u_money_subscription_audit(

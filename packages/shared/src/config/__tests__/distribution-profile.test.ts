@@ -9,16 +9,10 @@ import {
 describe("distribution profile", () => {
   it("defaults to unrestricted when env is unset or empty", () => {
     expect(resolveDistributionProfile({})).toBe("unrestricted");
-    expect(resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "" })).toBe(
-      "unrestricted",
-    );
     expect(
-<<<<<<< HEAD
-=======
       resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "" }),
     ).toBe("unrestricted");
     expect(
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "   " }),
     ).toBe("unrestricted");
   });

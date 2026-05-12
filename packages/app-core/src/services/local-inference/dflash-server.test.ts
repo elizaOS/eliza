@@ -13,7 +13,6 @@ import {
   extractStreamingChatDelta,
   extractVerifierRejectRange,
   findBundleOmnivoiceAssets,
-  findBundleVisionMmproj,
   getDflashRuntimeStatus,
   logDflashDevDisabledWarning,
   parseDflashMetrics,
@@ -102,8 +101,7 @@ describe("DFlash runtime discovery", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dflash-test-"));
     process.env.ELIZA_STATE_DIR = root;
     delete process.env.ELIZA_DFLASH_ENABLED;
-    delete process.env.MILADY_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLED;
     delete process.env.ELIZA_DFLASH_METAL_AUTO;
     delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.HIP_VISIBLE_DEVICES;
@@ -188,8 +186,7 @@ describe("fused-vs-two-process spawn selection", () => {
   }
   function clearEnv() {
     delete process.env.ELIZA_DFLASH_ENABLED;
-    delete process.env.MILADY_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_DISABLE;
+    delete process.env.ELIZA_DFLASH_DISABLED;
     delete process.env.ELIZA_DFLASH_METAL_AUTO;
     delete process.env.ELIZA_DFLASH_METAL_ENABLED;
     delete process.env.ELIZA_DFLASH_DISABLE_FUSED_SERVER;
@@ -279,119 +276,24 @@ describe("fused-vs-two-process spawn selection", () => {
     // A non-bundle layout (no text/ parent) returns null.
     expect(findBundleOmnivoiceAssets(path.join(root, "model.gguf"))).toBeNull();
   });
-
-  it("findBundleVisionMmproj derives --mmproj from the bundle manifest files.vision[0].path", () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-mmproj-test-"));
-    const bundle = path.join(root, "eliza-1-9b.bundle");
-    fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
-    fs.mkdirSync(path.join(bundle, "vision"), { recursive: true });
-    const textGguf = path.join(bundle, "text", "eliza-1-9b-64k.gguf");
-    fs.writeFileSync(textGguf, "x");
-    fs.writeFileSync(path.join(bundle, "vision", "mmproj-9b.gguf"), "x");
-    fs.writeFileSync(
-      path.join(bundle, "eliza-1.manifest.json"),
-      JSON.stringify({
-        id: "eliza-1-9b",
-        tier: "9b",
-        files: {
-          text: [{ path: "text/eliza-1-9b-64k.gguf", ctx: 65536 }],
-          vision: [{ path: "vision/mmproj-9b.gguf" }],
-        },
-      }),
-      "utf8",
-    );
-    expect(findBundleVisionMmproj(textGguf)).toBe(
-      path.join(bundle, "vision", "mmproj-9b.gguf"),
-    );
-
-    // No vision[] entry → text-only tier → null.
-    const noVision = path.join(root, "eliza-1-1_7b.bundle");
-    fs.mkdirSync(path.join(noVision, "text"), { recursive: true });
-    const noVisionText = path.join(noVision, "text", "eliza-1-1_7b-32k.gguf");
-    fs.writeFileSync(noVisionText, "x");
-    fs.writeFileSync(
-      path.join(noVision, "eliza-1.manifest.json"),
-      JSON.stringify({
-        id: "eliza-1-1_7b",
-        tier: "1_7b",
-        files: {
-          text: [{ path: "text/eliza-1-1_7b-32k.gguf", ctx: 32768 }],
-          vision: [],
-        },
-      }),
-      "utf8",
-    );
-    expect(findBundleVisionMmproj(noVisionText)).toBeNull();
-
-    // Manifest declares a vision file that isn't on disk → null (fail closed,
-    // no half-loaded vision).
-    const ghostBundle = path.join(root, "eliza-1-27b.bundle");
-    fs.mkdirSync(path.join(ghostBundle, "text"), { recursive: true });
-    const ghostText = path.join(ghostBundle, "text", "eliza-1-27b-128k.gguf");
-    fs.writeFileSync(ghostText, "x");
-    fs.writeFileSync(
-      path.join(ghostBundle, "eliza-1.manifest.json"),
-      JSON.stringify({
-        id: "eliza-1-27b",
-        tier: "27b",
-        files: {
-          text: [{ path: "text/eliza-1-27b-128k.gguf", ctx: 131072 }],
-          vision: [{ path: "vision/mmproj-27b.gguf" }],
-        },
-      }),
-      "utf8",
-    );
-    expect(findBundleVisionMmproj(ghostText)).toBeNull();
-
-    // Missing manifest / non-bundle layout → null.
-    expect(findBundleVisionMmproj(path.join(root, "loose.gguf"))).toBeNull();
-  });
 });
 
 describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
-<<<<<<< HEAD
-  afterEach(() => {
-    delete process.env.MILADY_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_DISABLE;
-    delete process.env.ELIZA_DFLASH_ENABLED;
-  });
-
   it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
-    delete process.env.MILADY_DFLASH_DISABLE;
-=======
-  it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     delete process.env.ELIZA_DFLASH_DISABLE;
     process.env.ELIZA_DFLASH_ENABLED = "1";
     expect(dflashDevDisabled()).toBe(false);
     expect(dflashEnabled()).toBe(true);
 
     process.env.ELIZA_DFLASH_DISABLE = "1";
-<<<<<<< HEAD
     expect(dflashDevDisabled()).toBe(true);
     expect(dflashEnabled()).toBe(false);
     expect(getDflashRuntimeStatus().reason).toContain("ELIZA_DFLASH_DISABLE");
-  });
-
-  it("MILADY_DFLASH_DISABLE is accepted as a back-compat alias", () => {
-    delete process.env.ELIZA_DFLASH_DISABLE;
-    process.env.MILADY_DFLASH_DISABLE = "1";
-    expect(dflashDevDisabled()).toBe(true);
-    expect(dflashEnabled()).toBe(false);
-=======
-    expect(dflashDevDisabled()).toBe(true);
-    expect(dflashEnabled()).toBe(false);
-    expect(getDflashRuntimeStatus().reason).toContain("ELIZA_DFLASH_DISABLE");
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   });
 
   it("logs a loud warning when active and is silent otherwise", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-<<<<<<< HEAD
-      delete process.env.MILADY_DFLASH_DISABLE;
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       delete process.env.ELIZA_DFLASH_DISABLE;
       logDflashDevDisabledWarning();
       expect(warn).not.toHaveBeenCalled();

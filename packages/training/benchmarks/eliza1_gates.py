@@ -64,11 +64,6 @@ _GATES_YAML = Path(__file__).resolve().parent / "eliza1_gates.yaml"
 # imports very early.
 KNOWN_TIERS: tuple[str, ...] = (
     "0_8b",
-<<<<<<< HEAD
-    "0_6b",
-    "1_7b",
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "2b",
     "4b",
     "9b",
@@ -276,38 +271,14 @@ def _is_required(spec: Mapping[str, Any], tier: str) -> bool:
 # Normalise the v2 ``op`` vocabulary onto the comparison set used internally.
 _OP_ALIASES = {"bool": "is_true"}
 
-# Release channels — mirrors ``ELIZA_1_RELEASE_CHANNELS`` in the manifest
-# module. ``base-v1`` is the upstream-base + kernel-optimized release; its
-# text weights ARE the upstream base GGUFs (not the fine-tuned Eliza-1), so
-# the held-out *text-quality* gate (`text_eval`) is N/A for that channel —
-# it is still recorded/reported, just not publish-blocking. EVERYTHING else
-# (voice RTF, ASR WER, VAD, e2e loop, 30-turn, dflash bench) stays exactly as
-# required as on the recommended channel — `base-v1` does NOT mean "skip the
-# runnable-on-base evals".
-RELEASE_CHANNELS = ("recommended", "base-v1")
-DEFAULT_RELEASE_CHANNEL = "recommended"
-# Gates demoted from required → informational on the `base-v1` channel.
-_BASE_V1_NOT_REQUIRED_GATES = frozenset({"text_eval"})
 
-
-def _eval_one(
-    name: str,
-    spec: Mapping[str, Any],
-    results: Mapping[str, Any],
-    tier: str,
-    release_channel: str = DEFAULT_RELEASE_CHANNEL,
-) -> GateRow:
+def _eval_one(name: str, spec: Mapping[str, Any], results: Mapping[str, Any], tier: str) -> GateRow:
     metric = spec.get("metric", name)
     op_name = _OP_ALIASES.get(str(spec.get("op", ">=")), str(spec.get("op", ">=")))
     threshold = spec.get("threshold")
     provisional = bool(spec.get("provisional", False))
     needs_hardware = bool(spec.get("needs_hardware", False))
     required = _is_required(spec, tier)
-    if release_channel == "base-v1" and name in _BASE_V1_NOT_REQUIRED_GATES:
-        # Held-out text quality is the fine-tuned-v1/v2 deliverable; the
-        # base-v1 channel ships the upstream base text weights. Record the
-        # number, do not block on it.
-        required = False
 
     if metric not in results or results.get(metric) is None:
         # A missing measurement on a required gate is publish-blocking (the
@@ -433,17 +404,9 @@ def _smoke_report(tier: str, results: Mapping[str, Any]) -> GateReport:
     return GateReport(tier=tier, mode="smoke", gates=gates)
 
 
-def _full_report(
-    tier: str,
-    results: Mapping[str, Any],
-    doc: GatesDoc,
-    release_channel: str = DEFAULT_RELEASE_CHANNEL,
-) -> GateReport:
+def _full_report(tier: str, results: Mapping[str, Any], doc: GatesDoc) -> GateReport:
     specs = _gate_specs_for_tier(doc, tier)
-    gates = [
-        _eval_one(name, spec, results, tier, release_channel)
-        for name, spec in specs.items()
-    ]
+    gates = [_eval_one(name, spec, results, tier) for name, spec in specs.items()]
     return GateReport(tier=tier, mode="full", gates=gates)
 
 
@@ -465,7 +428,6 @@ def apply_gates(
     tier: str | None = None,
     mode: str | None = None,
     gates: GatesDoc | None = None,
-    release_channel: str | None = None,
 ) -> GateReport:
     """Evaluate ``eval_blob`` against the tier gate set.
 
@@ -474,20 +436,11 @@ def apply_gates(
     tier override, a ``dict`` is a pre-loaded gate document, ``None`` loads
     the bundled ``eliza1_gates.yaml``. ``tier`` / ``mode`` / ``gates``
     keyword args take precedence over anything inferred from the blob.
-    ``release_channel`` (``"recommended"`` default, or ``"base-v1"``) relaxes
-    the held-out text-quality gate on the base-v1 channel — every other gate
-    stays required.
     """
     if isinstance(gates_or_tier, str):
         tier = tier or gates_or_tier
     elif isinstance(gates_or_tier, Mapping):
         gates = gates if gates is not None else gates_or_tier
-
-    channel = (release_channel or DEFAULT_RELEASE_CHANNEL)
-    if channel not in RELEASE_CHANNELS:
-        raise ValueError(
-            f"release_channel must be one of {RELEASE_CHANNELS}, got {channel!r}"
-        )
 
     blob_tier, blob_mode, results = _unwrap(eval_blob)
     tier_id = normalize_tier(tier or blob_tier)
@@ -499,4 +452,4 @@ def apply_gates(
         return _smoke_report(tier_id, results)
 
     doc = gates if gates is not None else load_gates()
-    return _full_report(tier_id, results, doc, channel)
+    return _full_report(tier_id, results, doc)

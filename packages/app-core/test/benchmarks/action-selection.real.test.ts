@@ -52,8 +52,7 @@ async function createBenchmarkRuntimeFactory(): Promise<{
       ELIZA_DISABLE_LIFEOPS_SCHEDULER:
         process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER,
       ELIZA_DISABLE_PROACTIVE_AGENT: process.env.ELIZA_DISABLE_PROACTIVE_AGENT,
-      ELIZA_TEST_COMPUTERUSE_BACKEND:
-        process.env.ELIZA_TEST_COMPUTERUSE_BACKEND,
+      ELIZA_TEST_COMPUTERUSE_BACKEND: process.env.ELIZA_TEST_COMPUTERUSE_BACKEND,
       COMPUTER_USE_ENABLED: process.env.COMPUTER_USE_ENABLED,
     };
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
@@ -75,25 +74,19 @@ async function createBenchmarkRuntimeFactory(): Promise<{
         try {
           await environment.cleanup();
         } finally {
-          if (
-            previousBackgroundEnv.ELIZA_DISABLE_LIFEOPS_SCHEDULER === undefined
-          ) {
+          if (previousBackgroundEnv.ELIZA_DISABLE_LIFEOPS_SCHEDULER === undefined) {
             delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
           } else {
             process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER =
               previousBackgroundEnv.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
           }
-          if (
-            previousBackgroundEnv.ELIZA_DISABLE_PROACTIVE_AGENT === undefined
-          ) {
+          if (previousBackgroundEnv.ELIZA_DISABLE_PROACTIVE_AGENT === undefined) {
             delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
           } else {
             process.env.ELIZA_DISABLE_PROACTIVE_AGENT =
               previousBackgroundEnv.ELIZA_DISABLE_PROACTIVE_AGENT;
           }
-          if (
-            previousBackgroundEnv.ELIZA_TEST_COMPUTERUSE_BACKEND === undefined
-          ) {
+          if (previousBackgroundEnv.ELIZA_TEST_COMPUTERUSE_BACKEND === undefined) {
             delete process.env.ELIZA_TEST_COMPUTERUSE_BACKEND;
           } else {
             process.env.ELIZA_TEST_COMPUTERUSE_BACKEND =
@@ -113,18 +106,10 @@ async function createBenchmarkRuntimeFactory(): Promise<{
   // Load the LifeOps plugin after any mock env setup has happened so
   // client modules that read env-based mock endpoints do not capture the
   // production URLs during module evaluation.
-<<<<<<< HEAD
-  const { appLifeOpsPlugin } = await import("@elizaos/app-lifeops");
-  const { computerUsePlugin } = await import(
-    // @ts-expect-error — workspace package resolved at runtime
-    "@elizaos/plugin-computeruse"
-  );
-=======
   const { appLifeOpsPlugin } = await import(
     "@elizaos/app-lifeops"
   );
   const { computerUsePlugin } = await import(computerUsePluginSpecifier);
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   const { createRealTestRuntime } = await import("../helpers/real-runtime.ts");
 
   return {

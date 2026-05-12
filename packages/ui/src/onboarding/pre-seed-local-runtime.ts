@@ -18,15 +18,9 @@
  *
  * Detection: we look for `ElizaOS/<tag>` in the WebView user-agent,
  * which `MainActivity.applyBrandUserAgentMarkers` appends only when
-<<<<<<< HEAD
- * `ro.elizaos.product` (or `ro.elizaos.product`) is set by the AOSP
- * product makefile. White-label forks pick this up automatically as
- * long as their product config sets one of those system properties.
-=======
  * `ro.elizaos.product` is set by the AOSP product makefile. White-label
  * forks pick this up automatically because brand markers are appended in
  * addition to the base framework marker, not as replacements.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
  *
  * Implementation note: this file deliberately does NOT import from
  * `state/persistence` — that module's transitive dep graph is heavy
@@ -90,27 +84,6 @@ function writeLocalAgentActiveServer(): void {
   }
 }
 
-<<<<<<< HEAD
-/**
- * Pure user-agent test. Exported so unit tests can pin the detection
- * contract without having to mock the whole pre-seed pipeline.
- *
- * MainActivity.applyBrandUserAgentMarkers appends `ElizaOS/<tag>` (or
- * `ElizaOS/<tag>`) only when the corresponding `ro.<brand>os.product`
- * system property is set by the AOSP product makefile. Stock Android
- * leaves the UA untouched, which is exactly when we want to render the
- * picker. The trailing `/` is required — a bare `ElizaOS` token (no
- * version) is malformed and must NOT trigger the pre-seed.
- */
-export function isAospElizaUserAgent(
-  userAgent: string | null | undefined,
-): boolean {
-  if (typeof userAgent !== "string" || userAgent.length === 0) return false;
-  return /\bElizaOS\/\S/.test(userAgent) || /\bElizaOS\/\S/.test(userAgent);
-}
-
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 function isBrandedAndroidDevice(): boolean {
   if (typeof navigator === "undefined") return false;
   return isAospElizaUserAgent(navigator.userAgent);

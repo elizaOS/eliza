@@ -117,10 +117,6 @@ const ENV_ALLOWLIST = [
   "RUNTIME_MODE",
   "LOCAL_RUNTIME_MODE",
   "ELIZA_STATE_DIR",
-<<<<<<< HEAD
-  "ELIZA_STATE_DIR",
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "SHELL_ALLOWED_DIRECTORY",
   "CODING_TOOLS_SHELL",
   "CODING_TOOLS_WORKSPACE_ROOTS",

@@ -593,11 +593,7 @@ static inline uint32_t eliza_env_u32(const char * name, uint32_t fallback, uint3
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
-<<<<<<< HEAD
-        /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
-=======
         /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 64u, 1u, 64u),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     };`,
     );
     upgraded = upgraded.replace(
@@ -699,11 +695,7 @@ int ggml_metal_op_attn_score_qjl(ggml_metal_op_t ctx, int idx) {
         // M4 Max 2026-05-11 sweeps show N=4/8/16/32 trade median vs p99.
         // Keep N=32 as the tail-latency-biased default until per-device
         // autotuning can persist a device-specific table.
-<<<<<<< HEAD
-        /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 32u, 1u, 64u),
-=======
         /* tokens_per_threadgroup = */ eliza_env_u32("ELIZA_METAL_QJL_TOKENS_PER_TG", 64u, 1u, 64u),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     };
 
     auto pipeline = ggml_metal_library_get_pipeline_attn_score_qjl(lib);
@@ -1451,15 +1443,9 @@ static inline uint32_t eliza_tbq_blocks_per_threadgroup(ggml_type type) {
     //   TBQ3=16, TBQ4=8, TBQ3_TCQ=32. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
-<<<<<<< HEAD
-        case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
-        case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
-        case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
-=======
         case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 16u, 1u, 64u);
         case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 8u, 1u, 64u);
         case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 32u, 1u, 64u);
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }
@@ -1637,15 +1623,9 @@ static inline uint32_t eliza_tbq_blocks_per_threadgroup(ggml_type type) {
     //   TBQ3=16, TBQ4=8, TBQ3_TCQ=32. Voice-mode policy can still force N=1
     //   at a higher scheduler layer when barge-in latency dominates.
     switch (type) {
-<<<<<<< HEAD
-        case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 8u, 1u, 64u);
-        case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 32u, 1u, 64u);
-        case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 16u, 1u, 64u);
-=======
         case GGML_TYPE_TBQ3_0:   return eliza_env_u32("ELIZA_METAL_TBQ3_BLOCKS_PER_TG", 16u, 1u, 64u);
         case GGML_TYPE_TBQ4_0:   return eliza_env_u32("ELIZA_METAL_TBQ4_BLOCKS_PER_TG", 8u, 1u, 64u);
         case GGML_TYPE_TBQ3_TCQ: return eliza_env_u32("ELIZA_METAL_TBQ3_TCQ_BLOCKS_PER_TG", 32u, 1u, 64u);
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         default: GGML_ABORT("unsupported TurboQuant attention score type");
     }
 }

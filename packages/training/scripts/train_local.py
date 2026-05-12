@@ -18,23 +18,7 @@ Usage:
     uv run --extra train python scripts/train_local.py \
         --registry-key qwen3.5-0.8b \
         --epochs 3 --batch-size 4 --grad-accum 8 \
-<<<<<<< HEAD
-        --run-name eliza-1-0_6b-eliza-native-v1
-
-Environment knobs:
-    ELIZA_TORCH_COMPILE=1   opt in to `torch.compile(model, mode="default")`
-                            (applied after the Liger patch, before the trainer
-                            is built; any compile error falls back to the
-                            uncompiled model). Default OFF — see
-                            benchmarks/APOLLO_TUNING.md §A4. ~+15-30% step time.
-    ELIZA_AC_EVERY=N        activation-checkpoint granularity (1 = uniform,
-                            2 = every other layer, 0 = disabled).
-    ELIZA_FORCE_COL=1       force completion-only loss even when Liger is on
-                            (skips Liger's logits-free CE path).
-    ELIZA_ALLOW_UNVERIFIED_BASE=1   load a registry entry flagged unverified.
-=======
         --run-name eliza-1-0_8b-eliza-native-v1
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 """
 
 from __future__ import annotations
@@ -257,11 +241,6 @@ def main() -> int:
         help="Override registry memory budget. Run dies if reserved memory "
              "exceeds budget*1.10. Default: registry value or no enforcement."
     )
-    ap.add_argument(
-        "--resume-from-checkpoint", default=None,
-        help="Resume SFT from a Trainer checkpoint-N/ dir (or `True` to pick the "
-             "latest under the run's out_dir). Passed straight to Trainer.train()."
-    )
     args = ap.parse_args()
 
     from training.model_registry import get as _registry_get  # noqa: E402
@@ -274,16 +253,10 @@ def main() -> int:
         ):
             raise SystemExit(
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
-<<<<<<< HEAD
-                "is flagged unverified_base — its hf_id does not resolve to a "
-                "published checkpoint; loading it will fail. Use a verified key, "
-                "pass an explicit --model <real-hf-id>, or set "
-=======
                 "is an UNVERIFIED placeholder with no published checkpoint as of "
                 "2026-05; loading it will fail. Use a real key "
                 "(qwen3.5-0.8b / qwen3.5-2b / qwen3.5-4b → eliza-1-0_8b / eliza-1-2b / "
                 "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
                 "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
         if args.model == ap.get_default("model"):
@@ -383,16 +356,7 @@ def main() -> int:
     # has plenty.) Without this, each rank would push the full 27B to
     # its own GPU before FSDP shards, OOMing at ~95 GB / 96 GB.
     in_distributed = "RANK" in os.environ
-    # On some hosts (e.g. the Nebius mk8s cuda12.8 image) accelerate's
-    # `infer_auto_device_map` silently places the whole model on CPU even with a
-    # GPU present ("Device 0 seems unavailable") — the model then trains
-    # single-threaded on CPU at ~10 s/it while the GPU sits at 0% util holding
-    # only the (unused) optimizer states. ELIZA_NO_DEVICE_MAP=1 skips
-    # device_map="auto" and loads to CPU then `.to(device)` explicitly (the
-    # single-GPU 0.6B–9B tiers fit a from_pretrained load fine). The 27B FSDP
-    # path always loads to CPU (in_distributed) so this only affects single-GPU.
-    no_device_map = os.environ.get("ELIZA_NO_DEVICE_MAP", "").strip().lower() in ("1", "true", "yes")
-    use_device_map = device == "cuda" and not in_distributed and not no_device_map
+    use_device_map = device == "cuda" and not in_distributed
     model_kwargs = dict(
         torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
         trust_remote_code=True,
@@ -401,19 +365,8 @@ def main() -> int:
     )
     if use_device_map:
         model_kwargs["device_map"] = "auto"
-    log.info("loading model (in_distributed=%s device_map=%s)", in_distributed, use_device_map)
+    log.info("loading model (in_distributed=%s)", in_distributed)
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
-    # Force the model onto the target device when we didn't use device_map (and
-    # aren't going through accelerate/FSDP, which moves it itself) — and as a
-    # safety net, also move it if device_map="auto" left it on CPU.
-    if device == "cuda" and not in_distributed and quant_cfg is None:
-        try:
-            on_cpu = next(model.parameters()).device.type != "cuda"
-        except StopIteration:
-            on_cpu = False
-        if not use_device_map or on_cpu:
-            log.info("moving model to %s (use_device_map=%s, was_on_cpu=%s)", device, use_device_map, on_cpu)
-            model = model.to(device)
 
     # Apply Liger kernel patches before any forward pass so the chunked
     # cross-entropy + fused RMSNorm/SwiGLU/RoPE replace the HF defaults.
@@ -500,44 +453,6 @@ def main() -> int:
                         ac_every, kept, len(layers),
                     )
 
-<<<<<<< HEAD
-    # Opt-in `torch.compile` of the model forward/backward. Must run AFTER the
-    # Liger patch (Liger swaps module forward methods, so compile has to capture
-    # the post-patch graph) and AFTER gradient checkpointing is enabled, and
-    # BEFORE the trainer is constructed. Default OFF: compile is finicky with the
-    # `_ElizaSFTTrainer.compute_loss` override (graph break on the
-    # `outputs.loss is not None` branch) and with FSDP wrap order, so any
-    # exception falls back to the uncompiled model. ~+15-30% step time when it
-    # works (see benchmarks/APOLLO_TUNING.md §A4).
-    if (
-        os.environ.get("ELIZA_TORCH_COMPILE", "").lower() in ("1", "true", "yes")
-        and device == "cuda"
-    ):
-        try:
-            model = torch.compile(model, mode="default")
-            log.info("torch.compile(mode='default') applied (ELIZA_TORCH_COMPILE)")
-        except Exception as exc:  # noqa: BLE001
-            log.warning(
-                "ELIZA_TORCH_COMPILE set but torch.compile failed (%s) — "
-                "continuing uncompiled", exc,
-            )
-
-    peft_cfg = None
-    if not args.full_finetune:
-        peft_cfg = LoraConfig(
-            r=args.lora_r,
-            lora_alpha=args.lora_alpha,
-            lora_dropout=args.lora_dropout,
-            bias="none",
-            task_type="CAUSAL_LM",
-            target_modules=[
-                "q_proj", "k_proj", "v_proj", "o_proj",
-                "gate_proj", "up_proj", "down_proj",
-            ],
-        )
-
-=======
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     out_dir = Path(args.out_dir) / args.run_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -731,36 +646,7 @@ def main() -> int:
         )))
         log.info("instrumentation enabled, budget=%.0fGB", args.memory_budget_gb)
 
-    resume_arg: "str | bool | None" = args.resume_from_checkpoint
-    if isinstance(resume_arg, str) and resume_arg.strip().lower() in ("true", "1", "yes"):
-        resume_arg = True  # let Trainer pick the latest checkpoint-N/ under out_dir
-    if resume_arg:
-        # torch>=2.6 defaults torch.load(weights_only=True), which refuses to
-        # unpickle the APOLLO optimizer state (it carries GradientProjector /
-        # APOLLOAdamW state objects). The checkpoint is our own — allowlist the
-        # APOLLO classes so Trainer can restore the optimizer.
-        try:
-            import torch  # noqa: PLC0415
-            import apollo_torch  # noqa: PLC0415
-            from apollo_torch.random_projector import GradientProjector  # noqa: PLC0415
-            safe = [GradientProjector]
-            for name in ("APOLLOAdamW", "QAPOLLOAdamW"):
-                obj = getattr(apollo_torch, name, None)
-                if obj is not None:
-                    safe.append(obj)
-            try:
-                from apollo_torch.svd_projector import GradientProjector as SVDGradientProjector  # noqa: PLC0415
-                safe.append(SVDGradientProjector)
-            except Exception:  # noqa: BLE001
-                pass
-            torch.serialization.add_safe_globals(safe)
-            log.info("allowlisted %d APOLLO classes for torch.load (resume)", len(safe))
-        except Exception as e:  # noqa: BLE001
-            log.warning("could not allowlist APOLLO classes for resume: %s", e)
-        log.info("resuming from checkpoint: %s", resume_arg)
-        trainer.train(resume_from_checkpoint=resume_arg)
-    else:
-        trainer.train()
+    trainer.train()
     trainer.save_model(str(out_dir / "final"))
     tokenizer.save_pretrained(str(out_dir / "final"))
     log.info("done. full-parameter APOLLO checkpoint at %s", out_dir / "final")

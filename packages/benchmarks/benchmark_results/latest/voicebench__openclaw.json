@@ -1,12 +1,6 @@
 {
   "agent": "openclaw",
-<<<<<<< HEAD
-  "artifacts": [
-    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131606Z_e937bcec/voicebench__voicebench/run_voicebench_20260511T131606Z_1_29fe64d9/output"
-  ],
-=======
   "artifacts": [],
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "benchmark_directory": "voicebench",
   "benchmark_id": "voicebench",
   "cache_metrics": {},
@@ -22,29 +16,6 @@
   "model": "gpt-oss-120b",
   "performance_metrics": {},
   "provider": "cerebras",
-<<<<<<< HEAD
-  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T131606Z_e937bcec/voicebench__voicebench/run_voicebench_20260511T131606Z_1_29fe64d9/output/voicebench-typescript-mock-1778505366987.json",
-  "run_group_id": "rg_20260511T131606Z_e937bcec",
-  "run_id": "run_voicebench_20260511T131606Z_1_29fe64d9",
-  "score": 92.547,
-  "status": "succeeded",
-  "token_metrics": {
-    "avg_completion_tokens": 0.0,
-    "avg_prompt_tokens": 0.0,
-    "completion_tokens": 0,
-    "llm_call_count": 2,
-    "prompt_tokens": 0,
-    "total_tokens": 0
-  },
-  "trajectory_summary": {
-    "files": 1,
-    "prompt_chars": 38,
-    "repeated_prefixes": [],
-    "turns": 2
-  },
-  "unit": "ms",
-  "updated_at": "2026-05-12T01:34:00Z"
-=======
   "result_json_path": null,
   "run_group_id": "rg_20260512T060801Z_7fb9a0c5",
   "run_id": "incompat_voicebench_20260512T060801Z_1_054b1aa7",
@@ -54,5 +25,4 @@
   "trajectory_summary": {},
   "unit": null,
   "updated_at": "2026-05-12T06:08:01.444076+00:00"
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }

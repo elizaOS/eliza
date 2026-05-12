@@ -113,20 +113,11 @@ export function applyCliProfileEnv(params: {
   const namespace = env.ELIZA_NAMESPACE?.trim() || "eliza";
   env.ELIZA_NAMESPACE = namespace;
 
-<<<<<<< HEAD
-  if (!env.ELIZA_STATE_DIR?.trim() && !env.ELIZA_STATE_DIR?.trim()) {
-    env.ELIZA_STATE_DIR = resolveProfileStateDir(profile, namespace, homedir);
-  }
-
-  const stateDir =
-    env.ELIZA_STATE_DIR?.trim() || env.MILADY_STATE_DIR?.trim() || "";
-=======
   if (!env.ELIZA_STATE_DIR?.trim()) {
     env.ELIZA_STATE_DIR = resolveProfileStateDir(profile, namespace, homedir);
   }
 
   const stateDir = env.ELIZA_STATE_DIR?.trim() || "";
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   if (!env.ELIZA_CONFIG_PATH?.trim() && stateDir) {
     env.ELIZA_CONFIG_PATH = path.join(stateDir, `${namespace}.json`);
   }

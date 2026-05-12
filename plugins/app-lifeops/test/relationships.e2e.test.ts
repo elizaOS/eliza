@@ -160,11 +160,7 @@ describe("relationships handler — real PGLite", () => {
   });
 
   it("entityAction list handler returns ActionResult", async () => {
-<<<<<<< HEAD
-    const result = await entityAction.handler?.(
-=======
     const result = await getEntityActionHandler()(
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       runtime,
       makeMessage(runtime, "show me my contacts") as never,
       undefined,
@@ -177,11 +173,7 @@ describe("relationships handler — real PGLite", () => {
   });
 
   it("entityAction add handler persists a new contact", async () => {
-<<<<<<< HEAD
-    const result = await entityAction.handler?.(
-=======
     const result = await getEntityActionHandler()(
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       runtime,
       makeMessage(runtime, "add Eve to rolodex") as never,
       undefined,
@@ -207,11 +199,7 @@ describe("relationships handler — real PGLite", () => {
   });
 
   it("entityAction add rejects missing fields", async () => {
-<<<<<<< HEAD
-    const result = await entityAction.handler?.(
-=======
     const result = await getEntityActionHandler()(
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       runtime,
       makeMessage(runtime, "add contact") as never,
       undefined,

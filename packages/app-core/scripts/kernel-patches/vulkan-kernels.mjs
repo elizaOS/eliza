@@ -113,11 +113,7 @@ const VULKAN_ALL_STAGED_FILES = [
 ];
 
 const SHADER_SENTINEL = "// ELIZA-VK-DISPATCH-PATCH-V1";
-<<<<<<< HEAD
-const _PATCH_SENTINEL = "ELIZA-VK-DISPATCH-PATCH-V1";
-=======
 const PATCH_SENTINEL = "ELIZA-VK-DISPATCH-PATCH-V1";
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 const RUNTIME_SENTINEL = "// ELIZA-VK-RUNTIME-DISPATCH-V1";
 
 const PATCH_TARGETS = [
@@ -133,7 +129,12 @@ const PATCH_TARGETS = [
   },
   {
     file: "02-ggml-vulkan-pipelines.patch",
-    target: path.posix.join("ggml", "src", "ggml-vulkan", "ggml-vulkan.cpp"),
+    target: path.posix.join(
+      "ggml",
+      "src",
+      "ggml-vulkan",
+      "ggml-vulkan.cpp",
+    ),
   },
 ];
 
@@ -210,25 +211,15 @@ function parsePatchFile(filePath) {
   let injectLines = [];
   for (const line of lines) {
     if (line.startsWith("ANCHOR")) {
-      cur = {
-        anchor: line.replace(/^ANCHOR\s+/, ""),
-        sentinel: null,
-        inject: null,
-      };
+      cur = { anchor: line.replace(/^ANCHOR\s+/, ""), sentinel: null, inject: null };
     } else if (line.startsWith("SENTINEL")) {
-      if (!cur)
-        throw new Error(
-          `[vulkan-kernels] SENTINEL before ANCHOR in ${filePath}`,
-        );
+      if (!cur) throw new Error(`[vulkan-kernels] SENTINEL before ANCHOR in ${filePath}`);
       cur.sentinel = line.replace(/^SENTINEL\s+/, "").trim();
     } else if (line === "---INJECT-BEGIN---") {
       inInject = true;
       injectLines = [];
     } else if (line === "---INJECT-END---") {
-      if (!cur)
-        throw new Error(
-          `[vulkan-kernels] INJECT-END without ANCHOR in ${filePath}`,
-        );
+      if (!cur) throw new Error(`[vulkan-kernels] INJECT-END without ANCHOR in ${filePath}`);
       cur.inject = injectLines.join("\n");
       hunks.push(cur);
       cur = null;
@@ -291,13 +282,7 @@ function applyPatches(cacheDir, { dryRun }) {
       console.log(
         `[vulkan-kernels] (dry-run) would apply ${hunks.length} hunk(s) from ${file} to ${target}`,
       );
-      results.push({
-        file,
-        target,
-        hunks: hunks.length,
-        applied: 0,
-        skipped: hunks.length,
-      });
+      results.push({ file, target, hunks: hunks.length, applied: 0, skipped: hunks.length });
       continue;
     }
     let text = fs.readFileSync(targetPath, "utf8");
@@ -306,8 +291,7 @@ function applyPatches(cacheDir, { dryRun }) {
     for (const hunk of hunks) {
       const r = applyHunk(text, hunk, target);
       text = r.text;
-      if (r.applied) applied++;
-      else skipped++;
+      if (r.applied) applied++; else skipped++;
     }
     fs.writeFileSync(targetPath, text, "utf8");
     results.push({ file, target, hunks: hunks.length, applied, skipped });
@@ -315,18 +299,9 @@ function applyPatches(cacheDir, { dryRun }) {
   return results;
 }
 
-function ensureLineAfter(text, anchor, line, ctx, { dryRun = false } = {}) {
+function ensureLineAfter(text, anchor, line, ctx) {
   if (text.includes(line)) return { text, changed: false };
   if (!text.includes(anchor)) {
-    if (dryRun) {
-      // In dry-run nothing earlier in the chain actually wrote, so the
-      // staging patch's anchor isn't present yet — that's expected, not a
-      // failure. Report it as "would repair once the staging patch lands".
-      console.log(
-        `[vulkan-kernels] (dry-run) repair anchor not yet present in ${ctx} (added by the staging patch); would insert: ${line.trim()}`,
-      );
-      return { text, changed: true };
-    }
     throw new Error(
       `[vulkan-kernels] repair anchor not found in ${ctx}: ${anchor}`,
     );
@@ -349,9 +324,7 @@ function repairPolarPrehtShaderRegistration(cacheDir, { dryRun }) {
   const anchor = `    string_to_spv("eliza_polar",          "polar.comp",          {});`;
   const line = `    string_to_spv("eliza_polar_preht",    "polar_preht.comp",    {});`;
   const original = fs.readFileSync(targetPath, "utf8");
-  const repaired = ensureLineAfter(original, anchor, line, targetPath, {
-    dryRun,
-  });
+  const repaired = ensureLineAfter(original, anchor, line, targetPath);
   if (repaired.changed && !dryRun) {
     fs.writeFileSync(targetPath, repaired.text, "utf8");
   }
@@ -379,7 +352,6 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
       `    vk_pipeline pipeline_eliza_polar;`,
       `    vk_pipeline pipeline_eliza_polar_preht;`,
       targetPath,
-      { dryRun },
     );
     text = r.text;
     changed = changed || r.changed;
@@ -390,7 +362,6 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
       `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar,          "eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
       `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar_preht,    "eliza_polar_preht",    eliza_polar_preht_len,    eliza_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
       targetPath,
-      { dryRun },
     );
     text = r.text;
     changed = changed || r.changed;
@@ -472,7 +443,7 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
     "ggml-vulkan",
     "ggml-vulkan.cpp",
   );
-  const original = fs.readFileSync(vulkanPath, "utf8");
+  let original = fs.readFileSync(vulkanPath, "utf8");
   let patched = original;
 
   // 02-ggml-vulkan-pipelines.patch historically created eliza_polar with a
@@ -484,8 +455,6 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
     `"eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t),`,
   );
 
-<<<<<<< HEAD
-=======
   // Keep older already-sentinelled cached forks repairable after the fused
   // attention push ABI grew causal/q_pos_base fields.
   patched = patched.replace(
@@ -533,7 +502,6 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
         };`,
   );
 
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   if (!patched.includes(RUNTIME_SENTINEL)) {
     const contextAnchor = `    // for GGML_VK_PERF_LOGGER`;
     if (!patched.includes(contextAnchor)) {
@@ -847,11 +815,7 @@ static void ggml_vk_eliza_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_c
     ggml_pipeline_request_descriptor_sets(ctx, pipeline, (uint32_t) n_q_pos);
     for (int64_t p = 0; p < n_q_pos; ++p) {
         const eliza_vk_fused_attn_push pc = {
-<<<<<<< HEAD
-            n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile,
-=======
             n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile, causal, q_pos_base,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         };
         ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, pv_buf, dst_buf }, pc, { n_heads, 1, 1 });
     }
@@ -985,10 +949,7 @@ ${switchAnchor}`,
 }
 
 // Public entry point used by build-llama-cpp-dflash.mjs.
-export function patchVulkanKernels(
-  cacheDir,
-  { dryRun = false, target = null } = {},
-) {
+export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } = {}) {
   if (!cacheDir || !fs.existsSync(cacheDir)) {
     throw new Error(`[vulkan-kernels] cacheDir does not exist: ${cacheDir}`);
   }
@@ -1021,12 +982,9 @@ export function patchVulkanKernels(
   console.log(
     `[vulkan-kernels] polar_preht pipeline repair: ${prehtPipeline.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${prehtPipeline.target})`,
   );
-<<<<<<< HEAD
-=======
   console.log(
     `[vulkan-kernels] fused_attn push-range repair: ${fusedAttnPipeline.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${fusedAttnPipeline.target})`,
   );
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   // AGENTS.md §3 enforcement (no eliza-missing vulkan binary) is done at
   // build-llama-cpp-dflash.mjs post-build via the requiredKernels audit.
   console.log(
@@ -1041,7 +999,6 @@ export function patchVulkanKernels(
     fusedAttnPipeline,
     runtimeDispatch,
     runtimeReady: "source-patched-pending-smoke",
-    requiredGraphSmoke:
-      "make -C packages/inference/verify vulkan-dispatch-smoke",
+    requiredGraphSmoke: "make -C packages/inference/verify vulkan-dispatch-smoke",
   };
 }

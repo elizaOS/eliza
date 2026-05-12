@@ -4,11 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { resolveStateDir } from "@elizaos/agent";
 
-<<<<<<< HEAD
-const ENV_KEYS = ["ELIZA_DEVICE_ID", "MILADY_DEVICE_ID"] as const;
-=======
 const ENV_KEYS = ["ELIZA_DEVICE_ID", "ELIZA_DEVICE_ID"] as const;
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 const CACHE_FILE_NAME = "device-id";
 const RANDOM_SUFFIX_BYTES = 3; // 3 bytes -> 6 hex chars
 

@@ -82,21 +82,10 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
 )
 VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k"}
 
-# `(min, recommended)` MB per tier — keep in sync with
-# `scripts/publish/orchestrator.py::DEFAULT_RAM_BUDGET_MB`. `0_6b`/`1_7b`
-# reflect the 2026-05-11 e2e voice-loop benchmark: the fused `llama-server`
-# in voice-on mode holds text + DFlash drafter + OmniVoice (base/tokenizer/
-# DAC/HuBERT/sem-enc) + ASR GGUF + mmproj all resident, so the *server*
-# peak RSS is ~3.1 GB (0_6b) / ~4.8 GB (1_7b). See that file's comment.
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-<<<<<<< HEAD
-    "0_6b": (2500, 3700),
-    "1_7b": (4000, 5500),
-=======
     "0_8b": (1800, 2400),
     "2b": (3500, 5000),
     "4b": (6000, 8000),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": (7000, 9500),
     "27b": (24000, 32000),
     "27b-256k": (48000, 64000),

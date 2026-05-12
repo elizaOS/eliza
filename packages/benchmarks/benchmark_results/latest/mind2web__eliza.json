@@ -1,11 +1,7 @@
 {
   "agent": "eliza",
   "artifacts": [
-<<<<<<< HEAD
-    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132206Z_2c49d4e3/mind2web__mind2web/run_mind2web_20260511T132344Z_2_f094bd98/output"
-=======
     "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T061353Z_8ad37742/mind2web__mind2web/run_mind2web_20260512T061353Z_5_c17e9a68/output"
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   ],
   "benchmark_directory": "mind2web",
   "benchmark_id": "mind2web",
@@ -60,17 +56,10 @@
     "throughput_per_second": 0.023023314606227342
   },
   "provider": "cerebras",
-<<<<<<< HEAD
-  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132206Z_2c49d4e3/mind2web__mind2web/run_mind2web_20260511T132344Z_2_f094bd98/output/mind2web-results.json",
-  "run_group_id": "rg_20260511T132206Z_2c49d4e3",
-  "run_id": "run_mind2web_20260511T132344Z_2_f094bd98",
-  "score": 0.0,
-=======
   "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260512T061353Z_8ad37742/mind2web__mind2web/run_mind2web_20260512T061353Z_5_c17e9a68/output/mind2web-results.json",
   "run_group_id": "rg_20260512T061353Z_8ad37742",
   "run_id": "run_mind2web_20260512T061353Z_5_c17e9a68",
   "score": 0.3333333333333333,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   "status": "succeeded",
   "token_metrics": {
     "avg_completion_tokens": 0.0,

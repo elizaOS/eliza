@@ -3,22 +3,15 @@ import {
   loadOwnerContactRoutingHints,
   loadOwnerContactsConfig,
   type OwnerContactRoutingHint,
-  registerEscalationChannel,
   resolveOwnerContactWithFallback,
 } from "@elizaos/agent";
+import { registerEscalationChannel } from "@elizaos/agent";
 import {
   type IAgentRuntime,
   ModelType,
   runWithTrajectoryContext,
 } from "@elizaos/core";
-import {
-  buildSleepRecapFromSchedule,
-  deriveSleepWakeEvents,
-  type LifeOpsDerivedEvent,
-  normalizeHealthSignal,
-  shouldRunMorningCheckinFromSleepCycle,
-  shouldRunNightCheckinFromSleepCycle,
-} from "@elizaos/plugin-health";
+import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { readProfileFromMetadata } from "../activity-profile/profile-metadata.js";
 import type { ActivityProfile } from "../activity-profile/types.js";
 import type {
@@ -59,7 +52,6 @@ import {
   LIFEOPS_MANUAL_OVERRIDE_KINDS,
   LIFEOPS_UNCLEAR_REASONS,
 } from "../contracts/index.js";
-import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import {
   getSelfControlStatus,
   startSelfControlBlock,
@@ -77,6 +69,11 @@ import {
   type CheckinSourceService,
 } from "./checkin/checkin-service.js";
 import { resolveCheckinSchedule } from "./checkin/schedule-resolver.js";
+import {
+  buildSleepRecapFromSchedule,
+  shouldRunMorningCheckinFromSleepCycle,
+  shouldRunNightCheckinFromSleepCycle,
+} from "@elizaos/plugin-health";
 import {
   type ContactRoutePurpose,
   resolveContactRouteCandidates,
@@ -98,6 +95,7 @@ import {
   type LifeOpsScheduleObservationRecord,
 } from "./repository.js";
 import { refreshLifeOpsScheduleInsight } from "./schedule-insight.js";
+import { processDueScheduledTasks } from "./scheduled-task/scheduler.js";
 import {
   deriveLocalScheduleObservations,
   isFreshCloudMergedState,
@@ -114,7 +112,6 @@ import {
   type SyncLifeOpsScheduleObservationsRequest,
   type SyncLifeOpsScheduleObservationsResponse,
 } from "./schedule-sync-contracts.js";
-import { processDueScheduledTasks } from "./scheduled-task/scheduler.js";
 import {
   DEFAULT_REMINDER_INTENSITY,
   DEFAULT_REMINDER_PROCESS_LIMIT,
@@ -164,11 +161,8 @@ import {
   buildReminderResponseClaim,
   classifyReminderOwnerResponse,
   decideReminderReviewTransition,
-<<<<<<< HEAD
-=======
   isReminderBusyDay,
   isReminderChannel,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   isReminderReviewClosed,
   normalizeActivitySignalSource as normalizeReminderActivitySignalSource,
   normalizeActivitySignalState as normalizeReminderActivitySignalState,
@@ -204,10 +198,19 @@ import {
   requireNonEmptyString,
 } from "./service-normalize.js";
 import {
+  normalizeHealthSignal,
+  deriveSleepWakeEvents,
+  type LifeOpsDerivedEvent,
+} from "@elizaos/plugin-health";
+import {
   DEFAULT_TELEMETRY_RETENTION_DAYS,
   runTelemetryRetention,
 } from "./telemetry-retention.js";
-import { addMinutes, getZonedDateParts } from "./time.js";
+import {
+  addMinutes,
+  getWeekdayForLocalDate,
+  getZonedDateParts,
+} from "./time.js";
 import {
   readTwilioCredentialsFromEnv,
   sendTwilioSms,
@@ -2430,9 +2433,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
                   : "unknown",
           capturedAt: now.toISOString(),
           sourceFreshnessMs:
-            lastSeenAt !== null
-              ? Math.max(0, now.getTime() - lastSeenAt)
-              : null,
+            lastSeenAt !== null ? Math.max(0, now.getTime() - lastSeenAt) : null,
           sourceConfidence: schedule?.stateConfidence ?? null,
           privacyMode: "unknown",
           socialContext: "unknown",
@@ -5019,10 +5020,11 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         const existingAttempts = await this.repository.listReminderAttempts(
           this.agentId(),
         );
-        const activityProfile = await this.readReminderActivityProfileSnapshot({
-          now,
-          timezone: ownerTimezone,
-        });
+        const activityProfile =
+          await this.readReminderActivityProfileSnapshot({
+            now,
+            timezone: ownerTimezone,
+          });
 
         const dueAttempts: LifeOpsReminderAttempt[] = [];
         dueAttempts.push(
@@ -5221,10 +5223,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         now: now.toISOString(),
         reminderAttempts: reminderResult.attempts,
         workflowRuns: [...workflowRuns, ...eventWorkflowRuns],
-<<<<<<< HEAD
-        scheduledTaskFires: scheduledTaskResult.fires,
-        scheduledTaskCompletionTimeouts: scheduledTaskResult.completionTimeouts,
-=======
         scheduledTaskFires: scheduledTaskResult.fires.map((fire) => ({
           ...fire,
         })),
@@ -5232,7 +5230,6 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           scheduledTaskResult.completionTimeouts.map((timeout) => ({
             ...timeout,
           })),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
       };
     }
 

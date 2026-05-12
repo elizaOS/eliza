@@ -18,8 +18,6 @@ describe("local inference catalog", () => {
     );
   });
 
-<<<<<<< HEAD
-=======
   it("uses the Qwen3.5 0.6B / 1.7B / 4B text source tiers, not stale Qwen3 text tiers", () => {
     expect(ELIZA_1_TIER_IDS.slice(0, 3)).toEqual([
       "eliza-1-0_6b",
@@ -48,7 +46,6 @@ describe("local inference catalog", () => {
     }
   });
 
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
@@ -119,15 +116,10 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-<<<<<<< HEAD
-    // Size tiers: 0.8B/0.6B/1.7B = 32k, 9B = 64k, 27B = 128k,
-=======
     // Size tiers: 0.6B / 1.7B = 32k, 4B/9B = 64k, 27B = 128k,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_8b": 32768,
       "eliza-1-0_6b": 32768,
       "eliza-1-1_7b": 32768,
       "eliza-1-4b": 65536,

@@ -60,13 +60,9 @@ EXIT_BACKEND_ERROR = 2
 
 
 def _state_dir() -> str:
-<<<<<<< HEAD
-    return os.environ.get("ELIZA_STATE_DIR") or os.environ.get("MILADY_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".eliza")
-=======
     return os.environ.get("ELIZA_STATE_DIR") or os.environ.get(
         "ELIZA_STATE_DIR"
     ) or os.path.join(os.path.expanduser("~"), ".eliza")
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 
 def budget_dir() -> str:

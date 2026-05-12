@@ -150,11 +150,7 @@ function isTrajectoryMarkdownReviewEnabled(
   const raw = (
     env.ELIZA_TRAJECTORY_REVIEW_MODE ??
     env.ELIZA_TRAJECTORY_MARKDOWN ??
-<<<<<<< HEAD
-    env.MILADY_TRAJECTORY_MARKDOWN
-=======
     env.ELIZA_TRAJECTORY_MARKDOWN
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   )
     ?.trim()
     .toLowerCase();
@@ -359,9 +355,7 @@ function markdownTableCell(value: unknown, max = 160): string {
     .replace(/\r?\n/g, "<br>");
 }
 
-export function renderTrajectoryRecordMarkdown(
-  record: TrajectoryRecord,
-): string {
+export function renderTrajectoryRecordMarkdown(record: TrajectoryRecord): string {
   const lines: string[] = [];
   lines.push(
     `# Recorded Test Trajectory ${record.caseId ?? record.scenarioId ?? ""}`.trim(),
@@ -382,9 +376,7 @@ export function renderTrajectoryRecordMarkdown(
     lines.push("");
     lines.push("## Metadata");
     lines.push("");
-    lines.push(
-      ...markdownFence(formatMarkdownPayload(record.metadata), "json"),
-    );
+    lines.push(...markdownFence(formatMarkdownPayload(record.metadata), "json"));
   }
 
   if (record.transcript.length > 0) {

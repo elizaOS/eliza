@@ -18,11 +18,7 @@ import type {
   BackendPlan,
   LocalInferenceBackend,
 } from "./backend";
-import {
-  gpuLayersForKvOffload,
-  localAllowStockKv,
-  warnReducedOptimizationLocalMode,
-} from "./backend";
+import { gpuLayersForKvOffload } from "./backend";
 import {
   buildModelHash,
   type CacheStatsEntry,
@@ -52,13 +48,8 @@ import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
-<<<<<<< HEAD
-  prefillPlanRequestFields,
-  resolveGuidedDecodeForParams,
-=======
   repairStructuredOutput,
   resolveGrammarForParams,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
   type StructuredGenerateParams,
   StructuredOutputRepairStream,
 } from "./structured-output";
@@ -84,7 +75,7 @@ export interface DflashServerPlan {
    * (the tier's `runtime.kvCache.typeK/typeV` — `qjl1_256` K + `q4_polar` V
    * for the >8k tiers, per `packages/inference/AGENTS.md` §3). The
    * `ELIZA_DFLASH_CACHE_TYPE_K` / `_V` env vars override these. `start()`
-   * still runs `resolveCacheTypeForBackend` on whichever value wins,
+   * still runs `assertCacheTypeSupportedOnBackend` on whichever value wins,
    * so a binary whose `CAPABILITIES.json` lacks the kernel fails loudly.
    */
   cacheTypeK?: string;
@@ -221,7 +212,7 @@ const DEFAULT_START_TIMEOUT_MS = 120_000;
  * Map a llama-server `--cache-type-k/v` value to the `CAPABILITIES.json`
  * kernel bit that must be `true` in the installed binary for that cache type
  * to be safe. Cache types not in this map (`f16`, `q8_0`, …) are stock and
- * always allowed. Used by `resolveCacheTypeForBackend` so the refusal
+ * always allowed. Used by `assertCacheTypeSupportedOnBackend` so the refusal
  * keys off the *real* shipped-kernel set, not a static "decorative-only"
  * blocklist (L1 — the kernel-patches now do real work; see
  * `packages/app-core/scripts/kernel-patches/{metal,vulkan}-kernels.mjs`).
@@ -327,25 +318,6 @@ export function shouldRequireActiveDflashForRequest(
 }
 
 /**
-<<<<<<< HEAD
- * The single developer-only kill-switch for the always-on speculative-decoding
- * contract (`packages/inference/AGENTS.md` §4: "If the user disables speculative
- * decoding for debugging, that is a developer-only flag (`ELIZA_DFLASH_DISABLE=1`),
- * it is not a user setting, and it MUST log a loud warning every turn.").
- *
- * Canonical name: `ELIZA_DFLASH_DISABLE=1`. The legacy `MILADY_DFLASH_DISABLE=1` is
- * still honored as an alias for back-compat. There is no separate
- * `ELIZA_DFLASH_DISABLED` flag — that was a silent duplicate and is gone.
- *
- * This is NOT a product setting — there is no UI surface and no `ELIZA_LOCAL_*`
- * mapping. It exists so a developer can bisect a suspected DFlash regression.
- * When set, `dflashEnabled()` returns false (the dispatcher then routes to
- * node-llama-cpp) and every generation turn that runs while it is set logs
- * `logDflashDevDisabledWarning()`.
- */
-export function dflashDevDisabled(): boolean {
-  return readBool("ELIZA_DFLASH_DISABLE") || readBool("MILADY_DFLASH_DISABLE");
-=======
  * Developer-only escape hatch from the always-on speculative-decoding
  * contract (`packages/inference/AGENTS.md` §4: "DFlash is always on… If
  * the user disables speculative decoding for debugging, that is a
@@ -360,7 +332,6 @@ export function dflashDevDisabled(): boolean {
  */
 export function dflashDevDisabled(): boolean {
   return readBool("ELIZA_DFLASH_DISABLE");
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 }
 
 /**
@@ -464,9 +435,7 @@ function managedFusedDflashDir(): string {
  * omnivoice fusion (`fused: true` / `omnivoice` non-null). When this
  * returns a path the spawn layer launches it as the single fused server
  * instead of the stock `llama-server` + a second `llama-omnivoice-server`
- * process — the fused build is the default whenever it's installed (AGENTS.md
- * §4: one process, not two over IPC). `ELIZA_DFLASH_DISABLE_FUSED_SERVER=1` is
- * a debug opt-out (force the two-process layout when bisecting a TTS issue).
+ * process.
  */
 export function resolveFusedDflashBinary(): string | null {
   if (readBool("ELIZA_DFLASH_DISABLE_FUSED_SERVER")) return null;
@@ -605,39 +574,24 @@ export function readDflashBinaryCapabilities(): DflashBinaryCapabilities | null 
 }
 
 /**
- * Resolve the `--cache-type-k/v` value the spawn should actually use.
- *
- * Normally this is the value the caller asked for. But when that value
- * needs a custom Eliza-1 kernel (`turbo3`/`qjl1_256`/`polar`/…) that the
- * installed `llama-server` binary doesn't advertise in `CAPABILITIES.json`:
- *
- *   - if `ELIZA_LOCAL_ALLOW_STOCK_KV=1` (reduced-optimization local mode),
- *     return `"f16"` and warn loudly once — the server runs with stock KV;
- *   - otherwise throw with an actionable "rebuild your fork / set the opt-in"
- *     message.
- *
- * The kernel-patches now do real work (`kernel-patches/{metal,vulkan,cuda,
- * cpu-*}-kernels.mjs` compile the turbo / qjl / polar kernels into the fork)
- * and `build-llama-cpp-dflash.mjs` records which ones actually shipped under
- * `kernels.*`, so a backend built with the patches dispatched passes. When
- * `CAPABILITIES.json` is absent (older / hand-built binaries) we trust the
- * request and let the load attempt clarify — same policy as the dispatcher's
- * `unsatisfiedKernels`.
+ * Refuse a `--cache-type-k/v` value when the installed llama-server binary
+ * doesn't advertise the required kernel in `CAPABILITIES.json`. The blocklist
+ * is no longer static: `kernel-patches/[metal,vulkan]-kernels.mjs` compile the
+ * turbo / qjl / polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
+ * records which ones actually shipped under `kernels.*`. So a Metal binary
+ * built with the kernel patches enabled passes; one without them is refused
+ * with an actionable "rebuild your fork" message. When `CAPABILITIES.json` is
+ * absent (older / hand-built binaries) we trust the request and let the load
+ * attempt clarify — same policy as the dispatcher's `unsatisfiedKernels`.
  */
-function resolveCacheTypeForBackend(name: string, value: string): string {
+function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
   const requiredKernel = CACHE_TYPE_REQUIRED_KERNEL[value.toLowerCase()];
-  if (!requiredKernel) return value; // stock cache type (f16/q8_0/...) — always ok
+  if (!requiredKernel) return; // stock cache type (f16/q8_0/...) — always ok
   const caps = readDflashBinaryCapabilities();
-  if (!caps) return value; // no capability probe — trust the request, load clarifies
-  if (caps.kernels[requiredKernel] === true) return value; // shipped — allow
-  if (localAllowStockKv()) {
-    warnReducedOptimizationLocalMode(
-      `${name}=${value} needs the '${requiredKernel}' kernel, not advertised by the installed llama-server binary`,
-    );
-    return "f16";
-  }
+  if (!caps) return; // no capability probe — trust the request, load clarifies
+  if (caps.kernels[requiredKernel] === true) return; // shipped — allow
   throw new Error(
-    `${name}=${value} requires the '${requiredKernel}' kernel, but the installed llama-server binary's CAPABILITIES.json reports it absent. Rebuild the fork with the matching kernel patches (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>), use a stock KV cache type (f16/q8_0), or set ELIZA_LOCAL_ALLOW_STOCK_KV=1 to load with stock f16 KV (reduced-optimization local mode — loud warning, not publishable).`,
+    `${name}=${value} requires the '${requiredKernel}' kernel, but the installed llama-server binary's CAPABILITIES.json reports it absent. Rebuild the fork with the matching kernel patches (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or use a stock KV cache type (f16/q8_0).`,
   );
 }
 
@@ -645,9 +599,7 @@ export function dflashEnabled(): boolean {
   // Developer kill-switch wins over everything, including ELIZA_DFLASH_ENABLED.
   // See dflashDevDisabled() — this is a debug-only hatch, never a product path.
   if (dflashDevDisabled()) return false;
-  // ELIZA_DFLASH_ENABLED=1 is a debug force-on override: it makes the
-  // dispatcher prefer a PATH/explicit `llama-server` even when no managed
-  // binary is installed and (on Metal) overrides the target-only auto path.
+  if (readBool("ELIZA_DFLASH_DISABLED")) return false;
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;
   // A fused build's `llama-server` (omnivoice-grafted, serves
   // `/v1/audio/speech` in-process) counts as an installed managed binary.
@@ -705,13 +657,7 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
   if (!dflashEnabled()) {
     const reason = dflashDevDisabled()
       ? "DFlash is disabled by the developer-only ELIZA_DFLASH_DISABLE flag. This is NOT a product setting — unset it to restore the always-on speculative-decoding contract."
-<<<<<<< HEAD
-      : managedBinaryExists && isMetalDflashRuntime()
-        ? "DFlash Metal binary found but auto-disabled because the current Eliza-1 Metal path is faster target-only; set ELIZA_DFLASH_ENABLED=1 or ELIZA_DFLASH_METAL_AUTO=1 to force it."
-        : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
-=======
       : "DFlash auto-enables when the managed llama-server binary is installed; set ELIZA_DFLASH_ENABLED=1 to force a PATH/explicit binary, or run packages/app-core/scripts/build-llama-cpp-dflash.mjs.";
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     return {
       enabled: false,
       required: dflashRequired(),
@@ -827,48 +773,6 @@ export function findBundleOmnivoiceAssets(
 }
 
 /**
- * Derive the multimodal projector (`--mmproj`) path for an Eliza-1 bundle from
- * its `eliza-1.manifest.json` `files.vision[0].path` (a bundle-relative path
- * like `vision/mmproj-9b.gguf`, per `packages/inference/AGENTS.md` §2/§6 — the
- * manifest is the source of truth, never derived from filenames). Returns the
- * absolute path to the mmproj GGUF, or `null` when the tier ships no vision
- * artifact (0.6B / 1.7B), the manifest is absent/invalid, or the file is
- * missing on disk. The `ELIZA_LOCAL_MMPROJ` env var overrides this — it is a
- * debug knob, not the production path.
- */
-export function findBundleVisionMmproj(textModelPath: string): string | null {
-  // Bundle layout: `<bundle>/text/<text>.gguf` → manifest at `<bundle>/eliza-1.manifest.json`.
-  const textDir = path.dirname(textModelPath);
-  if (path.basename(textDir) !== "text") return null;
-  const bundleRoot = path.dirname(textDir);
-  let raw: string;
-  try {
-    raw = fs.readFileSync(
-      path.join(bundleRoot, "eliza-1.manifest.json"),
-      "utf8",
-    );
-  } catch {
-    return null;
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return null;
-  }
-  const visionEntry = (
-    parsed as { files?: { vision?: Array<{ path?: unknown }> } }
-  )?.files?.vision?.[0];
-  const relPath =
-    visionEntry && typeof visionEntry.path === "string"
-      ? visionEntry.path
-      : null;
-  if (!relPath) return null;
-  const abs = path.join(bundleRoot, relPath);
-  return fs.existsSync(abs) ? abs : null;
-}
-
-/**
  * Resolve the KV-cache spill plan for a llama-server launch.
  *
  * Returns `null` when `contextSize <= 64k` (no spill by contract). For longer
@@ -950,68 +854,6 @@ function findPython(): string | null {
     if (result.status === 0) return candidate;
   }
   return null;
-}
-
-/**
- * Return an env clone with the directory holding `binaryPath` prepended to
- * the platform's dynamic-linker search path (`LD_LIBRARY_PATH` on Linux,
- * `DYLD_LIBRARY_PATH` on macOS, `PATH` on Windows). The fork's `llama-server`
- * and its sidecar shared libraries (`libllama.so`, `libggml*.so`, `libmtmd.so`,
- * `libelizainference.so`) are installed side by side in the build's `bin/`
- * directory, but the binary's embedded RUNPATH points at the *build* tree —
- * not the install tree — so a spawn from the install dir cannot resolve them
- * without this. Mirrors what `dflash-server-fused.integration.test.ts` does.
- */
-function withServerLibraryPath(
-  env: NodeJS.ProcessEnv,
-  binaryPath: string,
-): NodeJS.ProcessEnv {
-  const dir = path.dirname(binaryPath);
-  const key =
-    process.platform === "darwin"
-      ? "DYLD_LIBRARY_PATH"
-      : process.platform === "win32"
-        ? "PATH"
-        : "LD_LIBRARY_PATH";
-  const existing = env[key];
-  return {
-    ...env,
-    [key]: existing ? `${dir}${path.delimiter}${existing}` : dir,
-  };
-}
-
-/**
- * Cache of `llama-server --help` text keyed by binary path. The help text
- * lists every accepted flag, so we grep it to gate version-dependent args
- * (`--reasoning`, etc.) instead of letting llama-server reject the whole
- * invocation with `error: invalid argument: --reasoning`.
- */
-const serverHelpTextCache = new Map<string, string>();
-
-function llamaServerHelpText(binaryPath: string): string {
-  let helpText = serverHelpTextCache.get(binaryPath);
-  if (helpText === undefined) {
-    const result = spawnSync(binaryPath, ["--help"], {
-      encoding: "utf8",
-      env: withServerLibraryPath(process.env, binaryPath),
-      maxBuffer: 4 * 1024 * 1024,
-    });
-    helpText = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
-    serverHelpTextCache.set(binaryPath, helpText);
-  }
-  return helpText;
-}
-
-/**
- * Whether the installed llama-server advertises `flag` exactly — matched as
- * a whole token so `--reasoning` does not falsely match `--reasoning-format`
- * / `--reasoning-budget` (which is what newer builds carry instead).
- */
-function llamaServerSupportsFlag(binaryPath: string, flag: string): boolean {
-  const escaped = flag.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|\\s)${escaped}(\\s|=|$)`, "m").test(
-    llamaServerHelpText(binaryPath),
-  );
 }
 
 function maybeRepairDflashDrafter(
@@ -1603,9 +1445,7 @@ export function appendOptimizationFlags(
   const noMmap = noMmapEnv ?? optimizations?.noMmap;
   if (noMmap === true) args.push("--no-mmap");
 
-  // --mmproj <path>. `optimizations.mmproj` is the production path — `load()`
-  // derives it from the bundle manifest's `files.vision[0].path`. `ELIZA_LOCAL_MMPROJ`
-  // is a debug override (point at a hand-built projector) and wins when set.
+  // --mmproj <path>
   const mmprojEnv = process.env.ELIZA_LOCAL_MMPROJ?.trim();
   const mmproj = mmprojEnv || optimizations?.mmproj;
   if (mmproj) args.push("--mmproj", mmproj);
@@ -2015,7 +1855,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     // Catalog KV-cache types (`runtime.kvCache.typeK/typeV` — `qjl1_256` K +
     // `q4_polar` V for the >8k Eliza-1 tiers, per inference/AGENTS.md §3).
     // A per-load override (`overrides.cacheTypeK/V`) wins; `start()` then runs
-    // `resolveCacheTypeForBackend` on whichever value it ends up with,
+    // `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
     // and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
     const kvCache = catalog?.runtime?.kvCache;
     const cacheTypeK =
@@ -2048,25 +1888,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         ? findBundleOmnivoiceAssets(target.path)
         : null;
 
-    // Vision: derive `--mmproj` from the bundle manifest's `files.vision[0].path`
-    // (AGENTS.md §2/§6 — the manifest is the source of truth) so vision-capable
-    // tiers (9b / 27b / 27b-256k / 27b-1m) load their projector automatically.
-    // Tiers without a vision artifact (0.6B / 1.7B) get `null` and run text-only.
-    // `ELIZA_LOCAL_MMPROJ` overrides this; the args builder applies that env
-    // first, then this catalog-derived path. Folded into the optimizations
-    // object so `start()`'s arg builder picks it up via `optimizations.mmproj`.
-    const bundleMmproj =
-      catalog && isEliza1TierCatalogId(catalog.id)
-        ? findBundleVisionMmproj(target.path)
-        : null;
-    const effectiveOptimizations: LocalRuntimeOptimizations | null =
-      bundleMmproj
-        ? {
-            ...(optimizations ?? {}),
-            mmproj: optimizations?.mmproj ?? bundleMmproj,
-          }
-        : optimizations;
-
     await this.start(
       {
         targetModelPath: target.path,
@@ -2086,7 +1907,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
         ttsModelPath: ttsAssets?.modelPath,
         ttsCodecPath: ttsAssets?.codecPath,
       },
-      effectiveOptimizations,
+      optimizations,
     );
   }
 
@@ -2126,12 +1947,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       : plan.drafterModelPath;
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
-    // `plan.cacheTypeK/V` is the production path — it carries the tier's
-    // `runtime.kvCache.typeK/typeV` from the catalog (`qjl1_256` K + `q4_polar`
-    // V for the >8k Eliza-1 tiers, per AGENTS.md §3). `ELIZA_DFLASH_CACHE_TYPE_K/_V`
-    // is a debug override (force a different cache type when bisecting a kernel)
-    // and wins when set; `resolveCacheTypeForBackend` then still vets whichever
-    // value won against the installed binary's CAPABILITIES.json.
     const cacheTypeK =
       process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim() || plan.cacheTypeK;
     const cacheTypeV =
@@ -2214,22 +2029,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       "--jinja",
     ];
     if (plan.disableThinking) {
-      // The `enable_thinking` chat-template kwarg is the portable
-      // thinking-suppression knob — the Qwen chat template reads it directly
-      // under `--jinja`, so always pass that. The llama-server CLI knob for
-      // the same thing has changed shape across builds: very old forks took
-      // `--reasoning off`; current builds take `--reasoning-budget 0`. Passing
-      // a flag the installed binary doesn't parse aborts the entire launch
-      // (`error: invalid argument: --reasoning`), so each CLI knob is gated
-      // behind a `--help` capability probe.
+      args.push("--reasoning", "off");
       args.push("--chat-template-kwargs", '{"enable_thinking":false}');
-      if (status.binaryPath) {
-        if (llamaServerSupportsFlag(status.binaryPath, "--reasoning-budget")) {
-          args.push("--reasoning-budget", "0");
-        } else if (llamaServerSupportsFlag(status.binaryPath, "--reasoning")) {
-          args.push("--reasoning", "off");
-        }
-      }
     }
     const cacheTypeKSource = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim()
       ? "ELIZA_DFLASH_CACHE_TYPE_K"
@@ -2238,16 +2039,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       ? "ELIZA_DFLASH_CACHE_TYPE_V"
       : "runtime.kvCache.typeV";
     if (cacheTypeK) {
-      args.push(
-        "--cache-type-k",
-        resolveCacheTypeForBackend(cacheTypeKSource, cacheTypeK),
-      );
+      assertCacheTypeSupportedOnBackend(cacheTypeKSource, cacheTypeK);
+      args.push("--cache-type-k", cacheTypeK);
     }
     if (cacheTypeV) {
-      args.push(
-        "--cache-type-v",
-        resolveCacheTypeForBackend(cacheTypeVSource, cacheTypeV),
-      );
+      assertCacheTypeSupportedOnBackend(cacheTypeVSource, cacheTypeV);
+      args.push("--cache-type-v", cacheTypeV);
     }
 
     appendKvOffloadFlags(args, kvOffload);
@@ -2278,15 +2075,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     if (extra) {
       // Apply the same capability gate to any kernel cache type passed via
       // the raw-args escape hatch: a `--cache-type-k turbo3` here must be
-      // backed by the shipped `turbo3` kernel just like the env-var path
-      // (or downgraded to f16 under ELIZA_LOCAL_ALLOW_STOCK_KV=1).
+      // backed by the shipped `turbo3` kernel just like the env-var path.
       const tokens = extra.split(/\s+/).filter(Boolean);
       for (let i = 0; i < tokens.length; i += 1) {
         if (
           (tokens[i] === "--cache-type-k" || tokens[i] === "--cache-type-v") &&
           i + 1 < tokens.length
         ) {
-          tokens[i + 1] = resolveCacheTypeForBackend(tokens[i], tokens[i + 1]);
+          assertCacheTypeSupportedOnBackend(tokens[i], tokens[i + 1]);
         }
       }
       args.push(...tokens);
@@ -2295,7 +2091,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
     this.stderrTail = [];
     const child = spawn(status.binaryPath, args, {
-      env: withServerLibraryPath(process.env, status.binaryPath),
+      env: { ...process.env },
       stdio: ["ignore", "pipe", "pipe"],
     });
     this.child = child;
@@ -2688,12 +2484,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     slotId: number,
   ): Promise<DflashGenerateResult> {
     const streaming = Boolean(args.onTextChunk || dflashArgs.onVerifierEvent);
-    // The assistant-turn prefill that was seeded server-side (an explicit
-    // `prefill`, or the leading literal run of an `elizaSchema`'s prefill
-    // plan) — re-prepended to the streamed/returned tail so callers see the
-    // full structured envelope. Resolved by the same logic
-    // `buildChatCompletionBody` uses so the two never diverge.
-    const prefill = resolveGuidedDecodeForParams(dflashArgs).prefill ?? "";
+    const prefill =
+      typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
+        ? dflashArgs.prefill
+        : "";
     const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
@@ -2911,12 +2705,6 @@ export const dflashLlamaServer = new DflashLlamaServer();
  *     prefill is still re-prepended client-side).
  *   - `grammar` / `responseSkeleton` → `grammar` (+ `grammar_lazy` /
  *     `grammar_triggers` when the compiled skeleton is lazy).
- *   - `elizaSchema` (guided structured decode, off by default) → the compiled
- *     grammar PLUS `eliza_prefill_plan` (the deterministic-token short-circuit
- *     — a tolerant extension a recent fork honours by splicing the forced
- *     token runs without a forward pass; older binaries ignore it and the
- *     grammar still forces the same bytes) PLUS the plan's leading literal run
- *     as an assistant-turn prefill.
  *
  * `cache_prompt: true` is always safe — the worst case is the server matches
  * no prefix tokens and the request behaves like a cold call. Pinning by
@@ -2927,11 +2715,13 @@ export function buildChatCompletionBody(
   slotId: number,
   streaming: boolean,
 ): Record<string, unknown> {
-  const guided = resolveGuidedDecodeForParams(args);
-  const prefill = guided.prefill ?? "";
   const messages: Array<{ role: string; content: string }> = [
     { role: "user", content: args.prompt },
   ];
+  const prefill =
+    typeof args.prefill === "string" && args.prefill.length > 0
+      ? args.prefill
+      : "";
   if (prefill.length > 0) {
     messages.push({ role: "assistant", content: prefill });
   }
@@ -2952,11 +2742,10 @@ export function buildChatCompletionBody(
     // Some fork builds spell it `add_generation_prompt: false` instead.
     payload.add_generation_prompt = false;
   }
-  if (guided.grammar) {
-    Object.assign(payload, grammarRequestFields(guided.grammar));
+  const grammar = resolveGrammarForParams(args);
+  if (grammar) {
+    Object.assign(payload, grammarRequestFields(grammar));
   }
-  // Off by default: only emitted when `args.elizaSchema` carried a prefill plan.
-  Object.assign(payload, prefillPlanRequestFields(guided.prefillPlan));
   return payload;
 }
 

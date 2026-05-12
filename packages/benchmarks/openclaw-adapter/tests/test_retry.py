@@ -1,20 +1,28 @@
-"""Unit tests for ``openclaw_adapter._retry`` helpers.
+"""Unit tests for ``openclaw_adapter._retry`` and the OpenAI-compat retry loop.
 
-The previous HTTP retry-loop tests targeted
-``OpenClawClient._send_openai_compatible``, which was removed when
-``send_message`` consolidated onto the CLI subprocess path. The retry helper
-module is still exported and shared with hermes-adapter, so we keep the pure
-helper-function tests below. If we re-introduce a Python-level HTTP path,
-re-add the loop tests then.
+The retry helper module is tested directly. The HTTP retry loop in
+``OpenClawClient._send_openai_compatible`` is tested by patching
+``urllib.request.urlopen`` to a fake that 429s twice then 200s.
 """
 
 from __future__ import annotations
 
+import io
+import json
+from typing import Any
+from unittest.mock import patch
+from urllib.error import HTTPError
+
+import pytest
+
 from openclaw_adapter._retry import (
+    MAX_ATTEMPTS,
+    RetryExhaustedError,
     backoff_seconds,
     is_retryable_status,
     parse_retry_after,
 )
+from openclaw_adapter.client import OpenClawClient
 
 
 # ---------------------------------------------------------------------------
@@ -63,8 +71,6 @@ def test_is_retryable_status() -> None:
     assert is_retryable_status(502) is True
     assert is_retryable_status(400) is False
     assert is_retryable_status(404) is False
-<<<<<<< HEAD
-=======
 
 
 # ---------------------------------------------------------------------------
@@ -283,4 +289,3 @@ def test_openai_compat_retries_url_error(
     result = client.send_message("hi", context=None)
     assert calls["n"] == 2
     assert result.text == "PONG"
->>>>>>> origin/shaw/fine-tune-apollo-pipeline

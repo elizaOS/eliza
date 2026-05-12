@@ -162,11 +162,6 @@ def _build_ext_metadata(
             "use_qjl": polar_sidecar.get("recipe", {}).get("use_qjl", True),  # type: ignore[union-attr]
             "n_layers_quantized": polar_sidecar.get("n_layers_quantized"),
             "average_block_mse": polar_sidecar.get("average_block_mse"),
-            # AGENTS.md §3: record the per-block tolerance so a future cross-check
-            # (recipe ↔ kernel reference) has a number to assert against. The
-            # measured average block MSE from the recipe run is that tolerance
-            # bound; null when the recipe sidecar didn't carry it.
-            "tolerance_block_mse": polar_sidecar.get("average_block_mse"),
         }
     if qjl_sidecar is not None:
         out["qjl"] = {
@@ -217,11 +212,7 @@ def main(argv: list[str] | None = None) -> int:
         "--output",
         type=Path,
         required=True,
-<<<<<<< HEAD
-        help="Output GGUF file path (e.g. .../qwen3-0.6b-eliza-Q4_POLAR.gguf).",
-=======
         help="Output GGUF file path (e.g. .../qwen3.5-0.8b-eliza-Q4_POLAR.gguf).",
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     )
     ap.add_argument(
         "--llama-cpp-dir",
@@ -253,10 +244,6 @@ def main(argv: list[str] | None = None) -> int:
         "--outtype",
         default="q4_polar",
         choices=["q4_polar", "q8_0", "f16", "bf16", "f32", "auto"],
-<<<<<<< HEAD
-        help="GGUF tensor type. Default q4_polar (Eliza-only); falls back to "
-             "q8_0 automatically when the fork's converter can't emit it yet.",
-=======
         help=(
             "GGUF tensor type. Default q4_polar (elizaOS fork-only). "
             "q4_polar is fail-closed for release builds; use "
@@ -271,7 +258,6 @@ def main(argv: list[str] | None = None) -> int:
             "fall back to f16/q8_0 and mark the sidecar as deferred. "
             "Do not use for Eliza-1 release artifacts."
         ),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     )
     # Eliza-1 v1 = the upstream BASE models, GGUF-converted + fully optimized
     # (every quant/kernel trick in inference/AGENTS.md §3), NOT fine-tuned.

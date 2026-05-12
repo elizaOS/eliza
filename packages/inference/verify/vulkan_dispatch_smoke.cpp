@@ -1,22 +1,13 @@
-// Vulkan graph-dispatch smoke for the shipped Eliza-1 fused attention ops.
+// Vulkan graph-dispatch smoke for the shipped Eliza-1 attention-score ops.
 //
 // This is intentionally not a standalone SPIR-V test. It links against the
-// patched fork's libggml-vulkan and drives real GGML graphs containing the two
-// fused attention ops the committed fork pin exposes in ggml.h:
-//   - GGML_OP_ATTN_SCORE_QJL       (ggml_attn_score_qjl)
-//   - GGML_OP_FUSED_ATTN_QJL_TBQ   (ggml_fused_attn_qjl_tbq)
+// patched fork's libggml-vulkan and drives real GGML graphs containing:
+//   - GGML_OP_ATTN_SCORE_QJL
+//   - GGML_OP_ATTN_SCORE_TBQ   (TBQ3, TBQ4, TBQ3_TCQ)
+//   - GGML_OP_ATTN_SCORE_POLAR (use_qjl=0 and use_qjl=1)
 //
 // PASS means ggml-vulkan advertises support for the graph op, selected the
-<<<<<<< HEAD
-// shipped eliza Vulkan pipeline, and the numeric output matches the C
-// reference. The standalone TurboQuant / PolarQuant score+softmax+V-mix
-// kernels are exercised by `make vulkan-verify` against the JSON fixtures and
-// by the actual fork llama-server --cache-type-{k,v} whitelist; they are not
-// public ggml graph builders in the fork pin, so they are not part of this
-// graph-dispatch gate.
-=======
 // shipped eliza Vulkan pipeline, and the numeric output matches the reference.
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 
 #include <cmath>
 #include <cstdio>
@@ -87,6 +78,16 @@ static void fill_k_rows(std::vector<float> & k_rows) {
     }
 }
 
+static void fill_q_heads(std::vector<float> & q_heads) {
+    for (int h = 0; h < N_HEADS; ++h) {
+        for (int i = 0; i < HEAD_DIM; ++i) {
+            q_heads[h * HEAD_DIM + i] =
+                std::cos(0.031f * (float) (h * HEAD_DIM + i)) -
+                0.3f * std::sin(0.047f * (float) i);
+        }
+    }
+}
+
 static void fill_qjl_sketch(std::vector<float> & q_sketch) {
     for (int h = 0; h < N_HEADS; ++h) {
         for (int j = 0; j < QJL_PROJ_DIM; ++j) {
@@ -117,10 +118,83 @@ static float qjl_ref_score(
     return scale * bf16_to_f32(blk->norm_bf16) * acc;
 }
 
-// GGML_OP_ATTN_SCORE_QJL — QJL 1-bit packed-K cosine-similarity score.
-// Numeric comparison against qjl_ref_score (= the QJL paper's unbiased
-// estimator, which the fork's CPU op also implements bit-for-bit).
-static bool run_qjl_score_smoke(int * outputs, float * max_err_out) {
+static bool check_scores(
+        const char * label,
+        const std::vector<float> & got,
+        const std::vector<float> & expected,
+        float * max_err_out) {
+    float max_err = 0.0f;
+    for (int h = 0; h < N_HEADS; ++h) {
+        for (int t = 0; t < N_TOKENS; ++t) {
+            const int idx = h * N_TOKENS + t;
+            const float err = std::fabs(expected[idx] - got[idx]);
+            if (!std::isfinite(got[idx]) || err > TOL) {
+                std::fprintf(stderr,
+                    "[vulkan_dispatch_smoke] %s FAIL h=%d t=%d expected=%+.6f got=%+.6f diff=%.3e\n",
+                    label, h, t, expected[idx], got[idx], err);
+                return false;
+            }
+            if (err > max_err) max_err = err;
+        }
+    }
+    *max_err_out = max_err;
+    return true;
+}
+
+static bool compute_graph(
+        ggml_context * ctx,
+        ggml_cgraph * gf,
+        ggml_tensor * q,
+        const void * q_data,
+        size_t q_bytes,
+        ggml_tensor * pk,
+        const void * pk_data,
+        size_t pk_bytes,
+        ggml_tensor * scores,
+        std::vector<float> & got) {
+    ggml_backend_t backend = ggml_backend_vk_init(0);
+    if (!backend) {
+        std::fprintf(stderr, "[vulkan_dispatch_smoke] ggml_backend_vk_init failed\n");
+        return false;
+    }
+
+    if (!ggml_backend_supports_op(backend, scores)) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] ggml-vulkan does not advertise support for %s with packed K type=%d\n",
+            ggml_op_name(scores->op), (int) pk->type);
+        ggml_backend_free(backend);
+        return false;
+    }
+
+    ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, backend);
+    if (!buf) {
+        std::fprintf(stderr, "[vulkan_dispatch_smoke] alloc_ctx_tensors failed\n");
+        ggml_backend_free(backend);
+        return false;
+    }
+
+    ggml_backend_tensor_set(q, q_data, 0, q_bytes);
+    ggml_backend_tensor_set(pk, pk_data, 0, pk_bytes);
+
+    const ggml_status status = ggml_backend_graph_compute(backend, gf);
+    if (status != GGML_STATUS_SUCCESS) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] graph_compute returned status=%d\n",
+            (int) status);
+        ggml_backend_buffer_free(buf);
+        ggml_backend_free(backend);
+        return false;
+    }
+
+    got.assign(N_HEADS * N_TOKENS, 0.0f);
+    ggml_backend_tensor_get(scores, got.data(), 0, got.size() * sizeof(float));
+
+    ggml_backend_buffer_free(buf);
+    ggml_backend_free(backend);
+    return true;
+}
+
+static bool run_qjl_smoke(float * max_err_out) {
     const size_t row_size = ggml_row_size(GGML_TYPE_QJL1_256, HEAD_DIM);
     if (row_size != sizeof(block_qjl1_256_smoke)) {
         std::fprintf(stderr,
@@ -166,57 +240,151 @@ static bool run_qjl_score_smoke(int * outputs, float * max_err_out) {
     ggml_cgraph * gf = ggml_new_graph(ctx);
     ggml_build_forward_expand(gf, scores);
 
-    ggml_backend_t backend = ggml_backend_vk_init(0);
-    if (!backend) {
-        std::fprintf(stderr, "[vulkan_dispatch_smoke] ggml_backend_vk_init failed\n");
-        ggml_free(ctx);
-        return false;
-    }
-    if (!ggml_backend_supports_op(backend, scores)) {
-        std::fprintf(stderr,
-            "[vulkan_dispatch_smoke] ggml-vulkan does not advertise support for GGML_OP_ATTN_SCORE_QJL\n");
-        ggml_backend_free(backend);
-        ggml_free(ctx);
-        return false;
-    }
-    ggml_backend_buffer_t buf = ggml_backend_alloc_ctx_tensors(ctx, backend);
-    if (!buf) { ggml_backend_free(backend); ggml_free(ctx); return false; }
-    ggml_backend_tensor_set(q, q_sketch.data(), 0, q_sketch.size() * sizeof(float));
-    ggml_backend_tensor_set(pk, packed.data(), 0, packed.size());
-    const ggml_status st = ggml_backend_graph_compute(backend, gf);
-    bool ok = st == GGML_STATUS_SUCCESS;
-    if (!ok) std::fprintf(stderr, "[vulkan_dispatch_smoke] QJL graph_compute status=%d\n", (int) st);
-    std::vector<float> got(N_HEADS * N_TOKENS, 0.0f);
-    if (ok) ggml_backend_tensor_get(scores, got.data(), 0, got.size() * sizeof(float));
-    ggml_backend_buffer_free(buf);
-    ggml_backend_free(backend);
+    std::vector<float> got;
+    const bool ok = compute_graph(ctx, gf, q, q_sketch.data(), q_sketch.size() * sizeof(float),
+                                  pk, packed.data(), packed.size(), scores, got) &&
+                    check_scores("QJL", got, expected, max_err_out);
     ggml_free(ctx);
-    if (!ok) return false;
-
-    float max_err = 0.0f;
-    for (int h = 0; h < N_HEADS; ++h) {
-        for (int t = 0; t < N_TOKENS; ++t) {
-            const int idx = h * N_TOKENS + t;
-            const float err = std::fabs(expected[idx] - got[idx]);
-            if (!std::isfinite(got[idx]) || err > TOL) {
-                std::fprintf(stderr,
-                    "[vulkan_dispatch_smoke] QJL FAIL h=%d t=%d expected=%+.6f got=%+.6f diff=%.3e\n",
-                    h, t, expected[idx], got[idx], err);
-                return false;
-            }
-            if (err > max_err) max_err = err;
-        }
-    }
-    *outputs = N_HEADS * N_TOKENS;
-    *max_err_out = max_err;
-    return true;
+    return ok;
 }
 
-// GGML_OP_FUSED_ATTN_QJL_TBQ — fused QJL-K score + online softmax + TBQ3-V mix.
+template <typename Block>
+static bool run_tbq_smoke(
+        const char * label,
+        ggml_type type,
+        void (*quantize)(const float *, Block *),
+        float (*dot)(const float *, const Block *),
+        int blocks_per_row,
+        float * max_err_out) {
+    const size_t row_size = ggml_row_size(type, HEAD_DIM);
+    if (row_size != sizeof(Block) * (size_t) blocks_per_row) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] %s row size mismatch: ggml=%zu local=%zu\n",
+            label, row_size, sizeof(Block) * (size_t) blocks_per_row);
+        return false;
+    }
+
+    std::vector<float> k_rows(N_TOKENS * N_KV_HEADS * HEAD_DIM);
+    std::vector<float> q_heads(N_HEADS * HEAD_DIM);
+    fill_k_rows(k_rows);
+    fill_q_heads(q_heads);
+
+    std::vector<Block> blocks(N_TOKENS * N_KV_HEADS * blocks_per_row);
+    for (int row = 0; row < N_TOKENS * N_KV_HEADS; ++row) {
+        quantize(k_rows.data() + row * HEAD_DIM, blocks.data() + row * blocks_per_row);
+    }
+
+    std::vector<float> expected(N_HEADS * N_TOKENS);
+    const int gqa = N_HEADS / N_KV_HEADS;
+    for (int h = 0; h < N_HEADS; ++h) {
+        const int h_k = h / gqa;
+        for (int t = 0; t < N_TOKENS; ++t) {
+            expected[h * N_TOKENS + t] =
+                dot(q_heads.data() + h * HEAD_DIM,
+                    blocks.data() + (h_k * N_TOKENS + t) * blocks_per_row);
+        }
+    }
+
+    ggml_context * ctx = ggml_init({ 16 * 1024 * 1024, nullptr, true });
+    if (!ctx) return false;
+    ggml_tensor * q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, HEAD_DIM, N_HEADS, 1, 1);
+    ggml_tensor * pk = ggml_new_tensor_4d(ctx, type, HEAD_DIM, N_TOKENS, N_KV_HEADS, 1);
+    ggml_tensor * scores = ggml_attn_score_tbq(ctx, q, pk, N_KV_HEADS);
+    ggml_cgraph * gf = ggml_new_graph(ctx);
+    ggml_build_forward_expand(gf, scores);
+
+    std::vector<float> got;
+    const bool ok = compute_graph(ctx, gf, q, q_heads.data(), q_heads.size() * sizeof(float),
+                                  pk, blocks.data(), blocks.size() * sizeof(Block), scores, got) &&
+                    check_scores(label, got, expected, max_err_out);
+    ggml_free(ctx);
+    return ok;
+}
+
+static void quantize_turbo3_adapter(const float * src, eliza_block_turbo3_0 * dst) {
+    eliza_quantize_turbo3_group(src, dst);
+}
+
+static float dot_turbo3_adapter(const float * q, const eliza_block_turbo3_0 * k) {
+    return eliza_dot_q_turbo3(q, k);
+}
+
+static void quantize_turbo4_adapter(const float * src, eliza_block_turbo4_0 * dst) {
+    eliza_quantize_turbo4_block(src, dst);
+}
+
+static float dot_turbo4_adapter(const float * q, const eliza_block_turbo4_0 * k) {
+    return eliza_dot_q_turbo4(q, k);
+}
+
+static void quantize_turbo3_tcq_adapter(const float * src, eliza_block_turbo3_tcq * dst) {
+    eliza_quantize_turbo3_tcq_block(src, dst);
+}
+
+static float dot_turbo3_tcq_adapter(const float * q, const eliza_block_turbo3_tcq * k) {
+    return eliza_dot_q_turbo3_tcq(q, k);
+}
+
+static bool run_polar_smoke(bool use_qjl, float * max_err_out) {
+    const char * label = use_qjl ? "PolarQuant(use_qjl=1)" : "PolarQuant(use_qjl=0)";
+    const size_t row_size = ggml_row_size(GGML_TYPE_Q4_POLAR, HEAD_DIM);
+    if (row_size != sizeof(eliza_block_q4_polar)) {
+        std::fprintf(stderr,
+            "[vulkan_dispatch_smoke] %s row size mismatch: ggml=%zu local=%zu\n",
+            label, row_size, sizeof(eliza_block_q4_polar));
+        return false;
+    }
+
+    std::vector<float> k_rows(N_TOKENS * N_KV_HEADS * HEAD_DIM);
+    std::vector<float> q_heads(N_HEADS * HEAD_DIM);
+    fill_k_rows(k_rows);
+    fill_q_heads(q_heads);
+
+    std::vector<eliza_block_q4_polar> blocks(N_TOKENS * N_KV_HEADS);
+    for (int row = 0; row < N_TOKENS * N_KV_HEADS; ++row) {
+        eliza_polar_quantize_row(
+            k_rows.data() + row * HEAD_DIM,
+            blocks.data() + row,
+            HEAD_DIM,
+            use_qjl ? 1 : 0);
+    }
+
+    std::vector<float> expected(N_HEADS * N_TOKENS);
+    const int gqa = N_HEADS / N_KV_HEADS;
+    for (int h = 0; h < N_HEADS; ++h) {
+        const int h_k = h / gqa;
+        for (int t = 0; t < N_TOKENS; ++t) {
+            eliza_polar_mul_mv(
+                blocks.data() + h_k * N_TOKENS + t,
+                q_heads.data() + h * HEAD_DIM,
+                1,
+                use_qjl ? 1 : 0,
+                expected.data() + h * N_TOKENS + t);
+        }
+    }
+
+    ggml_context * ctx = ggml_init({ 16 * 1024 * 1024, nullptr, true });
+    if (!ctx) return false;
+    ggml_tensor * q = ggml_new_tensor_4d(ctx, GGML_TYPE_F32, HEAD_DIM, N_HEADS, 1, 1);
+    ggml_tensor * pk = ggml_new_tensor_4d(ctx, GGML_TYPE_Q4_POLAR, HEAD_DIM, N_TOKENS, N_KV_HEADS, 1);
+    ggml_tensor * scores = ggml_attn_score_polar(ctx, q, pk, N_KV_HEADS, use_qjl);
+    ggml_cgraph * gf = ggml_new_graph(ctx);
+    ggml_build_forward_expand(gf, scores);
+
+    std::vector<float> got;
+    const bool ok = compute_graph(ctx, gf, q, q_heads.data(), q_heads.size() * sizeof(float),
+                                  pk, blocks.data(), blocks.size() * sizeof(eliza_block_q4_polar), scores, got) &&
+                    check_scores(label, got, expected, max_err_out);
+    ggml_free(ctx);
+    return ok;
+}
+
+// GGML_OP_FUSED_ATTN_QJL_TBQ — fused QJL-K score + TBQ3-V mix, online softmax.
 // Numeric comparison against eliza_fused_attn_qjl_tbq3() (the backend-neutral C
 // reference; bit-exact to the fork's CPU op). Output is [head_dim=128, n_heads]
-// fp32 for q_pos = 0.
-static bool run_fused_attn_smoke(int * outputs, float * max_err_out) {
+// fp32 for q_pos = 0. Self-contained graph build (compute_graph above is
+// score-shaped); mirrors the same backend-init / supports-op / compute flow.
+static bool run_fused_attn_smoke(float * max_err_out) {
     constexpr int PROJ_DIM = ELIZA_QJL_PROJECTION_DIM;  // 256
     static_assert(PROJ_DIM == QJL_PROJ_DIM, "QJL sketch dim mismatch");
     const float sm_scale = 1.0f / std::sqrt((float) HEAD_DIM);
@@ -319,7 +487,6 @@ static bool run_fused_attn_smoke(int * outputs, float * max_err_out) {
             if (err > max_err) max_err = err;
         }
     }
-    *outputs = N_HEADS * HEAD_DIM;
     *max_err_out = max_err;
     return true;
 }
@@ -345,25 +512,46 @@ int main() {
 
     struct Case {
         const char * label;
-        bool (*run)(int *, float *);
+        bool (*run)(float *);
+        int count;
     };
 
     const Case cases[] = {
-        { "GGML_OP_ATTN_SCORE_QJL", run_qjl_score_smoke },
-        { "GGML_OP_FUSED_ATTN_QJL_TBQ", run_fused_attn_smoke },
+        { "GGML_OP_ATTN_SCORE_QJL", run_qjl_smoke, N_HEADS * N_TOKENS },
+        { "GGML_OP_ATTN_SCORE_TBQ/turbo3", [](float * e) {
+            return run_tbq_smoke<eliza_block_turbo3_0>(
+                "TurboQuant3", GGML_TYPE_TBQ3_0,
+                quantize_turbo3_adapter, dot_turbo3_adapter, 4, e);
+        }, N_HEADS * N_TOKENS },
+        { "GGML_OP_ATTN_SCORE_TBQ/turbo4", [](float * e) {
+            return run_tbq_smoke<eliza_block_turbo4_0>(
+                "TurboQuant4", GGML_TYPE_TBQ4_0,
+                quantize_turbo4_adapter, dot_turbo4_adapter, 4, e);
+        }, N_HEADS * N_TOKENS },
+        { "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq", [](float * e) {
+            return run_tbq_smoke<eliza_block_turbo3_tcq>(
+                "TurboQuant3_TCQ", GGML_TYPE_TBQ3_TCQ,
+                quantize_turbo3_tcq_adapter, dot_turbo3_tcq_adapter, 1, e);
+        }, N_HEADS * N_TOKENS },
+        { "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0", [](float * e) {
+            return run_polar_smoke(false, e);
+        }, N_HEADS * N_TOKENS },
+        { "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1", [](float * e) {
+            return run_polar_smoke(true, e);
+        }, N_HEADS * N_TOKENS },
+        { "GGML_OP_FUSED_ATTN_QJL_TBQ", run_fused_attn_smoke, N_HEADS * HEAD_DIM },
     };
 
     int failures = 0;
     for (const Case & c : cases) {
-        int outputs = 0;
         float max_err = 0.0f;
-        if (!c.run(&outputs, &max_err)) {
+        if (!c.run(&max_err)) {
             std::fprintf(stderr, "[vulkan_dispatch_smoke] FAIL %s\n", c.label);
             ++failures;
             continue;
         }
         std::printf("[vulkan_dispatch_smoke] PASS %s: %d outputs, max diff %.3e\n",
-                    c.label, outputs, max_err);
+                    c.label, c.count, max_err);
     }
 
     if (failures != 0) {
@@ -373,7 +561,7 @@ int main() {
         return 1;
     }
 
-    std::printf("[vulkan_dispatch_smoke] PASS Vulkan dispatch suite: %zu graph routes (QJL score + fused QJL-K/TBQ-V attention)\n",
+    std::printf("[vulkan_dispatch_smoke] PASS Vulkan dispatch suite: %zu graph routes\n",
                 sizeof(cases) / sizeof(cases[0]));
     return 0;
 }

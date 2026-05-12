@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-
 /**
  * `translate-action-examples` — bulk-translation harness for ActionExamples.
  *
@@ -37,11 +36,11 @@
  * exit non-zero. No silent fallback. The harness is loud by design.
  */
 
+import { Project, SyntaxKind } from "ts-morph";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import dotenv from "dotenv";
-import { Project, SyntaxKind } from "ts-morph";
 
 const SUPPORTED_LOCALES = new Set(["es", "fr", "ja"]);
 const DEFAULT_MODEL = "gpt-oss-120b";
@@ -50,19 +49,11 @@ const DEFAULT_BASE_URL = "https://api.cerebras.ai/v1";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(here, "..");
 const elizaRoot = path.resolve(packageRoot, "..", "..");
-<<<<<<< HEAD
-const repoRoot = path.resolve(elizaRoot, "..");
-for (const candidate of [
-  path.join(packageRoot, ".env"),
-  path.join(elizaRoot, ".env"),
-  path.join(repoRoot, ".env"),
-=======
 const elizaRoot = path.resolve(elizaRoot, "..");
 for (const candidate of [
   path.join(packageRoot, ".env"),
   path.join(elizaRoot, ".env"),
   path.join(elizaRoot, ".env"),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
 ]) {
   if (fs.existsSync(candidate)) {
     dotenv.config({ path: candidate, override: false });
@@ -191,7 +182,7 @@ function extractFromActionFile(filePath, actionNameOverride) {
   // ~20 app-lifeops actions where `examples` is hoisted above the `Action`
   // literal).
   let examplesInitializer = found?.initializer ?? null;
-  const actionLiteral = found?.actionLiteral ?? null;
+  let actionLiteral = found?.actionLiteral ?? null;
   if (!examplesInitializer) {
     for (const stmt of sourceFile.getVariableStatements()) {
       for (const decl of stmt.getDeclarations()) {
@@ -339,7 +330,9 @@ function locateExamplesPropertyAssignment(sourceFile) {
 
     result = {
       initializer: init,
-      actionLiteral: prop.getParentIfKind?.(SyntaxKind.ObjectLiteralExpression),
+      actionLiteral: prop.getParentIfKind?.(
+        SyntaxKind.ObjectLiteralExpression,
+      ),
     };
   });
   return result;
@@ -462,7 +455,9 @@ function resolveToPairArrayNodes(node, project, originSource, seen) {
       const propName = node.getName?.();
       const expression = node.getExpression?.();
       if (!propName || !expression) {
-        fail(`PropertyAccessExpression with no name/expression at ${debugLoc}`);
+        fail(
+          `PropertyAccessExpression with no name/expression at ${debugLoc}`,
+        );
       }
       const baseInit = resolveExpressionToInitializer(expression, project);
       if (!baseInit) {
@@ -568,7 +563,7 @@ function resolveExpressionToInitializer(expression, project) {
  * cross-file source files to the project so symbol resolution can follow
  * imports.
  */
-function unwrapToVariableInitializer(node, _project) {
+function unwrapToVariableInitializer(node, project) {
   let current = node;
   for (let hops = 0; hops < 5 && current; hops++) {
     const kind = current.getKind?.();
@@ -882,15 +877,11 @@ function renderRegistryPack({ actionName, locale, translations }) {
     'import type { PromptExampleEntry } from "../prompt-registry.js";',
   );
   lines.push("");
-  lines.push(
-    `export const ${packVarName(actionName, locale)}: ReadonlyArray<PromptExampleEntry> = [`,
-  );
+  lines.push(`export const ${packVarName(actionName, locale)}: ReadonlyArray<PromptExampleEntry> = [`);
   for (const t of translations) {
     const key = `${actionName}.example.${t.index}`;
     const userActions = t.userActions ? actionsLiteral(t.userActions) : "";
-    const userAction = t.userAction
-      ? `, action: ${jsonString(t.userAction)}`
-      : "";
+    const userAction = t.userAction ? `, action: ${jsonString(t.userAction)}` : "";
     const agentActions = t.agentActions ? actionsLiteral(t.agentActions) : "";
     const agentAction = t.agentAction
       ? `, action: ${jsonString(t.agentAction)}`
@@ -938,10 +929,7 @@ async function main() {
   if (!fs.existsSync(absInput)) {
     fail(`Action file not found: ${absInput}`);
   }
-  const { actionName, pairs } = extractFromActionFile(
-    absInput,
-    opts.actionName,
-  );
+  const { actionName, pairs } = extractFromActionFile(absInput, opts.actionName);
   const cap = Math.min(opts.maxExamples, pairs.length);
   const subset = pairs.slice(0, cap);
 
@@ -1022,6 +1010,6 @@ if (__isDirectInvocation) {
 export {
   extractFromActionFile,
   parseExamplePair,
-  resolveStringValue,
   resolveToPairArrayNodes,
+  resolveStringValue,
 };

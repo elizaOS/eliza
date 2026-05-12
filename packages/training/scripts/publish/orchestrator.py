@@ -201,31 +201,12 @@ EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
     "expressive_tag_leakage",
 )
 
-# Default RAM budgets (MB), `(min, recommended)` per tier. Calibrated from
-# the 2026-05-11 e2e voice-loop benchmark (`packages/inference/verify/
-# bench_results/e2e_loop_2026-05-11.json`): in voice-on mode the fused
-# `llama-server` keeps every voice region resident at once — text + DFlash
-# drafter + OmniVoice (base + tokenizer + DAC + HuBERT + sem-enc) + the
-# Qwen3-ASR GGUF + mmproj — so the *server* peak RSS is ~3.1 GB on `0_6b`
-# (3132 MB over a 30-turn run) and ~4.8 GB on `1_7b` (4828 MB). Those
-# regions alternate within a turn (ASR → text → TTS) but the fused process
-# does not yet `madvise(MADV_DONTNEED)` the idle ones (a fused-server change
-# owned by the W7 streaming-decoder work); until then the co-resident
-# footprint is the honest figure. `min` is the voice-on lower bound a
-# session is observed to use; `recommended` is the measured peak plus
-# headroom. So `0_6b` is a 4-GB-RAM-phone floor, not a 2-GB one (the AGENTS
-# §2 "low-RAM phones" tagline now means low-RAM *relative to the 9b/27b
-# tiers*). The bundle's sidecar can override. (`9b`+ figures unchanged —
-# those tiers have no e2e bench yet.)
+# Default RAM budgets (MB). Tightened pre-publish from real measurements
+# on reference hardware; the bundle's sidecar can override.
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
-<<<<<<< HEAD
-    "0_6b": (2500, 3700),
-    "1_7b": (4000, 5500),
-=======
     "0_8b": (1500, 1800),
     "2b": (3500, 4500),
     "4b": (6000, 8000),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
     "9b": (7000, 9500),
     "27b": (24000, 32000),
     "27b-256k": (48000, 64000),
@@ -254,24 +235,6 @@ class OrchestratorError(Exception):
 # ---------------------------------------------------------------------------
 
 
-RELEASE_CHANNELS: tuple[str, ...] = ("recommended", "base-v1")
-DEFAULT_RELEASE_CHANNEL: str = "recommended"
-# Release-evidence states each channel accepts. The `base-v1` channel ships
-# the upstream BASE text weights (so `final.weights` need not be true and the
-# held-out text-quality gate is N/A) — but every OTHER gate (kernel verify on
-# every supported backend, every required platform-dispatch report, the
-# runnable-on-base evals, every license attestation) is enforced exactly as
-# on the recommended channel. `base-v1-candidate` is the "plan declared,
-# gates not yet green" state and is NOT publishable.
-RELEASE_STATES_BY_CHANNEL: Mapping[str, tuple[str, ...]] = {
-    "recommended": ("upload-candidate", "final"),
-    "base-v1": ("base-v1", "final"),
-}
-# `final.*` flags that may legitimately be False on the base-v1 channel:
-# the shipped text bytes ARE the upstream base GGUFs by design.
-BASE_V1_OPTIONAL_FINAL_FLAGS: frozenset[str] = frozenset({"weights"})
-
-
 @dataclass(frozen=True)
 class PublishContext:
     tier: str
@@ -283,7 +246,6 @@ class PublishContext:
     training_repo_root: Path
     template_path: Path
     gates_path: Path | None = None
-    release_channel: str = DEFAULT_RELEASE_CHANNEL
 
     # Artifacts populated as stages run (kept here so tests can introspect).
     layout_files: dict[str, list[Path]] = field(default_factory=dict)
@@ -917,15 +879,7 @@ def validate_release_evidence(
     if evidence.get("repoId") != ctx.repo_id:
         errors.append(f"repoId must be {ctx.repo_id!r}")
 
-    allowed_states = RELEASE_STATES_BY_CHANNEL[ctx.release_channel]
     release_state = evidence.get("releaseState")
-<<<<<<< HEAD
-    if release_state not in allowed_states:
-        errors.append(
-            f"releaseState must be one of {allowed_states} for the "
-            f"{ctx.release_channel!r} channel (got {release_state!r}; "
-            "'base-v1-candidate' / 'weights-staged' are not publishable)"
-=======
     if release_state not in {"base-v1", "upload-candidate", "final"}:
         errors.append("releaseState must be 'base-v1', 'upload-candidate', or 'final'")
     elif release_state == "base-v1":
@@ -933,44 +887,20 @@ def validate_release_evidence(
             evidence=evidence,
             layout=layout,
             errors=errors,
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         )
 
-    # On the base-v1 channel the shipped text bytes ARE the upstream base
-    # GGUFs by design, so `final.weights` need not be true. EVERY other final
-    # flag (hashes, evals, licenses, kernelDispatchReports, platformEvidence,
-    # sizeFirstRepoIds) is enforced exactly as on the recommended channel.
-    optional_final_flags = (
-        BASE_V1_OPTIONAL_FINAL_FLAGS if ctx.release_channel == "base-v1" else frozenset()
-    )
     final = evidence.get("final")
     if not isinstance(final, dict):
         errors.append("final must be an object")
     else:
-<<<<<<< HEAD
-        for flag in REQUIRED_RELEASE_FINAL_FLAGS:
-            if flag in optional_final_flags:
-                continue
-=======
         required_final_flags = (
             BASE_V1_RELEASE_FINAL_FLAGS
             if release_state == "base-v1"
             else REQUIRED_RELEASE_FINAL_FLAGS
         )
         for flag in required_final_flags:
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
             if final.get(flag) is not True:
                 errors.append(f"final.{flag} must be true")
-        if ctx.release_channel == "base-v1":
-            # base-v1 must declare it is the upstream base, not fine-tuned.
-            if evidence.get("finetuned") is not False:
-                errors.append("base-v1 channel: evidence.finetuned must be false")
-            source_models = evidence.get("sourceModels")
-            if not isinstance(source_models, dict) or not source_models:
-                errors.append(
-                    "base-v1 channel: evidence.sourceModels (upstream HF repo "
-                    "per shipped component) must be a non-empty object"
-                )
 
     checksum_manifest = evidence.get("checksumManifest")
     if checksum_manifest != str(CHECKSUMS_PATH):
@@ -1389,7 +1319,7 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
             eval_blob["results"] = enriched_results
 
     gates_doc = load_gates(ctx.gates_path) if ctx.gates_path else None
-    report = apply_gates(eval_blob, gates_doc, release_channel=ctx.release_channel)
+    report = apply_gates(eval_blob, gates_doc)
 
     if not report.passed:
         details = "\n".join(
@@ -1673,27 +1603,6 @@ def assemble_manifest(
         and thirty_turn_ok
         and dflash_passed
     )
-    # The base-v1 channel is the upstream-base release — never a device
-    # default, regardless of how the gates land (inference/AGENTS.md §6).
-    # Its manifest carries a mandatory `provenance` block recording which
-    # upstream HF repo each shipped component is converted from; the
-    # release-evidence sidecar (validated in stage 2) supplies that map.
-    provenance: dict[str, Any] | None = None
-    if ctx.release_channel == "base-v1":
-        default_eligible = False
-        evidence = _read_sidecar(ctx.bundle_dir / RELEASE_EVIDENCE_PATH)
-        source_models = evidence.get("sourceModels")
-        if not isinstance(source_models, dict) or not source_models:
-            raise OrchestratorError(
-                "base-v1 channel: evidence/release.json must carry a non-empty "
-                "sourceModels map (upstream HF repo per shipped component)",
-                EXIT_RELEASE_EVIDENCE_FAIL,
-            )
-        provenance = {
-            "releaseState": "base-v1",
-            "finetuned": False,
-            "sourceModels": dict(source_models),
-        }
 
     try:
         return build_manifest(
@@ -1734,16 +1643,11 @@ def assemble_manifest(
             voice_cache_speaker_preset=VOICE_PRESET_CACHE_PATH,
             voice_cache_phrase_seed=VOICE_PRESET_CACHE_PATH,
             kernel_manifest_fragments=_kernel_manifest_fragments_from_layout(layout),
-<<<<<<< HEAD
-            provenance=provenance,
-            release_channel=ctx.release_channel,
-=======
             provenance=(
                 _provenance_from_release_evidence(release_evidence)
                 if release_evidence is not None
                 else None
             ),
->>>>>>> origin/shaw/fine-tune-apollo-pipeline
         )
     except Eliza1ManifestError as exc:
         raise OrchestratorError(
@@ -1889,25 +1793,12 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
     voice = manifest.get("voice") or {}
     voice_cache = voice.get("cache") if isinstance(voice.get("cache"), dict) else {}
 
-    release_channel = manifest.get("releaseChannel", DEFAULT_RELEASE_CHANNEL)
-    provenance = manifest.get("provenance") if isinstance(manifest.get("provenance"), dict) else None
-    provenance_rows = []
-    if provenance and isinstance(provenance.get("sourceModels"), dict):
-        for slot, src in provenance["sourceModels"].items():
-            if isinstance(src, dict):
-                provenance_rows.append(
-                    {"slot": slot, "repo": src.get("repo", ""), "file": src.get("file", "")}
-                )
-
     return template.render(
         manifest=manifest,
         tier=ctx.tier,
         tier_display=ctx.tier,
         tagline=TIER_TAGLINES[ctx.tier],
         default_eligible_str="true" if manifest["defaultEligible"] else "false",
-        release_channel=release_channel,
-        is_base_v1=release_channel == "base-v1",
-        provenance_rows=provenance_rows,
         lineage_slots=lineage_slots,
         kernel_rows=kernel_rows,
         kernels_required_str=", ".join(manifest["kernels"]["required"]),
@@ -2349,32 +2240,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         help="Override path to eliza1_gates.yaml (default: bundled).",
     )
     ap.add_argument(
-        "--release-channel",
-        choices=RELEASE_CHANNELS,
-        default=DEFAULT_RELEASE_CHANNEL,
-        help=(
-            "Release channel. 'recommended' (default) = the fine-tuned "
-            "Eliza-1 (ships in v2; device default). 'base-v1' = the "
-            "upstream-base + kernel-optimized release: every quant/kernel "
-            "trick applied, but the text weights are the upstream base "
-            "GGUFs (not the fine-tuned Eliza-1). 'base-v1' forces "
-            "defaultEligible=false, requires a provenance.sourceModels map "
-            "in evidence/release.json, accepts releaseState in "
-            "{base-v1, final}, and treats the held-out text-quality gate "
-            "as N/A — but EVERY other gate (kernel verify on every "
-            "supported backend, every required platform-dispatch report, "
-            "the runnable-on-base evals, every license attestation) is "
-            "enforced exactly as on the recommended channel."
-        ),
-    )
-    ap.add_argument(
-        "--base-v1",
-        dest="release_channel",
-        action="store_const",
-        const="base-v1",
-        help="Shorthand for --release-channel=base-v1.",
-    )
-    ap.add_argument(
         "--dry-run",
         action="store_true",
         help="Run every check but do not push to HF or tag git.",
@@ -2400,7 +2265,6 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         training_repo_root=_REPO_ROOT,
         template_path=template_path,
         gates_path=args.gates_path,
-        release_channel=args.release_channel,
     )
 
 
