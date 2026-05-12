@@ -168,14 +168,17 @@ function discoverEngine(backend, explicitBinDir) {
     .readdirSync(root)
     .filter((d) => fs.statSync(path.join(root, d)).isDirectory())
     .filter((d) => d.startsWith(plat));
-  // Exact backend-fused first, then any fused on this platform.
-  const exact = dirs.find((d) => d === prefer);
   const anyFused = dirs.filter((d) => d.includes("-fused"));
-  const pick = exact || anyFused.find((d) => d.includes(`-${backend}-`)) || anyFused[0];
+  // Honesty: a `--backend X` run must use an `X`-fused build, not silently
+  // fall back to a different backend's fused build (that would mislabel the
+  // numbers). Exact `${plat}-${backend}-fused` only, then a `-${backend}-`
+  // fused variant; if neither exists, this is `needs-build` for that backend.
+  const pick =
+    dirs.find((d) => d === prefer) || anyFused.find((d) => d.includes(`-${backend}-`)) || null;
   if (!pick) {
     return {
       ok: false,
-      reason: `no fused build dir for ${plat} backend=${backend} under ${root} (have: ${dirs.join(", ") || "none"})`,
+      reason: `no fused ${backend} build dir for ${plat} under ${root} (have fused: ${anyFused.join(", ") || "none"}; pass --bin-dir to override)`,
     };
   }
   return validateEngineDir(path.join(root, pick), backend);
@@ -200,6 +203,7 @@ function validateEngineDir(dir, backend) {
   if (!fused) {
     return { ok: false, reason: `${dir} is not an omnivoice-fused build (no /v1/audio/speech route)` };
   }
+  const actualBackend = caps?.backend || backend;
   return {
     ok: true,
     dir,
@@ -208,7 +212,8 @@ function validateEngineDir(dir, backend) {
     speculative: fs.existsSync(path.join(dir, "llama-speculative-simple"))
       ? path.join(dir, "llama-speculative-simple")
       : null,
-    backend: caps?.backend || backend,
+    backend: actualBackend,
+    backendMismatch: actualBackend !== backend ? `requested ${backend}, build is ${actualBackend}` : null,
     caps,
   };
 }
@@ -872,7 +877,7 @@ function maxOf(xs) {
 // --------------------------------------------------------------------------
 
 function nowTag() {
-  return new Date().toISOString().slice(0, 10);
+  return process.env.ELIZA_E2E_DATE?.trim() || new Date().toISOString().slice(0, 10);
 }
 
 async function main() {
@@ -902,7 +907,7 @@ async function main() {
     },
     request: { tier, backend: args.backend, turns: args.turns, nPredict: args.nPredict },
     bundle: { dir: bundleDir, tier, ramBudgetMb: files.manifest?.ramBudgetMb ?? null },
-    engine: engine.ok ? { dir: engine.dir, backend: engine.backend, fused: true, caps: engine.caps?.kernels ?? null } : null,
+    engine: engine.ok ? { dir: engine.dir, backend: engine.backend, backendMismatch: engine.backendMismatch ?? null, fused: true, caps: engine.caps?.kernels ?? null } : null,
   };
 
   // Preconditions — produce honest needs-* statuses, not fake passes.
