@@ -5,6 +5,7 @@ import {
   listSessionsWithin,
   shortId,
 } from "../actions/common.js";
+import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
 
 export const availableAgentsProvider: Provider = {
   name: "AVAILABLE_AGENTS",
@@ -25,20 +26,47 @@ export const availableAgentsProvider: Provider = {
       };
     }
 
-    const [agents, sessions] = await Promise.all([
+    const [agents, sessions, frameworkState] = await Promise.all([
       service.checkAvailableAgents?.() ??
         service.getAvailableAgents?.() ??
         Promise.resolve([]),
       listSessionsWithin(service, 2000),
+      // opencode is wired through the shell adapter (not in
+      // `coding-agent-adapters`'s registry), so `checkAvailableAgents`
+      // misses it. Query the framework-state directly so the planner sees
+      // opencode in its action context when authReady — otherwise the
+      // model reads "no compatible agent available" and refuses to spawn.
+      getTaskAgentFrameworkState(runtime).catch(() => null),
     ]);
 
     const lines = ["# acpx task agents"];
-    if (agents.length > 0) {
+    const opencodeFramework = frameworkState?.frameworks.find(
+      (framework) => framework.id === "opencode",
+    );
+    const augmentedAgents =
+      opencodeFramework?.installed && opencodeFramework.authReady
+        ? [
+            ...agents,
+            {
+              agentType: "opencode",
+              adapter: "OpenCode",
+              installed: true,
+              auth: { status: "authenticated" as const },
+              reason: opencodeFramework.reason,
+            },
+          ]
+        : agents;
+
+    if (augmentedAgents.length > 0) {
       lines.push("", "## Available adapters");
-      for (const agent of agents) {
+      for (const agent of augmentedAgents) {
         const auth = agent.auth?.status ? `, auth: ${agent.auth.status}` : "";
+        const reason =
+          "reason" in agent && typeof agent.reason === "string"
+            ? ` — ${agent.reason}`
+            : "";
         lines.push(
-          `- ${agent.agentType ?? agent.adapter}: ${agent.installed ? "installed" : "not installed"}${auth}`,
+          `- ${agent.agentType ?? agent.adapter}: ${agent.installed ? "installed" : "not installed"}${auth}${reason}`,
         );
       }
     } else {

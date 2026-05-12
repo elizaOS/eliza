@@ -78,7 +78,30 @@ export function createAgentOrchestratorPlugin(): Plugin {
     : [];
 
   const orchestratorActions = codeExecutionAllowed
-    ? [...promoteSubactionsToActions(tasksAction)]
+    ? [
+        ...promoteSubactionsToActions(tasksAction, {
+          // Override the auto-generated description for `spawn_agent` so
+          // the planner reliably picks it over inline tools (e.g.
+          // `FILE.write`) when the user explicitly asks to delegate.
+          //
+          // Why this override matters: without it, the virtual
+          // `TASKS_SPAWN_AGENT` action inherits a generic blurb derived
+          // from the parent's enum description, which says "Task
+          // operation: ..." — that doesn't signal "this is the
+          // delegation path". When FILE was promoted to tier-A on
+          // develop, the planner started preferring `FILE.write` for
+          // any prompt that mentioned writing files, even when the user
+          // said "spawn a sub-agent". The explicit description below
+          // anchors `TASKS_SPAWN_AGENT` as the canonical sub-agent
+          // delegation surface.
+          overrides: {
+            spawn_agent: {
+              description:
+                "Delegate a coding task to a dedicated sub-agent process (claude / codex / opencode / etc., selected from configured providers). USE THIS when the user explicitly asks to 'spawn a sub-agent', 'delegate this', 'use a coding sub-agent', 'fire up a coder', or for substantial multi-step coding work that benefits from process isolation, its own workspace, or running in parallel. The sub-agent has its own PTY session, can run shell/edit/test, and reports back when done. Prefer this over inline FILE/BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
+            },
+          },
+        }),
+      ]
     : [
         localCodeAllowed
           ? createTerminalUnsupportedTasksAction(terminalSupport)
