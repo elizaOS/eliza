@@ -100,14 +100,14 @@ Relevant pre-existing worktree status:
 | `cloud/apps/frontend/public/images/blog/intro_blog_1.png` | 10.40 MiB, tracked | Optimize if blog output remains current. Referenced in `llms-full.txt`. | Low |
 | `cloud/apps/frontend/public/fonts/sf-pro/SF-Pro-Display-*.otf` | 41.03 MiB total, 7 tracked executable files | Normalize mode; review license and unused weights. | Medium |
 | `packages/inference/verify/android-vulkan-smoke/vulkan_verify` | 5.40 MiB, tracked executable | Prefer build/cache artifact if reproducible. | High |
-| `plugins/app-companion/public_src/vrms/milady-7.vrm` | 4.03 MiB, tracked | Source asset. Move to LFS/external only if public gz is canonical and regeneration is documented. | High |
-| `plugins/app-companion/public_src/vrms/milady-5.vrm` | 3.86 MiB, tracked | Same as above. | High |
+| `plugins/app-companion/public_src/vrms/eliza-7.vrm` | 4.03 MiB, tracked | Source asset. Move to LFS/external only if public gz is canonical and regeneration is documented. | High |
+| `plugins/app-companion/public_src/vrms/eliza-5.vrm` | 3.86 MiB, tracked | Same as above. | High |
 | `reports/porting/2026-05-09-baseline/aosp-symbols-pre.txt` | 3.85 MiB, tracked generated dump | Archive raw dump externally after preserving summary and references. | Medium |
 | `cloud/apps/frontend/public/agents/agent-2.png` | 3.41 MiB, tracked | Referenced by landing component. Optimize only. | Low |
 | `packages/app/public/splash-bg.jpg` | 3.27 MiB, tracked | Optimize after visual QA. | Low |
 | `packages/app/public/app-heroes/skills-viewer.png` | 3.02 MiB, tracked | Optimize or regenerate lower-size screenshot. | Low |
 | `packages/homepage/public/models/iphone.glb` | 2.95 MiB, tracked | Retain if homepage uses it; compress if possible. | Medium |
-| `plugins/app-companion/public/vrms/milady-7.vrm.gz` | 3.00 MiB, tracked public asset | Retain unless companion default model set changes. | High |
+| `plugins/app-companion/public/vrms/eliza-7.vrm.gz` | 3.00 MiB, tracked public asset | Retain unless companion default model set changes. | High |
 | `plugins/app-companion/public/vrm-decoders/draco/draco_decoder.js` | 2.02 MiB, tracked public decoder | Retain if local Draco decoding is required. | Medium |
 | `packages/examples/avatar/public/bot.vrm` | 2.01 MiB, tracked example asset | Keep if example remains self-contained; otherwise download-on-demand. | Low |
 | `plugins/app-training/datasets/lifeops_full_mixed_action_planner.jsonl` | 1.74 MiB, tracked dataset | Keep only if canonical. Otherwise archive with provenance. | High |
@@ -417,7 +417,7 @@ Reference checks before deleting/moving any asset:
 ```sh
 rg -n "filename-or-public-path" .
 rg -n "cloud-agent-samples|cloud-avatars|intro_blog_1|intro_blog_2|agent-[123]\\.png" cloud/apps/frontend packages/app packages/homepage
-rg -n "milady-|vrms/|animations/|draco_decoder|public_src" plugins/app-companion packages/examples/avatar
+rg -n "eliza-|vrms/|animations/|draco_decoder|public_src" plugins/app-companion packages/examples/avatar
 rg -n "reports/porting|docs/audits/lifeops-2026-05-11/prompts|prompts-manifest" .
 shasum packages/app-core/platforms/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732*.png
 git ls-files 'plugins/*/assets/hero.png' | xargs shasum | sort

@@ -133,12 +133,12 @@ def _git_commit() -> str | None:
 
 
 def _find_convert_script() -> Path | None:
-    """Locate the fork's convert_hf_to_gguf.py. Order: $MILADY_LLAMACPP_DIR /
+    """Locate the fork's convert_hf_to_gguf.py. Order: $ELIZA_LLAMACPP_DIR /
     $LLAMA_CPP_DIR → the in-repo fork submodule (packages/inference/llama.cpp,
     the single canonical llama.cpp checkout) → the standalone clone at
     ~/.cache/eliza-dflash/eliza-llama-cpp."""
     candidates: list[Path] = []
-    for var in ("MILADY_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
+    for var in ("ELIZA_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
         env = os.environ.get(var)
         if env:
             candidates.append(Path(env) / "convert_hf_to_gguf.py")
@@ -480,7 +480,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
     drafter_gguf = out_dir / f"drafter-{args.tier}.gguf"
     if convert is None:
         log.warning(
-            "convert_hf_to_gguf.py not found (set MILADY_LLAMACPP_DIR). "
+            "convert_hf_to_gguf.py not found (set ELIZA_LLAMACPP_DIR). "
             "Skipping GGUF conversion — run it manually then re-run with "
             "--stamp-only --drafter-gguf %s --target-gguf <text gguf>.",
             drafter_gguf,

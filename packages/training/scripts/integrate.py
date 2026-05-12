@@ -9,7 +9,7 @@ Inputs (optional, merged if present):
   data/synthesized/scambench/scambench.jsonl
 Optional final step:
   Apply trivial-thought repack via data/synthesized/manual_reasoning/thoughts.jsonl
-  (round-3 synth output); only does this step if MILADY_INTEGRATE_TRIVIAL=1.
+  (round-3 synth output); only does this step if ELIZA_INTEGRATE_TRIVIAL=1.
   Replacement thoughts are caveman-compressed before injection.
 
 Output:
@@ -96,7 +96,7 @@ def main() -> int:
         print(f"error: {DIVERSIFIED} missing — run pipeline first", file=sys.stderr)
         return 2
 
-    apply_trivial = os.environ.get("MILADY_INTEGRATE_TRIVIAL", "0") == "1"
+    apply_trivial = os.environ.get("ELIZA_INTEGRATE_TRIVIAL", "0") == "1"
     thoughts: dict[str, str] = load_thoughts() if apply_trivial else {}
     print(f"[integrate] loaded {len(thoughts)} thoughts", file=sys.stderr)
 

@@ -359,7 +359,7 @@ function registerBenchmarkXConnectors(runtime: AgentRuntime): void {
         runtime,
         source: "x",
         index: 2,
-        text: "@milady: Agent runtime benchmarks are looking healthier.",
+        text: "@eliza: Agent runtime benchmarks are looking healthier.",
       }),
     ],
     searchPosts: async (_context: unknown, params: { query?: string }) => {

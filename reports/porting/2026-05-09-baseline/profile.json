@@ -3,7 +3,7 @@
   "target": "http://localhost:31337",
   "label": "baseline-stub-2026-05-09",
   "streaming": true,
-  "configPath": "/home/shaw/milady/eliza/scripts/benchmark/configs/aosp-default.json",
+  "configPath": "/home/shaw/eliza/eliza/scripts/benchmark/configs/aosp-default.json",
   "startedAt": "2026-05-10T01:20:35.243Z",
   "finishedAt": "2026-05-10T01:21:22.210Z",
   "config": {

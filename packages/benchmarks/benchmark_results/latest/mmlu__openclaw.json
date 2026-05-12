@@ -1,7 +1,7 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output"
   ],
   "benchmark_directory": "standard",
   "benchmark_id": "mmlu",
@@ -54,7 +54,7 @@
     "throughput_per_second": 0.30854647312783084
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output/mmlu-results.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132346Z_2b949bcd/standard__mmlu/run_mmlu_20260511T132346Z_2_5d42728c/output/mmlu-results.json",
   "run_group_id": "rg_20260511T132346Z_2b949bcd",
   "run_id": "run_mmlu_20260511T132346Z_2_5d42728c",
   "score": 0.0,

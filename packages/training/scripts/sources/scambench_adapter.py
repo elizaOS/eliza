@@ -298,7 +298,7 @@ def adapt_row(
     row: dict[str, Any],
     *,
     encoder: ExpectedResponseEncoder,
-    agent_id: str = "milady",
+    agent_id: str = "eliza",
 ) -> tuple[dict[str, Any] | None, str]:
     """Adapt one parquet row to a canonical eliza record dict.
 

@@ -110,7 +110,7 @@ SPEAKERS = [
     "kira", "carlos", "olivia", "priya", "diana", "jin", "marta", "ethan", "hina",
     "alice", "bob", "fatima", "ivan", "sofia", "wei", "yuki", "nadia", "george", "leo", "mia",
 ]
-AGENTS = ["Milady", "Iris", "Kai", "Ava", "Nova", "Sage", "Atlas", "Lyra", "Lumi", "Rune", "Orion", "Vega", "Sol"]
+AGENTS = ["Eliza", "Iris", "Kai", "Ava", "Nova", "Sage", "Atlas", "Lyra", "Lumi", "Rune", "Orion", "Vega", "Sol"]
 
 # Generic "lead-in" prior turns that don't bias toward any particular op.
 LEAD_INS: list[list[tuple[str, str]]] = [

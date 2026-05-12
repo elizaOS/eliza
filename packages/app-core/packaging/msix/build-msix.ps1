@@ -4,11 +4,11 @@
 # Usage:
 #   pwsh -File build-msix.ps1 -BuildDir ./build -OutputDir ./artifacts -Version 2.0.0
 #
-# Variant selection (env var MILADY_BUILD_VARIANT):
+# Variant selection (env var ELIZA_BUILD_VARIANT):
 #   - "store"  — Microsoft Store flavor. Uses AppxManifest.store.xml (AppContainer-
 #                sandboxed, no runFullTrust). Local-agent execution is gated off at
 #                runtime; cloud hosting only. Sign with the Microsoft Store certificate
-#                (env var MILADY_MSIX_STORE_CERT_PATH) — see TODO below.
+#                (env var ELIZA_MSIX_STORE_CERT_PATH) — see TODO below.
 #   - "direct" — Default. Uses AppxManifest.xml (full-trust desktop). Distributed via
 #                NSIS/MSI; supports local agents.
 #
@@ -27,9 +27,9 @@ param(
 $ErrorActionPreference = "Stop"
 
 # Build variant — "store" (AppContainer / Microsoft Store) or "direct" (full-trust NSIS/MSI flavor).
-$buildVariant = if ($env:MILADY_BUILD_VARIANT) { $env:MILADY_BUILD_VARIANT.ToLower() } else { "direct" }
+$buildVariant = if ($env:ELIZA_BUILD_VARIANT) { $env:ELIZA_BUILD_VARIANT.ToLower() } else { "direct" }
 if ($buildVariant -ne "store" -and $buildVariant -ne "direct") {
-  Write-Error "Invalid MILADY_BUILD_VARIANT='$buildVariant' (expected 'store' or 'direct')"
+  Write-Error "Invalid ELIZA_BUILD_VARIANT='$buildVariant' (expected 'store' or 'direct')"
   exit 1
 }
 Write-Host "Build variant: $buildVariant"
@@ -41,16 +41,16 @@ $azureSigning = $env:AZURE_TENANT_ID -or $env:AZURE_CLIENT_ID -or $env:SKIP_MSIX
 
 if ($buildVariant -eq "store") {
   # TODO(store-cert): When Microsoft Partner Center registration is finalized, set
-  #   MILADY_MSIX_STORE_CERT_PATH (path to the .pfx issued for the registered Identity Name)
-  #   and MILADY_MSIX_STORE_CERT_PASSWORD. Until then, store builds run unsigned and the
+  #   ELIZA_MSIX_STORE_CERT_PATH (path to the .pfx issued for the registered Identity Name)
+  #   and ELIZA_MSIX_STORE_CERT_PASSWORD. Until then, store builds run unsigned and the
   #   Partner Center upload pipeline re-signs server-side. The Identity Publisher in
   #   AppxManifest.store.xml MUST match the publisher ID issued by Partner Center.
-  $storeCertPath = $env:MILADY_MSIX_STORE_CERT_PATH
-  $storeCertPassword = $env:MILADY_MSIX_STORE_CERT_PASSWORD
+  $storeCertPath = $env:ELIZA_MSIX_STORE_CERT_PATH
+  $storeCertPassword = $env:ELIZA_MSIX_STORE_CERT_PASSWORD
   if ($storeCertPath -and (Test-Path $storeCertPath)) {
     Write-Host "Store cert: $storeCertPath"
   } else {
-    Write-Host "MILADY_MSIX_STORE_CERT_PATH not set or missing — store MSIX will be built unsigned for Partner Center re-sign."
+    Write-Host "ELIZA_MSIX_STORE_CERT_PATH not set or missing — store MSIX will be built unsigned for Partner Center re-sign."
   }
 }
 
@@ -144,20 +144,20 @@ $manifestContent = $manifestContent -replace 'Version="0\.0\.0\.0"', "Version=`"
 # be rejected on upload. Allow env-var override so CI can substitute real values
 # without forking the manifest.
 if ($buildVariant -eq "store") {
-  $identityName = $env:MILADY_MSIX_IDENTITY_NAME
-  $publisherId = $env:MILADY_MSIX_PUBLISHER_ID
-  $publisherDisplayName = $env:MILADY_MSIX_PUBLISHER_DISPLAY_NAME
+  $identityName = $env:ELIZA_MSIX_IDENTITY_NAME
+  $publisherId = $env:ELIZA_MSIX_PUBLISHER_ID
+  $publisherDisplayName = $env:ELIZA_MSIX_PUBLISHER_DISPLAY_NAME
   if ($identityName) {
     $manifestContent = $manifestContent -replace 'Name="ElizaOS\.App"', "Name=`"$identityName`""
     Write-Host "Identity.Name set to: $identityName"
   } else {
-    Write-Host "::warning::MILADY_MSIX_IDENTITY_NAME not set — store MSIX will use placeholder 'ElizaOS.App' (Partner Center upload will reject)."
+    Write-Host "::warning::ELIZA_MSIX_IDENTITY_NAME not set — store MSIX will use placeholder 'ElizaOS.App' (Partner Center upload will reject)."
   }
   if ($publisherId) {
     $manifestContent = $manifestContent -replace 'Publisher="CN=elizaOS"', "Publisher=`"$publisherId`""
     Write-Host "Identity.Publisher set to: $publisherId"
   } else {
-    Write-Host "::warning::MILADY_MSIX_PUBLISHER_ID not set — store MSIX will use placeholder 'CN=elizaOS' (Partner Center upload will reject)."
+    Write-Host "::warning::ELIZA_MSIX_PUBLISHER_ID not set — store MSIX will use placeholder 'CN=elizaOS' (Partner Center upload will reject)."
   }
   if ($publisherDisplayName) {
     $manifestContent = $manifestContent -replace '<PublisherDisplayName>elizaOS</PublisherDisplayName>', "<PublisherDisplayName>$publisherDisplayName</PublisherDisplayName>"
@@ -181,12 +181,12 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "MSIX package created: $msixOutput"
 
-# Pick signing identity. Store builds prefer MILADY_MSIX_STORE_CERT_PATH; if absent, fall
+# Pick signing identity. Store builds prefer ELIZA_MSIX_STORE_CERT_PATH; if absent, fall
 # through to the standard signing path (Azure Trusted Signing or WINDOWS_SIGN_CERT_BASE64).
 # If neither is configured, the MSIX is delivered unsigned for Partner Center server-side re-sign.
 $useStoreCert = $false
-$storeCertPath = $env:MILADY_MSIX_STORE_CERT_PATH
-$storeCertPassword = $env:MILADY_MSIX_STORE_CERT_PASSWORD
+$storeCertPath = $env:ELIZA_MSIX_STORE_CERT_PATH
+$storeCertPassword = $env:ELIZA_MSIX_STORE_CERT_PASSWORD
 if ($buildVariant -eq "store" -and $storeCertPath -and (Test-Path $storeCertPath)) {
   $useStoreCert = $true
 }
@@ -201,7 +201,7 @@ if ($env:SKIP_MSIX_SIGN -or ($azureSigning -and -not $certBase64 -and -not $useS
 }
 
 if ($useStoreCert) {
-  Write-Host "Signing store MSIX with MILADY_MSIX_STORE_CERT_PATH"
+  Write-Host "Signing store MSIX with ELIZA_MSIX_STORE_CERT_PATH"
   & $signtool sign /f $storeCertPath /p $storeCertPassword /fd sha256 /tr $timestampUrl /td sha256 /v $msixOutput
   if ($LASTEXITCODE -ne 0) {
     Write-Error "Failed to sign MSIX package with store cert"

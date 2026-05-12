@@ -1,7 +1,7 @@
 // quants-polar.c - PolarQuant Q4 weight quant: scalar + AVX2 + NEON.
 //
 // Behavioural source of truth: the standalone reference library at
-//   packages/native-plugins/polarquant-cpu/   (in the milady repo)
+//   packages/native-plugins/polarquant-cpu/   (in the eliza repo)
 // which carries the unit tests + SIMD-vs-scalar parity gates.  This
 // TU is the in-fork transcription that compiles into libggml-cpu.so.
 //

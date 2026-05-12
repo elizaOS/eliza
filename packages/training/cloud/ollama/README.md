@@ -36,7 +36,7 @@ blob.
 ollama run eliza-1-9b
 ```
 
-Or expose to Milady:
+Or expose to Eliza:
 
 ```bash
 # .env
@@ -45,7 +45,7 @@ OLLAMA_LARGE_MODEL=eliza-1-9b
 OLLAMA_SMALL_MODEL=eliza-1-2b
 ```
 
-When the `@elizaos/plugin-ollama` plugin is enabled, Milady sends
+When the `@elizaos/plugin-ollama` plugin is enabled, Eliza sends
 `TEXT_LARGE` requests to the model named in `OLLAMA_LARGE_MODEL` and
 `TEXT_SMALL` requests to the model named in `OLLAMA_SMALL_MODEL`.
 

@@ -45,7 +45,7 @@ export const CUDA_KERNEL_FILES = ["fused-attn-qjl-tbq.cu"];
 // (consumed by build-llama-cpp-dflash.mjs's `backend === "cuda"` branch).
 export const CUDA_KERNEL_CMAKE_FLAGS = ["-DGGML_CUDA_FUSED_ATTN_QJL=ON"];
 
-const SENTINEL = "// MILADY-CUDA-KERNEL-PATCH-V1";
+const SENTINEL = "// ELIZA-CUDA-KERNEL-PATCH-V1";
 
 function assertStandalonesPresent() {
   const missing = [];

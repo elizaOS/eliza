@@ -25,7 +25,7 @@ Usage::
 
     # Real run (needs the elizaOS/llama.cpp v1.0.0-eliza checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
-    HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp \\
+    HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/eliza-llama.cpp \\
         uv run python scripts/optimize_for_eliza1.py \\
             --base-model elizaos/eliza-1-0_6b \\
             --output-dir checkpoints/eliza-1-0_6b \\
@@ -429,7 +429,7 @@ def _resolve_convert_script(llama_cpp_dir: Path | None) -> Path:
         return Path(which)
     raise FileNotFoundError(
         "convert_hf_to_gguf.py not found. Either pass --llama-cpp-dir or set "
-        "LLAMA_CPP_DIR=$HOME/src/milady-llama.cpp (the elizaOS/llama.cpp "
+        "LLAMA_CPP_DIR=$HOME/src/eliza-llama.cpp (the elizaOS/llama.cpp "
         "v1.0.0-eliza checkout)."
     )
 

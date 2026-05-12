@@ -309,7 +309,7 @@ export interface CatalogModel {
   /**
    * Provenance for the Eliza-1 v1 release shape (`releaseState=base-v1`):
    * Eliza-1 v1 is the upstream BASE models — GGUF-converted via the
-   * elizaOS/llama.cpp fork and fully Milady-optimized (every quant/kernel
+   * elizaOS/llama.cpp fork and fully Eliza-optimized (every quant/kernel
    * trick in `packages/inference/AGENTS.md` §3) — but NOT fine-tuned.
    * Each entry records which upstream HF repo every shipped bundle
    * component comes from. The keys are the bundle's component slots; the

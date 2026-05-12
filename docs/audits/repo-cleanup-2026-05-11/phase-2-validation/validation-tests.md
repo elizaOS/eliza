@@ -2,7 +2,7 @@
 
 Date: 2026-05-11
 Worker: Phase 2 validation worker C
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Bun: `/Users/shawwalters/.bun/bin/bun` version `1.3.13`
 
 ## Summary

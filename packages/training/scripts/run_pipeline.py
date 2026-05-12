@@ -86,7 +86,7 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
     """Locate the elizaOS/llama.cpp fork (Q4_POLAR / QJL1_256 / dflash GGML
     types). Order: $LLAMA_CPP_DIR → in-repo fork submodule
     (packages/inference/llama.cpp) → ~/.cache/eliza-dflash/eliza-llama-cpp →
-    ~/src/milady-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
+    ~/src/eliza-llama.cpp. Returns None if none has a convert_hf_to_gguf.py."""
     import os
     cands: list[Path] = []
     env = os.environ.get("LLAMA_CPP_DIR")
@@ -99,7 +99,7 @@ def _resolve_eliza1_llama_cpp() -> Path | None:
             break
     cands += [
         Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp",
-        Path.home() / "src" / "milady-llama.cpp",
+        Path.home() / "src" / "eliza-llama.cpp",
     ]
     for c in cands:
         if (c / "convert_hf_to_gguf.py").is_file():

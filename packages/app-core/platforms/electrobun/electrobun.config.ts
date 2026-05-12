@@ -225,7 +225,7 @@ function resolveBrandConfigCopySource({
 		appId,
 		urlScheme,
 		buildVariant:
-			process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct",
+			process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
 		namespace: namespace || fileConfig.namespace || "elizaos",
 		configDirName,
 		...(appDescription
@@ -254,7 +254,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 	const runtimeDistDir =
 		(process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
 	const buildVariant: "store" | "direct" =
-		process.env.MILADY_BUILD_VARIANT === "store" ? "store" : "direct";
+		process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
 	const brandConfigCopySource = resolveBrandConfigCopySource({
 		appName,
 		appId,
@@ -363,7 +363,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					process.env.ELIZA_ELECTROBUN_NOTARIZE !== "0",
 				defaultRenderer: "native",
 				icons: "assets/appIcon.iconset",
-				// Entitlements are selected by the MILADY_BUILD_VARIANT axis:
+				// Entitlements are selected by the ELIZA_BUILD_VARIANT axis:
 				// - "store": parsed from entitlements/mas.entitlements; turns on
 				//   com.apple.security.app-sandbox for Mac App Store distribution.
 				// - "direct" (default): inline hardened-runtime entitlements with
@@ -372,8 +372,8 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				// Child-process entitlements (mas-child.entitlements with
 				// com.apple.security.inherit) are applied after this packaging
 				// step by codesign-mas.mjs, which walks the bundle bottom-up.
-				// See scripts/codesign-mas.mjs. Set MILADY_MAS_SIGNING_IDENTITY
-				// in the build env (and optionally MILADY_MAS_INSTALLER_IDENTITY
+				// See scripts/codesign-mas.mjs. Set ELIZA_MAS_SIGNING_IDENTITY
+				// in the build env (and optionally ELIZA_MAS_INSTALLER_IDENTITY
 				// for productbuild).
 				entitlements:
 					buildVariant === "store"

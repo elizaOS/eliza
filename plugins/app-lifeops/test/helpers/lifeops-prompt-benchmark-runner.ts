@@ -443,8 +443,8 @@ async function runSinglePromptBenchmarkCase(args: {
 
   // Tag every trajectory landed during this case so the aggregator can
   // group per-case JSONL bundles.
-  const previousScenarioId = process.env.MILADY_LIFEOPS_SCENARIO_ID;
-  process.env.MILADY_LIFEOPS_SCENARIO_ID = args.testCase.caseId;
+  const previousScenarioId = process.env.ELIZA_LIFEOPS_SCENARIO_ID;
+  process.env.ELIZA_LIFEOPS_SCENARIO_ID = args.testCase.caseId;
 
   try {
     args.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", harness.userId, false);
@@ -512,9 +512,9 @@ async function runSinglePromptBenchmarkCase(args: {
   } finally {
     await harness.cleanup();
     if (previousScenarioId === undefined) {
-      delete process.env.MILADY_LIFEOPS_SCENARIO_ID;
+      delete process.env.ELIZA_LIFEOPS_SCENARIO_ID;
     } else {
-      process.env.MILADY_LIFEOPS_SCENARIO_ID = previousScenarioId;
+      process.env.ELIZA_LIFEOPS_SCENARIO_ID = previousScenarioId;
     }
   }
 }
@@ -755,7 +755,7 @@ export async function createLifeOpsPromptBenchmarkRuntime(args?: {
       if (fallback.source === "ollama-default" && !process.env.PARALLAX_OPENCODE_BASE_URL) {
         throw new Error(
           "MODEL_TIER=small|mid requires the dflash llama-cpp fork at " +
-            "~/.cache/eliza-dflash/milady-llama-cpp or PARALLAX_OPENCODE_BASE_URL " +
+            "~/.cache/eliza-dflash/eliza-llama-cpp or PARALLAX_OPENCODE_BASE_URL " +
             "pointing at a local OpenAI-compatible endpoint. Neither was found.",
         );
       }

@@ -2,7 +2,7 @@
 
 Date: 2026-05-11
 Worker: Phase 2 validation worker A
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Bun binary: `/Users/shawwalters/.bun/bin/bun`
 
 ## Result

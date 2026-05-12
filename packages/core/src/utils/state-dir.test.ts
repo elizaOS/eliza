@@ -14,31 +14,31 @@ const FAKE_HOME = "/fake/home";
 const fakeHomedir = () => FAKE_HOME;
 
 describe("resolveStateDir", () => {
-	it("honors MILADY_STATE_DIR over ELIZA_STATE_DIR and namespace default", () => {
+	it("honors ELIZA_STATE_DIR over ELIZA_STATE_DIR and namespace default", () => {
 		expect(
 			resolveStateDir(
 				{
-					MILADY_STATE_DIR: "/tmp/foo",
+					ELIZA_STATE_DIR: "/tmp/foo",
 					ELIZA_STATE_DIR: "/tmp/bar",
-					ELIZA_NAMESPACE: "milady",
+					ELIZA_NAMESPACE: "eliza",
 				},
 				fakeHomedir,
 			),
 		).toBe("/tmp/foo");
 	});
 
-	it("honors ELIZA_STATE_DIR when MILADY_STATE_DIR is unset", () => {
+	it("honors ELIZA_STATE_DIR when ELIZA_STATE_DIR is unset", () => {
 		expect(
 			resolveStateDir(
-				{ ELIZA_STATE_DIR: "/tmp/bar", ELIZA_NAMESPACE: "milady" },
+				{ ELIZA_STATE_DIR: "/tmp/bar", ELIZA_NAMESPACE: "eliza" },
 				fakeHomedir,
 			),
 		).toBe("/tmp/bar");
 	});
 
 	it("derives ~/.<namespace> from ELIZA_NAMESPACE when no override is set", () => {
-		expect(resolveStateDir({ ELIZA_NAMESPACE: "milady" }, fakeHomedir)).toBe(
-			join(FAKE_HOME, ".milady"),
+		expect(resolveStateDir({ ELIZA_NAMESPACE: "eliza" }, fakeHomedir)).toBe(
+			join(FAKE_HOME, ".eliza"),
 		);
 	});
 
@@ -49,14 +49,14 @@ describe("resolveStateDir", () => {
 	it("treats whitespace-only env values as unset", () => {
 		expect(
 			resolveStateDir(
-				{ MILADY_STATE_DIR: "   ", ELIZA_STATE_DIR: "/tmp/bar" },
+				{ ELIZA_STATE_DIR: "   ", ELIZA_STATE_DIR: "/tmp/bar" },
 				fakeHomedir,
 			),
 		).toBe("/tmp/bar");
 	});
 
 	it("expands a leading ~ in env overrides via the real homedir", () => {
-		const result = resolveStateDir({ MILADY_STATE_DIR: "~/custom" });
+		const result = resolveStateDir({ ELIZA_STATE_DIR: "~/custom" });
 		expect(result.endsWith("/custom")).toBe(true);
 		expect(result.startsWith("/")).toBe(true);
 	});
@@ -68,13 +68,13 @@ describe("getElizaNamespace", () => {
 	});
 
 	it("returns the override when ELIZA_NAMESPACE is set", () => {
-		expect(getElizaNamespace({ ELIZA_NAMESPACE: "milady" })).toBe("milady");
+		expect(getElizaNamespace({ ELIZA_NAMESPACE: "eliza" })).toBe("eliza");
 	});
 });
 
 describe("resolveOAuthDir", () => {
 	it("defaults to <state-dir>/credentials", () => {
-		expect(resolveOAuthDir({ MILADY_STATE_DIR: "/tmp/foo" })).toBe(
+		expect(resolveOAuthDir({ ELIZA_STATE_DIR: "/tmp/foo" })).toBe(
 			"/tmp/foo/credentials",
 		);
 	});
@@ -82,7 +82,7 @@ describe("resolveOAuthDir", () => {
 	it("honors ELIZA_OAUTH_DIR override", () => {
 		expect(
 			resolveOAuthDir({
-				MILADY_STATE_DIR: "/tmp/foo",
+				ELIZA_STATE_DIR: "/tmp/foo",
 				ELIZA_OAUTH_DIR: "/tmp/oauth-elsewhere",
 			}),
 		).toBe("/tmp/oauth-elsewhere");

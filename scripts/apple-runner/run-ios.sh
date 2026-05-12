@@ -12,7 +12,7 @@
 #
 # Env knobs (all optional):
 #   APPLE_RUNNER_REPO          fork remote (default: elizaOS/llama.cpp)
-#   APPLE_RUNNER_REF           tag/branch/SHA (default: v0.1.0-milady)
+#   APPLE_RUNNER_REF           tag/branch/SHA (default: v0.1.0-eliza)
 #   APPLE_RUNNER_FALLBACK_REF  fallback ref (default: master)
 #   APPLE_RUNNER_ELIZA1_GGUF   absolute path to Eliza-1 mobile GGUF
 #   APPLE_RUNNER_SIM_DEVICE    sim device name (default: "iPhone 15")
@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 cd "${REPO_ROOT}"
 
 APPLE_RUNNER_REPO="${APPLE_RUNNER_REPO:-https://github.com/elizaOS/llama.cpp.git}"
-APPLE_RUNNER_REF="${APPLE_RUNNER_REF:-v0.1.0-milady}"
+APPLE_RUNNER_REF="${APPLE_RUNNER_REF:-v0.1.0-eliza}"
 APPLE_RUNNER_FALLBACK_REF="${APPLE_RUNNER_FALLBACK_REF:-master}"
 APPLE_RUNNER_SIM_DEVICE="${APPLE_RUNNER_SIM_DEVICE:-iPhone 15}"
 

@@ -10,7 +10,7 @@ const OVERLAY_REGISTRY_KEY = "__elizaosOverlayAppRegistry__";
 
 const ELIZAOS_AOSP_UA =
   "Mozilla/5.0 (Linux; Android 15; sdk_gphone64_x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/124.0.6367.243 Mobile Safari/537.36 ElizaOS/dev-2026-01";
-const MILADYOS_AOSP_UA = `${ELIZAOS_AOSP_UA} MiladyOS/dev-2026-01`;
+const ELIZAOS_AOSP_UA = `${ELIZAOS_AOSP_UA} ElizaOS/dev-2026-01`;
 const STOCK_ANDROID_UA =
   "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.243 Mobile Safari/537.36";
 const DESKTOP_LINUX_UA =
@@ -83,10 +83,10 @@ describe("overlay-app-registry AOSP gating", () => {
     ]);
   });
 
-  it("shows androidOnly apps on MiladyOS (carries both ElizaOS and MiladyOS markers)", () => {
+  it("shows androidOnly apps on ElizaOS (carries both ElizaOS and ElizaOS markers)", () => {
     const apps = getAvailableOverlayApps({
       platform: "android",
-      userAgent: MILADYOS_AOSP_UA,
+      userAgent: ELIZAOS_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
       "@elizaos/app-companion",
@@ -106,7 +106,7 @@ describe("overlay-app-registry AOSP gating", () => {
       isAospAndroid({ platform: "android", userAgent: ELIZAOS_AOSP_UA }),
     ).toBe(true);
     expect(
-      isAospAndroid({ platform: "android", userAgent: MILADYOS_AOSP_UA }),
+      isAospAndroid({ platform: "android", userAgent: ELIZAOS_AOSP_UA }),
     ).toBe(true);
     expect(
       isAospAndroid({ platform: "android", userAgent: STOCK_ANDROID_UA }),

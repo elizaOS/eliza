@@ -18,7 +18,7 @@ const aiMocks = vi.hoisted(() => ({
 // because empty strings short-circuit `getSetting` to `""`, which is not
 // the same as "unset" for downstream callers.
 const ENV_KEYS_TO_CLEAR = [
-  "MILADY_PROVIDER",
+  "ELIZA_PROVIDER",
   "CEREBRAS_API_KEY",
   "OPENAI_SMALL_MODEL",
   "SMALL_MODEL",

@@ -26,9 +26,9 @@ describe("getCorsHeaders", () => {
       expect(headers["Access-Control-Allow-Origin"]).toBe("https://www.eliza.ai");
     });
 
-    it("reflects the Milady homepage origin", () => {
-      const headers = getCorsHeaders("https://milady.ai");
-      expect(headers["Access-Control-Allow-Origin"]).toBe("https://milady.ai");
+    it("reflects the Eliza homepage origin", () => {
+      const headers = getCorsHeaders("https://eliza.ai");
+      expect(headers["Access-Control-Allow-Origin"]).toBe("https://eliza.ai");
     });
 
     it("sets Access-Control-Allow-Credentials for allowed origins", () => {

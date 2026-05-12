@@ -540,7 +540,7 @@ def convert_legacy(filename: str, out_task: str) -> tuple[int, int]:
 PERSONAS = ["alice", "bob", "carlos", "diana", "ethan", "fatima", "george",
             "hina", "ivan", "jin", "kira", "leo", "mia", "noah", "olivia",
             "priya", "quinn", "raj", "sofia", "tomas"]
-AGENTS = ["Milady", "Iris", "Kai", "Ava", "Nova", "Sage", "Atlas", "Lyra", "Lumi", "Rune"]
+AGENTS = ["Eliza", "Iris", "Kai", "Ava", "Nova", "Sage", "Atlas", "Lyra", "Lumi", "Rune"]
 
 
 def _uuid_like(seed: str) -> str:

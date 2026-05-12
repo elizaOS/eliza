@@ -56,13 +56,13 @@ public extension JSValue {
         if count == 0 { return Data() }
 
         let global = ctx.globalObject
-        let helper = global?.forProperty("__milady_uint8_to_array")
+        let helper = global?.forProperty("__eliza_uint8_to_array")
         if helper == nil || helper?.isUndefined == true {
-            let install = "globalThis.__milady_uint8_to_array = function(u){const o=new Array(u.length); for (let i=0;i<u.length;i++){o[i]=u[i]|0;} return o;};"
+            let install = "globalThis.__eliza_uint8_to_array = function(u){const o=new Array(u.length); for (let i=0;i<u.length;i++){o[i]=u[i]|0;} return o;};"
             ctx.evaluateScript(install)
         }
 
-        guard let arrayValue = ctx.evaluateScript("globalThis.__milady_uint8_to_array")?
+        guard let arrayValue = ctx.evaluateScript("globalThis.__eliza_uint8_to_array")?
             .call(withArguments: [self]),
               let nsArray = arrayValue.toArray() else {
             return nil
@@ -139,7 +139,7 @@ public extension JSContext {
         return result ?? JSValue(undefinedIn: self)
     }
 
-    /// Installs a host function on `globalThis.__MILADY_BRIDGE__[name]`.
+    /// Installs a host function on `globalThis.__ELIZA_BRIDGE__[name]`.
     /// `body` runs on the JSContext queue (the caller's thread).
     func installBridgeFunction(name: String, _ body: @escaping ([JSValue]) -> Any?) {
         let block: @convention(block) () -> Any? = {
@@ -147,10 +147,10 @@ public extension JSContext {
             return body(args)
         }
         let global = globalObject!
-        var bridge = global.forProperty("__MILADY_BRIDGE__")
+        var bridge = global.forProperty("__ELIZA_BRIDGE__")
         if bridge == nil || bridge?.isUndefined == true || bridge?.isNull == true {
-            evaluateScript("globalThis.__MILADY_BRIDGE__ = {};")
-            bridge = global.forProperty("__MILADY_BRIDGE__")
+            evaluateScript("globalThis.__ELIZA_BRIDGE__ = {};")
+            bridge = global.forProperty("__ELIZA_BRIDGE__")
         }
         bridge?.setObject(unsafeBitCast(block, to: AnyObject.self), forKeyedSubscript: name as NSString)
     }

@@ -1,7 +1,7 @@
 # Wave 01 - Search Pollution and Generated Artifacts Dry Run
 
 Date: 2026-05-11
-Workspace: `/Users/shawwalters/eliza-workspace/milady/eliza`
+Workspace: `/Users/shawwalters/eliza-workspace/eliza/eliza`
 Worker: Wave 1
 Mode: dry run only
 

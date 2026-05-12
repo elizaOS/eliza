@@ -1,7 +1,7 @@
 {
   "agent": "openclaw",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T190215Z_e42de904/personality-bench__personality_bench/run_personality_bench_20260511T190231Z_2_0177c44f/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T190215Z_e42de904/personality-bench__personality_bench/run_personality_bench_20260511T190231Z_2_0177c44f/output"
   ],
   "benchmark_directory": "personality-bench",
   "benchmark_id": "personality_bench",
@@ -61,7 +61,7 @@
     "throughput_per_second": 0.0
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T190215Z_e42de904/personality-bench__personality_bench/run_personality_bench_20260511T190231Z_2_0177c44f/output/report.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T190215Z_e42de904/personality-bench__personality_bench/run_personality_bench_20260511T190231Z_2_0177c44f/output/report.json",
   "run_group_id": "rg_20260511T190215Z_e42de904",
   "run_id": "run_personality_bench_20260511T190231Z_2_0177c44f",
   "score": 1.0,

@@ -2493,7 +2493,7 @@ def reasoning_cot(records, *, slug, license, split, encoder):
         )
 
 
-# ─────────────── nubilio trajectories (self-hosted milady bot) ──────────────
+# ─────────────── nubilio trajectories (self-hosted eliza bot) ──────────────
 
 # Filename → (task_type, available_actions)
 #
@@ -2731,7 +2731,7 @@ def _nubilio_response_to_dict(text: str) -> tuple[dict[str, Any] | list[Any] | N
 
 
 def nubilio_trajectories(records, *, slug, license, split, encoder):
-    """Cron-snapshot trajectories from the self-hosted nubilio milady bot.
+    """Cron-snapshot trajectories from the self-hosted nubilio eliza bot.
 
     Each line is `{"messages": [system, user, ..., assistant]}`. The
     assistant content is parsed (XML / JSON / YAML-thought) and re-encoded
@@ -3885,7 +3885,7 @@ REGISTRY: dict[str, Adapter] = {
     "dialogue_raw": dialogue_raw,
     # multi-party fantasy roleplay (Facebook LIGHT MultiLIGHT)
     "light_multilight": light_multilight,
-    # local milady corpora
+    # local eliza corpora
     "nubilio_trajectories": nubilio_trajectories,
     "scam_defense_corpus": scam_defense_corpus,
     # n8n workflow generation

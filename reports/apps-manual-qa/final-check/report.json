@@ -2,7 +2,7 @@
   {
     "vp": "desktop",
     "id": "tasks",
-    "file": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/final-check/desktop-tasks.png",
+    "file": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/final-check/desktop-tasks.png",
     "messages": [],
     "dom": {
       "text": [
@@ -19,7 +19,7 @@
   {
     "vp": "mobile",
     "id": "tasks",
-    "file": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/final-check/mobile-tasks.png",
+    "file": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/final-check/mobile-tasks.png",
     "messages": [],
     "dom": {
       "text": [
@@ -36,7 +36,7 @@
   {
     "vp": "mobile",
     "id": "shopify",
-    "file": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/final-check/mobile-shopify.png",
+    "file": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/final-check/mobile-shopify.png",
     "messages": [],
     "dom": {
       "text": [
@@ -61,7 +61,7 @@
   {
     "vp": "desktop",
     "id": "database",
-    "file": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/final-check/desktop-database.png",
+    "file": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/final-check/desktop-database.png",
     "messages": [],
     "dom": {
       "text": [
@@ -86,7 +86,7 @@
   {
     "vp": "mobile",
     "id": "lifeops",
-    "file": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/final-check/mobile-lifeops.png",
+    "file": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/final-check/mobile-lifeops.png",
     "messages": [],
     "dom": {
       "text": [
@@ -125,7 +125,7 @@
   {
     "vp": "mobile",
     "id": "inventory",
-    "file": "/Users/shawwalters/eliza-workspace/milady/eliza/reports/apps-manual-qa/final-check/mobile-inventory.png",
+    "file": "/Users/shawwalters/eliza-workspace/eliza/eliza/reports/apps-manual-qa/final-check/mobile-inventory.png",
     "messages": [],
     "dom": {
       "text": [

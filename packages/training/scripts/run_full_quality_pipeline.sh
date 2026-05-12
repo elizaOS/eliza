@@ -31,7 +31,7 @@
 #   bash scripts/run_full_quality_pipeline.sh
 #
 # Environment:
-#   MILADY_INTEGRATE_TRIVIAL=1   integrate round-3 thought replacements (req:
+#   ELIZA_INTEGRATE_TRIVIAL=1   integrate round-3 thought replacements (req:
 #                                round-3 finished)
 
 set -euo pipefail

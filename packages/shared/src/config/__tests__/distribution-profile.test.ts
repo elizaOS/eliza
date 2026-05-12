@@ -10,31 +10,31 @@ describe("distribution profile", () => {
   it("defaults to unrestricted when env is unset or empty", () => {
     expect(resolveDistributionProfile({})).toBe("unrestricted");
     expect(
-      resolveDistributionProfile({ MILADY_DISTRIBUTION_PROFILE: "" }),
+      resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "" }),
     ).toBe("unrestricted");
     expect(
-      resolveDistributionProfile({ MILADY_DISTRIBUTION_PROFILE: "   " }),
+      resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "   " }),
     ).toBe("unrestricted");
   });
 
   it("accepts known profiles case-insensitively", () => {
     expect(
-      resolveDistributionProfile({ MILADY_DISTRIBUTION_PROFILE: "store" }),
+      resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "store" }),
     ).toBe("store");
     expect(
-      resolveDistributionProfile({ MILADY_DISTRIBUTION_PROFILE: "STORE" }),
+      resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "STORE" }),
     ).toBe("store");
     expect(
       resolveDistributionProfile({
-        MILADY_DISTRIBUTION_PROFILE: "Unrestricted",
+        ELIZA_DISTRIBUTION_PROFILE: "Unrestricted",
       }),
     ).toBe("unrestricted");
   });
 
   it("throws on unknown profiles rather than silently defaulting", () => {
     expect(() =>
-      resolveDistributionProfile({ MILADY_DISTRIBUTION_PROFILE: "yolo" }),
-    ).toThrow(/Invalid MILADY_DISTRIBUTION_PROFILE=yolo/);
+      resolveDistributionProfile({ ELIZA_DISTRIBUTION_PROFILE: "yolo" }),
+    ).toThrow(/Invalid ELIZA_DISTRIBUTION_PROFILE=yolo/);
   });
 
   it("isDistributionProfile only accepts canonical values", () => {

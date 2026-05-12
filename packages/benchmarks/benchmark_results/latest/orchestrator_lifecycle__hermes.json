@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/orchestrator_lifecycle__orchestrator_lifecycle/run_orchestrator_lifecycle_20260511T132447Z_2_272e2973/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/orchestrator_lifecycle__orchestrator_lifecycle/run_orchestrator_lifecycle_20260511T132447Z_2_272e2973/output"
   ],
   "benchmark_directory": "orchestrator_lifecycle",
   "benchmark_id": "orchestrator_lifecycle",
@@ -54,7 +54,7 @@
     "throughput_per_second": 0.308480395991728
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/orchestrator_lifecycle__orchestrator_lifecycle/run_orchestrator_lifecycle_20260511T132447Z_2_272e2973/output/orchestrator-lifecycle-20260511_062454.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T132427Z_fe2782c9/orchestrator_lifecycle__orchestrator_lifecycle/run_orchestrator_lifecycle_20260511T132447Z_2_272e2973/output/orchestrator-lifecycle-20260511_062454.json",
   "run_group_id": "rg_20260511T132427Z_fe2782c9",
   "run_id": "run_orchestrator_lifecycle_20260511T132447Z_2_272e2973",
   "score": 0.5,

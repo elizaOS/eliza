@@ -1,6 +1,6 @@
 # Calendar benchmark deep-dive — W5-cal
 
-> Source run: `~/.milady/runs/lifeops/lifeops-multiagent-best/`
+> Source run: `~/.eliza/runs/lifeops/lifeops-multiagent-best/`
 > Scope: 25 calendar scenarios × 3 harnesses (eliza, hermes, openclaw) × gpt-oss-120b
 > All numbers come from the saved per-scenario JSON; no fresh bench was run.
 

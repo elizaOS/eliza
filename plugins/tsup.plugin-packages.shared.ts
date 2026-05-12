@@ -4,7 +4,7 @@ import path from "node:path";
 function resolvePackageRoot(): string {
   // CWD wins when it points at a real package directory. A parent
   // process's `npm_package_json` env leaks into spawned children
-  // (e.g. setup-upstreams runs `bun run build` from the milady root with
+  // (e.g. setup-upstreams runs `bun run build` from the eliza root with
   // `cwd: <plugin>`), which would otherwise send us walking the wrong
   // package's `src/`. Trust cwd's package.json before the env hint.
   const cwd = process.cwd();

@@ -1,7 +1,7 @@
 {
   "agent": "hermes",
   "artifacts": [
-    "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/webshop__webshop/run_webshop_20260511T133925Z_2_8bb8e852/output"
+    "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/webshop__webshop/run_webshop_20260511T133925Z_2_8bb8e852/output"
   ],
   "benchmark_directory": "webshop",
   "benchmark_id": "webshop",
@@ -57,7 +57,7 @@
     "throughput_per_second": 0.16945725819311475
   },
   "provider": "cerebras",
-  "result_json_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/webshop__webshop/run_webshop_20260511T133925Z_2_8bb8e852/output/webshop-results.json",
+  "result_json_path": "/Users/shawwalters/eliza-workspace/eliza/eliza/packages/benchmarks/benchmark_results/rg_20260511T133925Z_b17ad294/webshop__webshop/run_webshop_20260511T133925Z_2_8bb8e852/output/webshop-results.json",
   "run_group_id": "rg_20260511T133925Z_b17ad294",
   "run_id": "run_webshop_20260511T133925Z_2_8bb8e852",
   "score": 0.0,

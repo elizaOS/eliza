@@ -27,7 +27,7 @@
  *   2. Load all `*.scenario.ts` under `test/scenarios/personality/` via
  *      `scripts/personality-bench-load-scenarios.ts` (bun-run helper).
  *   3. For each agent in `agents`:
- *      a. Make `~/.milady/runs/personality/personality-<agent>-<runId>/`.
+ *      a. Make `~/.eliza/runs/personality/personality-<agent>-<runId>/`.
  *      b. For each scenario, replay its `turns` (user messages, in order)
  *         through Cerebras with the agent's system prompt. Each turn is
  *         a fresh /chat/completions call with full conversation history.
@@ -37,22 +37,22 @@
  *      d. Walk the run-dir and grade every scenario via `gradeScenario()`.
  *      e. Emit per-agent `report.md` and `verdicts.json`.
  *   4. After all agents: aggregate into
- *      `~/.milady/runs/personality/personality-multiagent-<runId>/report.md`.
+ *      `~/.eliza/runs/personality/personality-multiagent-<runId>/report.md`.
  *
  * Env knobs (all optional — defaults make the bare command work):
  *
- *   MILADY_PERSONALITY_AGENT       all|eliza|hermes|openclaw|eliza-runtime   (default: all)
- *   MILADY_PERSONALITY_LIMIT       int                          (default: 200)
- *   MILADY_PERSONALITY_MODEL       Cerebras model id            (default: gpt-oss-120b)
- *   MILADY_PERSONALITY_CONCURRENCY int                          (default: 1)
- *   MILADY_PERSONALITY_SCENARIO_DIR override scenario root     (default: test/scenarios/personality)
+ *   ELIZA_PERSONALITY_AGENT       all|eliza|hermes|openclaw|eliza-runtime   (default: all)
+ *   ELIZA_PERSONALITY_LIMIT       int                          (default: 200)
+ *   ELIZA_PERSONALITY_MODEL       Cerebras model id            (default: gpt-oss-120b)
+ *   ELIZA_PERSONALITY_CONCURRENCY int                          (default: 1)
+ *   ELIZA_PERSONALITY_SCENARIO_DIR override scenario root     (default: test/scenarios/personality)
  *   CEREBRAS_API_KEY               (required)                   Sourced from eliza/.env.
  *   CEREBRAS_BASE_URL              (default: https://api.cerebras.ai/v1)
  *   PERSONALITY_JUDGE_ENABLE_LLM   judge env (auto when key set; pass `0` to disable)
  *   PERSONALITY_JUDGE_STRICT       judge env (0/1)
  *
  * Output layout:
- *   ~/.milady/runs/personality/
+ *   ~/.eliza/runs/personality/
  *     personality-eliza-<runId>/        per-agent run dir
  *       scenarios/<scenarioId>.json     one per scenario (PersonalityScenario shape)
  *       verdicts.json                   per-scenario verdicts
@@ -130,13 +130,13 @@ function envStr(name, fallback) {
   return v === undefined || v === "" ? fallback : v;
 }
 
-const cliAgent = envStr("MILADY_PERSONALITY_AGENT", "all");
-const scenarioLimit = envInt("MILADY_PERSONALITY_LIMIT", 200);
-const model = envStr("MILADY_PERSONALITY_MODEL", "gpt-oss-120b");
-const concurrency = envInt("MILADY_PERSONALITY_CONCURRENCY", 1);
+const cliAgent = envStr("ELIZA_PERSONALITY_AGENT", "all");
+const scenarioLimit = envInt("ELIZA_PERSONALITY_LIMIT", 200);
+const model = envStr("ELIZA_PERSONALITY_MODEL", "gpt-oss-120b");
+const concurrency = envInt("ELIZA_PERSONALITY_CONCURRENCY", 1);
 const scenarioRoot = resolve(
   REPO_ROOT,
-  envStr("MILADY_PERSONALITY_SCENARIO_DIR", "test/scenarios/personality"),
+  envStr("ELIZA_PERSONALITY_SCENARIO_DIR", "test/scenarios/personality"),
 );
 
 let agents;
@@ -146,7 +146,7 @@ if (cliAgent === "all") {
   agents = [cliAgent];
 } else {
   console.error(
-    `[personality-bench-run] unknown MILADY_PERSONALITY_AGENT=${cliAgent}; valid: all | ${AGENT_ORDER.join(" | ")}`,
+    `[personality-bench-run] unknown ELIZA_PERSONALITY_AGENT=${cliAgent}; valid: all | ${AGENT_ORDER.join(" | ")}`,
   );
   process.exit(2);
 }
@@ -164,7 +164,7 @@ const cerebrasBaseUrl = (
 
 const RUN_TS = Date.now();
 const RUN_ID = `${RUN_TS}`;
-const PERSONALITY_RUNS_DIR = join(homedir(), ".milady", "runs", "personality");
+const PERSONALITY_RUNS_DIR = join(homedir(), ".eliza", "runs", "personality");
 mkdirSync(PERSONALITY_RUNS_DIR, { recursive: true });
 
 console.log(`[personality-bench-run] RUN_ID=${RUN_ID}`);
@@ -398,7 +398,7 @@ console.log(
   `[personality-bench-run] loaded ${allScenariosRaw.length} scenarios from ${scenarioRoot}`,
 );
 
-// Interleave by bucket so `MILADY_PERSONALITY_LIMIT=5` gives bucket
+// Interleave by bucket so `ELIZA_PERSONALITY_LIMIT=5` gives bucket
 // coverage instead of 5 escalations. Within a bucket we keep the
 // loader's (filename-sorted) order.
 const BUCKETS_ORDERED = [
@@ -703,7 +703,7 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     CEREBRAS_API_KEY: cerebrasApiKey,
     OPENAI_BASE_URL: cerebrasBaseUrl,
     OPENAI_API_KEY: cerebrasApiKey,
-    MILADY_PROVIDER: "cerebras",
+    ELIZA_PROVIDER: "cerebras",
     BENCHMARK_MODEL_PROVIDER: "cerebras",
     OPENAI_LARGE_MODEL: model,
     OPENAI_SMALL_MODEL: model,
@@ -713,7 +713,7 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     MEDIUM_MODEL: model,
     ADVANCED_CAPABILITIES: "true",
     // W1-9 fix — keep planner deterministic for benchmark turns.
-    MILADY_BENCH_FORCE_TOOL_CALL: process.env.MILADY_BENCH_FORCE_TOOL_CALL ?? "1",
+    ELIZA_BENCH_FORCE_TOOL_CALL: process.env.ELIZA_BENCH_FORCE_TOOL_CALL ?? "1",
     ...extraEnv,
   };
 
@@ -746,7 +746,7 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
   });
 
   const healthDeadlineMs = Number(
-    process.env.MILADY_PERSONALITY_RUNTIME_HEALTH_MS ?? 120_000,
+    process.env.ELIZA_PERSONALITY_RUNTIME_HEALTH_MS ?? 120_000,
   );
   try {
     await waitForHealth(baseUrl, token, healthDeadlineMs);
@@ -1105,7 +1105,7 @@ async function runScenarioForAgent(scenario, agent, modelName) {
 // ─────────────────────────────────────────────────────────────────────────
 // Bounded-concurrency driver. Sequential per agent (concurrency=1) is the
 // default — Cerebras quotas + clarity. Operator can bump
-// MILADY_PERSONALITY_CONCURRENCY for parallel scenarios within one agent.
+// ELIZA_PERSONALITY_CONCURRENCY for parallel scenarios within one agent.
 // Sequential ACROSS agents always (shared quota).
 // ─────────────────────────────────────────────────────────────────────────
 async function runWithConcurrency(items, worker, conc) {

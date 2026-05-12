@@ -1,7 +1,7 @@
 # Cerebras backoff + lower default concurrency (W4-C)
 
 W2-9 observed 3/25 hermes scenarios erroring with Cerebras HTTP 429
-(rate-limit) at `MILADY_BENCH_CONCURRENCY=4`. This pass adds exponential
+(rate-limit) at `ELIZA_BENCH_CONCURRENCY=4`. This pass adds exponential
 backoff with `Retry-After` honored to all three Cerebras-facing adapter
 clients and lowers the default concurrency to 2.
 
@@ -63,7 +63,7 @@ ships its own copy of the helper module to preserve package isolation —
 - `packages/benchmarks/lifeops-bench/eliza_lifeops_bench/__main__.py`
   - `--concurrency` default: **4 → 2**.
 - `scripts/lifeops-full-run.mjs`
-  - `MILADY_BENCH_CONCURRENCY` default: **4 → 2**.
+  - `ELIZA_BENCH_CONCURRENCY` default: **4 → 2**.
   - Documented the rationale at the env-var declaration and at the
     `envInt(...)` call site.
 
@@ -120,7 +120,7 @@ points.
 | Setting | Before | After |
 | --- | --- | --- |
 | `lifeops-bench --concurrency` default | 4 | **2** |
-| `MILADY_BENCH_CONCURRENCY` env default in `scripts/lifeops-full-run.mjs` | 4 | **2** |
+| `ELIZA_BENCH_CONCURRENCY` env default in `scripts/lifeops-full-run.mjs` | 4 | **2** |
 
 Operators running non-Cerebras providers (Anthropic, OpenAI, local
 llama.cpp) can still raise the value back to 4+ via `--concurrency` or the

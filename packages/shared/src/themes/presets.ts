@@ -158,5 +158,5 @@ export const ELIZA_DEFAULT_THEME: ThemeDefinition = {
   },
 };
 
-// TODO: replace with real Milady palette
-export const MILADY_DEFAULT_THEME: ThemeDefinition = ELIZA_DEFAULT_THEME;
+// TODO: replace with real Eliza palette
+export const ELIZA_DEFAULT_THEME: ThemeDefinition = ELIZA_DEFAULT_THEME;

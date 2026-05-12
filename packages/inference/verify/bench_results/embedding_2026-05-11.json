@@ -12,7 +12,7 @@
   "backends": {
     "cpu": {
       "backend": "cpu",
-      "binary": "/home/shaw/.cache/eliza-dflash/milady-llama-cpp/build/linux-x64-cpu/bin/llama-server",
+      "binary": "/home/shaw/.cache/eliza-dflash/eliza-llama-cpp/build/linux-x64-cpu/bin/llama-server",
       "threads": 24,
       "coldLoadMs": 1398,
       "peakRssMb": 1635.4,
@@ -43,7 +43,7 @@
     },
     "cpu_contended": {
       "backend": "cpu",
-      "binary": "/home/shaw/.cache/eliza-dflash/milady-llama-cpp/build/linux-x64-cpu/bin/llama-server",
+      "binary": "/home/shaw/.cache/eliza-dflash/eliza-llama-cpp/build/linux-x64-cpu/bin/llama-server",
       "threads": 24,
       "coldLoadMs": 1555,
       "peakRssMb": 1635.5,
@@ -74,7 +74,7 @@
     },
     "vulkan": {
       "backend": "vulkan",
-      "binary": "/home/shaw/.cache/eliza-dflash/milady-llama-cpp/build/linux-x64-vulkan/bin/llama-server",
+      "binary": "/home/shaw/.cache/eliza-dflash/eliza-llama-cpp/build/linux-x64-vulkan/bin/llama-server",
       "threads": 24,
       "coldLoadMs": 3549,
       "peakRssMb": 503.7,
@@ -105,7 +105,7 @@
     },
     "cuda": {
       "backend": "cuda",
-      "binary": "/home/shaw/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0/build-cuda/bin/llama-server",
+      "binary": "/home/shaw/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0/build-cuda/bin/llama-server",
       "threads": 24,
       "coldLoadMs": 21139,
       "peakRssMb": 2153.9,

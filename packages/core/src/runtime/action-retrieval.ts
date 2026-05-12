@@ -34,7 +34,7 @@ export type RetrieveActionsInput = {
 	/**
 	 * When `true`, capture each stage's full pre-fusion output and emit it
 	 * in `response.measurement`. Default `false` — no allocation cost in
-	 * production. Toggle via the `MILADY_RETRIEVAL_MEASUREMENT=1` env var
+	 * production. Toggle via the `ELIZA_RETRIEVAL_MEASUREMENT=1` env var
 	 * on the caller side.
 	 */
 	measurementMode?: boolean;
@@ -161,7 +161,7 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 };
 
 // Cerebras "compress" mode caps top-K at 8 regardless of tier default.
-// When `MILADY_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
+// When `ELIZA_PROMPT_COMPRESS=1` is set we trade retrieval breadth for a
 // tighter token budget on the available-actions block.
 const COMPRESS_MODE_TOP_K_CAP = 8;
 
@@ -174,7 +174,7 @@ function resolveTierOverridesFromEnv():
 			: undefined;
 	const compress =
 		typeof process !== "undefined" &&
-		process.env?.MILADY_PROMPT_COMPRESS === "1";
+		process.env?.ELIZA_PROMPT_COMPRESS === "1";
 	if (
 		raw !== "small" &&
 		raw !== "mid" &&

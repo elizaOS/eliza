@@ -63,7 +63,7 @@ function isTruthyEnv(value: string | undefined): boolean {
 }
 
 function isStoreBuild(): boolean {
-  const variant = process.env.MILADY_BUILD_VARIANT ?? process.env.ELIZA_BUILD_VARIANT ?? "";
+  const variant = process.env.ELIZA_BUILD_VARIANT ?? process.env.MILADY_BUILD_VARIANT ?? "";
   return variant.trim().toLowerCase() === "store";
 }
 

@@ -38,7 +38,7 @@ When picking this up, run `git status` and `git log` first. If patches/ is commi
 
 ## 3. Current architecture (snapshot, late April 2026)
 
-The `eliza/` submodule is the entire upstream elizaOS monorepo, vendored into milady. It contains:
+The `eliza/` submodule is the entire upstream elizaOS monorepo, vendored into eliza. It contains:
 
 - **17 packages** under `eliza/packages/` (the runtime, agent, app-core, skills, prompts, shared, ui, vault, cloud-routing, scenario-runner, scenario-schema, schemas, etc.).
 - **67 plugins** under `eliza/plugins/` (anthropic, openai, telegram, discord, etc.).
@@ -47,14 +47,14 @@ The `eliza/` submodule is the entire upstream elizaOS monorepo, vendored into mi
 - **One platform package** — `@elizaos/electrobun` — under `eliza/packages/app-core/platforms/`.
 - **`@elizaos/cloud-sdk`** under `eliza/cloud/packages/sdk`.
 
-Root milady wiring into the submodule:
+Root eliza wiring into the submodule:
 
 - `package.json#workspaces` declares 7 globs, **all of them pointing into `eliza/`**.
 - `package.json#dependencies` carries 22 `@elizaos/*` entries pinned to `workspace:*`.
 - `package.json#overrides` carries another 8 `@elizaos/*` entries on `workspace:*`.
 - `package.json#scripts` has 287 entries; **78 of them call helpers under `eliza/packages/app-core/scripts/`**.
 
-The submodule is not a fork. It tracks `elizaOS/eliza#develop` directly, so removing it is purely a wiring change for milady, not a divergence resolution.
+The submodule is not a fork. It tracks `elizaOS/eliza#develop` directly, so removing it is purely a wiring change for eliza, not a divergence resolution.
 
 ---
 
@@ -84,7 +84,7 @@ Twelve plugins are already on npm at older alphas; they need a fresh publish tha
 - `@elizaos/plugin-agent-skills`
 - `@elizaos/plugin-commands`
 
-(Yes — count above is 17, not 12; the headline number is the count of plugins judged "currently published but stale." The full list is what milady actually consumes.)
+(Yes — count above is 17, not 12; the headline number is the count of plugins judged "currently published but stale." The full list is what eliza actually consumes.)
 
 ### 4.2 Plugin not on npm at all (1)
 
@@ -94,7 +94,7 @@ Twelve plugins are already on npm at older alphas; they need a fresh publish tha
 
 - `@elizaos/plugin-agent-orchestrator` — npm has `0.6.2-alpha.0`, but the submodule sits at `2.0.0-alpha.536`. Two options:
   1. elizaOS publishes a `2.0.0-alpha.*` lineage on the existing npm name, or
-  2. milady vendors a fork at `plugins/plugin-agent-orchestrator` (root-level, not inside the submodule).
+  2. eliza vendors a fork at `plugins/plugin-agent-orchestrator` (root-level, not inside the submodule).
 
 Pick option 1 if elizaOS is willing; option 2 only if it stalls.
 
@@ -104,7 +104,7 @@ Mobile builds will not link without these. Required:
 
 - `capacitor-agent`, `capacitor-appblocker`, `capacitor-camera`, `capacitor-canvas`, `capacitor-desktop`, `capacitor-gateway`, `capacitor-location`, `capacitor-messages`, `capacitor-mobile-signals`, `capacitor-screencapture`, `capacitor-swabble`, `capacitor-system`, `capacitor-talkmode`, `capacitor-websiteblocker`.
 
-Six others (`activity-tracker`, `contacts`, `llama`, `macosalarm`, `phone`, `wifi`) are present in the submodule but not imported by milady — safe to skip.
+Six others (`activity-tracker`, `contacts`, `llama`, `macosalarm`, `phone`, `wifi`) are present in the submodule but not imported by eliza — safe to skip.
 
 ### 4.5 Cloud packages not on npm (3)
 
@@ -118,13 +118,13 @@ Six others (`activity-tracker`, `contacts`, `llama`, `macosalarm`, `phone`, `wif
 
 ### 4.7 Apps not on npm at alpha (6 used)
 
-Milady actively consumes these six apps — the other 18 in `eliza/apps/` are not imported and can be ignored.
+Eliza actively consumes these six apps — the other 18 in `eliza/apps/` are not imported and can be ignored.
 
 - `app-companion`, `app-lifeops`, `app-steward`, `app-task-coordinator`, `app-training`, `app-vincent`.
 
 ### 4.8 Files-manifest gap on `@elizaos/app-core`
 
-`eliza/packages/app-core/package.json` has no `files` field. The npm tarball today ships compiled `.js` plus styling assets, but **does not** ship `scripts/` or `test/`. Milady needs both, so upstream must add `"scripts"` and `"test"` to its `files` array. That single change is what unblocks:
+`eliza/packages/app-core/package.json` has no `files` field. The npm tarball today ships compiled `.js` plus styling assets, but **does not** ship `scripts/` or `test/`. Eliza needs both, so upstream must add `"scripts"` and `"test"` to its `files` array. That single change is what unblocks:
 
 - The 24 generic helper scripts referenced from `package.json#scripts` (Phase 2B).
 - The seven shared vitest configs (Phase 2F).
@@ -153,7 +153,7 @@ Acceptance: `bun install` from a fresh checkout completes without any `workspace
 
 Today, `package.json#main` is `build/eliza/packages/app-core/src/index.js`, and `tsdown.config.ts` builds four entries from `eliza/packages/app-core/src/`. After the migration:
 
-- Add a new `src/entry.ts` at the milady root that re-exports / drives whatever the `@elizaos/app-core` npm tarball publishes.
+- Add a new `src/entry.ts` at the eliza root that re-exports / drives whatever the `@elizaos/app-core` npm tarball publishes.
 - Rewrite `tsdown.config.ts` to a single entry pointing at the new `src/entry.ts`.
 - Repoint `package.json#main` accordingly.
 
@@ -167,7 +167,7 @@ Of the 46 unique scripts referenced from `eliza/packages/app-core/scripts/`:
 
 - **24 generic** — keep upstream. Rewrite the invocations in `package.json#scripts` to `node node_modules/@elizaos/app-core/scripts/<name>.mjs`. This requires Phase 0's files-manifest fix to ship `scripts/` in the tarball.
 - **17 test-infra** — handled together with the vitest config relocation in Phase 2F.
-- **3 milady-specific** — move to milady's root `scripts/`:
+- **3 eliza-specific** — move to eliza's root `scripts/`:
   - `process-vrms.mjs`
   - `run-screenshotter.mjs`
   - `sync-desktop-renderer.mjs`
@@ -175,7 +175,7 @@ Of the 46 unique scripts referenced from `eliza/packages/app-core/scripts/`:
   - `docs-list.js`
   - `audit-server-test-surface`
 
-Once the script-side rewrite is done, the following 13 milady-side helper scripts under `scripts/` exist only to support the submodule and become deletable:
+Once the script-side rewrite is done, the following 13 eliza-side helper scripts under `scripts/` exist only to support the submodule and become deletable:
 
 - `init-submodules.mjs`
 - `apply-eliza-ci-patches.mjs`
@@ -200,7 +200,7 @@ Delete these only after the rewrites are verified green.
 
 Landed today in commit `098b3fea1f` (`chore(patches): mirror eliza/.../patches/ at root for npm-migration`).
 
-The 7 patch files were moved from `eliza/packages/app-core/patches/` to milady's root `patches/`, and each `patchedDependencies` key in `package.json` was updated to point at the new location:
+The 7 patch files were moved from `eliza/packages/app-core/patches/` to eliza's root `patches/`, and each `patchedDependencies` key in `package.json` was updated to point at the new location:
 
 - `@noble/curves@2.0.1`
 - `proper-lockfile@4.1.2`
@@ -244,7 +244,7 @@ Two further targets:
 Seven vitest configs live in the submodule today and chain together as a stack: `default`, `unit`, `real`, `integration`, `e2e`, `live-e2e`, `real-qa`. They pull from helpers `coverage-policy.mjs`, `eliza-package-paths.ts`, and `workspace-aliases.ts`. Two paths forward:
 
 1. **Preferred:** upstream ships these in `@elizaos/app-core/test/` (covered by the Phase 0 files-manifest fix).
-2. **Fallback:** vendor the seven configs and three helpers into milady's root `test/vitest/`. Lower-effort to ship but creates ongoing drift cost.
+2. **Fallback:** vendor the seven configs and three helpers into eliza's root `test/vitest/`. Lower-effort to ship but creates ongoing drift cost.
 
 Pick (1) if Phase 0 lands; only fall through to (2) if the upstream PR stalls.
 
@@ -259,8 +259,8 @@ Eight behaviors disappear with the submodule and need explicit replacement decis
 1. **Submodule drift detection.** Replacement: Renovate or Dependabot, configured to enforce lockstep on the `@elizaos/*` family.
 2. **Workflow auto-sync from upstream** (today: `sync-root-github-workflows-from-eliza.mjs`). Replacement: manual maintenance after upstream changes. Accept the cost; the alternative is more machinery.
 3. **Cloud-coupled workspace pruning.** Replacement: not needed once cloud packages ship from npm.
-4. **Schemas codegen via `buf.gen.yaml`.** Decision: either consume `@elizaos/schemas` from npm directly, or vendor `packages/schemas/` at the milady root. Default to npm consumption.
-5. **Packaging directories** (`snap`, `flatpak`, `debian`, `pypi`). Decision: move them to a top-level `packaging/` directory in milady, or rely on a published `@elizaos/packaging` artifact. Default to top-level `packaging/`.
+4. **Schemas codegen via `buf.gen.yaml`.** Decision: either consume `@elizaos/schemas` from npm directly, or vendor `packages/schemas/` at the eliza root. Default to npm consumption.
+5. **Packaging directories** (`snap`, `flatpak`, `debian`, `pypi`). Decision: move them to a top-level `packaging/` directory in eliza, or rely on a published `@elizaos/packaging` artifact. Default to top-level `packaging/`.
 6. **Eliza-CI patches workflow.** Drop entirely; npm-only is the new default.
 7. **`disable-local-eliza-workspace` mode.** Drop entirely; there is no local workspace to disable.
 8. **Windows postinstall path wrapper.** Verify that a bare `bun install` works on Windows without the wrapper, then drop it.
@@ -287,9 +287,9 @@ Without the submodule, contributors who want to develop against a side-by-side `
 
 Document this in `docs/apps/` — typical flow:
 
-1. Clone `elizaOS/eliza` next to milady.
+1. Clone `elizaOS/eliza` next to eliza.
 2. `cd eliza && bun install && bun run build`.
-3. From milady: `bun link @elizaos/app-core` (and any other packages under active development), pointing at the local clone.
+3. From eliza: `bun link @elizaos/app-core` (and any other packages under active development), pointing at the local clone.
 4. `bun install` to rewire.
 
 The doc should also explain the unlink path and how to verify which `@elizaos/*` resolutions are local vs npm at any given moment.
@@ -298,15 +298,15 @@ The doc should also explain the unlink path and how to verify which `@elizaos/*`
 
 ## 15. Recommended next-up actions for the elizaOS team
 
-A short hand-off list. These are the unblockers — once Phase 0 is done, everything else is internal milady work.
+A short hand-off list. These are the unblockers — once Phase 0 is done, everything else is internal eliza work.
 
 1. **Add `"scripts"` and `"test"` to `eliza/packages/app-core/package.json#files`.** One-line PR. Unblocks Phases 2B, 2E, 2F.
 2. **Cut a fresh alpha publish (`2.0.0-alpha.537+`) of the lockstep family** — `core`, `app-core`, `agent`, `skills`, `prompts`, `shared`, `ui`, `vault`, `cloud-routing`, `scenario-runner`, `scenario-schema`, `schemas`. Unblocks Phase 1's lockstep pinning.
 3. **Cut fresh alpha publishes for the 17 stale plugins** listed in section 4.1.
 4. **First publish of `@elizaos/plugin-app-control`** to npm.
-5. **Publish a `2.0.0-alpha.*` line for `@elizaos/plugin-agent-orchestrator`.** If unwilling, milady will vendor a fork instead.
+5. **Publish a `2.0.0-alpha.*` line for `@elizaos/plugin-agent-orchestrator`.** If unwilling, eliza will vendor a fork instead.
 6. **Publish the 14 capacitor native plugins** listed in section 4.4.
 7. **Publish `@elizaos/cloud-sdk`, `@elizaos/cloud-ui`, `@elizaos/billing`, and `@elizaos/electrobun`** to npm.
 8. **Publish the six apps** listed in section 4.7.
 
-When all of the above is landed, milady can run Phase 1 in a single PR and proceed through Phases 2A–2G in roughly 4–6 PRs.
+When all of the above is landed, eliza can run Phase 1 in a single PR and proceed through Phases 2A–2G in roughly 4–6 PRs.

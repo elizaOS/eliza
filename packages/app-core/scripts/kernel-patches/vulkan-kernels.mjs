@@ -18,21 +18,21 @@
 //          at the bottom of process_shaders().
 //        - 02-ggml-vulkan-pipelines.patch — extends vk_device_struct with 9
 //          pipeline slots and adds 9 ggml_vk_create_pipeline() calls at the
-//          bottom of ggml_vk_load_shaders(). End result: each milady SPV blob
+//          bottom of ggml_vk_load_shaders(). End result: each eliza SPV blob
 //          is referenced at link time and `nm libggml-vulkan.so | grep
-//          milady_` shows the new symbols.
+//          eliza_` shows the new symbols.
 //
 //   3. Adds Vulkan graph dispatch for the Eliza-1 attention score ops:
 //        - GGML_OP_ATTN_SCORE_QJL
 //        - GGML_OP_ATTN_SCORE_TBQ   (TBQ3_0, TBQ4_0, TBQ3_TCQ)
 //        - GGML_OP_ATTN_SCORE_POLAR
 //
-//      These routes bind the standalone milady pipelines directly. They are
+//      These routes bind the standalone eliza pipelines directly. They are
 //      intentionally conservative: q/pk/dst must be contiguous row tensors and
 //      the current route only advertises support for the single-batch shape
 //      used by the runtime smoke (ne[2]/ne[3] == 1, except pk head fanout).
 //
-//      Patches are idempotent: each carries a `MILADY-VK-DISPATCH-PATCH-V1`
+//      Patches are idempotent: each carries a `ELIZA-VK-DISPATCH-PATCH-V1`
 //      sentinel; if the sentinel is already present in the target file, the
 //      hunk is skipped (re-running the build is safe).
 //
@@ -110,9 +110,9 @@ const VULKAN_ALL_STAGED_FILES = [
   ...VULKAN_FUSED_KERNEL_FILES,
 ];
 
-const SHADER_SENTINEL = "// MILADY-VK-DISPATCH-PATCH-V1";
-const PATCH_SENTINEL = "MILADY-VK-DISPATCH-PATCH-V1";
-const RUNTIME_SENTINEL = "// MILADY-VK-RUNTIME-DISPATCH-V1";
+const SHADER_SENTINEL = "// ELIZA-VK-DISPATCH-PATCH-V1";
+const PATCH_SENTINEL = "ELIZA-VK-DISPATCH-PATCH-V1";
+const RUNTIME_SENTINEL = "// ELIZA-VK-RUNTIME-DISPATCH-V1";
 
 const PATCH_TARGETS = [
   {
@@ -242,7 +242,7 @@ function parsePatchFile(filePath) {
 function applyHunk(text, hunk, ctx) {
   // Use the first non-blank line of the inject block as the per-hunk
   // sentinel. Each inject block in our patches starts with a unique
-  // `// MILADY-VK-DISPATCH-PATCH-V1 BEGIN — <description>` comment, so
+  // `// ELIZA-VK-DISPATCH-PATCH-V1 BEGIN — <description>` comment, so
   // first-non-blank identifies it precisely.
   const firstLine = hunk.inject.split("\n").find((l) => l.trim().length > 0);
   if (!firstLine) {
@@ -319,8 +319,8 @@ function repairPolarPrehtShaderRegistration(cacheDir, { dryRun }) {
     "vulkan-shaders",
     "vulkan-shaders-gen.cpp",
   );
-  const anchor = `    string_to_spv("milady_polar",          "polar.comp",          {});`;
-  const line = `    string_to_spv("milady_polar_preht",    "polar_preht.comp",    {});`;
+  const anchor = `    string_to_spv("eliza_polar",          "polar.comp",          {});`;
+  const line = `    string_to_spv("eliza_polar_preht",    "polar_preht.comp",    {});`;
   const original = fs.readFileSync(targetPath, "utf8");
   const repaired = ensureLineAfter(original, anchor, line, targetPath);
   if (repaired.changed && !dryRun) {
@@ -347,8 +347,8 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
   {
     const r = ensureLineAfter(
       text,
-      `    vk_pipeline pipeline_milady_polar;`,
-      `    vk_pipeline pipeline_milady_polar_preht;`,
+      `    vk_pipeline pipeline_eliza_polar;`,
+      `    vk_pipeline pipeline_eliza_polar_preht;`,
       targetPath,
     );
     text = r.text;
@@ -357,8 +357,8 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
   {
     const r = ensureLineAfter(
       text,
-      `    ggml_vk_create_pipeline(device, device->pipeline_milady_polar,          "milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
-      `    ggml_vk_create_pipeline(device, device->pipeline_milady_polar_preht,    "milady_polar_preht",    milady_polar_preht_len,    milady_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
+      `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar,          "eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
+      `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar_preht,    "eliza_polar_preht",    eliza_polar_preht_len,    eliza_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
       targetPath,
     );
     text = r.text;
@@ -415,13 +415,13 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
   let original = fs.readFileSync(vulkanPath, "utf8");
   let patched = original;
 
-  // 02-ggml-vulkan-pipelines.patch historically created milady_polar with a
+  // 02-ggml-vulkan-pipelines.patch historically created eliza_polar with a
   // 3*u32 push-constant range. Runtime graph dispatch needs per-head output and
   // K-head byte offsets so it can bind the whole tensor and avoid illegal
   // unaligned descriptor offsets. Keep old cached checkouts repairable.
   patched = patched.replace(
-    `"milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 3 * sizeof(uint32_t),`,
-    `"milady_polar",          milady_polar_len,          milady_polar_data,          "main", 3, 6 * sizeof(uint32_t),`,
+    `"eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 3 * sizeof(uint32_t),`,
+    `"eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t),`,
   );
 
 
@@ -437,7 +437,7 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
       `    ${RUNTIME_SENTINEL}
     // Persistent device-side TCQ codebook used by GGML_OP_ATTN_SCORE_TBQ when
     // packed_k is GGML_TYPE_TBQ3_TCQ. Created lazily on first dispatch.
-    vk_buffer milady_turbo3_tcq_codebook;
+    vk_buffer eliza_turbo3_tcq_codebook;
 
 ${contextAnchor}`,
     );
@@ -450,14 +450,14 @@ ${contextAnchor}`,
       );
     }
     const helper = `${RUNTIME_SENTINEL}
-struct milady_vk_qjl_score_push {
+struct eliza_vk_qjl_score_push {
     uint32_t n_heads;
     uint32_t n_kv_heads;
     uint32_t n_tokens;
     uint32_t proj_dim;
 };
 
-struct milady_vk_tbq_score_push {
+struct eliza_vk_tbq_score_push {
     uint32_t head_dim;
     uint32_t n_kv;
     uint32_t kv_stride_blocks;
@@ -465,7 +465,7 @@ struct milady_vk_tbq_score_push {
     uint32_t head_offset_bytes;
 };
 
-struct milady_vk_polar_score_push {
+struct eliza_vk_polar_score_push {
     uint32_t n_rows;
     uint32_t head_dim;
     uint32_t use_qjl;
@@ -474,7 +474,7 @@ struct milady_vk_polar_score_push {
     uint32_t y_offset;
 };
 
-struct milady_vk_fused_attn_push {
+struct eliza_vk_fused_attn_push {
     uint32_t n_heads;
     uint32_t n_kv_heads;
     uint32_t n_tokens;
@@ -490,7 +490,7 @@ struct milady_vk_fused_attn_push {
 //
 // The *fold factor* is device-policy: it is chosen by vendor in
 // ggml_vk_load_shaders (02-ggml-vulkan-pipelines.patch hunk 2) and stored on
-// device->milady_vk_{tbq,qjl}_multiblock_factor. The dispatch here reads that
+// device->eliza_vk_{tbq,qjl}_multiblock_factor. The dispatch here reads that
 // field so the grid divisor always matches whatever the pipeline was created
 // with. From vulkan_bench (VK_QUERY_TYPE_TIMESTAMP per-dispatch sweep over
 // {1,2,4,8,16}; vulkan_kopt_2026-05-11.json):
@@ -508,40 +508,40 @@ struct milady_vk_fused_attn_push {
 // deliberate — on NVIDIA the _multi path is a win at *every* measured length
 // (e.g. turbo3 512: 83us single → 30us folded), so engaging from 1024/8192
 // only loses a little of the available speedup at the very small end.)
-static const int64_t  MILADY_VK_QJL_MULTIBLOCK_THRESHOLD = 1024;
-static const int64_t  MILADY_VK_TBQ_MULTIBLOCK_THRESHOLD = 8192;
+static const int64_t  ELIZA_VK_QJL_MULTIBLOCK_THRESHOLD = 1024;
+static const int64_t  ELIZA_VK_TBQ_MULTIBLOCK_THRESHOLD = 8192;
 
-static const float k_milady_tbq3_tcq_codebook[512] = {
+static const float k_eliza_tbq3_tcq_codebook[512] = {
 ${codebook}
 };
 
-static vk_pipeline milady_vk_pipeline_for_tbq(ggml_backend_vk_context * ctx, ggml_type type) {
+static vk_pipeline eliza_vk_pipeline_for_tbq(ggml_backend_vk_context * ctx, ggml_type type) {
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return ctx->device->pipeline_milady_turbo3;
-        case GGML_TYPE_TBQ4_0:   return ctx->device->pipeline_milady_turbo4;
-        case GGML_TYPE_TBQ3_TCQ: return ctx->device->pipeline_milady_turbo3_tcq;
-        default: GGML_ABORT("milady_vk_pipeline_for_tbq: unsupported type");
+        case GGML_TYPE_TBQ3_0:   return ctx->device->pipeline_eliza_turbo3;
+        case GGML_TYPE_TBQ4_0:   return ctx->device->pipeline_eliza_turbo4;
+        case GGML_TYPE_TBQ3_TCQ: return ctx->device->pipeline_eliza_turbo3_tcq;
+        default: GGML_ABORT("eliza_vk_pipeline_for_tbq: unsupported type");
     }
 }
 
-static vk_pipeline milady_vk_pipeline_for_tbq_multi(ggml_backend_vk_context * ctx, ggml_type type) {
+static vk_pipeline eliza_vk_pipeline_for_tbq_multi(ggml_backend_vk_context * ctx, ggml_type type) {
     switch (type) {
-        case GGML_TYPE_TBQ3_0:   return ctx->device->pipeline_milady_turbo3_multi;
-        case GGML_TYPE_TBQ4_0:   return ctx->device->pipeline_milady_turbo4_multi;
-        case GGML_TYPE_TBQ3_TCQ: return ctx->device->pipeline_milady_turbo3_tcq_multi;
-        default: GGML_ABORT("milady_vk_pipeline_for_tbq_multi: unsupported type");
+        case GGML_TYPE_TBQ3_0:   return ctx->device->pipeline_eliza_turbo3_multi;
+        case GGML_TYPE_TBQ4_0:   return ctx->device->pipeline_eliza_turbo4_multi;
+        case GGML_TYPE_TBQ3_TCQ: return ctx->device->pipeline_eliza_turbo3_tcq_multi;
+        default: GGML_ABORT("eliza_vk_pipeline_for_tbq_multi: unsupported type");
     }
 }
 
-static vk_buffer milady_vk_turbo3_tcq_codebook(ggml_backend_vk_context * ctx) {
-    if (ctx->milady_turbo3_tcq_codebook == nullptr) {
-        ctx->milady_turbo3_tcq_codebook = ggml_vk_create_buffer_device(ctx->device, sizeof(k_milady_tbq3_tcq_codebook));
-        ggml_vk_buffer_write(ctx->milady_turbo3_tcq_codebook, 0, k_milady_tbq3_tcq_codebook, sizeof(k_milady_tbq3_tcq_codebook));
+static vk_buffer eliza_vk_turbo3_tcq_codebook(ggml_backend_vk_context * ctx) {
+    if (ctx->eliza_turbo3_tcq_codebook == nullptr) {
+        ctx->eliza_turbo3_tcq_codebook = ggml_vk_create_buffer_device(ctx->device, sizeof(k_eliza_tbq3_tcq_codebook));
+        ggml_vk_buffer_write(ctx->eliza_turbo3_tcq_codebook, 0, k_eliza_tbq3_tcq_codebook, sizeof(k_eliza_tbq3_tcq_codebook));
     }
-    return ctx->milady_turbo3_tcq_codebook;
+    return ctx->eliza_turbo3_tcq_codebook;
 }
 
-static void ggml_vk_milady_attn_score_qjl(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
+static void ggml_vk_eliza_attn_score_qjl(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
     const ggml_tensor * q  = dst->src[0];
     const ggml_tensor * pk = dst->src[1];
     GGML_ASSERT(q != nullptr && pk != nullptr);
@@ -563,20 +563,20 @@ static void ggml_vk_milady_attn_score_qjl(ggml_backend_vk_context * ctx, vk_cont
     GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_QJL1_256, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    const bool multi = (int64_t) n_tokens >= MILADY_VK_QJL_MULTIBLOCK_THRESHOLD;
-    const uint32_t qjl_fold = ctx->device->milady_vk_qjl_multiblock_factor;
-    vk_pipeline pipeline = multi ? ctx->device->pipeline_milady_qjl_multi
-                                 : ctx->device->pipeline_milady_qjl;
+    const bool multi = (int64_t) n_tokens >= ELIZA_VK_QJL_MULTIBLOCK_THRESHOLD;
+    const uint32_t qjl_fold = ctx->device->eliza_vk_qjl_multiblock_factor;
+    vk_pipeline pipeline = multi ? ctx->device->pipeline_eliza_qjl_multi
+                                 : ctx->device->pipeline_eliza_qjl;
     const uint32_t grid_y = multi ? (n_tokens + qjl_fold - 1u) / qjl_fold : n_tokens;
     ggml_pipeline_request_descriptor_sets(ctx, pipeline, 1);
-    const milady_vk_qjl_score_push pc = { n_heads, n_kv_heads, n_tokens, 256u };
+    const eliza_vk_qjl_score_push pc = { n_heads, n_kv_heads, n_tokens, 256u };
     ggml_vk_dispatch_pipeline(
         ctx, subctx, pipeline,
         { ggml_vk_tensor_subbuffer(ctx, q), ggml_vk_tensor_subbuffer(ctx, pk), ggml_vk_tensor_subbuffer(ctx, dst) },
         pc, { n_heads, grid_y, 1 });
 }
 
-static void ggml_vk_milady_attn_score_tbq(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
+static void ggml_vk_eliza_attn_score_tbq(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
     const ggml_tensor * q  = dst->src[0];
     const ggml_tensor * pk = dst->src[1];
     GGML_ASSERT(q != nullptr && pk != nullptr);
@@ -600,23 +600,23 @@ static void ggml_vk_milady_attn_score_tbq(ggml_backend_vk_context * ctx, vk_cont
     GGML_ASSERT(pk->nb[1] == ggml_row_size(pk->type, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    const bool multi = (int64_t) n_tokens >= MILADY_VK_TBQ_MULTIBLOCK_THRESHOLD;
-    const uint32_t tbq_fold = ctx->device->milady_vk_tbq_multiblock_factor;
-    vk_pipeline pipeline = multi ? milady_vk_pipeline_for_tbq_multi(ctx, pk->type)
-                                 : milady_vk_pipeline_for_tbq(ctx, pk->type);
+    const bool multi = (int64_t) n_tokens >= ELIZA_VK_TBQ_MULTIBLOCK_THRESHOLD;
+    const uint32_t tbq_fold = ctx->device->eliza_vk_tbq_multiblock_factor;
+    vk_pipeline pipeline = multi ? eliza_vk_pipeline_for_tbq_multi(ctx, pk->type)
+                                 : eliza_vk_pipeline_for_tbq(ctx, pk->type);
     const uint32_t grid_x = multi ? (n_tokens + tbq_fold - 1u) / tbq_fold : n_tokens;
     const vk_subbuffer q_buf   = ggml_vk_tensor_subbuffer(ctx, q);
     const vk_subbuffer pk_buf  = ggml_vk_tensor_subbuffer(ctx, pk);
     const vk_subbuffer dst_buf = ggml_vk_tensor_subbuffer(ctx, dst);
     const bool is_tcq = pk->type == GGML_TYPE_TBQ3_TCQ;
-    const vk_subbuffer codebook_buf = is_tcq ? ggml_vk_subbuffer(ctx, milady_vk_turbo3_tcq_codebook(ctx)) : vk_subbuffer{};
+    const vk_subbuffer codebook_buf = is_tcq ? ggml_vk_subbuffer(ctx, eliza_vk_turbo3_tcq_codebook(ctx)) : vk_subbuffer{};
 
     ggml_pipeline_request_descriptor_sets(ctx, pipeline, n_heads);
     for (uint32_t h = 0; h < n_heads; ++h) {
         const uint32_t h_k = h / gqa;
         const uint64_t head_offset = (uint64_t) h_k * (uint64_t) pk->nb[2];
         GGML_ASSERT(head_offset <= UINT32_MAX);
-        const milady_vk_tbq_score_push pc = {
+        const eliza_vk_tbq_score_push pc = {
             128u,
             n_tokens,
             blocks_per_kv,
@@ -631,7 +631,7 @@ static void ggml_vk_milady_attn_score_tbq(ggml_backend_vk_context * ctx, vk_cont
     }
 }
 
-static void ggml_vk_milady_attn_score_polar(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
+static void ggml_vk_eliza_attn_score_polar(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
     const ggml_tensor * q  = dst->src[0];
     const ggml_tensor * pk = dst->src[1];
     GGML_ASSERT(q != nullptr && pk != nullptr);
@@ -656,7 +656,7 @@ static void ggml_vk_milady_attn_score_polar(ggml_backend_vk_context * ctx, vk_co
     GGML_ASSERT(pk->nb[1] == ggml_row_size(GGML_TYPE_Q4_POLAR, 128));
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
 
-    vk_pipeline pipeline = ctx->device->pipeline_milady_polar;
+    vk_pipeline pipeline = ctx->device->pipeline_eliza_polar;
     const vk_subbuffer pk_buf  = ggml_vk_tensor_subbuffer(ctx, pk);
     const vk_subbuffer q_buf   = ggml_vk_tensor_subbuffer(ctx, q);
     const vk_subbuffer dst_buf = ggml_vk_tensor_subbuffer(ctx, dst);
@@ -668,7 +668,7 @@ static void ggml_vk_milady_attn_score_polar(ggml_backend_vk_context * ctx, vk_co
         const uint64_t q_offset = ((uint64_t) h * (uint64_t) q->nb[1]) / sizeof(float);
         const uint64_t y_offset = ((uint64_t) h * (uint64_t) dst->nb[1]) / sizeof(float);
         GGML_ASSERT(k_offset <= UINT32_MAX && q_offset <= UINT32_MAX && y_offset <= UINT32_MAX);
-        const milady_vk_polar_score_push pc = {
+        const eliza_vk_polar_score_push pc = {
             n_tokens,
             128u,
             use_qjl,
@@ -691,9 +691,9 @@ static void ggml_vk_milady_attn_score_polar(ggml_backend_vk_context * ctx, vk_co
 //   op_params[0] = n_kv_heads, [1] = sm_scale (float bits), [2] = v_use_qjl (TBQ ignores it), [3] = kv_tile
 // One workgroup per (q_head); q_pos is a push constant, so n_q_pos > 1 is a
 // loop of dispatches (decode = 1). Conservative shape (ne3 == 1) matching the
-// other milady graph routes; the unfused score → softmax → V-mix path covers
+// other eliza graph routes; the unfused score → softmax → V-mix path covers
 // the wider shapes (AGENTS.md §3 — no silent degradation).
-static void ggml_vk_milady_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
+static void ggml_vk_eliza_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_context& subctx, ggml_tensor * dst) {
     const ggml_tensor * q  = dst->src[0];
     const ggml_tensor * pk = dst->src[1];
     const ggml_tensor * pv = dst->src[2];
@@ -724,7 +724,7 @@ static void ggml_vk_milady_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_
     GGML_ASSERT(pk->nb[2] == (size_t) n_tokens * pk->nb[1]);
     GGML_ASSERT(pv->nb[2] == (size_t) n_tokens * pv->nb[1]);
 
-    vk_pipeline pipeline = ctx->device->pipeline_milady_fused_attn_qjl_tbq;
+    vk_pipeline pipeline = ctx->device->pipeline_eliza_fused_attn_qjl_tbq;
     const vk_subbuffer q_buf   = ggml_vk_tensor_subbuffer(ctx, q);
     const vk_subbuffer pk_buf  = ggml_vk_tensor_subbuffer(ctx, pk);
     const vk_subbuffer pv_buf  = ggml_vk_tensor_subbuffer(ctx, pv);
@@ -732,7 +732,7 @@ static void ggml_vk_milady_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_
 
     ggml_pipeline_request_descriptor_sets(ctx, pipeline, (uint32_t) n_q_pos);
     for (int64_t p = 0; p < n_q_pos; ++p) {
-        const milady_vk_fused_attn_push pc = {
+        const eliza_vk_fused_attn_push pc = {
             n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile,
         };
         ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, pv_buf, dst_buf }, pc, { n_heads, 1, 1 });
@@ -754,19 +754,19 @@ static void ggml_vk_milady_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_
     patched = patched.replace(
       switchAnchor,
       `    case GGML_OP_ATTN_SCORE_QJL:
-        ggml_vk_milady_attn_score_qjl(ctx, compute_ctx, node);
+        ggml_vk_eliza_attn_score_qjl(ctx, compute_ctx, node);
 
         break;
     case GGML_OP_ATTN_SCORE_TBQ:
-        ggml_vk_milady_attn_score_tbq(ctx, compute_ctx, node);
+        ggml_vk_eliza_attn_score_tbq(ctx, compute_ctx, node);
 
         break;
     case GGML_OP_ATTN_SCORE_POLAR:
-        ggml_vk_milady_attn_score_polar(ctx, compute_ctx, node);
+        ggml_vk_eliza_attn_score_polar(ctx, compute_ctx, node);
 
         break;
     case GGML_OP_FUSED_ATTN_QJL_TBQ:
-        ggml_vk_milady_fused_attn_qjl_tbq(ctx, compute_ctx, node);
+        ggml_vk_eliza_fused_attn_qjl_tbq(ctx, compute_ctx, node);
 
         break;
 
@@ -897,7 +897,7 @@ export function patchVulkanKernels(cacheDir, { dryRun = false, target = null } =
   console.log(
     `[vulkan-kernels] polar_preht pipeline repair: ${prehtPipeline.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${prehtPipeline.target})`,
   );
-  // AGENTS.md §3 enforcement (no milady-missing vulkan binary) is done at
+  // AGENTS.md §3 enforcement (no eliza-missing vulkan binary) is done at
   // build-llama-cpp-dflash.mjs post-build via the requiredKernels audit.
   console.log(
     `[vulkan-kernels] runtime-ready evidence still requires ` +

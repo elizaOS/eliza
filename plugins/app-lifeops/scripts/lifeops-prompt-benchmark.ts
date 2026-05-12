@@ -33,7 +33,7 @@ type CliOptions = {
 
 function parseArgs(argv: string[]): CliOptions {
   const options: CliOptions = {
-    compress: process.env.MILADY_PROMPT_COMPRESS === "1",
+    compress: process.env.ELIZA_PROMPT_COMPRESS === "1",
     isolate: "shared",
     listOnly: false,
     suite: "all",
@@ -185,7 +185,7 @@ async function main(): Promise<void> {
   }
 
   if (options.compress) {
-    process.env.MILADY_PROMPT_COMPRESS = "1";
+    process.env.ELIZA_PROMPT_COMPRESS = "1";
   }
 
   const report = await runLifeOpsPromptBenchmark({

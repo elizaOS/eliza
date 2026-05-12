@@ -291,7 +291,7 @@ Theme toggle: `packages/ui/src/components/shared/ThemeToggle.tsx` (full file rea
 | Re-applies theme when `themeId` changes | **YES** | `useDisplayPreferences.ts:76-80` — themed accent colors re-apply on `themeId` change. |
 | Suppresses transition flicker during switch | **YES** | `persistence.ts:56-68` — `suppressThemeTransitions` adds `data-theme-switching` attribute on switch. |
 
-**Single P1**: the initial-load default is hard-coded to `"dark"`. Users on macOS with light system theme will get a dark Milady at first launch, despite the OS preference. This is a meaningful onboarding annoyance and a discoverability issue for the `ThemeToggle` itself (the user has to find the toggle to change theme even though the OS already says what they prefer).
+**Single P1**: the initial-load default is hard-coded to `"dark"`. Users on macOS with light system theme will get a dark Eliza at first launch, despite the OS preference. This is a meaningful onboarding annoyance and a discoverability issue for the `ThemeToggle` itself (the user has to find the toggle to change theme even though the OS already says what they prefer).
 
 Suggested fix: in `loadUiTheme()` (`persistence.ts:70-76`), when no value is present in either `UI_THEME_STORAGE_KEY` or `LEGACY_UI_THEME_STORAGE_KEY`, read `window.matchMedia("(prefers-color-scheme: light)").matches` and default to `"light"` accordingly.
 

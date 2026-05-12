@@ -1,63 +1,63 @@
 {
   "stats": {
-    "filesScanned": 299,
-    "toolSearchStagesSeen": 256,
-    "stagesWithMeasurement": 0,
-    "stagesWithCorrectActions": 0,
-    "countedSamples": 0
+    "filesScanned": 481,
+    "toolSearchStagesSeen": 481,
+    "stagesWithMeasurement": 22,
+    "stagesWithCorrectActions": 22,
+    "countedSamples": 22
   },
   "recallSummary": {
     "exact": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.43560606060606055,
+      "3": 0.43560606060606055,
+      "5": 0.43560606060606055,
+      "10": 0.43560606060606055
     },
     "regex": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.28787878787878785,
+      "3": 0.41666666666666663,
+      "5": 0.41666666666666663,
+      "10": 0.41666666666666663
     },
     "keyword": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0,
+      "3": 0,
+      "5": 0,
+      "10": 0
     },
     "bm25": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.43560606060606055,
+      "3": 0.7613636363636364,
+      "5": 0.8522727272727273,
+      "10": 0.8522727272727273
     },
     "embedding": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0,
+      "3": 0,
+      "5": 0,
+      "10": 0
     },
     "contextMatch": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0,
+      "3": 0,
+      "5": 0,
+      "10": 0
     },
     "fused": {
-      "1": null,
-      "3": null,
-      "5": null,
-      "10": null
+      "1": 0.43560606060606055,
+      "3": 0.8522727272727273,
+      "5": 0.8522727272727273,
+      "10": 0.8522727272727273
     }
   },
   "firstAppearHist": {
-    "exact": 0,
-    "regex": 0,
+    "exact": 12,
+    "regex": 13,
     "keyword": 0,
     "bm25": 0,
     "embedding": 0,
     "contextMatch": 0,
     "fused": 0,
-    "never": 0
+    "never": 4
   }
 }

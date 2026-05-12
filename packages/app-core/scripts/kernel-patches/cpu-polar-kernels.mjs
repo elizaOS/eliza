@@ -47,7 +47,7 @@
 // (ggml-base) does not reference them, so no Windows/Android ggml-base
 // link-list change is needed.
 //
-// Idempotent: each mutation carries a `MILADY-CPU-POLAR-PREHT-V1`
+// Idempotent: each mutation carries a `ELIZA-CPU-POLAR-PREHT-V1`
 // sentinel.
 
 import fs from "node:fs";
@@ -67,7 +67,7 @@ const POLAR_CPU_SRC_DIR = path.resolve(
   "polarquant-cpu",
 );
 
-const SENTINEL = "MILADY-CPU-POLAR-PREHT-V1";
+const SENTINEL = "ELIZA-CPU-POLAR-PREHT-V1";
 
 // Standalone TUs mirrored verbatim (with the include rewrite below) plus
 // the self-contained cpu-feature header.
@@ -96,8 +96,8 @@ const POLARQUANT_PREHT_H =
  * mirrored \`_preht\` TUs include this shim instead of polarquant.h: it
  * re-exports the fork's definitions and supplies the one missing helper.
  */
-#ifndef MILADY_POLARQUANT_PREHT_H
-#define MILADY_POLARQUANT_PREHT_H
+#ifndef ELIZA_POLARQUANT_PREHT_H
+#define ELIZA_POLARQUANT_PREHT_H
 
 #define GGML_COMMON_DECL_C
 #include "ggml-common.h"        /* block_q4_polar, QK_POLAR, ggml_half */
@@ -157,7 +157,7 @@ const char * polarquant_active_simd(void);
 }
 #endif
 
-#endif /* MILADY_POLARQUANT_PREHT_H */
+#endif /* ELIZA_POLARQUANT_PREHT_H */
 `;
 
 // Trimmed runtime dispatcher: only ggml_vec_dot_q4_polar_preht_f32 +

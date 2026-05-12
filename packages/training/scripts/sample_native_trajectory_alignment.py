@@ -69,7 +69,7 @@ SCHEMA = "eliza.native_trajectory_alignment_audit.v1"
 NATIVE_BOUNDARY_FORMAT = "eliza_native_v1"
 DEFAULT_MODEL = (
     os.environ.get("CEREBRAS_MODEL")
-    or os.environ.get("MILADY_COLLECTION_MODEL")
+    or os.environ.get("ELIZA_COLLECTION_MODEL")
     or "gpt-oss-120b"
 )
 DEFAULT_BASE_URL = "https://api.cerebras.ai/v1"

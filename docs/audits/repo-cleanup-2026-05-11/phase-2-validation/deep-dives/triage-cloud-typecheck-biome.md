@@ -82,10 +82,10 @@ This schema mismatch is not the formatter blocker, but it should be cleaned up o
 The frontend typecheck loads two Drizzle physical installs in one TypeScript program:
 
 - Cloud Drizzle:
-  `/Users/shawwalters/eliza-workspace/milady/eliza/cloud/node_modules/.bun/drizzle-orm@0.45.2+cee48a6471b6eae6/node_modules/drizzle-orm`
+  `/Users/shawwalters/eliza-workspace/eliza/eliza/cloud/node_modules/.bun/drizzle-orm@0.45.2+cee48a6471b6eae6/node_modules/drizzle-orm`
 
 - Root/plugin Drizzle:
-  `/Users/shawwalters/eliza-workspace/milady/eliza/node_modules/.bun/drizzle-orm@0.45.2+fc0f68b157690761/node_modules/drizzle-orm`
+  `/Users/shawwalters/eliza-workspace/eliza/eliza/node_modules/.bun/drizzle-orm@0.45.2+fc0f68b157690761/node_modules/drizzle-orm`
 
 Trace examples:
 

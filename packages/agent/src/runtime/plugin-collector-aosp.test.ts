@@ -10,7 +10,7 @@ const ENV_KEYS = [
   "ELIZAOS_CLOUD_ENABLED",
   "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
   "ELIZA_CLOUD_PROVISIONED",
-  "MILADY_BUILD_VARIANT",
+  "ELIZA_BUILD_VARIANT",
   "ELIZA_BUILD_VARIANT",
   "ELIZA_AGENT_ORCHESTRATOR",
 ] as const;
@@ -81,7 +81,7 @@ describe("collectPluginNames AOSP terminal plugins", () => {
   });
 
   it("removes local execution plugins from store desktop builds even when config asks for them", () => {
-    process.env.MILADY_BUILD_VARIANT = "store";
+    process.env.ELIZA_BUILD_VARIANT = "store";
     process.env.ELIZA_AGENT_ORCHESTRATOR = "1";
     const config: ElizaConfig = {
       features: { codingTools: true },

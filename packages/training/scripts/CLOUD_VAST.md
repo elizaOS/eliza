@@ -42,11 +42,11 @@ Commands below assume the pipeline root as the working directory:
 5. (Optional) Set the canonical env names:
 
    ```bash
-   export MILADY_VAST_GPU_PREFERENCE="B200,H200,H100,RTX5090"
-   export MILADY_VAST_DISK_GB=200            # aliases VAST_DISK_GB
+   export ELIZA_VAST_GPU_PREFERENCE="B200,H200,H100,RTX5090"
+   export ELIZA_VAST_DISK_GB=200            # aliases VAST_DISK_GB
    ```
 
-   `MILADY_VAST_GPU_PREFERENCE` is csv. The first match wins. Override
+   `ELIZA_VAST_GPU_PREFERENCE` is csv. The first match wins. Override
    `VAST_GPU_TARGET` directly if you need fine-grained control
    (e.g. `b200-2x`, `h200-1x`, `blackwell6000-1x`).
 
@@ -92,7 +92,7 @@ rejects `repair_eval` and failed-quality rows.
 After provisioning, save the instance id for later commands:
 
 ```bash
-export MILADY_VAST_INSTANCE_ID=$(cat .vast_instance_id)
+export ELIZA_VAST_INSTANCE_ID=$(cat .vast_instance_id)
 ```
 
 (`train_vast.sh` reads `.vast_instance_id` automatically; the export just
@@ -107,9 +107,9 @@ bash scripts/vast-watcher.sh &
 ```
 
 The watcher polls `train_vast.sh status` every 60 s and writes incident
-reports to `~/.milady/vast-incidents/<timestamp>.log` after 3 consecutive
+reports to `~/.eliza/vast-incidents/<timestamp>.log` after 3 consecutive
 failed polls. It does **not** auto-reprovision — that is a money decision.
-Logs land at `~/.milady/vast-watcher.log` (rotated at 10 MB).
+Logs land at `~/.eliza/vast-watcher.log` (rotated at 10 MB).
 
 Tail training output directly:
 
@@ -125,7 +125,7 @@ Cron-style snippet — pull only the latest checkpoint every 30 min so you
 have something to evaluate or fall back to if the instance dies:
 
 ```cron
-*/30 * * * * cd /home/shaw/milady/training && bash scripts/train_vast.sh pull-checkpoints --latest-only >> ~/.milady/vast-pull.log 2>&1
+*/30 * * * * cd /home/shaw/eliza/training && bash scripts/train_vast.sh pull-checkpoints --latest-only >> ~/.eliza/vast-pull.log 2>&1
 ```
 
 To pull every checkpoint (slower, more bandwidth, complete history):
@@ -144,7 +144,7 @@ above use.
 ## Serve a trained model
 
 Inference uses `eliza/cloud/services/vast-pyworker/onstart-vllm.sh` as the
-Vast template `on_start`. The script reads `MILADY_VAST_MANIFEST` to pick
+Vast template `on_start`. The script reads `ELIZA_VAST_MANIFEST` to pick
 flags from one of:
 
 - `eliza-1-2b.json` — 1x RTX 5090 / Blackwell, AWQ-Marlin weights, bf16 KV.
@@ -154,7 +154,7 @@ flags from one of:
 Set the template env on the Vast instance (or pass via `vastai create`):
 
 ```bash
-MILADY_VAST_MANIFEST=eliza-1-9b.json
+ELIZA_VAST_MANIFEST=eliza-1-9b.json
 HUGGING_FACE_HUB_TOKEN=<token>
 ```
 

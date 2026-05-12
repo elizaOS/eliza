@@ -825,9 +825,9 @@ export class PriceEnrichmentService {
 					address: "NORMabcdefghijklmnopqrstuvwxyzABCDEFGHIJ",
 					name: "Norm",
 				},
-				MILADY: {
-					address: "MILADY123456789abcdefghijklmnopqrstuvwxy",
-					name: "Milady",
+				ELIZA: {
+					address: "ELIZA123456789abcdefghijklmnopqrstuvwxy",
+					name: "Eliza",
 				},
 				TRUTH: {
 					address: "TRUTH456789abcdefghijklmnopqrstuvwxyzABC",

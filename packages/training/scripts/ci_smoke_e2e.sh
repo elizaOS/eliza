@@ -13,7 +13,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PY=${PY:-python3}
-WORK=$(mktemp -d -t milady-ci-XXXXXX)
+WORK=$(mktemp -d -t eliza-ci-XXXXXX)
 trap 'rm -rf "$WORK"' EXIT
 
 step() { echo; echo "[ci-smoke] $*"; }

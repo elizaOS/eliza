@@ -4,15 +4,15 @@ Closing-the-loop document for the Wave-1 → Wave-4 cleanup. All runs against
 Cerebras gpt-oss-120b. 25 scenarios per agent in lifeops; 25 of 200 scenarios
 per profile in personality.
 
-- lifeops run dir: `/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-1778550766550`
-- lifeops saved-best symlink: `/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-best` → above
-- personality run dir: `/Users/shawwalters/.milady/runs/personality/personality-multiagent-1778553884807`
-- personality saved-best symlink: `/Users/shawwalters/.milady/runs/personality/personality-multiagent-best` → above
+- lifeops run dir: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550766550`
+- lifeops saved-best symlink: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-best` → above
+- personality run dir: `/Users/shawwalters/.eliza/runs/personality/personality-multiagent-1778553884807`
+- personality saved-best symlink: `/Users/shawwalters/.eliza/runs/personality/personality-multiagent-best` → above
 
 Prior baselines retained (not deleted):
-- W2-9 lifeops: `/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-1778523395565`
-- W2-9 personality (3-agent system-prompt + eliza-runtime): `/Users/shawwalters/.milady/runs/personality/personality-*-1778523*` and `/Users/shawwalters/.milady/runs/personality/personality-*-1778524*`
-- Earlier 10-scenario W4 spot-check: `/Users/shawwalters/.milady/runs/lifeops/lifeops-multiagent-1778550918415`
+- W2-9 lifeops: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778523395565`
+- W2-9 personality (3-agent system-prompt + eliza-runtime): `/Users/shawwalters/.eliza/runs/personality/personality-*-1778523*` and `/Users/shawwalters/.eliza/runs/personality/personality-*-1778524*`
+- Earlier 10-scenario W4 spot-check: `/Users/shawwalters/.eliza/runs/lifeops/lifeops-multiagent-1778550918415`
 
 Supersedes the 10-scenario spot-check that briefly occupied this filename.
 

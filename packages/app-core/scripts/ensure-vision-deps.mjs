@@ -174,7 +174,7 @@ function installWindows() {
 function main() {
   const disableFlag =
     process.env.ELIZA_NO_VISION_DEPS === "1" ||
-    process.env.MILADY_NO_VISION_DEPS === "1";
+    process.env.ELIZA_NO_VISION_DEPS === "1";
   if (disableFlag) {
     return;
   }

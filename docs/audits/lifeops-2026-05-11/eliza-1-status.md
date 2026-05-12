@@ -45,7 +45,7 @@ bundle is a local-standin.
 
 - [ ] Real training run weights (not synthesized standin) packaged into the bundle.
 - [ ] Produce paired DFlash drafter for speculative decoding (Wave 1-C dflash drafter pipeline).
-- [ ] Lifeops bench: pass-rate on the `self-care` static lane ≥ 70% with **no** `MILADY_BENCH_PRE_RELEASE` shortcut.
+- [ ] Lifeops bench: pass-rate on the `self-care` static lane ≥ 70% with **no** `ELIZA_BENCH_PRE_RELEASE` shortcut.
 - [ ] Action-routing benchmark: F1 ≥ baseline Cerebras `gpt-oss-120b` minus 5pp.
 - [ ] Cache schema: `cacheSupported=false` (local-llama-cpp does not expose cache fields). Confirm aggregator emits `cacheSupported:false` consistently rather than `null`.
 - [ ] Manifest flip: `releaseState="final"`, `publishEligible=true`, `final.weights=true`.
@@ -90,7 +90,7 @@ bundle is a local-standin.
 helper:
 
 1. Calls `read_eliza_one_bundle(bundle_path)` and aborts on any manifest schema violation.
-2. Sets `MILADY_BENCH_PRE_RELEASE=1` when `bundle_is_pre_release(manifest)` is true. Aggregator picks this up and stamps the banner.
+2. Sets `ELIZA_BENCH_PRE_RELEASE=1` when `bundle_is_pre_release(manifest)` is true. Aggregator picks this up and stamps the banner.
 3. Spawns the dflash llama-server at `~/.cache/eliza-dflash/eliza-llama-cpp/build/bin/llama-server` against `manifest.weights_path` (passing `--model-draft` when `drafters_path` is set).
 4. Publishes `PARALLAX_OPENCODE_BASE_URL=http://127.0.0.1:18781/v1` so the OpenAI-compatible adapter finds the running server.
 

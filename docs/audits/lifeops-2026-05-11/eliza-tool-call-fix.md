@@ -30,7 +30,7 @@ Smallest opt-in patch that lifts both blockers:
 
 - Added `isBenchmarkForcingToolCall(message)` helper in
   `packages/core/src/services/message.ts`. Returns `true` only when **both**
-  - `process.env.MILADY_BENCH_FORCE_TOOL_CALL === "1"`, AND
+  - `process.env.ELIZA_BENCH_FORCE_TOOL_CALL === "1"`, AND
   - the inbound message is marked as benchmark traffic
     (`message.content.source === "benchmark"` or
     `message.content.metadata.benchmark` is set).
@@ -43,7 +43,7 @@ Smallest opt-in patch that lifts both blockers:
   …") so the LLM stops emitting REPLY/RESPOND prose.
 - Bench server (`startBenchmarkServer` in
   `packages/app-core/src/benchmark/server.ts`) now sets
-  `MILADY_BENCH_FORCE_TOOL_CALL=1` at boot when unset, so the existing
+  `ELIZA_BENCH_FORCE_TOOL_CALL=1` at boot when unset, so the existing
   subprocess spawn path "just works" without operator config.
 - The lifeops_bench `invokePlanner` branch now unwraps `BENCHMARK_ACTION`
   captures: if `getCapturedAction()` returns a `toolName`, that name + its
@@ -70,7 +70,7 @@ Smallest opt-in patch that lifts both blockers:
   `requireNonTerminalToolCall` and swaps the instruction text when the
   benchmark-forcing branch fires.
 - `packages/app-core/src/benchmark/server.ts` — defaults
-  `MILADY_BENCH_FORCE_TOOL_CALL=1` at `startBenchmarkServer` boot when unset;
+  `ELIZA_BENCH_FORCE_TOOL_CALL=1` at `startBenchmarkServer` boot when unset;
   the lifeops_bench `invokePlanner` now unwraps `getCapturedAction()` into a
   real tool call and filters the `BENCHMARK_ACTION` sentinel out of the
   pass-through path.

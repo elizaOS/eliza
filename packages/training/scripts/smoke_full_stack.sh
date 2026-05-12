@@ -13,8 +13,8 @@
 #   bash training/scripts/smoke_full_stack.sh --skip-train
 #
 # Env knobs:
-#   MILADY_SMOKE_VLLM_PORT   default 8001 (use a free port if 8001 is busy)
-#   MILADY_SMOKE_BENCH_PER_BUCKET  default 10
+#   ELIZA_SMOKE_VLLM_PORT   default 8001 (use a free port if 8001 is busy)
+#   ELIZA_SMOKE_BENCH_PER_BUCKET  default 10
 #
 # Output:
 #   training/checkpoints/<registry-key>-smoke-fullstack/
@@ -57,8 +57,8 @@ POLAR_DIR="$CKPT_ROOT/polarquant"
 FUSED_DIR="$CKPT_ROOT/fused-tq"
 QJL_DIR="$CKPT_ROOT/qjl"
 GGUF_DIR="$CKPT_ROOT/gguf-q4_k_m"
-VLLM_PORT="${MILADY_SMOKE_VLLM_PORT:-8001}"
-BENCH_PER_BUCKET="${MILADY_SMOKE_BENCH_PER_BUCKET:-10}"
+VLLM_PORT="${ELIZA_SMOKE_VLLM_PORT:-8001}"
+BENCH_PER_BUCKET="${ELIZA_SMOKE_BENCH_PER_BUCKET:-10}"
 TRAIN_DATA="$TRAIN_ROOT/data/smoke/train.jsonl"
 VAL_DATA="$TRAIN_ROOT/data/smoke/val.jsonl"
 

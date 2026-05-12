@@ -249,7 +249,7 @@ def main() -> int:
         if (
             entry.unverified_base
             and args.model == ap.get_default("model")
-            and os.environ.get("MILADY_ALLOW_UNVERIFIED_BASE") != "1"
+            and os.environ.get("ELIZA_ALLOW_UNVERIFIED_BASE") != "1"
         ):
             raise SystemExit(
                 f"--registry-key {args.registry_key!r} → hf_id {entry.hf_id!r} "
@@ -257,7 +257,7 @@ def main() -> int:
                 "2026-05; loading it will fail. Use a real key "
                 "(qwen3-0.6b / qwen3-1.7b / qwen3-4b → eliza-1-0_6b / eliza-1-1_7b / "
                 "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
-                "MILADY_ALLOW_UNVERIFIED_BASE=1 to override."
+                "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
         if args.model == ap.get_default("model"):
             args.model = entry.hf_id
@@ -426,11 +426,11 @@ def main() -> int:
     elif hasattr(model, "gradient_checkpointing_enable"):
         # Selective activation checkpointing: skip every Nth layer so we trade
         # ~5% peak memory for ~10% throughput vs uniform full-block AC. Set
-        # MILADY_AC_EVERY=1 (default) for uniform; 2 for "checkpoint every other
+        # ELIZA_AC_EVERY=1 (default) for uniform; 2 for "checkpoint every other
         # layer"; 0 to disable AC entirely. PyTorch FSDP blog confirms the win.
-        ac_every = int(os.environ.get("MILADY_AC_EVERY", "1"))
+        ac_every = int(os.environ.get("ELIZA_AC_EVERY", "1"))
         if ac_every <= 0:
-            log.info("activation checkpointing DISABLED (MILADY_AC_EVERY=0)")
+            log.info("activation checkpointing DISABLED (ELIZA_AC_EVERY=0)")
         else:
             model.gradient_checkpointing_enable(
                 gradient_checkpointing_kwargs={"use_reentrant": False},
@@ -477,9 +477,9 @@ def main() -> int:
     out_dir = Path(args.out_dir) / args.run_name
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    if os.environ.get("MILADY_TRAINER_OPTIM"):
+    if os.environ.get("ELIZA_TRAINER_OPTIM"):
         raise SystemExit(
-            "MILADY_TRAINER_OPTIM is disabled. This entrypoint always builds "
+            "ELIZA_TRAINER_OPTIM is disabled. This entrypoint always builds "
             "APOLLO/APOLLO-Mini through the trainer create_optimizer hook."
         )
 
@@ -517,10 +517,10 @@ def main() -> int:
         # `outputs.logits` is None — SFTTrainer's `completion_only_loss=True`
         # path tries to slice logits manually and crashes. We disable
         # completion-only loss when Liger is active and rely on the chat
-        # template + EOS to align target tokens. Set MILADY_FORCE_COL=1 to
+        # template + EOS to align target tokens. Set ELIZA_FORCE_COL=1 to
         # override (skip Liger if you need strict completion masking).
         completion_only_loss=(
-            os.environ.get("MILADY_FORCE_COL", "0") == "1"
+            os.environ.get("ELIZA_FORCE_COL", "0") == "1"
             or args.use_liger == "off"
         ),
         report_to=os.environ.get("WANDB_PROJECT", "none") if os.environ.get("WANDB_PROJECT") else "none",
@@ -573,11 +573,11 @@ def main() -> int:
             )
 
     # Optional Transformer Engine FP8 swap. No-op everywhere except H200 (sm_90)
-    # unless MILADY_FP8_TRAIN=1 forces the swap. When enabled, every train_step
+    # unless ELIZA_FP8_TRAIN=1 forces the swap. When enabled, every train_step
     # runs inside `te.fp8_autocast`, which we install via a one-line trainer hook
     # below. Master weights stay bf16, gradients stay bf16 — see te_fp8.py.
     fp8_handle = None
-    if os.environ.get("MILADY_DISABLE_FP8") != "1":
+    if os.environ.get("ELIZA_DISABLE_FP8") != "1":
         from training.te_fp8 import maybe_enable_fp8
         fp8_handle = maybe_enable_fp8(model)
         if fp8_handle.enabled:
@@ -589,7 +589,7 @@ def main() -> int:
     # which fails when Liger fused chunked-CE returns logits=None. When the
     # model already produces `outputs.loss` (Liger or model-side loss), use
     # that directly. Also handles the FSDP+APOLLO `create_optimizer` rebuild.
-    class _MiladySFTTrainer(SFTTrainer):
+    class _ElizaSFTTrainer(SFTTrainer):
         def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
             # Forward — pass labels so the model computes loss internally
             # (Liger's chunked CE does this and skips the logits tensor).
@@ -622,7 +622,7 @@ def main() -> int:
                 return self.optimizer
             return self.optimizer
 
-    trainer_cls = _MiladySFTTrainer
+    trainer_cls = _ElizaSFTTrainer
 
     trainer = trainer_cls(
         model=model,

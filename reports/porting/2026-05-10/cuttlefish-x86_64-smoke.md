@@ -1,7 +1,7 @@
 # Cuttlefish x86_64 smoke — 2026-05-10
 
 Run by W5-Android against a locally-built AOSP cuttlefish image,
-exercising the on-device Eliza agent through the v0.4.0-milady
+exercising the on-device Eliza agent through the v0.4.0-eliza
 llama.cpp fork's fused kernels.
 
 ## Host
@@ -21,36 +21,36 @@ llama.cpp fork's fused kernels.
 |---|---|
 | adb serial | `0.0.0.0:6520` |
 | `ro.product.cpu.abi` | `x86_64` |
-| `ro.product.model` | `MiladyOS Cuttlefish Phone` |
+| `ro.product.model` | `ElizaOS Cuttlefish Phone` |
 | `ro.build.version.release` | `16` |
 | RAM (`/proc/meminfo` MemTotal) | 3989 MB |
 | Free RAM at smoke time | 2430 MB |
 | Free disk on `/data` | 953 MB (89% used) |
-| Pre-installed package | `ai.milady.milady` |
-| ElizaAgentService | `ai.milady.milady/.ElizaAgentService` |
+| Pre-installed package | `ai.eliza.eliza` |
+| ElizaAgentService | `ai.eliza.eliza/.ElizaAgentService` |
 
 ## Toolchain pin verified
 
 `packages/app-core/scripts/aosp/compile-libllama.mjs`:
 
 ```
-LLAMA_CPP_TAG    = "v0.4.0-milady"
+LLAMA_CPP_TAG    = "v0.4.0-eliza"
 LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590"
 LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git"
 ```
 
-Cache after compile: `~/.cache/eliza-android-agent/llama-cpp-v0.4.0-milady`
+Cache after compile: `~/.cache/eliza-android-agent/llama-cpp-v0.4.0-eliza`
 detached at the pinned commit. `git log --oneline` HEAD:
 
 ```
-08032d5 merge: W4-B CUDA QJL + Polar + TBQ3_TCQ kernels from milady/cuda-extra into milady/integration
+08032d5 merge: W4-B CUDA QJL + Polar + TBQ3_TCQ kernels from eliza/cuda-extra into eliza/integration
 ```
 
 QJL marker present in source (so the patch series is correctly
 short-circuited; see "Patch-applier fix" below):
 
 ```
-$ grep GGML_TYPE_QJL1_256 ~/.cache/eliza-android-agent/llama-cpp-v0.4.0-milady/ggml/include/ggml.h
+$ grep GGML_TYPE_QJL1_256 ~/.cache/eliza-android-agent/llama-cpp-v0.4.0-eliza/ggml/include/ggml.h
 GGML_TYPE_QJL1_256 = 46, // 1-bit JL-transform K-cache block (34 B / 256 sketch dims)
 ```
 
@@ -92,7 +92,7 @@ $ node packages/app-core/scripts/aosp/compile-libllama.mjs \
 [compile-libllama] Stripped llama-server for x86_64 (89343424 -> 6228224 bytes).
 [compile-libllama] Compiling libeliza-llama-shim.so for x86_64 (NEEDED libllama.so)
 [compile-libllama] Built libllama.so + libeliza-llama-shim.so + llama-server for x86_64
-                   (llama.cpp v0.4.0-milady / 08032d57e155).
+                   (llama.cpp v0.4.0-eliza / 08032d57e155).
 ```
 
 Artifact md5s:
@@ -124,10 +124,10 @@ deprecated `llama_load_model_from_file` instead.
 
 ### Step 3: patch-applier fix (committed)
 
-The first compile attempt with `LLAMA_CPP_TAG = v0.4.0-milady` failed
+The first compile attempt with `LLAMA_CPP_TAG = v0.4.0-eliza` failed
 because `apply-patches.mjs` tried to re-apply the QJL series on top of
 a tree that already has those commits baked in (via the merge commit
-that consolidated milady/cuda-extra into milady/integration). The
+that consolidated eliza/cuda-extra into eliza/integration). The
 existing subject-grep idempotency check returned no matches (the merge
 commit's subject is `merge: ...`, not the original QJL-1 subject), so
 the patches were retried and conflicted on `ggml/include/ggml.h:432`.
@@ -143,10 +143,10 @@ SERIES_BAKED_IN_MARKERS = {
 
 When the marker is present in the working tree, the entire series is
 skipped with a clear log line. After the fix, the compile reused the
-v0.4.0-milady checkout cleanly:
+v0.4.0-eliza checkout cleanly:
 
 ```
-[compile-libllama] Reusing cached llama.cpp checkout at /home/shaw/.cache/eliza-android-agent/llama-cpp-v0.4.0-milady
+[compile-libllama] Reusing cached llama.cpp checkout at /home/shaw/.cache/eliza-android-agent/llama-cpp-v0.4.0-eliza
 [compile-libllama] ggml/src/ggml.c already gates <execinfo.h> on __GLIBC__; no patch needed.
 [patches] series 'qjl' already in source (ggml/include/ggml.h contains GGML_TYPE_QJL1_256); skipping
 ```
@@ -154,19 +154,19 @@ v0.4.0-milady checkout cleanly:
 ### Step 4: push agent + libs to cuttlefish
 
 ```
-$ adb -s 0.0.0.0:6520 shell am force-stop ai.milady.milady
+$ adb -s 0.0.0.0:6520 shell am force-stop ai.eliza.eliza
 $ adb -s 0.0.0.0:6520 shell pkill -9 -f bun
 
 $ adb -s 0.0.0.0:6520 push packages/agent/dist-mobile/agent-bundle.js \
-    /data/data/ai.milady.milady/files/agent/agent-bundle.js
+    /data/data/ai.eliza.eliza/files/agent/agent-bundle.js
 35836800 bytes pushed in 0.099s
 
 $ adb -s 0.0.0.0:6520 push /tmp/aosp-x86_64/x86_64/. \
-    /data/data/ai.milady.milady/files/agent/x86_64/
+    /data/data/ai.eliza.eliza/files/agent/x86_64/
 10 files pushed (libllama.so + family + llama-server + libeliza-llama-shim.so)
 
-$ adb -s 0.0.0.0:6520 shell md5sum /data/data/ai.milady.milady/files/agent/agent-bundle.js
-267de441d869e4abc2f7eb5b8e1bb393  /data/data/ai.milady.milady/files/agent/agent-bundle.js
+$ adb -s 0.0.0.0:6520 shell md5sum /data/data/ai.eliza.eliza/files/agent/agent-bundle.js
+267de441d869e4abc2f7eb5b8e1bb393  /data/data/ai.eliza.eliza/files/agent/agent-bundle.js
                                   ^ matches host md5
 ```
 
@@ -181,11 +181,11 @@ asset and overwrites the new bundle).
 The base APK ships `Llama-3.2-1B-Instruct-Q4_K_M.gguf` as the bundled
 chat model — that's a **stock** Q4_K_M GGUF and not TBQ/DFlash. Per
 the W5-Android directive ("ONLY use TBQ/DFlash models with the
-v0.4.0-milady fork's fused kernels"), the stock GGUF was deleted from
+v0.4.0-eliza fork's fused kernels"), the stock GGUF was deleted from
 the device:
 
 ```
-$ adb -s 0.0.0.0:6520 shell rm /data/data/ai.milady.milady/files/.eliza/local-inference/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf
+$ adb -s 0.0.0.0:6520 shell rm /data/data/ai.eliza.eliza/files/.eliza/local-inference/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf
 ```
 
 Replaced with a DFlash-quantized GGUF that carries a clear `dflash`
@@ -193,7 +193,7 @@ signature:
 
 ```
 $ adb -s 0.0.0.0:6520 push ~/.eliza/models/Qwen3.5-4B-DFlash-Q4_K_M.gguf \
-    /data/data/ai.milady.milady/files/.eliza/local-inference/models/Qwen3.5-4B-DFlash-Q4_K_M.gguf
+    /data/data/ai.eliza.eliza/files/.eliza/local-inference/models/Qwen3.5-4B-DFlash-Q4_K_M.gguf
 322210816 bytes pushed
 ```
 
@@ -215,7 +215,7 @@ free storage.
 ```
 $ adb -s 0.0.0.0:6520 forward tcp:31337 tcp:31337
 $ adb -s 0.0.0.0:6520 shell am start-foreground-service \
-    -n ai.milady.milady/.ElizaAgentService
+    -n ai.eliza.eliza/.ElizaAgentService
 
 # Health polling completed in ~17 seconds:
 $ curl -s http://127.0.0.1:31337/api/health
@@ -242,7 +242,7 @@ $ curl -s http://127.0.0.1:31337/api/health
 ### Step 7: chat round-trip — PARTIAL (stretch goal)
 
 ```
-$ TOKEN=$(adb -s 0.0.0.0:6520 shell cat /data/data/ai.milady.milady/files/auth/local-agent-token)
+$ TOKEN=$(adb -s 0.0.0.0:6520 shell cat /data/data/ai.eliza.eliza/files/auth/local-agent-token)
 $ curl -s -m 60 -X POST -H "Content-Type: application/json" \
     -H "Authorization: Bearer $TOKEN" \
     --data '{"messages":[{"role":"user","content":"hi"}],"stream":false,"max_tokens":32}' \
@@ -276,7 +276,7 @@ Root cause from `adb logcat -s ElizaAgent`:
 
 This is **expected and correct**: `Qwen3.5-4B-DFlash-Q4_K_M.gguf`
 declares `general.architecture = "dflash-draft"` in its GGUF header,
-which v0.4.0-milady's standalone `llama_model_load_from_file` rejects.
+which v0.4.0-eliza's standalone `llama_model_load_from_file` rejects.
 DFlash drafters are only loadable through the spec-decode pair pathway
 (target + drafter together via `llama-server`'s `--model-draft`); a
 naked drafter-as-target attempt is not a supported configuration.
@@ -310,7 +310,7 @@ rather than silent.
 ## Phase 2 — Moto G arm64 smoke kit (committed)
 
 Self-contained shell script + README produced for the user to run
-against a Moto G (or any arm64-v8a Android phone with the Milady APK
+against a Moto G (or any arm64-v8a Android phone with the Eliza APK
 pre-installed):
 
 | File | Purpose |
@@ -375,7 +375,7 @@ Usage: node eliza/packages/app-core/scripts/aosp/e2e-validate.mjs --out <DIR>
 | 1 | KVM + cvd + adb available on host | PASS |
 | 1 | cuttlefish x86_64 boots via `cvd create` against local AOSP build | PASS |
 | 1 | `bun run --cwd packages/agent build:mobile` | PASS |
-| 1 | `compile-libllama.mjs --abi x86_64` (v0.4.0-milady fork) | PASS (after apply-patches fix) |
+| 1 | `compile-libllama.mjs --abi x86_64` (v0.4.0-eliza fork) | PASS (after apply-patches fix) |
 | 1 | libllama.so symbol + ABI check (musl, 1154 T-symbols) | PASS |
 | 1 | Push bundle + libs + DFlash drafter | PASS |
 | 1 | `/api/health` round-trip | **PASS** (~17 s boot) |

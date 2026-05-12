@@ -14,7 +14,7 @@
  * AOSP plugin re-imports it through `@elizaos/app-core`, and the
  * Electrobun shell uses it directly. Pointing `ELIZA_STATE_DIR` at a
  * temp dir is sufficient to isolate this run from a developer's real
- * `~/.milady` state.
+ * `~/.eliza` state.
  *
  * Usage:
  *

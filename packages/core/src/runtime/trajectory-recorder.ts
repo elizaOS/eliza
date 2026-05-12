@@ -9,14 +9,14 @@
  *
  * Persistence model:
  * - One JSON file per trajectory at
- *   `${MILADY_TRAJECTORY_DIR ?? `${MILADY_STATE_DIR ?? `${ELIZA_STATE_DIR ?? ~/.milady`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
+ *   `${ELIZA_TRAJECTORY_DIR ?? `${ELIZA_STATE_DIR ?? `${MILADY_STATE_DIR ?? ~/.eliza`}/trajectories`}`}/<agentId>/<trajectoryId>.json`.
  * - Atomic writes: write to `<id>.json.tmp`, rename to `<id>.json`.
  * - Append-only stages: `recordStage` rewrites the whole file (small files,
  *   sub-100 KB typical).
  * - Failures must NOT crash the runtime — every I/O operation is wrapped in
  *   try/catch and routed through `runtime.logger.warn`.
  *
- * Toggle via `MILADY_TRAJECTORY_RECORDING=0`. Default on.
+ * Toggle via `ELIZA_TRAJECTORY_RECORDING=0`. Default on.
  */
 
 import fs from "node:fs/promises";
@@ -112,7 +112,7 @@ export interface RecordedToolStage {
 	/**
 	 * Captured action-handler input (the resolved params passed into the
 	 * action). Encoded as JSON when possible. Capped at
-	 * `MILADY_TRAJECTORY_FIELD_CAP_BYTES` (default 64KB); oversize values
+	 * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES` (default 64KB); oversize values
 	 * are truncated and a marker is added to `truncated[]`.
 	 */
 	input?: string;
@@ -147,7 +147,7 @@ export interface RecordedRetrievalStageEntry {
 }
 
 /**
- * Per-stage retrieval scores captured under `MILADY_RETRIEVAL_MEASUREMENT=1`.
+ * Per-stage retrieval scores captured under `ELIZA_RETRIEVAL_MEASUREMENT=1`.
  * Default `undefined` — no perf cost in production unless the env var is
  * explicitly enabled.
  */
@@ -185,7 +185,7 @@ export interface RecordedToolSearchStage {
 	fallback?: string;
 	/**
 	 * Per-stage retrieval funnel. Populated only when the retrieval call
-	 * ran with measurement mode on (`MILADY_RETRIEVAL_MEASUREMENT=1`).
+	 * ran with measurement mode on (`ELIZA_RETRIEVAL_MEASUREMENT=1`).
 	 */
 	perStageScores?: RecordedRetrievalPerStageScores;
 	/**
@@ -355,29 +355,29 @@ function envFlagEnabled(key: string, defaultValue = false): boolean {
 
 /**
  * Resolve the on-disk trajectory directory. Precedence per PLAN.md §18.1:
- *   MILADY_TRAJECTORY_DIR
- *   MILADY_STATE_DIR/trajectories
+ *   ELIZA_TRAJECTORY_DIR
  *   ELIZA_STATE_DIR/trajectories
- *   ~/.milady/trajectories
+ *   ELIZA_STATE_DIR/trajectories
+ *   ~/.eliza/trajectories
  */
 export function resolveTrajectoryDir(): string {
-	const explicit = process.env.MILADY_TRAJECTORY_DIR?.trim();
+	const explicit = process.env.ELIZA_TRAJECTORY_DIR?.trim();
 	if (explicit) return explicit;
-
-	const miladyState = process.env.MILADY_STATE_DIR?.trim();
-	if (miladyState) return path.join(miladyState, "trajectories");
 
 	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
 	if (elizaState) return path.join(elizaState, "trajectories");
 
-	return path.join(homedir(), ".milady", "trajectories");
+	const elizaState = process.env.ELIZA_STATE_DIR?.trim();
+	if (elizaState) return path.join(elizaState, "trajectories");
+
+	return path.join(homedir(), ".eliza", "trajectories");
 }
 
 /**
- * Whether the recorder is enabled. Off when MILADY_TRAJECTORY_RECORDING=0.
+ * Whether the recorder is enabled. Off when ELIZA_TRAJECTORY_RECORDING=0.
  */
 export function isTrajectoryRecordingEnabled(): boolean {
-	return envFlagEnabled("MILADY_TRAJECTORY_RECORDING", true);
+	return envFlagEnabled("ELIZA_TRAJECTORY_RECORDING", true);
 }
 
 /**
@@ -386,14 +386,14 @@ export function isTrajectoryRecordingEnabled(): boolean {
  */
 export function isTrajectoryMarkdownReviewEnabled(): boolean {
 	return (
-		envFlagEnabled("MILADY_TRAJECTORY_REVIEW_MODE") ||
-		envFlagEnabled("MILADY_TRAJECTORY_MARKDOWN") ||
-		Boolean(process.env.MILADY_TRAJECTORY_MARKDOWN_DIR?.trim())
+		envFlagEnabled("ELIZA_TRAJECTORY_REVIEW_MODE") ||
+		envFlagEnabled("ELIZA_TRAJECTORY_MARKDOWN") ||
+		Boolean(process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR?.trim())
 	);
 }
 
 function resolveTrajectoryMarkdownDir(rootDir: string): string {
-	return process.env.MILADY_TRAJECTORY_MARKDOWN_DIR?.trim() || rootDir;
+	return process.env.ELIZA_TRAJECTORY_MARKDOWN_DIR?.trim() || rootDir;
 }
 
 function safeRandomId(prefix: string): string {
@@ -481,7 +481,7 @@ function safeStringifyForMarkdown(value: unknown): string {
 }
 
 function redactMarkdownSecrets(text: string): string {
-	if (!envFlagEnabled("MILADY_TRAJECTORY_MARKDOWN_REDACT", true)) {
+	if (!envFlagEnabled("ELIZA_TRAJECTORY_MARKDOWN_REDACT", true)) {
 		return text;
 	}
 	const explicitSecrets = [
@@ -802,11 +802,11 @@ const TRUNCATION_SUFFIX = "...[truncated]";
 /**
  * Resolve the per-field byte cap for `input` / `output` / `errorText`. The
  * recorder uses this for action-step capture (M12). Override with
- * `MILADY_TRAJECTORY_FIELD_CAP_BYTES`; values below 1KB or non-integer are
+ * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES`; values below 1KB or non-integer are
  * rejected as invalid and the default is used.
  */
 export function resolveTrajectoryFieldCapBytes(): number {
-	const raw = process.env.MILADY_TRAJECTORY_FIELD_CAP_BYTES?.trim();
+	const raw = process.env.ELIZA_TRAJECTORY_FIELD_CAP_BYTES?.trim();
 	if (!raw) return DEFAULT_FIELD_CAP_BYTES;
 	const parsed = Number.parseInt(raw, 10);
 	if (!Number.isFinite(parsed) || parsed < 1024) {
@@ -951,7 +951,7 @@ export interface SkillInvocationIOCapture {
  * Encode + cap skill invocation args/result for a per-skill trajectory
  * record. Fields that are `undefined` after encoding are omitted so the
  * persisted shape stays minimal. Caps default to
- * `MILADY_TRAJECTORY_FIELD_CAP_BYTES` (64KB).
+ * `ELIZA_TRAJECTORY_FIELD_CAP_BYTES` (64KB).
  */
 export function captureSkillInvocationIO(
 	input: SkillInvocationIOInput,
@@ -1053,8 +1053,8 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 			trajectoryId: id,
 			agentId: input.agentId,
 			roomId: input.roomId,
-			runId: input.runId ?? process.env.MILADY_LIFEOPS_RUN_ID,
-			scenarioId: input.scenarioId ?? process.env.MILADY_LIFEOPS_SCENARIO_ID,
+			runId: input.runId ?? process.env.ELIZA_LIFEOPS_RUN_ID,
+			scenarioId: input.scenarioId ?? process.env.ELIZA_LIFEOPS_SCENARIO_ID,
 			rootMessage: input.rootMessage,
 			startedAt: Date.now(),
 			status: "running",
@@ -1244,8 +1244,8 @@ class JsonFileTrajectoryRecorder implements TrajectoryRecorder {
 
 /**
  * Construct a JSON-file backed `TrajectoryRecorder`. The default rootDir is
- * resolved from `MILADY_TRAJECTORY_DIR` → `MILADY_STATE_DIR/trajectories` →
- * `ELIZA_STATE_DIR/trajectories` → `~/.milady/trajectories`.
+ * resolved from `ELIZA_TRAJECTORY_DIR` → `ELIZA_STATE_DIR/trajectories` →
+ * `ELIZA_STATE_DIR/trajectories` → `~/.eliza/trajectories`.
  *
  * Pass `enabled: false` to short-circuit every method to a no-op (test
  * fixtures, opt-out at construction time).

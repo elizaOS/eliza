@@ -23,7 +23,7 @@ real measurements land.
 **Command**:
 ```bash
 cd /Users/shawwalters/milaidy/eliza
-MILADY_RETRIEVAL_MEASUREMENT=1 bun run lifeops:multi-tier:core
+ELIZA_RETRIEVAL_MEASUREMENT=1 bun run lifeops:multi-tier:core
 bun run lifeops:retrieval:funnel
 bun run lifeops:retrieval:pareto
 ```

@@ -54,7 +54,7 @@ log = logging.getLogger("synth-action")
 AGENT_NAMES = [
     "Iris", "Kai", "Ava", "Nova", "Echo", "Sage", "Atlas", "Lyra",
     "Pico", "Lumi", "Rune", "Vega", "Sol", "Orion", "Mira", "Tess",
-    "milady", "eliza",
+    "eliza", "eliza",
 ]
 USER_NAMES = [
     "alice", "bob", "carlos", "diana", "ethan", "fatima", "george",

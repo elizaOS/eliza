@@ -13,7 +13,7 @@ Scope: Vulkan/Android only. No shared source files were edited.
 
 ## Validation run
 
-Commands were run from `/Users/shawwalters/eliza-workspace/milady/eliza` or `packages/inference/verify` as appropriate.
+Commands were run from `/Users/shawwalters/eliza-workspace/eliza/eliza` or `packages/inference/verify` as appropriate.
 
 - `./gen_fixture --self-test`: PASS. Turbo3, Turbo4, TCQ, QJL, Polar, Polar+QJL, and fused-attention reference outputs were finite.
 - `node check_kernel_contract.mjs`: PASS, `kernels=6 targets=21 manifestNames=6`.

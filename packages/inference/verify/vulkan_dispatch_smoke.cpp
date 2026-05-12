@@ -7,7 +7,7 @@
 //   - GGML_OP_ATTN_SCORE_POLAR (use_qjl=0 and use_qjl=1)
 //
 // PASS means ggml-vulkan advertises support for the graph op, selected the
-// shipped milady Vulkan pipeline, and the numeric output matches the reference.
+// shipped eliza Vulkan pipeline, and the numeric output matches the reference.
 
 #include <cmath>
 #include <cstdio>

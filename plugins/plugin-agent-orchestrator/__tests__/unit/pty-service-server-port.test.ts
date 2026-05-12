@@ -12,15 +12,15 @@ describe("resolveServerPort", () => {
   it("prefers explicit SERVER_PORT override over deployment env vars", () => {
     const runtime = makeRuntime({
       SERVER_PORT: "9999",
-      MILADY_API_PORT: "47831",
+      ELIZA_API_PORT: "47831",
       ELIZA_API_PORT: "31337",
     });
     expect(resolveServerPort(runtime)).toBe("9999");
   });
 
-  it("falls back to MILADY_API_PORT when SERVER_PORT is not set", () => {
+  it("falls back to ELIZA_API_PORT when SERVER_PORT is not set", () => {
     const runtime = makeRuntime({
-      MILADY_API_PORT: "47831",
+      ELIZA_API_PORT: "47831",
       ELIZA_API_PORT: "31337",
     });
     expect(resolveServerPort(runtime)).toBe("47831");
@@ -39,14 +39,14 @@ describe("resolveServerPort", () => {
   });
 
   it("accepts numeric port settings", () => {
-    const runtime = makeRuntime({ MILADY_API_PORT: 47831 });
+    const runtime = makeRuntime({ ELIZA_API_PORT: 47831 });
     expect(resolveServerPort(runtime)).toBe("47831");
   });
 
   it("ignores empty-string settings and walks to the next key", () => {
     const runtime = makeRuntime({
       SERVER_PORT: "   ",
-      MILADY_API_PORT: "47831",
+      ELIZA_API_PORT: "47831",
     });
     expect(resolveServerPort(runtime)).toBe("47831");
   });

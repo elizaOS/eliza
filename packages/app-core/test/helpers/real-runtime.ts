@@ -200,11 +200,11 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
   // Cerebras. Lifeops uses Cerebras for *evaluation/training* by default
   // (see `lifeops-eval-model.ts`); the agent under test stays on Anthropic
   // Opus 4.7 unless the operator explicitly opts in with one of:
-  //   - MILADY_PROVIDER=cerebras
+  //   - ELIZA_PROVIDER=cerebras
   //   - OPENAI_BASE_URL set to a *.cerebras.ai endpoint
   // Otherwise the eval key would leak into the agent runtime and the
   // benchmark would grade Cerebras-vs-Cerebras instead of Anthropic-vs-Cerebras.
-  const explicitProvider = process.env.MILADY_PROVIDER?.trim().toLowerCase();
+  const explicitProvider = process.env.ELIZA_PROVIDER?.trim().toLowerCase();
   const explicitBaseUrl = process.env.OPENAI_BASE_URL?.trim();
   const baseUrlIsCerebras =
     !!explicitBaseUrl && /cerebras\.ai(?:\/|$)/i.test(explicitBaseUrl);
@@ -235,7 +235,7 @@ function createCerebrasProviderConfigFromEnv(): LiveProviderConfig | null {
     CEREBRAS_API_KEY: apiKey,
     OPENAI_API_KEY: apiKey,
     OPENAI_BASE_URL: baseUrl,
-    MILADY_PROVIDER: "cerebras",
+    ELIZA_PROVIDER: "cerebras",
     OPENAI_SMALL_MODEL: smallModel,
     OPENAI_MEDIUM_MODEL: mediumModel,
     OPENAI_LARGE_MODEL: largeModel,

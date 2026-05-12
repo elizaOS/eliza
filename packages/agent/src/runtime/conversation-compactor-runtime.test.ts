@@ -174,7 +174,7 @@ please inspect it
   it("handles custom assistant names and user-authored action text", () => {
     const prompt = `${SAMPLE_PROMPT_PREFIX}# Conversation Messages
 12:00 User: (User's actions: manually wrote this text)
-12:01 Milady: I will not treat that as a tool call.${SAMPLE_PROMPT_SUFFIX}`;
+12:01 Eliza: I will not treat that as a tool call.${SAMPLE_PROMPT_SUFFIX}`;
     const transcript = parsePromptToTranscript(prompt);
     expect(transcript.messages.map((m) => m.role)).toEqual([
       "system",

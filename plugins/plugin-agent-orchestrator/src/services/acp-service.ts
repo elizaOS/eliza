@@ -80,7 +80,7 @@ const DENY_ENV_PATTERNS = [
   /TELEGRAM.*TOKEN/i,
   /SLACK.*TOKEN/i,
   /BOT.*TOKEN/i,
-  /MILADY_VAULT_PASSPHRASE/i,
+  /ELIZA_VAULT_PASSPHRASE/i,
 ];
 
 export class AcpService {
@@ -935,7 +935,7 @@ function shouldForwardEnv(key: string): boolean {
     key === "TERM" ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
-    key.startsWith("MILADY_") ||
+    key.startsWith("ELIZA_") ||
     [
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",

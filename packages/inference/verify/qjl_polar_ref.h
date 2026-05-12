@@ -130,7 +130,7 @@ void eliza_polar_mul_mv(const eliza_block_q4_polar * k_blocks,
  *
  * Single-source-of-truth C reference for the fused-attention shape the Metal /
  * Vulkan / CUDA agents must mirror. Bit-exact to fused_attn_qjl_tbq_ref in the
- * milady-llama-cpp fork (ggml/src/ggml-cpu/fused-attn-qjl-tbq.c) for the TBQ
+ * eliza-llama-cpp fork (ggml/src/ggml-cpu/fused-attn-qjl-tbq.c) for the TBQ
  * variant; the Polar variant swaps the V-cache decode for block_q4_polar and
  * is spec'd identically in reports/porting/2026-05-11/fused-attn-op-contract.md.
  *

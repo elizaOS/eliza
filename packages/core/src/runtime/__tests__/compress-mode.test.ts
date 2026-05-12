@@ -7,7 +7,7 @@ import {
 } from "../planner-loop";
 import type { ContextObject } from "../planner-types";
 
-// Wave 2-D: `MILADY_PROMPT_COMPRESS=1` is the Cerebras token-budget escape
+// Wave 2-D: `ELIZA_PROMPT_COMPRESS=1` is the Cerebras token-budget escape
 // hatch. Cache-key snapshots in `cache-key-stability.test.ts` are NOT
 // expected to drift from this flag — the snapshots use a canonical
 // non-resolver prefix without routing hints. The behavior change is
@@ -50,9 +50,9 @@ function makeContext(): ContextObject {
 	} as unknown as ContextObject;
 }
 
-describe("Wave 2-D compress mode (MILADY_PROMPT_COMPRESS)", () => {
+describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 	afterEach(() => {
-		delete process.env.MILADY_PROMPT_COMPRESS;
+		delete process.env.ELIZA_PROMPT_COMPRESS;
 	});
 
 	it("drops few-shot demonstrations from the resolved prompt when enabled", () => {
@@ -66,7 +66,7 @@ describe("Wave 2-D compress mode (MILADY_PROMPT_COMPRESS)", () => {
 		expect(before).toContain("Demonstrations:");
 		expect(before).toContain("example user 0");
 
-		process.env.MILADY_PROMPT_COMPRESS = "1";
+		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		const compressed = resolveOptimizedPrompt(
 			service,
 			"message-handler",
@@ -78,7 +78,7 @@ describe("Wave 2-D compress mode (MILADY_PROMPT_COMPRESS)", () => {
 	});
 
 	it("falls back to baseline when no service is registered", () => {
-		process.env.MILADY_PROMPT_COMPRESS = "1";
+		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		const out = resolveOptimizedPrompt(null, "message-handler", "BASELINE");
 		expect(out).toBe("BASELINE");
 	});
@@ -91,7 +91,7 @@ describe("Wave 2-D compress mode (MILADY_PROMPT_COMPRESS)", () => {
 
 		// Routing hints memo is keyed on context.events identity, so a fresh
 		// context is needed to observe the env flag change.
-		process.env.MILADY_PROMPT_COMPRESS = "1";
+		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		const compressed = __renderRoutingHintsBlockForTests(makeContext());
 		expect(compressed).toBeNull();
 	});
@@ -100,7 +100,7 @@ describe("Wave 2-D compress mode (MILADY_PROMPT_COMPRESS)", () => {
 		const ctx = makeContext();
 		const before = __renderAvailableActionsBlockForTests(ctx);
 
-		process.env.MILADY_PROMPT_COMPRESS = "1";
+		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		const compressed = __renderAvailableActionsBlockForTests(makeContext());
 
 		// Available-actions block bytes are identical — top-K capping happens

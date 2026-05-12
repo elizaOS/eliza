@@ -1,6 +1,6 @@
 # Patch: add `test-cuda-compile-only` target to elizaOS/llama.cpp
 #
-# Apply to: ggml/src/ggml-cuda/CMakeLists.txt on milady/main
+# Apply to: ggml/src/ggml-cuda/CMakeLists.txt on eliza/main
 # Purpose: gate every PR with a per-.cu-file standalone PTX compile that
 #          exercises every CUDA arch in CMAKE_CUDA_ARCHITECTURES (default
 #          80;86;89;90 in this fork) without linking. Catches kernel-syntax

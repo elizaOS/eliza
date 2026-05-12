@@ -1,7 +1,7 @@
 # Build matrix — unified llama.cpp fork
 
 > Per-cell status of every (platform, ABI, GPU-backend) combination
-> that ships a Milady on-device runtime artifact. The unified fork
+> that ships a Eliza on-device runtime artifact. The unified fork
 > ([`elizaOS/llama.cpp`](https://github.com/elizaOS/llama.cpp) @
 > `v1.0.0-eliza`, commit `08032d57`) is the authoritative source and
 > ships in-tree as the git submodule at `packages/inference/llama.cpp`;
@@ -20,7 +20,7 @@
 
 - **`✓ verified`** — Artifact builds, native runtime smoke + symbol
   audit completed on the matching hardware (or QEMU for cross-arch
-  parity), exported symbols include the Milady additions
+  parity), exported symbols include the Eliza additions
   (`tbq{3,4}_0`, `qjl1_256`, `q4_polar`, `eliza_llama_*`), and at
   least one end-to-end agent chat round-trip has been recorded.
 - **`⚠ partial`** — Build compiles, symbols are emitted, but at least
@@ -46,7 +46,7 @@ The verification commands assume:
   directory name are illustrative of a standalone-clone layout; the current
   default is the submodule path above.
 
-Symbols listed under "Expected exported symbols" are the Milady-side
+Symbols listed under "Expected exported symbols" are the Eliza-side
 additions on top of stock llama.cpp; the upstream `llama_*` /
 `ggml_*` API is always present and not enumerated here.
 
@@ -67,7 +67,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command (host CMake):**
   ```bash
   cmake -B build-linux-x64-cpu \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DGGML_NATIVE=ON -DBUILD_SHARED_LIBS=ON \
     -DCMAKE_BUILD_TYPE=Release
   cmake --build build-linux-x64-cpu --target llama-server llama-cli
@@ -97,7 +97,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command:**
   ```bash
   cmake -B build-linux-x64-cuda \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DGGML_CUDA=ON -DGGML_CUDA_FA=ON -DGGML_CUDA_FA_ALL_QUANTS=ON \
     -DCMAKE_CUDA_ARCHITECTURES="80;86;89;90" \
     -DCMAKE_BUILD_TYPE=Release
@@ -130,7 +130,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command (full ggml-vulkan):**
   ```bash
   cmake -B build-linux-x64-vulkan \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DGGML_VULKAN=ON \
     -DCMAKE_BUILD_TYPE=Release
   cmake --build build-linux-x64-vulkan --target ggml-vulkan llama-server
@@ -139,7 +139,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
   `packages/inference/vulkan/`: `turbo3.spv`, `turbo4.spv`,
   `turbo3_tcq.spv`, `qjl.spv`, `qjl_get_rows.spv`, `qjl_mul_mv.spv`,
   `polar.spv`, `polar_get_rows.spv`. The fork's `ggml-vulkan.cpp`
-  dispatcher does NOT yet wire the QJL/Polar Milady-shaders; only the
+  dispatcher does NOT yet wire the QJL/Polar Eliza-shaders; only the
   upstream quants + W1-D TBQ shaders run via the integrated backend.
 - **Verification command:**
   ```bash
@@ -164,7 +164,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
   node packages/app-core/scripts/aosp/compile-libllama.mjs \
     --abi arm64-v8a \
     --assets-dir /tmp/arm64-out \
-    --src-dir ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0
+    --src-dir ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0
   ```
 - **Expected exported symbols:** baseline CPU set, plus
   `qjl_quantize_row_neon`, `qjl_quantize_rows_neon`,
@@ -191,8 +191,8 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 
 | Cell | Status | Notes |
 |---|---|---|
-| `darwin-arm64-cpu` | `□ source-only` | The fork's Apple Silicon CPU path inherits upstream defaults; no Milady-specific bring-up yet (NEON sources work, they just haven't been built on a Mac runner). **Hardware-blocked on this host.** |
-| `darwin-arm64-metal` | `⚠ partial` | W3-G shipped a ready-to-run Apple-Silicon build kit with the .metal sources from W1-D vendored under `ggml/src/ggml-metal/milady-kernels/`. Dispatcher wiring (`ggml-metal.metal` updates so TBQ/QJL/Polar route to the new shaders) is the next step. **Hardware-blocked on this host.** Intel Macs are not a supported target — Apple Silicon only. |
+| `darwin-arm64-cpu` | `□ source-only` | The fork's Apple Silicon CPU path inherits upstream defaults; no Eliza-specific bring-up yet (NEON sources work, they just haven't been built on a Mac runner). **Hardware-blocked on this host.** |
+| `darwin-arm64-metal` | `⚠ partial` | W3-G shipped a ready-to-run Apple-Silicon build kit with the .metal sources from W1-D vendored under `ggml/src/ggml-metal/eliza-kernels/`. Dispatcher wiring (`ggml-metal.metal` updates so TBQ/QJL/Polar route to the new shaders) is the next step. **Hardware-blocked on this host.** Intel Macs are not a supported target — Apple Silicon only. |
 | `ios-arm64-metal` | `□ source-only` | Same `.metal` sources as `darwin-arm64-metal` plus the `LlamaCpp.xcframework` packaging at `packages/app-core/patches/llama-cpp-capacitor@0.1.5.patch`. Needs Apple Silicon runner. |
 | `ios-arm64-simulator-metal` | `□ source-only` | Same as `ios-arm64-metal` with `CMAKE_OSX_SYSROOT=iphonesimulator`. |
 
@@ -201,7 +201,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command:**
   ```bash
   cmake -B build-darwin-arm64-metal \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON \
     -DCMAKE_BUILD_TYPE=Release
   cmake --build build-darwin-arm64-metal --target llama-server
@@ -212,11 +212,11 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
   `kernel_mul_mv_tbq{3,4}_0_f32`,
   `kernel_cpy_f32_tbq{3,4}_0` MSL kernels. QJL/Polar Metal kernels
   exist as `.metal` sources under
-  `ggml/src/ggml-metal/milady-kernels/` but are not dispatcher-wired.
+  `ggml/src/ggml-metal/eliza-kernels/` but are not dispatcher-wired.
 - **Verification command:**
   ```bash
   ./packages/inference/verify/metal_verify \
-    ggml/src/ggml-metal/milady-kernels/turbo3.metal \
+    ggml/src/ggml-metal/eliza-kernels/turbo3.metal \
     kernel_turbo3_dot \
     packages/inference/verify/fixtures/turbo3.json
   ```
@@ -224,14 +224,14 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
   runner label `apple-m3-pro`.
 - **Reports:** W3-G ready-to-run kit (worktree-only, not yet on
   develop). Metal kernels staged in fork tree under
-  `ggml/src/ggml-metal/milady-kernels/`; dispatcher patch pending.
+  `ggml/src/ggml-metal/eliza-kernels/`; dispatcher patch pending.
 
 #### `ios-arm64-metal`
 
 - **Build command:**
   ```bash
   cmake -B build-ios-arm64-metal \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos \
     -DBUILD_SHARED_LIBS=OFF \
     -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON \
@@ -267,8 +267,8 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
     --abi arm64-v8a \
     --assets-dir apps/app/android/app/src/main/assets/agent/arm64-v8a
   ```
-  (Update the script's `LLAMA_CPP_TAG` from `v0.2.0-milady` to
-  `v0.3.0-milady` to pick up W3-B fused kernels — currently the script
+  (Update the script's `LLAMA_CPP_TAG` from `v0.2.0-eliza` to
+  `v0.3.0-eliza` to pick up W3-B fused kernels — currently the script
   uses `--src-dir` override.)
 - **Expected exported symbols:** AOSP musl-linked `libllama.so`,
   `libggml-base.so`, `libggml-cpu.so`, `libeliza-llama-shim.so`,
@@ -322,7 +322,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command:**
   ```bash
   cmake -B build-android-arm64-vulkan \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DCMAKE_TOOLCHAIN_FILE=$NDK/build/cmake/android.toolchain.cmake \
     -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-26 \
     -DGGML_VULKAN=ON \
@@ -353,7 +353,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
   PATH=/path/to/mingw/bin:$PATH \
   ELIZA_DFLASH_LLAMA_CPP_REMOTE="https://github.com/elizaOS/llama.cpp.git" \
     node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
-      --target windows-x64-cpu --ref v0.3.0-milady
+      --target windows-x64-cpu --ref v0.3.0-eliza
   ```
 - **Expected exported symbols:** `llama-server.exe`, `llama-cli.exe`,
   `llama-speculative-simple.exe`, `libllama.dll`, `libllama-common.dll`,
@@ -381,7 +381,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command:**
   ```bash
   cmake -B build-windows-x64-cuda \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-w64-mingw32.cmake \
     -DGGML_CUDA=ON \
     -DCMAKE_BUILD_TYPE=Release
@@ -401,7 +401,7 @@ additions on top of stock llama.cpp; the upstream `llama_*` /
 - **Build command:**
   ```bash
   cmake -B build-windows-x64-vulkan \
-    -S ~/.cache/eliza-android-agent/milady-llama-cpp-v0.1.0 \
+    -S ~/.cache/eliza-android-agent/eliza-llama-cpp-v0.1.0 \
     -DCMAKE_TOOLCHAIN_FILE=cmake/x86_64-w64-mingw32.cmake \
     -DGGML_VULKAN=ON \
     -DCMAKE_BUILD_TYPE=Release
@@ -436,6 +436,6 @@ upstream `node-llama-cpp@3.18.1` for desktop). Per-cell verification
 required reading three different build scripts and reconciling
 patch-application status by hand. After the fork unifier landed
 (`reports/porting/2026-05-09-unified/INDEX.md`), every cell pulls
-from the same `elizaOS/llama.cpp @ vX.Y.0-milady` and the only
+from the same `elizaOS/llama.cpp @ vX.Y.0-eliza` and the only
 moving variable is the platform/ABI/backend. This file is the
 canonical place for that table.

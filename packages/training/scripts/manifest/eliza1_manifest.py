@@ -69,7 +69,7 @@ VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 # Release-state vocabulary recorded in `manifest.provenance.releaseState` and
 # `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
 # upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and
-# fully Milady-optimized (every quant/kernel trick in §3) — but NOT
+# fully Eliza-optimized (every quant/kernel trick in §3) — but NOT
 # fine-tuned. Fine-tuning lands in v2 (`finetuned-v2`). `local-standin` is a
 # non-publishable staging shape; `upload-candidate`/`final` are the
 # fine-tuned-v1 publish states retained for forward-compat.

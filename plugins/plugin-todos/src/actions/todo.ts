@@ -24,7 +24,7 @@ import {
   TODOS_CONTEXTS,
 } from "../types.js";
 
-const PARENT_TRAJECTORY_STEP_ENV_KEY = "MILADY_PARENT_TRAJECTORY_STEP_ID";
+const PARENT_TRAJECTORY_STEP_ENV_KEY = "ELIZA_PARENT_TRAJECTORY_STEP_ID";
 
 interface TodoActionParameters {
   action?: unknown;

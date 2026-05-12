@@ -2,8 +2,8 @@
  * Eliza state-dir resolution.
  *
  * Canonical precedence (highest first):
- *   1. `MILADY_STATE_DIR`
- *   2. `ELIZA_STATE_DIR`
+ *   1. `ELIZA_STATE_DIR`
+ *   2. `MILADY_STATE_DIR` (legacy alias, kept for backward compatibility)
  *   3. `<homedir>/.${ELIZA_NAMESPACE ?? "eliza"}`
  *
  * Every caller that touches persisted user state (skills, training,
@@ -47,14 +47,14 @@ export function getElizaNamespace(
 
 /**
  * Resolve the per-user state directory, honoring the documented precedence:
- * `MILADY_STATE_DIR` > `ELIZA_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}`.
+ * `ELIZA_STATE_DIR` > `MILADY_STATE_DIR` > `~/.${ELIZA_NAMESPACE ?? "eliza"}`.
  */
 export function resolveStateDir(
 	env: NodeJS.ProcessEnv = process.env,
 	getHome: () => string = homedir,
 ): string {
 	const explicit =
-		readEnv(env, "MILADY_STATE_DIR") ?? readEnv(env, "ELIZA_STATE_DIR");
+		readEnv(env, "ELIZA_STATE_DIR") ?? readEnv(env, "MILADY_STATE_DIR");
 	if (explicit) return resolveUserPath(explicit);
 	return join(getHome(), `.${getElizaNamespace(env)}`);
 }

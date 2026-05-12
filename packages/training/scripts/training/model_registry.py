@@ -1,4 +1,4 @@
-"""Qwen3 model registry for the milady training pipeline.
+"""Qwen3 model registry for the eliza training pipeline.
 
 Single source of truth for which Qwen variant trains where, with what
 optimizer + quantization combination, and what its memory budget looks like.
@@ -144,7 +144,7 @@ class ModelEntry:
     other scripts/tests reference the key. ``train_local.py`` /
     ``run_pipeline.py`` refuse to run with an unverified entry unless the
     caller passes an explicit ``--model`` override (or sets
-    ``MILADY_ALLOW_UNVERIFIED_BASE=1``)."""
+    ``ELIZA_ALLOW_UNVERIFIED_BASE=1``)."""
 
     notes: str = ""
     extra: dict[str, str] = field(default_factory=dict)
@@ -291,7 +291,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # kept only because scripts (train_vast.sh, train_nebius.sh, push_*),
     # docs, and tests still reference them. Every entry below carries
     # `unverified_base=True`; train_local.py / run_pipeline.py refuse to run
-    # with one unless `--model` is overridden or MILADY_ALLOW_UNVERIFIED_BASE=1
+    # with one unless `--model` is overridden or ELIZA_ALLOW_UNVERIFIED_BASE=1
     # is set. Repoint hf_id to a real checkpoint here once one exists.
     #
     # UNVERIFIED BASE — placeholder, no published checkpoint as of 2026-05.

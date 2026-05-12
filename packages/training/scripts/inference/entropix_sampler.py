@@ -1,4 +1,4 @@
-"""Entropix entropy/varentropy sampler for Milady inference.
+"""Entropix entropy/varentropy sampler for Eliza inference.
 
 Per-step logit post-processor: picks one of {greedy, forced-clarifier,
 temp-bumped resample, mask-and-resample} from (entropy, varentropy) of the

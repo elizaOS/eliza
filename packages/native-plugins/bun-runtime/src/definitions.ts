@@ -3,7 +3,7 @@
  *
  * Hosts a JavaScriptCore JSContext on a dedicated worker thread. The native
  * plugin either starts a bundled full Bun engine framework or installs the
- * `__MILADY_BRIDGE__` host functions for the compatibility JSContext path.
+ * `__ELIZA_BRIDGE__` host functions for the compatibility JSContext path.
  * The full-engine ABI lives in packages/bun-ios-runtime/BRIDGE_CONTRACT.md.
  *
  * The plugin exposes a tiny surface to the React UI: start the runtime,
@@ -30,7 +30,7 @@ export interface StartOptions {
   bundlePath?: string;
   /**
    * Optional polyfill prefix loaded before the agent bundle. When omitted,
-   * the runtime loads `milady-polyfill-prefix.js` from the main app bundle
+   * the runtime loads `eliza-polyfill-prefix.js` from the main app bundle
    * resources, or falls back to a minimal embedded prefix.
    */
   polyfillPath?: string;
@@ -48,7 +48,7 @@ export interface StartOptions {
 export interface StartResult {
   ok: boolean;
   error?: string;
-  /** Version string emitted by `__MILADY_BRIDGE_VERSION__`. */
+  /** Version string emitted by `__ELIZA_BRIDGE_VERSION__`. */
   bridgeVersion?: string;
 }
 

@@ -5,7 +5,7 @@
  * Wave-4-F bridged the iOS pipeline: previously
  * `run-mobile-build.mjs` invoked cmake against the upstream npm package's
  * bundled `ios/` source, which produced a stock llama.cpp framework with
- * none of the milady kernels (TurboQuant / QJL / PolarQuant / DFlash).
+ * none of the eliza kernels (TurboQuant / QJL / PolarQuant / DFlash).
  * That framework satisfied the patched podspec but violated AGENTS.md §3
  * (required-kernel contract).
  *
@@ -72,7 +72,7 @@ const REQUIRED_IOS_KERNEL_SYMBOLS = [
     kernel: "dflash",
     // DFlash is a CLI/runtime feature in the fork; its CPU-side flash-attn
     // hook is what the iOS slice carries. The symbol surfaces as the
-    // FA-ext entry point ggml-cpu wires for the v0.4.0-milady fork.
+    // FA-ext entry point ggml-cpu wires for the v0.4.0-eliza fork.
     symbolPattern: /dflash|flash[_-]?attn[_-]?ext/i,
     where: "libggml-cpu.a / libggml-metal.a",
   },
@@ -370,7 +370,7 @@ function buildStaticFramework(tmpDir, slice, target) {
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>LlamaCpp</string>
   <key>CFBundlePackageType</key><string>FMWK</string>
-  <key>CFBundleShortVersionString</key><string>0.4.0-milady</string>
+  <key>CFBundleShortVersionString</key><string>0.4.0-eliza</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>MinimumOSVersion</key><string>14.0</string>
   <key>CFBundleSupportedPlatforms</key>
