@@ -79,6 +79,21 @@ export {
   selectRecommendedModelForSlot,
   selectRecommendedModels,
 } from "./recommendation";
+export {
+  dispatchGenerate,
+  type DispatchGenerateInput,
+  type HttpStreamingAdapter,
+  type InferenceStreamEvent,
+} from "./runtime-dispatcher";
+export {
+  inferencePlatformClass,
+  inferenceRuntimeMode,
+  type InferenceRuntimeMode,
+  type InferenceRuntimeModeInput,
+  isCapacitorNativeRuntime,
+  readRuntimeModeEnvOverride,
+  type SupportedHostPlatform,
+} from "./runtime-target";
 export { LocalInferenceService, localInferenceService } from "./service";
 export type {
   ActiveModelState,
