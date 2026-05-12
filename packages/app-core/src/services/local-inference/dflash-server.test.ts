@@ -351,6 +351,21 @@ llamacpp:n_drafted_accepted 75
     expect(snapshot?.acceptanceRate).toBeCloseTo(0.75, 5);
   });
 
+  it("prefers unlabelled totals over labelled shard samples", () => {
+    const text = `llamacpp:n_decode_total 64
+llamacpp:n_drafted_total{slot_id="0"} 10
+llamacpp:n_drafted_total{slot_id="1"} 20
+llamacpp:n_drafted_total 40
+llamacpp:n_drafted_accepted_total{slot_id="0"} 4
+llamacpp:n_drafted_accepted_total{slot_id="1"} 5
+llamacpp:n_drafted_accepted_total 12
+`;
+    const snapshot = parseDflashMetrics(text);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.drafted).toBe(40);
+    expect(snapshot?.accepted).toBe(12);
+  });
+
   it("returns null when the response has no speculative counters", () => {
     const text = `# HELP some_other_metric Random gauge.
 # TYPE some_other_metric gauge

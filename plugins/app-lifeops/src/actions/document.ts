@@ -1,5 +1,5 @@
 /**
- * `DOC` umbrella action — Docs And Portals domain.
+ * `OWNER_DOCUMENTS` umbrella action — Docs And Portals domain.
  *
  * PRD: `prd-lifeops-executive-assistant.md` §Docs And Portals.
  *
@@ -8,12 +8,12 @@
  * PRD-named actions are exposed as similes on a single umbrella that
  * dispatches on `subaction`:
  *
- *   - `request_signature`  ← `DOC_REQUEST_SIGNATURE`
- *   - `request_approval`   ← `DOC_REQUEST_APPROVAL`
- *   - `track_deadline`     ← `DOC_TRACK_DEADLINE`
- *   - `upload_asset`       ← `DOC_UPLOAD_ASSET`
- *   - `collect_id`         ← `DOC_COLLECT_ID_OR_FORM`
- *   - `close_request`      ← `DOC_CLOSE_REQUEST`
+ *   - `request_signature`  ← `OWNER_DOCUMENTS_REQUEST_SIGNATURE`
+ *   - `request_approval`   ← `OWNER_DOCUMENTS_REQUEST_APPROVAL`
+ *   - `track_deadline`     ← `OWNER_DOCUMENTS_TRACK_DEADLINE`
+ *   - `upload_asset`       ← `OWNER_DOCUMENTS_UPLOAD_ASSET`
+ *   - `collect_id`         ← `OWNER_DOCUMENTS_COLLECT_ID_OR_FORM`
+ *   - `close_request`      ← `OWNER_DOCUMENTS_CLOSE_REQUEST`
  *
  * Each subaction composes existing services (`SCHEDULED_TASK` runner for
  * deadline tracking, `ApprovalQueue` for owner-gated dispatch) rather than
@@ -51,7 +51,7 @@ import type {
   DocumentRequestStatus,
 } from "../types/document-request.js";
 
-const ACTION_NAME = "DOC";
+const ACTION_NAME = "OWNER_DOCUMENTS";
 
 const SUBACTIONS = [
   "request_signature",
@@ -65,29 +65,28 @@ const SUBACTIONS = [
 type Subaction = (typeof SUBACTIONS)[number];
 
 const SIMILE_NAMES: readonly string[] = [
-  "DOC_REQUEST_SIGNATURE",
-  "DOC_REQUEST_APPROVAL",
-  "DOC_TRACK_DEADLINE",
-  "DOC_UPLOAD_ASSET",
-  "DOC_COLLECT_ID_OR_FORM",
-  "DOC_CLOSE_REQUEST",
-  "DOCUMENT",
-  "DOCUMENTS",
+  "OWNER_DOCUMENTS_REQUEST_SIGNATURE",
+  "OWNER_DOCUMENTS_REQUEST_APPROVAL",
+  "OWNER_DOCUMENTS_TRACK_DEADLINE",
+  "OWNER_DOCUMENTS_UPLOAD_ASSET",
+  "OWNER_DOCUMENTS_COLLECT_ID_OR_FORM",
+  "OWNER_DOCUMENTS_CLOSE_REQUEST",
   "PAPERWORK",
 ];
 
 /**
- * Map planner-facing simile (e.g. `DOC_REQUEST_SIGNATURE`) to the umbrella
- * subaction the handler dispatches on. The map is checked when the handler
- * is invoked through a simile virtual rather than the `subaction` arg.
+ * Map planner-facing simile (e.g.
+ * `OWNER_DOCUMENTS_REQUEST_SIGNATURE`) to the umbrella subaction the handler
+ * dispatches on. The map is checked when the handler is invoked through a
+ * simile virtual rather than the `subaction` arg.
  */
 const SIMILE_TO_SUBACTION: Readonly<Record<string, Subaction>> = {
-  DOC_REQUEST_SIGNATURE: "request_signature",
-  DOC_REQUEST_APPROVAL: "request_approval",
-  DOC_TRACK_DEADLINE: "track_deadline",
-  DOC_UPLOAD_ASSET: "upload_asset",
-  DOC_COLLECT_ID_OR_FORM: "collect_id",
-  DOC_CLOSE_REQUEST: "close_request",
+  OWNER_DOCUMENTS_REQUEST_SIGNATURE: "request_signature",
+  OWNER_DOCUMENTS_REQUEST_APPROVAL: "request_approval",
+  OWNER_DOCUMENTS_TRACK_DEADLINE: "track_deadline",
+  OWNER_DOCUMENTS_UPLOAD_ASSET: "upload_asset",
+  OWNER_DOCUMENTS_COLLECT_ID_OR_FORM: "collect_id",
+  OWNER_DOCUMENTS_CLOSE_REQUEST: "close_request",
 };
 
 interface DocActionParameters {

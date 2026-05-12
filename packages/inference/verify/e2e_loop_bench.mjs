@@ -62,6 +62,10 @@ function parseArgs(argv) {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean),
+    refs: (process.env.ELIZA_E2E_REFS || "")
+      .split("|")
+      .map((s) => s.trim())
+      .filter(Boolean),
     turns: Number.parseInt(process.env.ELIZA_E2E_TURNS || "1", 10),
     nPredict: Number.parseInt(process.env.ELIZA_E2E_N_PREDICT || "40", 10),
     enduranceNPredict: Number.parseInt(process.env.ELIZA_E2E_ENDURANCE_N_PREDICT || "12", 10),
@@ -99,6 +103,11 @@ function parseArgs(argv) {
     else if (a === "--wav" || a === "--wavs")
       args.wavs = next()
         .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+    else if (a === "--ref" || a === "--refs")
+      args.refs = next()
+        .split("|")
         .map((s) => s.trim())
         .filter(Boolean);
     else if (a === "--turns") args.turns = Number.parseInt(next(), 10);
@@ -929,6 +938,8 @@ async function main() {
       nPredict: args.nPredict,
       ttsSteps: args.ttsSteps,
       micTtsSteps: args.micTtsSteps,
+      wavs: args.wavs.length,
+      refs: args.refs.length,
     },
     bundle: { dir: bundleDir, tier, ramBudgetMb: files.manifest?.ramBudgetMb ?? null },
     engine: engine.ok ? { dir: engine.dir, backend: engine.backend, fused: true, caps: engine.caps?.kernels ?? null } : null,
@@ -1007,9 +1018,15 @@ async function main() {
 
     // --- synthesize mic WAVs if none supplied ---
     if (args.wavs.length > 0) {
-      for (const w of args.wavs) {
+      for (let i = 0; i < args.wavs.length; i += 1) {
+        const w = args.wavs[i];
         const wav = readWav(w);
-        micWavs.push({ file: w, samples: wav.samples, sampleRate: wav.sampleRate, refText: null });
+        micWavs.push({
+          file: w,
+          samples: wav.samples,
+          sampleRate: wav.sampleRate,
+          refText: args.refs[i] || null,
+        });
       }
     } else {
       for (let i = 0; i < REF_PHRASES.length; i += 1) {

@@ -229,24 +229,28 @@ const DFLASH_METRIC_ALIASES = {
 } as const;
 
 export function parseDflashMetrics(body: string): DflashMetricsSnapshot | null {
-  const samples = new Map<string, number>();
+  const samples = new Map<string, { unlabeled: number | null; labeledSum: number }>();
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
     const match = line.match(
-      /^([a-zA-Z_:][\w:]*)(?:\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/,
+      /^([a-zA-Z_:][\w:]*)(\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
     );
     if (!match) continue;
     const name = match[1];
-    const value = Number(match[2]);
+    const labels = match[2];
+    const value = Number(match[3]);
     if (!name || !Number.isFinite(value)) continue;
-    samples.set(name, (samples.get(name) ?? 0) + value);
+    const bucket = samples.get(name) ?? { unlabeled: null, labeledSum: 0 };
+    if (labels) bucket.labeledSum += value;
+    else bucket.unlabeled = value;
+    samples.set(name, bucket);
   }
 
   const readFirst = (aliases: readonly string[]): number | null => {
     for (const alias of aliases) {
-      const value = samples.get(alias);
-      if (value !== undefined) return value;
+      const bucket = samples.get(alias);
+      if (bucket !== undefined) return bucket.unlabeled ?? bucket.labeledSum;
     }
     return null;
   };
