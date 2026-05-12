@@ -1,12 +1,12 @@
 {
-  "report": "eliza-1 harness benchmark — comprehensive model + kernel comparison",
+  "report": "eliza-1 harness benchmark \u2014 comprehensive model + kernel comparison",
   "generatedAt": "2026-05-12T08:40:00Z",
   "atCommit": "cc83f11f1e",
   "host": {
     "cpu": "Intel Core Ultra 9 275HX (Arrow Lake-HX, 24 cores; AVX2 + AVX-VNNI + F16C, no AVX-512)",
-    "gpu": "NVIDIA RTX 5080 Laptop (Blackwell, 16 GB VRAM, sm_120) — held by an in-flight full-corpus SFT (~12 GB), so all benches here are CPU-only or re-used from prior runs",
+    "gpu": "NVIDIA RTX 5080 Laptop (Blackwell, 16 GB VRAM, sm_120) \u2014 held by an in-flight full-corpus SFT (~12 GB), so all benches here are CPU-only or re-used from prior runs",
     "ram_gb": 30,
-    "note": "CPU llama-bench numbers are lower bounds — measured concurrently with the SFT's data-loader CPU usage; idle-host figures are higher (text_model_2026-05-11 -t16 idle row: pp512 227 / tg128 24 for 0_6b)."
+    "note": "CPU llama-bench numbers are lower bounds \u2014 measured concurrently with the SFT's data-loader CPU usage; idle-host figures are higher (text_model_2026-05-11 -t16 idle row: pp512 227 / tg128 24 for 0_6b)."
   },
   "caveats": [
     "All Eliza-1 text/TTS/ASR weights are documented STAND-INS: text = upstream Qwen3-0.6B/1.7B GGUF re-hosted (the published Qwen3.5-x.xx checkpoints do not exist yet); TTS = off-the-shelf omnivoice; ASR = ggml-org Qwen3-ASR-0.6B-GGUF (not tokenizer-fused). The elizaos/eliza-1-* HF model repos are not created yet.",
@@ -15,7 +15,7 @@
     "PolarQuant Q4_POLAR is DEFERRED in the GGUF body: the fork's convert_hf_to_gguf.py does not yet emit q4_polar, so the eliza1-bundle-gpu GGUF ships a Q8_0 body with PolarQuant/QJL/TurboQuant sidecars (weight_quant.deferred=true). Runtime kernels exist (CUDA cuda-verify 8/8 on RTX 5080; CPU reference 8/8).",
     "The test-SFT 0_6b is an 8000-sample / 1-epoch slice run (eval_loss 1.315). The full-corpus 0_6b SFT (68,297 rows, 1 epoch) is IN FLIGHT on the RTX 5080 as of 2026-05-12 (~8% done, ETA ~2026-05-13); its gate_report / GGUF / eliza1 bundle do not exist yet.",
     "action-selection accuracy and personality PASS% require a live LLM provider + a judge model; neither is wired in this headless context, so both are recorded not-run. eliza_bench / native_tool_call were run via HF transformers on CPU on the test-SFT checkpoint (fresh, 2026-05-11 20:31) and re-used; they were NOT run against the GGUF bundles (the bundle text-eval perplexity score IS the GGUF text-quality datapoint).",
-    "The 1_7b base SFT is itself in progress (seq-4096 OOM'd; re-running at seq 2048) — the 1_7b row here is the eliza1-bundle (stand-in Qwen3-1.7B Q4_K_M re-host), not a fine-tune."
+    "The 1_7b base SFT is itself in progress (seq-4096 OOM'd; re-running at seq 2048) \u2014 the 1_7b row here is the eliza1-bundle (stand-in Qwen3-1.7B Q4_K_M re-host), not a fine-tune."
   ],
   "models": {
     "base_qwen3_0_6b": {
@@ -40,16 +40,16 @@
       "cuda_bench_note": "non-fused linux-x64-cuda install (forkCommit a61c93aaa5, builtAt 2026-05-12T17:16:58Z, sm_120 native SASS via CUDA 12.8 nvcc), llama-bench -ngl 99 -p 512 -n 128 [-d 16000], 2026-05-12 ~13:50 PDT on freed-up RTX 5080 Laptop (no SFT contention). Base model = /tmp/eliza1-eval-models/Qwen3-0.6B-Q8_0.gguf."
     },
     "testsft_0_6b": {
-      "what": "checkpoints/eliza-1-0_6b-apollo-1778551769 — APOLLO-mini full-param SFT, 8000-sample slice, 1 epoch, eval_loss 1.315; GGUF = final-Q4_K_M.gguf (396 MB)",
-      "text_format_ok": 0.20,
+      "what": "checkpoints/eliza-1-0_6b-apollo-1778551769 \u2014 APOLLO-mini full-param SFT, 8000-sample slice, 1 epoch, eval_loss 1.315; GGUF = final-Q4_K_M.gguf (396 MB)",
+      "text_format_ok": 0.2,
       "text_format_ok_base": 0.0857,
       "text_parse_errors_reply_bucket": 0,
       "claude_distill_format_pct": 63.64,
       "message_handler_content_pct": 100.0,
       "eliza_bench_tps_gen_cpu_transformers": 90.9,
       "native_tool_call": "n=0 response bucket",
-      "action_selection_accuracy": null,
-      "personality_pass_pct": null,
+      "action_selection_accuracy": 0.156,
+      "personality_pass_pct": 33.3,
       "gen_tps_cpu_d0_pp512": 500.0,
       "gen_tps_cpu_d0_tg128": 75.6,
       "gen_tps_cpu_d16k": null,
@@ -57,7 +57,14 @@
       "asr_wer": null,
       "dflash_accept": null,
       "kernel_verify": "n/a (GGUF body Q4_K_M, no quant sidecars on this slice run)",
-      "gate": {"format_ok_floor_0.5": "FAIL (0.20)", "format_ok_not_regressed": "PASS (0.20 >= 0.0857)", "verdict": "conditional-go — beat base on every metric, regressed none; did not clear the absolute 0.7/0.5 format_ok floor on the 35-row smoke corpus"}
+      "gate": {
+        "format_ok_floor_0.5": "FAIL (0.20)",
+        "format_ok_not_regressed": "PASS (0.20 >= 0.0857)",
+        "verdict": "conditional-go \u2014 beat base on every metric, regressed none; did not clear the absolute 0.7/0.5 format_ok floor on the 35-row smoke corpus"
+      },
+      "notes": [
+        "Filled 2026-05-12: action-selection bench against final-Q4_K_M.gguf via local llama-server (linux-x64-cuda non-fused), 32-case curated filter, no-think mode, 32k ctx. Personality bench via eliza-runtime profile on local llama-server, Cerebras gpt-oss-120b judge, stratified scenario subset."
+      ]
     },
     "eliza1_bundle_0_6b": {
       "what": "~/.eliza/local-inference/models/eliza-1-0_6b.bundle (text = Qwen3-0.6B Q3_K_M re-host) + the eliza1-bundle-gpu GGUF checkpoints/eliza-1-0_6b-apollo-1778515903/milady-optimized-gpu (PolarQuant+QJL+TurboQuant sidecars, GGUF body Q8_0)",
@@ -89,13 +96,22 @@
       "embedding_single_text_ms_metal_m4max": 14.44,
       "peak_rss_mb": 956.6,
       "kernel_verify": "CPU dispatch=pass (kernel-contract + reference-test, turbo3/turbo4/qjl/polarquant/dflash); CUDA=runtime-ready (cuda-verify 8/8 on RTX 5080 sm_120); Vulkan dispatch=pass; Metal source-complete (needs-hardware)",
-      "gate": {"text_eval_0.55": "FAIL (0.2779)", "voice_rtf_0.5": "FAIL (8.62, stand-in TTS on CPU)", "asr_wer_0.1": "FAIL (1.0, stand-in ASR)", "dflash_accept_0.6": "PASS (0.8696)", "e2e_loop": "PASS", "30_turn": "PASS", "dispatch": "PASS", "overall": "FAIL (stand-in weights — expected; the structural/kernel gates pass)"}
+      "gate": {
+        "text_eval_0.55": "FAIL (0.2779)",
+        "voice_rtf_0.5": "FAIL (8.62, stand-in TTS on CPU)",
+        "asr_wer_0.1": "FAIL (1.0, stand-in ASR)",
+        "dflash_accept_0.6": "PASS (0.8696)",
+        "e2e_loop": "PASS",
+        "30_turn": "PASS",
+        "dispatch": "PASS",
+        "overall": "FAIL (stand-in weights \u2014 expected; the structural/kernel gates pass)"
+      }
     },
     "base_qwen3_1_7b": {
       "what": "upstream Qwen/Qwen3-1.7B (eliza-1-1_7b stand-in base); SFT in progress (seq-4096 OOM'd, re-running at seq 2048)",
-      "note": "no fine-tune artifact yet — see eliza1_bundle_1_7b for the GGUF/eval row",
-      "gen_tps_cuda_rtx5080_d0_pp512": 12413.50,
-      "gen_tps_cuda_rtx5080_d0_tg128": 158.70,
+      "note": "no fine-tune artifact yet \u2014 see eliza1_bundle_1_7b for the GGUF/eval row",
+      "gen_tps_cuda_rtx5080_d0_pp512": 12413.5,
+      "gen_tps_cuda_rtx5080_d0_tg128": 158.7,
       "gen_tps_cuda_rtx5080_d16k_pp512": 1790.21,
       "gen_tps_cuda_rtx5080_d16k_tg128": 79.96,
       "cuda_bench_note": "non-fused linux-x64-cuda install (forkCommit a61c93aaa5, sm_120 SASS), llama-bench -ngl 99 -p 512 -n 128 [-d 16000] on /tmp/eliza1-eval-models/Qwen3-1.7B-Q8_0.gguf (1.70 GiB)."
@@ -124,12 +140,18 @@
       "asr_wer": 1.0,
       "dflash_accept": 0.55,
       "peak_rss_mb": 2334.2,
-      "kernel_verify": "same as 0_6b — CPU pass / CUDA runtime-ready / Vulkan pass / Metal needs-hardware",
-      "gate": {"text_eval_0.6": "FAIL (0.328)", "voice_rtf_0.45": "FAIL (5.91)", "asr_wer_0.08": "FAIL (1.0)", "dflash_accept_0.65": "FAIL (0.55 — the stamp-only same-size drafter at this tier accepts less)", "overall": "FAIL (stand-in weights + below dflash floor)"}
+      "kernel_verify": "same as 0_6b \u2014 CPU pass / CUDA runtime-ready / Vulkan pass / Metal needs-hardware",
+      "gate": {
+        "text_eval_0.6": "FAIL (0.328)",
+        "voice_rtf_0.45": "FAIL (5.91)",
+        "asr_wer_0.08": "FAIL (1.0)",
+        "dflash_accept_0.65": "FAIL (0.55 \u2014 the stamp-only same-size drafter at this tier accepts less)",
+        "overall": "FAIL (stand-in weights + below dflash floor)"
+      }
     },
     "fullcorpus_sft_0_6b": {
-      "what": "checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093 — APOLLO-mini full-param SFT over the 68,297-row combined corpus (eliza1-sft-0_6b ahead of data/final), seq 4096, Liger on, lr 1e-5, 1 epoch",
-      "status": "IN FLIGHT on the RTX 5080 as of 2026-05-12 — ~8% of 8538 steps (step ~845), ~12.7 s/it ⇒ ~28 h remaining, ETA ~2026-05-13; first eval at step 500: eval_loss 1.43",
+      "what": "checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093 \u2014 APOLLO-mini full-param SFT over the 68,297-row combined corpus (eliza1-sft-0_6b ahead of data/final), seq 4096, Liger on, lr 1e-5, 1 epoch",
+      "status": "IN FLIGHT on the RTX 5080 as of 2026-05-12 \u2014 ~8% of 8538 steps (step ~845), ~12.7 s/it \u21d2 ~28 h remaining, ETA ~2026-05-13; first eval at step 500: eval_loss 1.43",
       "text_format_ok": null,
       "all_metrics": null,
       "kernel_verify": "n/a (run_pipeline.py --eval-mode full will auto-chain gate bench + quant + eliza1 bundle at the tail)",
@@ -137,28 +159,60 @@
     }
   },
   "kernel_verify_matrix": {
-    "cpu_x86_64": {"status": "pass", "targets": ["kernel-contract", "reference-test", "cpu-bench", "cpu-dispatch-smoke"], "kernels": ["turbo3", "turbo4", "qjl", "polarquant", "dflash"], "atCommit": "08032d57"},
-    "cuda_rtx5080_sm120": {"status": "runtime-ready", "evidence": "cuda-verify + cuda-verify-fused 8/8 numeric match on RTX 5080 (Blackwell cc 12.0, driver 580.142, CUDA 13.0, nvcc 12.0 sm_90 PTX JIT'd to sm_120)", "evidenceDate": "2026-05-11", "note": "verified again 2026-05-12 alongside the in-flight SFT — short verify runs, no contention"},
-    "vulkan_intel_arl_anv": {"status": "pass", "targets": ["vulkan-dispatch-smoke", "vulkan-verify", "vulkan-verify-multiblock", "vulkan-verify-fused"]},
-    "metal_apple": {"status": "source-complete / needs-hardware", "note": "Metal graph-dispatch + polar-preht + fused-attn shaders shipped; runtime-ready gate needs an Apple device in CI"}
+    "cpu_x86_64": {
+      "status": "pass",
+      "targets": [
+        "kernel-contract",
+        "reference-test",
+        "cpu-bench",
+        "cpu-dispatch-smoke"
+      ],
+      "kernels": [
+        "turbo3",
+        "turbo4",
+        "qjl",
+        "polarquant",
+        "dflash"
+      ],
+      "atCommit": "08032d57"
+    },
+    "cuda_rtx5080_sm120": {
+      "status": "runtime-ready",
+      "evidence": "cuda-verify + cuda-verify-fused 8/8 numeric match on RTX 5080 (Blackwell cc 12.0, driver 580.142, CUDA 13.0, nvcc 12.0 sm_90 PTX JIT'd to sm_120)",
+      "evidenceDate": "2026-05-11",
+      "note": "verified again 2026-05-12 alongside the in-flight SFT \u2014 short verify runs, no contention"
+    },
+    "vulkan_intel_arl_anv": {
+      "status": "pass",
+      "targets": [
+        "vulkan-dispatch-smoke",
+        "vulkan-verify",
+        "vulkan-verify-multiblock",
+        "vulkan-verify-fused"
+      ]
+    },
+    "metal_apple": {
+      "status": "source-complete / needs-hardware",
+      "note": "Metal graph-dispatch + polar-preht + fused-attn shaders shipped; runtime-ready gate needs an Apple device in CI"
+    }
   },
   "winners": {
-    "text_format_ok": "testsft_0_6b (0.20) > base (0.0857) — only fine-tune with real data; full-corpus run will be the real number",
-    "claude_distill_format_pct": "testsft_0_6b (63.6%) vs base (27.3%) — 2.3x",
+    "text_format_ok": "testsft_0_6b (0.20) > base (0.0857) \u2014 only fine-tune with real data; full-corpus run will be the real number",
+    "claude_distill_format_pct": "testsft_0_6b (63.6%) vs base (27.3%) \u2014 2.3x",
     "reply_bucket_parse_errors": "testsft_0_6b (0) vs base (8)",
     "gen_tps_cpu_d0_tg128": "eliza1_bundle_0_6b (Q3_K_M, 77.7) ~tied testsft_0_6b (Q4_K_M, 75.6) > q4polar/q8body (61.1) > 1_7b (39.6)",
-    "gen_tps_cpu_d0_pp512": "testsft_0_6b Q4_K_M (500) > q4polar/q8body (432) > bundle_0_6b Q3_K_M (331) > 1_7b (219) — Q8_0 body's better prefill but worse decode vs Q4_K_M is the expected bpw tradeoff",
-    "gen_tps_gpu_vulkan_rtx5080": "eliza1_bundle_0_6b (pp512 3421 / tg128 194) — Blackwell crushes CPU 10-40x; 1_7b (1317 / 112)",
-    "dflash_accept": "eliza1_bundle_0_6b (0.87, stamp-only same-size drafter — upper bound) >> 1_7b (0.55, below the 0.65 floor — the larger target makes each rejected round costlier)",
-    "text_eval_perplexity_score": "eliza1_bundle_1_7b (0.328) > eliza1_bundle_0_6b (0.2779) — bigger stand-in base; neither clears the gate (stand-in weights)",
-    "peak_rss": "eliza1_bundle_0_6b (957 MB) < 1_7b (2334 MB) — the 0_6b is the only tier that fits a phone-class RSS budget"
+    "gen_tps_cpu_d0_pp512": "testsft_0_6b Q4_K_M (500) > q4polar/q8body (432) > bundle_0_6b Q3_K_M (331) > 1_7b (219) \u2014 Q8_0 body's better prefill but worse decode vs Q4_K_M is the expected bpw tradeoff",
+    "gen_tps_gpu_vulkan_rtx5080": "eliza1_bundle_0_6b (pp512 3421 / tg128 194) \u2014 Blackwell crushes CPU 10-40x; 1_7b (1317 / 112)",
+    "dflash_accept": "eliza1_bundle_0_6b (0.87, stamp-only same-size drafter \u2014 upper bound) >> 1_7b (0.55, below the 0.65 floor \u2014 the larger target makes each rejected round costlier)",
+    "text_eval_perplexity_score": "eliza1_bundle_1_7b (0.328) > eliza1_bundle_0_6b (0.2779) \u2014 bigger stand-in base; neither clears the gate (stand-in weights)",
+    "peak_rss": "eliza1_bundle_0_6b (957 MB) < 1_7b (2334 MB) \u2014 the 0_6b is the only tier that fits a phone-class RSS budget"
   },
   "still_pending": [
-    "full-corpus SFT 0_6b — ~28 h remaining (ETA 2026-05-13); gate_report / GGUF / eliza1 bundle then auto-generated by run_pipeline.py --eval-mode full",
-    "1_7b SFT — re-running at seq 2048 (4096 OOM'd)",
-    "action-selection accuracy + personality PASS% — need a live LLM provider + judge model (ELIZA_RUN_ACTION_BENCHMARK=1 + a provider; personality-bench src/runner.ts needs trajectory run dirs + a judge)",
-    "d16k CPU llama-bench sweep — the 16384-token prompt run took >15 min/model under SFT CPU contention; CUDA -DGGML_CUDA=ON build OOM'd earlier (needs an idle host or wait for the SFT to finish)",
-    "real ASR WER — needs real recorded WAV+.txt pairs AND the tokenizer-fused Qwen3-ASR weights (not the stand-in)",
-    "embedding bench on Linux/CPU — only the Metal/M4Max run exists; the Linux run was skipped"
+    "full-corpus SFT 0_6b \u2014 ~28 h remaining (ETA 2026-05-13); gate_report / GGUF / eliza1 bundle then auto-generated by run_pipeline.py --eval-mode full",
+    "1_7b SFT \u2014 re-running at seq 2048 (4096 OOM'd)",
+    "FILLED 2026-05-12 for test-SFT 0_6b (action-sel 15.6% / personality 33.3%); full 76-case action-sel + 200-scenario personality runs still owed on an idle host",
+    "d16k CPU llama-bench sweep \u2014 the 16384-token prompt run took >15 min/model under SFT CPU contention; CUDA -DGGML_CUDA=ON build OOM'd earlier (needs an idle host or wait for the SFT to finish)",
+    "real ASR WER \u2014 needs real recorded WAV+.txt pairs AND the tokenizer-fused Qwen3-ASR weights (not the stand-in)",
+    "embedding bench on Linux/CPU \u2014 only the Metal/M4Max run exists; the Linux run was skipped"
   ]
 }
