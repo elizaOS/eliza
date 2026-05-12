@@ -98,6 +98,13 @@ export function createAgentOrchestratorPlugin(): Plugin {
             spawn_agent: {
               description:
                 "Delegate a coding task to a dedicated sub-agent process (claude / codex / opencode / etc., selected from configured providers). USE THIS when the user explicitly asks to 'spawn a sub-agent', 'delegate this', 'use a coding sub-agent', 'fire up a coder', or for substantial multi-step coding work that benefits from process isolation, its own workspace, or running in parallel. The sub-agent has its own PTY session, can run shell/edit/test, and reports back when done. Prefer this over inline FILE/BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
+              // Compressed blurb is what the planner sees in tier-A
+              // summaries; if we don't override it, it inherits the
+              // generic parent enum dump and the planner can't tell
+              // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
+              // delegation requests. See the parent comment above.
+              descriptionCompressed:
+                "spawn coding sub-agent (claude/codex/opencode/gemini/aider) — use for 'spawn/delegate/use opencode/fire up coding agent' or any multi-step dev work; prefer over inline FILE/BASH when delegation is the user's intent",
             },
           },
         }),

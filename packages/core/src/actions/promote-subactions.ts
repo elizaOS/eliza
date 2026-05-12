@@ -33,6 +33,14 @@ import {
 export interface SubactionPromotionOverrides {
 	/** Override the virtual action's description. */
 	description?: string;
+	/**
+	 * Override the virtual action's compressed description — the short
+	 * one-line blurb the planner sees in tier-A / tier-B summaries. When
+	 * unset, the virtual inherits the parent's `descriptionCompressed`,
+	 * which can be too generic for sub-actions that need a sharper signal
+	 * (e.g. `TASKS_SPAWN_AGENT` competing with inline `FILE.write`).
+	 */
+	descriptionCompressed?: string;
 	/** Add similes specific to this virtual subaction. */
 	similes?: readonly string[];
 	/** Filter / replace examples used for the virtual. */
@@ -212,7 +220,8 @@ export function promoteSubactionsToActions(
 		const virtual: PromotedAction = {
 			name: virtualName,
 			description,
-			descriptionCompressed: parent.descriptionCompressed,
+			descriptionCompressed:
+				override.descriptionCompressed ?? parent.descriptionCompressed,
 			similes,
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
