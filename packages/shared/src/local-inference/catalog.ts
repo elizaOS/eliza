@@ -2,18 +2,21 @@
  * Eliza-curated local model catalog.
  *
  * Eliza-1 is the only default-eligible model line. The user-facing model
- * ids are size-first (`eliza-1-0_8b`, `eliza-1-0_6b`, `eliza-1-1_7b`,
- * `eliza-1-9b`, `eliza-1-27b`, `eliza-1-27b-256k`, `eliza-1-27b-1m`). The
+ * ids are size-first (`eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-9b`,
+ * `eliza-1-27b`, `eliza-1-27b-256k`, `eliza-1-27b-1m`). The
  * recommendation engine picks one of these tiers based on hardware. The
  * long-context 27B variants (`27b-256k`, `27b-1m`) only surface on hosts
  * whose RAM/VRAM can hold the KV cache at that window — `27b-1m` is
  * GH200-class.
  *
- * `eliza-1-0_8b` is the new "smallest" tier on the Qwen3.5-0.8B backbone
- * (the small eliza-1 tiers move to the Qwen3.5 family — owner decision).
- * It is added additively: the legacy Qwen3 small tiers (`eliza-1-0_6b`,
- * `eliza-1-1_7b`) are kept until the owner decides whether to drop them —
- * see the `TODO(owner)` notes below.
+ * Per the 2026-05-12 operator directive, the line is Qwen3.5-only:
+ * `eliza-1-0_8b` (Qwen3.5-0.8B-Base) and `eliza-1-2b` (Qwen3.5-2B-Base) are
+ * the active small/mid local tiers. The legacy Qwen3 tier ids
+ * (`eliza-1-0_6b`, `eliza-1-1_7b`, `eliza-1-4b`) remain in the catalog as
+ * **deprecated** entries — the corresponding HF repos stay public for
+ * existing downloads, but their cards are marked DEPRECATED and no new
+ * SFT runs target them. The Qwen3 dense bases do not work with the
+ * eliza-1 dflash spec-decode path.
  *
  * HF-search results from outside `elizaos/eliza-1-*` MUST never be
  * marked default-eligible (handled by `hf-search.ts`, which produces
@@ -56,6 +59,7 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
   "eliza-1-0_6b",
   "eliza-1-1_7b",
+  "eliza-1-2b",
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
@@ -66,18 +70,15 @@ export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
 /**
  * The model id the engine auto-loads on first run when no preference is
- * set. Resolves to the `eliza-1-1_7b` tier - the smallest legacy Eliza-1
- * tier that fits the broadest range of hardware (modern phone or laptop).
- * Hosts that can't fit `eliza-1-1_7b` get the `eliza-1-0_6b` fallback via
- * the recommendation ladder.
- *
- * TODO(owner): the small tiers are moving to the Qwen3.5 backbone
- * (`eliza-1-0_8b` / `eliza-1-2b`). Should the first-run default change to
- * `eliza-1-0_8b` (and `eliza-1-1_7b` / `eliza-1-0_6b` be retired or kept
- * as a legacy line)? Left on `eliza-1-1_7b` for now — conservative,
- * additive — until that call is made.
+ * set. Resolves to the `eliza-1-0_8b` tier — the smallest published
+ * Qwen3.5 Eliza-1 tier (Qwen3.5-0.8B-Base) that fits the broadest range
+ * of hardware (modern phone or laptop). Per the 2026-05-12 operator
+ * directive, the line is Qwen3.5-only — the legacy Qwen3 tiers
+ * (`eliza-1-0_6b` / `eliza-1-1_7b` / `eliza-1-4b`) remain in
+ * `MODEL_CATALOG` as DEPRECATED entries (HF repos stay public for
+ * existing downloads) but the first-run default no longer routes there.
  */
-export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-1_7b";
+export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-0_8b";
 
 /**
  * The single source of truth for default-eligibility. Only Eliza-1
@@ -155,6 +156,9 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
     "eliza-1-0_8b": {
       repo: "Qwen/Qwen3.5-0.8B",
+    },
+    "eliza-1-2b": {
+      repo: "Qwen/Qwen3.5-2B-Base",
     },
     "eliza-1-0_6b": {
       repo: "Qwen/Qwen3-0.6B-GGUF",
@@ -388,6 +392,37 @@ export const MODEL_CATALOG: CatalogModel[] = [
     ggufFile: "dflash/drafter-1_7b.gguf",
     params: "1.7B",
     sizeGb: 0.35,
+    minRamGb: 4,
+    bucket: "small",
+  }),
+
+  // eliza-1-2b (mid local tier — Qwen3.5-2B-Base; modern phone, mid laptop)
+  {
+    id: "eliza-1-2b",
+    displayName: "eliza-1-2b",
+    hfRepo: "elizaos/eliza-1-2b",
+    ggufFile: "text/eliza-1-2b-32k.gguf",
+    bundleManifestFile: "eliza-1.manifest.json",
+    params: "2B",
+    quant: "Eliza-1 optimized local runtime",
+    sizeGb: 1.4,
+    minRamGb: 4,
+    category: "chat",
+    bucket: "small",
+    contextLength: 32768,
+    tokenizerFamily: "eliza1",
+    companionModelIds: ["eliza-1-2b-drafter"],
+    sourceModel: sourceModelForTier("eliza-1-2b"),
+    runtime: runtimeFor("eliza-1-2b", 32768),
+    blurb:
+      "eliza-1-2b - mid local tier on the Qwen3.5-2B-Base backbone; modern phones, mid laptops, the new default mid-Qwen3.5 fused-model line.",
+  },
+  drafterCompanion({
+    id: "eliza-1-2b",
+    displayName: "eliza-1-2b",
+    ggufFile: "dflash/drafter-2b.gguf",
+    params: "0.8B",
+    sizeGb: 0.4,
     minRamGb: 4,
     bucket: "small",
   }),
