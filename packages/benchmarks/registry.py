@@ -2004,9 +2004,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """
         args = ["bash", "./run.sh", f"--output-dir={output_dir}"]
         profile_raw = extra.get("profile")
+        provider_name = (model.provider or "").strip().lower()
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
-        elif (model.provider or "").strip().lower() == "mock":
+        elif provider_name == "mock":
+            profile = "mock"
+        elif provider_name not in {"groq", "elevenlabs"}:
             profile = "mock"
         elif not os.getenv("VOICEBENCH_AUDIO_PATH") and not (
             Path("benchmarks/voicebench/shared/audio/default.wav").exists()
@@ -2235,7 +2238,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.eliza_format.cli",
+            "benchmarks.eliza-format.cli",
             "--provider",
             provider,
             "--out",
