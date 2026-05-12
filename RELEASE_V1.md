@@ -241,7 +241,11 @@ per-component provenance coverage for `base-v1`.
 - **DFlash acceptance + speedup**: `evals.dflash` (the W11 manifest slot;
   bench via `packages/inference/.../dflash_drafter_runtime_smoke.mjs --bench`).
 - **e2e voice loop** + **30-turn endurance**: `evals.e2eLoopOk` /
-  `evals.thirtyTurnOk`.
+  `evals.thirtyTurnOk`. For a human-driven interactive end-to-end voice turn
+  (send a voice message, get a voice response — VAD, force-stop/barge-in, and
+  all optimizations on): `bun run voice:interactive` (prereqs, modes, keyboard
+  controls, and the latency-trace lines in `docs/voice-interactive.md`).
+  Headless: `bun test packages/app-core/src/services/local-inference/voice/interactive-session.e2e.test.ts`.
 - gate thresholds: `packages/training/benchmarks/eliza1_gates.yaml`,
   collected by `packages/inference/verify/eliza1_gates_collect.mjs`.
 
