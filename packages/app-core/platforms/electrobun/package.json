@@ -33,7 +33,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",
 		"@types/bun": "^1.3.8",
-		"rcedit": "4.0.1",
+		"rcedit": "5.0.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.0.18"
 	},
