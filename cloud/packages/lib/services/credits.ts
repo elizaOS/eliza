@@ -799,6 +799,17 @@ export class CreditsService {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
       }
     }
+
+    return {
+      reservedAmount,
+      actualCost,
+      reservationTransactionId:
+        typeof metadata?.reservation_transaction_id === "string"
+          ? metadata.reservation_transaction_id
+          : null,
+      settlementTransactionIds: [],
+      adjustmentType: "none",
+    };
   }
 
   // ============================================================================
@@ -870,6 +881,10 @@ export class CreditsService {
       });
       throw new InsufficientCreditsError(reservedAmount, result.newBalance, result.reason);
     }
+    if (!result.transaction) {
+      throw new Error("[Credits] Reservation did not return a credit transaction");
+    }
+    const reservationTransactionId = result.transaction.id;
 
     logger.info("[Credits] Reserved", {
       organizationId,
@@ -879,7 +894,7 @@ export class CreditsService {
 
     return {
       reservedAmount,
-      reservationTransactionId: result.transaction.id,
+      reservationTransactionId,
       reconcile: async (actualCost: number) => {
         return await this.reconcile({
           organizationId,
@@ -888,7 +903,7 @@ export class CreditsService {
           description,
           metadata: {
             user_id: userId,
-            reservation_transaction_id: result.transaction.id,
+            reservation_transaction_id: reservationTransactionId,
             ...(model && { model }),
           },
         });

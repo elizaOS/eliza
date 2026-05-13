@@ -561,6 +561,7 @@ function tokenizerSummary(parsed) {
     bosTokenId: metadata["tokenizer.ggml.bos_token_id"] ?? null,
     paddingTokenId: metadata["tokenizer.ggml.padding_token_id"] ?? null,
     addBosToken: metadata["tokenizer.ggml.add_bos_token"] ?? null,
+    addEosToken: metadata["tokenizer.ggml.add_eos_token"] ?? null,
     hashes: {
       model: hashes["tokenizer.ggml.model"] ?? null,
       pre: hashes["tokenizer.ggml.pre"] ?? null,
@@ -571,37 +572,50 @@ function tokenizerSummary(parsed) {
       bosTokenId: hashes["tokenizer.ggml.bos_token_id"] ?? null,
       paddingTokenId: hashes["tokenizer.ggml.padding_token_id"] ?? null,
       addBosToken: hashes["tokenizer.ggml.add_bos_token"] ?? null,
+      addEosToken: hashes["tokenizer.ggml.add_eos_token"] ?? null,
     },
   };
 }
 
 function compareTokenizers(target, drafter) {
+  const boolValue = (value) => value === true;
   const compared = [
     ["tokenizer.ggml.model", target.hashes.model, drafter.hashes.model],
     ["tokenizer.ggml.pre", target.hashes.pre, drafter.hashes.pre],
     ["tokenizer.ggml.tokens", target.hashes.tokens, drafter.hashes.tokens],
-    [
-      "tokenizer.ggml.token_type",
-      target.hashes.tokenType,
-      drafter.hashes.tokenType,
-    ],
-    ["tokenizer.ggml.merges", target.hashes.merges, drafter.hashes.merges],
-    [
-      "tokenizer.ggml.eos_token_id",
-      target.hashes.eosTokenId,
-      drafter.hashes.eosTokenId,
-    ],
-    [
+  ];
+  const targetAddBos = boolValue(target.addBosToken);
+  const drafterAddBos = boolValue(drafter.addBosToken);
+  if (targetAddBos !== drafterAddBos) {
+    compared.push([
+      "tokenizer.ggml.add_bos_token",
+      target.hashes.addBosToken,
+      drafter.hashes.addBosToken,
+    ]);
+  }
+  if (targetAddBos || drafterAddBos) {
+    compared.push([
       "tokenizer.ggml.bos_token_id",
       target.hashes.bosTokenId,
       drafter.hashes.bosTokenId,
-    ],
-    [
-      "tokenizer.ggml.padding_token_id",
-      target.hashes.paddingTokenId,
-      drafter.hashes.paddingTokenId,
-    ],
-  ];
+    ]);
+  }
+  const targetAddEos = boolValue(target.addEosToken);
+  const drafterAddEos = boolValue(drafter.addEosToken);
+  if (targetAddEos !== drafterAddEos) {
+    compared.push([
+      "tokenizer.ggml.add_eos_token",
+      target.hashes.addEosToken,
+      drafter.hashes.addEosToken,
+    ]);
+  }
+  if (targetAddEos || drafterAddEos) {
+    compared.push([
+      "tokenizer.ggml.eos_token_id",
+      target.hashes.eosTokenId,
+      drafter.hashes.eosTokenId,
+    ]);
+  }
   const mismatches = compared
     .filter(([, targetHash, drafterHash]) => targetHash !== drafterHash)
     .map(([key, targetHash, drafterHash]) => ({
@@ -1223,7 +1237,9 @@ function main() {
     !isUpstreamDflashArch &&
     typeof architecture === "string" &&
     architecture.length > 0 &&
-    tensorNames.has("token_embd.weight");
+    (tensorNames.has("token_embd.weight") ||
+      (tensorNames.has("blk.0.attn_q.weight") &&
+        tensorNames.has("blk.0.attn_k.weight")));
   const requiresTrueDflashDrafting = upstreamShapeOk;
   report.runtimePolicy = {
     requiresTrueDflashDrafting,

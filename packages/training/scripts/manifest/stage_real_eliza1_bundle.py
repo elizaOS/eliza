@@ -644,7 +644,7 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         )
         assets_mod.stage_assets(assets_args)
 
-    # 2. Stage embedding (non-0_8b) — Qwen3-Embedding-0.6B GGUF.
+    # 2. Stage embedding (non-lite) — Qwen3-Embedding-0.6B GGUF.
     has_embedding = tier in EMBEDDING_TIERS
     if has_embedding and not args.skip_assets:
         try:

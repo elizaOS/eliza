@@ -1,0 +1,313 @@
+{
+  "gate": "eliza1_quality_perf_evals",
+  "status": "fail",
+  "completedAt": "2026-05-13T07:06:01.783Z",
+  "tiers": [
+    "2b",
+    "9b",
+    "27b"
+  ],
+  "gatesPassed": false,
+  "reportPath": "packages/inference/reports/gates/eliza1-gates-2b-20260513T070601Z.json,packages/inference/reports/gates/eliza1-gates-9b-20260513T070601Z.json,packages/inference/reports/gates/eliza1-gates-27b-20260513T070601Z.json",
+  "reports": [
+    {
+      "tier": "2b",
+      "reportPath": "packages/inference/reports/gates/eliza1-gates-2b-20260513T070601Z.json",
+      "releaseMatrixSummary": {
+        "total": 26,
+        "pass": 3,
+        "fail": 3,
+        "needsData": 20,
+        "notApplicable": 0,
+        "blocking": true,
+        "blockerReasons": [
+          "text_eval: not measured",
+          "voice_rtf: not measured",
+          "asr_wer: no >=5-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately",
+          "local_voice_loopback_smoke: generated TTS->ASR smoke did not pass lexical validation",
+          "vad_latency_ms: not measured",
+          "vad_boundary_mae_ms: not measured",
+          "vad_endpoint_p95_ms: not measured",
+          "vad_false_bargein_per_hour: not measured",
+          "barge_in_cancel_ms: not measured",
+          "thirty_turn_ok: assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran",
+          "e2e_loop_ok: not measured",
+          "vulkan_runtime_kernels: missing required Vulkan runtime dispatch evidence",
+          "streaming_tts_active: streaming TTS was not active in the selected e2e loop",
+          "dflash_drafting_active: required optimization is inactive in the selected e2e loop",
+          "ios_physical_smoke: Inspect xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report, then rerun after clearing the reported blocker."
+        ]
+      },
+      "summary": {
+        "total": 19,
+        "pass": 1,
+        "fail": 1,
+        "needsData": 17,
+        "hardFailures": [],
+        "softFailures": [
+          "dflash_speedup"
+        ],
+        "blocking": false
+      }
+    },
+    {
+      "tier": "9b",
+      "reportPath": "packages/inference/reports/gates/eliza1-gates-9b-20260513T070601Z.json",
+      "releaseMatrixSummary": {
+        "total": 26,
+        "pass": 3,
+        "fail": 1,
+        "needsData": 22,
+        "notApplicable": 0,
+        "blocking": true,
+        "blockerReasons": [
+          "text_eval: not measured",
+          "voice_rtf: not measured",
+          "asr_wer: no >=5-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately",
+          "local_voice_loopback_smoke: generated TTS->ASR smoke did not pass lexical validation",
+          "vad_latency_ms: not measured",
+          "vad_boundary_mae_ms: not measured",
+          "vad_endpoint_p95_ms: not measured",
+          "vad_false_bargein_per_hour: not measured",
+          "barge_in_cancel_ms: not measured",
+          "thirty_turn_ok: assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran",
+          "e2e_loop_ok: not measured",
+          "vulkan_runtime_kernels: missing required Vulkan runtime dispatch evidence",
+          "streaming_tts_active: streaming TTS was not active in the selected e2e loop",
+          "dflash_drafting_active: required optimization is inactive in the selected e2e loop",
+          "ios_physical_smoke: Inspect xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report, then rerun after clearing the reported blocker."
+        ]
+      },
+      "summary": {
+        "total": 19,
+        "pass": 0,
+        "fail": 0,
+        "needsData": 19,
+        "hardFailures": [],
+        "softFailures": [],
+        "blocking": false
+      }
+    },
+    {
+      "tier": "27b",
+      "reportPath": "packages/inference/reports/gates/eliza1-gates-27b-20260513T070601Z.json",
+      "releaseMatrixSummary": {
+        "total": 26,
+        "pass": 2,
+        "fail": 1,
+        "needsData": 23,
+        "notApplicable": 0,
+        "blocking": true,
+        "blockerReasons": [
+          "text_eval: not measured",
+          "voice_rtf: not measured",
+          "asr_wer: no >=5-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately",
+          "local_voice_loopback_smoke: generated TTS->ASR smoke did not pass lexical validation",
+          "vad_latency_ms: not measured",
+          "vad_boundary_mae_ms: not measured",
+          "vad_endpoint_p95_ms: not measured",
+          "vad_false_bargein_per_hour: not measured",
+          "barge_in_cancel_ms: not measured",
+          "thirty_turn_ok: assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran",
+          "e2e_loop_ok: not measured",
+          "vulkan_runtime_kernels: missing required Vulkan runtime dispatch evidence",
+          "streaming_tts_active: streaming TTS was not active in the selected e2e loop",
+          "dflash_drafting_active: required optimization is inactive in the selected e2e loop",
+          "ios_physical_smoke: Inspect xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report, then rerun after clearing the reported blocker."
+        ]
+      },
+      "summary": {
+        "total": 17,
+        "pass": 0,
+        "fail": 0,
+        "needsData": 17,
+        "hardFailures": [],
+        "softFailures": [],
+        "blocking": false
+      }
+    }
+  ],
+  "blockers": [
+    {
+      "tier": "2b",
+      "reason": "text_eval: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "voice_rtf: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "asr_wer: no >=5-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately"
+    },
+    {
+      "tier": "2b",
+      "reason": "local_voice_loopback_smoke: generated TTS->ASR smoke did not pass lexical validation"
+    },
+    {
+      "tier": "2b",
+      "reason": "vad_latency_ms: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "vad_boundary_mae_ms: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "vad_endpoint_p95_ms: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "vad_false_bargein_per_hour: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "barge_in_cancel_ms: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "thirty_turn_ok: assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran"
+    },
+    {
+      "tier": "2b",
+      "reason": "e2e_loop_ok: not measured"
+    },
+    {
+      "tier": "2b",
+      "reason": "vulkan_runtime_kernels: missing required Vulkan runtime dispatch evidence"
+    },
+    {
+      "tier": "2b",
+      "reason": "streaming_tts_active: streaming TTS was not active in the selected e2e loop"
+    },
+    {
+      "tier": "2b",
+      "reason": "dflash_drafting_active: required optimization is inactive in the selected e2e loop"
+    },
+    {
+      "tier": "2b",
+      "reason": "ios_physical_smoke: Inspect xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report, then rerun after clearing the reported blocker."
+    },
+    {
+      "tier": "9b",
+      "reason": "text_eval: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "voice_rtf: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "asr_wer: no >=5-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately"
+    },
+    {
+      "tier": "9b",
+      "reason": "local_voice_loopback_smoke: generated TTS->ASR smoke did not pass lexical validation"
+    },
+    {
+      "tier": "9b",
+      "reason": "vad_latency_ms: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "vad_boundary_mae_ms: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "vad_endpoint_p95_ms: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "vad_false_bargein_per_hour: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "barge_in_cancel_ms: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "thirty_turn_ok: assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran"
+    },
+    {
+      "tier": "9b",
+      "reason": "e2e_loop_ok: not measured"
+    },
+    {
+      "tier": "9b",
+      "reason": "vulkan_runtime_kernels: missing required Vulkan runtime dispatch evidence"
+    },
+    {
+      "tier": "9b",
+      "reason": "streaming_tts_active: streaming TTS was not active in the selected e2e loop"
+    },
+    {
+      "tier": "9b",
+      "reason": "dflash_drafting_active: required optimization is inactive in the selected e2e loop"
+    },
+    {
+      "tier": "9b",
+      "reason": "ios_physical_smoke: Inspect xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report, then rerun after clearing the reported blocker."
+    },
+    {
+      "tier": "27b",
+      "reason": "text_eval: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "voice_rtf: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "asr_wer: no >=5-utterance real recorded/external ASR WER report found; local generated-voice loopback is tracked separately"
+    },
+    {
+      "tier": "27b",
+      "reason": "local_voice_loopback_smoke: generated TTS->ASR smoke did not pass lexical validation"
+    },
+    {
+      "tier": "27b",
+      "reason": "vad_latency_ms: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "vad_boundary_mae_ms: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "vad_endpoint_p95_ms: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "vad_false_bargein_per_hour: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "barge_in_cancel_ms: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "thirty_turn_ok: assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran"
+    },
+    {
+      "tier": "27b",
+      "reason": "e2e_loop_ok: not measured"
+    },
+    {
+      "tier": "27b",
+      "reason": "vulkan_runtime_kernels: missing required Vulkan runtime dispatch evidence"
+    },
+    {
+      "tier": "27b",
+      "reason": "streaming_tts_active: streaming TTS was not active in the selected e2e loop"
+    },
+    {
+      "tier": "27b",
+      "reason": "dflash_drafting_active: required optimization is inactive in the selected e2e loop"
+    },
+    {
+      "tier": "27b",
+      "reason": "ios_physical_smoke: Inspect xcodebuild stdoutTail/stderrTail and deviceDiagnostics in this report, then rerun after clearing the reported blocker."
+    }
+  ],
+  "summary": "Eliza-1 quality/perf gates still blocked: 45 blocking reasons"
+}

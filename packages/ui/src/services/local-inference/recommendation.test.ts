@@ -24,7 +24,7 @@ function hardware(overrides: Partial<HardwareProbe>): HardwareProbe {
 }
 
 describe("local inference recommendations", () => {
-  it("prefers the largest fitting Eliza-1 tier on Linux GPU", () => {
+  it("prefers the 2B tier for large text on Linux GPU", () => {
     const probe = hardware({
       totalRamGb: 64,
       freeRamGb: 48,
@@ -40,13 +40,10 @@ describe("local inference recommendations", () => {
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
-    // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
-    // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is 27b-1m -> 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
   });
 
-  it("picks the 27B 256k tier on a >=96 GB-effective workstation", () => {
+  it("keeps the 2B release tier on a >=96 GB-effective workstation", () => {
     const probe = hardware({
       totalRamGb: 128,
       freeRamGb: 96,
@@ -60,7 +57,7 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
 
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
   });
 
   it("uses the mobile platform ladder and prefers the small Eliza-1 tier when it fits", () => {
@@ -76,7 +73,7 @@ describe("local inference recommendations", () => {
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
   });
 
   it("falls back to the 0.8B tier on minimal mobile", () => {
@@ -103,23 +100,21 @@ describe("local inference recommendations", () => {
     }
   });
 
-  it("rejects a tier when its bundle exceeds the mobile memory guardrail", () => {
+  it("rejects the 2B tier when its bundle exceeds the mobile memory guardrail", () => {
     const probe = hardware({
-      totalRamGb: 6,
-      freeRamGb: 4,
+      totalRamGb: 3,
+      freeRamGb: 2,
       platform: "ios" as NodeJS.Platform,
       arch: "arm64",
       recommendedBucket: "mid",
     });
-    const desktop = findCatalogModel("eliza-1-9b");
+    const desktop = findCatalogModel("eliza-1-2b");
 
-    if (!desktop) throw new Error("eliza-1-9b missing from catalog");
+    if (!desktop) throw new Error("eliza-1-2b missing from catalog");
     expect(assessCatalogModelFit(probe, desktop)).toBe("wontfit");
   });
 
   it("chooses a smaller fitting fallback from the same platform ladder", () => {
-    // linux-gpu host with enough effective memory for 9b
-    // (effective = max(VRAM, RAM*0.5) = max(16, 16) = 16, 9B minRam 12).
     const probe = hardware({
       totalRamGb: 32,
       freeRamGb: 24,
@@ -135,12 +130,10 @@ describe("local inference recommendations", () => {
       "TEXT_LARGE",
     );
 
-    expect(fallback?.id).toBe("eliza-1-9b");
+    expect(fallback?.id).toBe("eliza-1-2b");
   });
 
   it("does not recommend Eliza-1 tiers when the probed binary lacks required kernels", () => {
-    // Kernel requirements are declared by the published bundle manifest,
-    // not by the visible catalog entry.
     const probe = hardware({
       totalRamGb: 64,
       freeRamGb: 48,
@@ -214,8 +207,7 @@ describe("local inference recommendations", () => {
     expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(largeId)).toBe(true);
   });
 
-  it("prefers long-context entries within the ladder on hosts with >= 16 GB RAM/VRAM", () => {
-    // Workstation-class host should land on a tier with >= 64k context.
+  it("keeps the active 32k release tier first on hosts with >= 16 GB RAM/VRAM", () => {
     const probe = hardware({
       totalRamGb: 64,
       freeRamGb: 48,
@@ -224,7 +216,8 @@ describe("local inference recommendations", () => {
     });
     const recommended = selectRecommendedModels(probe);
     const top = recommended.TEXT_LARGE.alternatives[0];
-    expect(top?.contextLength ?? 0).toBeGreaterThanOrEqual(65536);
+    expect(top?.id).toBe("eliza-1-2b");
+    expect(top?.contextLength).toBe(32768);
   });
 
   it("does NOT prefer long-context entries on memory-constrained hosts", () => {

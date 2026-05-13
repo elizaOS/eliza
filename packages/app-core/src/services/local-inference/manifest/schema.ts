@@ -209,7 +209,7 @@ export const Eliza1FilesSchema = z.object({
   //
   // Schema-level optionality: empty array = "this bundle does not
   // ship this component"; the validator enforces tier-specific
-  // consistency rules (e.g. 2b-and-up MUST ship `embedding[]`).
+  // consistency rules (e.g. 4b-and-up MUST ship `embedding[]`).
   embedding: z.array(Eliza1FileEntrySchema).optional(),
   vad: z.array(Eliza1FileEntrySchema).optional(),
   wakeword: z.array(Eliza1FileEntrySchema).optional(),

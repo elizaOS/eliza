@@ -1399,6 +1399,7 @@ const DFLASH_TOKENIZER_HASH_KEYS = [
   "tokenizer.ggml.bos_token_id",
   "tokenizer.ggml.padding_token_id",
   "tokenizer.ggml.add_bos_token",
+  "tokenizer.ggml.add_eos_token",
 ] as const;
 
 type DflashTokenizerHashKey = (typeof DFLASH_TOKENIZER_HASH_KEYS)[number];
@@ -1700,16 +1701,59 @@ export function validateDflashDrafterCompatibility(args: {
 }): DflashDrafterCompatibilityReport {
   const target = readDflashGgufMetadata(args.targetModelPath);
   const drafter = readDflashGgufMetadata(args.drafterModelPath);
-  const tokenizerMismatches = DFLASH_TOKENIZER_HASH_KEYS.filter((key) => {
-    const targetHash = target.tokenizerHashes[key];
-    const drafterHash = drafter.tokenizerHashes[key];
-    if (key === "tokenizer.ggml.merges") {
-      const usesGpt2 =
-        target.tokenizerModel === "gpt2" || drafter.tokenizerModel === "gpt2";
-      return usesGpt2 && targetHash !== drafterHash;
+  const addMismatch = (
+    mismatches: DflashTokenizerHashKey[],
+    key: DflashTokenizerHashKey,
+  ): void => {
+    if (target.tokenizerHashes[key] !== drafter.tokenizerHashes[key]) {
+      mismatches.push(key);
     }
-    return targetHash !== drafterHash;
-  }).map((key) => ({
+  };
+  const tokenizerMismatchKeys: DflashTokenizerHashKey[] = [];
+  addMismatch(tokenizerMismatchKeys, "tokenizer.ggml.model");
+  addMismatch(tokenizerMismatchKeys, "tokenizer.ggml.pre");
+  addMismatch(tokenizerMismatchKeys, "tokenizer.ggml.tokens");
+  const targetAddBos =
+    target.tokenizerHashes["tokenizer.ggml.add_bos_token"] !== null &&
+    target.tokenizerHashes["tokenizer.ggml.add_bos_token"] !==
+      crypto
+        .createHash("sha256")
+        .update(Buffer.from([0]))
+        .digest("hex");
+  const drafterAddBos =
+    drafter.tokenizerHashes["tokenizer.ggml.add_bos_token"] !== null &&
+    drafter.tokenizerHashes["tokenizer.ggml.add_bos_token"] !==
+      crypto
+        .createHash("sha256")
+        .update(Buffer.from([0]))
+        .digest("hex");
+  if (targetAddBos !== drafterAddBos) {
+    addMismatch(tokenizerMismatchKeys, "tokenizer.ggml.add_bos_token");
+  }
+  if (targetAddBos || drafterAddBos) {
+    addMismatch(tokenizerMismatchKeys, "tokenizer.ggml.bos_token_id");
+  }
+  const targetAddEos =
+    target.tokenizerHashes["tokenizer.ggml.add_eos_token"] !== null &&
+    target.tokenizerHashes["tokenizer.ggml.add_eos_token"] !==
+      crypto
+        .createHash("sha256")
+        .update(Buffer.from([0]))
+        .digest("hex");
+  const drafterAddEos =
+    drafter.tokenizerHashes["tokenizer.ggml.add_eos_token"] !== null &&
+    drafter.tokenizerHashes["tokenizer.ggml.add_eos_token"] !==
+      crypto
+        .createHash("sha256")
+        .update(Buffer.from([0]))
+        .digest("hex");
+  if (targetAddEos !== drafterAddEos) {
+    addMismatch(tokenizerMismatchKeys, "tokenizer.ggml.add_eos_token");
+  }
+  if (targetAddEos || drafterAddEos) {
+    addMismatch(tokenizerMismatchKeys, "tokenizer.ggml.eos_token_id");
+  }
+  const tokenizerMismatches = tokenizerMismatchKeys.map((key) => ({
     key,
     targetHash: target.tokenizerHashes[key],
     drafterHash: drafter.tokenizerHashes[key],

@@ -172,12 +172,7 @@ PYEOF
     echo "${NEW_CLOUD_INIT}" | head -20
   else
     log "Stopping instance to apply new cloud-init..."
-    nebius compute instance update \
-      --id "${INSTANCE_ID}" \
-      --resource-version "${RESOURCE_VERSION}" \
-      --cloud-init-user-data "${NEW_CLOUD_INIT}" \
-      --stopped \
-      --async 2>&1 | grep -v "^$" || true
+    nebius compute instance stop --id "${INSTANCE_ID}" --async 2>&1 | grep -v "^$" || true
 
     log "Waiting for instance to stop..."
     for i in $(seq 1 60); do
@@ -187,11 +182,16 @@ PYEOF
       sleep 5
     done
 
-    log "Starting instance..."
+    # Update cloud-init on the stopped instance.
+    RESOURCE_VERSION="$(nebius compute instance get --id "${INSTANCE_ID}" --format json 2>/dev/null \
+      | python3 -c "import json,sys; print(json.load(sys.stdin)['metadata']['resource_version'])")"
     nebius compute instance update \
       --id "${INSTANCE_ID}" \
-      --resource-version "$(nebius compute instance get --id "${INSTANCE_ID}" --format json 2>/dev/null | python3 -c "import json,sys; print(json.load(sys.stdin)['metadata']['resource_version'])")" \
-      --async 2>&1 | grep -v "^$" || true
+      --resource-version "${RESOURCE_VERSION}" \
+      --cloud-init-user-data "${NEW_CLOUD_INIT}" 2>&1 | grep -v "^$" || true
+
+    log "Starting instance..."
+    nebius compute instance start --id "${INSTANCE_ID}" --async 2>&1 | grep -v "^$" || true
 
     log "Waiting for instance to be RUNNING..."
     for i in $(seq 1 120); do
@@ -269,20 +269,16 @@ ssh -i "${SSH_KEY_FILE}" \
     "${NEBIUS_SSH_USER}@${PUBLIC_IP}" \
     "set -euo pipefail
      # Ensure container_setup ran (idempotent — skips if already done).
-     if ! python3 -c 'import apollo_torch' 2>/dev/null; then
+     # Check venv Python first, then system Python.
+     VENV_PY=\$(ls ~/train-env/bin/python 2>/dev/null || echo python3)
+     if ! \${VENV_PY} -c 'import apollo_torch' 2>/dev/null; then
        bash ${REMOTE_REPO_PATH}/packages/training/scripts/dflash/nebius/container_setup.sh
      fi
      ${REMOTE_CMD}" || ssh_exit=$?
 
 # ── auto-shutdown ─────────────────────────────────────────────────────────────
 log "Training finished (exit=${ssh_exit}). Stopping instance ${INSTANCE_ID}..."
-RESOURCE_VERSION="$(nebius compute instance get --id "${INSTANCE_ID}" --format json 2>/dev/null \
-  | python3 -c "import json,sys; print(json.load(sys.stdin)['metadata']['resource_version'])")"
-nebius compute instance update \
-  --id "${INSTANCE_ID}" \
-  --resource-version "${RESOURCE_VERSION}" \
-  --stopped \
-  --async 2>&1 | grep -v "^$" || true
+nebius compute instance stop --id "${INSTANCE_ID}" --async 2>&1 | grep -v "^$" || true
 log "Stop command issued. Instance will shut down shortly."
 
 exit "${ssh_exit}"

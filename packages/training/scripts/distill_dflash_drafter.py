@@ -19,9 +19,8 @@ Hard contract (training/AGENTS.md §2 + §9):
     The publish path (and the runtime doctor) refuse a drafter whose
     recorded hash does not match the text GGUF in the same bundle.
   - The recipe is the same across active tiers. Eliza-1 uses Qwen3.5
-    students only: the active tiny tier is `eliza-1-0_6b`, distilled from
-    the smallest public Qwen3.5 base unless empirical acceptance/speed gates
-    force a larger student.
+    students only: the active tiny tier is `eliza-1-0_6b`; every tier must
+    distill from a base with byte-identical tokenizer metadata.
 
 Distillation objective: forward KL on the top-k target logits plus a small
 cross-entropy floor on the ground-truth token (label smoothing keeps the
@@ -41,7 +40,7 @@ Usage:
         --tier 0_6b \
         --target-checkpoint training/checkpoints/eliza-1-0_6b-text \
         --target-gguf out/eliza-1-0_6b/text/eliza-1-0_6b-32k.gguf \
-        --student-base Qwen/Qwen3.5-0.8B \
+        --student-base Qwen/Qwen3-0.6B \
         --dataset data/distill/eliza1-distill.jsonl \
         --epochs 1 --batch-size 8 --grad-accum 4 \
         --out-dir out/eliza-1-0_6b/dflash
@@ -78,15 +77,20 @@ log = logging.getLogger("distill_dflash_drafter")
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
-# Recommended student base per active tier. These defaults intentionally stay
-# within the Qwen3.5 tokenizer family. There is no public Qwen3.5 0.6B base;
-# the active tiny drafter keeps tokenizer parity by distilling from the
-# smallest public Qwen3.5 base and must pass the acceptance/speed gate before
-# release.
+ACTIVE_TIERS = ("0_6b", "1_7b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+
+# Recommended student base per active tier. The 0_6b / 1_7b release line uses
+# Qwen3-tokenizer targets, while 4b+ uses the Qwen3.5 tokenizer family. These
+# defaults are intentionally tokenizer-family-specific so real runs fail closed
+# before training instead of producing a drafter that cannot speculate.
 DEFAULT_STUDENT_BASE: dict[str, str] = {
-    "0_6b": "Qwen/Qwen3.5-0.8B",
-    "2b": "Qwen/Qwen3.5-0.8B",
+    "0_6b": "Qwen/Qwen3-0.6B",
+    "1_7b": "Qwen/Qwen3-0.6B",
     "4b": "Qwen/Qwen3.5-0.8B",
+    "9b": "Qwen/Qwen3.5-0.8B",
+    "27b": "Qwen/Qwen3.5-0.8B",
+    "27b-256k": "Qwen/Qwen3.5-0.8B",
+    "27b-1m": "Qwen/Qwen3.5-0.8B",
 }
 
 # Canonical Eliza-1 text targets that each drafter is allowed to pair with.
@@ -96,8 +100,12 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
 # against the exact Eliza-1 target".
 DEFAULT_TARGET_MODEL: dict[str, str] = {
     "0_6b": "elizaos/eliza-1/bundles/0_6b",
-    "2b": "elizaos/eliza-1/bundles/2b",
+    "1_7b": "elizaos/eliza-1/bundles/1_7b",
     "4b": "elizaos/eliza-1/bundles/4b",
+    "9b": "elizaos/eliza-1/bundles/9b",
+    "27b": "elizaos/eliza-1/bundles/27b",
+    "27b-256k": "elizaos/eliza-1/bundles/27b-256k",
+    "27b-1m": "elizaos/eliza-1/bundles/27b-1m",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -106,8 +114,12 @@ DEFAULT_TARGET_MODEL: dict[str, str] = {
 # rebaseline (see training/AGENTS.md §8).
 ACCEPTANCE_GATE: dict[str, float] = {
     "0_6b": 0.40,
-    "2b": 0.50,
+    "1_7b": 0.48,
     "4b": 0.52,
+    "9b": 0.52,
+    "27b": 0.52,
+    "27b-256k": 0.52,
+    "27b-1m": 0.52,
 }
 
 
@@ -389,50 +401,16 @@ def _dataset_hash(dataset_path: Path) -> str:
 
 
 # --------------------------------------------------------------------------
-# Synthetic smoke: no torch, no real models. Validates the pipeline shape and
-# the GGUF metadata write so CI can exercise it without weights.
+# Synthetic smoke: no torch, no real models. Validates argument/control-flow
+# wiring only; it deliberately writes no GGUF or manifest so synthetic metadata
+# cannot be mistaken for a release artifact.
 # --------------------------------------------------------------------------
 def _run_synthetic_smoke(args: argparse.Namespace) -> int:
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    drafter_path = out_dir / f"drafter-{args.tier}.gguf"
-    # A minimal but real GGUF so the metadata writer + the runtime smoke can
-    # both read it.
-    try:
-        import gguf  # type: ignore
-    except ImportError:
-        log.error("synthetic smoke needs the `gguf` package (uv --extra train)")
-        return 1
-    writer = gguf.GGUFWriter(str(drafter_path), arch="qwen3")
-    writer.add_name(f"eliza-1-{args.tier}-drafter-synthetic")
-    fake_target_sha = _sha256_text(f"synthetic-target-{args.tier}")
-    writer.add_string(GGUF_TARGET_CHECKPOINT_KEY, fake_target_sha)
-    # one tiny tensor so the file is well-formed
-    import numpy as np  # noqa: PLC0415
-
-    writer.add_tensor("token_embd.weight", np.zeros((4, 4), dtype=np.float16))
-    writer.write_header_to_file()
-    writer.write_kv_data_to_file()
-    writer.write_tensors_to_file()
-    writer.close()
-
-    manifest = _build_manifest(
-        args=args,
-        student_base="<synthetic>",
-        target_model_id=DEFAULT_TARGET_MODEL.get(args.tier),
-        target_checkpoint=None,
-        target_gguf=None,
-        target_sha256=fake_target_sha,
-        tokenizer_parity=None,
-        dataset_hash="<synthetic>",
-        n_train_examples=0,
-        final_kl=None,
-        gate=ACCEPTANCE_GATE.get(args.tier),
-        synthetic=True,
+    log.info(
+        "synthetic smoke validated CLI/control-flow for tier=%s; no artifacts written to %s",
+        args.tier,
+        args.out_dir,
     )
-    manifest_path = out_dir / f"drafter-{args.tier}.distill.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-    log.info("synthetic smoke wrote %s and %s", drafter_path, manifest_path)
     return 0
 
 
@@ -850,7 +828,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--tier",
         required=True,
-        choices=sorted(DEFAULT_STUDENT_BASE.keys()),
+        choices=ACTIVE_TIERS,
         help="Eliza-1 tier this drafter ships with.",
     )
     p.add_argument("--target-checkpoint", help="HF dir of the fine-tuned text model.")
@@ -898,7 +876,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--synthetic-smoke",
         action="store_true",
-        help="No torch/models: validate the pipeline + GGUF metadata write.",
+        help="No torch/models: validate CLI/control-flow only; writes no artifacts.",
     )
     p.add_argument(
         "--stamp-only",

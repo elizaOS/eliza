@@ -123,7 +123,10 @@ tier_in_selected() {
 }
 
 resolve_python() {
-  if command -v uv >/dev/null 2>&1; then
+  # Prefer the training venv if present (has torch, APOLLO, flash-attn).
+  if [[ -x "${HOME}/train-env/bin/python" ]]; then
+    echo "${HOME}/train-env/bin/python"
+  elif command -v uv >/dev/null 2>&1; then
     echo "uv run python"
   else
     echo "python3"

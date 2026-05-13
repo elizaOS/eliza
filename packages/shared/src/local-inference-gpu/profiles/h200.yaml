@@ -5,9 +5,9 @@
 # those card-level defaults with per-bundle overrides + TPS expectations.
 #
 # All TPS numbers are *estimates* — they have not been measured on real
-# hardware. Current release smoke uses Eliza-1 4B; 27B/1M recipes remain
-# hidden future recipes until final Eliza-1 weights and release evidence
-# exist. NVLink/SXM multi-card setups are *out of scope* per the single-GPU
+# hardware. Current release smoke uses Eliza-1 2B; larger recipes remain
+# hidden until final weights and release evidence exist. NVLink/SXM
+# multi-card setups are *out of scope* per the single-GPU
 # framing; see `docs/eliza-1-gpu-tier.md` for the constraint discussion.
 
 gpu_id: h200
@@ -19,95 +19,30 @@ fp4_supported: false
 nvlink: true                       # SXM has NVLink, but single-GPU only here
 
 bundle_recommendations:
-  # Current release bundles come first. Hidden future 9B/27B recipes remain
-  # below for hardware planning only, not default selection.
-  eliza-1-0_6b:
+  eliza-1-0_8b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 64
     batch_size: 8192
     ubatch_size: 2048
-    kv_cache_k: turbo3_0
-    kv_cache_v: turbo4_0
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
     flash_attention: true
     estimated_decode_tps: 1100
     estimated_prefill_tps: 90000
-    notes: "Tiny model on a server GPU. Useful only for batch eval."
-  eliza-1-1_7b:
+    notes: "Smallest active Qwen3.5 local tier; smoke/default fallback."
+  eliza-1-2b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 32
     batch_size: 8192
     ubatch_size: 2048
-    kv_cache_k: turbo3_0
-    kv_cache_v: turbo4_0
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
     flash_attention: true
     estimated_decode_tps: 780
     estimated_prefill_tps: 56000
-    notes: "Useful only for batch eval or burst chat."
-  eliza-1-4b:
-    n_gpu_layers: -1
-    ctx_size: 131072
-    parallel: 32
-    batch_size: 8192
-    ubatch_size: 2048
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 560
-    estimated_prefill_tps: 30000
-    notes: "4B at 128k, 32 parallel slots — generous."
-  eliza-1-9b:
-    n_gpu_layers: -1
-    ctx_size: 131072
-    parallel: 32
-    batch_size: 8192
-    ubatch_size: 2048
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 320
-    estimated_prefill_tps: 17000
-    notes: "9B at 128k — high-throughput option for multi-tenant chat."
-  eliza-1-27b:
-    n_gpu_layers: -1
-    ctx_size: 131072
-    parallel: 16
-    batch_size: 8192
-    ubatch_size: 2048
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 130
-    estimated_prefill_tps: 4500
-    notes: "Hidden future recipe. Comfortable fit only after final 27B weights ship."
-  eliza-1-27b-256k:
-    n_gpu_layers: -1
-    ctx_size: 262144
-    parallel: 8
-    batch_size: 8192
-    ubatch_size: 2048
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 95
-    estimated_prefill_tps: 3200
-    notes: "Hidden future recipe. KV ~20 GiB; resident in HBM3e."
-  eliza-1-27b-1m:
-    # Hidden future recipe. ~17 GiB weights + ~80 GiB KV at 1M (QJL K + Polar V
-    # ≈ 80 KiB/token quantized) + ~40 GiB headroom for activations, drafter,
-    # and parallel slots. NO CPU spill.
-    n_gpu_layers: -1
-    ctx_size: 1048576
-    parallel: 4
-    batch_size: 4096
-    ubatch_size: 1024
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 55
-    estimated_prefill_tps: 1800
-    notes: "1M-token context, fully resident in 141 GiB HBM3e. The only good home for this bundle."
+    notes: "First-run active Qwen3.5 tier."
 
 dflash:
   enabled: true
@@ -131,5 +66,5 @@ verify_recipe:
     - polarquant
     - dflash
   unavailable_kernels: []
-  smoke_bundle: eliza-1-4b
+  smoke_bundle: eliza-1-2b
   tolerance_pct: 10

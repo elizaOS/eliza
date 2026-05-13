@@ -134,15 +134,15 @@ function firstGguf(dir: string): string | null {
  * parameters; larger tiers may use a dedicated embedding region.
  */
 export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
-  "eliza-1-0_6b",
-  "eliza-1-1_7b",
+  "eliza-1-0_8b",
+  "eliza-1-2b",
 ]);
 
 /**
  * Resolve the embedding source for an activated Eliza-1 bundle.
  *
  * @param bundleRoot   Bundle directory on disk.
- * @param tierId       The Eliza-1 tier id (`eliza-1-0_6b`, ...).
+ * @param tierId       The Eliza-1 tier id (`eliza-1-0_8b`, ...).
  * @param textModelPath Absolute path of the activated text GGUF (needed for
  *                      the `pooled-text` case).
  *

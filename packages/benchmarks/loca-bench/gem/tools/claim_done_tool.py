@@ -21,7 +21,10 @@ the assigned task.
 import re
 from typing import Tuple
 
-import regex
+try:
+    import regex
+except ModuleNotFoundError:  # pragma: no cover - benchmark env fallback
+    regex = re
 
 from gem.tools.base_tool import BaseTool
 
@@ -104,4 +107,3 @@ class ClaimDoneTool(BaseTool):
         )
         
         return True, False, observation, parsed_action
-

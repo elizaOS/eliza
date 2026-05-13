@@ -209,15 +209,15 @@ def test_real_stage_writes_evidence_report_without_downloading(
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
     monkeypatch.setattr(stage, "copy_hf_file", fake_copy_hf_file)
     monkeypatch.setattr(stage, "download_url_file", fake_download_url_file)
-    args = _args(tmp_path, "0_8b")
+    args = _args(tmp_path, "0_6b")
     args.dry_run = False
 
     report = stage.stage_assets(args)
 
     assert report["dryRun"] is False
     assert copied
-    assert (tmp_path / "0_8b" / "wake" / "hey-eliza.onnx").is_file()
+    assert (tmp_path / "0_6b" / "wake" / "hey-eliza.onnx").is_file()
     evidence = json.loads(
-        (tmp_path / "0_8b" / "evidence" / "bundle-assets.json").read_text()
+        (tmp_path / "0_6b" / "evidence" / "bundle-assets.json").read_text()
     )
     assert evidence["asrRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"

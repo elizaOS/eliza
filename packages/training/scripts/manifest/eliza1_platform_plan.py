@@ -38,8 +38,8 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_6b": "Q3_K_M",
-    "1_7b": "Q4_K_M",
+    "0_8b": "Q4_K_M",
+    "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
@@ -50,8 +50,8 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = ("Q4_K_M", "Q6_K", "Q8_0")
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("32k",),
-    "1_7b": ("32k",),
+    "0_8b": ("32k",),
+    "2b": ("32k",),
     "4b": ("64k", "128k"),
     "9b": ("64k", "128k"),
     "27b": ("128k",),
@@ -83,7 +83,7 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": (
+    "0_8b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -95,7 +95,7 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-arm64-cpu",
         "windows-arm64-vulkan",
     ),
-    "1_7b": (
+    "2b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -460,9 +460,8 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. "
-        "The active 0.8B/2B/4B tiers ship OmniVoice GGUF by default; 9B "
-        "also carries the legacy Kokoro fallback; 27B-class tiers ship "
-        "OmniVoice GGUF only.",
+        "Kokoro TTS for 0.8B/2B/4B is ONNX by design; 9B carries both "
+        "Kokoro and OmniVoice; 27B-class tiers ship OmniVoice GGUF only.",
         "- VAD is a native GGML artifact at "
         "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
         "Legacy bundles may additionally carry the ONNX fallback "

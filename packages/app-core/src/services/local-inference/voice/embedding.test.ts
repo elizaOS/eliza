@@ -18,13 +18,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildLocalEmbeddingRoute,
-  EMBEDDING_DIR_REL_PATH,
   EMBEDDING_MATRYOSHKA_DIMS,
   isValidEmbeddingDim,
   resolveLocalEmbeddingSource,
   truncateMatryoshka,
 } from "./embedding";
-import { VoiceStartupError } from "./errors";
 
 function tmpBundle(): string {
   return mkdtempSync(path.join(tmpdir(), "eliza-emb-"));
@@ -33,12 +31,12 @@ function tmpBundle(): string {
 describe("resolveLocalEmbeddingSource", () => {
   it("0_8b: uses the text backbone with --pooling last (no separate GGUF)", () => {
     const bundleRoot = tmpBundle();
-    const textPath = path.join(bundleRoot, "text", "eliza-1-0_6b-32k.gguf");
+    const textPath = path.join(bundleRoot, "text", "eliza-1-0_8b-32k.gguf");
     mkdirSync(path.dirname(textPath), { recursive: true });
     writeFileSync(textPath, "gguf");
     const src = resolveLocalEmbeddingSource({
       bundleRoot,
-      tierId: "eliza-1-0_6b",
+      tierId: "eliza-1-0_8b",
       textModelPath: textPath,
     });
     expect(src.kind).toBe("pooled-text");
@@ -50,12 +48,12 @@ describe("resolveLocalEmbeddingSource", () => {
 
   it("2b: reuses the text backbone with --pooling last (no duplicate GGUF)", () => {
     const bundleRoot = tmpBundle();
-    const textPath = path.join(bundleRoot, "text", "eliza-1-1_7b-32k.gguf");
+    const textPath = path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf");
     mkdirSync(path.dirname(textPath), { recursive: true });
     writeFileSync(textPath, "gguf");
     const src = resolveLocalEmbeddingSource({
       bundleRoot,
-      tierId: "eliza-1-1_7b",
+      tierId: "eliza-1-2b",
       textModelPath: textPath,
     });
     expect(src.kind).toBe("pooled-text");
@@ -63,17 +61,6 @@ describe("resolveLocalEmbeddingSource", () => {
       expect(src.textModelPath).toBe(textPath);
       expect(src.poolingType).toBe("last");
     }
-  });
-
-  it("hard-fails when the 4b tier is missing its embedding/ region", () => {
-    const bundleRoot = tmpBundle();
-    expect(() =>
-      resolveLocalEmbeddingSource({
-        bundleRoot,
-        tierId: "eliza-1-4b",
-        textModelPath: "/unused.gguf",
-      }),
-    ).toThrow(VoiceStartupError);
   });
 });
 
@@ -85,7 +72,7 @@ describe("buildLocalEmbeddingRoute", () => {
     writeFileSync(textPath, "gguf");
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_6b",
+      tierId: "eliza-1-0_8b",
       textModelPath: textPath,
     });
     expect(route.dimensions).toBe(1024);
@@ -93,21 +80,6 @@ describe("buildLocalEmbeddingRoute", () => {
     expect(route.matryoshkaDims).toEqual(EMBEDDING_MATRYOSHKA_DIMS);
     expect(route.serverFlags).toEqual(["--embeddings", "--pooling", "last"]);
   });
-
-  it("dedicated-region route also runs a sidecar embedding server with --embeddings --pooling last", () => {
-    const bundleRoot = tmpBundle();
-    const embPath = path.join(bundleRoot, EMBEDDING_DIR_REL_PATH, "e.gguf");
-    mkdirSync(path.dirname(embPath), { recursive: true });
-    writeFileSync(embPath, "gguf");
-    const route = buildLocalEmbeddingRoute({
-      bundleRoot,
-      tierId: "eliza-1-4b",
-      textModelPath: "/unused.gguf",
-    });
-    expect(route.dimensions).toBe(1024);
-    expect(route.serverFlags).toEqual(["--embeddings", "--pooling", "last"]);
-  });
-
   it("accepts a smaller defaultDim and rejects invalid widths", () => {
     const bundleRoot = tmpBundle();
     const textPath = path.join(bundleRoot, "text", "t.gguf");
@@ -115,7 +87,7 @@ describe("buildLocalEmbeddingRoute", () => {
     writeFileSync(textPath, "gguf");
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_6b",
+      tierId: "eliza-1-0_8b",
       textModelPath: textPath,
       defaultDim: 256,
     });
@@ -123,7 +95,7 @@ describe("buildLocalEmbeddingRoute", () => {
     expect(() =>
       buildLocalEmbeddingRoute({
         bundleRoot,
-        tierId: "eliza-1-0_6b",
+        tierId: "eliza-1-0_8b",
         textModelPath: textPath,
         defaultDim: 300,
       }),

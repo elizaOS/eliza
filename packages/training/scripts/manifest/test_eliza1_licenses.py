@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from pathlib import Path
 
@@ -87,8 +88,60 @@ from scripts.manifest.finalize_eliza1_evidence import finalize  # noqa: E402
 
 def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     bundle = root / f"eliza-1-{tier}.bundle"
-    (bundle / "text").mkdir(parents=True)
-    (bundle / "text" / f"eliza-1-{tier}-32k.gguf").write_bytes(b"\x00gguf\x00")
+    payloads = {
+        f"text/eliza-1-{tier}-32k.gguf": b"\x00gguf\x00",
+        "tts/omnivoice-base-Q4_K_M.gguf": b"voice",
+        f"dflash/drafter-{tier}.gguf": b"drafter",
+        "asr/eliza-1-asr.gguf": b"asr",
+        "vad/silero-vad-v5.1.2.ggml.bin": b"vad",
+        "cache/voice-preset-default.bin": b"cache",
+    }
+    for rel, payload in payloads.items():
+        path = bundle / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    sha = {rel: hashlib.sha256(payload).hexdigest() for rel, payload in payloads.items()}
+    (bundle / "eliza-1.manifest.json").write_text(json.dumps({
+        "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
+        "id": f"eliza-1-{tier}",
+        "tier": tier,
+        "version": "0.0.0-local.test",
+        "publishedAt": "2026-05-12T00:00:00Z",
+        "lineage": {
+            "text": {"base": "local-text", "license": "apache-2.0"},
+            "voice": {"base": "local-voice", "license": "apache-2.0"},
+            "drafter": {"base": "local-drafter", "license": "apache-2.0"},
+            "asr": {"base": "local-asr", "license": "apache-2.0"},
+            "vad": {"base": "local-vad", "license": "mit"},
+        },
+        "files": {
+            "text": [{"path": f"text/eliza-1-{tier}-32k.gguf", "sha256": sha[f"text/eliza-1-{tier}-32k.gguf"], "ctx": 32768}],
+            "voice": [{"path": "tts/omnivoice-base-Q4_K_M.gguf", "sha256": sha["tts/omnivoice-base-Q4_K_M.gguf"]}],
+            "asr": [{"path": "asr/eliza-1-asr.gguf", "sha256": sha["asr/eliza-1-asr.gguf"]}],
+            "vision": [],
+            "dflash": [{"path": f"dflash/drafter-{tier}.gguf", "sha256": sha[f"dflash/drafter-{tier}.gguf"]}],
+            "cache": [{"path": "cache/voice-preset-default.bin", "sha256": sha["cache/voice-preset-default.bin"]}],
+            "vad": [{"path": "vad/silero-vad-v5.1.2.ggml.bin", "sha256": sha["vad/silero-vad-v5.1.2.ggml.bin"]}],
+        },
+        "kernels": {
+            "required": ["turboquant_q3", "qjl", "polarquant", "dflash"],
+            "optional": [],
+            "verifiedBackends": {
+                b: {"status": "skipped", "atCommit": "test", "report": "test"}
+                for b in ("metal", "vulkan", "cuda", "rocm", "cpu")
+            },
+        },
+        "evals": {
+            "textEval": {"score": 0.0, "passed": False},
+            "voiceRtf": {"rtf": 1.0, "passed": False},
+            "asrWer": {"wer": 1.0, "passed": False},
+            "vadLatencyMs": {"median": 0.0, "passed": False},
+            "e2eLoopOk": False,
+            "thirtyTurnOk": False,
+        },
+        "ramBudgetMb": {"min": 1, "recommended": 2},
+        "defaultEligible": False,
+    }), encoding="utf-8")
     (bundle / "evals").mkdir(parents=True)
     # Eval aggregate with a failing gate (mirrors the real staged state).
     (bundle / "evals" / "aggregate.json").write_text(json.dumps({
@@ -115,7 +168,7 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
 
 
 def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "0_6b")
     evidence = finalize(bundle, tmp_path)
     assert evidence["final"]["licenses"] is True
     # Real upstream license text + sidecar were written.
@@ -143,7 +196,7 @@ def test_finalize_sets_licenses_true_and_keeps_the_rest_honest(tmp_path: Path) -
 
 
 def test_finalize_dev_workstation_partial_evidence_on_cpu_and_vulkan(tmp_path: Path) -> None:
-    bundle = _minimal_staged_bundle(tmp_path, "0_8b")
+    bundle = _minimal_staged_bundle(tmp_path, "0_6b")
     finalize(bundle, tmp_path)
     cpu = json.loads((bundle / "evidence" / "platform" / "linux-x64-cpu.json").read_text())
     assert cpu["status"] == "pending"
