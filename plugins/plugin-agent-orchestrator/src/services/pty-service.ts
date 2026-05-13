@@ -211,7 +211,20 @@ Your working directory is \`${workdir}\`. Stay inside it: do not \`cd\` to \`/tm
 }
 
 function buildInlineWorkspaceTaskPrefix(workdir: string): string {
-  return `Work only in \`${workdir}\`; do not leave that workspace.`;
+  // Two anchors in this prefix:
+  //   1. Workspace lock — keep the sub-agent inside the workdir.
+  //   2. Action explicit — instruct-tuned Cerebras-served models
+  //      (qwen-3-235b, llama, etc.) routinely answer "write X to file Y"
+  //      with the literal text X as their reply instead of calling the
+  //      Write tool. Spelling it out — "use your tools, don't just
+  //      respond with the file contents" — fixes the noop-spawn class
+  //      of failures observed end-to-end.
+  return (
+    `Work only in \`${workdir}\`; do not leave that workspace. ` +
+    `Use your tools (write, edit, bash, etc.) to actually perform the task — ` +
+    `do NOT just respond with the intended file contents as text. ` +
+    `Verify the file exists and the content matches after writing.`
+  );
 }
 
 function buildParentRuntimeBridgeMemory(
