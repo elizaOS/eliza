@@ -1,8 +1,8 @@
+import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "../../state/TranslationContext";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
-import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "../../state/TranslationContext";
 import type {
   CharacterExperienceDraft,
   CharacterExperienceRecord,

@@ -1,12 +1,18 @@
-import { Button } from "../ui/button";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { Input } from "../ui/input";
-import { PagePanel } from "../composites/page-panel";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { LogEntry } from "../../api";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
 import { formatTime } from "../../utils/format";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 
 /**
  * Logs page — formerly split across `LogsPageView` (a 17-LOC ContentLayout

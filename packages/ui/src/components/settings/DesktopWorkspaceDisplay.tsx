@@ -1,9 +1,15 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { useMemo } from "react";
 import {
   type DesktopWorkspaceSnapshot,
   formatDesktopWorkspaceSummary,
 } from "../../utils/desktop-workspace";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
 
 type Translator = (key: string, options?: Record<string, unknown>) => string;
 

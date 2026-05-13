@@ -22,6 +22,13 @@
  */
 
 export {
+  DFLASH_SERVER_PATCH_DOCS,
+  type DflashServerOverrides,
+  type GpuOverridesInput,
+  type GpuOverridesResult,
+  getGpuOverrides,
+} from "./gpu-overrides.js";
+export {
   __clearProfileCacheForTests,
   __setNvidiaSmiMockForTests,
   classifyGpuName,
@@ -33,20 +40,13 @@ export {
   resolveProfileForHost,
 } from "./gpu-profile-loader.js";
 export {
-  type DflashServerOverrides,
-  DFLASH_SERVER_PATCH_DOCS,
-  getGpuOverrides,
-  type GpuOverridesInput,
-  type GpuOverridesResult,
-} from "./gpu-overrides.js";
-export {
   type BundleRecommendation,
   bundleIdsInProfileMatchCatalog,
   type DflashTuning,
-  getRecommendationsByTier,
   type GpuYamlId,
   type GpuYamlProfile,
   GpuYamlProfile as GpuYamlProfileSchema,
+  getRecommendationsByTier,
   type KernelName,
   type KvCacheType,
   type VerifyRecipe,

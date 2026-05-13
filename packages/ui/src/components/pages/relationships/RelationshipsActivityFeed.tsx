@@ -1,9 +1,9 @@
-import { Button } from "../../ui/button";
 import { Fingerprint, Link2, Tags } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 import { client } from "../../../api/client";
 import type { RelationshipsActivityItem } from "../../../api/client-types-relationships";
 import { formatDateTime, formatShortDate } from "../../../utils/format";
+import { Button } from "../../ui/button";
 
 type ActivityType = RelationshipsActivityItem["type"];
 

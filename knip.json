@@ -130,6 +130,140 @@
         "ws"
       ]
     },
+    "packages/app-core/deploy/cloud-agent-template": {
+      "entry": ["entrypoint.ts"],
+      "project": ["*.ts"],
+      "ignoreDependencies": [
+        "@elizaos/core",
+        "@elizaos/plugin-sql",
+        "@elizaos/plugin-elizacloud",
+        "@elizaos/plugin-workflow"
+      ]
+    },
+    "packages/app-core/platforms/electrobun": {
+      "entry": [
+        "src/**/*.{ts,tsx,js}",
+        "electrobun.config.ts",
+        "vitest.electrobun.config.ts",
+        "scripts/**/*.{mjs,ts,js}"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx,js}",
+        "scripts/**/*.{mjs,ts,js}",
+        "electrobun.config.ts",
+        "vitest.electrobun.config.ts"
+      ],
+      "ignore": ["build/**", "artifacts/**"],
+      "ignoreDependencies": ["bonjour-service", "rcedit"]
+    },
+    "packages/browser-bridge": {
+      "entry": [
+        "entrypoints/**/*.ts",
+        "src/**/*.ts",
+        "scripts/**/*.{mjs,ts,js}",
+        "vitest.extension.config.ts"
+      ],
+      "project": [
+        "entrypoints/**/*.ts",
+        "src/**/*.ts",
+        "scripts/**/*.{mjs,ts,js}",
+        "vitest.extension.config.ts"
+      ],
+      "ignore": ["dist/**"]
+    },
+    "packages/elizaos": {
+      "entry": [
+        "src/**/*.ts",
+        "build.ts",
+        "scripts/**/*.mjs",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "build.ts",
+        "scripts/**/*.mjs",
+        "vitest.config.ts"
+      ],
+      "ignore": ["dist/**", "templates/**"]
+    },
+    "packages/examples/_plugin": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "build.ts",
+        "vite.config.ts",
+        "tailwind.config.js",
+        "postcss.config.js"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "build.ts",
+        "vite.config.ts",
+        "tailwind.config.js",
+        "postcss.config.js"
+      ],
+      "ignore": ["dist/**"]
+    },
+    "packages/examples/app/capacitor/frontend": {
+      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
+    "packages/examples/app/electron/backend": {
+      "entry": ["src/main.ts", "src/preload.ts"],
+      "project": ["src/**/*.ts"],
+      "ignore": ["dist/**", "renderer/**"]
+    },
+    "packages/examples/app/electron/frontend": {
+      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
+    "packages/examples/avatar": {
+      "entry": ["src/**/*.{ts,tsx}", "vite.config.ts", "index.html"],
+      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
+      "ignore": ["dist/**"]
+    },
+    "packages/examples/aws": {
+      "entry": ["handler.ts", "server-local.ts", "test-client.ts", "test-local.ts"],
+      "project": ["*.ts"],
+      "ignore": ["dist/**", ".eliza/**"],
+      "ignoreBinaries": ["sam"]
+    },
+    "packages/examples/browser-extension": {
+      "entry": ["package.json"],
+      "project": [],
+      "ignore": ["shared/eliza-runtime-full.ts", "shared/types.ts"]
+    },
+    "packages/examples/browser-extension/chrome": {
+      "entry": [
+        "src/**/*.ts",
+        "../shared/eliza-runtime-full.ts",
+        "../shared/types.ts",
+        "tsup.config.ts"
+      ],
+      "project": [
+        "src/**/*.ts",
+        "../shared/eliza-runtime-full.ts",
+        "../shared/types.ts",
+        "tsup.config.ts"
+      ],
+      "ignore": ["dist/**"],
+      "ignoreDependencies": [
+        "@elizaos/core",
+        "@elizaos/plugin-anthropic",
+        "@elizaos/plugin-eliza-classic",
+        "@elizaos/plugin-google-genai",
+        "@elizaos/plugin-groq",
+        "@elizaos/plugin-localdb",
+        "@elizaos/plugin-openai"
+      ]
+    },
+    "packages/examples/browser-extension/safari": {
+      "entry": ["package.json", "scripts/**/*.mjs"],
+      "project": ["scripts/**/*.mjs"],
+      "ignore": [".generated/**"],
+      "ignoreBinaries": ["xcrun"]
+    },
     "packages/agent": {
       "entry": [
         "src/**/*.{ts,tsx}",

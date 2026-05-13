@@ -19,8 +19,6 @@
  */
 
 import fs from "node:fs";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -31,6 +29,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from "vitest";
 import { conversationRegistry } from "./conversation-registry";
 import { dflashLlamaServer } from "./dflash-server";
@@ -82,70 +81,68 @@ async function startMockServer(
   baseUrl: string;
   close: () => Promise<void>;
 }> {
-  const server = http.createServer(async (req, res) => {
-    const url = req.url ?? "";
-    if (req.method === "GET" && url === "/health") {
-      res.statusCode = 200;
-      res.end(JSON.stringify({ status: "ok" }));
-      return;
-    }
-    if (req.method === "GET" && url === "/v1/models") {
-      res.statusCode = 200;
-      res.end(JSON.stringify({ data: [{ id: "mock" }] }));
-      return;
-    }
-    if (req.method === "GET" && url === "/metrics") {
-      const body = [
-        `llamacpp:prompt_tokens_total ${state.promptTokensTotal}`,
-        `llamacpp:n_tokens_predicted_total ${state.predictedTokensTotal}`,
-        `llamacpp:n_prompt_tokens_processed_total ${state.promptTokensProcessedTotal}`,
-        `llamacpp:n_drafted_total ${state.draftedTotal}`,
-        `llamacpp:n_accepted_total ${state.acceptedTotal}`,
-        `llamacpp:kv_cache_tokens 0`,
-        `llamacpp:kv_cache_used_cells 0`,
-      ].join("\n");
-      res.statusCode = 200;
-      res.end(body);
-      return;
-    }
-    if (req.method === "POST" && url === "/v1/chat/completions") {
-      const body = await readBody(req);
-      const payload = JSON.parse(body) as {
-        slot_id?: number;
-        messages: Array<{ content: string }>;
-      };
-      const slotId = typeof payload.slot_id === "number" ? payload.slot_id : -1;
-      const promptText = payload.messages
-        .map((m) => String(m.content ?? ""))
-        .join("\n");
-      // 1 token per word for the simulator. Realistic enough for cache
-      // accounting; the actual number doesn't matter for these tests.
-      const promptTokens = promptText.split(/\s+/).filter(Boolean).length;
-      const cachedPrefix = state.prefixCachedTokensBySlot.get(slotId) ?? 0;
-      // Whatever's longer than cachedPrefix has to be freshly prefilled.
-      const freshTokens = Math.max(0, promptTokens - cachedPrefix);
-      const cacheHitTokens = promptTokens - freshTokens;
-      state.freshPrefillBySlot.set(
-        slotId,
-        (state.freshPrefillBySlot.get(slotId) ?? 0) + freshTokens,
-      );
-      state.cacheHitsBySlot.set(
-        slotId,
-        (state.cacheHitsBySlot.get(slotId) ?? 0) + cacheHitTokens,
-      );
-      // The whole prompt is now cached for this slot's next call.
-      state.prefixCachedTokensBySlot.set(slotId, promptTokens);
-      state.promptTokensTotal += promptTokens;
-      state.promptTokensProcessedTotal += freshTokens;
-      const completionTokens = 10;
-      state.predictedTokensTotal += completionTokens;
-      // The patched plan has a drafter model, so production now requires
-      // positive speculative-decoding counters for every generation.
-      state.draftedTotal += 16;
-      state.acceptedTotal += 12;
-      res.statusCode = 200;
-      res.end(
-        JSON.stringify({
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const rawUrl =
+        typeof input === "string" || input instanceof URL ? input : input.url;
+      const url = new URL(rawUrl);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.pathname === "/health") {
+        return Response.json({ status: "ok" });
+      }
+      if (method === "GET" && url.pathname === "/v1/models") {
+        return Response.json({ data: [{ id: "mock" }] });
+      }
+      if (method === "GET" && url.pathname === "/metrics") {
+        const body = [
+          `llamacpp:prompt_tokens_total ${state.promptTokensTotal}`,
+          `llamacpp:n_tokens_predicted_total ${state.predictedTokensTotal}`,
+          `llamacpp:n_prompt_tokens_processed_total ${state.promptTokensProcessedTotal}`,
+          `llamacpp:n_drafted_total ${state.draftedTotal}`,
+          `llamacpp:n_accepted_total ${state.acceptedTotal}`,
+          `llamacpp:kv_cache_tokens 0`,
+          `llamacpp:kv_cache_used_cells 0`,
+        ].join("\n");
+        return new Response(body, { status: 200 });
+      }
+      if (method === "POST" && url.pathname === "/v1/chat/completions") {
+        const body = readFetchBody(init);
+        const payload = JSON.parse(body) as {
+          slot_id?: number;
+          messages: Array<{ content: string }>;
+        };
+        const slotId =
+          typeof payload.slot_id === "number" ? payload.slot_id : -1;
+        const promptText = payload.messages
+          .map((m) => String(m.content ?? ""))
+          .join("\n");
+        // 1 token per word for the simulator. Realistic enough for cache
+        // accounting; the actual number doesn't matter for these tests.
+        const promptTokens = promptText.split(/\s+/).filter(Boolean).length;
+        const cachedPrefix = state.prefixCachedTokensBySlot.get(slotId) ?? 0;
+        // Whatever's longer than cachedPrefix has to be freshly prefilled.
+        const freshTokens = Math.max(0, promptTokens - cachedPrefix);
+        const cacheHitTokens = promptTokens - freshTokens;
+        state.freshPrefillBySlot.set(
+          slotId,
+          (state.freshPrefillBySlot.get(slotId) ?? 0) + freshTokens,
+        );
+        state.cacheHitsBySlot.set(
+          slotId,
+          (state.cacheHitsBySlot.get(slotId) ?? 0) + cacheHitTokens,
+        );
+        // The whole prompt is now cached for this slot's next call.
+        state.prefixCachedTokensBySlot.set(slotId, promptTokens);
+        state.promptTokensTotal += promptTokens;
+        state.promptTokensProcessedTotal += freshTokens;
+        const completionTokens = 10;
+        state.predictedTokensTotal += completionTokens;
+        // The patched plan has a drafter model, so production now requires
+        // positive speculative-decoding counters for every generation.
+        state.draftedTotal += 16;
+        state.acceptedTotal += 12;
+        return Response.json({
           choices: [
             {
               message: {
@@ -158,60 +155,49 @@ async function startMockServer(
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,
           },
-        }),
-      );
-      return;
-    }
-    if (
-      req.method === "POST" &&
-      /^\/slots\/\d+\?action=(save|restore)$/.test(url)
-    ) {
-      const slotIdMatch = url.match(/^\/slots\/(\d+)\?action=(\w+)$/);
-      if (slotIdMatch) {
-        const slotId = Number(slotIdMatch[1]);
-        const action = slotIdMatch[2] ?? "";
-        state.slotEvents.push(`${action}:${slotId}`);
-        const body = await readBody(req);
-        let filename: string | undefined;
-        try {
-          const parsed = JSON.parse(body) as { filename?: string };
-          filename = parsed.filename;
-        } catch {
-          // Mock tolerates an empty body — older test paths may not send one
-        }
-        if (action === "save" && filename) {
-          // Touch the file the dflash-server expects to find on restore.
-          fs.writeFileSync(path.join(slotDir, filename), `slot=${slotId}`);
-        }
-        if (action === "restore") {
-          // Synthetic restore: assume previously-saved prefix had 4000 tokens.
-          state.prefixCachedTokensBySlot.set(slotId, 4000);
-        }
+        });
       }
-      res.statusCode = 200;
-      res.end("{}");
-      return;
-    }
-    res.statusCode = 404;
-    res.end();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as AddressInfo).port;
+      if (method === "POST" && /^\/slots\/\d+$/.test(url.pathname)) {
+        const slotIdMatch = url.pathname.match(/^\/slots\/(\d+)$/);
+        if (slotIdMatch) {
+          const slotId = Number(slotIdMatch[1]);
+          const action = url.searchParams.get("action") ?? "";
+          state.slotEvents.push(`${action}:${slotId}`);
+          const body = readFetchBody(init);
+          let filename: string | undefined;
+          try {
+            const parsed = JSON.parse(body) as { filename?: string };
+            filename = parsed.filename;
+          } catch {
+            // Mock tolerates an empty body — older test paths may not send one
+          }
+          if (action === "save" && filename) {
+            // Touch the file the dflash-server expects to find on restore.
+            fs.writeFileSync(path.join(slotDir, filename), `slot=${slotId}`);
+          }
+          if (action === "restore") {
+            // Synthetic restore: assume previously-saved prefix had 4000 tokens.
+            state.prefixCachedTokensBySlot.set(slotId, 4000);
+          }
+        }
+        return Response.json({});
+      }
+      return new Response(null, { status: 404 });
+    }),
+  );
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    baseUrl: "http://dflash-cache-flow.test",
+    close: async () => {
+      vi.unstubAllGlobals();
+    },
   };
 }
 
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk: Buffer) => {
-      data += chunk.toString();
-    });
-    req.on("end", () => resolve(data));
-    req.on("error", reject);
-  });
+function readFetchBody(init: RequestInit | undefined): string {
+  const body = init?.body;
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return new TextDecoder().decode(body);
+  return "";
 }
 
 /**

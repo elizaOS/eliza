@@ -58,7 +58,9 @@ describe("gpu-profile YAML files", () => {
     expect(check.unknown).toEqual([]);
     expect(check.ok).toBe(true);
     // At least one bundle is recommended.
-    expect(Object.keys(profile.bundle_recommendations).length).toBeGreaterThan(0);
+    expect(Object.keys(profile.bundle_recommendations).length).toBeGreaterThan(
+      0,
+    );
   });
 
   it("3090 lacks FP8, 4090/5090/H200 have it", () => {
@@ -84,12 +86,12 @@ describe("gpu-profile YAML files", () => {
     expect(loadProfile("rtx-3090").verify_recipe.unavailable_kernels).toContain(
       "turbo3_tcq",
     );
-    expect(loadProfile("rtx-4090").verify_recipe.unavailable_kernels).not.toContain(
-      "turbo3_tcq",
-    );
-    expect(loadProfile("rtx-5090").verify_recipe.unavailable_kernels).not.toContain(
-      "turbo3_tcq",
-    );
+    expect(
+      loadProfile("rtx-4090").verify_recipe.unavailable_kernels,
+    ).not.toContain("turbo3_tcq");
+    expect(
+      loadProfile("rtx-5090").verify_recipe.unavailable_kernels,
+    ).not.toContain("turbo3_tcq");
     expect(loadProfile("h200").verify_recipe.unavailable_kernels).not.toContain(
       "turbo3_tcq",
     );
@@ -148,7 +150,10 @@ describe("detectGpuFromNvidiaSmi mock", () => {
   afterEach(() => __setNvidiaSmiMockForTests({ kind: "real" }));
 
   it("returns the mocked name", () => {
-    __setNvidiaSmiMockForTests({ kind: "name", value: "NVIDIA GeForce RTX 4090" });
+    __setNvidiaSmiMockForTests({
+      kind: "name",
+      value: "NVIDIA GeForce RTX 4090",
+    });
     expect(detectGpuFromNvidiaSmi()).toBe("NVIDIA GeForce RTX 4090");
   });
 

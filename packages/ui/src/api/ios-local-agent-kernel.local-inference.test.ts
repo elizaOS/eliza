@@ -45,9 +45,7 @@ function eliza1MobileManifest(
       ? "text/eliza-1-2b-32k.gguf"
       : "text/eliza-1-4b-64k.gguf";
   const drafterPath =
-    id === "eliza-1-2b"
-      ? "dflash/drafter-2b.gguf"
-      : "dflash/drafter-4b.gguf";
+    id === "eliza-1-2b" ? "dflash/drafter-2b.gguf" : "dflash/drafter-4b.gguf";
   return {
     id,
     version: "1.0.0",

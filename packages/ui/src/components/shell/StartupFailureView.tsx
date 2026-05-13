@@ -1,13 +1,13 @@
-import { Banner } from "../ui/banner";
-import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
-import { StatusBadge } from "../ui/status-badge";
 import { useState } from "react";
 import { client } from "../../api";
 import { useBranding } from "../../config/branding";
 import { type BugReportDraft, useOptionalBugReport } from "../../hooks";
 import type { StartupErrorState } from "../../state";
 import { useApp } from "../../state";
+import { Banner } from "../ui/banner";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
+import { StatusBadge } from "../ui/status-badge";
 
 function startupReasonLabel(
   t: ReturnType<typeof useApp>["t"],

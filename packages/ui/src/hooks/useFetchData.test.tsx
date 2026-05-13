@@ -160,9 +160,7 @@ describe("useFetchData", () => {
 
   it("mutate(fn) with updater fn applies to current data", async () => {
     const fetcher = vi.fn(async (_signal: AbortSignal) => [1, 2, 3]);
-    const { result } = renderHook(() =>
-      useFetchData<number[]>(fetcher, []),
-    );
+    const { result } = renderHook(() => useFetchData<number[]>(fetcher, []));
 
     await waitFor(() => {
       expect(result.current.status).toBe("success");

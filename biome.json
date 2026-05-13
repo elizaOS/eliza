@@ -24,6 +24,8 @@
       "!packages/benchmarks/solana/solana-gym-env/voyager/skill_runner/_test_bad.ts",
       "!packages/benchmarks/evm/skill_runner/evm_skill.ts",
       "!packages/examples/app/electron/backend/renderer/assets",
+      "!packages/examples/browser-extension/safari/.generated/**",
+      "!packages/examples/browser-extension/safari/Chat with Webpage/**",
       "!packages/app-core/src/styles"
     ]
   },

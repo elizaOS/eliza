@@ -9,14 +9,11 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import {
-  autoSelectProfile,
-  detectNvidiaGpu,
-} from "../gpu-tier-detect.js";
+import { autoSelectProfile, detectNvidiaGpu } from "../gpu-tier-detect.js";
 import {
   buildLlamaCppArgs,
-  getGpuProfile,
   GPU_PROFILES,
+  getGpuProfile,
   selectBestProfile,
 } from "../gpu-tier-profiles.js";
 

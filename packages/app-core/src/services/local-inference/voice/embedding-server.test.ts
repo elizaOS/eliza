@@ -22,7 +22,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildLocalEmbeddingRoute, EMBEDDING_DIR_REL_PATH } from "./embedding";
+import { buildLocalEmbeddingRoute } from "./embedding";
 import { EmbeddingServer, embeddingServerForRoute } from "./embedding-server";
 import { VoiceStartupError } from "./errors";
 

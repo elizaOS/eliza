@@ -17,12 +17,6 @@
  * plugin exposes a richer validation endpoint.
  */
 
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
-import { PagePanel } from "../composites/page-panel";
-import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
-import { Textarea } from "../ui/textarea";
 import { Play, RefreshCw, Save, Sparkles, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
@@ -38,6 +32,12 @@ import {
   type WorkflowJsonResult,
   workflowToJsonText,
 } from "../../utils/workflow-json";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 import { WorkflowGraphViewer } from "./WorkflowGraphViewer";
 
 export interface WorkflowEditorProps {

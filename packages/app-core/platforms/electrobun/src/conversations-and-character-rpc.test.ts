@@ -8,18 +8,22 @@
  * rationale.
  */
 
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	type CharacterReader,
+	type ConversationMessagesReader,
 	type ConversationsListReader,
 	composeCharacterSnapshot,
+	composeConversationMessagesSnapshot,
 	composeConversationsListSnapshot,
 	readCharacterViaHttp,
+	readConversationMessagesViaHttp,
 	readConversationsListViaHttp,
 } from "./conversations-and-character-rpc";
 import type {
 	CharacterSnapshot,
+	ConversationMessagesSnapshot,
 	ConversationsListSnapshot,
 } from "./rpc-schema";
 
@@ -121,5 +125,61 @@ describe("getCharacter typed RPC", () => {
 	it("readCharacterViaHttp returns the JSON body on 200", async () => {
 		installFetch(() => Response.json({ name: "Atlas" }));
 		expect(await readCharacterViaHttp(31337)).toEqual({ name: "Atlas" });
+	});
+});
+
+describe("getConversationMessages typed RPC", () => {
+	const noReader: ConversationMessagesReader = async () => null;
+
+	it("throws AgentNotReadyError when port is null", async () => {
+		await expect(
+			composeConversationMessagesSnapshot(null, "c1", noReader),
+		).rejects.toBeInstanceOf(AgentNotReadyError);
+	});
+
+	it("throws when id is empty", async () => {
+		await expect(
+			composeConversationMessagesSnapshot(31337, " ", noReader),
+		).rejects.toThrow("Conversation id is required.");
+	});
+
+	it("forwards message records", async () => {
+		const reader: ConversationMessagesReader = async () => ({
+			messages: [
+				{ id: "m1", role: "user", text: "hello" },
+				{ id: "m2", role: "assistant", text: "hi" },
+			],
+		});
+		const snap = await composeConversationMessagesSnapshot(31337, "c1", reader);
+		const _typed: ConversationMessagesSnapshot = snap;
+		void _typed;
+		expect(snap.messages).toHaveLength(2);
+		expect(snap.messages[1]).toEqual({
+			id: "m2",
+			role: "assistant",
+			text: "hi",
+		});
+	});
+
+	it("readConversationMessagesViaHttp filters non-object entries", async () => {
+		installFetch(() =>
+			Response.json({
+				messages: [{ id: "m1" }, null, "junk", { id: "m2" }],
+			}),
+		);
+		const result = await readConversationMessagesViaHttp(31337, "c1");
+		expect(result).not.toBeNull();
+		if (!result) return;
+		expect(result.messages).toEqual([{ id: "m1" }, { id: "m2" }]);
+	});
+
+	it("readConversationMessagesViaHttp returns null when payload is invalid", async () => {
+		installFetch(() => Response.json({ messages: "not an array" }));
+		expect(await readConversationMessagesViaHttp(31337, "c1")).toBeNull();
+	});
+
+	it("readConversationMessagesViaHttp returns null on 404", async () => {
+		installFetch(() => new Response("missing", { status: 404 }));
+		expect(await readConversationMessagesViaHttp(31337, "c1")).toBeNull();
 	});
 });

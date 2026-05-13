@@ -1,15 +1,27 @@
 import type { CustomActionDef, CustomActionHandler } from "@elizaos/shared";
-import { Banner } from "../ui/banner";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Textarea } from "../ui/textarea";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useEffect, useState } from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
+import { Banner } from "../ui/banner";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Textarea } from "../ui/textarea";
 import {
   editorDialogContentClassName,
   editorFieldLabelClassName,

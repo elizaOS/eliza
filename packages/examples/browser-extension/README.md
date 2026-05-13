@@ -81,9 +81,7 @@ npm run convert
 browser-extension/
 ├── shared/                     # Shared TypeScript code
 │   ├── types.ts               # Type definitions
-│   ├── eliza-runtime.ts       # ElizaOS runtime setup
-│   └── providers/
-│       └── pageContentProvider.ts  # Page context injection
+│   └── eliza-runtime-full.ts  # ElizaOS runtime and page context
 ├── chrome/                     # Chrome extension
 │   ├── manifest.json          # Extension manifest (MV3)
 │   ├── popup.html/css         # Chat UI

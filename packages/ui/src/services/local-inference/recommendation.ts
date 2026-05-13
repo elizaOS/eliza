@@ -190,7 +190,8 @@ export function selectBestQuantizationVariant(
   const fitting = published
     .filter(
       (variant) =>
-        variant.minRamGb <= memGb && variant.sizeGb <= memGb * maxFootprintRatio,
+        variant.minRamGb <= memGb &&
+        variant.sizeGb <= memGb * maxFootprintRatio,
     )
     .sort((left, right) => rank[right.id] - rank[left.id]);
   return (

@@ -1,7 +1,7 @@
-import { Skeleton } from "../ui/skeleton";
 import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { RegistryAppInfo } from "../../api";
 import { useApp } from "../../state";
+import { Skeleton } from "../ui/skeleton";
 import { AppHero } from "./app-identity";
 import { getAppShortName, groupAppsForCatalog } from "./helpers";
 import { getProvenanceFlags, getProvenanceTitle } from "./provenance";

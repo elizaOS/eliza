@@ -8,8 +8,7 @@
  */
 
 import fs from "node:fs";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
+import { vi } from "vitest";
 import { dflashLlamaServer } from "../dflash-server";
 import type { LocalInferenceEngine } from "../engine";
 
@@ -71,15 +70,11 @@ export function newMockState(): MockState {
   };
 }
 
-function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let data = "";
-    req.on("data", (chunk: Buffer) => {
-      data += chunk.toString();
-    });
-    req.on("end", () => resolve(data));
-    req.on("error", reject);
-  });
+function readFetchBody(init: RequestInit | undefined): string {
+  const body = init?.body;
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return new TextDecoder().decode(body);
+  return "";
 }
 
 function touchSlotLru(state: MockState, slotId: number): void {
@@ -107,75 +102,76 @@ export async function startMockServer(
   state: MockState,
   slotDir: string,
 ): Promise<{ baseUrl: string; close: () => Promise<void> }> {
-  const server = http.createServer(async (req, res) => {
-    const url = req.url ?? "";
-    if (req.method === "GET" && url === "/health") {
-      res.statusCode = 200;
-      res.end(JSON.stringify({ status: "ok" }));
-      return;
-    }
-    if (req.method === "GET" && url === "/v1/models") {
-      res.statusCode = 200;
-      res.end(JSON.stringify({ data: [{ id: "mock" }] }));
-      return;
-    }
-    if (req.method === "GET" && url === "/metrics") {
-      const body = [
-        `llamacpp:prompt_tokens_total ${state.promptTokensTotal}`,
-        `llamacpp:n_tokens_predicted_total ${state.predictedTokensTotal}`,
-        `llamacpp:n_prompt_tokens_processed_total ${state.promptTokensProcessedTotal}`,
-        `llamacpp:n_drafted_total ${state.draftedTotal}`,
-        `llamacpp:n_accepted_total ${state.acceptedTotal}`,
-        `llamacpp:kv_cache_tokens 0`,
-        `llamacpp:kv_cache_used_cells 0`,
-      ].join("\n");
-      res.statusCode = 200;
-      res.end(body);
-      return;
-    }
-    if (req.method === "POST" && url === "/v1/chat/completions") {
-      const body = await readBody(req);
-      const payload = JSON.parse(body) as {
-        slot_id?: number;
-        messages: Array<{ content: string }>;
-      };
-      const slotId = typeof payload.slot_id === "number" ? payload.slot_id : -1;
-      const promptText = payload.messages
-        .map((m) => String(m.content ?? ""))
-        .join("\n");
-      const promptTokenList = promptText.split(/\s+/).filter(Boolean);
-      const promptTokens = promptTokenList.length;
-      // Realistic radix-tree behaviour: cache hit is the longest common
-      // prefix between the new prompt and the slot's cached tokens.
-      const cachedTokens = state.cachedTokensBySlot.get(slotId) ?? [];
-      const cacheHitTokens = longestCommonPrefix(promptTokenList, cachedTokens);
-      const freshTokens = promptTokens - cacheHitTokens;
-      state.freshPrefillBySlot.set(
-        slotId,
-        (state.freshPrefillBySlot.get(slotId) ?? 0) + freshTokens,
-      );
-      state.cacheHitsBySlot.set(
-        slotId,
-        (state.cacheHitsBySlot.get(slotId) ?? 0) + cacheHitTokens,
-      );
-      state.prefixCachedTokensBySlot.set(slotId, promptTokens);
-      state.cachedTokensBySlot.set(slotId, promptTokenList);
-      state.promptTokensBySlot.set(
-        slotId,
-        (state.promptTokensBySlot.get(slotId) ?? 0) + promptTokens,
-      );
-      touchSlotLru(state, slotId);
-      state.promptTokensTotal += promptTokens;
-      state.promptTokensProcessedTotal += freshTokens;
-      const completionTokens = 10;
-      state.predictedTokensTotal += completionTokens;
-      // The patched plan has a drafter model, so production now requires
-      // positive speculative-decoding counters for every generation.
-      state.draftedTotal += 16;
-      state.acceptedTotal += 12;
-      res.statusCode = 200;
-      res.end(
-        JSON.stringify({
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+      const rawUrl =
+        typeof input === "string" || input instanceof URL ? input : input.url;
+      const url = new URL(rawUrl);
+      const method = (init?.method ?? "GET").toUpperCase();
+      if (method === "GET" && url.pathname === "/health") {
+        return Response.json({ status: "ok" });
+      }
+      if (method === "GET" && url.pathname === "/v1/models") {
+        return Response.json({ data: [{ id: "mock" }] });
+      }
+      if (method === "GET" && url.pathname === "/metrics") {
+        const body = [
+          `llamacpp:prompt_tokens_total ${state.promptTokensTotal}`,
+          `llamacpp:n_tokens_predicted_total ${state.predictedTokensTotal}`,
+          `llamacpp:n_prompt_tokens_processed_total ${state.promptTokensProcessedTotal}`,
+          `llamacpp:n_drafted_total ${state.draftedTotal}`,
+          `llamacpp:n_accepted_total ${state.acceptedTotal}`,
+          `llamacpp:kv_cache_tokens 0`,
+          `llamacpp:kv_cache_used_cells 0`,
+        ].join("\n");
+        return new Response(body, { status: 200 });
+      }
+      if (method === "POST" && url.pathname === "/v1/chat/completions") {
+        const body = readFetchBody(init);
+        const payload = JSON.parse(body) as {
+          slot_id?: number;
+          messages: Array<{ content: string }>;
+        };
+        const slotId =
+          typeof payload.slot_id === "number" ? payload.slot_id : -1;
+        const promptText = payload.messages
+          .map((m) => String(m.content ?? ""))
+          .join("\n");
+        const promptTokenList = promptText.split(/\s+/).filter(Boolean);
+        const promptTokens = promptTokenList.length;
+        // Realistic radix-tree behaviour: cache hit is the longest common
+        // prefix between the new prompt and the slot's cached tokens.
+        const cachedTokens = state.cachedTokensBySlot.get(slotId) ?? [];
+        const cacheHitTokens = longestCommonPrefix(
+          promptTokenList,
+          cachedTokens,
+        );
+        const freshTokens = promptTokens - cacheHitTokens;
+        state.freshPrefillBySlot.set(
+          slotId,
+          (state.freshPrefillBySlot.get(slotId) ?? 0) + freshTokens,
+        );
+        state.cacheHitsBySlot.set(
+          slotId,
+          (state.cacheHitsBySlot.get(slotId) ?? 0) + cacheHitTokens,
+        );
+        state.prefixCachedTokensBySlot.set(slotId, promptTokens);
+        state.cachedTokensBySlot.set(slotId, promptTokenList);
+        state.promptTokensBySlot.set(
+          slotId,
+          (state.promptTokensBySlot.get(slotId) ?? 0) + promptTokens,
+        );
+        touchSlotLru(state, slotId);
+        state.promptTokensTotal += promptTokens;
+        state.promptTokensProcessedTotal += freshTokens;
+        const completionTokens = 10;
+        state.predictedTokensTotal += completionTokens;
+        // The patched plan has a drafter model, so production now requires
+        // positive speculative-decoding counters for every generation.
+        state.draftedTotal += 16;
+        state.acceptedTotal += 12;
+        return Response.json({
           choices: [
             {
               message: {
@@ -188,59 +184,50 @@ export async function startMockServer(
             prompt_tokens: promptTokens,
             completion_tokens: completionTokens,
           },
-        }),
-      );
-      return;
-    }
-    if (
-      req.method === "POST" &&
-      /^\/slots\/\d+\?action=(save|restore)$/.test(url)
-    ) {
-      const slotIdMatch = url.match(/^\/slots\/(\d+)\?action=(\w+)$/);
-      if (slotIdMatch) {
-        const slotId = Number(slotIdMatch[1]);
-        const action = slotIdMatch[2] ?? "";
-        state.slotEvents.push(`${action}:${slotId}`);
-        const body = await readBody(req);
-        let filename: string | undefined;
-        try {
-          const parsed = JSON.parse(body) as { filename?: string };
-          filename = parsed.filename;
-        } catch {
-          // Mock tolerates an empty body
-        }
-        if (action === "save" && filename) {
-          // Realistic save: tag with slot id + a synthetic 4k-token marker
-          const payload = `slot=${slotId}\nprefix-tokens=4000\n`;
-          fs.writeFileSync(`${slotDir}/${filename}`, payload);
-          state.slotSaveBytes += payload.length;
-        }
-        if (action === "restore" && !state.corruptRestore) {
-          state.prefixCachedTokensBySlot.set(slotId, 4000);
-          touchSlotLru(state, slotId);
-        }
-        if (action === "restore" && state.corruptRestore) {
-          // Synthesise a 500 — this is what llama-server would return on
-          // a malformed slot KV file in practice. Triggers the dflash
-          // requestSlotRestore catch path which throws and the engine
-          // swallows.
-          res.statusCode = 500;
-          res.end('{"error":"corrupt"}');
-          return;
-        }
+        });
       }
-      res.statusCode = 200;
-      res.end("{}");
-      return;
-    }
-    res.statusCode = 404;
-    res.end();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as AddressInfo).port;
+      if (method === "POST" && /^\/slots\/\d+$/.test(url.pathname)) {
+        const slotIdMatch = url.pathname.match(/^\/slots\/(\d+)$/);
+        if (slotIdMatch) {
+          const slotId = Number(slotIdMatch[1]);
+          const action = url.searchParams.get("action") ?? "";
+          state.slotEvents.push(`${action}:${slotId}`);
+          const body = readFetchBody(init);
+          let filename: string | undefined;
+          try {
+            const parsed = JSON.parse(body) as { filename?: string };
+            filename = parsed.filename;
+          } catch {
+            // Mock tolerates an empty body
+          }
+          if (action === "save" && filename) {
+            // Realistic save: tag with slot id + a synthetic 4k-token marker
+            const payload = `slot=${slotId}\nprefix-tokens=4000\n`;
+            fs.writeFileSync(`${slotDir}/${filename}`, payload);
+            state.slotSaveBytes += payload.length;
+          }
+          if (action === "restore" && !state.corruptRestore) {
+            state.prefixCachedTokensBySlot.set(slotId, 4000);
+            touchSlotLru(state, slotId);
+          }
+          if (action === "restore" && state.corruptRestore) {
+            // Synthesise a 500 — this is what llama-server would return on
+            // a malformed slot KV file in practice. Triggers the dflash
+            // requestSlotRestore catch path which throws and the engine
+            // swallows.
+            return Response.json({ error: "corrupt" }, { status: 500 });
+          }
+        }
+        return Response.json({});
+      }
+      return new Response(null, { status: 404 });
+    }),
+  );
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    baseUrl: "http://dflash-cache-stress.test",
+    close: async () => {
+      vi.unstubAllGlobals();
+    },
   };
 }
 

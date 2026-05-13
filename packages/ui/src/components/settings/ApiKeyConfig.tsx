@@ -1,5 +1,3 @@
-import { Button } from "../ui/button";
-import { useTimeout } from "../../hooks/useTimeout";
 import { useCallback, useMemo, useState } from "react";
 import { client, type PluginParamDef } from "../../api";
 import {
@@ -9,9 +7,11 @@ import {
 } from "../../components/config-ui/config-renderer";
 import { API_KEY_PREFIX_HINTS } from "../../config/api-key-prefix-hints";
 import type { JsonSchemaObject } from "../../config/config-catalog";
+import { useTimeout } from "../../hooks/useTimeout";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
 import { autoLabel } from "../../utils/labels";
+import { Button } from "../ui/button";
 import { AdvancedSettingsDisclosure } from "./settings-control-primitives";
 
 interface ProviderPlugin {

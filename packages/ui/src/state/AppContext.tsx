@@ -4,7 +4,6 @@
  * Children access state and actions through the useApp() hook.
  */
 
-import { ConfirmDialog, PromptDialog, useConfirm, usePrompt } from "../components/ui/confirm-dialog";
 import {
   type ReactNode,
   useCallback,
@@ -14,6 +13,12 @@ import {
   useState,
 } from "react";
 import { client } from "../api";
+import {
+  ConfirmDialog,
+  PromptDialog,
+  useConfirm,
+  usePrompt,
+} from "../components/ui/confirm-dialog";
 import { AppBootContext } from "../config/boot-config-react";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";

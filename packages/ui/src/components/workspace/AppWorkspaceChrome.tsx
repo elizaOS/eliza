@@ -1,4 +1,3 @@
-import { type WorkspaceMobileSidebarControl, type WorkspaceMobileSidebarControls, WorkspaceMobileSidebarControlsContext } from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls";
 import {
   PanelLeftClose,
   PanelLeftOpen,
@@ -18,6 +17,11 @@ import {
   useState,
 } from "react";
 import { useMediaQuery } from "../../hooks";
+import {
+  type WorkspaceMobileSidebarControl,
+  type WorkspaceMobileSidebarControls,
+  WorkspaceMobileSidebarControlsContext,
+} from "../../layouts/workspace-layout/workspace-mobile-sidebar-controls";
 import { ChatView } from "../pages/ChatView.js";
 import {
   PageScopedChatPane,

@@ -7,7 +7,7 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 
-export type SamOptions = {
+type SamOptions = {
   speed: number;
   pitch: number;
   throat: number;

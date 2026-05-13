@@ -280,7 +280,9 @@ export function selectBestProfile(
  */
 export function buildLlamaCppArgs(
   profile: GpuProfile,
-  overrides?: Partial<GpuProfile["llama_cpp_flags"]> & { ctx_size_tokens?: number },
+  overrides?: Partial<GpuProfile["llama_cpp_flags"]> & {
+    ctx_size_tokens?: number;
+  },
 ): string[] {
   const flags = overrides
     ? { ...profile.llama_cpp_flags, ...overrides }

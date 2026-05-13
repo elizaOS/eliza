@@ -17,8 +17,8 @@ import type { Eliza1TierId } from "../local-inference/catalog.js";
 
 import {
   type BundleRecommendation,
-  getRecommendationsByTier,
   type GpuYamlProfile,
+  getRecommendationsByTier,
   type KvCacheType,
 } from "./gpu-profile-schema.js";
 
@@ -55,7 +55,12 @@ export interface GpuOverridesInput {
  * back to catalog defaults) from "applied" (here is the merge patch).
  */
 export type GpuOverridesResult =
-  | { kind: "applied"; bundleId: Eliza1TierId; gpuId: string; overrides: DflashServerOverrides }
+  | {
+      kind: "applied";
+      bundleId: Eliza1TierId;
+      gpuId: string;
+      overrides: DflashServerOverrides;
+    }
   | { kind: "no-recommendation"; bundleId: Eliza1TierId; gpuId: string };
 
 /**
@@ -67,9 +72,7 @@ export type GpuOverridesResult =
  *
  * Pure: no IO, no logging. Safe to call repeatedly.
  */
-export function getGpuOverrides(
-  input: GpuOverridesInput,
-): GpuOverridesResult {
+export function getGpuOverrides(input: GpuOverridesInput): GpuOverridesResult {
   const { profile, bundleId } = input;
   const recs = getRecommendationsByTier(profile);
   const rec = recs[bundleId];
@@ -137,4 +140,5 @@ function bundleToOverrides(
  * `Object.assign` because every field of `DflashServerOverrides` is a
  * leaf scalar — there are no nested objects to deep-merge.
  */
-export const DFLASH_SERVER_PATCH_DOCS = "see comment block above DFLASH_SERVER_PATCH_DOCS";
+export const DFLASH_SERVER_PATCH_DOCS =
+  "see comment block above DFLASH_SERVER_PATCH_DOCS";

@@ -1,13 +1,19 @@
-import { Button } from "../ui/button";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
 import { ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SecretInfo } from "../../api";
 import { client } from "../../api";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
 import type { TranslateFn } from "../../types";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
 
 /* ── Constants ──────────────────────────────────────────────────────── */
 

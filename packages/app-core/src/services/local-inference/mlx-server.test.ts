@@ -1,10 +1,8 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isAppleSilicon,
   looksLikeMlxModelDir,
@@ -30,6 +28,32 @@ function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
       else process.env[k] = prev[k];
     }
   }
+}
+
+function readFetchJson(init: RequestInit | undefined): Record<string, unknown> {
+  const body = init?.body;
+  if (typeof body !== "string") return {};
+  return JSON.parse(body) as Record<string, unknown>;
+}
+
+function sseResponse(chunks: string[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) {
+          controller.enqueue(
+            encoder.encode(
+              `data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`,
+            ),
+          );
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
 }
 
 describe("mlx-server: opt-in + eligibility (convenience path)", () => {
@@ -114,7 +138,6 @@ describe("mlx-server: opt-in + eligibility (convenience path)", () => {
 });
 
 describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
-  let server: http.Server | null = null;
   let svc: MlxLocalServer | null = null;
 
   afterEach(async () => {
@@ -122,77 +145,58 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
       await svc.unload();
       svc = null;
     }
-    if (server) {
-      await new Promise<void>((r) => server?.close(() => r()));
-      server = null;
-    }
+    vi.unstubAllGlobals();
   });
 
   it("health-checks /v1/models and routes /v1/chat/completions (non-streaming)", async () => {
-    server = http.createServer((req, res) => {
-      if (req.url === "/v1/models") {
-        res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ data: [{ id: "eliza-1-0_8b-mlx" }] }));
-        return;
-      }
-      if (req.url === "/v1/chat/completions" && req.method === "POST") {
-        let body = "";
-        req.on("data", (c) => (body += c));
-        req.on("end", () => {
-          const parsed = JSON.parse(body);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const rawUrl =
+          typeof input === "string" || input instanceof URL ? input : input.url;
+        const url = new URL(rawUrl);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.pathname === "/v1/models") {
+          return Response.json({ data: [{ id: "eliza-1-0_8b-mlx" }] });
+        }
+        if (url.pathname === "/v1/chat/completions" && method === "POST") {
+          const parsed = readFetchJson(init);
           expect(parsed.model).toBe("eliza-1-0_8b-mlx");
-          expect(parsed.messages?.[0]?.content).toBe("hello");
-          res.setHeader("content-type", "application/json");
-          res.end(
-            JSON.stringify({
-              choices: [{ message: { content: "world" } }],
-            }),
-          );
-        });
-        return;
-      }
-      res.statusCode = 404;
-      res.end();
-    });
-    await new Promise<void>((r) => server?.listen(0, "127.0.0.1", () => r()));
-    const port = (server?.address() as AddressInfo).port;
+          const messages = parsed.messages as
+            | Array<{ content?: unknown }>
+            | undefined;
+          expect(messages?.[0]?.content).toBe("hello");
+          return Response.json({
+            choices: [{ message: { content: "world" } }],
+          });
+        }
+        return new Response(null, { status: 404 });
+      }),
+    );
 
-    // Drive the adapter against the mock HTTP server directly while keeping
-    // hasLoadedModel() true with a real child process for normal teardown.
+    // Drive the adapter against the fetch mock directly while keeping
+    // hasLoadedModel() true with a lightweight test child placeholder.
     class TestMlx extends MlxLocalServer {
       attach(baseUrl: string, modelName: string) {
         this.baseUrl = baseUrl;
         this.servedModelName = modelName;
-        this.child = spawn(process.execPath, [
-          "-e",
-          "setInterval(() => {}, 1000)",
-        ]);
+        this.child = { killed: false, pid: 1 } as never;
         this.modelDir = "/fake/mlx/model";
       }
     }
     const t = new TestMlx();
     svc = t;
-    t.attach(`http://127.0.0.1:${port}`, "eliza-1-0_8b-mlx");
+    t.attach("http://mlx.test", "eliza-1-0_8b-mlx");
     expect(t.hasLoadedModel()).toBe(true);
     const out = await t.generate({ prompt: "hello" } as never);
     expect(out).toBe("world");
   });
 
   it("streams SSE deltas through onTextChunk", async () => {
-    server = http.createServer((req, res) => {
-      if (req.url === "/v1/chat/completions" && req.method === "POST") {
-        res.setHeader("content-type", "text/event-stream");
-        res.write('data: {"choices":[{"delta":{"content":"foo"}}]}\n\n');
-        res.write('data: {"choices":[{"delta":{"content":" bar"}}]}\n\n');
-        res.write("data: [DONE]\n\n");
-        res.end();
-        return;
-      }
-      res.statusCode = 404;
-      res.end();
-    });
-    await new Promise<void>((r) => server?.listen(0, "127.0.0.1", () => r()));
-    const port = (server?.address() as AddressInfo).port;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => sseResponse(["foo", " bar"])),
+    );
     class TestMlx extends MlxLocalServer {
       attach(baseUrl: string) {
         this.baseUrl = baseUrl;
@@ -206,7 +210,7 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
     }
     const t = new TestMlx();
     svc = t;
-    t.attach(`http://127.0.0.1:${port}`);
+    t.attach("http://mlx.test");
     const chunks: string[] = [];
     const out = await t.generate({
       prompt: "x",

@@ -1,5 +1,5 @@
-import { StatusBadge, type StatusVariant } from "../ui/status-badge";
 import { useApp } from "../../state";
+import { StatusBadge, type StatusVariant } from "../ui/status-badge";
 
 export function summarizeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);

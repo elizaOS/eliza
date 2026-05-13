@@ -73,8 +73,6 @@ const UploadIcon = ({ className }: { className?: string }) => (
   />
 );
 
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
   type ChangeEvent,
   type ReactNode,
@@ -84,6 +82,15 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 
 /* ── Shared accent styles ────────────────────────────────────────── */
 const accentGradientStyle = {

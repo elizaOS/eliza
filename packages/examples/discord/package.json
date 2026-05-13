@@ -25,6 +25,7 @@
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
     "@types/uuid": "^11.0.0",
+    "discord.js": "^14.26.4",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
   },

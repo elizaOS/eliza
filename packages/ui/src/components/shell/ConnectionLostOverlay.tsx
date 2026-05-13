@@ -1,8 +1,8 @@
-import { Button } from "../ui/button";
-import { Card, CardContent, CardHeader } from "../ui/card";
 import { useState } from "react";
 import { isElectrobunRuntime } from "../../bridge";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardHeader } from "../ui/card";
 
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1001] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/80 px-4 py-6 font-body text-txt backdrop-blur-sm sm:px-6";

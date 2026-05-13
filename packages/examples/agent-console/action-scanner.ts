@@ -1,13 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import {
-  dirname,
-  join,
-  normalize,
-  relative,
-  resolve,
-  sep,
-} from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, normalize, relative, resolve, sep } from "node:path";
 import ts from "typescript";
 
 const SOURCE_ROOTS = ["packages", "plugins", "cloud"];
@@ -34,7 +27,7 @@ type ExportedStaticBindings = {
 
 export type ActionScanSort = "name" | "filepath";
 
-export type ScannedParameter = {
+type ScannedParameter = {
   name: string;
   description: string;
   required?: boolean;
@@ -43,7 +36,7 @@ export type ScannedParameter = {
   source: string;
 };
 
-export type SubActionReference = {
+type SubActionReference = {
   raw: string;
   name: string;
   kind: "name" | "ref" | "inline" | "spread" | "expression";
@@ -53,13 +46,13 @@ export type SubActionReference = {
   targetLine?: number;
 };
 
-export type InferredSubAction = {
+type InferredSubAction = {
   name: string;
   parameter: string;
   source: "parameter-enum" | "parameter-description";
 };
 
-export type ScannedAction = {
+type ScannedAction = {
   id: string;
   name: string;
   nameStatic: boolean;
@@ -88,7 +81,7 @@ export type ScannedAction = {
   parentNames: string[];
 };
 
-export type ActionTreeNode = {
+type ActionTreeNode = {
   id: string;
   name: string;
   kind: "action" | "missing" | "inferred";
@@ -104,7 +97,7 @@ export type ActionTreeNode = {
   children: ActionTreeNode[];
 };
 
-export type ActionScanResult = {
+type ActionScanResult = {
   generatedAt: string;
   repoRoot: string;
   sourceRoots: string[];
@@ -130,11 +123,15 @@ function toRepoPath(file: string): string {
 function hasExportModifier(node: ts.Node): boolean {
   return Boolean(
     ts.canHaveModifiers(node) &&
-      ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
+      ts
+        .getModifiers(node)
+        ?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword),
   );
 }
 
-function unwrapExpression(expr: ts.Expression | undefined): ts.Expression | undefined {
+function unwrapExpression(
+  expr: ts.Expression | undefined,
+): ts.Expression | undefined {
   let current = expr;
   while (
     current &&
@@ -178,7 +175,9 @@ function getProp(
   return undefined;
 }
 
-function getPropExpression(prop: ts.ObjectLiteralElementLike | undefined): ts.Expression | undefined {
+function getPropExpression(
+  prop: ts.ObjectLiteralElementLike | undefined,
+): ts.Expression | undefined {
   if (!prop) return undefined;
   if (ts.isPropertyAssignment(prop)) return prop.initializer;
   if (ts.isShorthandPropertyAssignment(prop)) return prop.name;
@@ -195,7 +194,11 @@ function literalText(expr: ts.Expression | undefined): string | undefined {
   return undefined;
 }
 
-function exprText(expr: ts.Node | undefined, sf: ts.SourceFile, max = 220): string {
+function exprText(
+  expr: ts.Node | undefined,
+  sf: ts.SourceFile,
+  max = 220,
+): string {
   if (!expr) return "";
   const text = expr.getText(sf).replace(/\s+/g, " ").trim();
   return text.length > max ? `${text.slice(0, max - 3)}...` : text;
@@ -248,11 +251,17 @@ function readArrayFromExpression(
   return values.length > 0 ? values : undefined;
 }
 
-function collectExportedStaticBindings(repoRoot: string, file: string): ExportedStaticBindings {
+function collectExportedStaticBindings(
+  repoRoot: string,
+  file: string,
+): ExportedStaticBindings {
   const cached = exportedBindingCache.get(file);
   if (cached) return cached;
 
-  const result: ExportedStaticBindings = { strings: new Map(), arrays: new Map() };
+  const result: ExportedStaticBindings = {
+    strings: new Map(),
+    arrays: new Map(),
+  };
   exportedBindingCache.set(file, result);
 
   const abs = join(repoRoot, file);
@@ -270,7 +279,8 @@ function collectExportedStaticBindings(repoRoot: string, file: string): Exported
   function visit(node: ts.Node) {
     if (ts.isVariableStatement(node) && hasExportModifier(node)) {
       for (const declaration of node.declarationList.declarations) {
-        if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+        if (!ts.isIdentifier(declaration.name) || !declaration.initializer)
+          continue;
 
         const initializer = unwrapExpression(declaration.initializer);
         const text = literalText(initializer);
@@ -290,7 +300,11 @@ function collectExportedStaticBindings(repoRoot: string, file: string): Exported
   return result;
 }
 
-function importedBindingValue(repoRoot: string, bindings: StaticBindings, localName: string) {
+function importedBindingValue(
+  repoRoot: string,
+  bindings: StaticBindings,
+  localName: string,
+) {
   const imported = bindings.importBindings.get(localName);
   if (!imported) return undefined;
 
@@ -304,7 +318,11 @@ function importedBindingValue(repoRoot: string, bindings: StaticBindings, localN
   return undefined;
 }
 
-function collectStaticBindings(repoRoot: string, sf: ts.SourceFile, file: string): StaticBindings {
+function collectStaticBindings(
+  repoRoot: string,
+  sf: ts.SourceFile,
+  file: string,
+): StaticBindings {
   const stringBindings = new Map<string, string>();
   const arrayBindings = new Map<string, string[]>();
   const objectBindings = new Map<string, ts.ObjectLiteralExpression>();
@@ -333,7 +351,10 @@ function collectStaticBindings(repoRoot: string, sf: ts.SourceFile, file: string
   }
 
   function visit(node: ts.Node) {
-    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+    if (
+      ts.isImportDeclaration(node) &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
       const resolvedFile = resolveImportPath(node.moduleSpecifier.text);
       const namedBindings = node.importClause?.namedBindings;
       if (resolvedFile && namedBindings && ts.isNamedImports(namedBindings)) {
@@ -384,7 +405,13 @@ function collectStaticBindings(repoRoot: string, sf: ts.SourceFile, file: string
   }
 
   visit(sf);
-  return { stringBindings, arrayBindings, objectBindings, specBindings, importBindings };
+  return {
+    stringBindings,
+    arrayBindings,
+    objectBindings,
+    specBindings,
+    importBindings,
+  };
 }
 
 function resolvedLiteralText(
@@ -433,7 +460,9 @@ function stringArray(
     const imported = importedBindingValue(repoRoot, bindings, unwrapped.text);
     if (imported?.type === "array") return imported.value;
     if (imported?.type === "string") return [imported.value];
-    return options.refs ? [`{ref:${unwrapped.text}}`] : [exprText(unwrapped, sf, 120)];
+    return options.refs
+      ? [`{ref:${unwrapped.text}}`]
+      : [exprText(unwrapped, sf, 120)];
   }
 
   if (!ts.isArrayLiteralExpression(unwrapped)) {
@@ -445,7 +474,11 @@ function stringArray(
 
     if (ts.isSpreadElement(element)) {
       if (ts.isIdentifier(element.expression)) {
-        const imported = importedBindingValue(repoRoot, bindings, element.expression.text);
+        const imported = importedBindingValue(
+          repoRoot,
+          bindings,
+          element.expression.text,
+        );
         if (imported?.type === "array") return imported.value;
         const localArray = bindings.arrayBindings.get(element.expression.text);
         if (localArray) return localArray;
@@ -461,7 +494,9 @@ function stringArray(
       const imported = importedBindingValue(repoRoot, bindings, element.text);
       if (imported?.type === "array") return imported.value;
       if (imported?.type === "string") return [imported.value];
-      return options.refs ? [`{ref:${element.text}}`] : [exprText(element, sf, 100)];
+      return options.refs
+        ? [`{ref:${element.text}}`]
+        : [exprText(element, sf, 100)];
     }
 
     if (ts.isObjectLiteralExpression(element)) {
@@ -507,7 +542,11 @@ function declarationType(node: ts.ObjectLiteralExpression): string {
   let current: ts.Node | undefined = node;
   while (current?.parent) {
     const parent: ts.Node = current.parent;
-    if (ts.isVariableDeclaration(parent) && parent.initializer === current && parent.type) {
+    if (
+      ts.isVariableDeclaration(parent) &&
+      parent.initializer === current &&
+      parent.type
+    ) {
       return parent.type.getText();
     }
     if (
@@ -548,7 +587,9 @@ function sourceKind(file: string): string {
   if (file.startsWith("packages/app-core/")) return "app-core";
   const plugin = file.match(/^plugins\/([^/]+)\//);
   if (plugin) return `plugin:${plugin[1]}`;
-  const cloudPlugin = file.match(/^cloud\/packages\/lib\/eliza\/(plugin-[^/]+)\//);
+  const cloudPlugin = file.match(
+    /^cloud\/packages\/lib\/eliza\/(plugin-[^/]+)\//,
+  );
   if (cloudPlugin) return `cloud:${cloudPlugin[1]}`;
   const cloudEliza = file.match(/^cloud\/packages\/lib\/eliza\/([^/]+)\//);
   if (cloudEliza) return `cloud:${cloudEliza[1]}`;
@@ -557,7 +598,10 @@ function sourceKind(file: string): string {
   return "repo";
 }
 
-function validationKind(obj: ts.ObjectLiteralExpression, sf: ts.SourceFile): ScannedAction["validation"] {
+function validationKind(
+  obj: ts.ObjectLiteralExpression,
+  sf: ts.SourceFile,
+): ScannedAction["validation"] {
   const validate = getProp(obj, "validate");
   if (!validate) return "missing";
   const text = validate.getText(sf);
@@ -578,7 +622,10 @@ function enumValuesFromSchema(
   return stringArray(repoRoot, enumExpr, sf, bindings);
 }
 
-function schemaType(schema: ts.Expression | undefined, sf: ts.SourceFile): string | undefined {
+function schemaType(
+  schema: ts.Expression | undefined,
+  sf: ts.SourceFile,
+): string | undefined {
   const unwrapped = unwrapExpression(schema);
   if (!unwrapped || !ts.isObjectLiteralExpression(unwrapped)) return undefined;
   const typeExpr = getPropExpression(getProp(unwrapped, "type"));
@@ -593,12 +640,17 @@ function parameterFromObject(
 ): ScannedParameter {
   const nameExpr = getPropExpression(getProp(obj, "name"));
   const descriptionExpr = getPropExpression(
-    getProp(obj, ["descriptionCompressed", "compressedDescription", "description"]),
+    getProp(obj, [
+      "descriptionCompressed",
+      "compressedDescription",
+      "description",
+    ]),
   );
   const requiredExpr = getPropExpression(getProp(obj, "required"));
   const schemaExpr = getPropExpression(getProp(obj, "schema"));
   const name =
-    resolvedLiteralText(repoRoot, nameExpr, bindings) ?? exprText(nameExpr, sf, 100);
+    resolvedLiteralText(repoRoot, nameExpr, bindings) ??
+    exprText(nameExpr, sf, 100);
   const description =
     resolvedLiteralText(repoRoot, descriptionExpr, bindings) ??
     exprText(descriptionExpr, sf, 180);
@@ -676,7 +728,9 @@ function parameterSummary(parameters: ScannedParameter[]): string[] {
   return parameters.map((param) => {
     const required = param.required ? " required" : "";
     const schema = param.schemaType ? `:${param.schemaType}` : "";
-    const enumText = param.enumValues.length ? ` [${param.enumValues.join("|")}]` : "";
+    const enumText = param.enumValues.length
+      ? ` [${param.enumValues.join("|")}]`
+      : "";
     return `${param.name}${schema}${required}${enumText}`;
   });
 }
@@ -694,10 +748,13 @@ function subActionsFromDescription(description: string): string[] {
     .filter((value) => /^[a-z0-9_-]{2,64}$/i.test(value));
 }
 
-function inferredSubActions(parameters: ScannedParameter[]): InferredSubAction[] {
+function inferredSubActions(
+  parameters: ScannedParameter[],
+): InferredSubAction[] {
   const byName = new Map<string, InferredSubAction>();
   for (const param of parameters) {
-    if (!/^(subaction|subactions|op|operation|mode)$/i.test(param.name)) continue;
+    if (!/^(subaction|subactions|op|operation|mode)$/i.test(param.name))
+      continue;
 
     for (const value of param.enumValues) {
       byName.set(value, {
@@ -720,7 +777,9 @@ function inferredSubActions(parameters: ScannedParameter[]): InferredSubAction[]
   return [...byName.values()];
 }
 
-function parseSubActionRaw(raw: string): Pick<SubActionReference, "kind" | "name"> {
+function parseSubActionRaw(
+  raw: string,
+): Pick<SubActionReference, "kind" | "name"> {
   const ref = raw.match(/^\{ref:(.+)\}$/)?.[1];
   if (ref) return { kind: "ref", name: ref };
 
@@ -747,7 +806,11 @@ function makeActionRecord(
   const resolvedName = resolvedLiteralText(repoRoot, nameExpr, bindings);
   const name = resolvedName ?? exprText(nameExpr, sf, 120);
   const descriptionExpr = getPropExpression(
-    getProp(obj, ["descriptionCompressed", "compressedDescription", "description"]),
+    getProp(obj, [
+      "descriptionCompressed",
+      "compressedDescription",
+      "description",
+    ]),
   );
   const description =
     resolvedLiteralText(repoRoot, descriptionExpr, bindings) ??
@@ -809,7 +872,12 @@ function makeActionRecord(
   };
 }
 
-function scanFile(repoRoot: string, file: string): Array<Omit<ScannedAction, "resolvedSubActions" | "parentIds" | "parentNames">> {
+function scanFile(
+  repoRoot: string,
+  file: string,
+): Array<
+  Omit<ScannedAction, "resolvedSubActions" | "parentIds" | "parentNames">
+> {
   const abs = join(repoRoot, file);
   const source = readFileSync(abs, "utf8");
   const sf = ts.createSourceFile(
@@ -820,24 +888,38 @@ function scanFile(repoRoot: string, file: string): Array<Omit<ScannedAction, "re
     file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   );
   const bindings = collectStaticBindings(repoRoot, sf, file);
-  const records: Array<Omit<ScannedAction, "resolvedSubActions" | "parentIds" | "parentNames">> = [];
+  const records: Array<
+    Omit<ScannedAction, "resolvedSubActions" | "parentIds" | "parentNames">
+  > = [];
   const seen = new Set<number>();
 
   function visit(node: ts.Node) {
     if (ts.isObjectLiteralExpression(node) && !seen.has(node.pos)) {
       seen.add(node.pos);
       const type = declarationType(node);
-      const detectedBy: ScannedAction["detectedBy"] | null = hasFullActionShape(node)
+      const detectedBy: ScannedAction["detectedBy"] | null = hasFullActionShape(
+        node,
+      )
         ? "shape"
         : hasActionType(type) &&
-            Boolean(getProp(node, "name")) &&
-            Boolean(getProp(node, "validate")) &&
-            Boolean(getProp(node, "handler"))
+            getProp(node, "name") &&
+            getProp(node, "validate") &&
+            getProp(node, "handler")
           ? "type"
           : null;
 
       if (detectedBy) {
-        records.push(makeActionRecord(repoRoot, file, sf, node, bindings, detectedBy, type));
+        records.push(
+          makeActionRecord(
+            repoRoot,
+            file,
+            sf,
+            node,
+            bindings,
+            detectedBy,
+            type,
+          ),
+        );
       }
     }
     ts.forEachChild(node, visit);
@@ -849,7 +931,9 @@ function scanFile(repoRoot: string, file: string): Array<Omit<ScannedAction, "re
 
 function fallbackWalk(repoRoot: string): string[] {
   const files: string[] = [];
-  const roots = SOURCE_ROOTS.map((root) => join(repoRoot, root)).filter(existsSync);
+  const roots = SOURCE_ROOTS.map((root) => join(repoRoot, root)).filter(
+    existsSync,
+  );
 
   function walk(dir: string) {
     for (const entry of readdirSync(dir)) {
@@ -892,7 +976,10 @@ function gitFiles(repoRoot: string): string[] {
   }
 }
 
-function sortActions(actions: ScannedAction[], sort: ActionScanSort): ScannedAction[] {
+function sortActions(
+  actions: ScannedAction[],
+  sort: ActionScanSort,
+): ScannedAction[] {
   const sorted = [...actions];
   sorted.sort((a, b) => {
     if (sort === "filepath") {
@@ -917,7 +1004,8 @@ function resolveSubActionRefs(actions: ScannedAction[]): void {
   const byFileAndDecl = new Map<string, ScannedAction>();
 
   for (const action of actions) {
-    if (action.name && !byName.has(action.name)) byName.set(action.name, action);
+    if (action.name && !byName.has(action.name))
+      byName.set(action.name, action);
     if (action.declarationName && !byDecl.has(action.declarationName)) {
       byDecl.set(action.declarationName, action);
     }
@@ -929,13 +1017,18 @@ function resolveSubActionRefs(actions: ScannedAction[]): void {
   for (const action of actions) {
     action.resolvedSubActions = action.subActions.map((raw) => {
       const parsed = parseSubActionRaw(raw);
-      const imported = parsed.kind === "ref" ? actionImports(actions, action.file, parsed.name) : undefined;
+      const imported =
+        parsed.kind === "ref"
+          ? actionImports(actions, action.file, parsed.name)
+          : undefined;
       const importedTarget = imported
         ? byFileAndDecl.get(`${imported.file}:${imported.imported}`)
         : undefined;
       const target =
         importedTarget ??
-        (parsed.kind === "ref" ? byDecl.get(parsed.name) : byName.get(parsed.name));
+        (parsed.kind === "ref"
+          ? byDecl.get(parsed.name)
+          : byName.get(parsed.name));
 
       return {
         raw,
@@ -989,7 +1082,10 @@ function collectImportBindingIndex(repoRoot: string, files: string[]): void {
         true,
         file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
       );
-      importBindingIndex.set(file, collectStaticBindings(repoRoot, sf, file).importBindings);
+      importBindingIndex.set(
+        file,
+        collectStaticBindings(repoRoot, sf, file).importBindings,
+      );
     } catch {
       importBindingIndex.set(file, new Map());
     }
@@ -1020,32 +1116,41 @@ function makeTreeNode(
   const nextSeen = new Set(seen);
   nextSeen.add(action.id);
 
-  const actionChildren = action.resolvedSubActions.map((child): ActionTreeNode => {
-    const target = child.targetId ? actionById.get(child.targetId) : undefined;
-    if (target) return makeTreeNode(target, actionById, sort, nextSeen);
-    return {
-      id: `${action.id}:missing:${child.raw}`,
-      name: child.name,
-      kind: "missing",
-      ref: child.raw,
-      children: [],
-    };
-  });
+  const actionChildren = action.resolvedSubActions.map(
+    (child): ActionTreeNode => {
+      const target = child.targetId
+        ? actionById.get(child.targetId)
+        : undefined;
+      if (target) return makeTreeNode(target, actionById, sort, nextSeen);
+      return {
+        id: `${action.id}:missing:${child.raw}`,
+        name: child.name,
+        kind: "missing",
+        ref: child.raw,
+        children: [],
+      };
+    },
+  );
 
-  const inferredChildren = action.inferredSubActions.map((child): ActionTreeNode => ({
-    id: `${action.id}:inferred:${child.parameter}:${child.name}`,
-    name: child.name,
-    kind: "inferred",
-    parameter: child.parameter,
-    inferredSource: child.source,
-    children: [],
-  }));
+  const inferredChildren = action.inferredSubActions.map(
+    (child): ActionTreeNode => ({
+      id: `${action.id}:inferred:${child.parameter}:${child.name}`,
+      name: child.name,
+      kind: "inferred",
+      parameter: child.parameter,
+      inferredSource: child.source,
+      children: [],
+    }),
+  );
 
   node.children = sortTreeNodes([...actionChildren, ...inferredChildren], sort);
   return node;
 }
 
-function sortTreeNodes(nodes: ActionTreeNode[], sort: ActionScanSort): ActionTreeNode[] {
+function sortTreeNodes(
+  nodes: ActionTreeNode[],
+  sort: ActionScanSort,
+): ActionTreeNode[] {
   return [...nodes].sort((a, b) => {
     if (sort === "filepath") {
       return (
@@ -1062,7 +1167,9 @@ function sortTreeNodes(nodes: ActionTreeNode[], sort: ActionScanSort): ActionTre
   });
 }
 
-function sourceGroups(actions: ScannedAction[]): Array<{ source: string; count: number }> {
+function sourceGroups(
+  actions: ScannedAction[],
+): Array<{ source: string; count: number }> {
   const counts = new Map<string, number>();
   for (const action of actions) {
     counts.set(action.source, (counts.get(action.source) ?? 0) + 1);
@@ -1098,7 +1205,9 @@ export function scanRepoActions(options: {
   const sortedActions = sortActions(actions, sort);
   const childIds = new Set(
     actions.flatMap((action) =>
-      action.resolvedSubActions.flatMap((child) => (child.targetId ? [child.targetId] : [])),
+      action.resolvedSubActions.flatMap((child) =>
+        child.targetId ? [child.targetId] : [],
+      ),
     ),
   );
   const roots = sortActions(
@@ -1114,11 +1223,14 @@ export function scanRepoActions(options: {
     actionCount: actions.length,
     rootCount: roots.length,
     parentCount: actions.filter(
-      (action) => action.resolvedSubActions.length > 0 || action.inferredSubActions.length > 0,
+      (action) =>
+        action.resolvedSubActions.length > 0 ||
+        action.inferredSubActions.length > 0,
     ).length,
     unresolvedSubActionCount: actions.reduce(
       (count, action) =>
-        count + action.resolvedSubActions.filter((child) => !child.found).length,
+        count +
+        action.resolvedSubActions.filter((child) => !child.found).length,
       0,
     ),
     inferredSubActionCount: actions.reduce(

@@ -42,6 +42,7 @@ const originalEnv = { ...process.env };
 afterEach(() => {
   process.env = { ...originalEnv };
   __resetLlamaServerHelpTextForTests();
+  vi.unstubAllGlobals();
 });
 
 function makeManagedBinary(root: string): string {
@@ -133,56 +134,61 @@ function writeTinyGguf(
   );
 }
 
-async function readBody(req: http.IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk: Buffer) => {
-      body += chunk.toString();
-    });
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
-  });
+type FetchInput = Parameters<typeof fetch>[0];
+type FetchInit = Parameters<typeof fetch>[1];
+
+function readFetchBody(init: FetchInit): string {
+  const body = init?.body;
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return new TextDecoder().decode(body);
+  throw new Error("Expected string request body");
 }
 
-async function startStreamingMockServer(): Promise<{
-  baseUrl: string;
-  close: () => Promise<void>;
-}> {
-  const server = http.createServer(async (req, res) => {
-    if (req.method === "GET" && req.url === "/metrics") {
-      res.statusCode = 200;
-      res.end(
-        [
-          "llamacpp:prompt_tokens_total 0",
-          "llamacpp:n_tokens_predicted_total 0",
-          "llamacpp:n_drafted_total 2",
-          "llamacpp:n_accepted_total 2",
-        ].join("\n"),
-      );
-      return;
-    }
-    if (req.method === "POST" && req.url === "/v1/chat/completions") {
-      const body = JSON.parse(await readBody(req)) as { stream?: boolean };
-      expect(body.stream).toBe(true);
-      res.writeHead(200, { "content-type": "text/event-stream" });
-      res.write(
-        `data: ${JSON.stringify({ choices: [{ delta: { content: "Hel" } }] })}\n\n`,
-      );
-      res.write(
-        `data: ${JSON.stringify({ choices: [{ delta: { content: "lo" } }] })}\n\n`,
-      );
-      res.end("data: [DONE]\n\n");
-      return;
-    }
-    res.statusCode = 404;
-    res.end();
-  });
-  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const port = (server.address() as AddressInfo).port;
-  return {
-    baseUrl: `http://127.0.0.1:${port}`,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
-  };
+function metricsResponse(): Response {
+  return new Response(
+    [
+      "llamacpp:prompt_tokens_total 0",
+      "llamacpp:n_tokens_predicted_total 0",
+      "llamacpp:n_drafted_total 2",
+      "llamacpp:n_accepted_total 2",
+    ].join("\n"),
+    { status: 200 },
+  );
+}
+
+function sseResponse(events: unknown[]): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const event of events) {
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+          );
+        }
+        controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+function notFoundResponse(): Response {
+  return new Response(null, { status: 404 });
+}
+
+function installDflashFetchMock(
+  handler: (url: URL, init: FetchInit) => Response | Promise<Response>,
+): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: FetchInput, init?: FetchInit) => {
+      const rawUrl =
+        typeof input === "string" || input instanceof URL ? input : input.url;
+      return handler(new URL(rawUrl), init);
+    }),
+  );
 }
 
 describe("DFlash runtime discovery", () => {
@@ -971,7 +977,18 @@ describe("extractVerifierRejectRange", () => {
 
 describe("DFlash streaming callbacks", () => {
   it("synthesizes verifier accept events from streamed OpenAI deltas", async () => {
-    const mock = await startStreamingMockServer();
+    installDflashFetchMock((url, init) => {
+      if (url.pathname === "/metrics") return metricsResponse();
+      if (url.pathname === "/v1/chat/completions") {
+        const body = JSON.parse(readFetchBody(init)) as { stream?: boolean };
+        expect(body.stream).toBe(true);
+        return sseResponse([
+          { choices: [{ delta: { content: "Hel" } }] },
+          { choices: [{ delta: { content: "lo" } }] },
+        ]);
+      }
+      return notFoundResponse();
+    });
     const target = dflashLlamaServer as unknown as {
       baseUrl: string | null;
       cacheParallel: number;
@@ -980,7 +997,7 @@ describe("DFlash streaming callbacks", () => {
       baseUrl: target.baseUrl,
       cacheParallel: target.cacheParallel,
     };
-    target.baseUrl = mock.baseUrl;
+    target.baseUrl = "http://dflash.test";
     target.cacheParallel = 4;
     const textChunks: string[] = [];
     const verifierChunks: Array<{ index: number; text: string }> = [];
@@ -1005,7 +1022,6 @@ describe("DFlash streaming callbacks", () => {
     } finally {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
-      await mock.close();
     }
   });
 
@@ -1083,41 +1099,20 @@ describe("DFlash streaming callbacks", () => {
   });
 
   it("repairs deterministic structured-output spans while suppressing duplicate server bytes", async () => {
-    const server = http.createServer(async (req, res) => {
-      if (req.method === "GET" && req.url === "/metrics") {
-        res.statusCode = 200;
-        res.end(
-          [
-            "llamacpp:prompt_tokens_total 0",
-            "llamacpp:n_tokens_predicted_total 0",
-            "llamacpp:n_drafted_total 2",
-            "llamacpp:n_accepted_total 2",
-          ].join("\n"),
-        );
-        return;
-      }
-      if (req.method === "POST" && req.url === "/v1/chat/completions") {
-        res.writeHead(200, { "content-type": "text/event-stream" });
-        res.write(
-          `data: ${JSON.stringify({
+    installDflashFetchMock((url) => {
+      if (url.pathname === "/metrics") return metricsResponse();
+      if (url.pathname === "/v1/chat/completions") {
+        return sseResponse([
+          {
             choices: [{ delta: { content: '{"action":"BLO' } }],
-          })}\n\n`,
-        );
-        res.write(
-          `data: ${JSON.stringify({
+          },
+          {
             choices: [{ delta: { content: 'CK","parameters":{}' } }],
-          })}\n\n`,
-        );
-        res.end("data: [DONE]\n\n");
-        return;
+          },
+        ]);
       }
-      res.statusCode = 404;
-      res.end();
+      return notFoundResponse();
     });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const target = dflashLlamaServer as unknown as {
       baseUrl: string | null;
       cacheParallel: number;
@@ -1126,7 +1121,7 @@ describe("DFlash streaming callbacks", () => {
       baseUrl: target.baseUrl,
       cacheParallel: target.cacheParallel,
     };
-    target.baseUrl = baseUrl;
+    target.baseUrl = "http://dflash.test";
     target.cacheParallel = 4;
     const textChunks: string[] = [];
     try {
@@ -1151,7 +1146,6 @@ describe("DFlash streaming callbacks", () => {
     } finally {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
-      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -1370,20 +1364,13 @@ describe("DFlash streaming callbacks", () => {
 describe("DflashLlamaServer.prewarmConversation", () => {
   it("fires a 1-token cache_prompt request against the given slot", async () => {
     const seen: Array<Record<string, unknown>> = [];
-    const server = http.createServer(async (req, res) => {
-      if (req.method === "POST" && req.url === "/v1/chat/completions") {
-        seen.push(JSON.parse(await readBody(req)) as Record<string, unknown>);
-        res.statusCode = 200;
-        res.end(JSON.stringify({ choices: [{ message: { content: "" } }] }));
-        return;
+    installDflashFetchMock((url, init) => {
+      if (url.pathname === "/v1/chat/completions") {
+        seen.push(JSON.parse(readFetchBody(init)) as Record<string, unknown>);
+        return Response.json({ choices: [{ message: { content: "" } }] });
       }
-      res.statusCode = 404;
-      res.end();
+      return notFoundResponse();
     });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const port = (server.address() as AddressInfo).port;
     const target = dflashLlamaServer as unknown as {
       baseUrl: string | null;
       cacheParallel: number;
@@ -1393,7 +1380,7 @@ describe("DflashLlamaServer.prewarmConversation", () => {
       baseUrl: target.baseUrl,
       cacheParallel: target.cacheParallel,
     };
-    target.baseUrl = `http://127.0.0.1:${port}`;
+    target.baseUrl = "http://dflash.test";
     target.cacheParallel = 4;
     target.lastPrewarmBySlot.clear();
     try {
@@ -1417,7 +1404,6 @@ describe("DflashLlamaServer.prewarmConversation", () => {
       target.baseUrl = prev.baseUrl;
       target.cacheParallel = prev.cacheParallel;
       target.lastPrewarmBySlot.clear();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 

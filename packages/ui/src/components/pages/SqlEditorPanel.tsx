@@ -1,8 +1,8 @@
-import { Button } from "../ui/button";
-import { PagePanel } from "../composites/page-panel";
-import { Textarea } from "../ui/textarea";
 import type { QueryResult } from "../../api";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 import { ResultsGrid } from "./database-utils";
 
 export function SqlEditorPanel({

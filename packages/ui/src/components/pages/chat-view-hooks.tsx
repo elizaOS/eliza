@@ -1,5 +1,3 @@
-import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
-import { useTimeout } from "../../hooks/useTimeout";
 import {
   useCallback,
   useEffect,
@@ -19,6 +17,8 @@ import {
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
 } from "../../events";
+import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
+import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";

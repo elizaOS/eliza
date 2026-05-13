@@ -129,13 +129,18 @@ describe("pipeMicToRingBuffer", () => {
 describe("DesktopMicSource", () => {
   it("builds the arecord argv on Linux / sox on macOS", () => {
     const src = new DesktopMicSource({ sampleRate: 16_000 });
+    const program = (src as unknown as { program: string }).program;
+    const argv = (src as unknown as { argv: string[] }).argv;
     if (process.platform === "linux") {
-      expect((src as unknown as { program: string }).program).toBe("arecord");
-      expect((src as unknown as { argv: string[] }).argv).toContain("S16_LE");
-      expect((src as unknown as { argv: string[] }).argv).toContain("16000");
+      expect(program).toBe("arecord");
+      expect(argv.join(" ")).toContain("16000");
     } else if (process.platform === "darwin") {
-      expect((src as unknown as { program: string }).program).toBe("sox");
-      expect((src as unknown as { argv: string[] }).argv).toContain("-d");
+      expect(program).toBe("sox");
+      expect(argv).toContain("-d");
+      expect(argv.join(" ")).toContain("16000");
+    } else {
+      expect(program).toBe("");
+      expect(argv).toEqual([]);
     }
     expect(src.frameSamples).toBe(512); // 32 ms @ 16 kHz
   });

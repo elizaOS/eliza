@@ -1,8 +1,8 @@
-import { Button } from "../ui/button";
 import type {
   ActiveModelState,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { Button } from "../ui/button";
 import { displayModelName } from "./hub-utils";
 
 interface ActiveModelBarProps {

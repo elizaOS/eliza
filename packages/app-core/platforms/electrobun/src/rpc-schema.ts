@@ -13,6 +13,12 @@
  */
 
 import type {
+	CarrotListEntry,
+	CarrotPermissionGrant,
+	CarrotStoreSnapshot,
+	InstalledCarrotSnapshot,
+} from "@elizaos/electrobun-carrots";
+import type {
 	BrowserWorkspaceSnapshot,
 	BrowserWorkspaceTab,
 	NavigateBrowserWorkspaceTabRequest,
@@ -256,7 +262,11 @@ export type {
 	PermissionStatus,
 } from "@elizaos/shared";
 
-import type { PermissionId, PermissionState } from "@elizaos/shared";
+import type {
+	PermissionId,
+	PermissionState,
+	SubscriptionStatusResponse,
+} from "@elizaos/shared";
 
 export type SystemPermissionId = PermissionId;
 
@@ -503,6 +513,242 @@ export interface EmbeddedAgentStatus {
 	error: string | null;
 }
 
+export type AgentStatusState =
+	| "not_started"
+	| "starting"
+	| "running"
+	| "stopped"
+	| "restarting"
+	| "error";
+
+export interface AgentCloudStatusSnapshot {
+	connectionStatus: string;
+	activeAgentId: string | null;
+	cloudProvisioned: boolean;
+	hasApiKey: boolean;
+}
+
+export interface AgentStatusSnapshot {
+	state: AgentStatusState;
+	agentName: string;
+	model?: string;
+	uptime?: number;
+	startedAt?: number;
+	port?: number;
+	pendingRestart?: boolean;
+	pendingRestartReasons?: readonly string[];
+	startup?: Record<string, unknown>;
+	cloud?: AgentCloudStatusSnapshot;
+}
+
+export type AgentAutomationMode = "connectors-only" | "full";
+export type TradePermissionMode =
+	| "user-sign-only"
+	| "manual-local-key"
+	| "agent-auto"
+	| "disabled";
+
+export type SettingsConfigSnapshot = Record<string, unknown>;
+
+export interface AgentAutomationModeSnapshot {
+	mode: AgentAutomationMode;
+	options: AgentAutomationMode[];
+}
+
+export interface TradePermissionModeSnapshot {
+	mode: TradePermissionMode;
+	tradePermissionMode: TradePermissionMode;
+	options?: TradePermissionMode[];
+	ok?: boolean;
+	canUserLocalExecute?: boolean;
+	canAgentAutoTrade?: boolean;
+}
+
+export interface AgentSelfStatusSnapshot {
+	generatedAt: string;
+	state: AgentStatusState;
+	agentName: string;
+	model: string | null;
+	provider: string | null;
+	automationMode: AgentAutomationMode;
+	tradePermissionMode: TradePermissionMode;
+	shellEnabled: boolean;
+	wallet: {
+		walletSource: "local" | "managed" | "none";
+		evmAddress: string | null;
+		evmAddressShort: string | null;
+		solanaAddress: string | null;
+		solanaAddressShort: string | null;
+		hasWallet: boolean;
+		hasEvm: boolean;
+		hasSolana: boolean;
+		localSignerAvailable: boolean;
+		managedBscRpcReady: boolean;
+		rpcReady: boolean;
+		pluginEvmLoaded: boolean;
+		pluginEvmRequired: boolean;
+		executionReady: boolean;
+		executionBlockedReason: string | null;
+	};
+	plugins: {
+		totalActive: number;
+		active: string[];
+		aiProviders: string[];
+		connectors: string[];
+	};
+	capabilities: {
+		canTrade: boolean;
+		canLocalTrade: boolean;
+		canAutoTrade: boolean;
+		canUseBrowser: boolean;
+		canUseComputer: boolean;
+		canRunTerminal: boolean;
+		canInstallPlugins: boolean;
+		canConfigurePlugins: boolean;
+		canConfigureConnectors: boolean;
+	};
+	registrySummary?: string;
+}
+
+export type AgentUpdateReleaseChannel = "stable" | "beta" | "nightly";
+
+export interface AgentUpdateStatusSnapshot {
+	currentVersion: string;
+	channel: AgentUpdateReleaseChannel;
+	installMethod: string;
+	updateAvailable: boolean;
+	latestVersion: string | null;
+	channels: Record<AgentUpdateReleaseChannel, string | null>;
+	distTags: Record<AgentUpdateReleaseChannel, string>;
+	lastCheckAt: string | null;
+	error: string | null;
+}
+
+export interface ExtensionStatusSnapshot {
+	relayReachable: boolean;
+	relayPort: number;
+	extensionPath: string | null;
+	chromeBuildPath?: string | null;
+	chromePackagePath?: string | null;
+	safariWebExtensionPath?: string | null;
+	safariAppPath?: string | null;
+	safariPackagePath?: string | null;
+	releaseManifest?: Record<string, unknown> | null;
+}
+
+export interface RuntimeDebugSnapshotParams {
+	depth?: number;
+	maxArrayLength?: number;
+	maxObjectEntries?: number;
+	maxStringLength?: number;
+}
+
+export interface RuntimeDebugSerializeSettings {
+	maxDepth: number;
+	maxArrayLength: number;
+	maxObjectEntries: number;
+	maxStringLength: number;
+}
+
+export interface RuntimeOrderItem {
+	index: number;
+	name: string;
+	className: string;
+	id: string | null;
+}
+
+export interface RuntimeServiceOrderItem {
+	index: number;
+	serviceType: string;
+	count: number;
+	instances: RuntimeOrderItem[];
+}
+
+export interface RuntimeDebugSnapshot {
+	runtimeAvailable: boolean;
+	generatedAt: number;
+	settings: RuntimeDebugSerializeSettings;
+	meta: {
+		agentId?: string;
+		agentState: AgentStatusState;
+		agentName: string;
+		model: string | null;
+		pluginCount: number;
+		actionCount: number;
+		providerCount: number;
+		evaluatorCount: number;
+		serviceTypeCount: number;
+		serviceCount: number;
+	};
+	order: {
+		plugins: RuntimeOrderItem[];
+		actions: RuntimeOrderItem[];
+		providers: RuntimeOrderItem[];
+		evaluators: RuntimeOrderItem[];
+		services: RuntimeServiceOrderItem[];
+	};
+	sections: {
+		runtime: unknown;
+		plugins: unknown;
+		actions: unknown;
+		providers: unknown;
+		evaluators: unknown;
+		services: unknown;
+	};
+}
+
+export interface TriggerHealthSnapshot {
+	triggersEnabled: boolean;
+	activeTriggers: number;
+	disabledTriggers: number;
+	totalExecutions: number;
+	totalFailures: number;
+	totalSkipped: number;
+	lastExecutionAt?: number;
+}
+
+export interface CorePluginEntry {
+	npmName: string;
+	id: string;
+	name: string;
+	isCore: boolean;
+	loaded: boolean;
+	enabled: boolean;
+}
+
+export interface CorePluginsSnapshot {
+	core: CorePluginEntry[];
+	optional: CorePluginEntry[];
+}
+
+export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
+
+export interface CarrotWorkerStatus {
+	id: string;
+	state: CarrotWorkerState;
+	startedAt: number | null;
+	stoppedAt: number | null;
+	error: string | null;
+}
+
+export interface CarrotInstallFromDirectoryRequest {
+	sourceDir: string;
+	devMode?: boolean;
+	permissionsGranted?: CarrotPermissionGrant;
+}
+
+export interface CarrotUninstallResult {
+	removed: boolean;
+	carrot: CarrotListEntry | null;
+}
+
+export interface CarrotLogsSnapshot {
+	id: string;
+	path: string;
+	text: string;
+	truncated: boolean;
+}
+
 export interface DesktopStartupDiagnostics {
 	state: "not_started" | "starting" | "running" | "stopped" | "error";
 	phase: string;
@@ -578,6 +824,13 @@ export interface OnboardingOptionsSnapshot {
  */
 export type ConfigSnapshot = Record<string, unknown>;
 
+export interface ConfigSchemaSnapshot {
+	schema: Record<string, unknown>;
+	uiHints: Record<string, unknown>;
+	version: string;
+	generatedAt: string;
+}
+
 /**
  * Typed response for `listConversations` — matches `GET /api/conversations`.
  * Items pass through as `Record<string, unknown>`; consumers downcast
@@ -586,6 +839,35 @@ export type ConfigSnapshot = Record<string, unknown>;
  */
 export interface ConversationsListSnapshot {
 	conversations: ReadonlyArray<Record<string, unknown>>;
+}
+
+export interface ConversationMessagesSnapshot {
+	messages: ReadonlyArray<Record<string, unknown>>;
+}
+
+export interface InboxMessagesParams {
+	limit?: number;
+	sources?: readonly string[];
+	roomId?: string;
+	roomSource?: string;
+}
+
+export interface InboxMessagesSnapshot {
+	messages: ReadonlyArray<Record<string, unknown>>;
+	count: number;
+}
+
+export interface InboxChatsParams {
+	sources?: readonly string[];
+}
+
+export interface InboxChatsSnapshot {
+	chats: ReadonlyArray<Record<string, unknown>>;
+	count: number;
+}
+
+export interface InboxSourcesSnapshot {
+	sources: readonly string[];
 }
 
 /**
@@ -697,6 +979,79 @@ export type ElizaDesktopRPCSchema = {
 				response: EmbeddedAgentStatus;
 			};
 			agentStatus: { params: undefined; response: EmbeddedAgentStatus };
+			getAgentStatus: { params: undefined; response: AgentStatusSnapshot };
+			getUpdateStatus: {
+				params: { force?: boolean } | undefined;
+				response: AgentUpdateStatusSnapshot;
+			};
+			getExtensionStatus: {
+				params: undefined;
+				response: ExtensionStatusSnapshot;
+			};
+			getSubscriptionStatus: {
+				params: undefined;
+				response: SubscriptionStatusResponse;
+			};
+			getRuntimeSnapshot: {
+				params: RuntimeDebugSnapshotParams | undefined;
+				response: RuntimeDebugSnapshot;
+			};
+			getAgentSelfStatus: {
+				params: undefined;
+				response: AgentSelfStatusSnapshot;
+			};
+			getTriggerHealth: {
+				params: undefined;
+				response: TriggerHealthSnapshot;
+			};
+			getCorePlugins: {
+				params: undefined;
+				response: CorePluginsSnapshot;
+			};
+			carrotGetStoreRoot: {
+				params: undefined;
+				response: { storeRoot: string };
+			};
+			carrotList: {
+				params: undefined;
+				response: { carrots: CarrotListEntry[] };
+			};
+			carrotGetStoreSnapshot: {
+				params: undefined;
+				response: CarrotStoreSnapshot;
+			};
+			carrotGet: {
+				params: { id: string };
+				response: InstalledCarrotSnapshot | null;
+			};
+			carrotInstallFromDirectory: {
+				params: CarrotInstallFromDirectoryRequest;
+				response: InstalledCarrotSnapshot;
+			};
+			carrotUninstall: {
+				params: { id: string };
+				response: CarrotUninstallResult;
+			};
+			carrotStartWorker: {
+				params: { id: string };
+				response: CarrotWorkerStatus;
+			};
+			carrotStopWorker: {
+				params: { id: string };
+				response: CarrotWorkerStatus;
+			};
+			carrotGetWorkerStatus: {
+				params: { id: string };
+				response: CarrotWorkerStatus | null;
+			};
+			carrotListWorkerStatuses: {
+				params: undefined;
+				response: { workers: CarrotWorkerStatus[] };
+			};
+			carrotGetLogs: {
+				params: { id: string; maxBytes?: number };
+				response: CarrotLogsSnapshot;
+			};
 			/**
 			 * Aggregated boot/startup snapshot. Combines `agentStatus` with the
 			 * `/api/health` plugin/db counters and the in-process runtime phase.
@@ -730,6 +1085,27 @@ export type ElizaDesktopRPCSchema = {
 			 * redacted in-memory config. Same data as `GET /api/config`.
 			 */
 			getConfig: { params: undefined; response: ConfigSnapshot };
+			updateConfig: {
+				params: SettingsConfigSnapshot;
+				response: SettingsConfigSnapshot;
+			};
+			getConfigSchema: { params: undefined; response: ConfigSchemaSnapshot };
+			getAgentAutomationMode: {
+				params: undefined;
+				response: AgentAutomationModeSnapshot;
+			};
+			setAgentAutomationMode: {
+				params: { mode: AgentAutomationMode };
+				response: AgentAutomationModeSnapshot;
+			};
+			getTradePermissionMode: {
+				params: undefined;
+				response: TradePermissionModeSnapshot;
+			};
+			setTradePermissionMode: {
+				params: { mode: TradePermissionMode };
+				response: TradePermissionModeSnapshot;
+			};
 			/**
 			 * Typed counterpart to `client.getAuthStatus()` — pairing/auth
 			 * gate state. Same data as `GET /api/auth/status`. The
@@ -750,6 +1126,22 @@ export type ElizaDesktopRPCSchema = {
 			listConversations: {
 				params: undefined;
 				response: ConversationsListSnapshot;
+			};
+			getConversationMessages: {
+				params: { id: string };
+				response: ConversationMessagesSnapshot;
+			};
+			getInboxMessages: {
+				params: InboxMessagesParams | undefined;
+				response: InboxMessagesSnapshot;
+			};
+			getInboxChats: {
+				params: InboxChatsParams | undefined;
+				response: InboxChatsSnapshot;
+			};
+			getInboxSources: {
+				params: undefined;
+				response: InboxSourcesSnapshot;
 			};
 			/**
 			 * Typed counterpart to `client.getCharacter()` — the agent's
@@ -1631,6 +2023,8 @@ export type ElizaDesktopRPCSchema = {
 			desktopManagedWindowsChanged: {
 				windows: DesktopManagedWindowSnapshot[];
 			};
+			carrotStoreChanged: { snapshot: CarrotStoreSnapshot };
+			carrotWorkerChanged: { status: CarrotWorkerStatus };
 
 			// Canvas: Window events
 			canvasWindowEvent: {
@@ -1750,6 +2144,13 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"agent:postReset": "agentPostReset",
 	"agent:postCloudDisconnect": "agentPostCloudDisconnect",
 	"agent:cloudDisconnectWithConfirm": "agentCloudDisconnectWithConfirm",
+	"agent:getConfig": "getConfig",
+	"agent:updateConfig": "updateConfig",
+	"agent:getConfigSchema": "getConfigSchema",
+	"agent:getAgentAutomationMode": "getAgentAutomationMode",
+	"agent:setAgentAutomationMode": "setAgentAutomationMode",
+	"agent:getTradePermissionMode": "getTradePermissionMode",
+	"agent:setTradePermissionMode": "setTradePermissionMode",
 
 	// Desktop: Tray
 	"desktop:createTray": "desktopCreateTray",
@@ -1829,6 +2230,19 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
 	"desktop:openSurfaceWindow": "desktopOpenSurfaceWindow",
 	"desktop:openAppWindow": "desktopOpenAppWindow",
 	"desktop:setManagedWindowAlwaysOnTop": "desktopSetManagedWindowAlwaysOnTop",
+
+	// Carrots
+	"carrot:getStoreRoot": "carrotGetStoreRoot",
+	"carrot:list": "carrotList",
+	"carrot:getStoreSnapshot": "carrotGetStoreSnapshot",
+	"carrot:get": "carrotGet",
+	"carrot:installFromDirectory": "carrotInstallFromDirectory",
+	"carrot:uninstall": "carrotUninstall",
+	"carrot:startWorker": "carrotStartWorker",
+	"carrot:stopWorker": "carrotStopWorker",
+	"carrot:getWorkerStatus": "carrotGetWorkerStatus",
+	"carrot:listWorkerStatuses": "carrotListWorkerStatuses",
+	"carrot:getLogs": "carrotGetLogs",
 
 	// Browser Workspace
 	"browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
@@ -2030,6 +2444,8 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
 	"desktop:windowClose": "desktopWindowClose",
 	"desktop:shutdownStarted": "desktopShutdownStarted",
 	"desktop:managedWindowsChanged": "desktopManagedWindowsChanged",
+	"carrot:storeChanged": "carrotStoreChanged",
+	"carrot:workerChanged": "carrotWorkerChanged",
 	"canvas:windowEvent": "canvasWindowEvent",
 	"talkmode:audioChunkPush": "talkmodeAudioChunkPush",
 	"talkmode:stateChanged": "talkmodeStateChanged",

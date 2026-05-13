@@ -254,7 +254,6 @@ export interface IEvmLpService extends Service {
   getMarketData(
     poolAddresses: Address[],
   ): Promise<Record<string, Partial<EvmPoolInfo>>>;
-
 }
 
 // ============================================================================

@@ -189,9 +189,9 @@ describe("remainderAfter accumulation invariant", () => {
 describe("shouldCacheGeneratedSpeech", () => {
   it("caches short first/full clips", () => {
     expect(shouldCacheGeneratedSpeech("Got it.", "full")).toBe(true);
-    expect(shouldCacheGeneratedSpeech("Okay, I am on it.", "first-sentence")).toBe(
-      true,
-    );
+    expect(
+      shouldCacheGeneratedSpeech("Okay, I am on it.", "first-sentence"),
+    ).toBe(true);
   });
 
   it("does not cache longer or remainder clips", () => {
@@ -201,6 +201,8 @@ describe("shouldCacheGeneratedSpeech", () => {
         "full",
       ),
     ).toBe(false);
-    expect(shouldCacheGeneratedSpeech("short follow up", "remainder")).toBe(false);
+    expect(shouldCacheGeneratedSpeech("short follow up", "remainder")).toBe(
+      false,
+    );
   });
 });

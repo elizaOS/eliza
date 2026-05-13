@@ -1,7 +1,7 @@
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import {
   approvedAddressValue,
   chainTypeLabel,

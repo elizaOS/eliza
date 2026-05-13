@@ -1,10 +1,3 @@
-import { Banner } from "../ui/banner";
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";
-import { Input } from "../ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Textarea } from "../ui/textarea";
 import { ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -20,6 +13,26 @@ import {
   loadDesktopBugReportDiagnostics,
   openDesktopLogsFolder,
 } from "../../utils/desktop-bug-report";
+import { Banner } from "../ui/banner";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";
+import { Input } from "../ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Textarea } from "../ui/textarea";
 
 const ENV_OPTIONS = ["macOS", "Windows", "Linux", "Other"] as const;
 

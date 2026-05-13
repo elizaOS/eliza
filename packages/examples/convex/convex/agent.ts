@@ -19,9 +19,13 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import anthropicPlugin from "@elizaos/plugin-anthropic";
+import googleGenAIPlugin from "@elizaos/plugin-google-genai";
+import groqPlugin from "@elizaos/plugin-groq";
+import openaiPlugin from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
+import xaiPlugin from "@elizaos/plugin-xai";
 import { v } from "convex/values";
-import { v4 as uuidv4 } from "uuid";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
@@ -32,40 +36,34 @@ import { internalAction } from "./_generated/server";
 interface LLMProvider {
   name: string;
   envKey: string;
-  importPath: string;
-  exportName: string;
+  plugin: Plugin;
 }
 
 const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
-    importPath: "@elizaos/plugin-openai",
-    exportName: "openaiPlugin",
+    plugin: openaiPlugin,
   },
   {
     name: "Anthropic",
     envKey: "ANTHROPIC_API_KEY",
-    importPath: "@elizaos/plugin-anthropic",
-    exportName: "anthropicPlugin",
+    plugin: anthropicPlugin,
   },
   {
     name: "xAI (Grok)",
     envKey: "XAI_API_KEY",
-    importPath: "@elizaos/plugin-xai",
-    exportName: "xaiPlugin",
+    plugin: xaiPlugin,
   },
   {
     name: "Google GenAI (Gemini)",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-    importPath: "@elizaos/plugin-google-genai",
-    exportName: "googleGenaiPlugin",
+    plugin: googleGenAIPlugin,
   },
   {
     name: "Groq",
     envKey: "GROQ_API_KEY",
-    importPath: "@elizaos/plugin-groq",
-    exportName: "groqPlugin",
+    plugin: groqPlugin,
   },
 ];
 
@@ -74,19 +72,13 @@ function hasValidApiKey(envKey: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-async function loadLLMPlugin(): Promise<{
+function detectLLMPlugin(): {
   plugin: Plugin;
   providerName: string;
 } | null> {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
-      try {
-        const mod = await import(provider.importPath);
-        const plugin = mod[provider.exportName] || mod.default;
-        if (plugin) {
-          return { plugin, providerName: provider.name };
-        }
-      } catch {}
+      return { plugin: provider.plugin, providerName: provider.name };
     }
   }
   return null;
@@ -107,7 +99,7 @@ async function getOrCreateRuntime(): Promise<{
     return { runtime: cachedRuntime, providerName: cachedProviderName };
   }
 
-  const llmResult = await loadLLMPlugin();
+  const llmResult = detectLLMPlugin();
   if (!llmResult) {
     throw new Error(
       "No valid LLM API key found. Set one of: " +
@@ -163,7 +155,7 @@ export const chat = internalAction({
   handler: async (ctx, args) => {
     const { runtime, providerName } = await getOrCreateRuntime();
 
-    const userId = (args.userId ?? uuidv4()) as UUID;
+    const userId = (args.userId ?? crypto.randomUUID()) as UUID;
     const roomId = stringToUuid(`convex-room-${args.conversationId}`);
     const worldId = stringToUuid("convex-world");
 
@@ -188,7 +180,7 @@ export const chat = internalAction({
 
     // Build an elizaOS Memory object for the incoming message
     const memory = createMessageMemory({
-      id: uuidv4() as UUID,
+      id: crypto.randomUUID() as UUID,
       entityId: userId,
       roomId,
       content: {
@@ -201,7 +193,11 @@ export const chat = internalAction({
     // ---- core integration: messageService.handleMessage ----
     let responseText = "";
 
-    await runtime.messageService?.handleMessage(
+    const messageService = runtime.messageService;
+    if (!messageService) {
+      throw new Error("Message service not initialized");
+    }
+    await messageService.handleMessage(
       runtime,
       memory,
       async (content) => {

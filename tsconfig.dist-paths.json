@@ -217,7 +217,7 @@
         "./plugins/plugin-linear/dist/index.d.ts"
       ],
       "@elizaos/plugin-bluesky": [
-        "./plugins/plugin-bluesky/dist/index.d.ts"
+        "./plugins/plugin-bluesky/index.ts"
       ],
       "@elizaos/app-companion": [
         "./plugins/app-companion/dist/index.d.ts"
@@ -376,7 +376,7 @@
         "./plugins/plugin-mysticism/dist/index.d.ts"
       ],
       "@elizaos/plugin-groq": [
-        "./plugins/plugin-groq/index.ts"
+        "./plugins/plugin-groq/dist/index.d.ts"
       ],
       "@elizaos/plugin-openai": [
         "./plugins/plugin-openai/dist/index.d.ts"
@@ -403,7 +403,7 @@
         "./plugins/app-wifi/dist/index.d.ts"
       ],
       "@elizaos/plugin-xai": [
-        "./plugins/plugin-xai/index.ts"
+        "./plugins/plugin-xai/dist/index.d.ts"
       ],
       "@elizaos/plugin-xai/*": [
         "./plugins/plugin-xai/*"

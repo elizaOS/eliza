@@ -54,6 +54,17 @@ function hasSmallModel(): boolean {
   }
 }
 
+function expectPresent<T>(value: T | null | undefined, label: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(`expected ${label}`);
+  }
+  return value;
+}
+
+function scriptedStep(steps: LlmStreamStep[], index: number): LlmStreamStep {
+  return expectPresent(steps[index], `scripted stream step at index ${index}`);
+}
+
 /** Build a mocked FFI surface that scripts a fixed sequence of steps. */
 function makeMockFfi(steps: LlmStreamStep[]): {
   ffi: ElizaInferenceFfi;
@@ -85,7 +96,9 @@ function makeMockFfi(steps: LlmStreamStep[]): {
         drafterAccepted: 0,
       } satisfies LlmStreamStep;
     }
-    return steps[stepIdx++]!;
+    const step = scriptedStep(steps, stepIdx);
+    stepIdx += 1;
+    return step;
   });
   const close = vi.fn();
   const cancel = vi.fn();
@@ -254,8 +267,10 @@ describe("FfiStreamingRunner.generateWithUsage (mocked FFI)", () => {
       inflight += 1;
       maxObserved = Math.max(maxObserved, inflight);
       // Cycle through the scripted steps, but loop independently per call.
-      const step =
-        STEPS_3[(spies.next.mock.calls.length - 1) % STEPS_3.length]!;
+      const step = scriptedStep(
+        STEPS_3,
+        (spies.next.mock.calls.length - 1) % STEPS_3.length,
+      );
       inflight -= 1;
       return step;
     }) as never);
@@ -282,7 +297,7 @@ describe("FfiStreamingRunner.generateStream (async iterable)", () => {
 
     expect(seen).toHaveLength(3);
     expect(seen.map((s) => s.text).join("")).toBe("hello world!");
-    expect(seen[2]!.done).toBe(true);
+    expect(expectPresent(seen[2], "terminal stream step").done).toBe(true);
   });
 
   it("surfaces errors from the underlying inner loop", async () => {
@@ -402,11 +417,13 @@ describe("FfiLlmMock — generate → cancel stops the stream early", () => {
   it("stops before all synthetic tokens are emitted when cancel is called", async () => {
     const { ffi, state } = makeFfiLlmMock();
 
-    const handle = ffi.eliza_inference_llm_stream_open("fake.gguf", 512, 4, 0);
-    expect(handle).not.toBeNull();
+    const handle = expectPresent(
+      ffi.eliza_inference_llm_stream_open("fake.gguf", 512, 4, 0),
+      "llm stream handle",
+    );
 
     ffi.eliza_inference_llm_stream_prefill(
-      handle!,
+      handle,
       new Int32Array([1, 2, 3]),
       0,
     );
@@ -416,11 +433,11 @@ describe("FfiLlmMock — generate → cancel stops the stream early", () => {
 
     // Start generation and cancel after first token fires.
     const gen = ffi.eliza_inference_llm_stream_generate(
-      handle!,
+      handle,
       64,
       0.8,
       0.95,
-      (id, text, isDone) => {
+      (_id, text, isDone) => {
         if (isDone) {
           doneCount++;
           return;
@@ -428,7 +445,7 @@ describe("FfiLlmMock — generate → cancel stops the stream early", () => {
         emitted.push(text);
         // Cancel on the first real token so the stream terminates early.
         if (emitted.length === 1) {
-          ffi.eliza_inference_llm_stream_cancel(handle!);
+          ffi.eliza_inference_llm_stream_cancel(handle);
         }
       },
     );
@@ -447,25 +464,21 @@ describe("FfiLlmMock — close after generate completes cleanly", () => {
   it("decrements the open-handle set and does not throw", async () => {
     const { ffi, state } = makeFfiLlmMock();
 
-    const handle = ffi.eliza_inference_llm_stream_open("fake.gguf", 512, 4, 0);
-    expect(handle).not.toBeNull();
+    const handle = expectPresent(
+      ffi.eliza_inference_llm_stream_open("fake.gguf", 512, 4, 0),
+      "llm stream handle",
+    );
     expect(state.openHandles.size).toBe(1);
 
-    ffi.eliza_inference_llm_stream_prefill(handle!, new Int32Array([1, 2]), 0);
+    ffi.eliza_inference_llm_stream_prefill(handle, new Int32Array([1, 2]), 0);
 
-    await ffi.eliza_inference_llm_stream_generate(
-      handle!,
-      32,
-      0.8,
-      0.95,
-      () => {
-        /* drain */
-      },
-    );
+    await ffi.eliza_inference_llm_stream_generate(handle, 32, 0.8, 0.95, () => {
+      /* drain */
+    });
 
     // Close after generation — no double-free scenario in the mock, but we
     // verify the handle is removed from the open set.
-    expect(() => ffi.eliza_inference_llm_stream_close(handle!)).not.toThrow();
+    expect(() => ffi.eliza_inference_llm_stream_close(handle)).not.toThrow();
     expect(state.openHandles.size).toBe(0);
     expect(state.closeCount).toBe(1);
   });
@@ -473,7 +486,10 @@ describe("FfiLlmMock — close after generate completes cleanly", () => {
   it("emits all three synthetic tokens before resolving", async () => {
     const { ffi } = makeFfiLlmMock();
 
-    const handle = ffi.eliza_inference_llm_stream_open("fake.gguf", 512, 4, 0)!;
+    const handle = expectPresent(
+      ffi.eliza_inference_llm_stream_open("fake.gguf", 512, 4, 0),
+      "llm stream handle",
+    );
     ffi.eliza_inference_llm_stream_prefill(handle, new Int32Array([1]), 0);
 
     const tokens: string[] = [];
@@ -482,7 +498,7 @@ describe("FfiLlmMock — close after generate completes cleanly", () => {
       32,
       0.8,
       0.95,
-      (id, text, isDone) => {
+      (_id, text, isDone) => {
         if (!isDone) tokens.push(text);
       },
     );
@@ -516,14 +532,17 @@ describe("FfiDflashStreamingAbi shape — type-check via mock", () => {
     const { ffi } = makeFfiLlmMock();
     const dflash: FfiDflashStreamingAbi = ffi;
 
-    const handle = dflash.eliza_inference_dflash_stream_open(
-      "d.gguf",
-      "v.gguf",
-      512,
-      4,
-      0,
-      4,
-    )!;
+    const handle = expectPresent(
+      dflash.eliza_inference_dflash_stream_open(
+        "d.gguf",
+        "v.gguf",
+        512,
+        4,
+        0,
+        4,
+      ),
+      "dflash stream handle",
+    );
     const count = dflash.eliza_inference_dflash_stream_prefill(
       handle,
       new Int32Array([1, 2, 3, 4]),
@@ -536,14 +555,17 @@ describe("FfiDflashStreamingAbi shape — type-check via mock", () => {
     const { ffi } = makeFfiLlmMock();
     const dflash: FfiDflashStreamingAbi = ffi;
 
-    const handle = dflash.eliza_inference_dflash_stream_open(
-      "d.gguf",
-      "v.gguf",
-      512,
-      4,
-      0,
-      4,
-    )!;
+    const handle = expectPresent(
+      dflash.eliza_inference_dflash_stream_open(
+        "d.gguf",
+        "v.gguf",
+        512,
+        4,
+        0,
+        4,
+      ),
+      "dflash stream handle",
+    );
     dflash.eliza_inference_dflash_stream_prefill(
       handle,
       new Int32Array([1]),

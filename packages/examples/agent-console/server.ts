@@ -4,36 +4,34 @@
 // every prompt, every action, every evaluator, every model token.
 
 import { join, resolve } from "node:path";
-import { scanRepoActions, type ActionScanSort } from "./action-scanner";
 import {
+  type ActionEventPayload,
   AgentRuntime,
   ChannelType,
-  EventType,
-  type ActionEventPayload,
   type Character,
+  type Content,
   type ContextDefinition,
+  createCharacter,
+  createMessageMemory,
   type EvaluatorEventPayload,
   type EventPayloadMap,
+  EventType,
   type GenerateTextParams,
   type IAgentRuntime,
   type MessagePayload,
-  type ModelParamsMap,
   type ModelEventPayload,
+  type ModelParamsMap,
   type ModelResultMap,
-  type Plugin,
-  type PromptSegment,
-  type TokenUsage,
-  type ToolDefinition,
   type RunEventPayload,
-  type UUID,
-  createCharacter,
-  createMessageMemory,
   stringToUuid,
+  type TokenUsage,
+  type UUID,
 } from "@elizaos/core";
+import localEmbeddingPlugin from "@elizaos/plugin-local-embedding";
 import { openaiPlugin } from "@elizaos/plugin-openai";
 import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
-import localEmbeddingPlugin from "@elizaos/plugin-local-embedding";
 import { v4 as uuidv4 } from "uuid";
+import { type ActionScanSort, scanRepoActions } from "./action-scanner";
 
 // ---------- provider detection ----------
 
@@ -84,19 +82,21 @@ function detectProvider(): (ProviderConfig & { apiKey: string }) | null {
   return null;
 }
 
-const provider = detectProvider();
-if (!provider) {
+const detectedProvider = detectProvider();
+if (!detectedProvider) {
   console.error("\n  ✗ No API key found. Set one of:");
   for (const p of PROVIDERS) console.error(`     - ${p.envKey}`);
   process.exit(1);
 }
+const provider = detectedProvider;
 
 // Inject the env vars plugin-openai expects so its Cerebras auto-detect kicks in.
 process.env.OPENAI_BASE_URL = provider.baseUrl;
 if (!process.env.OPENAI_API_KEY) process.env.OPENAI_API_KEY = provider.apiKey;
 if (provider.name === "cerebras") process.env.ELIZA_PROVIDER = "cerebras";
 if (!process.env.OPENAI_LARGE_MODEL)
-  process.env.OPENAI_LARGE_MODEL = process.env.AGENT_MODEL || provider.defaultLarge;
+  process.env.OPENAI_LARGE_MODEL =
+    process.env.AGENT_MODEL || provider.defaultLarge;
 if (!process.env.OPENAI_SMALL_MODEL)
   process.env.OPENAI_SMALL_MODEL = provider.defaultSmall;
 // Cerebras has no embedding endpoint; force local embedding regardless.
@@ -135,7 +135,9 @@ function stringifyContent(value: unknown): string {
 }
 
 function readNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function errorMessage(error: unknown): string {
@@ -143,8 +145,13 @@ function errorMessage(error: unknown): string {
 }
 
 const TRAJECTORY_COLORS = [
-  "#ff8a8a", "#ffb573", "#ffe76e", "#9ce67c",
-  "#8ec5ff", "#a896ff", "#d896ff",
+  "#ff8a8a",
+  "#ffb573",
+  "#ffe76e",
+  "#9ce67c",
+  "#8ec5ff",
+  "#a896ff",
+  "#d896ff",
 ];
 
 let currentTrajectoryId: string | null = null;
@@ -170,7 +177,8 @@ let currentStats: TrajectoryStats = {
 
 function newTrajectory(): { id: string; color: string } {
   const id = Math.random().toString(36).slice(2, 10);
-  const color = TRAJECTORY_COLORS[Math.floor(Math.random() * TRAJECTORY_COLORS.length)];
+  const color =
+    TRAJECTORY_COLORS[Math.floor(Math.random() * TRAJECTORY_COLORS.length)];
   currentTrajectoryId = id;
   currentTrajectoryColor = color;
   currentTrajectoryFinalText = "";
@@ -186,7 +194,11 @@ function newTrajectory(): { id: string; color: string } {
 }
 
 function tag(extra: Record<string, unknown> = {}) {
-  return { trajectoryId: currentTrajectoryId, color: currentTrajectoryColor, ...extra };
+  return {
+    trajectoryId: currentTrajectoryId,
+    color: currentTrajectoryColor,
+    ...extra,
+  };
 }
 
 // ---------- runtime construction ----------
@@ -216,11 +228,7 @@ const character: Character = createCharacter({
 
 const runtime: IAgentRuntime = new AgentRuntime({
   character,
-  plugins: [
-    sqlPlugin,
-    localEmbeddingPlugin,
-    openaiPlugin,
-  ],
+  plugins: [sqlPlugin, localEmbeddingPlugin, openaiPlugin],
   logLevel: "warn",
 });
 
@@ -259,7 +267,9 @@ function promptSegmentsToSegmentViews(segments: unknown): SegmentView[] {
   });
 }
 
-function toolsToSummary(tools: unknown): { name: string; description?: string }[] {
+function toolsToSummary(
+  tools: unknown,
+): { name: string; description?: string }[] {
   if (!Array.isArray(tools)) return [];
   return tools.map((tool) => {
     const record = isRecord(tool) ? tool : {};
@@ -320,11 +330,14 @@ runtimeWithInstrumentedModel.useModel = async <
 ): Promise<R> => {
   const callId = `mc-${++modelCallCounter}`;
   const start = Date.now();
-  const textParams = isRecord(params) ? (params as Partial<GenerateTextParams>) : {};
+  const textParams = isRecord(params)
+    ? (params as Partial<GenerateTextParams>)
+    : {};
   const messageViews = messagesToSegmentViews(textParams.messages);
   const segmentViews = promptSegmentsToSegmentViews(textParams.promptSegments);
   const toolsSummary = toolsToSummary(textParams.tools);
-  const promptString = typeof textParams.prompt === "string" ? textParams.prompt : "";
+  const promptString =
+    typeof textParams.prompt === "string" ? textParams.prompt : "";
   // Prefer the segmented messages view as the canonical input. Fall back to the
   // legacy prompt blob only when no messages are present (embeddings, simple
   // text-gen calls, etc.).
@@ -346,7 +359,9 @@ runtimeWithInstrumentedModel.useModel = async <
   const prefixHash =
     typeof elizaPo?.prefixHash === "string" ? elizaPo.prefixHash : undefined;
   const segmentHashes = Array.isArray(elizaPo?.segmentHashes)
-    ? elizaPo.segmentHashes.filter((hash): hash is string => typeof hash === "string")
+    ? elizaPo.segmentHashes.filter(
+        (hash): hash is string => typeof hash === "string",
+      )
     : undefined;
   const cacheKey: string | undefined =
     typeof cerebrasPo?.prompt_cache_key === "string"
@@ -377,7 +392,7 @@ runtimeWithInstrumentedModel.useModel = async <
       cacheKey,
       promptPreview: promptString.slice(0, 8000),
       promptBytes: promptString.length,
-    })
+    }),
   );
   try {
     const result = await origUseModel<T, R>(modelType, params, providerName);
@@ -401,7 +416,7 @@ runtimeWithInstrumentedModel.useModel = async <
         toolCalls,
         usage,
         durationMs: Date.now() - start,
-      })
+      }),
     );
     return result;
   } catch (err: unknown) {
@@ -424,7 +439,7 @@ runtimeWithInstrumentedModel.useModel = async <
         error: errorMessage(err),
         errorDetail,
         durationMs: Date.now() - start,
-      })
+      }),
     );
     throw err;
   }
@@ -433,9 +448,11 @@ runtimeWithInstrumentedModel.useModel = async <
 function safeSnapshot(v: unknown, depth = 4): unknown {
   if (depth < 0) return "[truncated]";
   if (v == null) return v;
-  if (typeof v === "string") return v.length > 12000 ? v.slice(0, 12000) + "…" : v;
+  if (typeof v === "string")
+    return v.length > 12000 ? `${v.slice(0, 12000)}…` : v;
   if (typeof v !== "object") return v;
-  if (Array.isArray(v)) return v.slice(0, 50).map((x) => safeSnapshot(x, depth - 1));
+  if (Array.isArray(v))
+    return v.slice(0, 50).map((x) => safeSnapshot(x, depth - 1));
   const out: Record<string, unknown> = {};
   let i = 0;
   for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
@@ -449,10 +466,16 @@ function safeSnapshot(v: unknown, depth = 4): unknown {
 }
 function stringifyResponse(r: unknown): string {
   if (typeof r === "string") return r;
-  try { return JSON.stringify(r, null, 2); } catch { return String(r); }
+  try {
+    return JSON.stringify(r, null, 2);
+  } catch {
+    return String(r);
+  }
 }
 
-function extractToolCalls(result: unknown): { id?: string; name: string; arguments: unknown }[] {
+function extractToolCalls(
+  result: unknown,
+): { id?: string; name: string; arguments: unknown }[] {
   if (!result || typeof result !== "object") return [];
   const tcs = isRecord(result) ? result.toolCalls : undefined;
   if (!Array.isArray(tcs)) return [];
@@ -463,7 +486,11 @@ function extractToolCalls(result: unknown): { id?: string; name: string; argumen
     const args = fn?.arguments ?? tc.arguments ?? tc.input;
     let parsed: unknown = args;
     if (typeof args === "string") {
-      try { parsed = JSON.parse(args); } catch { parsed = args; }
+      try {
+        parsed = JSON.parse(args);
+      } catch {
+        parsed = args;
+      }
     }
     return {
       id: typeof tc.id === "string" ? tc.id : undefined,
@@ -484,13 +511,21 @@ function registerEventListeners(rt: IAgentRuntime) {
       try {
         broadcast(tag({ type: evType, ...project(payload) }));
       } catch (e: unknown) {
-        broadcast(tag({ type: "log", level: "error", message: `event ${evType}: ${errorMessage(e)}` }));
+        broadcast(
+          tag({
+            type: "log",
+            level: "error",
+            message: `event ${evType}: ${errorMessage(e)}`,
+          }),
+        );
       }
     });
   };
 
   wrap(EventType.RUN_STARTED, (p: RunEventPayload) => ({
-    runId: String(p.runId), messageId: String(p.messageId), roomId: String(p.roomId),
+    runId: String(p.runId),
+    messageId: String(p.messageId),
+    roomId: String(p.roomId),
   }));
   wrap(EventType.RUN_ENDED, (p: RunEventPayload) => ({
     runId: String(p.runId),
@@ -499,7 +534,8 @@ function registerEventListeners(rt: IAgentRuntime) {
     error: p.error ? String(p.error) : undefined,
   }));
   wrap(EventType.RUN_TIMEOUT, (p: RunEventPayload) => ({
-    runId: String(p.runId), error: p.error ? String(p.error) : "timeout",
+    runId: String(p.runId),
+    error: p.error ? String(p.error) : "timeout",
   }));
   wrap(EventType.MESSAGE_RECEIVED, (p: MessagePayload) => ({
     messageId: String(p.message?.id),
@@ -509,7 +545,8 @@ function registerEventListeners(rt: IAgentRuntime) {
   }));
   wrap(EventType.MESSAGE_SENT, (p: MessagePayload) => {
     const text = p.message?.content?.text ?? "";
-    if (text && currentTrajectoryFinalText !== null) currentTrajectoryFinalText = text;
+    if (text && currentTrajectoryFinalText !== null)
+      currentTrajectoryFinalText = text;
     return {
       messageId: String(p.message?.id),
       text,
@@ -545,7 +582,8 @@ function registerEventListeners(rt: IAgentRuntime) {
 function extractActionName(p: ActionEventPayload): string {
   const content = isRecord(p.content) ? p.content : {};
   if (typeof content.action === "string") return content.action;
-  if (Array.isArray(content.actions)) return content.actions.map(String).join(",");
+  if (Array.isArray(content.actions))
+    return content.actions.map(String).join(",");
   return "(unknown)";
 }
 
@@ -568,20 +606,26 @@ async function initialize() {
     await runtime.initialize();
     initState = "ready";
     console.log(`\n  AGENT CONSOLE  (elizaOS)  →  http://localhost:${PORT}`);
-    console.log(`  provider: ${provider!.name}`);
+    console.log(`  provider: ${provider.name}`);
     console.log(`  large model: ${process.env.OPENAI_LARGE_MODEL}`);
     console.log(`  small model: ${process.env.OPENAI_SMALL_MODEL}`);
-    console.log(`  base URL:    ${provider!.baseUrl}\n`);
-  } catch (err: any) {
+    console.log(`  base URL:    ${provider.baseUrl}\n`);
+  } catch (err: unknown) {
     initState = "error";
-    initError = err?.message ?? String(err);
+    initError = errorMessage(err);
     console.error("\n  ✗ Runtime init failed:", initError, "\n");
   }
 }
 
 async function handleUserMessage(text: string) {
   if (initState !== "ready") {
-    broadcast(tag({ type: "log", level: "error", message: "runtime not ready: " + (initError ?? "initializing…") }));
+    broadcast(
+      tag({
+        type: "log",
+        level: "error",
+        message: `runtime not ready: ${initError ?? "initializing…"}`,
+      }),
+    );
     return;
   }
 
@@ -596,9 +640,9 @@ async function handleUserMessage(text: string) {
     trajectoryId: id,
     color,
     userMessage: text,
-    provider: provider!.name,
+    provider: provider.name,
     model: process.env.OPENAI_LARGE_MODEL,
-    baseUrl: provider!.baseUrl,
+    baseUrl: provider.baseUrl,
     character: character.name,
     t: startedAt,
   });
@@ -622,20 +666,24 @@ async function handleUserMessage(text: string) {
     });
 
     let postRespondError: string | null = null;
-    activeRunPromise = runtime.messageService!.handleMessage(
+    const messageService = runtime.messageService;
+    if (!messageService) {
+      throw new Error("Message service not initialized");
+    }
+    activeRunPromise = messageService.handleMessage(
       runtime,
       messageMemory,
-      async (content: any) => {
+      async (content: Content) => {
         if (typeof content?.text === "string") {
           broadcast(tag({ type: "response_chunk", text: content.text }));
         }
         return [];
-      }
+      },
     );
     try {
       await activeRunPromise;
-    } catch (err: any) {
-      postRespondError = err?.message ?? String(err);
+    } catch (err: unknown) {
+      postRespondError = errorMessage(err);
     }
 
     const responded = !!currentTrajectoryFinalText;
@@ -645,12 +693,22 @@ async function handleUserMessage(text: string) {
       color,
       durationMs: Date.now() - startedAt,
       finalText: currentTrajectoryFinalText ?? "",
-      reason: postRespondError ? (responded ? "ok-with-postlog-errors" : "error") : "ok",
+      reason: postRespondError
+        ? responded
+          ? "ok-with-postlog-errors"
+          : "error"
+        : "ok",
       postRespondError: postRespondError ?? undefined,
       stats: snapshotStats(),
     });
-  } catch (err: any) {
-    broadcast(tag({ type: "log", level: "error", message: err?.message ?? String(err) }));
+  } catch (err: unknown) {
+    broadcast(
+      tag({
+        type: "log",
+        level: "error",
+        message: errorMessage(err),
+      }),
+    );
     broadcast({
       type: "trajectory_end",
       trajectoryId: id,
@@ -685,15 +743,21 @@ const server = Bun.serve({
     const url = new URL(req.url);
 
     if (url.pathname === "/" || url.pathname === "/index.html") {
-      return new Response(Bun.file(join(import.meta.dir, "public", "index.html")), {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return new Response(
+        Bun.file(join(import.meta.dir, "public", "index.html")),
+        {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        },
+      );
     }
 
     if (url.pathname === "/actions" || url.pathname === "/actions.html") {
-      return new Response(Bun.file(join(import.meta.dir, "public", "actions.html")), {
-        headers: { "Content-Type": "text/html; charset=utf-8" },
-      });
+      return new Response(
+        Bun.file(join(import.meta.dir, "public", "actions.html")),
+        {
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        },
+      );
     }
 
     if (url.pathname === "/action-scan") {
@@ -701,9 +765,12 @@ const server = Bun.serve({
         url.searchParams.get("sort") === "filepath" ? "filepath" : "name";
       try {
         return Response.json(scanRepoActions({ repoRoot: REPO_ROOT, sort }));
-      } catch (err: any) {
+      } catch (err: unknown) {
         return Response.json(
-          { error: err?.message ?? String(err), stack: err?.stack },
+          {
+            error: errorMessage(err),
+            stack: err instanceof Error ? err.stack : undefined,
+          },
           { status: 500 },
         );
       }
@@ -757,15 +824,17 @@ const server = Bun.serve({
 
     if (url.pathname === "/status") {
       return Response.json({
-        provider: provider!.name,
+        provider: provider.name,
         model: process.env.OPENAI_LARGE_MODEL,
         smallModel: process.env.OPENAI_SMALL_MODEL,
-        baseUrl: provider!.baseUrl,
+        baseUrl: provider.baseUrl,
         runtimeState: initState,
         runtimeError: initError,
         agent: character.name,
         availableProviders: PROVIDERS.map((p) => ({
-          name: p.name, envKey: p.envKey, present: !!process.env[p.envKey],
+          name: p.name,
+          envKey: p.envKey,
+          present: !!process.env[p.envKey],
         })),
       });
     }
@@ -774,9 +843,11 @@ const server = Bun.serve({
       const stream = new ReadableStream({
         start(controller) {
           const encoder = new TextEncoder();
-          const send = (event: any) => {
+          const send: Subscriber = (event) => {
             try {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+              );
             } catch {
               subscribers.delete(send);
             }
@@ -793,7 +864,9 @@ const server = Bun.serve({
           req.signal.addEventListener("abort", () => {
             clearInterval(ping);
             subscribers.delete(send);
-            try { controller.close(); } catch {}
+            try {
+              controller.close();
+            } catch {}
           });
         },
       });

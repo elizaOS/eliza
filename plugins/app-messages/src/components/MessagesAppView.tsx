@@ -63,8 +63,9 @@ function buildThreads(messages: SmsMessageSummary[]): ThreadSummary[] {
         address: lastMessage?.address ?? "Unknown",
         messages: sorted,
         lastMessage,
-        unreadCount: sorted.filter((m) => !m.read && m.type === INBOUND_SMS_TYPE)
-          .length,
+        unreadCount: sorted.filter(
+          (m) => !m.read && m.type === INBOUND_SMS_TYPE,
+        ).length,
       };
     })
     .filter((thread): thread is ThreadSummary => Boolean(thread.lastMessage))
@@ -179,7 +180,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   }, [canSend, composeAddress, composeBody, refresh]);
 
   const title = showComposer
-    ? selectedThread?.address || t("messages.new", { defaultValue: "New message" })
+    ? selectedThread?.address ||
+      t("messages.new", { defaultValue: "New message" })
     : t("messages.title", { defaultValue: "Messages" });
 
   return (
@@ -231,9 +233,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
             data-testid="messages-refresh"
           >
-            <RefreshCw
-              className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
-            />
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           </Button>
           <Button
             variant="default"
@@ -375,10 +375,14 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
           {showComposer ? (
             <>
               <div className="shrink-0 border-b border-border/24 px-4 py-3">
-                <label className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted">
+                <label
+                  className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted"
+                  htmlFor="messages-compose-address"
+                >
                   {t("messages.to", { defaultValue: "To" })}
                 </label>
                 <Input
+                  id="messages-compose-address"
                   value={composeAddress}
                   onChange={(event) => setComposeAddress(event.target.value)}
                   placeholder="+1 555 123 4567"
@@ -400,9 +404,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                         >
                           <div
                             className={`max-w-[78%] rounded-lg px-3 py-2 ${
-                              sent
-                                ? "bg-info text-bg"
-                                : "bg-bg-accent text-txt"
+                              sent ? "bg-info text-bg" : "bg-bg-accent text-txt"
                             }`}
                           >
                             <div className="whitespace-pre-wrap break-words text-sm">

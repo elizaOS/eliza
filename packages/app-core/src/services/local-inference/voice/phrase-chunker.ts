@@ -37,7 +37,7 @@ const DEFAULT_MAX_TOKENS_PER_PHRASE = 30;
  * produce filler-like audio and degraded the downstream ASR loop.
  */
 function resolveDefaultMaxAccumulationMs(): number {
-  const raw = process.env["MILADY_PHRASE_FLUSH_MS"]?.trim();
+  const raw = process.env.MILADY_PHRASE_FLUSH_MS?.trim();
   if (raw) {
     const v = Number.parseInt(raw, 10);
     if (Number.isFinite(v) && v > 0) return v;

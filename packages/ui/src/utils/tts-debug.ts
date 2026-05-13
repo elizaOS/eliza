@@ -1,5 +1,3 @@
-/// <reference types="vite/client" />
-
 /**
  * TTS pipeline tracing (opt-in). Prefix: `[eliza][tts]`.
  * Never pass secrets in `detail`. With debug on, `preview` fields may contain
@@ -20,6 +18,10 @@
  *   go to the **renderer** JavaScript console (Electrobun: Web Inspector on the window),
  *   not `LOG_LEVEL` on the API process alone.
  */
+type RuntimeImportMeta = ImportMeta & {
+  env?: Record<string, unknown>;
+};
+
 function ttsDebugEnabled(): boolean {
   const truthy = (raw: string | undefined | null): boolean => {
     if (raw == null) return false;
@@ -32,9 +34,9 @@ function ttsDebugEnabled(): boolean {
   }
 
   try {
-    // Use static `import.meta.env.*` so Vite `define` can replace ELIZA_TTS_DEBUG at build time.
-    if (truthy(String(import.meta.env.ELIZA_TTS_DEBUG ?? ""))) return true;
-    if (truthy(String(import.meta.env.VITE_ELIZA_TTS_DEBUG ?? ""))) return true;
+    const viteEnv = (import.meta as RuntimeImportMeta).env;
+    if (truthy(String(viteEnv?.ELIZA_TTS_DEBUG ?? ""))) return true;
+    if (truthy(String(viteEnv?.VITE_ELIZA_TTS_DEBUG ?? ""))) return true;
   } catch {
     /* no import.meta */
   }

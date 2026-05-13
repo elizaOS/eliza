@@ -1,10 +1,3 @@
-import { cn } from "../../lib/utils";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { PagePanel } from "../composites/page-panel";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
-import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
 import {
   type ComponentPropsWithoutRef,
   forwardRef,
@@ -14,7 +7,14 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { cn } from "../../lib/utils";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import {
   readSettingsHashSection,
   replaceSettingsHash,

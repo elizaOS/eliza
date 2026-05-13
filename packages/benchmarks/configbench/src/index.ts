@@ -3,12 +3,12 @@
 // Usage: bun run src/index.ts [--eliza] [--verbose]
 
 import { join, resolve } from "node:path";
+import { determineExitCode } from "./exit-code.js";
 import {
   failingHandler,
   perfectHandler,
   randomHandler,
 } from "./handlers/index.js";
-import { determineExitCode } from "./exit-code.js";
 import {
   B,
   G,

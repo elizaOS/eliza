@@ -15,12 +15,12 @@ import type { JSONSchema, ResponseHandlerResult } from "@elizaos/core";
 const CEREBRAS_URL = "https://api.cerebras.ai/v1/chat/completions";
 const DEFAULT_MODEL = "gpt-oss-120b";
 
-export interface CerebrasMessage {
+interface CerebrasMessage {
   role: "system" | "user" | "assistant";
   content: string;
 }
 
-export interface CerebrasCallInput {
+interface CerebrasCallInput {
   systemPrompt: string;
   messages: CerebrasMessage[];
   schema: JSONSchema;
@@ -29,7 +29,7 @@ export interface CerebrasCallInput {
   timeoutMs?: number;
 }
 
-export interface CerebrasCallResult {
+interface CerebrasCallResult {
   parsed: ResponseHandlerResult;
   /** Wall-clock latency for the round trip, ms. */
   latencyMs: number;
@@ -37,7 +37,7 @@ export interface CerebrasCallResult {
   raw: unknown;
 }
 
-export interface CerebrasCallError extends Error {
+interface CerebrasCallError extends Error {
   status?: number;
   body?: string;
 }

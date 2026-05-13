@@ -25,8 +25,8 @@ function uuidv4(): string {
   return globalThis.crypto.randomUUID();
 }
 
-export type SendMessageResult = { responseText: string };
-export type SendMessageCallbacks = {
+type SendMessageResult = { responseText: string };
+type SendMessageCallbacks = {
   onAssistantChunk?: (chunk: string) => void;
 };
 

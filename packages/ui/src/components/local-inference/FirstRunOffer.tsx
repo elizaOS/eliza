@@ -1,4 +1,3 @@
-import { Button } from "../ui/button";
 import type {
   CatalogModel,
   DownloadJob,
@@ -6,6 +5,7 @@ import type {
   InstalledModel,
 } from "../../api/client-local-inference";
 import { selectRecommendedModels } from "../../services/local-inference/recommendation";
+import { Button } from "../ui/button";
 import { displayModelName, findInstalled } from "./hub-utils";
 
 interface FirstRunOfferProps {

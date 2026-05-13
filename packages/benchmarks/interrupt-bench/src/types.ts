@@ -75,7 +75,7 @@ export interface ScenarioScriptStep {
 // Expected state
 // ---------------------------------------------------------------------------
 
-export interface CountBounds {
+interface CountBounds {
   min: number;
   max: number;
 }

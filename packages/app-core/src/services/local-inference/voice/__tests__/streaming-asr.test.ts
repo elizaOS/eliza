@@ -413,7 +413,7 @@ describe("FfiBatchTranscriber — flush() returns committed final on speech-end"
 
   it("flush() resolves in order even when multiple decode passes are enqueued (serial chain)", async () => {
     let decodes = 0;
-    const ffi = makeBatchFfi((pcm) => {
+    const ffi = makeBatchFfi((_pcm) => {
       decodes++;
       return `segment${decodes}`;
     });

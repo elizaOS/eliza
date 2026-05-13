@@ -458,10 +458,7 @@ export class KaminoLiquidityService extends Service {
       logger.log("Market statistics retrieved successfully");
       return stats;
     } catch (error) {
-      logger.error(
-        "Error fetching market statistics:",
-        formatLogError(error),
-      );
+      logger.error("Error fetching market statistics:", formatLogError(error));
       return null;
     }
   }
@@ -629,10 +626,7 @@ export class KaminoLiquidityService extends Service {
       logger.log(`No strategy found for address: ${strategyAddress}`);
       return null;
     } catch (error) {
-      logger.error(
-        "Error getting strategy by address:",
-        formatLogError(error),
-      );
+      logger.error("Error getting strategy by address:", formatLogError(error));
       return null;
     }
   }

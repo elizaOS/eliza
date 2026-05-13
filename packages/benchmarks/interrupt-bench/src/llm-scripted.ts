@@ -63,11 +63,6 @@ function looksLikeAbort(text: string): boolean {
   );
 }
 
-function looksLikeRetraction(text: string): boolean {
-  const t = text.toLowerCase();
-  return /\b(scratch that|actually|instead|nvm|wait)\b/.test(t);
-}
-
 // ---------------------------------------------------------------------------
 // Default scripted provider — handles all 10 InterruptBench scenarios.
 // ---------------------------------------------------------------------------
@@ -330,6 +325,3 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
     }
   };
 }
-
-// Reference the helper so eslint --strict doesn't flag it; used in fallback paths.
-export const _internal = { looksLikeRetraction };

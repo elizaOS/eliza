@@ -14,7 +14,7 @@
  * then actually contact the externally-managed agent.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { resolveRpcAgentPort } from "./rpc-port-resolver";
 
 describe("resolveRpcAgentPort", () => {

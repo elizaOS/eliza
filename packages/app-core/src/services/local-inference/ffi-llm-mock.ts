@@ -210,7 +210,11 @@ export function makeFfiLlmMock(): {
           return;
         }
 
-        const token = SYNTHETIC_TOKENS[tokenIdx++]!;
+        const token = SYNTHETIC_TOKENS[tokenIdx];
+        if (token === undefined) {
+          throw new Error(`missing synthetic token at index ${tokenIdx}`);
+        }
+        tokenIdx += 1;
         tokenCallback(token.id, token.text, token.isDone);
 
         if (token.isDone) {

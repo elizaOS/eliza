@@ -42,12 +42,8 @@ import {
 } from "./dflash-metrics-collector";
 import {
   type DflashVerifyEvent,
-  type DflashVerifyMetricSample,
   type DflashVerifyStats,
-  diffDflashVerifyMetrics,
-  fetchDflashVerifyMetricSample,
   parseDflashVerifyEventsFromSseChunk,
-  summarizeVerifyEvents,
 } from "./dflash-verify-event";
 import { probeHardware } from "./hardware";
 import { inferenceTelemetry } from "./inference-telemetry";
@@ -2638,15 +2634,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   private nativeDflashEventsCapability: boolean | null = null;
 
   /**
-   * L1 — cached result of the `/health` capability probe for the
-   * per-step verify event protocol. `capabilities.dflashVerifyEvents`
-   * is additive to `dflashNativeEvents`; this field tracks it
-   * separately so a binary that ships only the union-shape events can
-   * still drive the legacy native-event path.
-   */
-  private nativeDflashVerifyEventsCapability: boolean | null = null;
-
-  /**
    * L1 — long-lived collector that accumulates `dflash-verify` events
    * across all turns for the lifetime of the server instance. Active
    * only when `useNativeDflashEvents()` returns true. Used by
@@ -3426,7 +3413,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     this.cacheParallel = DEFAULT_CACHE_PARALLEL;
     this.lastOptimizations = null;
     this.nativeDflashEventsCapability = null;
-    this.nativeDflashVerifyEventsCapability = null;
     if (!child) return;
     // Best-effort: tell llama-server to flush per-conversation KV state
     // to disk before we kill it. If the dispatcher restarts the server
@@ -3626,10 +3612,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
    * is cached for the lifetime of the spawned process. Returns false on
    * any error or when the field is absent — the legacy synthesis path is
    * always the safe fallback. Visible for tests via `probeNativeDflashEvents`.
-   *
-   * L1 — also caches `capabilities.dflashVerifyEvents` in
-   * `nativeDflashVerifyEventsCapability` from the same `/health` call so
-   * the per-step verify protocol piggybacks on the single probe.
    */
   private async probeNativeDflashEventsCapability(): Promise<boolean> {
     if (this.nativeDflashEventsCapability !== null) {
@@ -3638,11 +3620,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     const baseUrl = this.baseUrl;
     if (!baseUrl) {
       this.nativeDflashEventsCapability = false;
-      this.nativeDflashVerifyEventsCapability = false;
       return false;
     }
     let detected = false;
-    let verifyDetected = false;
     try {
       const res = await fetch(`${baseUrl}/health`, {
         signal: AbortSignal.timeout(2_000),
@@ -3654,50 +3634,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           if (caps && typeof caps === "object") {
             const capRecord = caps as Record<string, unknown>;
             detected = capRecord.dflashNativeEvents === true;
-            verifyDetected = capRecord.dflashVerifyEvents === true;
           }
         }
       }
     } catch {
       detected = false;
-      verifyDetected = false;
     }
     this.nativeDflashEventsCapability = detected;
-    this.nativeDflashVerifyEventsCapability = verifyDetected;
     return detected;
-  }
-
-  /**
-   * L1 — should this turn consume the per-step `dflashVerify` event
-   * protocol? True when BOTH:
-   *   1. The loaded bundle opts in via
-   *      `optimizations.useNativeDflashEvents`.
-   *   2. The running server advertises
-   *      `capabilities.dflashVerifyEvents`.
-   * Otherwise the verify-event stream is ignored on the wire and the
-   * legacy synthesis (`onVerifierEvent`) path runs unchanged. Same
-   * shape as `nativeDflashEventsEnabled()` so callers can mix and
-   * match: a binary can ship the union events without the L1 verify
-   * events, or vice versa.
-   */
-  private async useNativeDflashVerifyEvents(): Promise<boolean> {
-    const optimizations = this.lastOptimizations as
-      | (LocalRuntimeOptimizations & {
-          useNativeDflashEvents?: boolean;
-          nativeDflashEvents?: boolean;
-        })
-      | null
-      | undefined;
-    // Accept both the L1 flag name and the prior `nativeDflashEvents`
-    // bundle flag — the brief promotes `useNativeDflashEvents` as the
-    // canonical name; older bundles may still use the prior spelling.
-    const bundleOptIn = Boolean(
-      optimizations?.useNativeDflashEvents ?? optimizations?.nativeDflashEvents,
-    );
-    if (!bundleOptIn) return false;
-    // Forces the /health probe to run; sets the verify capability cache.
-    await this.probeNativeDflashEventsCapability();
-    return this.nativeDflashVerifyEventsCapability === true;
   }
 
   /**

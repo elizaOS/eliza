@@ -1,8 +1,8 @@
-import { Button } from "../ui/button";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { PagePanel } from "../composites/page-panel";
 import type { ReactNode } from "react";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
 
 /**
  * Placeholder rendered when no installed app declares

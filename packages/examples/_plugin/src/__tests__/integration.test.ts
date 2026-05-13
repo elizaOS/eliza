@@ -88,7 +88,7 @@ describe("Integration: Plugin initialization", () => {
     }
   });
 
-  it("should initialize the plugin without registering example services", async () => {
+  it("should initialize the plugin and register the starter service", async () => {
     // Create a real runtime
     runtime = await createTestRuntime({ skipInitialize: true });
 
@@ -97,6 +97,7 @@ describe("Integration: Plugin initialization", () => {
       await starterPlugin.init({ EXAMPLE_PLUGIN_VARIABLE: "test-value" }, runtime);
     }
 
-    expect(starterPlugin.services ?? []).toHaveLength(0);
+    expect(starterPlugin.services ?? []).toHaveLength(1);
+    expect(starterPlugin.services?.[0]?.serviceType).toBe("starter");
   });
 });

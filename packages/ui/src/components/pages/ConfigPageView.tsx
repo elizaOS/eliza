@@ -11,11 +11,11 @@ import {
   resolveInitialWalletRpcSelections,
   type WalletRpcSelections,
 } from "@elizaos/shared";
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApp } from "../../state";
 import { preOpenWindow } from "../../utils";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import {
   BSC_RPC_OPTIONS,
   CloudServicesSection,

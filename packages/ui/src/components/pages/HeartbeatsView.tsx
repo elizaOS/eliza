@@ -1,14 +1,3 @@
-import { Button } from "../ui/button";
-import { FieldLabel } from "../ui/field";
-import { NewActionButton } from "../ui/new-action-button";
-import { PageLayout } from "../../layouts/page-layout/page-layout";
-import { PagePanel } from "../composites/page-panel";
-import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
-import { SidebarContent } from "../composites/sidebar/sidebar-content";
-import { SidebarHeader } from "../composites/sidebar/sidebar-header";
-import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
-import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
-import { StatusBadge } from "../ui/status-badge";
 import { Plus } from "lucide-react";
 import {
   createContext,
@@ -21,6 +10,7 @@ import {
   useState,
 } from "react";
 import type { TriggerSummary } from "../../api/client";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { confirmDesktopAction } from "../../utils";
 import { formatDateTime, formatDurationMs } from "../../utils/format";
@@ -28,7 +18,17 @@ import { detectUiHostCapabilities } from "../../utils/host-capabilities";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { FieldLabel } from "../ui/field";
+import { NewActionButton } from "../ui/new-action-button";
+import { StatusBadge } from "../ui/status-badge";
 import { HeartbeatForm } from "./HeartbeatForm";
 import {
   BUILT_IN_TEMPLATES,
