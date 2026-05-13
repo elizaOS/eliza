@@ -3384,8 +3384,7 @@ function parseMessageHandlerModelOutput(
 		);
 	}
 	return (
-		parseMessageHandlerOutput(raw) ??
-		synthesizeSimpleReplyFromPlainText(raw)
+		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
 	);
 }
 
@@ -4635,10 +4634,7 @@ function collectPlannerTools(
 	);
 	if (!hasAnyAction) return [];
 	const actions = narrowedActions ?? collectActionsFromContext(context);
-	return [
-		...buildPlannerToolsFromActions(actions),
-		...CORE_PLANNER_TERMINALS,
-	];
+	return [...buildPlannerToolsFromActions(actions), ...CORE_PLANNER_TERMINALS];
 }
 
 /**
@@ -4796,7 +4792,7 @@ export async function runV5MessageRuntimeStage1(args: {
 				directMessage: directMessageChannel,
 				parameters: responseHandlerSchema,
 				description:
-					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
+					"Stage 1 — populate the registered response-handler fields exactly once before any action tool calls. Use empty values for non-applicable fields.",
 			}),
 		];
 		const messageHandlerProviderOptions =

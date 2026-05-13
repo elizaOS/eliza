@@ -199,10 +199,10 @@ describe("sub-planner helpers", () => {
 			}),
 		});
 
-		// Sub-planner exposes the same single PLAN_ACTIONS wrapper tool as the
-		// top-level planner so the tool list stays stable across descents. Child
-		// action specs render into the dynamic available-actions block; the LLM
-		// picks one by name and passes it back via `action`.
+		// Sub-planner exposes each child action as its own native tool, plus
+		// the universal terminal sentinels (REPLY/IGNORE/STOP). Stage 1
+		// routing already happened at the top level, so the parent action
+		// itself is NOT exposed inside its own sub-planner pass.
 		const modelCall = useModel.mock.calls[0];
 		expect(modelCall).toBeDefined();
 		const modelParams = modelCall?.[1] as {
@@ -211,17 +211,16 @@ describe("sub-planner helpers", () => {
 			toolChoice?: string;
 			responseSchema?: unknown;
 		};
-		expect(modelParams.tools).toEqual([
-			expect.objectContaining({ name: "PLAN_ACTIONS", type: "function" }),
-		]);
-		// Sub-planner uses the wrapper, so the JSON-schema fallback path must
-		// NOT be active.
+		const toolNames = (modelParams.tools ?? []).map((t) => t.name);
+		expect(toolNames).toContain("CHILD_A");
+		expect(toolNames).toContain("CHILD_B");
+		expect(toolNames).toContain("REPLY");
+		expect(toolNames).toContain("IGNORE");
+		expect(toolNames).toContain("STOP");
+		expect(toolNames).not.toContain("PARENT");
+		// Tools array carries the per-action contracts, so the JSON-schema
+		// fallback path must NOT be active.
 		expect(modelParams.responseSchema).toBeUndefined();
-		const prompt = modelParams.messages?.map((m) => m.content).join("\n");
-		expect(prompt).toContain("# Available Actions");
-		expect(prompt).toContain("- CHILD_A:");
-		expect(prompt).toContain("- CHILD_B:");
-		expect(prompt).not.toContain("- PARENT:");
 	});
 
 	it("uses selected plus parent contexts for sub-action execution gates", async () => {

@@ -276,8 +276,7 @@ const REPLY_TERMINAL_ACTION: Pick<
 	name: "REPLY",
 	description:
 		"Emit a user-facing reply to terminate the turn. Use this once the work is done and the model has produced the final answer.",
-	descriptionCompressed:
-		"reply to the user with text; terminates the turn",
+	descriptionCompressed: "reply to the user with text; terminates the turn",
 	parameters: [
 		{
 			name: "text",
@@ -297,8 +296,7 @@ const IGNORE_TERMINAL_ACTION: Pick<
 	| "allowAdditionalParameters"
 > = {
 	name: "IGNORE",
-	description:
-		"Terminate the turn silently. Use when no reply is appropriate.",
+	description: "Terminate the turn silently. Use when no reply is appropriate.",
 	descriptionCompressed: "terminate the turn silently; emit no reply",
 	parameters: [],
 };
@@ -312,8 +310,7 @@ const STOP_TERMINAL_ACTION: Pick<
 	| "allowAdditionalParameters"
 > = {
 	name: "STOP",
-	description:
-		"Stop the current turn immediately with a terminal stop signal.",
+	description: "Stop the current turn immediately with a terminal stop signal.",
 	descriptionCompressed: "stop the turn with a terminal stop signal",
 	parameters: [],
 };
