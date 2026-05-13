@@ -1,5 +1,6 @@
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  eliza1TierPublishStatus,
   type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
@@ -585,11 +586,18 @@ export function selectRecommendedModels(
  * tier — never a non-Eliza catalog entry, never a HF-search result.
  *
  * Resolution order:
- *   1. `FIRST_RUN_DEFAULT_MODEL_ID` when present in the catalog and in
- *      the default-eligible set.
- *   2. The first default-eligible chat entry in the catalog as a
- *      defensive fallback if the default id is somehow missing
- *      (catalog lint should prevent this; see catalog.test.ts).
+ *   1. `FIRST_RUN_DEFAULT_MODEL_ID` when present in the catalog, in the
+ *      default-eligible set, and not marked `publishStatus: "pending"`.
+ *   2. The first default-eligible, non-pending chat entry in the catalog
+ *      as a fallback when the preferred id is missing or its HF bundle
+ *      isn't published yet (elizaOS/eliza#7629). The fall-through walks
+ *      the catalog in order, so the maintainer can keep
+ *      `FIRST_RUN_DEFAULT_MODEL_ID` pointed at the *intended* default
+ *      while the publish pipeline catches up.
+ *   3. If every default-eligible tier is pending, last-resort to ANY
+ *      default-eligible tier — the device download path will fail
+ *      cleanly with a 404 rather than silently picking a private
+ *      non-Eliza model.
  *
  * Returns null only when no default-eligible entry exists at all —
  * which means the catalog is misconfigured and the caller should
@@ -599,17 +607,30 @@ export function recommendForFirstRun(
   catalog: CatalogModel[] = MODEL_CATALOG,
 ): CatalogModel | null {
   const byId = catalogById(catalog);
+  const isEligibleChat = (model: CatalogModel): boolean =>
+    !model.hiddenFromCatalog &&
+    model.runtimeRole !== "dflash-drafter" &&
+    DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
+  const publishStatusFor = (model: CatalogModel): "published" | "pending" =>
+    model.publishStatus ??
+    eliza1TierPublishStatus(model.id as Eliza1TierId);
+  const isPublishedEligibleChat = (model: CatalogModel): boolean =>
+    isEligibleChat(model) && publishStatusFor(model) === "published";
+
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
-  if (preferred && DEFAULT_ELIGIBLE_MODEL_IDS.has(preferred.id))
-    return preferred;
-  return (
-    catalog.find(
-      (model) =>
-        !model.hiddenFromCatalog &&
-        model.runtimeRole !== "dflash-drafter" &&
-        DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id),
-    ) ?? null
-  );
+  if (preferred && isPublishedEligibleChat(preferred)) return preferred;
+
+  // Preferred is missing or its bundle is still being published — walk the
+  // catalog for the first eligible chat tier whose bundle IS published.
+  const fallbackPublished = catalog.find(isPublishedEligibleChat);
+  if (fallbackPublished) return fallbackPublished;
+
+  // Every eligible tier is "pending" — last-resort to the preferred tier
+  // when it exists in the catalog, otherwise the first default-eligible
+  // chat entry. Either path lets the downloader emit a clear "manifest
+  // 404" message rather than silently picking a non-Eliza model.
+  if (preferred && isEligibleChat(preferred)) return preferred;
+  return catalog.find(isEligibleChat) ?? null;
 }
 
 export function chooseSmallerFallbackModel(
