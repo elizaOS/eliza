@@ -1,10 +1,9 @@
 """Speech-to-text shim for the cascaded baseline.
 
 The cascaded baseline transcribes a query's ``audio_bytes`` to text via
-Groq Whisper before forwarding to the agent's text path. When no audio
-is attached (text-only fixture runs) or when ``--mock`` is set, the
-shim returns the query's ground-truth transcript so smoke tests stay
-deterministic.
+Groq Whisper before forwarding to the agent's text path. Real benchmark
+runs require audio bytes and credentials; transcript passthrough is
+reserved for tests outside the CLI benchmark path.
 
 Direct-audio adapters (future work) bypass this shim entirely.
 """
@@ -66,7 +65,7 @@ class GroqWhisperSTT:
 
     def transcribe(self, query: AudioQuery) -> str:
         if query.audio_bytes is None:
-            return query.transcript
+            raise RuntimeError("GroqWhisperSTT requires real audio bytes")
         self._ensure_client()
         assert self._client is not None
         response = self._client.audio.transcriptions.create(
@@ -87,6 +86,4 @@ def build_stt(*, mock: bool) -> STTBackend:
     """Pick an STT backend based on run mode."""
     if mock:
         return TranscriptPassthroughSTT()
-    if os.environ.get("GROQ_API_KEY"):
-        return GroqWhisperSTT()
-    return TranscriptPassthroughSTT()
+    return GroqWhisperSTT()

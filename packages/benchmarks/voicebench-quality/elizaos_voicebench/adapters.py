@@ -26,8 +26,7 @@ log = logging.getLogger("elizaos_voicebench.adapters")
 class AdapterRequest:
     """Per-sample input to the agent under test.
 
-    ``prompt_text`` is the cascaded-STT transcript of ``sample.audio_bytes``
-    (or ``sample.reference_text`` in mock mode where audio is absent).
+    ``prompt_text`` is the cascaded-STT transcript of ``sample.audio_bytes``.
     ``sample`` is passed through so suite-specific prompt wrapping
     (e.g. MCQ choices) can be done by the runner before this is built.
     """
@@ -59,9 +58,8 @@ class CascadedAdapter:
     """Compose an STT provider with a text-only chat adapter.
 
     The text adapter is expected to be a simple ``async (str) -> str``
-    function. When ``audio_bytes`` is absent (mock mode) we use the
-    sample's reference transcript directly — that's the documented
-    smoke-test contract.
+    function. Audio and STT are required; benchmark runs must not fall back
+    to the reference transcript.
     """
 
     def __init__(self, *, stt: SttFn | None, text: TextFn, name: str) -> None:
@@ -72,27 +70,15 @@ class CascadedAdapter:
     async def __call__(self, request: AdapterRequest) -> AdapterResponse:
         transcript = request.prompt_text
         audio = request.sample.audio_bytes
-        if audio is not None and self._stt is not None:
-            transcript = (await self._stt(audio)).strip() or transcript
+        if audio is None:
+            raise RuntimeError("VoiceBench sample is missing real audio bytes")
+        if self._stt is None:
+            raise RuntimeError("VoiceBench requires a real STT provider")
+        transcript = (await self._stt(audio)).strip()
+        if not transcript:
+            raise RuntimeError("VoiceBench STT returned an empty transcript")
         reply = await self._text(transcript)
         return AdapterResponse(text=reply)
-
-
-# --- mock adapter for smoke tests ---
-
-
-class EchoAdapter:
-    """Deterministic adapter that returns ``sample.answer``.
-
-    Used by the smoke test so we don't need any network in CI. Scores
-    100% on MCQ / ifeval-exact suites and gives the judge a known target
-    string for open-ended suites.
-    """
-
-    name = "echo"
-
-    async def __call__(self, request: AdapterRequest) -> AdapterResponse:
-        return AdapterResponse(text=request.sample.answer)
 
 
 # --- factory ---
@@ -112,7 +98,7 @@ def build_adapter(
     """
 
     if mock or agent == "echo":
-        return EchoAdapter()
+        raise RuntimeError("Echo/mock adapter is disabled for benchmark runs")
 
     stt = _build_stt(stt_provider) if stt_provider else None
     text = _build_text_adapter(agent)
