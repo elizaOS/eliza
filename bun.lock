@@ -545,10 +545,12 @@
       "devDependencies": {
         "@tailwindcss/vite": "^4.1.18",
         "@types/react-dom": "^19.2.3",
+        "@types/uuid": "^11.0.0",
         "@vitejs/plugin-react-swc": "^4.2.2",
         "dotenv": "^17.2.3",
         "tailwindcss-animate": "^1.0.7",
         "typescript": "^6.0.3",
+        "uuid": "^14.0.0",
       },
     },
     "packages/examples/a2a": {
