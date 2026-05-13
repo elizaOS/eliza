@@ -12,6 +12,7 @@
  */
 
 import { affiliatesRepository } from "@/db/repositories/affiliates";
+import type { UsageRecord } from "@/db/repositories/usage-records";
 import {
   calculateCost,
   estimateTokens,
@@ -365,7 +366,7 @@ export async function recordUsageAnalytics(
     /** Latency in ms for trajectory logging */
     latencyMs?: number;
   } = {},
-): Promise<void> {
+): Promise<UsageRecord | null> {
   const { type = "chat", isSuccessful = true, errorMessage, content, prompt } = options;
   const provider = context.provider ?? getProviderFromModel(context.model);
   const reconciliationMetadata = {
@@ -455,10 +456,12 @@ export async function recordUsageAnalytics(
         error: trajError instanceof Error ? trajError.message : String(trajError),
       });
     }
+    return usageRecord;
   } catch (error) {
     logger.error("[AI Billing] Failed to record usage analytics", {
       error: error instanceof Error ? error.message : String(error),
     });
+    return null;
   }
 }
 

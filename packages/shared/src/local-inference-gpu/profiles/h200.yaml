@@ -21,7 +21,7 @@ nvlink: true                       # SXM has NVLink, but single-GPU only here
 bundle_recommendations:
   # Current release bundles come first. Hidden future 9B/27B recipes remain
   # below for hardware planning only, not default selection.
-  eliza-1-0_8b:
+  eliza-1-0_6b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 64
@@ -33,7 +33,7 @@ bundle_recommendations:
     estimated_decode_tps: 1100
     estimated_prefill_tps: 90000
     notes: "Tiny model on a server GPU. Useful only for batch eval."
-  eliza-1-2b:
+  eliza-1-1_7b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 32

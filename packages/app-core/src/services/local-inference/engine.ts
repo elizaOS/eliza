@@ -1488,13 +1488,25 @@ export class LocalInferenceEngine {
     const turnDetector =
       opts.turnDetector === false
         ? undefined
-        : opts.turnDetector ??
-          ((await eotMod.createBundledLiveKitTurnDetector({
+        : (opts.turnDetector ??
+          (await eotMod.createBundledLiveKitTurnDetector({
             ...(opts.turnDetectorModelDir
               ? { modelDir: opts.turnDetectorModelDir }
               : {}),
           })) ??
-            new eotMod.HeuristicEotClassifier());
+          new eotMod.HeuristicEotClassifier());
+    if (turnDetector) {
+      try {
+        // Load tokenizer/ONNX and warm one short pass while the session is
+        // arming, so the first real user pause does not pay model-load latency.
+        await turnDetector.score("yes");
+      } catch (err) {
+        throw new VoiceStartupError(
+          "missing-turn-detector",
+          `[voice] Cannot initialize semantic turn detector: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
 
     const controller = new VoiceTurnController(
       {

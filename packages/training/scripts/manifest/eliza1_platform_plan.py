@@ -19,6 +19,7 @@ try:
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
+        VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
         canonical_qwen_source_repo_error,
@@ -29,6 +30,7 @@ except ImportError:  # pragma: no cover - script execution path
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
+        VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
         canonical_qwen_source_repo_error,
@@ -36,13 +38,8 @@ except ImportError:  # pragma: no cover - script execution path
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    # 0_8b / 2b / 4b (Qwen3.5 family, the active small/mid tiers) ship Q4;
-    # the deprecated legacy Qwen3 0_6b stays on Q3 to match the existing
-    # published bundle (no new SFT runs land there).
-    "0_8b": "Q4_K_M",
     "0_6b": "Q3_K_M",
     "1_7b": "Q4_K_M",
-    "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
@@ -50,12 +47,12 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "27b-1m": "Q4_K_M",
 }
 
+TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = ("Q4_K_M", "Q6_K", "Q8_0")
+
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("32k",),
     "0_6b": ("32k",),
-    "1_7b": ("32k", "64k"),
-    "2b": ("32k", "64k"),
-    "4b": ("32k", "64k"),
+    "1_7b": ("32k",),
+    "4b": ("64k", "128k"),
     "9b": ("64k", "128k"),
     "27b": ("128k",),
     "27b-256k": ("256k",),
@@ -80,13 +77,13 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.vad",
         "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1",
-        "licenses/LICENSE.vision",
+        *(("licenses/LICENSE.vision",) if tier in {"4b", "9b", "27b", "27b-256k"} else ()),
     )
     for tier in ELIZA_1_TIERS
 }
 
 REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (
+    "0_6b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -98,7 +95,7 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-arm64-cpu",
         "windows-arm64-vulkan",
     ),
-    "2b": (
+    "1_7b": (
         "darwin-arm64-metal",
         "ios-arm64-metal",
         "linux-x64-vulkan",
@@ -122,35 +119,6 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-x64-vulkan",
         "linux-x64-cpu",
         "windows-x64-cpu",
-    ),
-    # 2b (Qwen3.5-2B-Base) — mid local tier, same backend coverage as 1_7b
-    # plus desktop CUDA (handles modern phone + mid-laptop + workstation).
-    "2b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-x64-vulkan",
-        "windows-arm64-cpu",
-        "windows-arm64-vulkan",
-    ),
-    # 4b (Qwen3.5-4B-Base) — local/workstation tier. Same backend matrix as
-    # 1_7b/2b at the manifest layer (metal/vulkan/cpu); CUDA falls out of the
-    # supported set until a per-tier dispatch report lands.
-    "4b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-x64-vulkan",
-        "windows-arm64-cpu",
-        "windows-arm64-vulkan",
     ),
     "9b": (
         "darwin-arm64-metal",
@@ -195,7 +163,9 @@ class PlatformTarget:
 class TierGgufPlan:
     tier: str
     text_quant: str
+    text_quantizations: tuple[str, ...]
     voice_quant: str
+    voice_backends: tuple[str, ...]
     contexts: tuple[str, ...]
     required_files: tuple[str, ...]
     optional_files: tuple[str, ...]
@@ -217,7 +187,11 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
     dflash_files = (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
-    vision_files = (f"vision/mmproj-{tier}.gguf",)
+    vision_files = (
+        (f"vision/mmproj-{tier}.gguf",)
+        if tier in {"4b", "9b", "27b", "27b-256k"}
+        else ()
+    )
     return (
         *text_files,
         *voice_files,
@@ -260,7 +234,9 @@ def build_plan() -> dict[str, TierGgufPlan]:
         out[tier] = TierGgufPlan(
             tier=tier,
             text_quant=TEXT_QUANT_BY_TIER[tier],
+            text_quantizations=TEXT_QUANTIZATION_MATRIX,
             voice_quant=VOICE_QUANT_BY_TIER[tier],
+            voice_backends=VOICE_BACKENDS_BY_TIER[tier],
             contexts=CONTEXTS_BY_TIER[tier],
             required_files=required_files_for_tier(tier),
             optional_files=VAD_OPTIONAL_FALLBACK_ARTIFACTS,
@@ -483,7 +459,10 @@ def render_readiness(
         "",
         "Important caveats:",
         "",
-        "- Text, TTS, ASR, and DFlash payloads are GGUF artifacts in the final plan.",
+        "- Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. "
+        "The active 0.8B/2B/4B tiers ship OmniVoice GGUF by default; 9B "
+        "also carries the legacy Kokoro fallback; 27B-class tiers ship "
+        "OmniVoice GGUF only.",
         "- VAD is a native GGML artifact at "
         "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
         "Legacy bundles may additionally carry the ONNX fallback "
@@ -525,7 +504,11 @@ def render_readiness(
                 f"## {tier}",
                 "",
                 f"- Text quant: `{tier_plan.text_quant}`",
-                f"- Voice quant: `{tier_plan.voice_quant}`",
+                "- Text quantization matrix: "
+                + ", ".join(f"`{quant}`" for quant in tier_plan.text_quantizations),
+                "- Voice backends: "
+                + ", ".join(f"`{backend}`" for backend in tier_plan.voice_backends),
+                f"- OmniVoice quant: `{tier_plan.voice_quant}`",
                 "- Contexts: "
                 + ", ".join(f"`{ctx}`" for ctx in tier_plan.contexts),
                 "- Required platform evidence: "

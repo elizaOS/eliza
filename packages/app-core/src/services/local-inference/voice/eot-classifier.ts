@@ -320,14 +320,12 @@ export class LiveKitTurnDetector implements EotClassifier {
   private readonly maxHistoryTokens: number;
   private readonly intraOpNumThreads: number;
   private readonly model: string;
-  private ready:
-    | Promise<{
-        ort: OrtModule;
-        session: OrtSession;
-        tokenizer: CallableTokenizer;
-        imEndTokenId: number;
-      }>
-    | null = null;
+  private ready: Promise<{
+    ort: OrtModule;
+    session: OrtSession;
+    tokenizer: CallableTokenizer;
+    imEndTokenId: number;
+  }> | null = null;
 
   constructor(opts: LiveKitTurnDetectorOptions = {}) {
     this.modelDir = opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
@@ -366,10 +364,7 @@ export class LiveKitTurnDetector implements EotClassifier {
     if (!tensor) {
       throw new Error("[voice] LiveKit turn detector returned no outputs.");
     }
-    const probability = probabilityFromOnnxOutput(
-      tensor,
-      loaded.imEndTokenId,
-    );
+    const probability = probabilityFromOnnxOutput(tensor, loaded.imEndTokenId);
     return turnSignalFromProbability({
       probability,
       transcript,
@@ -405,8 +400,10 @@ export class LiveKitTurnDetector implements EotClassifier {
     ]);
     const tokenizer = (await AutoTokenizer.from_pretrained(this.modelDir, {
       local_files_only: true,
-      truncation_side: "left",
     })) as CallableTokenizer;
+    (
+      tokenizer as CallableTokenizer & { truncation_side?: "left" }
+    ).truncation_side = "left";
     const imEnd = await tokenizer(LIVEKIT_IM_END_TOKEN, {
       add_special_tokens: false,
     });
@@ -498,9 +495,12 @@ function tokenIdsToBigInt64(encoded: TokenizerOutputLike): {
   }
   if (Array.isArray(ids)) {
     const flattened = ids.flat() as Array<number | bigint>;
+    const nestedWidth = Array.isArray(ids[0])
+      ? (ids[0] as Array<number | bigint>).length
+      : ids.length;
     return {
       data: toBigInt64Array(flattened),
-      dims: Array.isArray(ids[0]) ? [ids.length, flattened.length] : [1, ids.length],
+      dims: Array.isArray(ids[0]) ? [ids.length, nestedWidth] : [1, ids.length],
     };
   }
   throw new Error("[voice] unsupported tokenizer input_ids shape.");
@@ -511,10 +511,14 @@ function isTensorLike(value: unknown): value is TokenTensorLike {
 }
 
 function toBigInt64Array(
-  input: BigInt64Array | BigUint64Array | Int32Array | number[] | bigint[],
+  input: BigInt64Array | BigUint64Array | Int32Array | Array<number | bigint>,
 ): BigInt64Array {
   if (input instanceof BigInt64Array) return input;
-  return BigInt64Array.from(Array.from(input, (v) => BigInt(v)));
+  const out = new BigInt64Array(input.length);
+  for (let i = 0; i < input.length; i++) {
+    out[i] = BigInt(input[i] as number | bigint);
+  }
+  return out;
 }
 
 function probabilityFromOnnxOutput(

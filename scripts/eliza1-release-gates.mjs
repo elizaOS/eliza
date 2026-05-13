@@ -83,7 +83,15 @@ const REQUIRED_GATES = [
     id: "failover_kill",
     label: "Failover kill test",
     maxAgeHours: 72,
-    requiredFields: ["killedNode", "readinessFlipped", "trafficMoved"],
+    requiredFields: [
+      "killedNode",
+      "fallbackNode",
+      "primaryBaseUrl",
+      "fallbackBaseUrl",
+      "distinctFallbackNode",
+      "readinessFlipped",
+      "trafficMoved",
+    ],
   },
   {
     id: "cost_reconciliation",
@@ -252,8 +260,7 @@ function requireEnv(name) {
 async function probeVastStaging(evidenceDir) {
   const baseUrl = requireEnv("VAST_STAGING_BASE_URL").replace(/\/+$/, "");
   const apiKey = process.env.VAST_STAGING_API_KEY?.trim() || "not-required";
-  const model =
-    process.env.VAST_STAGING_MODEL?.trim() || "vast/eliza-1-4b";
+  const model = process.env.VAST_STAGING_MODEL?.trim() || "vast/eliza-1-4b";
   const instanceId = process.env.VAST_STAGING_INSTANCE_ID?.trim() || "unknown";
   const started = performance.now();
 

@@ -21,15 +21,13 @@ const MODELS_ROOT = path.join(
   "local-inference",
   "models",
 );
-const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-2b.bundle");
+const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_6b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-2b-64k.gguf"),
-  path.join(MODELS_ROOT, "qwen3.5-4b-dflash.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_6b-64k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_6b-32k.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
-  path.join(DEFAULT_BUNDLE, "dflash", "drafter-2b.gguf"),
-  path.join(MODELS_ROOT, "qwen3.5-4b-dflash-drafter-q4.repaired.gguf"),
-  path.join(MODELS_ROOT, "qwen3.5-4b-dflash-drafter-q4.gguf"),
+  path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_6b.gguf"),
 );
 const DEFAULT_BIN = path.join(
   process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza"),
@@ -120,7 +118,7 @@ function parseArgs(argv) {
           "Usage: node packages/inference/verify/dflash_drafter_runtime_smoke.mjs [options]",
           "",
           "Options:",
-          "  --target-model <path>          Target GGUF (default: local qwen3.5 DFlash target)",
+          "  --target-model <path>          Target GGUF (default: local eliza-1-0_6b bundle)",
           "  --drafter-model <path>         DFlash drafter GGUF",
           "  --spec-binary <path>           llama-speculative-simple binary to test",
           "  --reference-binary <path>      Optional known-DFlash binary to compare loader errors",
@@ -264,6 +262,33 @@ function pushDraftProbabilityFlag(args, skippedCliFlags, features, value) {
   );
 }
 
+const GGUF_READ_LIMIT_BYTES = 512 * 1024 * 1024;
+
+function readGgufPrefix(file) {
+  const stat = fs.statSync(file);
+  const size = Math.min(stat.size, GGUF_READ_LIMIT_BYTES);
+  const fd = fs.openSync(file, "r");
+  try {
+    const out = Buffer.allocUnsafe(size);
+    const read = fs.readSync(fd, out, 0, size, 0);
+    return {
+      buffer: read === size ? out : out.subarray(0, read),
+      sizeBytes: stat.size,
+    };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function assertAvailable(buf, offset, bytes, file) {
+  if (offset + bytes <= buf.length) return;
+  throw new Error(
+    `${file} GGUF metadata/tensor directory exceeds ${Math.floor(
+      GGUF_READ_LIMIT_BYTES / 1024 / 1024,
+    )} MiB verifier read window`,
+  );
+}
+
 function serializeCliFeatures(features) {
   if (!features) return null;
   return {
@@ -293,6 +318,7 @@ function serializeCliFeatures(features) {
 }
 
 function readU64(buf, off) {
+  assertAvailable(buf, off.value, 8, "GGUF");
   const value = buf.readBigUInt64LE(off.value);
   off.value += 8;
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -305,6 +331,7 @@ function readString(buf, off) {
   const len = readU64(buf, off);
   const start = off.value;
   const end = start + len;
+  assertAvailable(buf, start, len, "GGUF");
   off.value = end;
   return buf.toString("utf8", start, end);
 }
@@ -314,15 +341,18 @@ function skipScalar(buf, off, type) {
     case 0:
     case 1:
     case 7:
+      assertAvailable(buf, off.value, 1, "GGUF");
       off.value += 1;
       return;
     case 2:
     case 3:
+      assertAvailable(buf, off.value, 2, "GGUF");
       off.value += 2;
       return;
     case 4:
     case 5:
     case 6:
+      assertAvailable(buf, off.value, 4, "GGUF");
       off.value += 4;
       return;
     case 8:
@@ -331,6 +361,7 @@ function skipScalar(buf, off, type) {
     case 10:
     case 11:
     case 12:
+      assertAvailable(buf, off.value, 8, "GGUF");
       off.value += 8;
       return;
     default:
@@ -341,41 +372,49 @@ function skipScalar(buf, off, type) {
 function readScalar(buf, off, type) {
   switch (type) {
     case 0: {
+      assertAvailable(buf, off.value, 1, "GGUF");
       const value = buf.readUInt8(off.value);
       off.value += 1;
       return value;
     }
     case 1: {
+      assertAvailable(buf, off.value, 1, "GGUF");
       const value = buf.readInt8(off.value);
       off.value += 1;
       return value;
     }
     case 2: {
+      assertAvailable(buf, off.value, 2, "GGUF");
       const value = buf.readUInt16LE(off.value);
       off.value += 2;
       return value;
     }
     case 3: {
+      assertAvailable(buf, off.value, 2, "GGUF");
       const value = buf.readInt16LE(off.value);
       off.value += 2;
       return value;
     }
     case 4: {
+      assertAvailable(buf, off.value, 4, "GGUF");
       const value = buf.readUInt32LE(off.value);
       off.value += 4;
       return value;
     }
     case 5: {
+      assertAvailable(buf, off.value, 4, "GGUF");
       const value = buf.readInt32LE(off.value);
       off.value += 4;
       return value;
     }
     case 6: {
+      assertAvailable(buf, off.value, 4, "GGUF");
       const value = buf.readFloatLE(off.value);
       off.value += 4;
       return value;
     }
     case 7: {
+      assertAvailable(buf, off.value, 1, "GGUF");
       const value = buf.readUInt8(off.value) !== 0;
       off.value += 1;
       return value;
@@ -387,6 +426,7 @@ function readScalar(buf, off, type) {
       return value;
     }
     case 11: {
+      assertAvailable(buf, off.value, 8, "GGUF");
       const value = buf.readBigInt64LE(off.value);
       off.value += 8;
       return value >= BigInt(Number.MIN_SAFE_INTEGER) &&
@@ -395,6 +435,7 @@ function readScalar(buf, off, type) {
         : value.toString();
     }
     case 12: {
+      assertAvailable(buf, off.value, 8, "GGUF");
       const value = buf.readDoubleLE(off.value);
       off.value += 8;
       return value;
@@ -413,6 +454,7 @@ function readValue(buf, off, type, capture = true) {
     return readScalar(buf, off, type);
   }
 
+  assertAvailable(buf, off.value, 4, "GGUF");
   const innerType = buf.readUInt32LE(off.value);
   off.value += 4;
   const len = readU64(buf, off);
@@ -433,8 +475,9 @@ function readValue(buf, off, type, capture = true) {
 }
 
 function parseGguf(file) {
-  const buf = fs.readFileSync(file);
+  const { buffer: buf, sizeBytes } = readGgufPrefix(file);
   const off = { value: 0 };
+  assertAvailable(buf, 0, 16, file);
   const magic = buf.toString("utf8", 0, 4);
   off.value += 4;
   if (magic !== "GGUF") {
@@ -450,6 +493,7 @@ function parseGguf(file) {
 
   for (let i = 0; i < kvCount; i += 1) {
     const key = readString(buf, off);
+    assertAvailable(buf, off.value, 4, file);
     const type = buf.readUInt32LE(off.value);
     off.value += 4;
     const valueStart = off.value;
@@ -469,12 +513,14 @@ function parseGguf(file) {
   const tensors = [];
   for (let i = 0; i < tensorCount; i += 1) {
     const name = readString(buf, off);
+    assertAvailable(buf, off.value, 4, file);
     const nDims = buf.readUInt32LE(off.value);
     off.value += 4;
     const dims = [];
     for (let d = 0; d < nDims; d += 1) {
       dims.push(readU64(buf, off));
     }
+    assertAvailable(buf, off.value, 4, file);
     const type = buf.readUInt32LE(off.value);
     off.value += 4;
     const tensorOffset = readU64(buf, off);
@@ -483,7 +529,7 @@ function parseGguf(file) {
 
   return {
     file,
-    sizeBytes: fs.statSync(file).size,
+    sizeBytes,
     version,
     tensorCount,
     kvCount,

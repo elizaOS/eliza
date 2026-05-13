@@ -208,4 +208,3 @@ PLAN_ACTIONS({"action":"TASKS_SPAWN_AGENT","parameters":{}})`;
 		expect(extractPlanActionsFromContent(text)).toBeNull();
 	});
 });
-

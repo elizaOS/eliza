@@ -44,11 +44,13 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses elizaos HuggingFace repos for every visible Eliza-1 tier", () => {
+  it("uses the single elizaos HuggingFace repo for every visible Eliza-1 tier", () => {
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
-      expect(model.hfRepo).toBe(`elizaos/${model.id}`);
+      const tier = model.id.slice("eliza-1-".length);
+      expect(model.hfRepo).toBe("elizaos/eliza-1");
+      expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
       expect(buildHuggingFaceResolveUrl(model)).toContain(
-        `/elizaos/${model.id}/resolve/main/`,
+        `/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
       );
     }
   });
@@ -88,13 +90,11 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.8B/0.6B/1.7B/2B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B/2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
       "eliza-1-0_8b": 32768,
-      "eliza-1-0_6b": 32768,
-      "eliza-1-1_7b": 32768,
       "eliza-1-2b": 32768,
       "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
@@ -191,19 +191,39 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("records 27b-1m text source provenance (vision shipped only on 9b/27b/27b-256k)", () => {
+  it("declares the text quantization matrix and voice boundary by tier", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const model = findCatalogModel(id);
+      expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
+      expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
+        "q4_k_m",
+        "q6_k",
+        "q8_0",
+      ]);
+    }
+
+    expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
+      "kokoro",
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+  });
+
+  it("records 27b-1m text source provenance (vision shipped only on 4b/9b/27b/27b-256k)", () => {
     const model = findCatalogModel("eliza-1-27b-1m");
     expect(model?.sourceModel?.finetuned).toBe(false);
     const components = model?.sourceModel?.components;
-    // The text component for the 27b family points at the published
-    // `batiai/Qwen3.6-27B-GGUF` mirror with the canonical Q4_K_M file.
     expect(components?.text).toEqual({
       repo: "batiai/Qwen3.6-27B-GGUF",
       file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
     });
-    // Vision is only shipped on the 9b / 27b / 27b-256k tiers — the 1m
-    // tier intentionally omits it (KV-cache budget is the constraint at
-    // 1M context). See sourceModelForTier in shared/local-inference/catalog.ts.
+    // Vision is intentionally omitted from the 1m tier because the KV-cache
+    // budget at that window is the constraint.
     expect(components?.vision).toBeUndefined();
   });
 

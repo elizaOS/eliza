@@ -368,6 +368,35 @@ function patchModelCpp(source, rel) {
   return out;
 }
 
+function verifyDflashDrafterArchPatch(llamaCppRoot) {
+  const requiredMarkers = [
+    ["src/CMakeLists.txt", "models/dflash_draft.cpp"],
+    ["src/llama-arch.h", "LLM_ARCH_DFLASH_DRAFT"],
+    ["src/llama-arch.cpp", '"dflash-draft"'],
+    ["src/llama-hparams.h", "dflash_n_target_features"],
+    ["src/llama-model.h", "dflash_hidden_norm"],
+    ["src/models/models.h", "llama_model_dflash_draft"],
+    ["src/llama-model.cpp", "new llama_model_dflash_draft"],
+    ["src/models/dflash_draft.cpp", "llama_model_dflash_draft::load_arch_hparams"],
+  ];
+  const missing = [];
+  for (const [rel, marker] of requiredMarkers) {
+    const file = path.join(llamaCppRoot, rel);
+    if (!fs.existsSync(file)) {
+      missing.push(`${rel} (missing file)`);
+      continue;
+    }
+    if (!fs.readFileSync(file, "utf8").includes(marker)) {
+      missing.push(`${rel} (missing ${marker})`);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `[dflash-build] dflash-drafter-arch: patch verification failed: ${missing.join(", ")}`,
+    );
+  }
+}
+
 export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
   const touched = [];
   const dest = path.join(llamaCppRoot, "src", "models", "dflash_draft.cpp");
@@ -401,6 +430,7 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
   for (const [rel, transform] of transforms) {
     patchTextFile(llamaCppRoot, rel, transform, touched);
   }
+  verifyDflashDrafterArchPatch(llamaCppRoot);
   if (touched.length === 0) {
     console.log(
       "[dflash-build] dflash-draft architecture support already present",

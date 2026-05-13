@@ -36,6 +36,16 @@ PUBLISH_METADATA_DIRS = frozenset(
     {"checksums", "evidence", "evals", "licenses", "quantization"}
 )
 PUBLISH_METADATA_FILES = frozenset({"README.md", "lineage.json"})
+PUBLISHABLE_RELEASE_STATES = frozenset({"base-v1", "upload-candidate", "final"})
+REQUIRED_FINAL_FLAGS = (
+    "weights",
+    "hashes",
+    "evals",
+    "licenses",
+    "kernelDispatchReports",
+    "platformEvidence",
+    "sizeFirstRepoIds",
+)
 
 
 @dataclass(frozen=True)
@@ -140,6 +150,49 @@ def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
     return warnings
 
 
+def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
+    evidence_path = bundle_dir / "evidence" / "release.json"
+    if not evidence_path.is_file():
+        return [f"missing release evidence: {evidence_path}"]
+    try:
+        evidence = _load_json(evidence_path)
+    except Exception as exc:  # noqa: BLE001 - operator report should keep going
+        return [f"release evidence is not readable JSON: {exc}"]
+
+    errors: list[str] = []
+    if evidence.get("tier") != tier:
+        errors.append(f"release evidence tier {evidence.get('tier')!r} does not match {tier}")
+    release_state = evidence.get("releaseState")
+    if release_state not in PUBLISHABLE_RELEASE_STATES:
+        errors.append(
+            f"releaseState {release_state!r} is not publishable "
+            f"(expected one of {sorted(PUBLISHABLE_RELEASE_STATES)})"
+        )
+    if evidence.get("publishEligible") is not True:
+        errors.append("evidence/release.json publishEligible is not true")
+
+    final = evidence.get("final")
+    if not isinstance(final, dict):
+        errors.append("evidence/release.json final block is missing or not an object")
+    else:
+        for flag in REQUIRED_FINAL_FLAGS:
+            if final.get(flag) is not True:
+                errors.append(f"evidence/release.json final.{flag} is not true")
+
+    hf = evidence.get("hf")
+    if not isinstance(hf, dict):
+        errors.append("evidence/release.json hf block is missing or not an object")
+    else:
+        if hf.get("repoId") not in {DEFAULT_REPO_ID, "elizaos/eliza-1"}:
+            errors.append(f"evidence/release.json hf.repoId is unexpected: {hf.get('repoId')!r}")
+        if hf.get("pathPrefix") != f"bundles/{tier}":
+            errors.append(
+                f"evidence/release.json hf.pathPrefix {hf.get('pathPrefix')!r} "
+                f"does not match bundles/{tier}"
+            )
+    return errors
+
+
 def plan_bundle(
     bundles_root: Path,
     tier: str,
@@ -210,6 +263,7 @@ def plan_bundle(
             errors.extend(voice_warnings)
         else:
             warnings.extend(voice_warnings)
+        errors.extend(_release_evidence_errors(bundle_dir, tier))
 
         for rel in _publishable_bundle_relpaths(bundle_dir, manifest):
             try:

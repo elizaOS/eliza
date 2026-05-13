@@ -66,22 +66,22 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
  * staging step fails loudly rather than shipping a broken APK.
  */
 const CHAT_MODEL_ELIZA_1_MOBILE = {
-  id: "eliza-1-2b",
+  id: "eliza-1-1_7b",
   displayName: "Eliza-1 2B",
   hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/2b/text/eliza-1-2b-32k.gguf",
-  ggufFile: "text/eliza-1-2b-32k.gguf",
+  hfPath: "bundles/2b/text/eliza-1-1_7b-32k.gguf",
+  ggufFile: "text/eliza-1-1_7b-32k.gguf",
   expectedMinBytes: 900 * 1024 * 1024,
   expectedMaxBytes: 1700 * 1024 * 1024,
   role: "chat",
 };
 
 const EMBEDDING_MODEL_ELIZA_1_LITE = {
-  id: "eliza-1-0_8b",
+  id: "eliza-1-0_6b",
   displayName: "Eliza-1 0.8B",
   hfRepo: "elizaos/eliza-1",
-  hfPath: "bundles/0_8b/text/eliza-1-0_8b-32k.gguf",
-  ggufFile: "text/eliza-1-0_8b-32k.gguf",
+  hfPath: "bundles/0_8b/text/eliza-1-0_6b-32k.gguf",
+  ggufFile: "text/eliza-1-0_6b-32k.gguf",
   expectedMinBytes: 300 * 1024 * 1024,
   expectedMaxBytes: 800 * 1024 * 1024,
   role: "embedding",

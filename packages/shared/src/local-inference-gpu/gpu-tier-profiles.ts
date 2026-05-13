@@ -219,7 +219,7 @@ function parseCudaCompute(cc: string): number {
   // Strip optional "sm_" prefix used by some tools.
   const cleaned = cc.replace(/^sm_/i, "").replace("_", ".");
   const val = parseFloat(cleaned);
-  return isNaN(val) ? -1 : val;
+  return Number.isNaN(val) ? -1 : val;
 }
 
 /**

@@ -33,19 +33,10 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
 
-# `0_8b`, `2b`, and `4b` are the active Qwen3.5 local tiers (the eliza-1 line is
-# Qwen3.5-only per the 2026-05-12 operator directive — the Qwen3 dense bases
-# don't work with the eliza-1 dflash spec-decode path). `0_6b` / `1_7b`
-# remain in this list as **deprecated** tier ids — the corresponding
-# elizaos/eliza-1-{0_6b,1_7b} HF repos stay public for existing downloads,
-# but their cards are marked DEPRECATED and no new SFT runs target them.
-# See packages/shared/src/local-inference/catalog.ts +
-# packages/training/scripts/training/model_registry.py.
+# The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
-    "0_8b",
     "0_6b",
     "1_7b",
-    "2b",
     "4b",
     "9b",
     "27b",
@@ -125,10 +116,8 @@ QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
     "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "4b": (
         "turboquant_q4",
         "qjl",
@@ -167,11 +156,9 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("metal", "vulkan", "cpu"),
     "0_6b": ("metal", "vulkan", "cpu"),
     "1_7b": ("metal", "vulkan", "cpu"),
-    "2b": ("metal", "vulkan", "cpu"),
-    "4b": ("metal", "vulkan", "cpu"),
+    "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
@@ -179,10 +166,8 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_8b": "Q4_K_M",
     "0_6b": "Q4_K_M",
     "1_7b": "Q4_K_M",
-    "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q8_0",
     "27b": "Q8_0",
@@ -191,8 +176,8 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("omnivoice",),
-    "2b": ("omnivoice",),
+    "0_6b": ("omnivoice",),
+    "1_7b": ("omnivoice",),
     "4b": ("omnivoice",),
     # 9B is the boundary tier: laptop installs use Kokoro, workstation/server
     # installs can use OmniVoice cloning when the heavier assets are present.

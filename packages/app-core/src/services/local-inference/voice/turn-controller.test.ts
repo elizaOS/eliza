@@ -16,6 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StubOmniVoiceBackend } from "./engine-bridge";
+import type { EotClassifier } from "./eot-classifier";
 import { InMemoryAudioSink } from "./ring-buffer";
 import { VoiceScheduler } from "./scheduler";
 import {
@@ -154,11 +155,17 @@ interface Harness {
     speculativeAbort: number;
     speculativePromoted: VoiceTurnOutcome[];
     turnComplete: VoiceTurnOutcome[];
+    turnSuppressed: Array<{
+      transcript: string;
+      probability: number;
+    }>;
     errors: Error[];
   };
 }
 
-function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
+function makeHarness(
+  opts: { speculatePauseMs?: number; turnDetector?: EotClassifier } = {},
+): Harness {
   const vad = new FakeVad();
   const transcriber = new FakeTranscriber();
   const scheduler = makeScheduler();
@@ -170,6 +177,7 @@ function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
     speculativeAbort: 0,
     speculativePromoted: [],
     turnComplete: [],
+    turnSuppressed: [],
     errors: [],
   };
   const controller = new VoiceTurnController(
@@ -178,6 +186,7 @@ function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
       transcriber,
       scheduler,
       prewarm,
+      ...(opts.turnDetector ? { turnDetector: opts.turnDetector } : {}),
       generate: (request) => {
         generateCalls.push(request);
         return new Promise<VoiceTurnOutcome>((resolve, reject) => {
@@ -207,6 +216,11 @@ function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
       },
       onSpeculativePromoted: (o) => events.speculativePromoted.push(o),
       onTurnComplete: (o) => events.turnComplete.push(o),
+      onTurnSuppressed: (transcript, signal) =>
+        events.turnSuppressed.push({
+          transcript,
+          probability: signal.endOfTurnProbability,
+        }),
       onError: (e) => events.errors.push(e),
     },
   );
@@ -256,6 +270,40 @@ describe("VoiceTurnController", () => {
       final: false,
     });
     expect(h.events.speculativeStart).toEqual(["turn on the lights"]);
+  });
+
+  it("attaches semantic turn signal to speculative generate requests", async () => {
+    const h = makeHarness({
+      speculatePauseMs: 300,
+      turnDetector: { score: async () => 0.95 },
+    });
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.setPartial("turn on the lights");
+    h.vad.emit(vadEvent({ type: "speech-pause", pauseDurationMs: 400 }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.generateCalls).toHaveLength(1);
+    expect(h.generateCalls[0].turnSignal).toMatchObject({
+      endOfTurnProbability: 0.95,
+      nextSpeaker: "agent",
+      agentShouldSpeak: true,
+    });
+  });
+
+  it("suppresses speculative generation when turn detector says user continues", async () => {
+    const h = makeHarness({
+      speculatePauseMs: 300,
+      turnDetector: { score: async () => 0.1 },
+    });
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.setPartial("can you check the");
+    h.vad.emit(vadEvent({ type: "speech-pause", pauseDurationMs: 400 }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.generateCalls).toHaveLength(0);
+    expect(h.events.turnSuppressed).toEqual([
+      { transcript: "can you check the", probability: 0.1 },
+    ]);
   });
 
   it("aborts the speculative generate when speech resumes (speech-active)", () => {
@@ -337,6 +385,21 @@ describe("VoiceTurnController", () => {
       transcript: "good morning",
       final: true,
     });
+  });
+
+  it("suppresses final generation when semantic turn detector says the next speaker is user", async () => {
+    const h = makeHarness({
+      turnDetector: { score: async () => 0.15 },
+    });
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.finalText = "can you look at the";
+    h.vad.emit(vadEvent({ type: "speech-end" }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.generateCalls).toHaveLength(0);
+    expect(h.events.turnSuppressed).toEqual([
+      { transcript: "can you look at the", probability: 0.15 },
+    ]);
   });
 
   it("passes transcript source metadata into speculative and final generate requests", async () => {

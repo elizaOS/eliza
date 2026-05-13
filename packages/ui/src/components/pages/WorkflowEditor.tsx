@@ -23,6 +23,7 @@ import { client } from "../../api";
 import {
   isMissingCredentialsResponse,
   type WorkflowDefinition,
+  type WorkflowDefinitionGenerateResponse,
 } from "../../api/client-types-chat";
 import { useDebouncedValue } from "../../hooks/useDebouncedValue";
 import { useModalState } from "../../hooks/useModalState";
@@ -140,7 +141,7 @@ export function WorkflowEditor({
     const prompt = generatorPrompt.trim();
     if (!prompt) return;
     await generatorModal.submit(async () => {
-      let res;
+      let res: WorkflowDefinitionGenerateResponse;
       try {
         res = await client.generateWorkflowDefinition({
           prompt,

@@ -7,7 +7,7 @@
  * nvidia-smi is never invoked — `detectNvidiaGpu` falls back to null
  * gracefully in CI (binary not present / no NVIDIA driver).
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { autoSelectProfile, detectNvidiaGpu } from "../gpu-tier-detect.js";
 import {
@@ -16,6 +16,15 @@ import {
   getGpuProfile,
   selectBestProfile,
 } from "../gpu-tier-profiles.js";
+
+function mustGetGpuProfile(id: string) {
+  const profile = getGpuProfile(id);
+  expect(profile).not.toBeNull();
+  if (!profile) {
+    throw new Error(`Missing GPU profile fixture: ${id}`);
+  }
+  return profile;
+}
 
 // ---------------------------------------------------------------------------
 // 1. GPU_PROFILES registry — all 4 expected ids present
@@ -53,16 +62,16 @@ describe("getGpuProfile", () => {
   it("returns the rtx-4090 profile with correct fields", () => {
     const p = getGpuProfile("rtx-4090");
     expect(p).not.toBeNull();
-    expect(p!.id).toBe("rtx-4090");
-    expect(p!.display_name).toBe("NVIDIA RTX 4090");
-    expect(p!.vram_gb).toBe(24);
-    expect(p!.cuda_compute).toBe("8.9");
-    expect(p!.features).toContain("fp8");
-    expect(p!.features).not.toContain("fp4");
-    expect(p!.ctx_size_tokens).toBe(65536);
-    expect(p!.dflash.enabled).toBe(true);
-    expect(p!.dflash.drafter_tier).toBe("0_8b");
-    expect(p!.dflash.speculative_window).toBe(6);
+    expect(p?.id).toBe("rtx-4090");
+    expect(p?.display_name).toBe("NVIDIA RTX 4090");
+    expect(p?.vram_gb).toBe(24);
+    expect(p?.cuda_compute).toBe("8.9");
+    expect(p?.features).toContain("fp8");
+    expect(p?.features).not.toContain("fp4");
+    expect(p?.ctx_size_tokens).toBe(65536);
+    expect(p?.dflash.enabled).toBe(true);
+    expect(p?.dflash.drafter_tier).toBe("0_8b");
+    expect(p?.dflash.speculative_window).toBe(6);
   });
 
   it("returns null for an unknown profile id", () => {
@@ -80,25 +89,25 @@ describe("selectBestProfile", () => {
   it("selects rtx-3090 for 24 GB VRAM at compute 8.6", () => {
     const p = selectBestProfile(24, "8.6");
     expect(p).not.toBeNull();
-    expect(p!.id).toBe("rtx-3090");
+    expect(p?.id).toBe("rtx-3090");
   });
 
   it("selects rtx-4090 for 24 GB VRAM at compute 8.9", () => {
     const p = selectBestProfile(24, "8.9");
     expect(p).not.toBeNull();
-    expect(p!.id).toBe("rtx-4090");
+    expect(p?.id).toBe("rtx-4090");
   });
 
   it("selects rtx-5090 for 32 GB VRAM at compute 12.0", () => {
     const p = selectBestProfile(32, "12.0");
     expect(p).not.toBeNull();
-    expect(p!.id).toBe("rtx-5090");
+    expect(p?.id).toBe("rtx-5090");
   });
 
   it("selects h200 for 141 GB VRAM at compute 9.0", () => {
     const p = selectBestProfile(141, "9.0");
     expect(p).not.toBeNull();
-    expect(p!.id).toBe("h200");
+    expect(p?.id).toBe("h200");
   });
 
   // ---------------------------------------------------------------------------
@@ -125,7 +134,7 @@ describe("selectBestProfile", () => {
     // The key assertion is: h200 (141 > 50) is excluded and rtx-5090 (cc 12.0 > 9.0) is excluded.
     const p = selectBestProfile(50, "9.0");
     expect(p).not.toBeNull();
-    expect(["rtx-3090", "rtx-4090"]).toContain(p!.id);
+    expect(["rtx-3090", "rtx-4090"]).toContain(p?.id);
   });
 });
 
@@ -135,7 +144,7 @@ describe("selectBestProfile", () => {
 
 describe("buildLlamaCppArgs", () => {
   it("rtx-3090 includes --n-gpu-layers 99 and --flash-attn", () => {
-    const profile = getGpuProfile("rtx-3090")!;
+    const profile = mustGetGpuProfile("rtx-3090");
     const args = buildLlamaCppArgs(profile);
 
     const nglIdx = args.indexOf("--n-gpu-layers");
@@ -146,7 +155,7 @@ describe("buildLlamaCppArgs", () => {
   });
 
   it("rtx-3090 includes --ctx-size 32768", () => {
-    const profile = getGpuProfile("rtx-3090")!;
+    const profile = mustGetGpuProfile("rtx-3090");
     const args = buildLlamaCppArgs(profile);
 
     const ctxIdx = args.indexOf("--ctx-size");
@@ -155,24 +164,24 @@ describe("buildLlamaCppArgs", () => {
   });
 
   it("rtx-3090 does not include --no-mmap (use_mmap is true)", () => {
-    const profile = getGpuProfile("rtx-3090")!;
+    const profile = mustGetGpuProfile("rtx-3090");
     expect(buildLlamaCppArgs(profile)).not.toContain("--no-mmap");
   });
 
   it("rtx-3090 does not include --numa (numa is false)", () => {
-    const profile = getGpuProfile("rtx-3090")!;
+    const profile = mustGetGpuProfile("rtx-3090");
     expect(buildLlamaCppArgs(profile)).not.toContain("--numa");
   });
 
   it("h200 includes --no-mmap and --numa (use_mmap=false, numa=true)", () => {
-    const profile = getGpuProfile("h200")!;
+    const profile = mustGetGpuProfile("h200");
     const args = buildLlamaCppArgs(profile);
     expect(args).toContain("--no-mmap");
     expect(args).toContain("--numa");
   });
 
   it("overrides are applied — n_gpu_layers override changes the flag", () => {
-    const profile = getGpuProfile("rtx-4090")!;
+    const profile = mustGetGpuProfile("rtx-4090");
     const args = buildLlamaCppArgs(profile, { n_gpu_layers: 32 });
 
     const nglIdx = args.indexOf("--n-gpu-layers");
@@ -181,7 +190,7 @@ describe("buildLlamaCppArgs", () => {
   });
 
   it("ctx_size_tokens override changes the --ctx-size flag", () => {
-    const profile = getGpuProfile("rtx-4090")!;
+    const profile = mustGetGpuProfile("rtx-4090");
     const args = buildLlamaCppArgs(profile, { ctx_size_tokens: 8192 });
 
     const ctxIdx = args.indexOf("--ctx-size");
@@ -227,11 +236,11 @@ describe("detectNvidiaGpu", () => {
 describe("autoSelectProfile", () => {
   beforeEach(() => {
     // Ensure the env override is not set for most tests.
-    delete process.env["ELIZA_GPU_PROFILE"];
+    delete process.env.ELIZA_GPU_PROFILE;
   });
 
   afterEach(() => {
-    delete process.env["ELIZA_GPU_PROFILE"];
+    delete process.env.ELIZA_GPU_PROFILE;
   });
 
   it("returns null gracefully when no GPU is detected (CI path)", () => {
@@ -251,14 +260,14 @@ describe("autoSelectProfile", () => {
   });
 
   it("respects ELIZA_GPU_PROFILE env override — returns the named profile", () => {
-    process.env["ELIZA_GPU_PROFILE"] = "rtx-5090";
+    process.env.ELIZA_GPU_PROFILE = "rtx-5090";
     const result = autoSelectProfile();
     expect(result).not.toBeNull();
-    expect(result!.id).toBe("rtx-5090");
+    expect(result?.id).toBe("rtx-5090");
   });
 
   it("returns null when ELIZA_GPU_PROFILE is set to an unknown id", () => {
-    process.env["ELIZA_GPU_PROFILE"] = "a100-sxm";
+    process.env.ELIZA_GPU_PROFILE = "a100-sxm";
     expect(autoSelectProfile()).toBeNull();
   });
 });
@@ -269,26 +278,26 @@ describe("autoSelectProfile", () => {
 
 describe("profile data integrity", () => {
   it("rtx-3090 has no fp8 or fp4 features", () => {
-    const p = getGpuProfile("rtx-3090")!;
+    const p = mustGetGpuProfile("rtx-3090");
     expect(p.features).not.toContain("fp8");
     expect(p.features).not.toContain("fp4");
   });
 
   it("rtx-5090 has fp8 and fp4 features (Blackwell)", () => {
-    const p = getGpuProfile("rtx-5090")!;
+    const p = mustGetGpuProfile("rtx-5090");
     expect(p.features).toContain("fp8");
     expect(p.features).toContain("fp4");
   });
 
   it("h200 has fp8 but not fp4 (Hopper)", () => {
-    const p = getGpuProfile("h200")!;
+    const p = mustGetGpuProfile("h200");
     expect(p.features).toContain("fp8");
     expect(p.features).not.toContain("fp4");
   });
 
   it("h200 has the largest ctx_size_tokens among the four profiles", () => {
     const sizes = Object.values(GPU_PROFILES).map((p) => p.ctx_size_tokens);
-    const h200Size = getGpuProfile("h200")!.ctx_size_tokens;
+    const h200Size = getGpuProfile("h200")?.ctx_size_tokens;
     expect(h200Size).toBe(Math.max(...sizes));
   });
 
@@ -331,8 +340,8 @@ describe("profile data integrity", () => {
   });
 
   it("rtx-5090 has a higher speculative_window than rtx-3090", () => {
-    const w3090 = getGpuProfile("rtx-3090")!.dflash.speculative_window;
-    const w5090 = getGpuProfile("rtx-5090")!.dflash.speculative_window;
+    const w3090 = getGpuProfile("rtx-3090")?.dflash.speculative_window;
+    const w5090 = getGpuProfile("rtx-5090")?.dflash.speculative_window;
     expect(w5090).toBeGreaterThan(w3090);
   });
 });

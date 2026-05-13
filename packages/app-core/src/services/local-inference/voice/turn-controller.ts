@@ -41,8 +41,8 @@ import type { BargeInController } from "./barge-in";
 import {
   EOT_MID_CLAUSE_THRESHOLD,
   type EotClassifier,
-  type VoiceTurnSignal,
   turnSignalFromProbability,
+  type VoiceTurnSignal,
 } from "./eot-classifier";
 import type { VoiceScheduler } from "./scheduler";
 import type {
@@ -173,9 +173,11 @@ export class VoiceTurnController {
   /** A finalize() in progress (awaiting `transcriber.flush()` + generate). */
   private finalizing: Promise<void> | null = null;
   private latestPartial = "";
-  private latestTurnSignal:
-    | { transcript: string; signal: VoiceTurnSignal; sequence: number }
-    | null = null;
+  private latestTurnSignal: {
+    transcript: string;
+    signal: VoiceTurnSignal;
+    sequence: number;
+  } | null = null;
   private turnSignalSequence = 0;
   private started = false;
   private vadUnsub: (() => void) | null = null;

@@ -12,7 +12,12 @@
  */
 
 /** Agent slot ids the runtime maps to a local model. */
-export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";
+export type AgentModelSlot =
+  | "TEXT_SMALL"
+  | "TEXT_LARGE"
+  | "TEXT_EMBEDDING"
+  | "TEXT_TO_SPEECH"
+  | "TRANSCRIPTION";
 
 /** Subset of `AgentModelSlot` that participates in text generation. */
 export type TextGenerationSlot = Extract<
@@ -24,6 +29,8 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
   "TEXT_EMBEDDING",
+  "TEXT_TO_SPEECH",
+  "TRANSCRIPTION",
 ];
 
 export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
@@ -175,6 +182,13 @@ export interface LocalRuntimeOptimizations {
   contBatching?: boolean;
   /** Unified KV cache toggle (`--kv-unified` / `--no-kv-unified`). */
   kvUnified?: boolean;
+  /**
+   * Number of runtime context checkpoints the cache bridge should keep for
+   * interruption/resume. Maps to the fused llama-server checkpoint support.
+   */
+  ctxCheckpoints?: number;
+  /** Token interval between saved context checkpoints. */
+  ctxCheckpointInterval?: number;
   /** Host tensor op offload toggle (`--op-offload` / `--no-op-offload`). */
   opOffload?: boolean;
   /**
@@ -193,6 +207,11 @@ export interface LocalRuntimeOptimizations {
   alias?: string;
   /** `-fa on` (flash attention). Always on for DFlash. */
   flashAttention?: boolean;
+  /**
+   * Bundle-level opt-in for native structured DFlash event frames. Runtime
+   * support is still capability-probed before enabling the event path.
+   */
+  nativeDflashEvents?: boolean;
   /**
    * Specialised kernels this model requires from the llama-server fork.
    * The dispatcher uses this to pick `llama-server` over `node-llama-cpp`
@@ -252,10 +271,32 @@ export type TokenizerFamily =
   | "sentencepiece"
   | (string & {});
 
+export type CatalogHub = "huggingface" | "modelscope";
+
+export type CatalogQuantizationId = "q4_k_m" | "q6_k" | "q8_0";
+
+export interface CatalogQuantizationVariant {
+  id: CatalogQuantizationId;
+  label: "4-bit" | "6-bit" | "8-bit";
+  ggufFile: string;
+  sizeGb: number;
+  minRamGb: number;
+  status: "published" | "planned";
+}
+
+export interface CatalogQuantization {
+  defaultVariantId: CatalogQuantizationId;
+  variants: CatalogQuantizationVariant[];
+}
+
+export type CatalogQuantizationMatrix = CatalogQuantization;
+
 export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
+  /** Hosting backend. Defaults to Hugging Face when omitted. */
+  hub?: CatalogHub;
   /** HuggingFace repo slug, e.g. "elizaos/eliza-1". */
   hfRepo: string;
   /**
@@ -298,6 +339,8 @@ export interface CatalogModel {
     | "24B"
     | "27B"
     | "32B";
+  /** Optional human-facing parameter label when `params` is normalized. */
+  parameterLabel?: string;
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */
@@ -320,6 +363,10 @@ export interface CatalogModel {
   contextLength?: number;
   /** Default GPU offload strategy for this model. */
   gpuLayers?: "auto" | number;
+  /** Optional recommended hardware profile id for copy/UI sorting. */
+  gpuProfile?: string;
+  /** Available text quantization variants for this tier. */
+  quantization?: CatalogQuantization;
   /**
    * Tokenizer/vocabulary family this GGUF emits. Required for any entry
    * that participates in DFlash pairing.

@@ -19,6 +19,7 @@ export class VoiceStartupError extends Error {
     | "missing-speaker-preset"
     | "missing-bundle-root"
     | "missing-fused-build"
+    | "missing-turn-detector"
     | "already-started"
     | "not-started";
 

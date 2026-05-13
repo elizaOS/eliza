@@ -53,6 +53,8 @@ function parseArgs(argv) {
     failoverFallbackUrl: process.env.ELIZA1_FAILOVER_FALLBACK_URL?.trim() || "",
     failoverKillCommand: process.env.ELIZA1_FAILOVER_KILL_COMMAND?.trim() || "",
     failoverKilledNode: process.env.ELIZA1_FAILOVER_KILLED_NODE?.trim() || "",
+    failoverFallbackNode:
+      process.env.ELIZA1_FAILOVER_FALLBACK_NODE?.trim() || "",
     runLive: true,
     runSmoke: true,
     runParity: true,
@@ -90,6 +92,8 @@ function parseArgs(argv) {
     else if (arg === "--failover-kill-command")
       args.failoverKillCommand = next();
     else if (arg === "--failover-killed-node") args.failoverKilledNode = next();
+    else if (arg === "--failover-fallback-node")
+      args.failoverFallbackNode = next();
     else if (arg === "--only") {
       const selected = new Set(
         next()
@@ -666,11 +670,21 @@ async function runSoak(args) {
 }
 
 async function runFailover(args) {
-  if (!args.failoverFallbackUrl || !args.failoverKillCommand) {
+  if (
+    !args.failoverFallbackUrl ||
+    !args.failoverKillCommand ||
+    !args.failoverFallbackNode
+  ) {
     throw new Error(
-      "failover requires --failover-fallback-url and --failover-kill-command",
+      "failover requires --failover-fallback-url, --failover-fallback-node, and --failover-kill-command",
     );
   }
+  const primaryBaseUrl = args.baseUrl.replace(/\/+$/, "");
+  const fallbackBaseUrl = args.failoverFallbackUrl.replace(/\/+$/, "");
+  const killedNode = args.failoverKilledNode || args.instanceId;
+  const distinctFallbackNode =
+    fallbackBaseUrl !== primaryBaseUrl &&
+    args.failoverFallbackNode !== killedNode;
   const baseline = await chatCompletion(args, {
     model: args.model,
     messages: [
@@ -702,7 +716,7 @@ async function runFailover(args) {
       max_tokens: 12,
       stream: false,
     },
-    args.failoverFallbackUrl.replace(/\/+$/, ""),
+    fallbackBaseUrl,
   );
 
   const readinessFlipped = baseline.ok && !primaryAfter.ok;
@@ -711,9 +725,16 @@ async function runFailover(args) {
     fallbackAfter.content.toLowerCase().includes("failover-fallback");
   const evidence = {
     gate: "failover_kill",
-    status: readinessFlipped && trafficMoved ? "pass" : "fail",
+    status:
+      readinessFlipped && trafficMoved && distinctFallbackNode
+        ? "pass"
+        : "fail",
     completedAt: new Date().toISOString(),
-    killedNode: args.failoverKilledNode || args.instanceId,
+    killedNode,
+    fallbackNode: args.failoverFallbackNode,
+    primaryBaseUrl,
+    fallbackBaseUrl,
+    distinctFallbackNode,
     readinessFlipped,
     trafficMoved,
     primaryBeforeStatus: baseline.status,

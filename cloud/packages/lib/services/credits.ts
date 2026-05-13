@@ -56,7 +56,7 @@ export class InsufficientCreditsError extends Error {
 export interface CreditReservation {
   reservedAmount: number;
   reservationTransactionId?: string | null;
-  reconcile: (actualCost: number) => Promise<CreditReconciliationResult>;
+  reconcile: (actualCost: number) => Promise<CreditReconciliationResult | void>;
 }
 
 export interface CreditReconciliationResult {
@@ -903,13 +903,7 @@ export class CreditsService {
     return {
       reservedAmount: 0,
       reservationTransactionId: null,
-      reconcile: async (actualCost: number) => ({
-        reservedAmount: 0,
-        actualCost,
-        reservationTransactionId: null,
-        settlementTransactionIds: [],
-        adjustmentType: "none",
-      }),
+      reconcile: async () => {},
     };
   }
 

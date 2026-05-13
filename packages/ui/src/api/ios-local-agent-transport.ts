@@ -12,7 +12,10 @@ let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
 let globalFetchBridgeInstalled = false;
 let originalFetch: typeof fetch | null = null;
-let fullBunRuntime: Promise<FullBunRuntimePlugin | null> | null = null;
+let fullBunRuntime:
+  | Promise<FullBunRuntimePlugin | null>
+  | PrimedFullBunRuntime
+  | null = null;
 
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
@@ -44,6 +47,21 @@ interface FullBunRuntimePlugin {
     method: string;
     args?: unknown;
   }): Promise<{ result: unknown }>;
+}
+
+interface PrimedFullBunRuntime {
+  kind: "primed";
+  runtime: FullBunRuntimePlugin | null;
+}
+
+function isPrimedFullBunRuntime(
+  value: typeof fullBunRuntime,
+): value is PrimedFullBunRuntime {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as { kind?: unknown }).kind === "primed"
+  );
 }
 
 interface FullBunRuntimeModule {
@@ -177,6 +195,9 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
     }
     return null;
   }
+  if (isPrimedFullBunRuntime(fullBunRuntime)) {
+    return fullBunRuntime.runtime;
+  }
   fullBunRuntime ??= (async () => {
     try {
       // Resolve via a variable so the typechecker doesn't require the (often
@@ -219,6 +240,9 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
     }
   })();
   try {
+    if (isPrimedFullBunRuntime(fullBunRuntime)) {
+      return fullBunRuntime.runtime;
+    }
     const runtime = await fullBunRuntime;
     if (!runtime) fullBunRuntime = null;
     return runtime;
@@ -226,6 +250,13 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
     fullBunRuntime = null;
     throw error;
   }
+}
+
+export function primeIosFullBunRuntime(runtime: unknown): void {
+  fullBunRuntime = {
+    kind: "primed",
+    runtime: runtime as FullBunRuntimePlugin | null,
+  };
 }
 
 async function tryFullBunNativeRequest(

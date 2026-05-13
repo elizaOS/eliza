@@ -88,8 +88,30 @@ def test_schema_version_constant():
 
 
 def test_eliza1_tier_ids_are_canonical():
-    assert ELIZA_1_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+    assert ELIZA_1_TIERS == (
+        "0_8b",
+        "0_6b",
+        "1_7b",
+        "2b",
+        "4b",
+        "9b",
+        "27b",
+        "27b-256k",
+        "27b-1m",
+    )
     assert "0_8b" in REQUIRED_KERNELS_BY_TIER
+    assert REQUIRED_KERNELS_BY_TIER["0_6b"] == (
+        "turboquant_q3",
+        "qjl",
+        "polarquant",
+        "dflash",
+    )
+    assert REQUIRED_KERNELS_BY_TIER["1_7b"] == (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+    )
     assert "2b" in REQUIRED_KERNELS_BY_TIER
     assert REQUIRED_KERNELS_BY_TIER["27b-1m"] == (
         "turboquant_q4",
@@ -99,12 +121,10 @@ def test_eliza1_tier_ids_are_canonical():
         "turbo3_tcq",
     )
     assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice",)
+    assert VOICE_BACKENDS_BY_TIER["0_6b"] == ("omnivoice",)
+    assert VOICE_BACKENDS_BY_TIER["1_7b"] == ("omnivoice",)
     assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
     assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
-    stale_small_tier = "0_" + "6b"
-    stale_mobile_tier = "1_" + "7b"
-    assert stale_small_tier not in REQUIRED_KERNELS_BY_TIER
-    assert stale_mobile_tier not in REQUIRED_KERNELS_BY_TIER
 
 
 def test_build_manifest_happy_path():
@@ -170,7 +190,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 @pytest.mark.parametrize(
     "tier",
-    ["0_8b", "2b", "4b"],
+    ["0_8b", "0_6b", "1_7b", "2b", "4b"],
 )
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))

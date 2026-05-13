@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from eliza_loca.harness_proxy import _chat_completion_payload, _context_from_payload
+from eliza_loca.harness_proxy import (
+    _chat_completion_payload,
+    _context_from_payload,
+    _eliza_prompt_from_payload,
+)
 
 
 def test_loca_harness_context_preserves_full_messages_tools_and_generation_options() -> None:
@@ -48,7 +52,40 @@ def test_loca_harness_context_preserves_full_messages_tools_and_generation_optio
     assert context["max_tokens"] == 512
     assert context["reasoning_effort"] == "low"
     assert context["system_prompt"] == "system instructions"
+    assert context["task_id"] == "session_1"
     assert context["session_id"] == "session_1"
+
+
+def test_loca_harness_accepts_nested_or_legacy_function_tools() -> None:
+    payload = {
+        "messages": [{"role": "user", "content": "continue"}],
+        "functions": [
+            [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "filesystem_list_directory",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ]
+        ],
+    }
+
+    context = _context_from_payload(payload, "session_2")
+    prompt = _eliza_prompt_from_payload(payload)
+
+    assert context["tools"] == [
+        {
+            "type": "function",
+            "function": {
+                "name": "filesystem_list_directory",
+                "parameters": {"type": "object"},
+            },
+        }
+    ]
+    assert "filesystem_list_directory" in prompt
+    assert "process_assignments_and_quizzes" in prompt
 
 
 def test_loca_harness_response_marks_hermes_native_tool_calls(monkeypatch) -> None:
