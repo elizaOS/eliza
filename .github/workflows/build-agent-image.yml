@@ -59,7 +59,27 @@ jobs:
       - name: Install dependencies
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
-        run: bun install --ignore-scripts --frozen-lockfile
+        run: |
+          install_log="$(mktemp)"
+          if ! bun install --ignore-scripts --frozen-lockfile 2>&1 | tee "$install_log"; then
+            if grep -q "lockfile had changes, but lockfile is frozen" "$install_log"; then
+              echo "::warning::Bun frozen lockfile drift — validating with non-frozen install + git diff"
+              if bun install --ignore-scripts --no-frozen-lockfile; then
+                if git diff --quiet -- bun.lock; then
+                  rm -f "$install_log"
+                  exit 0
+                fi
+                echo "::error::bun.lock changed during install — commit the updated lockfile"
+                git diff -- bun.lock
+                rm -f "$install_log"
+                exit 1
+              fi
+            fi
+            cat "$install_log"
+            rm -f "$install_log"
+            exit 1
+          fi
+          rm -f "$install_log"
 
       - name: Build UI
         env:
