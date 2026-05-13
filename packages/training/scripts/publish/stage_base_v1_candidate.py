@@ -11,11 +11,12 @@ resulting bundle is installable on a device whose backend the manifest verified
 Usage:
     cd packages/training
     HF_TOKEN=... uv run --extra train python -m scripts.publish.stage_base_v1_candidate \
-        --tier 1_7b \
-        --text-gguf checkpoints/eliza-1-1_7b-apollo-1778558722/eliza1-optimized/gguf/final-Q4_POLAR.gguf \
-        --text-sidecar checkpoints/eliza-1-1_7b-apollo-1778558722/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
-        --drafter-gguf /tmp/eliza1-eval-models/Qwen3-0.6B-Q8_0.gguf \
-        --out /tmp/eliza1-stage/eliza-1-1_7b
+        --tier 2b \
+        --text-gguf checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf \
+        --text-sidecar checkpoints/eliza-1-2b-apollo-<run>/eliza1-optimized/gguf/final-Q4_POLAR.gguf.eliza1.json \
+        --drafter-gguf /tmp/eliza1-eval-models/qwen3_5-dflash-drafter-2b.gguf \
+        --drafter-source Qwen/Qwen3.5-0.8B-Base \
+        --out /tmp/eliza1-stage/eliza-1-2b
 """
 
 from __future__ import annotations
@@ -35,33 +36,42 @@ _TRAINING_ROOT = _HERE.parents[2]
 sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
+from scripts.manifest import eliza1_platform_plan as PP  # noqa: E402
+from scripts.manifest import stage_eliza1_bundle_assets as A  # noqa: E402
+from scripts.manifest import stage_kokoro_assets as K  # noqa: E402
 
 
 REQUIRED_KERNELS_BY_TIER = {
-    "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
-    "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-    # 27b matches eliza1_manifest.REQUIRED_KERNELS_BY_TIER["27b"] — adds
-    # turbo3_tcq on top of the base 1.7b set for long-context cache compression.
-    "27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+    tier: list(M.REQUIRED_KERNELS_BY_TIER[tier])
+    for tier in M.ELIZA_1_TIERS
 }
 RAM_BUDGET_MB = {
-    "0_6b": (2500, 3700),
-    "1_7b": (4000, 5500),
-    # 27b matches publish/orchestrator.RAM_BUDGET_BY_TIER["27b"] — sized for
-    # 96GB+ Mac / high-VRAM desktop class hosts under the Q4_POLAR text bundle.
-    "27b": (24000, 32000),
+    "0_8b": (2500, 3700),
+    "2b": (4000, 5500),
+    "4b": (6000, 8000),
+    "9b": (12000, 18000),
+    "27b": (32000, 48000),
+    "27b-256k": (96000, 128000),
+    "27b-1m": (160000, 220000),
 }
-# Per-tier upstream-Qwen3 substitute used by the lineage block and the
-# README/provenance prose. Falls back to "0.6B" for unknown tiers to match
-# the script's historical default behavior.
-QWEN3_PARAMS_BY_TIER = {
-    "0_6b": "0.6B",
-    "1_7b": "1.7B",
-    # The 27b cloud tier substitutes against Qwen3.5-27B (no Qwen3-27B
-    # variant exists upstream); the lineage block records the real base.
-    "27b": "27B",
+# Per-tier upstream Qwen3.5 base used by lineage and README/provenance prose.
+QWEN35_BASE_BY_TIER = {
+    "0_8b": "Qwen/Qwen3.5-0.8B",
+    "2b": "Qwen/Qwen3.5-2B",
+    "4b": "Qwen/Qwen3.5-4B",
+    "9b": "Qwen/Qwen3.5-9B",
+    "27b": "Qwen/Qwen3.5-27B",
+    "27b-256k": "Qwen/Qwen3.5-27B",
+    "27b-1m": "Qwen/Qwen3.5-27B",
 }
-TEXT_CTX = 32768
+TEXT_CONTEXT_BY_TIER = {
+    tier: PP.CONTEXTS_BY_TIER[tier][0]
+    for tier in M.ELIZA_1_TIERS
+}
+TEXT_CTX_BY_TIER = {
+    tier: M.parse_ctx_string(ctx)
+    for tier, ctx in TEXT_CONTEXT_BY_TIER.items()
+}
 
 # Frozen eliza-1-assets bytes (tier-agnostic voice/ASR/VAD/cache) from
 # evidence/bundle-assets.json on elizaos/eliza-1-assets.
@@ -104,16 +114,39 @@ def download_asset(repo: str, remote_path: str, dest: Path) -> None:
     shutil.copy2(src, dest)
 
 
+def voice_asset_source(rel_under_tts: str) -> tuple[str, str, Path]:
+    dest = Path("tts") / rel_under_tts
+    if rel_under_tts == "kokoro/model_q4.onnx":
+        return K.KOKORO_REPO, K.KOKORO_MODEL_REMOTE, dest
+    if rel_under_tts == "kokoro/tokenizer.json":
+        return K.KOKORO_REPO, K.KOKORO_TOKENIZER_REMOTE, dest
+    if rel_under_tts.startswith("kokoro/voices/"):
+        return K.KOKORO_REPO, f"voices/{Path(rel_under_tts).name}", dest
+    if rel_under_tts.startswith("omnivoice-"):
+        return A.VOICE_REPO, Path(rel_under_tts).name, dest
+    raise ValueError(f"unsupported voice artifact for {rel_under_tts!r}")
+
+
+def voice_source_note(tier: str) -> str:
+    backends = M.VOICE_BACKENDS_BY_TIER[tier]
+    parts: list[str] = []
+    if "kokoro" in backends:
+        parts.append(K.KOKORO_REPO)
+    if "omnivoice" in backends:
+        parts.append(A.VOICE_REPO)
+    return " + ".join(parts)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", required=True, choices=("0_6b", "1_7b", "27b"))
+    ap.add_argument("--tier", required=True, choices=M.ELIZA_1_TIERS)
     ap.add_argument("--text-gguf", required=True, type=Path)
     ap.add_argument("--text-sidecar", type=Path, default=None,
                     help="The .eliza1.json sidecar for the text GGUF (quant block).")
     ap.add_argument("--drafter-gguf", required=True, type=Path)
     ap.add_argument(
         "--drafter-source",
-        default="Qwen/Qwen3-0.6B",
+        default="Qwen/Qwen3.5-0.8B-Base",
         help="Upstream HF repo the drafter GGUF was converted from (provenance).",
     )
     ap.add_argument("--out", required=True, type=Path)
@@ -128,6 +161,7 @@ def main(argv: list[str] | None = None) -> int:
 
     tier = args.tier
     out = args.out.resolve()
+    text_rel = PP.text_artifact_name(tier, TEXT_CONTEXT_BY_TIER[tier])
     if out.exists():
         shutil.rmtree(out)
     for sub in ("text", "tts", "asr", "vad", "dflash", "cache", "evals",
@@ -138,7 +172,8 @@ def main(argv: list[str] | None = None) -> int:
     git_sha = git_short_sha()
 
     # --- text GGUF (real fine-tune) ---
-    text_dest = out / "text" / f"eliza-1-{tier}-32k.gguf"
+    text_dest = out / text_rel
+    text_dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(args.text_gguf, text_dest)
     text_sha = sha256_file(text_dest)
     quant_block: dict[str, Any] = {}
@@ -178,7 +213,7 @@ def main(argv: list[str] | None = None) -> int:
         "publishEligible": True,
         "defaultEligible": False,
         "targetText": {
-            "path": f"text/eliza-1-{tier}-32k.gguf",
+            "path": text_rel,
             "sha256": text_sha,
             "finalElizaWeights": True,
         },
@@ -187,13 +222,11 @@ def main(argv: list[str] | None = None) -> int:
             "sha256": drafter_sha,
             "source": args.drafter_source,
             "note": (
-                # For 27b the canonical drafter is the Qwen3.5-aligned 0.6B
-                # distilled drafter (elizaos/eliza-1-drafter-0_6b-qwen3_5);
-                # for 0_6b/1_7b it's the upstream Qwen3 0.6B GGUF reused as-is.
-                f"DFlash drafter for the {QWEN3_PARAMS_BY_TIER.get(tier, '0.6B')} text target. "
-                "Shares the Qwen3.5/Qwen3 BPE vocabulary with the target so speculative "
-                "decoding is correct. See the drafter source repo for whether this "
-                "candidate is a distilled drafter or the upstream base GGUF (not distilled)."
+                f"DFlash drafter for the {tier} Qwen3.5 text target. "
+                "It must share the 248320-token Qwen3.5 tokenizer with the target "
+                "so speculative decoding is correct. See the drafter source repo "
+                "for whether this candidate is distilled or a tokenizer-compatible "
+                "smoke artifact."
             ),
         },
         "acceptanceWindow": None,
@@ -201,33 +234,27 @@ def main(argv: list[str] | None = None) -> int:
         "kernelCaps": {"required": REQUIRED_KERNELS_BY_TIER[tier], "optional": []},
     }, indent=2) + "\n")
 
-    # --- voice / asr / vad / cache from elizaos/eliza-1-assets/1_7b/ ---
-    # The OmniVoice / Qwen3-ASR / Silero bytes are model-size-independent; the
-    # assets repo only carries the 1_7b key, so reuse them under any tier.
-    #
-    # 27b caveat: eliza1_manifest.VOICE_QUANT_BY_TIER["27b"] == "Q8_0", so
-    # required_voice_artifacts_for_tier("27b") returns the Q8_0 names. This
-    # staging path still copies the Q4_K_M bytes (the only ones present in
-    # the assets repo today) — the orchestrator's voice-artifact gate will
-    # therefore fail in publish mode until Q8_0 OmniVoice GGUFs are derived
-    # and pushed to elizaos/eliza-1-assets/27b/. The candidate bundle is
-    # still installable on a runtime that can load Q4_K_M voice, but the
-    # release gate stays red. Track as a separate dependency.
+    # --- voice / asr / vad / cache ---
+    # Voice follows the active tier boundary in eliza1_manifest: Kokoro on
+    # small/mobile tiers, both backends at 9B, and OmniVoice Q8_0 on 27B tiers.
+    # Native VAD is the release artifact; the ONNX file is a legacy fallback and
+    # is intentionally not listed in the manifest.
     asset_map = [
-        ("1_7b/tts/omnivoice-base-Q4_K_M.gguf", out / "tts" / "omnivoice-base-Q4_K_M.gguf"),
-        ("1_7b/tts/omnivoice-tokenizer-Q4_K_M.gguf", out / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf"),
-        ("1_7b/asr/eliza-1-asr.gguf", out / "asr" / "eliza-1-asr.gguf"),
-        ("1_7b/asr/eliza-1-asr-mmproj.gguf", out / "asr" / "eliza-1-asr-mmproj.gguf"),
-        ("1_7b/vad/silero-vad-int8.onnx", out / "vad" / "silero-vad-int8.onnx"),
-        ("1_7b/cache/voice-preset-default.bin", out / "cache" / "voice-preset-default.bin"),
-        ("1_7b/licenses/LICENSE.asr", out / "licenses" / "LICENSE.asr"),
-        ("1_7b/licenses/LICENSE.vad", out / "licenses" / "LICENSE.vad"),
-        ("1_7b/licenses/LICENSE.voice", out / "licenses" / "LICENSE.voice"),
-        ("1_7b/lineage.json", out / "evidence" / "assets-lineage.json"),
-        ("1_7b/evidence/bundle-assets.json", out / "evidence" / "bundle-assets.json"),
+        (ASSETS_REPO, "1_7b/asr/eliza-1-asr.gguf", out / "asr" / "eliza-1-asr.gguf"),
+        (ASSETS_REPO, "1_7b/asr/eliza-1-asr-mmproj.gguf", out / "asr" / "eliza-1-asr-mmproj.gguf"),
+        (A.VAD_NATIVE_REPO, "ggml-silero-v5.1.2.bin", out / "vad" / "silero-vad-v5.1.2.ggml.bin"),
+        (ASSETS_REPO, "1_7b/cache/voice-preset-default.bin", out / "cache" / "voice-preset-default.bin"),
+        (ASSETS_REPO, "1_7b/licenses/LICENSE.asr", out / "licenses" / "LICENSE.asr"),
+        (ASSETS_REPO, "1_7b/licenses/LICENSE.vad", out / "licenses" / "LICENSE.vad"),
+        (ASSETS_REPO, "1_7b/licenses/LICENSE.voice", out / "licenses" / "LICENSE.voice"),
+        (ASSETS_REPO, "1_7b/lineage.json", out / "evidence" / "assets-lineage.json"),
+        (ASSETS_REPO, "1_7b/evidence/bundle-assets.json", out / "evidence" / "bundle-assets.json"),
     ]
-    for remote, dest in asset_map:
-        download_asset(ASSETS_REPO, remote, dest)
+    for rel in M.required_voice_artifacts_for_tier(tier):
+        repo, remote, dest = voice_asset_source(rel)
+        asset_map.append((repo, remote, out / dest))
+    for repo, remote, dest in asset_map:
+        download_asset(repo, remote, dest)
 
     # extra licenses (text / dflash / eliza-1) from a local bundle dir if given
     if args.licenses_from and args.licenses_from.is_dir():
@@ -240,20 +267,22 @@ def main(argv: list[str] | None = None) -> int:
         return {"path": str(p.relative_to(out)), "sha256": sha256_file(p)}
 
     voice_files = [
-        f_sha(out / "tts" / "omnivoice-base-Q4_K_M.gguf"),
-        f_sha(out / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf"),
+        f_sha(out / "tts" / rel)
+        for rel in M.required_voice_artifacts_for_tier(tier)
     ]
     asr_files = [
         f_sha(out / "asr" / "eliza-1-asr.gguf"),
         f_sha(out / "asr" / "eliza-1-asr-mmproj.gguf"),
     ]
-    vad_files = [f_sha(out / "vad" / "silero-vad-int8.onnx")]
+    vad_files = [f_sha(out / "vad" / "silero-vad-v5.1.2.ggml.bin")]
     cache_files = [f_sha(out / "cache" / "voice-preset-default.bin")]
     dflash_files = [
         {"path": f"dflash/drafter-{tier}.gguf", "sha256": drafter_sha},
         f_sha(out / "dflash" / "target-meta.json"),
     ]
-    text_files = [{"path": f"text/eliza-1-{tier}-32k.gguf", "sha256": text_sha, "ctx": TEXT_CTX}]
+    text_files = [
+        {"path": text_rel, "sha256": text_sha, "ctx": TEXT_CTX_BY_TIER[tier]}
+    ]
 
     # --- run eval suite (optional; folds into evals block) ---
     eval_results: dict[str, Any] = {}
@@ -317,19 +346,19 @@ def main(argv: list[str] | None = None) -> int:
         }, indent=2) + "\n")
 
     # --- lineage ---
-    params = QWEN3_PARAMS_BY_TIER.get(tier, "0.6B")
+    base_repo = QWEN35_BASE_BY_TIER[tier]
     lineage = {
         "text": M.LineageEntry(
-            base=f"{args.drafter_source.split('/')[0]}/Qwen3-{params} (SFT: APOLLO full-parameter; documented substitute for Qwen3.5-{params})",
+            base=f"{base_repo} (SFT: APOLLO full-parameter)",
             license="apache-2.0",
         ),
-        "voice": M.LineageEntry(base="Serveurperso/OmniVoice-GGUF@361609388ae572a820d085185bbbe2a2aac4b30e", license="apache-2.0"),
+        "voice": M.LineageEntry(base=voice_source_note(tier), license="apache-2.0"),
         "drafter": M.LineageEntry(
             base=f"{args.drafter_source} (upstream base GGUF; used as self/cross-drafter — not distilled)",
             license="apache-2.0",
         ),
-        "asr": M.LineageEntry(base="ggml-org/Qwen3-ASR-0.6B-GGUF@928ab958557df9aa2ef1c93e0e83c7ad0933fae2", license="apache-2.0; review upstream model card before release"),
-        "vad": M.LineageEntry(base="onnx-community/silero-vad@e71cae966052b992a7eca6b17738916ce0eca4ec", license="mit"),
+        "asr": M.LineageEntry(base=A.ASR_REPO_BY_TIER[tier], license="apache-2.0; review upstream model card before release"),
+        "vad": M.LineageEntry(base=A.VAD_NATIVE_REPO, license="mit"),
     }
 
     # --- kernel verify backends (cite packages/inference/verify/) ---
@@ -349,14 +378,7 @@ def main(argv: list[str] | None = None) -> int:
             status="pass", at_commit="08032d57",
             report="packages/inference/verify/cuda-runtime-dispatch-evidence.json",
             device="NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, cc 12.0)",
-            # For 27b cuda is a tier-supported backend (per
-            # eliza1_manifest.SUPPORTED_BACKENDS_BY_TIER["27b"]); for 0_6b/1_7b
-            # it stays "extra evidence" — see the caveat tier-switch below.
-            caveat=(
-                "cuda is a tier-supported backend for 27b"
-                if tier == "27b"
-                else "cuda is not a tier-supported backend for 1_7b/0_6b — recorded as extra evidence"
-            ),
+            caveat="cuda evidence is recorded when present; publish gates use the supported-backend matrix",
         ),
         "metal": M.KernelVerification(
             status="skipped", at_commit="08032d57", report="not-run",
@@ -364,14 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "rocm": M.KernelVerification(
             status="skipped", at_commit="08032d57", report="not-applicable",
-            # rocm is a tier-supported backend for 27b but cannot be verified
-            # on this build host (no AMD GPU); 0_6b/1_7b don't list rocm as
-            # supported at all.
-            caveat=(
-                "rocm is a tier-supported backend for 27b but no AMD GPU on the build host (needs-hardware)"
-                if tier == "27b"
-                else "rocm is not a tier-supported backend for 1_7b/0_6b"
-            ),
+            caveat="no AMD GPU on the build host",
         ),
     }
 
@@ -381,16 +396,20 @@ def main(argv: list[str] | None = None) -> int:
         "finetuned": True,
         "sourceModels": {
             "text": {
-                "repo": f"{args.drafter_source.split('/')[0]}/Qwen3-{params}",
+                "repo": base_repo,
                 "convertedVia": "packages/inference/llama.cpp/convert_hf_to_gguf.py + scripts/optimize_for_eliza1.py (PolarQuant/QJL/TurboQuant)",
-                "note": "Fine-tuned (APOLLO full-parameter SFT) then optimized. Documented substitute for the not-yet-published Qwen3.5 base; NOT strictly base-v1 semantics — this is a finetuned candidate.",
+                "note": "Fine-tuned (APOLLO full-parameter SFT) then optimized; NOT strictly base-v1 semantics — this is a finetuned candidate.",
             },
-            "voice": {"repo": "Serveurperso/OmniVoice-GGUF", "file": "omnivoice-base-Q4_K_M.gguf", "note": "frozen, not fine-tuned"},
-            "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF", "note": "frozen, not fine-tuned"},
-            "vad": {"repo": "onnx-community/silero-vad", "note": "frozen Silero v5.1.2 int8"},
+            "voice": {
+                "repo": voice_source_note(tier),
+                "files": list(M.required_voice_artifacts_for_tier(tier)),
+                "note": "frozen TTS assets, not fine-tuned",
+            },
+            "asr": {"repo": A.ASR_REPO_BY_TIER[tier], "note": "frozen, not fine-tuned"},
+            "vad": {"repo": A.VAD_NATIVE_REPO, "note": "frozen native Silero v5.1.2 GGML"},
             "drafter": {
                 "repo": args.drafter_source,
-                "note": "upstream base GGUF used as the DFlash drafter (shares Qwen3 vocab with the target); not distilled.",
+                "note": "DFlash drafter must share the Qwen3.5 tokenizer with the target; record whether this exact artifact is distilled or a smoke stand-in in dflash/target-meta.json.",
             },
             # The Zod `z.record(z.enum(slots), ...)` treats every slot as a
             # required key. This bundle ships no dedicated embedding model
@@ -470,7 +489,7 @@ def main(argv: list[str] | None = None) -> int:
     # --- README ---
     (out / "README.md").write_text(
         _render_readme(tier, manifest, args.drafter_source, optimized=optimized,
-                       eval_results=eval_results)
+                       eval_results=eval_results, text_rel=text_rel)
     )
 
     print(f"staged {tier} bundle at {out}")
@@ -486,12 +505,12 @@ def _render_readme(
     *,
     optimized: bool,
     eval_results: dict[str, Any],
+    text_rel: str,
 ) -> str:
-    params = QWEN3_PARAMS_BY_TIER.get(tier, "0.6B")
-    base_repo = f"{drafter_source.split('/')[0]}/Qwen3-{params}"
+    base_repo = QWEN35_BASE_BY_TIER[tier]
     if optimized:
         text_para = (
-            f"- **Text GGUF** (`text/eliza-1-{tier}-32k.gguf`): a **real fine-tune** "
+            f"- **Text GGUF** (`{text_rel}`): a **real fine-tune** "
             "— APOLLO full-parameter SFT on the Eliza-1 training corpus, then run "
             "through the PolarQuant / QJL / TurboQuant optimization stack and "
             "converted to GGUF via the elizaOS/llama.cpp fork. The body is `Q8_0` "
@@ -500,15 +519,14 @@ def _render_readme(
         )
     else:
         text_para = (
-            f"- **Text GGUF** (`text/eliza-1-{tier}-32k.gguf`): a **real fine-tune** "
+            f"- **Text GGUF** (`{text_rel}`): a **real fine-tune** "
             "(APOLLO SFT, smoke/slice run), converted to GGUF via the elizaOS/"
             "llama.cpp fork as a **plain `Q4_K_M`** — the PolarQuant / QJL / "
             "TurboQuant optimization stack has **not** been applied to this "
             "candidate yet (see `textQuant` in the manifest). "
         )
     text_para += (
-        f"Text backbone is a documented substitute for the not-yet-published "
-        f"`Qwen3.5-{params}` (actual base: `{base_repo}`)."
+        f"Text backbone is `{base_repo}`."
     )
     ev = eval_results or {}
     te = ev.get("text_eval")
@@ -538,13 +556,14 @@ release bar (every supported backend kernel-verified, every eval green) is met.
 ## What is real vs stand-in
 
 {text_para}
-- **Voice / ASR / VAD / cache**: the **frozen `elizaos/eliza-1-assets` bytes** —
-  OmniVoice (TTS), Qwen3-ASR-0.6B, Silero-VAD v5.1.2, the default speaker
-  preset. Not fine-tuned. Licenses in `licenses/`.
+- **Voice / ASR / VAD / cache**: frozen upstream assets —
+  {", ".join(M.VOICE_BACKENDS_BY_TIER[tier])} TTS, Qwen3-ASR, native
+  Silero-VAD v5.1.2, and the default speaker preset. Not fine-tuned.
+  Licenses in `licenses/`.
 - **DFlash drafter** (`dflash/drafter-{tier}.gguf`): the **upstream
-  `{drafter_source}` GGUF** — it shares the Qwen3 BPE vocabulary with the text
-  target so speculative decoding is correct, but it is NOT a distilled drafter
-  (modest acceptance expected). Recorded honestly in
+  `{drafter_source}` artifact** — it must share the Qwen3.5 tokenizer with the
+  text target so speculative decoding is correct. The exact distilled-vs-standin
+  status is recorded in `dflash/target-meta.json` and
   `provenance.sourceModels.drafter`.
 
 ## Verified

@@ -400,7 +400,7 @@ export class LiveKitTurnDetector implements EotClassifier {
     ]);
     const tokenizer = (await AutoTokenizer.from_pretrained(this.modelDir, {
       local_files_only: true,
-    })) as CallableTokenizer;
+    })) as unknown as CallableTokenizer;
     (
       tokenizer as CallableTokenizer & { truncation_side?: "left" }
     ).truncation_side = "left";

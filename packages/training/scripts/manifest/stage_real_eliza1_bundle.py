@@ -91,6 +91,10 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "0_8b": (2500, 3700),
     "2b": (4000, 5500),
     "4b": (6000, 8000),
+    "9b": (10000, 14000),
+    "27b": (24000, 32000),
+    "27b-256k": (36000, 48000),
+    "27b-1m": (64000, 96000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "singing")
 CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")

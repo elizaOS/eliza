@@ -52,7 +52,7 @@ function usage() {
     "Options:",
     "  --backend synthetic|real   Backend to exercise (default: synthetic)",
     "  --turns <n>                Number of agent turns (default: 6)",
-    "  --model-id <id>            Shared model id (default: eliza-1-2b)",
+    "  --model-id <id>            Shared model id (default: eliza-1-1_7b)",
     "  --bundle <dir>             Bundle directory for real backend checks",
     "  --bin-dir <dir>            Fused runtime bin dir for real backend checks",
     "  --real-timeout-ms <ms>     Max wall time for real voice-duet bridge (default: 300000)",
@@ -70,7 +70,7 @@ function parseArgs(argv) {
   const args = {
     backend: process.env.ELIZA_TWO_AGENT_BACKEND || "synthetic",
     turns: Number.parseInt(process.env.ELIZA_TWO_AGENT_TURNS || "6", 10),
-    modelId: process.env.ELIZA_TWO_AGENT_MODEL_ID || "eliza-1-2b",
+    modelId: process.env.ELIZA_TWO_AGENT_MODEL_ID || "eliza-1-1_7b",
     bundle: process.env.ELIZA_TWO_AGENT_BUNDLE || "",
     binDir: process.env.ELIZA_TWO_AGENT_BIN_DIR || "",
     realTimeoutMs: Number.parseInt(

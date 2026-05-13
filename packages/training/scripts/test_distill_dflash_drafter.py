@@ -55,7 +55,7 @@ class FakeTokenizer:
 
 def _args(**overrides) -> argparse.Namespace:
     base = {
-        "tier": "0_6b",
+        "tier": "0_8b",
         "student_base": None,
         "allow_non_default_student_base": False,
         "target_model_id": None,
@@ -124,10 +124,10 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
     manifest = _build_manifest(
         args=args,
-        student_base=DEFAULT_STUDENT_BASE["0_6b"],
-        target_model_id="elizaos/eliza-1/bundles/0_6b",
-        target_checkpoint=Path("checkpoints/eliza-1-0_6b/final"),
-        target_gguf=Path("out/eliza-1-0_6b/text/eliza-1-0_6b-32k.gguf"),
+        student_base=DEFAULT_STUDENT_BASE["0_8b"],
+        target_model_id="elizaos/eliza-1/bundles/0_8b",
+        target_checkpoint=Path("checkpoints/eliza-1-0_8b/final"),
+        target_gguf=Path("out/eliza-1-0_8b/text/eliza-1-0_8b-32k.gguf"),
         target_sha256="0" * 64,
         tokenizer_parity=parity,
         dataset_hash="1" * 64,
@@ -137,25 +137,20 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
         synthetic=False,
     )
 
-    assert manifest["targetModelId"] == "elizaos/eliza-1/bundles/0_6b"
+    assert manifest["targetModelId"] == "elizaos/eliza-1/bundles/0_8b"
     assert manifest["targetTokenizerSha256"] == parity["target"]["sha256"]
     assert manifest["studentTokenizerSha256"] == parity["student"]["sha256"]
     assert manifest["tokenizerParity"]["matches"] is True
 
 
 def test_active_tier_matrix_has_no_retired_defaults() -> None:
-    assert ACTIVE_TIERS == ("0_6b", "1_7b", "4b", "9b", "27b", "27b-256k", "27b-1m")
-    assert "0_8b" not in DEFAULT_STUDENT_BASE
-    assert "2b" not in DEFAULT_STUDENT_BASE
-    assert "0_8b" not in DEFAULT_TARGET_MODEL
-    assert "2b" not in DEFAULT_TARGET_MODEL
+    assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+    assert "0_6b" not in DEFAULT_STUDENT_BASE
+    assert "1_7b" not in DEFAULT_STUDENT_BASE
+    assert "0_6b" not in DEFAULT_TARGET_MODEL
+    assert "1_7b" not in DEFAULT_TARGET_MODEL
 
 
-@pytest.mark.parametrize("tier", ["0_6b", "1_7b"])
-def test_qwen3_tiers_default_to_qwen3_tokenizer_student_base(tier: str) -> None:
-    assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3-0.6B"
-
-
-@pytest.mark.parametrize("tier", ["4b", "9b", "27b", "27b-256k", "27b-1m"])
+@pytest.mark.parametrize("tier", ["0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"])
 def test_qwen35_tiers_default_to_qwen35_student_base(tier: str) -> None:
-    assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B"
+    assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B-Base"

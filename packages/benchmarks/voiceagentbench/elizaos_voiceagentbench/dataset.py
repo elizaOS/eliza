@@ -112,14 +112,6 @@ def load_jsonl(path: Path) -> list[VoiceTask]:
     return tasks
 
 
-def load_mock_fixtures() -> list[VoiceTask]:
-    """Deprecated: fixture benchmarks are not valid performance artifacts."""
-    raise DatasetError(
-        "VoiceAgentBench mock fixtures are disabled; use --data-path with real "
-        "audio records or authenticate to Hugging Face for the canonical dataset."
-    )
-
-
 def load_from_huggingface() -> list[VoiceTask]:
     """Pull the canonical dataset from Hugging Face (lazy import)."""
     try:
@@ -141,7 +133,6 @@ def load_from_huggingface() -> list[VoiceTask]:
 
 def load_tasks(
     *,
-    mock: bool = False,
     data_path: Path | None = None,
     suite_filter: Suite | None = None,
     limit: int | None = None,
@@ -149,10 +140,6 @@ def load_tasks(
     """Load tasks from the configured source, optionally filtered."""
     if data_path is not None:
         tasks = load_jsonl(data_path)
-    elif mock:
-        raise DatasetError(
-            "VoiceAgentBench mock mode is disabled; use a real dataset source."
-        )
     else:
         tasks = load_from_huggingface()
 

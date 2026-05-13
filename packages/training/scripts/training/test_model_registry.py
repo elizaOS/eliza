@@ -61,8 +61,8 @@ def test_every_entry_has_publish_metadata() -> None:
     for key, public in zip(VERIFIED_KEYS, VERIFIED_PUBLIC_NAMES):
         e = get(key)
         assert e.eliza_short_name == public
-        assert e.eliza_repo_id == f"elizaos/{public}"
-        assert e.abliteration_repo_id == f"elizaos/{public}-uncensored"
+        assert e.eliza_repo_id == "elizaos/eliza-1"
+        assert e.abliteration_repo_id == ""
 
 
 def test_verified_bases_are_not_flagged_unverified() -> None:
@@ -90,8 +90,8 @@ def test_by_tier_partitions_the_ladder() -> None:
     assert len(by_tier(Tier.LOCAL)) == 3
     # WORKSTATION: qwen3.5-9b
     assert len(by_tier(Tier.WORKSTATION)) == 1
-    # CLOUD: qwen3.6-27b
-    assert len(by_tier(Tier.CLOUD)) == 1
+    # CLOUD: canonical qwen3.5-27b plus the legacy qwen3.6-27b resolver entry.
+    assert len(by_tier(Tier.CLOUD)) == 2
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
@@ -113,10 +113,14 @@ def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
     # directive (Qwen3.5-only fused-model line), the legacy Qwen3 tier
     # drafter entries (eliza-1-1_7b / eliza-1-4b) are dropped — the
     # corresponding tiers are deprecated.
-    for tier in ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b"):
+    for tier in (
+        "eliza-1-0_8b",
+        "eliza-1-2b",
+        "eliza-1-4b",
+        "eliza-1-9b",
+        "eliza-1-27b",
+    ):
         assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
-    # Smallest tier ships no drafter.
-    assert "eliza-1-0_8b" not in DFLASH_DRAFTER_BASE
     # Deprecated Qwen3 tiers have no drafter entries.
     assert "eliza-1-0_6b" not in DFLASH_DRAFTER_BASE
     assert "eliza-1-1_7b" not in DFLASH_DRAFTER_BASE
@@ -176,3 +180,11 @@ def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
     for public_name in VERIFIED_PUBLIC_NAMES:
         assert public_name in table
+
+
+def test_quantization_matrix_includes_gguf_q4_q6_q8() -> None:
+    for key in VERIFIED_KEYS:
+        e = get(key)
+        assert "gguf-q4_k_m" in e.quantization_after
+        assert "gguf-q6_k" in e.quantization_after
+        assert "gguf-q8_0" in e.quantization_after

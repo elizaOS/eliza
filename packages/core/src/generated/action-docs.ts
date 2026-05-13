@@ -6156,13 +6156,14 @@ export const allActionsSpec = {
 				},
 				{
 					name: "subaction",
-					description: "Alias for action.",
+					description: "Alias for action (read | place_order | place-order).",
 					required: false,
 					schema: {
 						type: "string",
 						enum: ["read", "place_order", "place-order"],
 					},
-					descriptionCompressed: "Alias for action.",
+					descriptionCompressed:
+						"Alias for action (read | place_order | place-order).",
 				},
 				{
 					name: "kind",

@@ -920,6 +920,9 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       `Progress replies are invalid in LOCA-bench. If the task is not complete, call exactly one tool. Only use REPLY after the requested files have been written or claim_done has been called.`,
     );
     sections.push(
+      `Existing workspace files may contain examples or placeholders. Use current CSV rows for schema and formatting only; derive final answers from the available tools, local_db files, workspace files, and memory records, then overwrite or edit every requested CSV before replying.`,
+    );
+    sections.push(
       `Never invent aggregate helper tools. In particular, do not call process_assignments_and_quizzes or any tool name not listed under Available Tools.`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {

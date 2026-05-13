@@ -113,7 +113,7 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
-# component"). Text tiers use the public Qwen3.5 0.8B / 2B / 4B line.
+# component"). Text tiers use the public Qwen3.5 0.8B / 1.7B / 4B line.
 # ASR and embedding are deliberate upstream exceptions: they remain published
 # Qwen3-ASR / Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
@@ -213,9 +213,9 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
             "Qwen3-Embedding-0.6B (1024-dim, Matryoshka, 32k ctx), shipped as a "
-            "separate embedding/ artifact on non-lite tiers. On 0_6b the embedding "
+            "separate embedding/ artifact on non-lite tiers. On 0_8b the embedding "
             "model IS the text backbone with --pooling last — no duplicate weights, "
-            "no separate embedding/ artifact, and this file is absent on 0_6b. "
+            "no separate embedding/ artifact, and this file is absent on 0_8b. "
             "Declared upstream license: Apache-2.0."
         ),
         tiers=("4b",),

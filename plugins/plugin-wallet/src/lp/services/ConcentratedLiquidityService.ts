@@ -16,6 +16,7 @@ export class ConcentratedLiquidityService
   public static readonly serviceType = "concentrated-liquidity";
   public readonly capabilityDescription =
     "Manages concentrated liquidity positions with range selection and automated rebalancing";
+  private isInitialized = false;
 
   static async start(
     runtime: IAgentRuntime,

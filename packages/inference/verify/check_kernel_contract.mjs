@@ -383,7 +383,7 @@ if (
   );
 }
 
-// 2b. Metal dispatch-ready capability bits must not be satisfied by shipped
+// 1_7b. Metal dispatch-ready capability bits must not be satisfied by shipped
 // symbols. The build script intentionally forces every non-runtime-ready Metal
 // kernel false until the evidence file records a numeric built-fork graph
 // dispatch smoke.

@@ -1,8 +1,10 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is Eliza-1 only. External Hub search remains
- * custom/opt-in and never enters first-run or default eligibility.
+ * Default local inference is restricted to the active Qwen3.5-backed Eliza-1
+ * release line: 0_8b, 2b, 4b, and the modeled future 9b/27b tiers.
+ * External Hub search remains custom/opt-in and never enters first-run or
+ * default eligibility.
  */
 
 import type {
@@ -12,7 +14,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -49,16 +51,14 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
-  "eliza-1-9b": ["omnivoice"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  "eliza-1-9b": ["kokoro", "omnivoice"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
 };
-
-export const KOKORO_SOURCE_REPO = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
   "dflash",
@@ -71,6 +71,7 @@ const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
 interface TierSpec {
   id: Eliza1TierId;
   params: CatalogModel["params"];
+  parameterLabel?: CatalogModel["parameterLabel"];
   sizeGb: number;
   minRamGb: number;
   bucket: CatalogModel["bucket"];
@@ -80,7 +81,7 @@ interface TierSpec {
   drafterParams: CatalogModel["params"];
   drafterSizeGb: number;
   drafterMinRamGb: number;
-  gpuProfile?: string;
+  gpuProfile?: CatalogModel["gpuProfile"];
   hasEmbedding?: boolean;
   hasVision?: boolean;
 }
@@ -88,27 +89,27 @@ interface TierSpec {
 const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-0_8b": {
     id: "eliza-1-0_8b",
-    params: "0.6B",
-    sizeGb: 0.6,
+    params: "0.8B",
+    sizeGb: 0.5,
     minRamGb: 2,
     q4MinRamGb: 2,
     bucket: "small",
     contextLength: 32768,
     textFile: "text/eliza-1-0_8b-32k.gguf",
-    drafterParams: "0.6B",
-    drafterSizeGb: 0.3,
+    drafterParams: "0.5B",
+    drafterSizeGb: 0.4,
     drafterMinRamGb: 2,
   },
   "eliza-1-2b": {
     id: "eliza-1-2b",
-    params: "1.7B",
+    params: "2B",
     sizeGb: 1.4,
     minRamGb: 4,
     q4MinRamGb: 4,
     bucket: "small",
     contextLength: 32768,
     textFile: "text/eliza-1-2b-32k.gguf",
-    drafterParams: "0.6B",
+    drafterParams: "0.8B",
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
     hasEmbedding: true,
@@ -116,28 +117,28 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-4b": {
     id: "eliza-1-4b",
     params: "4B",
-    sizeGb: 3.0,
-    minRamGb: 8,
-    q4MinRamGb: 8,
+    sizeGb: 2.6,
+    minRamGb: 10,
+    q4MinRamGb: 10,
     bucket: "mid",
     contextLength: 65536,
     textFile: "text/eliza-1-4b-64k.gguf",
-    drafterParams: "1.7B",
-    drafterSizeGb: 1.4,
-    drafterMinRamGb: 8,
+    drafterParams: "0.8B",
+    drafterSizeGb: 0.7,
+    drafterMinRamGb: 10,
     hasEmbedding: true,
     hasVision: true,
   },
   "eliza-1-9b": {
     id: "eliza-1-9b",
     params: "9B",
-    sizeGb: 6.4,
+    sizeGb: 5.4,
     minRamGb: 12,
     q4MinRamGb: 12,
     bucket: "large",
     contextLength: 65536,
     textFile: "text/eliza-1-9b-64k.gguf",
-    drafterParams: "1.7B",
+    drafterParams: "2B",
     drafterSizeGb: 1.4,
     drafterMinRamGb: 12,
     gpuProfile: "rtx-3090",
@@ -150,11 +151,11 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     sizeGb: 16.8,
     minRamGb: 32,
     q4MinRamGb: 32,
-    bucket: "xl",
+    bucket: "large",
     contextLength: 131072,
     textFile: "text/eliza-1-27b-128k.gguf",
     drafterParams: "4B",
-    drafterSizeGb: 3.0,
+    drafterSizeGb: 2.6,
     drafterMinRamGb: 32,
     gpuProfile: "rtx-4090",
     hasEmbedding: true,
@@ -163,14 +164,15 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-27b-256k": {
     id: "eliza-1-27b-256k",
     params: "27B",
+    parameterLabel: "27B 256k",
     sizeGb: 16.8,
     minRamGb: 96,
     q4MinRamGb: 96,
-    bucket: "xl",
+    bucket: "large",
     contextLength: 262144,
     textFile: "text/eliza-1-27b-256k.gguf",
     drafterParams: "4B",
-    drafterSizeGb: 3.0,
+    drafterSizeGb: 2.6,
     drafterMinRamGb: 96,
     gpuProfile: "rtx-5090",
     hasEmbedding: true,
@@ -179,15 +181,16 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   "eliza-1-27b-1m": {
     id: "eliza-1-27b-1m",
     params: "27B",
+    parameterLabel: "27B 1M",
     sizeGb: 16.8,
-    minRamGb: 200,
-    q4MinRamGb: 200,
-    bucket: "xl",
+    minRamGb: 160,
+    q4MinRamGb: 160,
+    bucket: "large",
     contextLength: 1_048_576,
     textFile: "text/eliza-1-27b-1m.gguf",
     drafterParams: "4B",
-    drafterSizeGb: 3.0,
-    drafterMinRamGb: 200,
+    drafterSizeGb: 2.6,
+    drafterMinRamGb: 160,
     gpuProfile: "h200",
     hasEmbedding: true,
   },
@@ -221,19 +224,24 @@ function bundleComponent(
   id: Eliza1TierId,
   file: string,
 ): { repo: string; file: string } {
-  return {
-    repo: ELIZA_1_HF_REPO,
-    file: bundleRemotePath(id, file),
-  };
+  return { repo: ELIZA_1_HF_REPO, file: bundleRemotePath(id, file) };
+}
+
+function primaryVoiceFileForTier(id: Eliza1TierId): string {
+  const backends = ELIZA_1_VOICE_BACKENDS[id];
+  if (backends.includes("kokoro")) {
+    return "tts/kokoro/model_q4.onnx";
+  }
+  return "tts/omnivoice-base-Q8_0.gguf";
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
   const spec = TIER_SPECS[id];
   const components: SourceComponentMap = {
     text: bundleComponent(id, spec.textFile),
-    voice: bundleComponent(id, "tts/omnivoice-base-Q4_K_M.gguf"),
+    voice: bundleComponent(id, primaryVoiceFileForTier(id)),
     asr: bundleComponent(id, "asr/eliza-1-asr.gguf"),
-    vad: bundleComponent(id, "vad/eliza-1-vad.ggml.bin"),
+    vad: bundleComponent(id, "vad/silero-vad-v5.1.2.ggml.bin"),
     drafter: bundleComponent(id, `dflash/drafter-${tierSlug(id)}.gguf`),
   };
 
@@ -257,9 +265,9 @@ function runtimeForTier(
   id: Eliza1TierId,
   contextLength: number,
 ): CatalogModel["runtime"] {
-  const requiresKernel =
+  const requiresKernel: LocalRuntimeKernel[] =
     contextLength >= 65536
-      ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq" as const]
+      ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq"]
       : BASE_REQUIRED_KERNELS;
   return {
     preferredBackend: "llama-server",
@@ -290,6 +298,7 @@ function runtimeForTier(
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
+  q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
@@ -336,15 +345,15 @@ function blurbForTier(id: Eliza1TierId): string {
     case "eliza-1-2b":
       return "eliza-1-2b - recommended first-run local tier for responsive text and voice.";
     case "eliza-1-4b":
-      return "eliza-1-4b - compact multimodal local tier for voice, text, embeddings, and image input.";
+      return "eliza-1-4b - balanced local tier for modern laptops and desktops.";
     case "eliza-1-9b":
-      return "eliza-1-9b - workstation local tier with stronger reasoning and multimodal input.";
+      return "eliza-1-9b - workstation local tier for stronger reasoning.";
     case "eliza-1-27b":
-      return "eliza-1-27b - high-quality local tier for large-memory desktops and servers.";
+      return "eliza-1-27b - high-quality local tier for GPU workstations.";
     case "eliza-1-27b-256k":
-      return "eliza-1-27b-256k - extended-context local tier for large-memory workstations.";
+      return "eliza-1-27b-256k - high-quality local tier with a 256k context window.";
     case "eliza-1-27b-1m":
-      return "eliza-1-27b-1m - maximum-context local tier for dedicated accelerator hosts.";
+      return "eliza-1-27b-1m - high-quality local tier with a 1M context window.";
   }
 }
 
@@ -358,6 +367,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     ggufFile: bundlePath(id, spec.textFile),
     bundleManifestFile: bundlePath(id, "eliza-1.manifest.json"),
     params: spec.params,
+    parameterLabel: spec.parameterLabel,
     quant: "Eliza-1 optimized local runtime",
     sizeGb: spec.sizeGb,
     minRamGb: spec.minRamGb,

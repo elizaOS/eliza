@@ -12,7 +12,8 @@ the eliza-1 local training entrypoints. It projects gradients into a low-rank
 random subspace, applies an approximated channel- or tensor-wise scaling factor
 back to the original gradient, and keeps the large matrix state compact. The
 reference implementation ships as the `apollo-torch` PyPI package
-(<https://github.com/zhuhanqing/APOLLO>, MIT-licensed).
+(<https://github.com/zhuhanqing/APOLLO>; review upstream license terms before
+redistributing optimizer code).
 
 We use APOLLO as the default optimizer because it lets us **full-fine-tune**
 Qwen at sizes that would otherwise need LoRA on the same VRAM budget. LoRA

@@ -4,9 +4,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
-from elizaos_voicebench.clients.judge import StubJudge
 from elizaos_voicebench.evaluator import (
     extract_letter,
     score_ifeval,
@@ -15,6 +12,17 @@ from elizaos_voicebench.evaluator import (
     score_sample,
 )
 from elizaos_voicebench.types import Sample
+
+
+class TestJudge:
+    async def score(
+        self, *, prompt: str, reference: str, candidate: str
+    ) -> tuple[float, str]:
+        del prompt
+        return (
+            1.0 if candidate.strip().casefold() == reference.strip().casefold() else 0.0,
+            "test judge exact-match",
+        )
 
 
 def _sample(suite: str, answer: str = "", **kwargs: object) -> Sample:
@@ -100,7 +108,7 @@ def test_score_refusal_detects_compliance() -> None:
 
 
 def test_score_sample_dispatches_by_mode() -> None:
-    judge = StubJudge()
+    judge = TestJudge()
 
     async def run_one(sample: Sample, candidate: str) -> float:
         result = await score_sample(sample.suite, sample, candidate, judge=judge)

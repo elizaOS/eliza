@@ -25,10 +25,6 @@ import type {
   TextGenerationSlot,
 } from "./types";
 
-// Local tier-id constants derived once from the manifest-driven catalog
-// type so the ladder definitions can't drift from the canonical list.
-// Adding a tier requires extending the manifest module; this file picks
-// it up automatically.
 const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";

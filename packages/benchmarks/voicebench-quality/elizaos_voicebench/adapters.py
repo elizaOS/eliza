@@ -25,10 +25,9 @@ log = logging.getLogger("elizaos_voicebench.adapters")
 class AdapterRequest:
     """Per-sample input to the agent under test.
 
-    ``prompt_text`` is the cascaded-STT transcript of ``sample.audio_bytes``
-    (or ``sample.reference_text`` in mock mode where audio is absent).
-    ``sample`` is passed through so suite-specific prompt wrapping
-    (e.g. MCQ choices) can be done by the runner before this is built.
+    ``prompt_text`` is the benchmark prompt wrapper around the transcribed
+    sample. ``sample`` is passed through so the adapter can use real audio
+    bytes for STT before calling the text backend.
     """
 
     prompt_text: str
@@ -58,9 +57,8 @@ class CascadedAdapter:
     """Compose an STT provider with a text-only chat adapter.
 
     The text adapter is expected to be a simple ``async (str) -> str``
-    function. When ``audio_bytes`` is absent (mock mode) we use the
-    sample's reference transcript directly — that's the documented
-    smoke-test contract.
+    function. Audio bytes and STT are required; using the reference transcript
+    as a substitute would turn the benchmark into a text-only fixture run.
     """
 
     def __init__(self, *, stt: SttFn | None, text: TextFn, name: str) -> None:
@@ -71,27 +69,16 @@ class CascadedAdapter:
     async def __call__(self, request: AdapterRequest) -> AdapterResponse:
         transcript = request.prompt_text
         audio = request.sample.audio_bytes
-        if audio is not None and self._stt is not None:
-            transcript = (await self._stt(audio)).strip() or transcript
+        if audio is None:
+            raise RuntimeError(
+                f"sample {request.sample.sample_id} has no audio bytes; "
+                "refusing to use reference text as STT output"
+            )
+        if self._stt is None:
+            raise RuntimeError("VoiceBench requires a real STT provider")
+        transcript = (await self._stt(audio)).strip() or transcript
         reply = await self._text(transcript)
         return AdapterResponse(text=reply)
-
-
-# --- mock adapter for smoke tests ---
-
-
-class EchoAdapter:
-    """Deterministic adapter that returns ``sample.answer``.
-
-    Used by the smoke test so we don't need any network in CI. Scores
-    100% on MCQ / ifeval-exact suites and gives the judge a known target
-    string for open-ended suites.
-    """
-
-    name = "echo"
-
-    async def __call__(self, request: AdapterRequest) -> AdapterResponse:
-        return AdapterResponse(text=request.sample.answer)
 
 
 # --- factory ---
@@ -101,19 +88,16 @@ def build_adapter(
     *,
     agent: str,
     stt_provider: str | None,
-    mock: bool,
 ) -> VoiceAdapter:
     """Construct an adapter for the named agent.
 
     Live adapters require the corresponding ``*_adapter`` Python package
-    to be importable; we import lazily so smoke tests don't depend on
-    any of them.
+    to be importable.
     """
 
-    if mock or agent == "echo":
-        return EchoAdapter()
-
-    stt = _build_stt(stt_provider) if stt_provider else None
+    if not stt_provider:
+        raise ValueError("VoiceBench requires --stt-provider for real audio runs")
+    stt = _build_stt(stt_provider)
     text = _build_text_adapter(agent)
     return CascadedAdapter(stt=stt, text=text, name=agent)
 

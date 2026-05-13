@@ -17,9 +17,8 @@
  * `f16`) so that `appendOptimizationFlags` + `applyGpuProfile` can pass
  * them straight through to `--cache-type-k` / `--cache-type-v`.
  *
- * The H200 profile is the marquee config: Eliza-1 27B at 1M context with
- * QJL + Polar KV quant. Smaller cards step down both context and bundle
- * size.
+ * The active mobile/local release exposes Qwen3.5-backed Eliza-1 0_8b, 2b,
+ * and 4b tiers, with modeled future 9b/27b variants for larger cards.
  */
 
 import type { Eliza1TierId } from "./catalog.js";
@@ -105,7 +104,7 @@ export interface GpuProfile {
 /**
  * RTX 3090 — Ampere, 24 GiB, no FP8.
  *
- * Best current release fit: Eliza-1 4B with compact tiers as fallbacks.
+ * Best current release fit: Eliza-1 2B with Qwen3.5 0_8B as fallback.
  * Flash-attn helps Ampere meaningfully.
  */
 const RTX_3090: GpuProfile = {
@@ -115,7 +114,12 @@ const RTX_3090: GpuProfile = {
   computeCapability: "sm_86",
   memoryBandwidthGBs: 936,
   fp8: false,
-  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: [
+    "eliza-1-9b",
+    "eliza-1-4b",
+    "eliza-1-2b",
+    "eliza-1-0_8b",
+  ],
   flashAttn: true,
   // Ampere doesn't have the q4_polar kernel on the Polar fork; fall back to
   // the Q8/Q4 KV quants which work on every sm_70+ GPU.
@@ -136,7 +140,7 @@ const RTX_3090: GpuProfile = {
 /**
  * RTX 4090 — Ada Lovelace, 24 GiB, FP8 (no flash-attn-FP8 yet).
  *
- * Best current release fit: Eliza-1 4B with compact tiers as fallbacks.
+ * Best current release fit: Eliza-1 2B with Qwen3.5 0_8B as fallback.
  */
 const RTX_4090: GpuProfile = {
   id: "rtx-4090",
@@ -145,7 +149,13 @@ const RTX_4090: GpuProfile = {
   computeCapability: "sm_89",
   memoryBandwidthGBs: 1008,
   fp8: true,
-  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: [
+    "eliza-1-27b",
+    "eliza-1-9b",
+    "eliza-1-4b",
+    "eliza-1-2b",
+    "eliza-1-0_8b",
+  ],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -164,7 +174,7 @@ const RTX_4090: GpuProfile = {
 /**
  * RTX 5090 — Blackwell, 32 GiB, FP8/FP4 first-class.
  *
- * Best current release fit: Eliza-1 4B. Blackwell sm_120 is new enough that
+ * Best current release fit: Eliza-1 2B. Blackwell sm_120 is new enough that
  * the Polar/QJL kernels may not be pre-built — the runtime should probe
  * `CAPABILITIES.json` and surface a structured error rather than silently
  * falling back.
@@ -176,7 +186,14 @@ const RTX_5090: GpuProfile = {
   computeCapability: "sm_120",
   memoryBandwidthGBs: 1792,
   fp8: true,
-  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: [
+    "eliza-1-27b-256k",
+    "eliza-1-27b",
+    "eliza-1-9b",
+    "eliza-1-4b",
+    "eliza-1-2b",
+    "eliza-1-0_8b",
+  ],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -195,7 +212,7 @@ const RTX_5090: GpuProfile = {
 /**
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
- * Best current release fit: Eliza-1 4B. H200 still runs the full kernel
+ * Best current release fit: Eliza-1 2B. H200 still runs the full kernel
  * verification recipe before defaulting to the maximum-context bundle.
  */
 const H200: GpuProfile = {
@@ -205,7 +222,15 @@ const H200: GpuProfile = {
   computeCapability: "sm_90",
   memoryBandwidthGBs: 4800,
   fp8: true,
-  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: [
+    "eliza-1-27b-1m",
+    "eliza-1-27b-256k",
+    "eliza-1-27b",
+    "eliza-1-9b",
+    "eliza-1-4b",
+    "eliza-1-2b",
+    "eliza-1-0_8b",
+  ],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",

@@ -24,7 +24,7 @@ def _write(path: Path, payload: str | bytes) -> Path:
 
 
 def _base_bundle(tmp_path: Path) -> Path:
-    bundle = tmp_path / "eliza-1-1_7b.bundle"
+    bundle = tmp_path / "eliza-1-2b.bundle"
     _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"voice")
     _write(bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"voice-tokenizer")
     _write(bundle / "asr" / "eliza-1-asr.gguf", b"asr")
@@ -72,7 +72,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
 
     report = stage.stage_local_bundle(
         argparse.Namespace(
-            tier="1_7b",
+            tier="2b",
             bundle_dir=bundle,
             text_source=text_source,
             drafter_source=drafter_source,
@@ -89,8 +89,8 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert report["manifestValidation"]["localNonPublishableOk"] is True
     assert report["manifestValidation"]["publishReadyOk"] is False
     assert report["checksumValidation"]["ok"] is True
-    assert (bundle / "text" / "eliza-1-1_7b-32k.gguf").is_file()
-    assert (bundle / "dflash" / "drafter-1_7b.gguf").is_file()
+    assert (bundle / "text" / "eliza-1-2b-32k.gguf").is_file()
+    assert (bundle / "dflash" / "drafter-2b.gguf").is_file()
     assert (bundle / "dflash" / "target-meta.json").is_file()
     assert (bundle / "vision").is_dir()
     assert (bundle / "evals" / "aggregate.json").is_file()
@@ -118,8 +118,8 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["falseBargeInRate"] == 1.0
     # RAM budget is calibrated from the 2026-05-11 e2e voice-loop bench:
-    # the fused llama-server holds every voice region resident, so 1_7b's
-    # server peak RSS is ~4.8 GB → recommended must clear that with headroom
+    # the fused llama-server holds every voice region resident, so 2b's
+    # server peak RSS must clear the calibrated budget with headroom
     # and the previous 4500 MB figure (which `thirty_turn_ok` failed on) is
     # no longer in effect.
     assert manifest["ramBudgetMb"] == {"min": 4000, "recommended": 5500}

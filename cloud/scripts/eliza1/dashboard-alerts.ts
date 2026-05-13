@@ -106,16 +106,51 @@ async function main() {
   const now = new Date();
   const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-  const [historicalData, organization] = await Promise.all([
-    analyticsService.getUsageTimeSeries(args.organizationId, {
-      startDate,
-      endDate: now,
-      granularity: "day",
-    }),
-    organizationsService.getById(args.organizationId),
-  ]);
+  let historicalData: Awaited<ReturnType<typeof analyticsService.getUsageTimeSeries>>;
+  let organization: Awaited<ReturnType<typeof organizationsService.getById>>;
+  try {
+    [historicalData, organization] = await Promise.all([
+      analyticsService.getUsageTimeSeries(args.organizationId, {
+        startDate,
+        endDate: now,
+        granularity: "day",
+      }),
+      organizationsService.getById(args.organizationId),
+    ]);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    writeEvidence(args.evidenceDir, {
+      gate: "dashboard_alerts",
+      status: "fail",
+      completedAt: new Date().toISOString(),
+      organizationId: args.organizationId,
+      policiesEvaluated: 0,
+      redStateRendered: false,
+      yellowStateRendered: false,
+      alertEventsPersisted: 0,
+      error: reason,
+      summary: `DB-backed dashboard alert evaluation could not run: ${reason}`,
+    });
+    process.exitCode = 1;
+    return;
+  }
 
-  if (!organization) throw new Error(`organization ${args.organizationId} not found`);
+  if (!organization) {
+    writeEvidence(args.evidenceDir, {
+      gate: "dashboard_alerts",
+      status: "fail",
+      completedAt: new Date().toISOString(),
+      organizationId: args.organizationId,
+      policiesEvaluated: 0,
+      redStateRendered: false,
+      yellowStateRendered: false,
+      alertEventsPersisted: 0,
+      error: `organization ${args.organizationId} not found`,
+      summary: `DB-backed dashboard alert evaluation could not run: organization ${args.organizationId} not found`,
+    });
+    process.exitCode = 1;
+    return;
+  }
 
   const creditBalance = Number(organization.credit_balance ?? 0);
   const projections = generateProjections(historicalData, args.periods);
