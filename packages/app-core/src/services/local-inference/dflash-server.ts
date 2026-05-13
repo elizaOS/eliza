@@ -307,15 +307,19 @@ const CACHE_TYPE_REQUIRED_KERNEL: Record<
 > = {
   turbo3: "turbo3",
   turbo3_0: "turbo3",
+  tbq3_0: "turbo3",
   turbo4: "turbo4",
   turbo4_0: "turbo4",
+  tbq4_0: "turbo4",
   turbo3_tcq: "turbo3_tcq",
+  tbq3_tcq: "turbo3_tcq",
   // turbo2* are the older naming for the same families — gate on turbo3.
   turbo2: "turbo3",
   turbo2_0: "turbo3",
   turbo2_tcq: "turbo3_tcq",
   qjl1_256: "qjl_full",
   qjl_full: "qjl_full",
+  q4_polar: "polarquant",
   polar: "polarquant",
   polarquant: "polarquant",
 };
@@ -697,15 +701,54 @@ export function readDflashBinaryCapabilities(
  * absent (older / hand-built binaries) we trust the request and let the load
  * attempt clarify — same policy as the dispatcher's `unsatisfiedKernels`.
  */
-function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function helpAdvertisesCacheType(binaryPath: string, value: string): boolean {
+  const help = llamaServerHelpText(binaryPath).toLowerCase();
+  if (!help) return false;
+  return new RegExp(`\\b${escapeRegExp(value.toLowerCase())}\\b`).test(help);
+}
+
+function helpAdvertisesDflashSpecType(binaryPath: string): boolean {
+  const help = llamaServerHelpText(binaryPath).toLowerCase();
+  if (!help) return false;
+  return /--spec-type[\s\S]{0,256}\bdflash\b/.test(help);
+}
+
+function assertCacheTypeSupportedOnBackend(
+  name: string,
+  value: string,
+  binaryPath: string,
+): void {
   const requiredKernel = CACHE_TYPE_REQUIRED_KERNEL[value.toLowerCase()];
   if (!requiredKernel) return; // stock cache type (f16/q8_0/...) — always ok
-  const caps = readDflashBinaryCapabilities();
-  if (!caps) return; // no capability probe — trust the request, load clarifies
-  if (caps.kernels[requiredKernel] === true) return; // shipped — allow
-  throw new Error(
-    `${name}=${value} requires the '${requiredKernel}' kernel, but the installed llama-server binary's CAPABILITIES.json reports it absent. Rebuild the fork with the matching kernel patches (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or use a stock KV cache type (f16/q8_0).`,
-  );
+  const caps = readDflashBinaryCapabilities(binaryPath);
+  if (caps && caps.kernels[requiredKernel] !== true) {
+    throw new Error(
+      `${name}=${value} requires the '${requiredKernel}' kernel, but the installed llama-server binary's CAPABILITIES.json reports it absent. Rebuild the fork with the matching kernel patches (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or use a stock KV cache type (f16/q8_0).`,
+    );
+  }
+  if (!helpAdvertisesCacheType(binaryPath, value)) {
+    throw new Error(
+      `${name}=${value} requires llama-server at ${binaryPath} to advertise '${value}' in --cache-type-k/v allowed values. CAPABILITIES.json alone is not trusted because stale installs can lie; rebuild the fork or select a stock KV cache type (f16/q8_0).`,
+    );
+  }
+}
+
+function assertDflashSpecSupportedOnBackend(binaryPath: string): void {
+  const caps = readDflashBinaryCapabilities(binaryPath);
+  if (caps && caps.kernels.dflash !== true) {
+    throw new Error(
+      `[dflash] ${binaryPath} has CAPABILITIES.json but kernels.dflash is false; refusing to launch target-only because Eliza-1 requires DFlash. Rebuild packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>.`,
+    );
+  }
+  if (!helpAdvertisesDflashSpecType(binaryPath)) {
+    throw new Error(
+      `[dflash] ${binaryPath} does not advertise '--spec-type ... dflash' in --help; refusing to launch because Eliza-1 requires DFlash drafting.`,
+    );
+  }
 }
 
 /**
