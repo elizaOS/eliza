@@ -5,8 +5,9 @@
  * fails to parse — and runs them over a tiny fixture slice to confirm the
  * metric shape, scoring, and rollup are correct.
  *
- * Does not exercise the real engine or Anthropic SDK — those paths are tested
- * by the bench itself when run on a host that has the GGUF / API key.
+ * Does not exercise the real engine or the Cerebras endpoint — those paths
+ * are tested by the bench itself when run on a host that has the GGUF /
+ * CEREBRAS_API_KEY.
  */
 import { describe, expect, it } from "vitest";
 import {
@@ -19,8 +20,8 @@ import {
   summarize,
   tryParseJson,
 } from "../src/metrics.ts";
+import { type CerebrasClient, CerebrasMode } from "../src/modes/cerebras.ts";
 import { ElizaGuidedMode } from "../src/modes/eliza-guided.ts";
-import { type HaikuClient, HaikuMode } from "../src/modes/haiku.ts";
 import { buildTableRows, renderReport, renderTable } from "../src/report.ts";
 import { runBench } from "../src/runner.ts";
 import { listActionNames, loadActionFixtures } from "../src/tasks/action.ts";
@@ -130,7 +131,7 @@ describe("metrics helpers", () => {
 
 describe("runner with mock modes", () => {
   function mockMode(args: {
-    id: "unguided" | "guided" | "haiku";
+    id: "unguided" | "guided" | "cerebras";
     output: (req: ModeRequest) => string;
   }): ModeAdapter {
     return {
@@ -210,7 +211,7 @@ describe("runner with mock modes", () => {
 
   it("records skipped modes without invoking them", async () => {
     const skippingMode: ModeAdapter = {
-      id: "haiku",
+      id: "cerebras",
       async available() {
         return "no API key";
       },
@@ -223,7 +224,9 @@ describe("runner with mock modes", () => {
       modes: [skippingMode],
       n: 1,
     });
-    expect(report.skipped).toEqual([{ modeId: "haiku", reason: "no API key" }]);
+    expect(report.skipped).toEqual([
+      { modeId: "cerebras", reason: "no API key" },
+    ]);
     expect(report.cases).toEqual([]);
     expect(report.modes).toEqual([]);
   });
@@ -238,26 +241,38 @@ describe("eliza-guided skeleton compiler", () => {
   });
 });
 
-describe("haiku mode with mock client", () => {
-  it("runs through the tool-use path and returns the tool input as JSON", async () => {
-    const mockClient: HaikuClient = {
-      messages: {
-        async create() {
-          return {
-            stop_reason: "tool_use",
-            usage: { input_tokens: 5, output_tokens: 3 },
-            content: [
-              {
-                type: "tool_use",
-                name: "should_respond",
-                input: { shouldRespond: "RESPOND" },
+describe("cerebras mode with mock client", () => {
+  it("runs through the tool-use path and returns the tool arguments as JSON", async () => {
+    const mockClient: CerebrasClient = {
+      async chatCompletions() {
+        return {
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                tool_calls: [
+                  {
+                    id: "call_1",
+                    type: "function",
+                    function: {
+                      name: "should_respond",
+                      arguments: JSON.stringify({ shouldRespond: "RESPOND" }),
+                    },
+                  },
+                ],
               },
-            ],
-          };
-        },
+              finish_reason: "tool_calls",
+            },
+          ],
+          usage: {
+            prompt_tokens: 5,
+            completion_tokens: 3,
+            total_tokens: 8,
+          },
+        };
       },
     };
-    const mode = new HaikuMode({ client: mockClient });
+    const mode = new CerebrasMode({ client: mockClient });
     const skipReason = await mode.available();
     expect(skipReason).toBeNull();
     const result = await mode.generate({
@@ -288,15 +303,15 @@ describe("haiku mode with mock client", () => {
     expect(parsed.shouldRespond).toBe("RESPOND");
   });
 
-  it("skips with a reason when ANTHROPIC_API_KEY is absent and no client is injected", async () => {
-    const original = process.env.ANTHROPIC_API_KEY;
-    process.env.ANTHROPIC_API_KEY = "";
+  it("skips with a reason when CEREBRAS_API_KEY is absent and no client is injected", async () => {
+    const original = process.env.CEREBRAS_API_KEY;
+    process.env.CEREBRAS_API_KEY = "";
     try {
-      const mode = new HaikuMode();
+      const mode = new CerebrasMode();
       const reason = await mode.available();
       expect(reason).toBeTruthy();
     } finally {
-      if (original !== undefined) process.env.ANTHROPIC_API_KEY = original;
+      if (original !== undefined) process.env.CEREBRAS_API_KEY = original;
     }
   });
 });

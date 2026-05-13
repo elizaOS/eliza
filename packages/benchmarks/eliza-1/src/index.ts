@@ -6,18 +6,19 @@
  *
  * Flags:
  *   --task <should_respond|planner|action:<name>|action:all|all>   (default: all)
- *   --mode <unguided|guided|haiku|all>                              (default: all)
+ *   --mode <unguided|guided|cerebras|all>                           (default: all)
  *   --n <count>                                                     (default: 10)
  *   --out <path.json>                                               (default: ./bench-results-<ISO>.json)
+ *   --cerebras-model <name>                                         (default: llama3.1-8b; use gpt-oss-120b for the 27B tier)
  *   --help
  *
  * Exit code is always 0 even when modes are skipped, so this is safe to wire
  * into CI without secrets / without the GGUF.
  */
 import { resolve } from "node:path";
+import { CerebrasMode } from "./modes/cerebras.ts";
 import { ElizaGuidedMode } from "./modes/eliza-guided.ts";
 import { ElizaUnguidedMode } from "./modes/eliza-unguided.ts";
-import { HaikuMode } from "./modes/haiku.ts";
 import { renderReport, writeReportJson } from "./report.ts";
 import { runBench, type TaskSelection } from "./runner.ts";
 import type { ModeAdapter, ModeName } from "./types.ts";
@@ -27,6 +28,7 @@ interface Args {
   modes: ModeName[] | "all";
   n: number;
   out: string;
+  cerebrasModel?: string;
 }
 
 const HELP = `eliza-1 bench
@@ -34,17 +36,20 @@ const HELP = `eliza-1 bench
 Flags:
   --task <should_respond|planner|action:<name>|action:all|all>
       Task to run; may be passed multiple times. Default: all.
-  --mode <unguided|guided|haiku|all>
+  --mode <unguided|guided|cerebras|all>
       Mode to run; may be passed multiple times. Default: all.
   --n <count>
       Generations per (mode, case). Default: 10.
   --out <path.json>
       Output JSON path. Default: ./bench-results-<ISO>.json
+  --cerebras-model <name>
+      Override the Cerebras reference model. Default: llama3.1-8b
+      (use gpt-oss-120b when benching the eliza-1 27B tier on an H200).
   --help, -h
       Show this help.
 
 Env:
-  ANTHROPIC_API_KEY     enables the haiku reference mode
+  CEREBRAS_API_KEY      enables the cerebras reference mode
   ELIZA_BENCH_SKIP_ENGINE=1   force-skip the eliza-1 modes
 `;
 
@@ -86,6 +91,10 @@ function parseArgs(argv: string[]): Args {
       const next = argv[++i];
       if (!next) throw new Error("--out requires a value");
       args.out = next;
+    } else if (arg === "--cerebras-model") {
+      const next = argv[++i];
+      if (!next) throw new Error("--cerebras-model requires a value");
+      args.cerebrasModel = next;
     } else {
       throw new Error(`unknown flag: ${arg}`);
     }
@@ -104,7 +113,7 @@ function selectModes(args: Args): ModeAdapter[] {
   const all: ModeAdapter[] = [
     new ElizaUnguidedMode(),
     new ElizaGuidedMode(),
-    new HaikuMode(),
+    new CerebrasMode({ model: args.cerebrasModel }),
   ];
   if (args.modes === "all") return all;
   const wanted = new Set(args.modes);
