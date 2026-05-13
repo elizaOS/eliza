@@ -9,7 +9,7 @@
  * uninstall.
  */
 
-import { Play, RefreshCw, Square, Trash2 } from "lucide-react";
+import { FolderOpen, Play, RefreshCw, Square, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type DesktopCarrotPermissionTag,
@@ -21,6 +21,7 @@ import {
   getDesktopCarrotStoreSnapshot,
   installDesktopCarrotFromDirectory,
   listDesktopCarrotWorkerStatuses,
+  pickDesktopWorkspaceFolder,
   startDesktopCarrotWorker,
   stopDesktopCarrotWorker,
   subscribeDesktopCarrotStoreChanged,
@@ -274,6 +275,23 @@ export function CarrotManagerSection() {
     }
   }, [refresh, sourceDir]);
 
+  const handlePickFolder = useCallback(async () => {
+    setError(null);
+    try {
+      const result = await pickDesktopWorkspaceFolder({
+        promptTitle: "Select a carrot source directory",
+      });
+      if (!result) {
+        setError("Folder picker unavailable — desktop bridge not connected.");
+        return;
+      }
+      if (result.canceled) return;
+      if (mountedRef.current) setSourceDir(result.path);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+
   const handleStart = useCallback(async (id: string) => {
     await startDesktopCarrotWorker(id);
   }, []);
@@ -337,6 +355,15 @@ export function CarrotManagerSection() {
             placeholder="/absolute/path/to/carrot/source"
             disabled={busy}
           />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handlePickFolder()}
+            disabled={busy}
+            title="Pick a folder…"
+          >
+            <FolderOpen className="h-4 w-4" />
+          </Button>
           <Button
             type="button"
             onClick={() => void handleInstall()}
