@@ -8,8 +8,11 @@
     "skipLibCheck": true,
     "declaration": true,
     "outDir": "dist",
-    "rootDir": "src",
-    "types": ["node", "bun-types"]
+    "rootDir": "../..",
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/billing": ["../../packages/billing/src/index.ts"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

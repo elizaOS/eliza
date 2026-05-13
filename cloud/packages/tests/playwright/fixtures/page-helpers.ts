@@ -183,7 +183,7 @@ export async function expectNoRenderTelemetryErrors(page: Page, label: string): 
   );
   await page.waitForTimeout(50);
 
-  const errors = await page.evaluate<RenderTelemetryIssue[]>((errorsKey) => {
+  const errors = await page.evaluate<RenderTelemetryIssue[], string>((errorsKey) => {
     const value = (window as typeof window & Record<string, unknown>)[errorsKey];
     return Array.isArray(value) ? (value as RenderTelemetryIssue[]) : [];
   }, RENDER_TELEMETRY_ERRORS_KEY);

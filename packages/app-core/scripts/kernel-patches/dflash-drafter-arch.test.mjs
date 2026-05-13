@@ -62,7 +62,11 @@ function makeLlamaCppFixture() {
       "struct llm_build_qwen3moe : public llm_graph_context {",
       "    llm_build_qwen3moe(const llama_model & model, const llm_graph_params & params);",
       "};",
-      "struct llama_model_mistral3 : public llama_model_base {",
+      "struct llm_build_qwen35moe : public llm_graph_context {",
+      "    llm_build_qwen35moe(const llama_model & model, const llm_graph_params & params);",
+      "};",
+      "struct llm_build_mistral3 : public llm_graph_context {",
+      "    llm_build_mistral3(const llama_model & model, const llm_graph_params & params);",
       "};",
       "",
     ].join("\n"),
@@ -71,15 +75,32 @@ function makeLlamaCppFixture() {
     root,
     "src/llama-model.cpp",
     [
-      "llama_model * llama_model_new(llm_arch arch, const llama_model_params & params) {",
+      "void llama_model::load_hparams() {",
       "    switch (arch) {",
-      "        case LLM_ARCH_QWEN35:",
-      "            return new llama_model_qwen35(params);",
-      "        case LLM_ARCH_MISTRAL3:",
-      "            return new llama_model_mistral3(params);",
+      "        case LLM_ARCH_MAINCODER:",
+      "            break;",
       "    }",
       "}",
       "void llama_model::load_tensors() {",
+      "    switch (arch) {",
+      "            case LLM_ARCH_QWEN3MOE:",
+      "            case LLM_ARCH_QWEN3VLMOE:",
+      "                break;",
+      "    }",
+      "}",
+      "void llama_model::build_graph() {",
+      "    switch (arch) {",
+      "        case LLM_ARCH_QWEN35MOE:",
+      "            {",
+      "                llm = std::make_unique<llm_build_qwen35moe>(*this, params);",
+      "            } break;",
+      "        case LLM_ARCH_MISTRAL3:",
+      "            {",
+      "                llm = std::make_unique<llm_build_mistral3>(*this, params);",
+      "            } break;",
+      "    }",
+      "}",
+      "void llama_model::mark_recurrent() {",
       "    switch (arch) {",
       "        case LLM_ARCH_QWEN3NEXT:",
       "        case LLM_ARCH_MIMO2:",
@@ -104,7 +125,10 @@ describe("patchDflashDrafterArch", () => {
     ).toMatch(/"dflash-draft"/);
     expect(
       fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
-    ).toMatch(/new llama_model_dflash_draft/);
+    ).toMatch(/std::make_unique<llm_build_dflash_draft>/);
+    expect(
+      fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
+    ).not.toMatch(/llama_model_dflash_draft::/);
     expect(fs.existsSync(path.join(root, "src/models/dflash_draft.cpp"))).toBe(
       true,
     );

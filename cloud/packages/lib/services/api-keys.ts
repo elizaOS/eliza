@@ -5,18 +5,13 @@
  */
 
 import crypto from "crypto";
-import {
-  type ApiKey,
-  apiKeysRepository,
-  type NewApiKey,
-} from "@/db/repositories";
+import { type ApiKey, apiKeysRepository, type NewApiKey } from "@/db/repositories";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
 import { API_KEY_PREFIX_LENGTH } from "@/lib/pricing";
 import { logger } from "@/lib/utils/logger";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" && UUID_RE.test(value);
@@ -50,9 +45,7 @@ const API_KEY_NEGATIVE_TTL_SECONDS = 60;
 
 function isNegativeApiKeySentinel(value: unknown): boolean {
   return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as { __none?: unknown }).__none === true
+    typeof value === "object" && value !== null && (value as { __none?: unknown }).__none === true
   );
 }
 
@@ -129,11 +122,7 @@ export class ApiKeysService {
     // Negative cache: prevent a flood of bad keys from hammering the DB.
     // Short TTL so a freshly-created key isn't blocked by a stale negative entry
     // from a recent typo'd attempt.
-    await cache.set(
-      cacheKey,
-      API_KEY_NEGATIVE_SENTINEL,
-      API_KEY_NEGATIVE_TTL_SECONDS,
-    );
+    await cache.set(cacheKey, API_KEY_NEGATIVE_SENTINEL, API_KEY_NEGATIVE_TTL_SECONDS);
     return null;
   }
 
@@ -180,9 +169,7 @@ export class ApiKeysService {
     return await apiKeysRepository.listByOrganization(organizationId);
   }
 
-  async create(
-    data: Omit<NewApiKey, "key" | "key_hash" | "key_prefix">,
-  ): Promise<{
+  async create(data: Omit<NewApiKey, "key" | "key_hash" | "key_prefix">): Promise<{
     apiKey: ApiKey;
     plainKey: string;
   }> {
@@ -201,10 +188,7 @@ export class ApiKeysService {
     };
   }
 
-  async update(
-    id: string,
-    data: Partial<NewApiKey>,
-  ): Promise<ApiKey | undefined> {
+  async update(id: string, data: Partial<NewApiKey>): Promise<ApiKey | undefined> {
     // Get the key first to invalidate cache
     const existing = await apiKeysRepository.findById(id);
     if (existing) {
@@ -229,10 +213,7 @@ export class ApiKeysService {
   }
 
   async deactivateUserKeysByName(userId: string, name: string): Promise<void> {
-    const existingKeys = await apiKeysRepository.findByUserAndName(
-      userId,
-      name,
-    );
+    const existingKeys = await apiKeysRepository.findByUserAndName(userId, name);
 
     for (const key of existingKeys) {
       await this.invalidateCache(key.key_hash);
