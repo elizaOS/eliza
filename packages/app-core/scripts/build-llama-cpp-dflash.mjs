@@ -81,7 +81,7 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// elizaOS/llama.cpp @ v1.0.0-eliza (commit 08032d57) — the unified fork that
+// elizaOS/llama.cpp @ bfab6689 — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
@@ -101,7 +101,8 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.0.0-eliza";
+const DEFAULT_REF = "bfab6689d7640db682b73f05a6af64b244a69dbd";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
 const SUBMODULE_DIR = path.resolve(
@@ -1623,6 +1624,10 @@ function defaultSourceCheckoutDir() {
   return standaloneCacheDir();
 }
 
+function isCommitSha(ref) {
+  return /^[0-9a-f]{7,40}$/i.test(ref);
+}
+
 function parseArgs(argv) {
   const args = {
     cacheDir: defaultSourceCheckoutDir(),
@@ -1745,6 +1750,11 @@ function ensureCheckout(cacheDir, ref) {
     // new artifact.
     run("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: cacheDir });
     run("git", ["clean", "-fd"], { cwd: cacheDir });
+  } else if (isCommitSha(ref)) {
+    fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
+    run("git", ["clone", "--depth=1", "--no-checkout", REMOTE, cacheDir]);
+    run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheDir });
+    run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheDir });
   } else {
     fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
     run("git", ["clone", "--depth=1", "--branch", ref, REMOTE, cacheDir]);
