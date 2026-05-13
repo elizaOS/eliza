@@ -1,6 +1,7 @@
 import {
   Archive,
   Brain,
+  Carrot,
   KeyRound,
   LayoutGrid,
   Lock,
@@ -22,6 +23,7 @@ import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
+import { CarrotManagerSection } from "./CarrotManagerSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";
 import { PermissionsSection } from "./PermissionsSection";
@@ -132,6 +134,18 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     titleKey: "settings.sections.apps.label",
     defaultTitle: "Apps",
     Component: AppsManagementSection,
+  },
+  {
+    id: "carrots",
+    label: "settings.sections.carrots.label",
+    defaultLabel: "Carrots",
+    icon: Carrot,
+    tone: "accent",
+    tooltipDescription: "settings.sections.carrots.desc",
+    defaultTooltipDescription: "Sandboxed mini-apps.",
+    titleKey: "settings.sections.carrots.label",
+    defaultTitle: "Carrots",
+    Component: CarrotManagerSection,
   },
   {
     id: "connectors",
