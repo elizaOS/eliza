@@ -14,6 +14,8 @@ export {
   ELIZA_1_HF_REPO,
   ELIZA_1_PLACEHOLDER_IDS,
   ELIZA_1_TIER_IDS,
+  ELIZA_1_TIER_PUBLISH_STATUS,
+  eliza1TierPublishStatus,
   type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,

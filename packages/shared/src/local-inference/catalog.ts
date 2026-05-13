@@ -41,6 +41,57 @@ export function isDefaultEligibleId(id: string): boolean {
   return DEFAULT_ELIGIBLE_MODEL_IDS.has(id);
 }
 
+/**
+ * Per-tier publish-state hint. Keys are tier ids that are known to have
+ * an incomplete Hugging Face bundle at the time the catalog snapshot was
+ * cut. Tiers not listed here default to `"published"`. The recommender
+ * consults this map (or a `publishStatus` field on a synthetic
+ * `CatalogModel`) before recommending a first-run default — see
+ * `recommendForFirstRun` and elizaOS/eliza#7629.
+ *
+ * Set the override env var `ELIZA_PUBLISH_STATUS_OVERRIDES` to a JSON
+ * object like `{"eliza-1-2b":"published","eliza-1-9b":"pending"}` to
+ * override at runtime without changing the static map (useful for QA
+ * and for installs that depend on a private HF mirror).
+ *
+ * Today's snapshot (2026-05-13) is empty: every published tier id in the
+ * catalog is assumed to point at a real HF bundle. The maintainer should
+ * flip a tier to `"pending"` here when they know the HF publish hasn't
+ * landed yet (e.g. a tier whose `eliza-1.manifest.json` is missing or
+ * whose `releaseState` is `"local-standin"` / `"skeleton"`).
+ */
+export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
+  Partial<Record<Eliza1TierId, "published" | "pending">>
+> = {};
+
+export function eliza1TierPublishStatus(
+  id: Eliza1TierId | string,
+): "published" | "pending" {
+  const override = readPublishStatusOverride(id);
+  if (override) return override;
+  const hint = (ELIZA_1_TIER_PUBLISH_STATUS as Record<string, "published" | "pending" | undefined>)[id];
+  return hint ?? "published";
+}
+
+function readPublishStatusOverride(
+  id: string,
+): "published" | "pending" | undefined {
+  const raw =
+    typeof process !== "undefined"
+      ? process.env?.ELIZA_PUBLISH_STATUS_OVERRIDES
+      : undefined;
+  if (!raw) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const value = parsed?.[id];
+    if (value === "published" || value === "pending") return value;
+  } catch {
+    // Malformed override JSON is non-fatal — fall back to the static
+    // publish-status hint and the catalog's own `publishStatus` field.
+  }
+  return undefined;
+}
+
 export const ELIZA_1_PLACEHOLDER_IDS: ReadonlySet<string> = new Set(
   ELIZA_1_TIER_IDS,
 );
@@ -386,6 +437,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
       q4MinRamGb: spec.q4MinRamGb,
     }),
     blurb: blurbForTier(id),
+    publishStatus: eliza1TierPublishStatus(id),
   };
 }
 
