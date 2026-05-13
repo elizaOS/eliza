@@ -297,6 +297,7 @@ export function promoteSubactionsToActions(
 			cacheScope: parent.cacheScope,
 			suppressPostActionContinuation: parent.suppressPostActionContinuation,
 			suppressActionResultClipboard: parent.suppressActionResultClipboard,
+			suppressEarlyReply: parent.suppressEarlyReply,
 			tags: parent.tags,
 			priority: parent.priority,
 			routingHint: parent.routingHint,

@@ -2079,7 +2079,10 @@ async function runReopen(
 
 // ── parent action ──────────────────────────────────────────────────────
 
-export const tasksAction: Action & { suppressPostActionContinuation: true } = {
+export const tasksAction: Action & {
+  suppressPostActionContinuation: true;
+  suppressEarlyReply: true;
+} = {
   name: "TASKS",
   contexts: ["tasks", "code", "automation", "agent_internal", "connectors"],
   roleGate: { minRole: "USER" },
@@ -2198,6 +2201,12 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   descriptionCompressed:
     "tasks: action=create|spawn_agent|send|stop_agent|list_agents|cancel|history|control|share|provision_workspace|submit_workspace|manage_issues|archive|reopen",
   suppressPostActionContinuation: true,
+  // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
+  // suppress the response-handler's draft reply: the action's own callback
+  // emits the canonical ack ("On it — spawning…") and the sub-agent's real
+  // answer comes back asynchronously via the router. Shipping the draft
+  // alongside the ack duplicates the bot's voice and confuses the user.
+  suppressEarlyReply: true,
   parameters: [
     {
       name: "action",
