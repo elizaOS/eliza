@@ -60,7 +60,6 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
-import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -412,25 +411,6 @@ function extractInlinePlannerActionParams(value: string): {
 	return { name: unwrapPlannerIdentifier(value) };
 }
 
-function splitPlannerCompoundActionName(
-	actionName: string,
-): { actionName: string; subaction: string } | null {
-	const parts = unwrapPlannerIdentifier(actionName)
-		.split(".")
-		.map((part) => part.trim())
-		.filter(Boolean);
-	if (parts[0]?.toLowerCase() === "functions") {
-		parts.shift();
-	}
-	if (parts.length !== 2) {
-		return null;
-	}
-	return {
-		actionName: parts[0],
-		subaction: parts[1],
-	};
-}
-
 export function extractPlannerActionNames(
 	parsedPlanner: Record<string, unknown>,
 ): string[] {
@@ -496,36 +476,6 @@ function _normalizePlannerActions(
 		const resolvedAction = resolveRuntimeAction(actionLookup, actionName);
 		if (resolvedAction) {
 			return [resolvedAction.name];
-		}
-
-		const compoundAction = splitPlannerCompoundActionName(actionName);
-		if (compoundAction) {
-			const resolvedCompoundAction = resolveRuntimeAction(
-				actionLookup,
-				compoundAction.actionName,
-			);
-			if (resolvedCompoundAction) {
-				return [resolvedCompoundAction.name];
-			}
-		}
-
-		const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
-		if (aliasedActionName) {
-			const resolvedAlias = resolveRuntimeAction(
-				actionLookup,
-				aliasedActionName,
-			);
-			if (resolvedAlias) {
-				runtime.logger.info(
-					{
-						src: "service:message",
-						actionName,
-						aliasedActionName: resolvedAlias.name,
-					},
-					"Repaired planner action alias",
-				);
-				return [resolvedAlias.name];
-			}
 		}
 
 		runtime.logger.warn(
@@ -616,33 +566,6 @@ function resolvePlannerActionNameFromLookup(
 	const resolvedAction = resolveRuntimeAction(lookup, actionName);
 	if (resolvedAction) {
 		return [resolvedAction.name];
-	}
-
-	const compoundAction = splitPlannerCompoundActionName(actionName);
-	if (compoundAction) {
-		const resolvedCompoundAction = resolveRuntimeAction(
-			lookup,
-			compoundAction.actionName,
-		);
-		if (resolvedCompoundAction) {
-			return [resolvedCompoundAction.name];
-		}
-	}
-
-	const aliasedActionName = PLANNER_ACTION_ALIASES.get(normalized);
-	if (aliasedActionName) {
-		const resolvedAlias = resolveRuntimeAction(lookup, aliasedActionName);
-		if (resolvedAlias) {
-			runtime.logger.info(
-				{
-					src: "service:message",
-					actionName,
-					aliasedActionName: resolvedAlias.name,
-				},
-				"Repaired planner action alias",
-			);
-			return [resolvedAlias.name];
-		}
 	}
 
 	return [];
@@ -2670,49 +2593,6 @@ function getStage1CalendarSignatureDeadlineRepairPlan(args: {
 	};
 }
 
-function getStage1KnownToolRepairPlan(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): {
-	contexts: AgentContext[];
-	candidateActions: string[];
-	parentActionHints: string[];
-} | null {
-	return (
-		getStage1ApprovalResolutionRepairPlan(args) ??
-		getStage1PasswordManagerRepairPlan(args) ??
-		getStage1CheckinRepairPlan(args) ??
-		getStage1CalendarSignatureDeadlineRepairPlan(args) ??
-		getStage1CalendarTravelRepairPlan(args) ??
-		getStage1CalendlyRepairPlan(args) ??
-		getStage1OwnerPreferenceRepairPlan(args)
-	);
-}
-
-function buildFallbackStage1PlanForKnownToolRequest(args: {
-	message: Memory;
-	availableContexts: readonly ContextDefinition[];
-	availableActionNames?: readonly string[];
-}): MessageHandlerResult | null {
-	const repair = getStage1KnownToolRepairPlan(args);
-	if (!repair) {
-		return null;
-	}
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Deterministic fallback: explicit owner tool request requires a known owning action.",
-		plan: {
-			contexts: repair.contexts,
-			requiresTool: true,
-			simple: false,
-			candidateActions: repair.candidateActions,
-			parentActionHints: repair.parentActionHints,
-		},
-	};
-}
-
 function buildKnownToolRequestResponseHandlerPatch(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
@@ -3213,13 +3093,8 @@ function looksLikeMessageHandlerToolArguments(
 function extractMessageHandlerRawParsed(
 	raw: string | GenerateTextResult,
 ): Record<string, unknown> | null {
-	if (typeof raw !== "string") {
-		return (
-			extractHandleResponseToolArguments(raw) ??
-			parseJsonObject<Record<string, unknown>>(getV5ModelText(raw))
-		);
-	}
-	return parseJsonObject<Record<string, unknown>>(raw);
+	if (typeof raw === "string") return null;
+	return extractHandleResponseToolArguments(raw);
 }
 
 function normalizeRawParsedForFieldRegistry(
@@ -3375,60 +3250,8 @@ function messageHandlerFromFieldResult(
 function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
-	if (typeof raw !== "string") {
-		const text = getV5ModelText(raw);
-		return (
-			parseMessageHandlerNativeToolCall(raw) ??
-			parseMessageHandlerOutput(text) ??
-			synthesizeSimpleReplyFromPlainText(text)
-		);
-	}
-	return (
-		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
-	);
-}
-
-/**
- * Tolerant fallback: when the model returns plain text instead of the
- * expected JSON / native tool-call format, wrap the text as a simple
- * reply. This keeps the conversation alive on cold-start turns where
- * weaker / smaller models occasionally skip the structured-output
- * scaffold. Without this, the runtime threw `v5 messageHandler returned
- * invalid MessageHandlerResult` and the user saw the failure-template.
- *
- * Returns null only when the text is genuinely empty — that's a real
- * failure that should still propagate.
- */
-function synthesizeSimpleReplyFromPlainText(
-	raw: string | undefined | null,
-): MessageHandlerResult | null {
-	if (typeof raw !== "string") return null;
-	const trimmed = raw.trim();
-	if (!trimmed) return null;
-	const replyText = stripReasoningBlocks(trimmed);
-	if (!replyText) return null;
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Tolerant fallback: model returned plain text instead of the structured plan; treating as simple reply.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			reply: replyText,
-			simple: true,
-		},
-	};
-}
-
-function buildFallbackStage1DirectReplyPlan(): MessageHandlerResult {
-	return {
-		processMessage: "RESPOND",
-		thought:
-			"Tolerant fallback: response handler returned no parseable plan; routing as a simple direct reply.",
-		plan: {
-			contexts: [SIMPLE_CONTEXT_ID],
-			simple: true,
-		},
-	};
+	if (typeof raw === "string") return null;
+	return parseMessageHandlerNativeToolCall(raw);
 }
 
 /**
@@ -4103,27 +3926,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		}
 		if (!messageHandler) {
 			messageHandler = parseMessageHandlerModelOutput(rawMessageHandler);
-		}
-		if (!messageHandler) {
-			messageHandler =
-				buildFallbackStage1PlanForKnownToolRequest({
-					message: args.message,
-					availableContexts,
-					availableActionNames: (args.runtime.actions ?? []).map(
-						(action) => action.name,
-					),
-				}) ?? buildFallbackStage1DirectReplyPlan();
-		}
-		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
-			args.runtime.logger?.warn?.(
-				{
-					raw:
-						typeof rawMessageHandler === "string"
-							? rawMessageHandler
-							: JSON.stringify(rawMessageHandler),
-				},
-				"[message] parseMessageHandlerModelOutput returned null",
-			);
 		}
 
 		// RESPONSE_HANDLER_AFTER (blocking): hooks fire after Stage 1 returns and the
@@ -4941,156 +4743,6 @@ function unwrapPlannerIdentifier(value: string): string {
 	}
 	return trimmed;
 }
-
-const PLANNER_ACTION_ALIASES = new Map(
-	[
-		["BULK_RESCHEDULE", "CALENDAR"],
-		["BULK_RESCHEDULE_MEETINGS", "CALENDAR"],
-		["SCHEDULE_MEETING", "CALENDAR"],
-		["RESCHEDULE_MEETINGS", "CALENDAR"],
-		["GET_AVAILABILITY", "CALENDAR"],
-		["CREATE_EVENT", "CALENDAR"],
-		["CREATE_RECURRING_EVENT", "CALENDAR"],
-		["CALENDAR_CREATE_RECURRING_EVENT", "CALENDAR"],
-		["SCHEDULE_RECURRING_EVENT", "CALENDAR"],
-		["SCHEDULE_RECURRING_MEETING", "CALENDAR"],
-		["SCHEDULE_RECURRING", "CALENDAR"],
-		["CAPTURE_TRAVEL_PREFERENCES", "REPLY"],
-		["CAPTURE_BOOKING_PREFERENCES", "REPLY"],
-		["CREATE_TRAVEL_PREFERENCES", "REPLY"],
-		["SET_PREFERENCES", "REPLY"],
-		["SET_TRAVEL_PREFERENCES", "REPLY"],
-		["CREATE_FOLLOWUP", "SCHEDULED_TASKS"],
-		["GET_PENDING_ASSETS", "MESSAGE"],
-		["GET_PENDING_ITEMS", "MESSAGE"],
-		["EVENT_ASSET_CHECKLIST", "MESSAGE"],
-		["OUTSTANDING_EVENT_ASSETS", "MESSAGE"],
-		["PORTAL_ASSET_CHECKLIST", "MESSAGE"],
-		["PROPOSE_GROUP_CHAT_HANDOFF", "MESSAGE"],
-		["GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
-		["SET_GROUP_CHAT_HANDOFF_POLICY", "MESSAGE"],
-		["CREATE_GROUP_CHAT", "MESSAGE"],
-		["BUMP_WITH_CONTEXT", "MESSAGE"],
-		["CONTEXTUAL_BUMP", "MESSAGE"],
-		["BUMP_UNANSWERED_DECISION", "MESSAGE"],
-		["GET_PENDING_DRAFTS", "MESSAGE"],
-		["SOCIAL_POSTING", "POST"],
-		["GET_TIMELINE", "POST"],
-		["READ_TIMELINE", "POST"],
-		["SEARCH_TWITTER", "POST"],
-		["TWITTER_SEARCH", "POST"],
-		["X_SEARCH", "POST"],
-		["SEARCH_TWITTER_POSTS", "POST"],
-		["TWITTER_POST_SEARCH", "POST"],
-		["FETCH_X_TIMELINE", "POST"],
-		["VIEW_X_FEED", "POST"],
-		["FETCH_TWITTER_FEED", "POST"],
-		["FETCH_TWITTER_TIMELINE", "POST"],
-		["FETCH_TWITTER_DMS", "MESSAGE"],
-		["READ_TWITTER_DMS", "MESSAGE"],
-		["READ_TWITTER_DM", "MESSAGE"],
-		["FETCH_X_DMS", "MESSAGE"],
-		["READ_X_DMS", "MESSAGE"],
-		["READ_X_DM", "MESSAGE"],
-		["DISCORD_POST_MESSAGE", "MESSAGE"],
-		["DISCORD_SEND_MESSAGE", "MESSAGE"],
-		["SEND_DISCORD_MESSAGE", "MESSAGE"],
-		["SLACK_POST_MESSAGE", "MESSAGE"],
-		["TELEGRAM_SEND_MESSAGE", "MESSAGE"],
-		["EMAIL_FETCH_LATEST", "MESSAGE"],
-		["EMAIL_DRAFT_REPLY", "MESSAGE"],
-		["EMAIL_FETCH_UNREAD", "MESSAGE"],
-		["FETCH_UNREAD_EMAIL", "MESSAGE"],
-		["FETCH_UNREAD_EMAILS", "MESSAGE"],
-		["LIST_UNREAD_EMAILS", "MESSAGE"],
-		["SUMMARIZE_UNREAD_EMAILS", "MESSAGE"],
-		["SUMMARISE_UNREAD_EMAILS", "MESSAGE"],
-		["UNREAD_EMAIL_SUMMARY", "MESSAGE"],
-		["READ_UNREAD_EMAILS", "MESSAGE"],
-		["ADD_TODO", "OWNER_TODOS"],
-		["CREATE_TODO", "OWNER_TODOS"],
-		["TODO_ADD", "OWNER_TODOS"],
-		["TODO_CREATE", "OWNER_TODOS"],
-		["TODOS_ADD", "OWNER_TODOS"],
-		["TODOS_CREATE", "OWNER_TODOS"],
-		["TASK_ADD", "OWNER_TODOS"],
-		["TASK_CREATE", "OWNER_TODOS"],
-		["ADD_TASK", "OWNER_TODOS"],
-		["CREATE_TASK", "OWNER_TODOS"],
-		["TASKS_ADD_TODO", "OWNER_TODOS"],
-		["TASKS_CREATE_TODO", "OWNER_TODOS"],
-		["TASKS_CREATE_REMINDER", "OWNER_REMINDERS"],
-		["LIST_TODOS", "OWNER_TODOS"],
-		["GET_TODOS", "OWNER_TODOS"],
-		["TODO_LIST", "OWNER_TODOS"],
-		["TODO_LIST_TODAY", "OWNER_TODOS"],
-		["TODOS_LIST", "OWNER_TODOS"],
-		["TODO_GET", "OWNER_TODOS"],
-		["TODOS_GET", "OWNER_TODOS"],
-		["TODOS_REVIEW", "OWNER_TODOS"],
-		["TASK_LIST", "OWNER_TODOS"],
-		["TASK_LIST_TODAY", "OWNER_TODOS"],
-		["TASKS_REVIEW", "OWNER_TODOS"],
-		["TASKS_LIST_TODAY", "OWNER_TODOS"],
-		["TASKS_LIST_TODOS", "OWNER_TODOS"],
-		["LIST_TASKS", "OWNER_TODOS"],
-		["LIFE_GET_TODOS", "OWNER_TODOS"],
-		["LIFE_TODO", "OWNER_TODOS"],
-		["ADD_HABIT", "OWNER_ROUTINES"],
-		["CREATE_HABIT", "OWNER_ROUTINES"],
-		["LIST_HABITS", "OWNER_ROUTINES"],
-		["ADD_GOAL", "OWNER_GOALS"],
-		["CREATE_GOAL", "OWNER_GOALS"],
-		["TASKS_SET_GOAL", "OWNER_GOALS"],
-		["SET_GOAL", "OWNER_GOALS"],
-		["CREATE_REMINDER", "OWNER_REMINDERS"],
-		["SET_REMINDER_RULE", "OWNER_REMINDERS"],
-		["CHECK_IN", "SCHEDULED_TASKS"],
-		["LIFE_CHECK_IN", "SCHEDULED_TASKS"],
-		["MORNING_CHECKIN", "SCHEDULED_TASKS"],
-		["MORNING_CHECK_IN", "SCHEDULED_TASKS"],
-		["NIGHT_CHECKIN", "SCHEDULED_TASKS"],
-		["NIGHT_CHECK_IN", "SCHEDULED_TASKS"],
-		["RUN_CHECKIN", "SCHEDULED_TASKS"],
-		["RUN_MORNING_CHECKIN", "SCHEDULED_TASKS"],
-		["RUN_NIGHT_CHECKIN", "SCHEDULED_TASKS"],
-		["AUTOMATION_RUN", "REPLY"],
-		["DAILY_BRIEF", "REPLY"],
-		["MEMORY_SET", "REPLY"],
-		["MEMORY_WRITE", "REPLY"],
-		["REMEMBER_PREFERENCES", "REPLY"],
-		["CREATE_PREFERENCE_PROFILE", "REPLY"],
-		["FLAG_CONFLICT", "CALENDAR"],
-		["CHECK_FLIGHT_CONFLICT", "CALENDAR"],
-		["FLIGHT_CONFLICT_REBOOKING", "CALENDAR"],
-		["REBOOK_CONFLICTING_EVENT", "CALENDAR"],
-		["CALENDAR_READ", "CALENDAR"],
-		["CALENDAR_CREATE_EVENT", "CALENDAR"],
-		["CALENDAR_FEED", "CALENDAR"],
-		["CALENDLY_CHECK_AVAILABILITY", "CALENDAR"],
-		["CALENDLY_AVAILABILITY", "CALENDAR"],
-		["CALENDLY_SINGLE_USE_LINK", "CALENDAR"],
-		["CALENDAR_CHECK_AVAILABILITY", "CALENDAR"],
-		["BLOCK_WEBSITE", "BLOCK"],
-		["WEBSITE_BLOCKER", "BLOCK"],
-		["AUTOMATION_FOCUS_BLOCK", "BLOCK"],
-		["FOCUS_BLOCK", "BLOCK"],
-		["SET_APP_BLOCK", "BLOCK"],
-		["PHONE_SET_APP_BLOCK", "BLOCK"],
-		["PHONE_BLOCK_APPS", "BLOCK"],
-		["BLOCK_APPS", "BLOCK"],
-		["ADMIN_REJECT_APPROVAL", "RESOLVE_REQUEST"],
-		["REJECT_APPROVAL", "RESOLVE_REQUEST"],
-		["DENY_APPROVAL", "RESOLVE_REQUEST"],
-		["DECLINE_APPROVAL", "RESOLVE_REQUEST"],
-		["REQUEST_UPLOAD", "COMPUTER_USE"],
-		["UPLOAD_PORTAL", "COMPUTER_USE"],
-		["DESKTOP", "COMPUTER_USE"],
-	].map(([from, to]) => [
-		normalizeActionIdentifier(from),
-		normalizeActionIdentifier(to),
-	]),
-);
 
 const PLANNER_PROVIDER_ALIASES = new Map(
 	[
