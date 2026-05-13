@@ -38,6 +38,12 @@
  */
 
 import type { BargeInController } from "./barge-in";
+import {
+  EOT_MID_CLAUSE_THRESHOLD,
+  type EotClassifier,
+  type VoiceTurnSignal,
+  turnSignalFromProbability,
+} from "./eot-classifier";
 import type { VoiceScheduler } from "./scheduler";
 import type {
   StreamingTranscriber,
@@ -79,6 +85,12 @@ export interface VoiceGenerateRequest {
   final: boolean;
   /** Aborted when speech resumes (speculative) or on a hard-stop barge-in. */
   signal: AbortSignal;
+  /**
+   * Semantic turn-taking signal available at request issue time. Response
+   * handlers can deterministically suppress/accept without waiting for another
+   * model token when this says the next speaker is not the agent.
+   */
+  turnSignal?: VoiceTurnSignal;
 }
 
 export interface VoiceTurnControllerDeps {
@@ -98,6 +110,12 @@ export interface VoiceTurnControllerDeps {
   prewarm?: (roomId: string) => void | Promise<void>;
   /** Optional cached first-audio filler played immediately on speech-start. */
   playFirstAudioFiller?: () => string | null;
+  /**
+   * Semantic turn detector layered with VAD/STT. It runs continuously on
+   * partial transcripts so `speech-pause` can decide whether to speculate or
+   * wait for the user to continue.
+   */
+  turnDetector?: EotClassifier;
   /**
    * Run a generation pass. The callee builds the message, calls the runtime
    * message handler / `useModel`, and streams `replyText` into TTS via the
@@ -131,6 +149,8 @@ export interface VoiceTurnControllerEvents {
   onTurnComplete?(outcome: VoiceTurnOutcome): void;
   /** `prewarm` rejected, or a `generate` pass rejected with a non-abort error. */
   onError?(error: Error): void;
+  /** A VAD pause/end was suppressed because semantic turn-taking says user continues. */
+  onTurnSuppressed?(transcript: string, signal: VoiceTurnSignal): void;
 }
 
 const DEFAULT_SPECULATE_PAUSE_MS = 300;
@@ -153,6 +173,10 @@ export class VoiceTurnController {
   /** A finalize() in progress (awaiting `transcriber.flush()` + generate). */
   private finalizing: Promise<void> | null = null;
   private latestPartial = "";
+  private latestTurnSignal:
+    | { transcript: string; signal: VoiceTurnSignal; sequence: number }
+    | null = null;
+  private turnSignalSequence = 0;
   private started = false;
   private vadUnsub: (() => void) | null = null;
   private transcriberUnsub: (() => void) | null = null;
@@ -253,7 +277,7 @@ export class VoiceTurnController {
           !this.speculative &&
           !this.segmentEnded
         ) {
-          this.startSpeculative(this.latestPartial, this.latestUpdate);
+          this.maybeStartSpeculative(this.latestPartial, this.latestUpdate);
         }
         break;
       }
@@ -274,10 +298,12 @@ export class VoiceTurnController {
       case "partial":
         this.latestPartial = event.update.partial;
         this.latestUpdate = event.update;
+        this.queueTurnSignalRefresh(event.update.partial);
         break;
       case "final":
         this.latestPartial = event.update.partial;
         this.latestUpdate = event.update;
+        this.queueTurnSignalRefresh(event.update.partial);
         break;
       case "words":
         // ASR confirmed real words during a barge-in window — promote a
@@ -327,12 +353,44 @@ export class VoiceTurnController {
 
   // --- speculative generation -------------------------------------------
 
-  private startSpeculative(
+  private maybeStartSpeculative(
     transcript: string,
     update: TranscriptUpdate | null,
   ): void {
     const text = transcript.trim();
     if (text.length === 0) return;
+    if (!this.deps.turnDetector) {
+      this.startSpeculative(text, update, null);
+      return;
+    }
+    void this.startSpeculativeAfterTurnSignal(text, update);
+  }
+
+  private async startSpeculativeAfterTurnSignal(
+    text: string,
+    update: TranscriptUpdate | null,
+  ): Promise<void> {
+    const turnSignal = await this.ensureTurnSignal(text);
+    if (
+      !this.started ||
+      this.segmentEnded ||
+      this.speculative ||
+      this.latestPartial.trim() !== text
+    ) {
+      return;
+    }
+    if (turnSignal && shouldSuppressAgentSpeech(turnSignal)) {
+      this.events.onTurnSuppressed?.(text, turnSignal);
+      return;
+    }
+    this.startSpeculative(text, update, turnSignal);
+  }
+
+  private startSpeculative(
+    text: string,
+    update: TranscriptUpdate | null,
+    turnSignal: VoiceTurnSignal | null,
+  ): void {
     const controller = new AbortController();
     this.events.onSpeculativeStart?.(text);
     const promise = this.runGenerate({
@@ -340,6 +398,7 @@ export class VoiceTurnController {
       ...voiceRequestMetadata(update),
       final: false,
       signal: controller.signal,
+      ...(turnSignal ? { turnSignal } : {}),
     });
     this.speculative = { transcript: text, controller, promise };
   }
@@ -415,6 +474,12 @@ export class VoiceTurnController {
       // Nothing was said (a blip the VAD let through). No turn.
       return;
     }
+    const finalTurnSignal = await this.ensureTurnSignal(finalTranscript);
+    if (finalTurnSignal && shouldSuppressAgentSpeech(finalTurnSignal)) {
+      this.abortSpeculative();
+      this.events.onTurnSuppressed?.(finalTranscript, finalTurnSignal);
+      return;
+    }
     const controller = new AbortController();
     this.activeFinalController = controller;
     let outcome: VoiceTurnOutcome | null;
@@ -424,6 +489,7 @@ export class VoiceTurnController {
         ...voiceRequestMetadata(finalUpdate),
         final: true,
         signal: controller.signal,
+        ...(finalTurnSignal ? { turnSignal: finalTurnSignal } : {}),
       });
     } catch (err) {
       outcome = null;
@@ -449,6 +515,59 @@ export class VoiceTurnController {
       return null;
     }
   }
+
+  // --- semantic turn detector ------------------------------------------
+
+  private queueTurnSignalRefresh(transcript: string): void {
+    if (!this.deps.turnDetector || transcript.trim().length === 0) return;
+    void this.computeTurnSignal(transcript);
+  }
+
+  private async ensureTurnSignal(
+    transcript: string,
+  ): Promise<VoiceTurnSignal | null> {
+    const text = transcript.trim();
+    if (!this.deps.turnDetector || text.length === 0) return null;
+    const cached = this.latestTurnSignal;
+    if (cached && cached.transcript === text) return cached.signal;
+    return this.computeTurnSignal(text);
+  }
+
+  private async computeTurnSignal(
+    transcript: string,
+  ): Promise<VoiceTurnSignal | null> {
+    const detector = this.deps.turnDetector;
+    if (!detector) return null;
+    const text = transcript.trim();
+    if (text.length === 0) return null;
+    const sequence = ++this.turnSignalSequence;
+    try {
+      const signal = detector.signal
+        ? await detector.signal(text)
+        : turnSignalFromProbability({
+            probability: await detector.score(text),
+            transcript: text,
+            source: "custom",
+            model: detector.constructor.name,
+          });
+      const current = this.latestTurnSignal;
+      if (!current || sequence >= current.sequence) {
+        this.latestTurnSignal = { transcript: text, signal, sequence };
+      }
+      return signal;
+    } catch (err) {
+      this.events.onError?.(toError(err));
+      return null;
+    }
+  }
+}
+
+function shouldSuppressAgentSpeech(signal: VoiceTurnSignal): boolean {
+  return (
+    signal.agentShouldSpeak === false ||
+    signal.nextSpeaker === "user" ||
+    signal.endOfTurnProbability < EOT_MID_CLAUSE_THRESHOLD
+  );
 }
 
 function isAbortError(err: unknown): boolean {

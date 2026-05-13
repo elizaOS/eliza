@@ -71,7 +71,7 @@ function eliza1Manifest(overrides: {
       vad: [{ path: vadPath, sha256: overrides.shaFor("vad") }],
     },
     kernels: {
-      required: ["turboquant_q3", "qjl", "polarquant", "dflash"],
+      required: ["turboquant_q4", "qjl", "polarquant", "dflash"],
       optional: [],
       verifiedBackends,
     },
@@ -301,7 +301,7 @@ describe("local inference downloader status", () => {
         vad: [{ path: vadPath, sha256: sha256(vad) }],
       },
       kernels: {
-        required: ["turboquant_q3", "qjl", "polarquant", "dflash"],
+        required: ["turboquant_q4", "qjl", "polarquant", "dflash"],
         optional: [],
         verifiedBackends: {
           metal: {

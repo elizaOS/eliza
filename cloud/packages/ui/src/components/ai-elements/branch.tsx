@@ -11,8 +11,18 @@
 
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
+import {
+  Children,
+  createContext,
+  isValidElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { useRenderGuard } from "../../runtime/render-telemetry";
 import { cn } from "../../lib/utils";
 import { Button } from "../button";
 
@@ -21,8 +31,7 @@ type BranchContextType = {
   totalBranches: number;
   goToPrevious: () => void;
   goToNext: () => void;
-  branches: ReactElement[];
-  setBranches: (branches: ReactElement[]) => void;
+  setTotalBranches: (totalBranches: number) => void;
 };
 
 const BranchContext = createContext<BranchContextType | null>(null);
@@ -43,43 +52,45 @@ export type BranchProps = HTMLAttributes<HTMLDivElement> & {
 };
 
 export const Branch = ({ defaultBranch = 0, onBranchChange, className, ...props }: BranchProps) => {
+  useRenderGuard("Branch");
   const [currentBranch, setCurrentBranch] = useState(defaultBranch);
-  const [branches, setBranches] = useState<ReactElement[]>([]);
+  const [totalBranches, setTotalBranches] = useState(0);
 
-  const _handleBranchChange = useCallback(
-    (newBranch: number) => {
-      setCurrentBranch(newBranch);
-      onBranchChange?.(newBranch);
-    },
-    [onBranchChange],
-  );
+  useEffect(() => {
+    if (totalBranches > 0 && currentBranch >= totalBranches) {
+      const nextBranch = totalBranches - 1;
+      setCurrentBranch(nextBranch);
+      onBranchChange?.(nextBranch);
+    }
+  }, [currentBranch, onBranchChange, totalBranches]);
 
   const goToPrevious = useCallback(() => {
     setCurrentBranch((prev) => {
-      const newBranch = prev > 0 ? prev - 1 : branches.length - 1;
+      if (totalBranches <= 1) return prev;
+      const newBranch = prev > 0 ? prev - 1 : totalBranches - 1;
       onBranchChange?.(newBranch);
       return newBranch;
     });
-  }, [branches.length, onBranchChange]);
+  }, [onBranchChange, totalBranches]);
 
   const goToNext = useCallback(() => {
     setCurrentBranch((prev) => {
-      const newBranch = prev < branches.length - 1 ? prev + 1 : 0;
+      if (totalBranches <= 1) return prev;
+      const newBranch = prev < totalBranches - 1 ? prev + 1 : 0;
       onBranchChange?.(newBranch);
       return newBranch;
     });
-  }, [branches.length, onBranchChange]);
+  }, [onBranchChange, totalBranches]);
 
   const contextValue = useMemo<BranchContextType>(
     () => ({
       currentBranch,
-      totalBranches: branches.length,
+      totalBranches,
       goToPrevious,
       goToNext,
-      branches,
-      setBranches,
+      setTotalBranches,
     }),
-    [currentBranch, branches, goToPrevious, goToNext],
+    [currentBranch, totalBranches, goToPrevious, goToNext],
   );
 
   return (
@@ -92,18 +103,16 @@ export const Branch = ({ defaultBranch = 0, onBranchChange, className, ...props 
 export type BranchMessagesProps = HTMLAttributes<HTMLDivElement>;
 
 export const BranchMessages = ({ children, ...props }: BranchMessagesProps) => {
-  const { currentBranch, setBranches, branches } = useBranch();
+  const { currentBranch, setTotalBranches } = useBranch();
   const childrenArray = useMemo(
-    () => (Array.isArray(children) ? children : [children]),
+    () => Children.toArray(children) as ReactNode[],
     [children],
   );
 
-  // Use useEffect to update branches when they change
   useEffect(() => {
-    if (branches.length !== childrenArray.length) {
-      setBranches(childrenArray);
-    }
-  }, [childrenArray, branches, setBranches]);
+    setTotalBranches(childrenArray.length);
+    return () => setTotalBranches(0);
+  }, [childrenArray.length, setTotalBranches]);
 
   return childrenArray.map((branch, index) => (
     <div
@@ -111,7 +120,7 @@ export const BranchMessages = ({ children, ...props }: BranchMessagesProps) => {
         "grid gap-2 overflow-hidden [&>div]:pb-0",
         index === currentBranch ? "block" : "hidden",
       )}
-      key={branch.key}
+      key={isValidElement(branch) && branch.key != null ? branch.key : index}
       {...props}
     >
       {branch}

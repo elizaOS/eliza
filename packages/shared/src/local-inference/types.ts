@@ -256,8 +256,14 @@ export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-1_7b". */
+  /** HuggingFace repo slug, e.g. "elizaos/eliza-1". */
   hfRepo: string;
+  /**
+   * Optional path prefix inside `hfRepo`. Eliza-1 publishes every tier under
+   * one Hugging Face model repo, so app downloads resolve bundle-relative
+   * paths like `text/eliza-1-2b-32k.gguf` under `bundles/2b/`.
+   */
+  hfPathPrefix?: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
   /**
@@ -319,6 +325,8 @@ export interface CatalogModel {
    * that participates in DFlash pairing.
    */
   tokenizerFamily?: TokenizerFamily;
+  /** Voice backends whose artifacts ship in this Eliza-1 bundle. */
+  voiceBackends?: ReadonlyArray<"kokoro" | "omnivoice">;
   /**
    * Provenance for the Eliza-1 v1 release shape (`releaseState=base-v1`):
    * Eliza-1 v1 is the upstream BASE models — GGUF-converted via the

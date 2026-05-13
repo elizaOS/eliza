@@ -33,11 +33,11 @@ ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
 
-# `0_8b` and `2b` are the Qwen3.5 small/mid local tiers (the eliza-1 line is
+# `0_8b`, `2b`, and `4b` are the active Qwen3.5 local tiers (the eliza-1 line is
 # Qwen3.5-only per the 2026-05-12 operator directive — the Qwen3 dense bases
-# don't work with the eliza-1 dflash spec-decode path). `0_6b` / `1_7b` /
-# `4b` remain in this list as **deprecated** tier ids — the corresponding
-# elizaos/eliza-1-{0_6b,1_7b,4b} HF repos stay public for existing downloads,
+# don't work with the eliza-1 dflash spec-decode path). `0_6b` / `1_7b`
+# remain in this list as **deprecated** tier ids — the corresponding
+# elizaos/eliza-1-{0_6b,1_7b} HF repos stay public for existing downloads,
 # but their cards are marked DEPRECATED and no new SFT runs target them.
 # See packages/shared/src/local-inference/catalog.ts +
 # packages/training/scripts/training/model_registry.py.
@@ -129,7 +129,13 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
     "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "4b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "4b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
     "9b": (
         "turboquant_q4",
         "qjl",
@@ -185,9 +191,9 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("kokoro",),
-    "2b": ("kokoro",),
-    "4b": ("kokoro",),
+    "0_8b": ("omnivoice",),
+    "2b": ("omnivoice",),
+    "4b": ("omnivoice",),
     # 9B is the boundary tier: laptop installs use Kokoro, workstation/server
     # installs can use OmniVoice cloning when the heavier assets are present.
     "9b": ("kokoro", "omnivoice"),

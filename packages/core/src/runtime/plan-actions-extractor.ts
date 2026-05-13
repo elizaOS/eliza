@@ -105,7 +105,7 @@ function tryExtractFromWrapper(
 
 	let parsed: Record<string, unknown>;
 	try {
-		parsed = JSON.parse(sanitizeJsonText(body.text));
+		parsed = JSON.parse(body.text);
 	} catch {
 		return null;
 	}
@@ -132,7 +132,7 @@ function tryExtractFromBareObject(
 
 	let parsed: Record<string, unknown>;
 	try {
-		parsed = JSON.parse(sanitizeJsonText(body.text));
+		parsed = JSON.parse(body.text);
 	} catch {
 		return null;
 	}
@@ -149,25 +149,6 @@ function tryExtractFromBareObject(
 	}
 
 	return buildResult(parsed, "bare-action-object");
-}
-
-/**
- * Fix common non-standard JSON escape sequences that LLMs emit.
- *
- * Models trained on code sometimes produce `\'` (a valid escape in many
- * languages but NOT in JSON — the only legal single-quote form is the
- * literal character). We also strip `\`` and neutralize `'` round-trips.
- * This runs only on the extracted body text, not the full response, so the
- * risk of mangling valid content is low.
- */
-function sanitizeJsonText(text: string): string {
-	return (
-		text
-			// \' → '   (invalid JSON escape for single-quote)
-			.replace(/\\'/g, "'")
-			// \` → `   (backtick escape, invalid in JSON)
-			.replace(/\\`/g, "`")
-	);
 }
 
 function buildResult(

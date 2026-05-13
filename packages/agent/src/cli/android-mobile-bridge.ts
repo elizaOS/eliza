@@ -49,7 +49,7 @@ process.env.ELIZA_API_BIND ||= "127.0.0.1";
 process.env.ELIZA_VAULT_BACKEND ||= "file";
 process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER ||= "1";
 process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP ||= "1";
-process.env.LOG_LEVEL ||= "error";
+process.env.LOG_LEVEL ||= "info";
 
 // Disable on-device optimisation pipeline (no prompt training on mobile).
 process.env.ELIZA_DISABLE_AUTO_BOOTSTRAP ||= "1";
@@ -160,6 +160,20 @@ export async function runAndroidBridgeCli(): Promise<void> {
       _logToFile(`[console.warn] ${msg}`);
     }
     _origConsoleWarn(...args);
+  };
+
+  // Capture console.log/info for startup timing (removed once timing is known)
+  const _origConsoleLog = console.log.bind(console);
+  console.log = (...args: unknown[]) => {
+    const msg = args.map(String).join(" ");
+    _logToFile(`[console.log] ${msg}`);
+    _origConsoleLog(...args);
+  };
+  const _origConsoleInfo = console.info.bind(console);
+  console.info = (...args: unknown[]) => {
+    const msg = args.map(String).join(" ");
+    _logToFile(`[console.info] ${msg}`);
+    _origConsoleInfo(...args);
   };
 
   process.on("unhandledRejection", (reason) => {

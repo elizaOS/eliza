@@ -13,19 +13,50 @@
  *   P(done) ≥ 0.6 AND silence ≥ 20 ms  → enter PAUSE_TENTATIVE early (start drafter)
  *   P(done) < 0.4                        → extend hangover by 50 ms (mid-clause)
  *
- * Two implementations ship:
+ * Three implementations ship:
  *
  *   `HeuristicEotClassifier` — deterministic, zero-latency, no model load.
  *     This is the baseline; it is always available.
  *
- *   `RemoteEotClassifier` — stub that POSTs to an HTTP endpoint (e.g.
- *     LiveKit turn-detector inference API). Plug in a real model later when
- *     GPU budget is available. Falls back to 0.5 on network error.
+ *   `LiveKitTurnDetector` — local INT8 ONNX LiveKit turn detector. It formats
+ *     the latest user transcript with the Qwen chat template, removes the
+ *     final `<|im_end|>`, and reads P(`<|im_end|>` next) from the model.
+ *
+ *   `RemoteEotClassifier` — fail-closed HTTP adapter for a real model server.
+ *     It throws on network/parse errors so callers never mistake a synthetic
+ *     fallback for a measured turn signal.
  */
+
+import { access } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
 
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
+
+export type VoiceNextSpeaker = "agent" | "user" | "unknown";
+
+export interface VoiceTurnSignal {
+  /** P(user turn complete | transcript/history). */
+  endOfTurnProbability: number;
+  /**
+   * The best turn-taking read from this signal. Text-only EOU models infer
+   * this from end-of-turn probability; audio/prosody models can set it
+   * directly.
+   */
+  nextSpeaker: VoiceNextSpeaker;
+  /** Whether the agent should begin a response now. */
+  agentShouldSpeak: boolean | null;
+  /** Implementation/source name for telemetry and trace records. */
+  source: "heuristic" | "livekit-turn-detector" | "remote" | "custom";
+  /** Optional model/version identifier for telemetry. */
+  model?: string;
+  /** Text actually scored after normalization/template truncation. */
+  transcript: string;
+  /** Wall-clock model latency, excluding caller queueing. */
+  latencyMs?: number;
+}
 
 /**
  * End-of-turn classifier interface. Both implementations satisfy this contract
@@ -34,6 +65,39 @@
 export interface EotClassifier {
   /** Return P(turn_complete) ∈ [0, 1] for `partialTranscript`. */
   score(partialTranscript: string): Promise<number>;
+  /** Return the structured turn signal when the implementation can provide it. */
+  signal?(partialTranscript: string): Promise<VoiceTurnSignal>;
+}
+
+export function clampProbability(value: number): number {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
+export function turnSignalFromProbability(args: {
+  probability: number;
+  transcript: string;
+  source: VoiceTurnSignal["source"];
+  model?: string;
+  latencyMs?: number;
+}): VoiceTurnSignal {
+  const p = clampProbability(args.probability);
+  const nextSpeaker: VoiceNextSpeaker =
+    p >= EOT_TENTATIVE_THRESHOLD
+      ? "agent"
+      : p < EOT_MID_CLAUSE_THRESHOLD
+        ? "user"
+        : "unknown";
+  return {
+    endOfTurnProbability: p,
+    nextSpeaker,
+    agentShouldSpeak:
+      nextSpeaker === "agent" ? true : nextSpeaker === "user" ? false : null,
+    source: args.source,
+    ...(args.model ? { model: args.model } : {}),
+    transcript: args.transcript,
+    ...(args.latencyMs !== undefined ? { latencyMs: args.latencyMs } : {}),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -172,10 +236,333 @@ export class HeuristicEotClassifier implements EotClassifier {
     // Rule 6 — no signal.
     return Promise.resolve(0.5);
   }
+
+  async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+    return turnSignalFromProbability({
+      probability: await this.score(partialTranscript),
+      transcript: partialTranscript.trim(),
+      source: "heuristic",
+      model: "heuristic-v1",
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Remote stub (future model plug-in)
+// Local LiveKit ONNX turn detector
+// ---------------------------------------------------------------------------
+
+type ChatMessage = { role: "user" | "assistant"; content: string };
+
+interface TokenTensorLike {
+  data?: BigInt64Array | BigUint64Array | Int32Array | number[] | bigint[];
+  dims?: number[];
+}
+
+interface TokenizerOutputLike {
+  input_ids?: TokenTensorLike | number[] | bigint[] | number[][];
+}
+
+interface CallableTokenizer {
+  apply_chat_template(
+    messages: ChatMessage[],
+    options: {
+      add_generation_prompt?: boolean;
+      tokenize?: boolean;
+      add_special_tokens?: boolean;
+    },
+  ): string;
+  (
+    text: string,
+    options: {
+      add_special_tokens?: boolean;
+      max_length?: number;
+      truncation?: boolean;
+    },
+  ): Promise<TokenizerOutputLike>;
+}
+
+type OrtModule = typeof import("onnxruntime-node");
+type OrtSession = import("onnxruntime-node").InferenceSession;
+
+export interface LiveKitTurnDetectorOptions {
+  /** Directory containing tokenizer files and the ONNX graph. */
+  modelDir?: string;
+  /** ONNX filename inside `modelDir`. Default: model_quantized.onnx. */
+  onnxFilename?: string;
+  /** Max history tokens. LiveKit's published runner uses 128. */
+  maxHistoryTokens?: number;
+  /** CPU execution threads for ONNX Runtime. Default: 2. */
+  intraOpNumThreads?: number;
+  /** Optional model label for telemetry. */
+  model?: string;
+}
+
+export const DEFAULT_LIVEKIT_TURN_DETECTOR_DIR = path.join(
+  homedir(),
+  ".eliza",
+  "local-inference",
+  "models",
+  "turn-detector",
+  "livekit-turn-detector",
+);
+
+const DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX = "model_quantized.onnx";
+const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
+
+/**
+ * Local LiveKit text turn detector. This is the same inference contract as
+ * the LiveKit Agents plugin, adapted to the main-branch HF export where the
+ * ONNX graph returns logits instead of a pre-sigmoided scalar.
+ */
+export class LiveKitTurnDetector implements EotClassifier {
+  private readonly modelDir: string;
+  private readonly onnxPath: string;
+  private readonly maxHistoryTokens: number;
+  private readonly intraOpNumThreads: number;
+  private readonly model: string;
+  private ready:
+    | Promise<{
+        ort: OrtModule;
+        session: OrtSession;
+        tokenizer: CallableTokenizer;
+        imEndTokenId: number;
+      }>
+    | null = null;
+
+  constructor(opts: LiveKitTurnDetectorOptions = {}) {
+    this.modelDir = opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
+    this.onnxPath = path.join(
+      this.modelDir,
+      opts.onnxFilename ?? DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
+    );
+    this.maxHistoryTokens = opts.maxHistoryTokens ?? 128;
+    this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
+    this.model = opts.model ?? "livekit/turn-detector";
+  }
+
+  async score(partialTranscript: string): Promise<number> {
+    return (await this.signal(partialTranscript)).endOfTurnProbability;
+  }
+
+  async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+    const started = performance.now();
+    const loaded = await this.load();
+    const transcript = normalizeTurnDetectorText(partialTranscript);
+    const text = formatLiveKitTurnDetectorPrompt(loaded.tokenizer, transcript);
+    const encoded = await loaded.tokenizer(text, {
+      add_special_tokens: false,
+      max_length: this.maxHistoryTokens,
+      truncation: true,
+    });
+    const { data, dims } = tokenIdsToBigInt64(encoded);
+    const feeds = {
+      input_ids: new loaded.ort.Tensor("int64", data, dims),
+    };
+    const outputs = await loaded.session.run(feeds);
+    const outputName = loaded.session.outputNames[0];
+    const tensor =
+      (outputName ? outputs[outputName] : undefined) ??
+      Object.values(outputs)[0];
+    if (!tensor) {
+      throw new Error("[voice] LiveKit turn detector returned no outputs.");
+    }
+    const probability = probabilityFromOnnxOutput(
+      tensor,
+      loaded.imEndTokenId,
+    );
+    return turnSignalFromProbability({
+      probability,
+      transcript,
+      source: "livekit-turn-detector",
+      model: this.model,
+      latencyMs: performance.now() - started,
+    });
+  }
+
+  private load(): Promise<{
+    ort: OrtModule;
+    session: OrtSession;
+    tokenizer: CallableTokenizer;
+    imEndTokenId: number;
+  }> {
+    this.ready ??= this.loadInner();
+    return this.ready;
+  }
+
+  private async loadInner(): Promise<{
+    ort: OrtModule;
+    session: OrtSession;
+    tokenizer: CallableTokenizer;
+    imEndTokenId: number;
+  }> {
+    await Promise.all([
+      access(this.onnxPath),
+      access(path.join(this.modelDir, "tokenizer.json")),
+    ]);
+    const [{ AutoTokenizer }, ort] = await Promise.all([
+      import("@huggingface/transformers"),
+      import("onnxruntime-node"),
+    ]);
+    const tokenizer = (await AutoTokenizer.from_pretrained(this.modelDir, {
+      local_files_only: true,
+      truncation_side: "left",
+    })) as CallableTokenizer;
+    const imEnd = await tokenizer(LIVEKIT_IM_END_TOKEN, {
+      add_special_tokens: false,
+    });
+    const imEndIds = tokenIdsToBigInt64(imEnd).data;
+    const imEndTokenId = Number(imEndIds[0]);
+    if (!Number.isInteger(imEndTokenId)) {
+      throw new Error(
+        "[voice] LiveKit turn detector tokenizer did not expose <|im_end|>.",
+      );
+    }
+    const session = await ort.InferenceSession.create(this.onnxPath, {
+      executionProviders: ["cpu"],
+      graphOptimizationLevel: "all",
+      interOpNumThreads: 1,
+      intraOpNumThreads: this.intraOpNumThreads,
+    });
+    if (!session.inputNames.includes("input_ids")) {
+      throw new Error(
+        `[voice] LiveKit turn detector graph is missing input_ids (inputs: ${session.inputNames.join(", ")}).`,
+      );
+    }
+    return { ort, session, tokenizer, imEndTokenId };
+  }
+}
+
+export async function createBundledLiveKitTurnDetector(
+  opts: LiveKitTurnDetectorOptions = {},
+): Promise<LiveKitTurnDetector | null> {
+  const modelDir =
+    opts.modelDir ??
+    process.env.ELIZA_TURN_DETECTOR_MODEL_DIR ??
+    DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
+  const onnxFilename =
+    opts.onnxFilename ??
+    process.env.ELIZA_TURN_DETECTOR_ONNX ??
+    DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX;
+  try {
+    await Promise.all([
+      access(path.join(modelDir, onnxFilename)),
+      access(path.join(modelDir, "tokenizer.json")),
+    ]);
+  } catch {
+    return null;
+  }
+  return new LiveKitTurnDetector({
+    ...opts,
+    modelDir,
+    onnxFilename,
+  });
+}
+
+function normalizeTurnDetectorText(text: string): string {
+  return text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'\-\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function formatLiveKitTurnDetectorPrompt(
+  tokenizer: CallableTokenizer,
+  transcript: string,
+): string {
+  const templated = tokenizer.apply_chat_template(
+    [{ role: "user", content: transcript }],
+    {
+      add_generation_prompt: false,
+      tokenize: false,
+      add_special_tokens: false,
+    },
+  );
+  const ix = templated.lastIndexOf(LIVEKIT_IM_END_TOKEN);
+  return ix >= 0 ? templated.slice(0, ix) : templated;
+}
+
+function tokenIdsToBigInt64(encoded: TokenizerOutputLike): {
+  data: BigInt64Array;
+  dims: number[];
+} {
+  const ids = encoded.input_ids;
+  if (!ids) throw new Error("[voice] tokenizer output missing input_ids.");
+  if (isTensorLike(ids) && ids.data) {
+    const dims = ids.dims ?? [1, ids.data.length];
+    return {
+      data: toBigInt64Array(ids.data),
+      dims,
+    };
+  }
+  if (Array.isArray(ids)) {
+    const flattened = ids.flat() as Array<number | bigint>;
+    return {
+      data: toBigInt64Array(flattened),
+      dims: Array.isArray(ids[0]) ? [ids.length, flattened.length] : [1, ids.length],
+    };
+  }
+  throw new Error("[voice] unsupported tokenizer input_ids shape.");
+}
+
+function isTensorLike(value: unknown): value is TokenTensorLike {
+  return typeof value === "object" && value !== null && "data" in value;
+}
+
+function toBigInt64Array(
+  input: BigInt64Array | BigUint64Array | Int32Array | number[] | bigint[],
+): BigInt64Array {
+  if (input instanceof BigInt64Array) return input;
+  return BigInt64Array.from(Array.from(input, (v) => BigInt(v)));
+}
+
+function probabilityFromOnnxOutput(
+  tensor: import("onnxruntime-node").Tensor,
+  imEndTokenId: number,
+): number {
+  const data = tensor.data;
+  if (!(data instanceof Float32Array || data instanceof Float64Array)) {
+    throw new Error(
+      `[voice] LiveKit turn detector output must be float logits/probabilities, got ${tensor.type}.`,
+    );
+  }
+  const dims = tensor.dims;
+  if (dims.length >= 3) {
+    const vocabSize = dims[dims.length - 1];
+    if (imEndTokenId < 0 || imEndTokenId >= vocabSize) {
+      throw new Error(
+        `[voice] <|im_end|> token id ${imEndTokenId} outside detector vocab ${vocabSize}.`,
+      );
+    }
+    const sequenceLength = dims[dims.length - 2];
+    const offset = (sequenceLength - 1) * vocabSize;
+    return softmaxProbability(data, offset, vocabSize, imEndTokenId);
+  }
+  const last = data[data.length - 1];
+  return clampProbability(last);
+}
+
+function softmaxProbability(
+  logits: Float32Array | Float64Array,
+  offset: number,
+  length: number,
+  tokenId: number,
+): number {
+  let max = -Infinity;
+  for (let i = 0; i < length; i++) {
+    const value = logits[offset + i];
+    if (value > max) max = value;
+  }
+  let sum = 0;
+  for (let i = 0; i < length; i++) {
+    sum += Math.exp(logits[offset + i] - max);
+  }
+  return clampProbability(Math.exp(logits[offset + tokenId] - max) / sum);
+}
+
+// ---------------------------------------------------------------------------
+// Remote model adapter
 // ---------------------------------------------------------------------------
 
 export interface RemoteEotClassifierOptions {
@@ -191,33 +578,35 @@ export interface RemoteEotClassifierOptions {
    * classifier must be faster than the silence hangover it's trying to beat.
    */
   timeoutMs?: number;
-  /**
-   * Value returned when the endpoint is unreachable or returns an error.
-   * Default 0.5 (uncertain — let silence hangover decide).
-   */
-  fallbackScore?: number;
+  /** Optional model label for telemetry. */
+  model?: string;
 }
 
 /**
  * Remote EOT classifier. POSTs `{ transcript: string }` to `endpoint`
  * and expects `{ p_done: number }` back.
  *
- * Intended to be wired to the LiveKit turn-detector HTTP API or a custom
- * model inference server. Falls back to `fallbackScore` on any network or
- * parse error so the voice loop is never blocked.
+ * Intended to be wired to a real LiveKit turn-detector HTTP API or a custom
+ * model inference server. This adapter fails closed: no fallback score is
+ * manufactured on network or parse errors.
  */
 export class RemoteEotClassifier implements EotClassifier {
   private readonly endpoint: string;
   private readonly timeoutMs: number;
-  private readonly fallbackScore: number;
+  private readonly model: string;
 
   constructor(opts: RemoteEotClassifierOptions) {
     this.endpoint = opts.endpoint;
     this.timeoutMs = opts.timeoutMs ?? 200;
-    this.fallbackScore = opts.fallbackScore ?? 0.5;
+    this.model = opts.model ?? "remote-eot";
   }
 
   async score(partialTranscript: string): Promise<number> {
+    return (await this.signal(partialTranscript)).endOfTurnProbability;
+  }
+
+  async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+    const started = performance.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -227,7 +616,11 @@ export class RemoteEotClassifier implements EotClassifier {
         body: JSON.stringify({ transcript: partialTranscript }),
         signal: controller.signal,
       });
-      if (!response.ok) return this.fallbackScore;
+      if (!response.ok) {
+        throw new Error(
+          `[voice] Remote EOT classifier failed: HTTP ${response.status} ${response.statusText}`,
+        );
+      }
       const json = (await response.json()) as unknown;
       if (
         typeof json === "object" &&
@@ -236,12 +629,17 @@ export class RemoteEotClassifier implements EotClassifier {
         typeof (json as Record<string, unknown>).p_done === "number"
       ) {
         const p = (json as { p_done: number }).p_done;
-        // Clamp to [0, 1] in case the model returns slightly out-of-range values.
-        return Math.max(0, Math.min(1, p));
+        return turnSignalFromProbability({
+          probability: p,
+          transcript: partialTranscript.trim(),
+          source: "remote",
+          model: this.model,
+          latencyMs: performance.now() - started,
+        });
       }
-      return this.fallbackScore;
-    } catch {
-      return this.fallbackScore;
+      throw new Error(
+        "[voice] Remote EOT classifier response missing numeric p_done.",
+      );
     } finally {
       clearTimeout(timer);
     }

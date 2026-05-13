@@ -64,11 +64,15 @@ const InviteAcceptPage = lazyWithPreload(() => import("./pages/invite/accept/pag
 
 const PaymentSuccessLayout = lazyWithPreload(() => import("./pages/payment/success/layout"));
 const PaymentSuccessPage = lazyWithPreload(() => import("./pages/payment/success/page"));
+const PaymentRequestPage = lazyWithPreload(() => import("./pages/payment/[paymentRequestId]/page"));
 const AppChargePaymentLayout = lazyWithPreload(
   () => import("./pages/payment/app-charge/[appId]/[chargeId]/layout"),
 );
 const AppChargePaymentPage = lazyWithPreload(
   () => import("./pages/payment/app-charge/[appId]/[chargeId]/page"),
+);
+const SensitiveRequestPage = lazyWithPreload(
+  () => import("./pages/sensitive-requests/[requestId]/page"),
 );
 
 const BlogIndex = lazyWithPreload(() => import("./pages/blog/page"));
@@ -88,7 +92,6 @@ const AgentPage = lazyWithPreload(() => import("./dashboard/agents/Page"));
 const AgentDetailPage = lazyWithPreload(() => import("./dashboard/agents/[id]/Page"));
 
 const AppsPage = lazyWithPreload(() => import("./dashboard/apps/Page"));
-const AppsCreatePage = lazyWithPreload(() => import("./dashboard/apps/create/Page"));
 const AppDetailPage = lazyWithPreload(() => import("./dashboard/apps/[id]/Page"));
 
 const MyAgentsPage = lazyWithPreload(() => import("./dashboard/my-agents/Page"));
@@ -167,7 +170,7 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
   },
   {
     path: "/dashboard/apps/create",
-    preload: preloadAll(DashboardLayout.preload, AppsCreatePage.preload),
+    preload: preloadAll(DashboardLayout.preload, AppsPage.preload),
   },
   {
     path: "/dashboard/apps/:id",
@@ -252,6 +255,8 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
     path: "/payment/success",
     preload: preloadAll(PaymentSuccessLayout.preload, PaymentSuccessPage.preload),
   },
+  { path: "/payment/:paymentRequestId", preload: PaymentRequestPage.preload },
+  { path: "/sensitive-requests/:requestId", preload: SensitiveRequestPage.preload },
   { path: "/auth/success", preload: AuthSuccess.preload },
   { path: "/auth/cli-login", preload: AuthCliLogin.preload },
   { path: "/auth/error", preload: AuthError.preload },
@@ -449,10 +454,18 @@ function App() {
         >
           <Route index element={<SuspenseRoute component={AppChargePaymentPage} />} />
         </Route>
+        <Route
+          path="payment/:paymentRequestId"
+          element={<SuspenseRoute component={PaymentRequestPage} />}
+        />
 
         <Route path="payment/success" element={<SuspenseRoute component={PaymentSuccessLayout} />}>
           <Route index element={<SuspenseRoute component={PaymentSuccessPage} />} />
         </Route>
+        <Route
+          path="sensitive-requests/:requestId"
+          element={<SuspenseRoute component={SensitiveRequestPage} />}
+        />
 
         <Route path="blog">
           <Route index element={<SuspenseRoute component={BlogIndex} />} />
@@ -481,7 +494,7 @@ function App() {
           <Route path="agents/:id" element={<AgentDetailPage />} />
 
           <Route path="apps" element={<AppsPage />} />
-          <Route path="apps/create" element={<AppsCreatePage />} />
+          <Route path="apps/create" element={<Navigate to="/dashboard/apps" replace />} />
           <Route path="apps/:id" element={<AppDetailPage />} />
 
           <Route path="my-agents" element={<MyAgentsPage />} />
