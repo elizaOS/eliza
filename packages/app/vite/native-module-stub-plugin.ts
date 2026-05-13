@@ -644,6 +644,17 @@ export function nativeModuleStubPlugin(
             "export default noopObj;",
           ].join("\n");
         }
+        if (capPkg === "@capacitor/background-runner") {
+          return [
+            "const asyncNoop = async () => {};",
+            "export const BackgroundRunner = {",
+            "  dispatchEvent: asyncNoop,",
+            "  addListener: async () => ({ remove: asyncNoop }),",
+            "  removeAllListeners: asyncNoop,",
+            "};",
+            "export default BackgroundRunner;",
+          ].join("\n");
+        }
         if (capPkg === "@capacitor/push-notifications") {
           return [
             "const asyncNoop = async () => {};",
