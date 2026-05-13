@@ -697,9 +697,10 @@ export function readDflashBinaryCapabilities(
  * turbo / qjl / polar kernels into the fork now, and `build-llama-cpp-dflash.mjs`
  * records which ones actually shipped under `kernels.*`. So a Metal binary
  * built with the kernel patches enabled passes; one without them is refused
- * with an actionable "rebuild your fork" message. When `CAPABILITIES.json` is
- * absent (older / hand-built binaries) we trust the request and let the load
- * attempt clarify — same policy as the dispatcher's `unsatisfiedKernels`.
+ * with an actionable "rebuild your fork" message. `CAPABILITIES.json` is not
+ * sufficient by itself: stale installs can leave a new capability file beside
+ * an old binary, so the resolved `llama-server --help` surface must also
+ * advertise the requested cache type.
  */
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -2762,6 +2763,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
     let drafterEnabled = !plan.disableDrafter;
     let disabledDrafterReason = plan.disabledDrafterReason;
+    if (drafterEnabled) {
+      assertDflashSpecSupportedOnBackend(status.binaryPath);
+    }
     const drafterModelPath = drafterEnabled
       ? maybeRepairDflashDrafter(
           status.binaryPath,
@@ -2917,11 +2921,19 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       ? "ELIZA_DFLASH_CACHE_TYPE_V"
       : "runtime.kvCache.typeV";
     if (cacheTypeK) {
-      assertCacheTypeSupportedOnBackend(cacheTypeKSource, cacheTypeK);
+      assertCacheTypeSupportedOnBackend(
+        cacheTypeKSource,
+        cacheTypeK,
+        status.binaryPath,
+      );
       args.push("--cache-type-k", cacheTypeK);
     }
     if (cacheTypeV) {
-      assertCacheTypeSupportedOnBackend(cacheTypeVSource, cacheTypeV);
+      assertCacheTypeSupportedOnBackend(
+        cacheTypeVSource,
+        cacheTypeV,
+        status.binaryPath,
+      );
       args.push("--cache-type-v", cacheTypeV);
     }
 
@@ -2971,7 +2983,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
           (tokens[i] === "--cache-type-k" || tokens[i] === "--cache-type-v") &&
           i + 1 < tokens.length
         ) {
-          assertCacheTypeSupportedOnBackend(tokens[i], tokens[i + 1]);
+          assertCacheTypeSupportedOnBackend(
+            tokens[i],
+            tokens[i + 1],
+            status.binaryPath,
+          );
         }
       }
       args.push(...tokens);
