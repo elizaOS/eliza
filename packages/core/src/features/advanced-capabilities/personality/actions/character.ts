@@ -147,7 +147,10 @@ export const characterAction: Action = {
 			required: false,
 			schema: {
 				type: "array" as const,
-				items: { type: "string" as const },
+				items: {
+					type: "string" as const,
+					enum: SAVEABLE_CHARACTER_FIELDS.map((f) => String(f)),
+				},
 			},
 		},
 		{
