@@ -218,16 +218,17 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
             (Math.min(inputIds.length, numPositions - 1) + 1) * args.voice.dim,
           )
         : fullStyle;
-    // Older `kokoro-onnx` exports name the token input `tokens` and want a
-    // `speed: int32 [1]` scalar; newer exports name it `input_ids` and want
-    // `speed: float32 [1]`. Detect from the loaded session, mirroring the
-    // probe `kokoro-onnx._create_audio` does on `sess.get_inputs()`.
+    // Speed-tensor dtype mirrors `kokoro-onnx` upstream
+    // (`kokoro_onnx/__init__.py:_create_audio`): the legacy `tokens`
+    // export wants `speed: float32 [1]` and the newer `input_ids` export
+    // wants `speed: int32 [1]`. ORT raises `Unexpected input data type`
+    // when either dtype is swapped, so this polarity is load-bearing.
     const inputNames = session.inputNames ?? ["input_ids", "style", "speed"];
     const useLegacyInputs = !inputNames.includes("input_ids");
     const tokensInputName = useLegacyInputs ? "tokens" : "input_ids";
     const speedTensor = useLegacyInputs
-      ? new ort.Tensor("int32", new Int32Array([1]), [1])
-      : new ort.Tensor("float32", new Float32Array([1.0]), [1]);
+      ? new ort.Tensor("float32", new Float32Array([1.0]), [1])
+      : new ort.Tensor("int32", new Int32Array([1]), [1]);
     const feeds: Record<string, OrtTensor> = {
       [tokensInputName]: new ort.Tensor("int64", inputIds, [
         1,
