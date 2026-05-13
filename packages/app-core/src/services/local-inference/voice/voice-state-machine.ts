@@ -285,6 +285,15 @@ export class VoiceStateMachine {
    */
   private eotHangoverExtensionMs = 0;
 
+  /**
+   * C7 — in-flight prefill promise. Set on PAUSE_TENTATIVE entry; awaited
+   * (or discarded) on SPEECH_END / SPEECH_ACTIVE_REBOUND. Fire-and-forget
+   * from the perspective of the state machine — the result is surfaced via
+   * `onPrefill` and `onCommit(prefillResult)`.
+   */
+  private prefillPromise: Promise<PrefillOptimisticResult> | null = null;
+  private readonly prefillConfig: VoiceStateMachineOptions["prefillConfig"];
+
   constructor(opts: VoiceStateMachineOptions) {
     this.slotId = opts.slotId;
     this.enabled = opts.enableCheckpoints ?? true;
@@ -293,6 +302,7 @@ export class VoiceStateMachine {
     this.startDrafterFn = opts.startDrafter;
     this.events = opts.events ?? {};
     this.eotClassifier = opts.eotClassifier;
+    this.prefillConfig = opts.prefillConfig;
   }
 
   /** Current state — read-only view for tests / telemetry. */
@@ -423,8 +433,18 @@ export class VoiceStateMachine {
     // `await` may have mutated it — read through `currentState()` which
     // returns the wider `VoiceState` union.
     if (this.currentState() !== "PAUSE_TENTATIVE") return;
+
+    // C7 — fire optimistic prefill in the background (fire-and-forget).
+    // The drafter and the prefill run concurrently; if the prefill finishes
+    // before SPEECH_END the verifier can start from the prefilled KV state.
+    this.firePrefill(partialTranscript, eotProb, turnId);
+
     this.startSpeculativeDrafter(partialTranscript, turnId);
   }
+
+  // Store the eotProb for the prefill call. We need it in handleSpeechPause
+  // but the method signature doesn't carry it — store transiently.
+  private _lastEotProb = 0.5;
 
   private async handleSpeechActive(timestampMs: number): Promise<void> {
     if (this.state !== "PAUSE_TENTATIVE") return;

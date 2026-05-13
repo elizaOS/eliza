@@ -380,6 +380,21 @@ describe("LocalInferenceEngine voice surface", () => {
     });
   });
 
+  it("refuses direct TEXT_TO_SPEECH on the stub backend", async () => {
+    writePresetBundle(bundleRoot);
+    const engine = new LocalInferenceEngine();
+    engine.startVoice({
+      bundleRoot,
+      useFfiBackend: false,
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await engine.armVoice();
+
+    await expect(engine.synthesizeSpeech("hello")).rejects.toMatchObject({
+      code: "missing-fused-build",
+    });
+  });
+
   it("direct TEXT_TO_SPEECH returns WAV bytes and preserves singing/emotion tags", async () => {
     writePresetBundle(bundleRoot);
     const backend = new CountingBackend();

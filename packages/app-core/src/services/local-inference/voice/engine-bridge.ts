@@ -506,10 +506,9 @@ export interface EngineVoiceBridgeOptions {
    */
   bundleRoot: string;
   /**
-   * When true, use `FfiOmniVoiceBackend` (will hard-fail at synthesize
-   * time until the fused build lands). When false, use the stub backend
-   * so tests and the streaming-graph integration can run end-to-end
-   * with synthetic PCM.
+   * When true, use `FfiOmniVoiceBackend`. When false, use the stub backend
+   * only for lifecycle/unit tests; live sessions and direct synthesis reject
+   * the stub before user-visible audio can be emitted.
    */
   useFfiBackend: boolean;
   /** Override sample rate. Defaults to 24 kHz. */
