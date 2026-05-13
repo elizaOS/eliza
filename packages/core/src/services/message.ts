@@ -5245,7 +5245,16 @@ export async function runV5MessageRuntimeStage1(args: {
 				messages: messageHandlerInput.messages,
 				promptSegments: messageHandlerInput.promptSegments,
 				tools: messageHandlerTools,
-				toolChoice: "required",
+				// "auto" instead of "required" because Cerebras-served
+				// gpt-oss-120b returns an empty response when toolChoice is
+				// "required" and the model declines to use the tool. Pairing
+				// "auto" with `responseFormat: { type: "json_object" }` below
+				// gives the model two valid paths: emit a tool call, OR emit
+				// the HANDLE_RESPONSE envelope as JSON content. Either way
+				// downstream parsers recover the plan. Models that honour
+				// "required" (OpenAI, etc.) still prefer the tool path under
+				// "auto" when the prompt asks for one.
+				toolChoice: "auto",
 				maxTokens: 1024,
 				// Streamed structured generation: the local engine (W4) streams the
 				// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
