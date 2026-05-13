@@ -212,10 +212,24 @@ function plannerUserContent(runtime: IAgentRuntime): string {
 }
 
 function availableActionsSection(runtime: IAgentRuntime): string {
-	const prompt = plannerUserContent(runtime);
-	const marker = "# Available Actions";
-	const index = prompt.indexOf(marker);
-	return index >= 0 ? prompt.slice(index) : prompt;
+	// Post-PLAN_ACTIONS-wrapper refactor: actions are exposed as native tools
+	// on the planner call, not in an `available_actions` text block. Synthesize
+	// a section-like view from the tool definitions so the tier-A vs tier-B
+	// assertions in this file can still inspect action name presence and order.
+	const plannerCall = getCalls(runtime).find(
+		(call) => call.modelType === ModelType.ACTION_PLANNER,
+	);
+	const tools = (
+		plannerCall?.params as
+			| { tools?: Array<{ name?: string; description?: string }> }
+			| undefined
+	)?.tools;
+	if (!tools || tools.length === 0) {
+		return plannerUserContent(runtime);
+	}
+	return tools
+		.map((tool) => `- ${tool.name ?? ""}: ${tool.description ?? ""}`)
+		.join("\n");
 }
 
 describe("v5 tiered action surface", () => {

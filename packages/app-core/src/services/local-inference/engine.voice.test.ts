@@ -46,14 +46,6 @@ import type {
 } from "./voice/types";
 import { writeVoicePresetFile } from "./voice/voice-preset-format";
 
-function missingWhisperOptions() {
-  const root = path.join(tmpdir(), `eliza-missing-whisper-${process.pid}`);
-  return {
-    binaryPath: path.join(root, "whisper-cli"),
-    modelPath: path.join(root, "ggml-base.en.bin"),
-  };
-}
-
 /**
  * TTS backend whose synthesis only completes when `release()` is
  * called. Lets the rollback test issue a reject while phrases are
@@ -207,7 +199,7 @@ function fakeFfi(calls: string[]): ElizaInferenceFfi {
       /* no-op */
     },
     // Streaming ASR ABI v2 — this fake reports no working decoder, so the
-    // adapter chain falls through to the whisper.cpp interim path.
+    // adapter chain has no fused ASR available, so hard-fails.
     asrStreamSupported: () => false,
     asrStreamOpen() {
       throw new Error("not used by this test");
@@ -843,13 +835,11 @@ describe("LocalInferenceEngine voice surface", () => {
       useFfiBackend: false,
       backendOverride: new CountingBackend(),
       lifecycleLoaders: lifecycleLoadersOk(),
-      whisper: missingWhisperOptions(),
     });
     await engine.armVoice();
     // Voice is armed but there is no fused ASR (stub backend, no `asr/`
-    // dir, no whisper.cpp binary in this env) → the streaming-transcriber
-    // adapter chain hard-fails with AsrUnavailableError. No silent empty
-    // transcript (AGENTS.md §3 + §9).
+    // dir) → the streaming-transcriber adapter chain hard-fails with
+    // AsrUnavailableError. No silent empty transcript (AGENTS.md §3 + §9).
     await expect(engine.transcribePcm(audio)).rejects.toBeInstanceOf(
       AsrUnavailableError,
     );
@@ -1290,11 +1280,10 @@ describe("LocalInferenceEngine.startVoiceSession", () => {
       useFfiBackend: false,
       backendOverride: new CountingBackend(),
       lifecycleLoaders: lifecycleLoadersOk(),
-      whisper: missingWhisperOptions(),
     });
     await engine.armVoice();
     // Inject a VAD (no ONNX) + a push mic source so the only missing piece
-    // is the ASR backend (no fused decoder, no whisper.cpp in this env).
+    // is the ASR backend (no fused decoder in this env).
     await expect(
       engine.startVoiceSession({
         roomId: "r",

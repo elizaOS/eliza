@@ -76,7 +76,6 @@ import {
 import {
   AsrUnavailableError,
   createStreamingTranscriber,
-  type WhisperCppOptions,
 } from "./transcriber";
 import type {
   AudioChunk,
@@ -539,8 +538,6 @@ export interface EngineVoiceBridgeOptions {
    * When unset, default loaders are derived from the bundle root.
    */
   lifecycleLoaders?: VoiceLifecycleLoaders;
-  /** Optional whisper.cpp interim ASR configuration. */
-  whisper?: WhisperCppOptions;
   /**
    * Construct a `KokoroTtsBackend` directly and skip the bundle-root +
    * speaker-preset + FFI checks the fused omnivoice path requires.
@@ -575,7 +572,6 @@ export class EngineVoiceBridge {
   private readonly phraseCache: PhraseCache;
   /** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
   private activePipeline: VoicePipeline | null = null;
-  private readonly whisper?: WhisperCppOptions;
 
   private constructor(
     scheduler: VoiceScheduler,
@@ -586,7 +582,6 @@ export class EngineVoiceBridge {
     ffiContextRef: FfiContextRef | null,
     asrAvailable: boolean,
     phraseCache: PhraseCache,
-    whisper?: WhisperCppOptions,
   ) {
     this.scheduler = scheduler;
     this.backend = backend;
@@ -596,7 +591,6 @@ export class EngineVoiceBridge {
     this.ffiContextRef = ffiContextRef;
     this.asrAvailable = asrAvailable;
     this.phraseCache = phraseCache;
-    this.whisper = whisper;
   }
 
   get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -768,7 +762,6 @@ export class EngineVoiceBridge {
       ffiContextRef,
       asrAvailable,
       phraseCache,
-      opts.whisper,
     );
   }
 
@@ -856,7 +849,6 @@ export class EngineVoiceBridge {
       null, // no FFI context on Kokoro-only
       false, // ASR is not served from this path
       phraseCache,
-      opts.whisper,
     );
   }
 
@@ -1088,9 +1080,8 @@ export class EngineVoiceBridge {
    * word-confirm gate (W1) listens to. Resolves the adapter chain:
    *   fused `libelizainference` streaming ASR (final path, gated on a
    *   working decoder AND a bundled ASR model) → fused batch ASR over the
-   *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge
-   *   deliberately disables the standalone whisper.cpp fallback so local
-   *   voice mode never leaves the fused bundle.
+   *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
+   *   only the fused path; the whisper.cpp interim fallback has been removed.
    *
    * Pass W1's `vad` event stream to gate decoding to active speech
    * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1105,8 +1096,6 @@ export class EngineVoiceBridge {
       getContext: contextRef ? () => contextRef.ensure() : undefined,
       asrBundlePresent: this.asrAvailable,
       vad: opts?.vad,
-      whisper: this.whisper,
-      allowWhisperFallback: false,
     });
   }
 
@@ -1208,8 +1197,6 @@ export class EngineVoiceBridge {
         ffi: this.ffi,
         getContext: ctxRef ? () => ctxRef.ensure() : undefined,
         asrBundlePresent: this.asrAvailable,
-        whisper: this.whisper,
-        allowWhisperFallback: false,
       });
     } catch (err) {
       if (err instanceof AsrUnavailableError) {

@@ -69,7 +69,6 @@
     "@tensorflow-models/coco-ssd": "^2.2.3",
     "@tensorflow-models/mobilenet": "^2.1.0",
     "@tensorflow-models/pose-detection": "^2.1.0",
-    "@tensorflow-models/posenet": "^2.2.2",
     "@tensorflow/tfjs-node": "^4.22.0"
   },
   "devDependencies": {

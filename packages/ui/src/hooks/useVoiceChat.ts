@@ -706,7 +706,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         const result = await talkMode.start({
           config: {
             stt: {
-              ...(directRpc ? { engine: "whisper" as const } : {}),
+              ...(directRpc ? { engine: "web" as const } : {}),
               language: options.lang ?? "en-US",
               modelSize: "base",
               sampleRate: 16000,

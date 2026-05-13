@@ -51,14 +51,14 @@ vi.mock("./openvino-whisper-asr", () => ({
 // isolate:false shares the module cache across files.
 let createStreamingTranscriber: typeof import("./transcriber")["createStreamingTranscriber"];
 let AsrUnavailableError: typeof import("./transcriber")["AsrUnavailableError"];
-let WhisperCppStreamingTranscriber: typeof import("./transcriber")["WhisperCppStreamingTranscriber"];
+let OpenVinoStreamingTranscriber: typeof import("./transcriber")["OpenVinoStreamingTranscriber"];
 
 beforeAll(async () => {
   vi.resetModules();
   const m = await import("./transcriber");
   createStreamingTranscriber = m.createStreamingTranscriber;
   AsrUnavailableError = m.AsrUnavailableError;
-  WhisperCppStreamingTranscriber = m.WhisperCppStreamingTranscriber;
+  OpenVinoStreamingTranscriber = m.OpenVinoStreamingTranscriber;
 });
 
 beforeEach(() => {
@@ -72,29 +72,17 @@ afterEach(() => {
 });
 
 describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
-  it("returns OpenVINO-backed transcriber when artifacts are on disk and chain is auto", () => {
+  it("returns OpenVINO-backed transcriber when artifacts are on disk and allowOpenVinoWhisper is set (auto chain)", () => {
     mockState.runtimeFixture = {
       pythonBin: "/fake/python",
       workerScript: "/fake/worker.py",
       modelDir: "/fake/model",
       deviceChain: "NPU,CPU",
     };
-    const t = createStreamingTranscriber({});
-    // The OpenVINO tier reuses WhisperCppStreamingTranscriber's sliding-
-    // window engine — the marker is the *injected decoder*, not the class.
-    expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
+    const t = createStreamingTranscriber({ allowOpenVinoWhisper: true });
+    expect(t).toBeInstanceOf(OpenVinoStreamingTranscriber);
     t.dispose();
     expect(mockState.disposeCalls.count).toBe(1);
-  });
-
-  it("falls through to whisper.cpp when no OpenVINO runtime is resolvable", () => {
-    mockState.runtimeFixture = null;
-    const t = createStreamingTranscriber({
-      whisper: { decoder: async () => "whisper-cpp-fallback" },
-    });
-    expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
-    t.dispose();
-    expect(mockState.disposeCalls.count).toBe(0); // no OpenVINO worker to dispose
   });
 
   it("prefer:'openvino-whisper' throws when no runtime is resolvable", () => {
@@ -112,55 +100,19 @@ describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {
       deviceChain: "NPU,CPU",
     };
     const t = createStreamingTranscriber({ prefer: "openvino-whisper" });
-    expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
+    expect(t).toBeInstanceOf(OpenVinoStreamingTranscriber);
     t.dispose();
   });
 
-  it("allowOpenVinoWhisper:false skips the OpenVINO tier and falls through to whisper.cpp", () => {
+  it("auto chain throws AsrUnavailableError when allowOpenVinoWhisper is false (default) and no fused build", () => {
     mockState.runtimeFixture = {
       pythonBin: "/fake/python",
       workerScript: "/fake/worker.py",
       modelDir: "/fake/model",
       deviceChain: "NPU,CPU",
     };
-    const t = createStreamingTranscriber({
-      allowOpenVinoWhisper: false,
-      whisper: { decoder: async () => "whisper-cpp-fallback" },
-    });
-    expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
-    // The dispose hook is from the OpenVINO tier — should NOT fire when we
-    // skip it and use whisper.cpp instead.
-    t.dispose();
+    expect(() => createStreamingTranscriber({})).toThrow(AsrUnavailableError);
+    // The OpenVINO dispose hook should not have been invoked — the tier was skipped.
     expect(mockState.disposeCalls.count).toBe(0);
-  });
-
-  it("allowWhisperFallback:false implicitly blocks OpenVINO (both are non-fused fallbacks)", () => {
-    mockState.runtimeFixture = {
-      pythonBin: "/fake/python",
-      workerScript: "/fake/worker.py",
-      modelDir: "/fake/model",
-      deviceChain: "NPU,CPU",
-    };
-    expect(() =>
-      createStreamingTranscriber({
-        allowWhisperFallback: false,
-        whisper: { decoder: async () => "whisper-cpp-fallback" },
-      }),
-    ).toThrow(AsrUnavailableError);
-  });
-
-  it("allowOpenVinoWhisper:true overrides allowWhisperFallback:false (caller is explicit)", () => {
-    mockState.runtimeFixture = {
-      pythonBin: "/fake/python",
-      workerScript: "/fake/worker.py",
-      modelDir: "/fake/model",
-      deviceChain: "NPU,CPU",
-    };
-    const t = createStreamingTranscriber({
-      allowWhisperFallback: false,
-      allowOpenVinoWhisper: true,
-    });
-    expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
-    t.dispose();
   });
 });

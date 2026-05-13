@@ -3,7 +3,7 @@
  *
  * Implements the `StreamingTranscriber` contract from `voice/types.ts`:
  * PCM frames in (`feed`), running partial-transcript events out, `flush()`
- * to force-finalize on `speech-end`. Three adapters, resolved in priority
+ * to force-finalize on `speech-end`. Two adapters, resolved in priority
  * order by `createStreamingTranscriber()`:
  *
  *   1. `FfiStreamingTranscriber` — the FINAL path. Drives the fused
@@ -24,32 +24,13 @@
  *      Selected whenever a `libelizainference` handle + bundled ASR model are
  *      present (which is always true when the fused build is loaded).
  *
- *   3. `WhisperCppStreamingTranscriber` — the legacy INTERIM path. Wraps the
- *      whisper.cpp `main`/`whisper-cli` one-shot binary; same windowed-with-
- *      overlap strategy. Used only when neither fused path is available (no
- *      `libelizainference` build loaded). It vendors its own ggml, so per
- *      AGENTS.md §1 it is *not* the default — keep it strictly behind the
- *      fused-batch interim. Needs a whisper.cpp binary + GGUF model (resolved
- *      via env / `whisper-node` / `<local-inference-root>/whisper/`; download
- *      the model with `downloadWhisperModel()`).
- *
- * If none is available, `createStreamingTranscriber()` throws
+ * If neither is available, `createStreamingTranscriber()` throws
  * `AsrUnavailableError` — a real failure, never a silent empty-transcript
- * degrade (AGENTS.md §3 + §9).
- *
- * The whisper.cpp adapter spawns its decoder via an injectable function so
- * the unit tests can run a fake decoder without a native binary; the
- * default decoder uses `Bun.spawn` and is only reached at runtime under Bun.
+ * degrade (AGENTS.md §3 + §9). There is no whisper.cpp fallback path: that
+ * dependency vendored a second GGML, mismatched the Qwen2-BPE vocab, and is
+ * not the local-inference contract we ship.
  */
 
-import { createWriteStream, existsSync, mkdirSync } from "node:fs";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Readable, type Writable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-
-import { localInferenceRoot } from "../paths";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
@@ -103,7 +84,7 @@ function extractWords(text: string): string[] {
  * Linear-interpolation resample of mono fp32 PCM. Used to coerce mic
  * frames (commonly 16 / 24 / 48 kHz) to the ASR rate. Not a polyphase
  * filter — adequate for speech ASR; the fused build does its own
- * resampling so this is whisper-interim only.
+ * resampling so this is interim-batch only.
  */
 export function resampleLinear(
   pcm: Float32Array,
@@ -314,7 +295,7 @@ export interface TranscriptMetadataDefaults {
  * True when the loaded fused library has a working streaming ASR decoder
  * (not just the v2 symbols — the stub exports them but `asrStreamSupported`
  * returns false). This is the gate `createStreamingTranscriber` uses to
- * pick the fused path over the whisper.cpp interim adapter.
+ * pick the fused path over the fused-batch interim adapter.
  */
 export function ffiSupportsStreamingAsr(
   ffi: ElizaInferenceFfi | null | undefined,
@@ -358,7 +339,7 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
     });
     if (!ffiSupportsStreamingAsr(args.ffi)) {
       throw new AsrUnavailableError(
-        "[asr] fused libelizainference does not advertise a working streaming ASR decoder (eliza_inference_asr_stream_supported() == 0) — rebuild the fused omnivoice target or use the whisper.cpp interim adapter",
+        "[asr] fused libelizainference does not advertise a working streaming ASR decoder (eliza_inference_asr_stream_supported() == 0) — rebuild the fused omnivoice target or use the fused-batch interim adapter",
       );
     }
     this.ffi = args.ffi;
@@ -431,19 +412,17 @@ export interface FfiBatchTranscriberOptions {
  * decoder (`eliza_inference_asr_transcribe`, ABI v1). The fused build's true
  * streaming decoder (`eliza_inference_asr_stream_*`, ABI v2) is W7's job and
  * is an honest stub today; until it lands this adapter is the contract-clean
- * interim — unlike the whisper.cpp adapter it runs inside the one shipped
- * llama.cpp/GGML build and emits Qwen2-BPE token-vocab text (AGENTS.md §1, §4),
- * so no second ggml is vendored and no tokenizer-family mismatch is introduced.
+ * interim — it runs inside the one shipped llama.cpp/GGML build and emits
+ * Qwen2-BPE token-vocab text (AGENTS.md §1, §4), so no second ggml is
+ * vendored and no tokenizer-family mismatch is introduced.
  *
- * It runs the same *windowed re-transcription with overlap* strategy as the
- * whisper.cpp adapter: a prefix older than `windowSeconds` is committed
- * (decoded once, in window-sized chunks with `overlapSeconds` carry-over) and
- * only the tail window is re-decoded each step. So each `asr_transcribe` call
- * is bounded by `windowSeconds + overlap` of audio (≈6–7 s) — incremental,
- * not "buffer the whole utterance, run one giant batch decode". The window is
- * wider than whisper-interim's (the fused encoder amortizes better over a
- * longer window and Qwen3-ASR carries more context), and decodes run serially
- * on the shared ASR mutex (the fused context's ASR region is single-threaded).
+ * It runs a *windowed re-transcription with overlap* strategy: a prefix older
+ * than `windowSeconds` is committed (decoded once, in window-sized chunks
+ * with `overlapSeconds` carry-over) and only the tail window is re-decoded
+ * each step. So each `asr_transcribe` call is bounded by `windowSeconds +
+ * overlap` of audio (≈6–7 s) — incremental, not "buffer the whole utterance,
+ * run one giant batch decode". Decodes run serially on the shared ASR mutex
+ * (the fused context's ASR region is single-threaded).
  *
  * Requires `ffi.mmapAcquire(ctx, "asr")` to have been called on `getContext()`
  * — the `EngineVoiceBridge` lifecycle does this when voice input is armed.
@@ -555,217 +534,6 @@ export class FfiBatchTranscriber extends BaseStreamingTranscriber {
   }
 }
 
-/* ==================================================================== *
- * Whisper.cpp (legacy interim) path — windowed re-transcription, overlap.
- * ==================================================================== */
-
-/** Decodes a 16 kHz mono fp32 PCM window into text. Injectable for tests. */
-export type WhisperDecoder = (pcm16k: Float32Array) => Promise<string>;
-
-export interface WhisperCppOptions {
-  vad?: VadEventSource;
-  /** Optional attribution metadata stamped onto emitted transcript updates. */
-  metadata?: TranscriptMetadataDefaults;
-  /** Convenience shorthand for `metadata.source`. */
-  source?: VoiceInputSource;
-  /** Sliding-window length, seconds. Each decode covers ≤ this + overlap. Default 3.0. */
-  windowSeconds?: number;
-  /** Trailing overlap kept when committing a prefix chunk, seconds. Default 0.5. */
-  overlapSeconds?: number;
-  /** Minimum new audio (seconds) accumulated before the next decode pass. Default 0.7. */
-  stepSeconds?: number;
-  /** Override the decoder. Production wires the whisper.cpp `Bun.spawn` decoder. */
-  decoder?: WhisperDecoder;
-  /** Whisper language hint. Default "en" (the bundled `*.en` models). */
-  language?: string;
-  /** Whisper.cpp binary path override. */
-  binaryPath?: string;
-  /** Whisper GGUF model path override. */
-  modelPath?: string;
-  /**
-   * Extra cleanup invoked from `dispose()` after segment buffers are reset.
-   * Used when an injected `decoder` owns a persistent subprocess (the
-   * OpenVINO whisper worker) that needs to be torn down with the
-   * transcriber.
-   */
-  onDispose?: () => void;
-}
-
-interface WhisperConfig {
-  windowSamples: number;
-  overlapSamples: number;
-  stepSamples: number;
-  language: string;
-}
-
-/**
- * Interim ASR adapter built on the whisper.cpp `main`/`whisper-cli`
- * one-shot binary. Accumulates the current speech segment as 16 kHz mono
- * PCM and runs a *windowed* decode: the prefix older than `windowSeconds`
- * is committed (decoded once, in window-sized chunks with `overlapSeconds`
- * carry-over) and only the tail window is re-decoded each step. The
- * running partial = committed text + tail-window decode. `flush()` runs a
- * final decode of the uncommitted tail and resets.
- */
-export class WhisperCppStreamingTranscriber extends BaseStreamingTranscriber {
-  private readonly cfg: WhisperConfig;
-  private readonly decode: WhisperDecoder;
-  private readonly extraDispose: (() => void) | undefined;
-  /** All 16 kHz samples accumulated for the current speech segment. */
-  private buf: Float32Array = new Float32Array(0);
-  /** Samples in `buf` already folded into `committed`. */
-  private committedSamples = 0;
-  /** Text decoded from `buf[0 .. committedSamples)`. */
-  private committed = "";
-  /** Samples present at the last decode pass — used to throttle to `stepSamples`. */
-  private lastDecodeAt = 0;
-  private decodeChain: Promise<void> = Promise.resolve();
-
-  constructor(opts: WhisperCppOptions = {}) {
-    super(opts.vad, {
-      ...opts.metadata,
-      source: opts.metadata?.source ?? opts.source,
-    });
-    const windowSeconds = opts.windowSeconds ?? 3.0;
-    const overlapSeconds = Math.min(opts.overlapSeconds ?? 0.5, windowSeconds);
-    const stepSeconds = opts.stepSeconds ?? 0.7;
-    this.cfg = {
-      windowSamples: Math.round(windowSeconds * ASR_SAMPLE_RATE),
-      overlapSamples: Math.round(overlapSeconds * ASR_SAMPLE_RATE),
-      stepSamples: Math.round(stepSeconds * ASR_SAMPLE_RATE),
-      language: opts.language ?? "en",
-    };
-    this.decode =
-      opts.decoder ??
-      makeWhisperCppDecoder({
-        binaryPath: opts.binaryPath,
-        modelPath: opts.modelPath,
-        language: this.cfg.language,
-      });
-    this.extraDispose = opts.onDispose;
-  }
-
-  protected onFrame(frame: PcmFrame): void {
-    const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
-    this.buf = concatFloat32(this.buf, pcm);
-    if (this.buf.length - this.lastDecodeAt < this.cfg.stepSamples) return;
-    this.lastDecodeAt = this.buf.length;
-    this.scheduleDecode(false);
-  }
-
-  protected async onFlush(): Promise<TranscriptUpdate> {
-    this.scheduleDecode(true);
-    await this.decodeChain;
-    const final = this.committed.trim();
-    this.resetSegment();
-    return { partial: final, isFinal: true };
-  }
-
-  protected onDispose(): void {
-    this.resetSegment();
-    if (this.extraDispose) {
-      try {
-        this.extraDispose();
-      } catch {
-        /* dispose hooks are best-effort */
-      }
-    }
-  }
-
-  private resetSegment(): void {
-    this.buf = new Float32Array(0);
-    this.committedSamples = 0;
-    this.committed = "";
-    this.lastDecodeAt = 0;
-  }
-
-  /**
-   * Queue a decode pass. Passes run strictly serially (whisper.cpp `main`
-   * is a heavyweight subprocess; overlapping them just thrashes). A
-   * `final` pass also drains the uncommitted tail into `committed`.
-   */
-  private scheduleDecode(final: boolean): void {
-    this.decodeChain = this.decodeChain.then(() => this.runDecode(final));
-  }
-
-  private async runDecode(final: boolean): Promise<void> {
-    const total = this.buf.length;
-    if (total <= this.committedSamples && !final) return;
-
-    // Commit any prefix that has scrolled fully out of the sliding window.
-    while (total - this.committedSamples > this.cfg.windowSamples) {
-      const chunkEnd = Math.min(
-        total,
-        this.committedSamples + this.cfg.windowSamples,
-      );
-      const chunk = this.buf.subarray(this.committedSamples, chunkEnd);
-      const text = (await this.decode(chunk)).trim();
-      this.committed = joinTranscriptParts(this.committed, text);
-      // Advance, keeping `overlapSamples` of trailing audio so a word
-      // straddling the boundary is not clipped.
-      const advance = Math.max(
-        1,
-        this.cfg.windowSamples - this.cfg.overlapSamples,
-      );
-      this.committedSamples = Math.min(total, this.committedSamples + advance);
-    }
-
-    const tail = this.buf.subarray(this.committedSamples, total);
-    const tailText = tail.length > 0 ? (await this.decode(tail)).trim() : "";
-
-    if (final) {
-      this.committed = joinTranscriptParts(this.committed, tailText);
-      this.committedSamples = total;
-      return;
-    }
-
-    const partialText = joinTranscriptParts(this.committed, tailText).trim();
-    this.emitPartial({ partial: partialText, isFinal: false });
-  }
-}
-
-/**
- * Encode mono fp32 PCM as 16-bit PCM RIFF WAV bytes. Local to this module
- * to avoid an import cycle with `engine-bridge.ts` (which has its own copy
- * keyed to the TTS sample rate). whisper.cpp requires 16-bit PCM WAV input.
- */
-function encodeMonoPcm16WavBytes(
-  pcm: Float32Array,
-  sampleRate: number,
-): Uint8Array {
-  const bytesPerSample = 2;
-  const dataBytes = pcm.length * bytesPerSample;
-  const out = new Uint8Array(44 + dataBytes);
-  const view = new DataView(out.buffer);
-  const ascii = (off: number, s: string) => {
-    for (let i = 0; i < s.length; i++) out[off + i] = s.charCodeAt(i);
-  };
-  ascii(0, "RIFF");
-  view.setUint32(4, 36 + dataBytes, true);
-  ascii(8, "WAVE");
-  ascii(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * bytesPerSample, true);
-  view.setUint16(32, bytesPerSample, true);
-  view.setUint16(34, 16, true);
-  ascii(36, "data");
-  view.setUint32(40, dataBytes, true);
-  let off = 44;
-  for (const sample of pcm) {
-    const clamped = Math.max(-1, Math.min(1, sample));
-    view.setInt16(
-      off,
-      Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff),
-      true,
-    );
-    off += bytesPerSample;
-  }
-  return out;
-}
-
 function concatFloat32(a: Float32Array, b: Float32Array): Float32Array {
   if (a.length === 0) return b.slice();
   if (b.length === 0) return a;
@@ -798,226 +566,140 @@ function joinTranscriptParts(head: string, tail: string): string {
 }
 
 /* ==================================================================== *
- * whisper.cpp binary + model resolution + the default `Bun.spawn` decoder.
+ * OpenVINO Whisper streaming transcriber.
  * ==================================================================== */
 
-const WHISPER_BIN_NAMES =
-  process.platform === "win32"
-    ? ["whisper-cli.exe", "main.exe"]
-    : ["whisper-cli", "main"];
+/** Injectable decoder: decodes one PCM window (16 kHz mono fp32) into text. */
+export type StreamingPcmDecoder = (pcm16k: Float32Array) => Promise<string>;
 
-const WHISPER_DEFAULT_MODEL_FILE = "ggml-base.en.bin";
-
-/** Directory the local voice runtime stages whisper.cpp models into. */
-export function whisperDir(): string {
-  return path.join(localInferenceRoot(), "whisper");
+export interface OpenVinoStreamingTranscriberOptions {
+  vad?: VadEventSource;
+  /** Optional attribution metadata stamped onto emitted transcript updates. */
+  metadata?: TranscriptMetadataDefaults;
+  /** Convenience shorthand for `metadata.source`. */
+  source?: VoiceInputSource;
+  /** Sliding-window length, seconds. Default 3.0. */
+  windowSeconds?: number;
+  /** Trailing overlap kept when committing a prefix chunk, seconds. Default 0.5. */
+  overlapSeconds?: number;
+  /** Minimum new audio (seconds) accumulated before the next decode pass. Default 0.7. */
+  stepSeconds?: number;
+  /** The decoder. Required — the OpenVINO adapter supplies its python-worker decoder here. */
+  decoder: StreamingPcmDecoder;
+  /**
+   * Extra cleanup invoked from `dispose()` after segment buffers are reset.
+   * Used when the injected `decoder` owns a persistent subprocess (the
+   * OpenVINO whisper worker) that needs to be torn down with the
+   * transcriber.
+   */
+  onDispose?: () => void;
 }
 
 /**
- * Resolve the whisper.cpp binary. Order:
- *   1. explicit `override`
- *   2. `ELIZA_WHISPER_BIN` env var (file must exist)
- *   3. `whisper-node`'s bundled `lib/whisper.cpp/{whisper-cli,main}`
- *   4. `<local-inference-root>/whisper/{whisper-cli,main}`
- * Returns null when none is found.
+ * Sliding-window streaming transcriber driven by an injected decoder. The
+ * OpenVINO Whisper adapter is the only consumer today: it supplies a decoder
+ * function bound to its persistent Python worker. The previous whisper.cpp
+ * adapter has been removed (it vendored a second GGML + mismatched the
+ * Qwen2-BPE vocab).
  */
-export function resolveWhisperBinary(override?: string): string | null {
-  if (override) return existsSync(override) ? override : null;
-  const env = process.env.ELIZA_WHISPER_BIN?.trim();
-  if (env && existsSync(env)) return env;
-  const candidateDirs = [
-    process.env.ELIZA_WHISPER_DIR?.trim() || null,
-    whisperBundledNodeDir(),
-    whisperDir(),
-  ].filter((d): d is string => Boolean(d));
-  for (const dir of candidateDirs) {
-    for (const name of WHISPER_BIN_NAMES) {
-      const candidate = path.join(dir, name);
-      if (existsSync(candidate)) return candidate;
+export class OpenVinoStreamingTranscriber extends BaseStreamingTranscriber {
+  private readonly windowSamples: number;
+  private readonly overlapSamples: number;
+  private readonly stepSamples: number;
+  private readonly decode: StreamingPcmDecoder;
+  private readonly extraDispose: (() => void) | undefined;
+  /** All 16 kHz samples accumulated for the current speech segment. */
+  private buf: Float32Array = new Float32Array(0);
+  /** Samples in `buf` already folded into `committed`. */
+  private committedSamples = 0;
+  /** Text decoded from `buf[0 .. committedSamples)`. */
+  private committed = "";
+  /** Samples present at the last decode pass — used to throttle to `stepSamples`. */
+  private lastDecodeAt = 0;
+  private decodeChain: Promise<void> = Promise.resolve();
+
+  constructor(opts: OpenVinoStreamingTranscriberOptions) {
+    super(opts.vad, {
+      ...opts.metadata,
+      source: opts.metadata?.source ?? opts.source,
+    });
+    const windowSeconds = opts.windowSeconds ?? 3.0;
+    const overlapSeconds = Math.min(opts.overlapSeconds ?? 0.5, windowSeconds);
+    const stepSeconds = opts.stepSeconds ?? 0.7;
+    this.windowSamples = Math.round(windowSeconds * ASR_SAMPLE_RATE);
+    this.overlapSamples = Math.round(overlapSeconds * ASR_SAMPLE_RATE);
+    this.stepSamples = Math.round(stepSeconds * ASR_SAMPLE_RATE);
+    this.decode = opts.decoder;
+    this.extraDispose = opts.onDispose;
+  }
+
+  protected onFrame(frame: PcmFrame): void {
+    const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
+    this.buf = concatFloat32(this.buf, pcm);
+    if (this.buf.length - this.lastDecodeAt < this.stepSamples) return;
+    this.lastDecodeAt = this.buf.length;
+    this.scheduleDecode(false);
+  }
+
+  protected async onFlush(): Promise<TranscriptUpdate> {
+    this.scheduleDecode(true);
+    await this.decodeChain;
+    const final = this.committed.trim();
+    this.resetSegment();
+    return { partial: final, isFinal: true };
+  }
+
+  protected onDispose(): void {
+    this.resetSegment();
+    if (this.extraDispose) {
+      try {
+        this.extraDispose();
+      } catch {
+        /* dispose hooks are best-effort */
+      }
     }
   }
-  return null;
-}
 
-/**
- * Resolve the whisper GGUF model. Order:
- *   1. explicit `override`
- *   2. `ELIZA_WHISPER_MODEL` env var (file must exist)
- *   3. `whisper-node`'s bundled `models/ggml-base.en.bin`
- *   4. `<local-inference-root>/whisper/<file>` (download target — see `downloadWhisperModel`)
- * Returns null when none is found.
- */
-export function resolveWhisperModelPath(
-  override?: string,
-  file = WHISPER_DEFAULT_MODEL_FILE,
-): string | null {
-  if (override) return existsSync(override) ? override : null;
-  const env = process.env.ELIZA_WHISPER_MODEL?.trim();
-  if (env && existsSync(env)) return env;
-  const bundled = whisperBundledNodeDir();
-  if (bundled) {
-    const inModels = path.join(bundled, "models", file);
-    if (existsSync(inModels)) return inModels;
+  private resetSegment(): void {
+    this.buf = new Float32Array(0);
+    this.committedSamples = 0;
+    this.committed = "";
+    this.lastDecodeAt = 0;
   }
-  const staged = path.join(whisperDir(), file);
-  if (existsSync(staged)) return staged;
-  return null;
-}
 
-function whisperBundledNodeDir(): string | null {
-  // `whisper-node` ships whisper.cpp under `lib/whisper.cpp/`. Resolve
-  // the package without importing it (it has a native build step).
-  const guesses = [
-    path.join(
-      process.cwd(),
-      "node_modules",
-      "whisper-node",
-      "lib",
-      "whisper.cpp",
-    ),
-    path.join(
-      localInferenceRoot(),
-      "..",
-      "node_modules",
-      "whisper-node",
-      "lib",
-      "whisper.cpp",
-    ),
-  ];
-  for (const g of guesses) {
-    if (existsSync(g)) return g;
+  private scheduleDecode(final: boolean): void {
+    this.decodeChain = this.decodeChain.then(() => this.runDecode(final));
   }
-  return null;
-}
 
-const WHISPER_MODEL_URLS: Record<string, string> = {
-  "ggml-base.en.bin":
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin",
-  "ggml-small.en.bin":
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin",
-  "ggml-tiny.en.bin":
-    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin",
-};
+  private async runDecode(final: boolean): Promise<void> {
+    const total = this.buf.length;
+    if (total <= this.committedSamples && !final) return;
 
-/**
- * Download a whisper GGUF model into `<local-inference-root>/whisper/`.
- * Idempotent — returns the existing path if already staged. This is an
- * explicit, on-demand action (the models are 75–500 MB; we never fetch at
- * install time). Throws on a non-OK HTTP response.
- */
-export async function downloadWhisperModel(
-  file: string = WHISPER_DEFAULT_MODEL_FILE,
-): Promise<string> {
-  const url = WHISPER_MODEL_URLS[file];
-  if (!url) {
-    throw new Error(
-      `[asr] no known download URL for whisper model "${file}" (known: ${Object.keys(WHISPER_MODEL_URLS).join(", ")})`,
-    );
-  }
-  const dir = whisperDir();
-  mkdirSync(dir, { recursive: true });
-  const dest = path.join(dir, file);
-  if (existsSync(dest)) return dest;
-  const tmp = `${dest}.partial`;
-  const res = await fetch(url);
-  if (!res.ok || !res.body) {
-    throw new Error(
-      `[asr] failed to download whisper model from ${url}: HTTP ${res.status} ${res.statusText}`,
-    );
-  }
-  const writeStream: Writable = createWriteStream(tmp);
-  // `res.body` is a web ReadableStream; in Node 18+ it is async-iterable,
-  // so `Readable.from` adapts it without a cast (matches downloader.ts).
-  await pipeline(Readable.from(res.body), writeStream);
-  await fs.rename(tmp, dest);
-  return dest;
-}
-
-/**
- * Build the default whisper.cpp decoder: writes the PCM window to a temp
- * WAV, runs the whisper.cpp binary, parses the `[ts --> ts]  text` lines.
- * Resolves binary + model at construction and throws `AsrUnavailableError`
- * when either is missing — that is the explicit "ASR unavailable" failure,
- * surfaced before any frames are fed.
- *
- * `Bun.spawn` is used because production runs under Bun (Electrobun /
- * Capacitor shells); calling this from plain Node throws.
- */
-export function makeWhisperCppDecoder(opts: {
-  binaryPath?: string;
-  modelPath?: string;
-  language: string;
-}): WhisperDecoder {
-  const binary = resolveWhisperBinary(opts.binaryPath);
-  if (!binary) {
-    throw new AsrUnavailableError(
-      "[asr] no whisper.cpp binary found — install `whisper-node` (it bundles whisper.cpp), set ELIZA_WHISPER_BIN to a whisper-cli/main binary, or stage one under <local-inference-root>/whisper/",
-    );
-  }
-  const model = resolveWhisperModelPath(opts.modelPath);
-  if (!model) {
-    throw new AsrUnavailableError(
-      `[asr] no whisper GGUF model found — set ELIZA_WHISPER_MODEL, or run downloadWhisperModel() to stage ${WHISPER_DEFAULT_MODEL_FILE} under <local-inference-root>/whisper/`,
-    );
-  }
-  return async (pcm16k: Float32Array): Promise<string> => {
-    const bun = (globalThis as { Bun?: { spawn?: unknown } }).Bun;
-    if (!bun || typeof bun.spawn !== "function") {
-      throw new Error(
-        "[asr] the whisper.cpp interim decoder requires the Bun runtime (Bun.spawn) — production voice runs under Bun via Electrobun/Capacitor",
+    // Commit any prefix that has scrolled fully out of the sliding window.
+    while (total - this.committedSamples > this.windowSamples) {
+      const chunkEnd = Math.min(
+        total,
+        this.committedSamples + this.windowSamples,
       );
+      const chunk = this.buf.subarray(this.committedSamples, chunkEnd);
+      const text = (await this.decode(chunk)).trim();
+      this.committed = joinTranscriptParts(this.committed, text);
+      const advance = Math.max(1, this.windowSamples - this.overlapSamples);
+      this.committedSamples = Math.min(total, this.committedSamples + advance);
     }
-    const tmpPath = path.join(
-      os.tmpdir(),
-      `eliza-asr-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.wav`,
-    );
-    await fs.writeFile(
-      tmpPath,
-      encodeMonoPcm16WavBytes(pcm16k, ASR_SAMPLE_RATE),
-    );
-    try {
-      const spawn = bun.spawn as (
-        cmd: string[],
-        opts: Record<string, unknown>,
-      ) => { stdout: ReadableStream; exited: Promise<number> };
-      const proc = spawn(
-        [binary, "-m", model, "-f", tmpPath, "-l", opts.language, "-nt", "-np"],
-        { stdout: "pipe", stderr: "pipe", cwd: path.dirname(binary) },
-      );
-      const [stdout] = await Promise.all([
-        new Response(proc.stdout).text(),
-        proc.exited,
-      ]);
-      return parseWhisperStdout(stdout);
-    } finally {
-      await fs.rm(tmpPath, { force: true });
-    }
-  };
-}
 
-/**
- * Parse whisper.cpp stdout. With `-nt` (no timestamps) each transcript
- * line is bare text; without it, lines are `[HH:MM:SS.mmm --> ...]  text`.
- * Handles both so the caller does not depend on the binary's flag set.
- */
-export function parseWhisperStdout(stdout: string): string {
-  const parts: string[] = [];
-  const tsLine = /^\s*\[[\d:.\s]+-->[\d:.\s]+\]\s*(.*)$/;
-  for (const raw of stdout.split("\n")) {
-    const line = raw.replace(/\r$/, "");
-    if (!line.trim()) continue;
-    const m = line.match(tsLine);
-    const text = (m ? m[1] : line).trim();
-    // Skip whisper.cpp's banner / progress / system lines.
-    if (
-      /^whisper_|^system_info|^main:|^output_|^\s*\[/.test(text) ||
-      text.startsWith("whisper.cpp")
-    ) {
-      continue;
+    const tail = this.buf.subarray(this.committedSamples, total);
+    const tailText = tail.length > 0 ? (await this.decode(tail)).trim() : "";
+
+    if (final) {
+      this.committed = joinTranscriptParts(this.committed, tailText);
+      this.committedSamples = total;
+      return;
     }
-    if (text) parts.push(text);
+
+    const partialText = joinTranscriptParts(this.committed, tailText).trim();
+    this.emitPartial({ partial: partialText, isFinal: false });
   }
-  return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 /* ==================================================================== *
@@ -1032,7 +714,7 @@ export interface CreateStreamingTranscriberOptions {
   /**
    * Whether a bundled ASR model directory is present. The fused path is
    * only chosen when this is true AND the library advertises streaming
-   * ASR. (Whisper-interim ignores it — it has its own model.)
+   * ASR.
    */
   asrBundlePresent?: boolean;
   /** VAD event stream to gate decoding (W1). */
@@ -1041,8 +723,6 @@ export interface CreateStreamingTranscriberOptions {
   metadata?: TranscriptMetadataDefaults;
   /** Convenience shorthand for `metadata.source`. */
   source?: VoiceInputSource;
-  /** Whisper.cpp legacy-interim options (binary/model overrides, decoder injection for tests). */
-  whisper?: WhisperCppOptions;
   /** Fused-batch-interim window/step overrides (see `FfiBatchTranscriber`). */
   ffiBatch?: Omit<FfiBatchTranscriberOptions, "ffi" | "getContext">;
   /**
@@ -1050,26 +730,14 @@ export interface CreateStreamingTranscriberOptions {
    *   `"fused"`            → fused streaming ASR only (throws if unavailable),
    *   `"ffi-batch"`        → fused batch (interim) only (throws if unavailable),
    *   `"openvino-whisper"` → OpenVINO Whisper (NPU→CPU autoprobe) only,
-   *   `"whisper"`          → whisper.cpp legacy interim only,
-   *   `"auto"`             (default) → fused streaming → fused batch
-   *                                    → OpenVINO whisper → whisper.cpp → throw.
+   *   `"auto"`             (default) → fused streaming → fused batch →
+   *                                    OpenVINO whisper (when enabled) → throw.
    */
-  prefer?: "auto" | "fused" | "ffi-batch" | "openvino-whisper" | "whisper";
+  prefer?: "auto" | "fused" | "ffi-batch" | "openvino-whisper";
   /**
-   * Permit the legacy whisper.cpp adapter when fused ASR is unavailable.
-   * Standalone tooling keeps this enabled by default; Eliza-1 voice bridges
-   * pass false so a missing bundled ASR model fails closed instead of
-   * silently running a second model family. Setting this to `false` also
-   * turns off `OpenVINO Whisper` auto-discovery unless `allowOpenVinoWhisper`
-   * is explicitly `true` — both are "second model family" fallbacks.
-   */
-  allowWhisperFallback?: boolean;
-  /**
-   * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). When unset,
-   * defaults to the value of `allowWhisperFallback` — both are non-fused
-   * fallback paths, so callers that block whisper.cpp also block OpenVINO
-   * Whisper. Set explicitly to `true` to keep the OpenVINO Whisper tier
-   * even when `allowWhisperFallback: false`.
+   * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
+   * — Eliza-1 voice bridges run only the fused path. Set explicitly to `true`
+   * to keep the OpenVINO Whisper tier when the fused build is unavailable.
    */
   allowOpenVinoWhisper?: boolean;
 }
@@ -1081,28 +749,19 @@ export interface CreateStreamingTranscriberOptions {
  *   2. fused batch (interim) — windowed `eliza_inference_asr_transcribe` (ABI
  *      v1); contract-clean (one ggml, shared text vocab) and available now,
  *   3. OpenVINO Whisper — Intel NPU→CPU autoprobe via the persistent Python
- *      worker (`scripts/openvino-whisper-asr-worker.py`). Reuses the
- *      `WhisperCppStreamingTranscriber` sliding-window logic via decoder
- *      injection; only the decode call is swapped. ~50× RTF on Lunar Lake
- *      NPU, ~28× on CPU. Selected only when the OpenVINO runtime + Whisper
- *      IR are present on disk.
- *   4. whisper.cpp legacy interim — separate ggml, used only when none of the
- *      above is available.
+ *      worker (`scripts/openvino-whisper-asr-worker.py`). Off by default
+ *      (`allowOpenVinoWhisper: true` to opt in). Selected only when the
+ *      OpenVINO runtime + Whisper IR are present on disk.
+ *
  * No silent fallback to an empty transcript — if nothing is available the
- * caller gets a hard, actionable failure (AGENTS.md §3 + §9).
+ * caller gets a hard, actionable failure (AGENTS.md §3 + §9). The whisper.cpp
+ * interim fallback has been removed.
  */
 export function createStreamingTranscriber(
   opts: CreateStreamingTranscriberOptions = {},
 ): StreamingTranscriber {
   const prefer = opts.prefer ?? "auto";
-  const allowWhisperFallback = opts.allowWhisperFallback !== false;
-  // OpenVINO Whisper is the same family of "second-model-family fallback" as
-  // whisper.cpp — when the caller blocks the whisper.cpp tier, default to
-  // also blocking the OpenVINO tier unless explicitly opted back in. This
-  // keeps the existing Eliza-1 contract (`allowWhisperFallback: false`)
-  // semantically intact: no non-fused ASR runs in mandatory-fused contexts.
-  const allowOpenVinoWhisper =
-    opts.allowOpenVinoWhisper ?? allowWhisperFallback;
+  const allowOpenVinoWhisper = opts.allowOpenVinoWhisper === true;
 
   const tryFusedStreaming = (): StreamingTranscriber | null => {
     if (!opts.ffi || !opts.getContext) return null;
@@ -1135,15 +794,11 @@ export function createStreamingTranscriber(
     const runtime = resolveOpenVinoWhisperRuntime();
     if (!runtime) return null;
     const { decoder, dispose } = makeOpenVinoWhisperDecoder(runtime);
-    // If the WhisperCppStreamingTranscriber constructor throws (bad whisper
-    // opts, etc.), `dispose` is never wired to anything — the Python worker
-    // would leak. Guard explicitly so we always tear it down on failure.
     try {
-      return new WhisperCppStreamingTranscriber({
-        ...opts.whisper,
+      return new OpenVinoStreamingTranscriber({
         vad: opts.vad,
-        metadata: opts.whisper?.metadata ?? opts.metadata,
-        source: opts.whisper?.source ?? opts.source,
+        metadata: opts.metadata,
+        source: opts.source,
         decoder,
         onDispose: dispose,
       });
@@ -1179,29 +834,17 @@ export function createStreamingTranscriber(
     );
   }
 
-  if (prefer === "auto") {
-    const fused = tryFusedStreaming();
-    if (fused) return fused;
-    const batch = tryFusedBatch();
-    if (batch) return batch;
-    if (allowOpenVinoWhisper) {
-      const ov = tryOpenVinoWhisper();
-      if (ov) return ov;
-    }
+  // auto
+  const fused = tryFusedStreaming();
+  if (fused) return fused;
+  const batch = tryFusedBatch();
+  if (batch) return batch;
+  if (allowOpenVinoWhisper) {
+    const ov = tryOpenVinoWhisper();
+    if (ov) return ov;
   }
 
-  if (!allowWhisperFallback && prefer !== "whisper") {
-    throw new AsrUnavailableError(
-      "[asr] bundled fused ASR is required for this Eliza-1 voice session, but no fused streaming or fused batch decoder is available",
-    );
-  }
-
-  // Whisper legacy interim. Constructing it resolves the binary + model and
-  // throws `AsrUnavailableError` if either is missing — surface that.
-  return new WhisperCppStreamingTranscriber({
-    ...opts.whisper,
-    vad: opts.vad,
-    metadata: opts.whisper?.metadata ?? opts.metadata,
-    source: opts.whisper?.source ?? opts.source,
-  });
+  throw new AsrUnavailableError(
+    "[asr] no fused ASR decoder available — load the fused libelizainference build with a bundled ASR model (eliza_inference_asr_stream_* or eliza_inference_asr_transcribe). The whisper.cpp interim fallback has been removed; the local-inference path requires the fused omnivoice build.",
+  );
 }

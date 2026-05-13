@@ -32,14 +32,6 @@ import { VoiceStartupError } from "./voice/errors";
 import type { DflashTextRunner } from "./voice/pipeline-impls";
 import { writeVoicePresetFile } from "./voice/voice-preset-format";
 
-function missingWhisperOptions() {
-  const root = path.join(tmpdir(), `eliza-missing-whisper-${process.pid}`);
-  return {
-    binaryPath: path.join(root, "whisper-cli"),
-    modelPath: path.join(root, "ggml-base.en.bin"),
-  };
-}
-
 class StubBackend {
   calls = 0;
   async synthesize(args: {
@@ -165,7 +157,6 @@ describe("EngineVoiceBridge.runVoiceTurn (wired pipeline)", () => {
       useFfiBackend: false,
       backendOverride: new StubBackend(),
       lifecycleLoaders: loadersOk(),
-      whisper: missingWhisperOptions(),
     });
     expect(bridge.asrAvailable).toBe(false);
     await engine.armVoice();
