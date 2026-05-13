@@ -1,5 +1,5 @@
-import type { SelectedLiveProvider } from "./lifeops-live-harness.ts";
 import { CerebrasJudge } from "../../../../packages/scenario-runner/src/cerebras-judge.ts";
+import type { SelectedLiveProvider } from "./lifeops-live-harness.ts";
 
 export type LlmJudgeResult = {
   passed: boolean;
@@ -16,9 +16,9 @@ export type LlmJudgeResult = {
  * caller applies that after; we only validate that the model emitted a
  * numeric score and reasoning.
  */
-function parseJudgeResult(parsed: Record<string, unknown> | null):
-  | (LlmJudgeResult & { reasoning: string })
-  | null {
+function parseJudgeResult(
+  parsed: Record<string, unknown> | null,
+): (LlmJudgeResult & { reasoning: string }) | null {
   if (!parsed) return null;
   const score =
     typeof parsed.score === "number"
@@ -94,10 +94,6 @@ export async function judgeTextWithLlm(args: {
   return {
     ...parsed,
     passed,
-    verdict: passed
-      ? "PASS"
-      : parsed.score <= 0.25
-        ? "FAIL"
-        : "REVIEW",
+    verdict: passed ? "PASS" : parsed.score <= 0.25 ? "FAIL" : "REVIEW",
   };
 }
