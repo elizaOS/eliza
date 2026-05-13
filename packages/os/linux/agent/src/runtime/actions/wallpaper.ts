@@ -65,14 +65,19 @@ function paletteFromBrief(brief: string): PaletteSpec {
     const bgLight = "#f5f3ef";
     let background = mood === "dark" ? bgDark : bgLight;
     let foreground = mood === "dark" ? "#FF6B35" : "#1a1a1a";
-    // Specific color overrides
-    if (/\b(space|night|midnight|cosmic|stars)\b/.test(lower)) {
+    // Specific color overrides. Order matters: more specific colors first
+    // so "deep red" → red, not blue (the older `deep` keyword on the ocean
+    // branch was a v34 bug that swallowed every "deep <color>" prompt).
+    if (/\b(red|crimson|scarlet|maroon|blood|ruby)\b/.test(lower)) {
+        background = "#2a0303";
+        foreground = "#e85a3c";
+    } else if (/\b(space|night|midnight|cosmic|stars)\b/.test(lower)) {
         background = "#03001a";
         foreground = "#ffffff";
     } else if (/\b(sunset|warm|amber|orange)\b/.test(lower)) {
         background = "#1a0a02";
         foreground = "#FF6B35";
-    } else if (/\b(ocean|sea|blue|navy|deep)\b/.test(lower)) {
+    } else if (/\b(ocean|sea|blue|navy)\b/.test(lower)) {
         background = "#031a2a";
         foreground = "#5dabd1";
     } else if (/\b(forest|emerald|green|moss)\b/.test(lower)) {
