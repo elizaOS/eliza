@@ -60,7 +60,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.537",
     "qrcode": "^1.5.4",
     "zod": "^4.4.3"
   },
@@ -71,7 +71,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "workspace:*",
+    "@elizaos/core": "2.0.0-alpha.537",
     "@elizaos/signal-native": "latest"
   },
   "peerDependenciesMeta": {

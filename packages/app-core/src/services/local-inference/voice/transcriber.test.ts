@@ -1,13 +1,10 @@
 /**
  * Unit tests for the streaming ASR adapters (`voice/transcriber.ts`).
  *
- * No native binary, no real fused library: the whisper.cpp adapter takes
- * an injected decoder (a fake "ASR backend"), and the fused adapter takes
- * a fake `ElizaInferenceFfi`. A tiny fake PCM source drives `feed()`.
+ * No native binary, no real fused library: the fused adapters take a fake
+ * `ElizaInferenceFfi`. A tiny fake PCM source drives `feed()`.
  */
 
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type {
   ElizaInferenceContextHandle,
@@ -20,19 +17,13 @@ import {
   createStreamingTranscriber,
   FfiBatchTranscriber,
   FfiStreamingTranscriber,
-  parseWhisperStdout,
   resampleLinear,
-  WhisperCppStreamingTranscriber,
 } from "./transcriber";
 import type {
   PcmFrame,
   TranscriberEvent,
   VadEvent,
   VadEventSource,
-  VoiceInputSource,
-  VoiceSegment,
-  VoiceSpeaker,
-  VoiceTurnMetadata,
 } from "./types";
 
 /* ---- test doubles -------------------------------------------------- */
@@ -71,318 +62,11 @@ function collect(t: {
   return out;
 }
 
-function missingWhisperOptions() {
-  const root = path.join(tmpdir(), `eliza-missing-whisper-${process.pid}`);
-  return {
-    binaryPath: path.join(root, "whisper-cli"),
-    modelPath: path.join(root, "ggml-base.en.bin"),
-  };
-}
-
-/**
- * A scripted whisper decoder: returns the n-th canned transcript for the
- * n-th call, records every window length it was handed (so the test can
- * assert the windows are bounded — i.e. genuinely incremental).
- */
-function scriptedDecoder(scripts: string[]) {
-  const windows: number[] = [];
-  let i = 0;
-  const decode = async (pcm16k: Float32Array): Promise<string> => {
-    windows.push(pcm16k.length);
-    const out = scripts[Math.min(i, scripts.length - 1)] ?? "";
-    i++;
-    return out;
-  };
-  return {
-    decode,
-    windows,
-    get calls() {
-      return i;
-    },
-  };
-}
-
-/* ---- whisper.cpp interim adapter ---------------------------------- */
-
-describe("WhisperCppStreamingTranscriber", () => {
-  it("emits incremental partials and a final transcript on flush", async () => {
-    const dec = scriptedDecoder(["hello", "hello there", "hello there friend"]);
-    const t = new WhisperCppStreamingTranscriber({
-      decoder: dec.decode,
-      windowSeconds: 100, // big window → no prefix commit in this short clip
-      stepSeconds: 0.05, // decode after each small frame
-    });
-    const events = collect(t);
-
-    // ~0.05 s per frame at 16 kHz = 800 samples; step is 0.05 s.
-    for (const f of makeFrames(3, Math.round(0.06 * ASR_SAMPLE_RATE))) {
-      t.feed(f);
-      // let the serial decode chain drain.
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 0));
-    }
-
-    const partials = events.filter((e) => e.kind === "partial");
-    expect(partials.length).toBeGreaterThanOrEqual(1);
-    // Running transcript grows (last partial is the longest seen).
-    expect(partials.at(-1)).toMatchObject({
-      kind: "partial",
-      update: { partial: expect.stringContaining("hello"), isFinal: false },
-    });
-
-    const final = await t.flush();
-    expect(final.isFinal).toBe(true);
-    expect(final.partial.length).toBeGreaterThan(0);
-    // A `final` event was emitted too.
-    expect(events.some((e) => e.kind === "final")).toBe(true);
-
-    t.dispose();
-  });
-
-  it("commits a bounded prefix when the segment exceeds the window (windows stay small)", async () => {
-    const dec = scriptedDecoder(["a", "a b", "a b c", "a b c d", "a b c d e"]);
-    const t = new WhisperCppStreamingTranscriber({
-      decoder: dec.decode,
-      windowSeconds: 0.5, // tiny window → forces prefix commits
-      overlapSeconds: 0.1,
-      stepSeconds: 0.1,
-    });
-    // Feed ~2 s of audio in 0.2 s frames → far exceeds the 0.5 s window.
-    for (const f of makeFrames(10, Math.round(0.2 * ASR_SAMPLE_RATE))) {
-      t.feed(f);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 0));
-    }
-    await t.flush();
-    // Every decode window must be bounded by ~window+overlap of audio —
-    // i.e. we never re-decoded the whole 2 s buffer.
-    const maxWindow = Math.round((0.5 + 0.1) * ASR_SAMPLE_RATE) + 1;
-    expect(Math.max(...dec.windows)).toBeLessThanOrEqual(maxWindow);
-    expect(dec.calls).toBeGreaterThan(2); // multiple commit + tail passes
-    t.dispose();
-  });
-
-  it("fires a `words` event exactly once, the first time a real word appears", async () => {
-    const dec = scriptedDecoder(["", "okay", "okay so", "okay so anyway"]);
-    const t = new WhisperCppStreamingTranscriber({
-      decoder: dec.decode,
-      windowSeconds: 100,
-      stepSeconds: 0.05,
-    });
-    const events = collect(t);
-    for (const f of makeFrames(4, Math.round(0.06 * ASR_SAMPLE_RATE))) {
-      t.feed(f);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 0));
-    }
-    const wordEvents = events.filter((e) => e.kind === "words");
-    expect(wordEvents).toHaveLength(1);
-    expect(wordEvents[0]).toMatchObject({ kind: "words", words: ["okay"] });
-    // A fresh segment after flush re-arms the `words` latch.
-    await t.flush();
-    for (const f of makeFrames(2, Math.round(0.06 * ASR_SAMPLE_RATE))) {
-      t.feed(f);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 0));
-    }
-    expect(
-      events.filter((e) => e.kind === "words").length,
-    ).toBeGreaterThanOrEqual(1);
-    t.dispose();
-  });
-
-  it("stamps transcript updates with optional voice source metadata", async () => {
-    const source: VoiceInputSource = {
-      kind: "discord",
-      guildId: "guild-1",
-      channelId: "channel-1",
-      participantId: "speaker-1",
-    };
-    const t = new WhisperCppStreamingTranscriber({
-      decoder: async () => "hello from discord",
-      source,
-      windowSeconds: 100,
-      stepSeconds: 0.01,
-    });
-    const events = collect(t);
-    t.feed({
-      pcm: new Float32Array(Math.round(0.02 * ASR_SAMPLE_RATE)).fill(0.05),
-      sampleRate: ASR_SAMPLE_RATE,
-      timestampMs: 0,
-    });
-    await new Promise((r) => setTimeout(r, 0));
-    const final = await t.flush();
-
-    expect(final.source).toEqual(source);
-    expect(events.find((e) => e.kind === "partial")).toMatchObject({
-      kind: "partial",
-      update: { source },
-    });
-    expect(events.find((e) => e.kind === "final")).toMatchObject({
-      kind: "final",
-      update: { source },
-    });
-    t.dispose();
-  });
-
-  it("preserves owner voice-imprint attribution evidence in transcript metadata for storage", async () => {
-    const source: VoiceInputSource = {
-      kind: "local_mic",
-      deviceId: "built-in-mic",
-      roomId: "room-owner",
-    };
-    const speaker: VoiceSpeaker = {
-      id: "entity-owner",
-      label: "Owner",
-      displayName: "Owner",
-      source,
-      imprintClusterId: "cluster-owner",
-      imprintObservationId: "obs-owner-voice-1",
-      entityId: "entity-owner",
-      confidence: 0.92,
-      isLocalUser: true,
-      metadata: {
-        attributionOnly: true,
-        evidenceKind: "voice_imprint_attribution",
-        identityAuthority: false,
-        synthesisAuthorization: false,
-      },
-    };
-    const segments: VoiceSegment[] = [
-      {
-        id: "seg-owner-voice-1",
-        text: "owner voice sample",
-        startMs: 0,
-        endMs: 1200,
-        source,
-        speaker,
-        speakerId: speaker.id,
-        confidence: 0.9,
-        metadata: {
-          attributionOnly: true,
-          evidenceKind: "voice_imprint_attribution",
-          identityAuthority: false,
-          synthesisAuthorization: false,
-          diarizationMode: "attribution_only",
-          imprintClusterId: "cluster-owner",
-          imprintObservationId: "obs-owner-voice-1",
-          entityId: "entity-owner",
-        },
-      },
-    ];
-    const turn: VoiceTurnMetadata = {
-      turnId: "turn-owner-voice-1",
-      source,
-      primarySpeaker: speaker,
-      segments,
-      diarization: {
-        provider: "local",
-        model: "eliza-voice-imprint-v1",
-        metadata: { mode: "attribution_only" },
-      },
-    };
-    const t = new WhisperCppStreamingTranscriber({
-      decoder: async () => "owner voice sample",
-      metadata: { source, speaker, turn },
-      windowSeconds: 100,
-      stepSeconds: 0.01,
-    });
-    const events = collect(t);
-    t.feed({
-      pcm: new Float32Array(Math.round(0.02 * ASR_SAMPLE_RATE)).fill(0.05),
-      sampleRate: ASR_SAMPLE_RATE,
-      timestampMs: 0,
-    });
-    await new Promise((r) => setTimeout(r, 0));
-    const final = await t.flush();
-
-    expect(final).toMatchObject({
-      source,
-      speaker,
-      segments,
-      turn,
-    });
-    expect(final.segments?.[0].metadata).toMatchObject({
-      attributionOnly: true,
-      evidenceKind: "voice_imprint_attribution",
-      identityAuthority: false,
-      synthesisAuthorization: false,
-      diarizationMode: "attribution_only",
-    });
-    expect(events.find((e) => e.kind === "final")).toMatchObject({
-      kind: "final",
-      update: {
-        speaker,
-        segments,
-        turn: {
-          primarySpeaker: speaker,
-          segments,
-        },
-      },
-    });
-    t.dispose();
-  });
-
-  it("gates on the VAD stream — frames outside an active speech window are dropped", async () => {
-    const dec = scriptedDecoder(["should not be decoded"]);
-    const vad = new FakeVad();
-    const t = new WhisperCppStreamingTranscriber({
-      decoder: dec.decode,
-      vad,
-      windowSeconds: 100,
-      stepSeconds: 0.01,
-    });
-    // VAD has not reported speech yet → feeds are dropped.
-    for (const f of makeFrames(5, Math.round(0.05 * ASR_SAMPLE_RATE)))
-      t.feed(f);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(dec.calls).toBe(0);
-
-    // Speech becomes active → feeds are now decoded.
-    vad.emit({ type: "speech-start", timestampMs: 0, probability: 1 });
-    for (const f of makeFrames(2, Math.round(0.05 * ASR_SAMPLE_RATE))) {
-      t.feed(f);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((r) => setTimeout(r, 0));
-    }
-    expect(dec.calls).toBeGreaterThan(0);
-
-    // Speech ends → feeds are dropped again.
-    const before = dec.calls;
-    vad.emit({ type: "speech-end", timestampMs: 0, speechDurationMs: 1000 });
-    for (const f of makeFrames(3, Math.round(0.05 * ASR_SAMPLE_RATE)))
-      t.feed(f);
-    await new Promise((r) => setTimeout(r, 0));
-    expect(dec.calls).toBe(before);
-    t.dispose();
-  });
-
-  it("rejects feed/flush after dispose", async () => {
-    const t = new WhisperCppStreamingTranscriber({ decoder: async () => "x" });
-    t.dispose();
-    expect(() =>
-      t.feed({
-        pcm: new Float32Array([0.1]),
-        sampleRate: ASR_SAMPLE_RATE,
-        timestampMs: 0,
-      }),
-    ).toThrow(/disposed/);
-    await expect(t.flush()).rejects.toThrow(/disposed/);
-  });
-});
-
 /* ---- adapter selection -------------------------------------------- */
 
 describe("createStreamingTranscriber — adapter chain", () => {
-  it("throws AsrUnavailableError when no backend is available (prefer=whisper, explicit missing binary)", () => {
-    // No fused ffi; explicit whisper paths are strict and must not fall
-    // through to globally installed or bundled whisper-node artifacts.
-    expect(() =>
-      createStreamingTranscriber({
-        prefer: "whisper",
-        whisper: missingWhisperOptions(),
-      }),
-    ).toThrow(AsrUnavailableError);
+  it("throws AsrUnavailableError when no backend is available (no ffi)", () => {
+    expect(() => createStreamingTranscriber()).toThrow(AsrUnavailableError);
   });
 
   it("throws AsrUnavailableError when prefer=fused but no fused streaming ASR", () => {
@@ -421,9 +105,6 @@ describe("createStreamingTranscriber — adapter chain", () => {
       ffi,
       getContext: () => 1n,
       asrBundlePresent: true,
-      // A whisper decoder is offered but must be ignored — the contract-clean
-      // fused-batch path takes priority over the second-ggml whisper adapter.
-      whisper: { decoder: async () => "fallback" },
     });
     expect(t).toBeInstanceOf(FfiBatchTranscriber);
     t.dispose();
@@ -446,24 +127,6 @@ describe("createStreamingTranscriber — adapter chain", () => {
     expect(() => createStreamingTranscriber({ prefer: "ffi-batch" })).toThrow(
       AsrUnavailableError,
     );
-  });
-
-  it("falls through to the whisper legacy interim only when no fused handle is present", () => {
-    const t = createStreamingTranscriber({
-      // no ffi → fused-streaming and fused-batch both unavailable
-      whisper: { decoder: async () => "fallback" },
-    });
-    expect(t).toBeInstanceOf(WhisperCppStreamingTranscriber);
-    t.dispose();
-  });
-
-  it("blocks whisper fallback when fused ASR is mandatory", () => {
-    expect(() =>
-      createStreamingTranscriber({
-        allowWhisperFallback: false,
-        whisper: { decoder: async () => "fallback" },
-      }),
-    ).toThrow(AsrUnavailableError);
   });
 });
 
@@ -599,6 +262,53 @@ describe("FfiStreamingTranscriber", () => {
     t.dispose();
   });
 
+  it("gates on the VAD stream — frames outside an active speech window are dropped", async () => {
+    const fed: number[] = [];
+    const ffi = makeFakeFfi({
+      streamSupported: true,
+      onFeed: (pcm) => fed.push(pcm.length),
+      partial: () => ({ partial: "x" }),
+    });
+    const vad = new FakeVad();
+    const t = new FfiStreamingTranscriber({
+      ffi,
+      getContext: () => 1n,
+      vad,
+    });
+    // VAD has not reported speech yet → feeds are dropped.
+    for (const f of makeFrames(3, 160)) t.feed(f);
+    expect(fed.length).toBe(0);
+
+    // Speech becomes active → feeds are now decoded (preroll drain + new frames).
+    vad.emit({ type: "speech-start", timestampMs: 0, probability: 1 });
+    for (const f of makeFrames(2, 160)) t.feed(f);
+    expect(fed.length).toBeGreaterThan(0);
+
+    // Speech ends → feeds are dropped again.
+    const before = fed.length;
+    vad.emit({ type: "speech-end", timestampMs: 0, speechDurationMs: 1000 });
+    for (const f of makeFrames(3, 160)) t.feed(f);
+    expect(fed.length).toBe(before);
+    t.dispose();
+  });
+
+  it("rejects feed/flush after dispose", async () => {
+    const ffi = makeFakeFfi({
+      streamSupported: true,
+      partial: () => ({ partial: "x" }),
+    });
+    const t = new FfiStreamingTranscriber({ ffi, getContext: () => 1n });
+    t.dispose();
+    expect(() =>
+      t.feed({
+        pcm: new Float32Array([0.1]),
+        sampleRate: ASR_SAMPLE_RATE,
+        timestampMs: 0,
+      }),
+    ).toThrow(/disposed/);
+    await expect(t.flush()).rejects.toThrow(/disposed/);
+  });
+
   it("throws AsrUnavailableError when constructed against a library without a working decoder", () => {
     const ffi = makeFakeFfi({ streamSupported: false });
     expect(
@@ -615,15 +325,6 @@ describe("transcriber helpers", () => {
     expect(resampleLinear(pcm, 16000, 16000)).toBe(pcm);
     const down = resampleLinear(pcm, 48000, 16000);
     expect(down.length).toBe(Math.round((pcm.length * 16000) / 48000));
-  });
-
-  it("parseWhisperStdout extracts transcript text from both timestamped and bare-line output", () => {
-    const timestamped =
-      "[00:00:00.000 --> 00:00:01.230]   Hello world\n[00:00:01.230 --> 00:00:02.500]   how are you\n";
-    expect(parseWhisperStdout(timestamped)).toBe("Hello world how are you");
-    const bare = "whisper_init: loading model\n Hello world\n how are you\n";
-    expect(parseWhisperStdout(bare)).toBe("Hello world how are you");
-    expect(parseWhisperStdout("")).toBe("");
   });
 });
 

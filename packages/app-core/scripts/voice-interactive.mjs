@@ -339,29 +339,17 @@ async function inspectActiveOptimizations(args) {
     });
   }
 
-  // ── ASR backend (fused, or whisper.cpp) ────────────────────────────────
+  // ── ASR backend (fused only — whisper.cpp interim has been removed) ───
   let asrBackend = null;
   if (bundleRoot && existsSync(path.join(bundleRoot, "asr"))) {
     asrBackend = "fused (Qwen3-ASR region in the bundle)";
-  } else {
-    try {
-      const { resolveWhisperBinary, resolveWhisperModelPath } = await import(
-        "../src/services/local-inference/voice/transcriber.ts"
-      );
-      const bin = resolveWhisperBinary();
-      const model = resolveWhisperModelPath();
-      if (bin && model)
-        asrBackend = `whisper.cpp (${bin} + ${path.basename(model)})`;
-    } catch {
-      /* fall through */
-    }
   }
   if (asrBackend) {
     active.push({ name: "streaming ASR", on: true, detail: asrBackend });
   } else {
     missing.push({
-      what: "no ASR backend (no fused Qwen3-ASR region in the bundle, no whisper.cpp)",
-      fix: "set ELIZA_WHISPER_BIN to a whisper-cli/main binary + ELIZA_WHISPER_MODEL to a ggml model, OR let the harness auto-download ggml-base.en.bin (~140 MB) under <state-dir>/local-inference/whisper/",
+      what: "no ASR backend (no fused Qwen3-ASR region in the bundle)",
+      fix: "rebuild or download a libelizainference bundle that ships the Qwen3-ASR region (asr/ subdirectory). The whisper.cpp interim fallback has been removed.",
     });
   }
 
@@ -882,23 +870,9 @@ async function tryAutoDownloadVad(_bundleRoot) {
 }
 
 async function tryAutoDownloadWhisper() {
-  try {
-    const { downloadWhisperModel, resolveWhisperBinary } = await import(
-      "../src/services/local-inference/voice/transcriber.ts"
-    );
-    const bin = resolveWhisperBinary();
-    if (!bin) return null; // no binary — can't run whisper.cpp regardless
-    tag("setup", "blue", "downloading whisper ggml-base.en.bin (~140 MB)…");
-    const model = await downloadWhisperModel();
-    return { bin, model };
-  } catch (err) {
-    tag(
-      "setup",
-      "yellow",
-      `whisper model auto-download failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return null;
-  }
+  // whisper.cpp interim ASR has been removed from this package.
+  // ASR is delivered exclusively through the fused libelizainference bundle.
+  return null;
 }
 
 async function tryAutoDownloadBundle(catalogEntry) {

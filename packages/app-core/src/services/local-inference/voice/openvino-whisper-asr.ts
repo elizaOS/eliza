@@ -1,15 +1,14 @@
 /**
  * OpenVINO Whisper ASR decoder for the voice transcriber chain.
  *
- * Plugs into `WhisperCppStreamingTranscriber` (which already implements the
- * sliding-window + overlap streaming strategy) by swapping its `decoder`
- * function. The decoder spawns a persistent Python worker that loads
- * `whisper-base.en` as an OpenVINO IR and tries devices in order from
- * `ELIZA_OPENVINO_WHISPER_DEVICE` (default `NPU,CPU`). On Intel Lunar Lake
- * NPU gives ~50× realtime + ~2 W; CPU is the safe fallback (~28× realtime,
- * still 2× faster than whisper.cpp on the same CPU). GPU is *not* in the
- * default chain on Linux/Vulkan because OpenVINO/GPU + Vulkan llama-server
- * on the `xe` driver triggers iGPU GuC scheduler resets.
+ * Supplies a decoder function to `OpenVinoStreamingTranscriber` (which
+ * implements the sliding-window + overlap streaming strategy). The decoder
+ * spawns a persistent Python worker that loads `whisper-base.en` as an
+ * OpenVINO IR and tries devices in order from `ELIZA_OPENVINO_WHISPER_DEVICE`
+ * (default `NPU,CPU`). On Intel Lunar Lake NPU gives ~50× realtime + ~2 W;
+ * CPU is the safe fallback (~28× realtime). GPU is *not* in the default
+ * chain on Linux/Vulkan because OpenVINO/GPU + Vulkan llama-server on the
+ * `xe` driver triggers iGPU GuC scheduler resets.
  *
  * This is the ASR half of the RFC at elizaOS/eliza#7633.
  */
@@ -18,7 +17,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { WhisperDecoder } from "./transcriber";
+import type { StreamingPcmDecoder } from "./transcriber";
 
 export const OPENVINO_WHISPER_DEFAULT_DEVICE_CHAIN = "NPU,CPU";
 
@@ -151,7 +150,7 @@ function bunOrThrow(): BunNamespace {
 
 /**
  * Spawn the worker, return a decoder function bound to it. The worker
- * stays alive across `feed()` calls in `WhisperCppStreamingTranscriber`
+ * stays alive across `feed()` calls in `OpenVinoStreamingTranscriber`
  * so OpenVINO `WhisperPipeline.compile()` is paid exactly once (~350 ms on
  * CPU, ~3 s on GPU, ~3 s on NPU after warm).
  *
@@ -163,7 +162,7 @@ function bunOrThrow(): BunNamespace {
  * issue concurrent decodes without interleaving on the pipe.
  */
 export function makeOpenVinoWhisperDecoder(runtime: OpenVinoWhisperRuntime): {
-  decoder: WhisperDecoder;
+  decoder: StreamingPcmDecoder;
   dispose: () => void;
 } {
   const bun = bunOrThrow();
@@ -227,7 +226,7 @@ export function makeOpenVinoWhisperDecoder(runtime: OpenVinoWhisperRuntime): {
       /* ignore */
     });
 
-  const decoder: WhisperDecoder = (pcm16k: Float32Array): Promise<string> => {
+  const decoder: StreamingPcmDecoder = (pcm16k: Float32Array): Promise<string> => {
     if (disposed) {
       return Promise.reject(
         new Error("[asr] OpenVINO whisper decoder has been disposed"),
