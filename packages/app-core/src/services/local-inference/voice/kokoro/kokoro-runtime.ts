@@ -427,10 +427,8 @@ export interface KokoroPythonRuntimeOptions {
 export class KokoroPythonRuntime implements KokoroRuntime {
   readonly id = "python" as const;
   readonly sampleRate: number;
-  private readonly opts: KokoroPythonRuntimeOptions;
 
   constructor(opts: KokoroPythonRuntimeOptions) {
-    this.opts = opts;
     this.sampleRate = opts.layout.sampleRate;
   }
 

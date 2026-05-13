@@ -29,7 +29,11 @@ import { OmnivoiceContext } from "./ffi";
 import { registerOmnivoiceCloser } from "./shutdown";
 import { getSingingContext, runSingingSynthesis } from "./singing";
 import { pcmFloatToWavBuffer, runSynthesis } from "./synth";
-import type { OmnivoiceSynthesizeOptions, OmnivoiceVoiceDesign } from "./types";
+import type {
+  OmnivoiceSynthesisResult,
+  OmnivoiceSynthesizeOptions,
+  OmnivoiceVoiceDesign,
+} from "./types";
 
 interface RuntimeSettings {
   libPath: string | undefined;
@@ -151,7 +155,7 @@ export const omnivoicePlugin: Plugin = {
       logger.info(
         `[plugin-omnivoice] TTS singing=${opts.singing ?? false} chars=${opts.text.length}`,
       );
-      let result;
+      let result: OmnivoiceSynthesisResult;
       if (opts.singing) {
         if (!settings.singingModelPath || !settings.codecPath) {
           throw new OmnivoiceModelMissing(

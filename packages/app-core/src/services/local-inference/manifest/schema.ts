@@ -487,7 +487,9 @@ export const Eliza1ManifestSchema = z
     // intentionally permissive: the publish-side tool is the source of
     // truth for the shape, and the runtime only needs the manifest to
     // round-trip cleanly.
-    textQuant: z.union([z.string().min(1), z.record(z.string(), z.unknown())]).optional(),
+    textQuant: z
+      .union([z.string().min(1), z.record(z.string(), z.unknown())])
+      .optional(),
   })
   // The id MUST encode the tier so catalogs can derive tier from id without
   // re-reading the manifest. Example: `id: "eliza-1-9b"`.

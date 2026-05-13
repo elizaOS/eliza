@@ -1,6 +1,7 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	finiteNumber,
+	hasBooleanFields,
 	isRecord,
 	nullableString,
 	optionalFiniteNumber,
@@ -61,6 +62,111 @@ function isWalletSource(
 	return value === "local" || value === "managed" || value === "none";
 }
 
+const AGENT_WALLET_BOOLEAN_FIELDS = [
+	"hasWallet",
+	"hasEvm",
+	"hasSolana",
+	"localSignerAvailable",
+	"managedBscRpcReady",
+	"rpcReady",
+	"pluginEvmLoaded",
+	"pluginEvmRequired",
+	"executionReady",
+] as const;
+
+const AGENT_CAPABILITY_BOOLEAN_FIELDS = [
+	"canTrade",
+	"canLocalTrade",
+	"canAutoTrade",
+	"canUseBrowser",
+	"canUseComputer",
+	"canRunTerminal",
+	"canInstallPlugins",
+	"canConfigurePlugins",
+	"canConfigureConnectors",
+] as const;
+
+function parseAgentWallet(
+	value: unknown,
+): AgentSelfStatusSnapshot["wallet"] | null {
+	if (!isRecord(value)) return null;
+	if (!isWalletSource(value.walletSource)) return null;
+	if (!hasBooleanFields(value, AGENT_WALLET_BOOLEAN_FIELDS)) return null;
+	const evmAddress = nullableString(value.evmAddress);
+	const evmAddressShort = nullableString(value.evmAddressShort);
+	const solanaAddress = nullableString(value.solanaAddress);
+	const solanaAddressShort = nullableString(value.solanaAddressShort);
+	const executionBlockedReason = nullableString(value.executionBlockedReason);
+	if (
+		evmAddress === undefined ||
+		evmAddressShort === undefined ||
+		solanaAddress === undefined ||
+		solanaAddressShort === undefined ||
+		executionBlockedReason === undefined
+	) {
+		return null;
+	}
+	return {
+		walletSource: value.walletSource,
+		evmAddress,
+		evmAddressShort,
+		solanaAddress,
+		solanaAddressShort,
+		hasWallet: value.hasWallet === true,
+		hasEvm: value.hasEvm === true,
+		hasSolana: value.hasSolana === true,
+		localSignerAvailable: value.localSignerAvailable === true,
+		managedBscRpcReady: value.managedBscRpcReady === true,
+		rpcReady: value.rpcReady === true,
+		pluginEvmLoaded: value.pluginEvmLoaded === true,
+		pluginEvmRequired: value.pluginEvmRequired === true,
+		executionReady: value.executionReady === true,
+		executionBlockedReason,
+	};
+}
+
+function parseAgentPlugins(
+	value: unknown,
+): AgentSelfStatusSnapshot["plugins"] | null {
+	if (!isRecord(value)) return null;
+	const active = parseStringArray(value.active);
+	const aiProviders = parseStringArray(value.aiProviders);
+	const connectors = parseStringArray(value.connectors);
+	const totalActive = finiteNumber(value.totalActive);
+	if (
+		active === null ||
+		aiProviders === null ||
+		connectors === null ||
+		totalActive === null
+	) {
+		return null;
+	}
+	return {
+		totalActive,
+		active,
+		aiProviders,
+		connectors,
+	};
+}
+
+function parseAgentCapabilities(
+	value: unknown,
+): AgentSelfStatusSnapshot["capabilities"] | null {
+	if (!isRecord(value)) return null;
+	if (!hasBooleanFields(value, AGENT_CAPABILITY_BOOLEAN_FIELDS)) return null;
+	return {
+		canTrade: value.canTrade === true,
+		canLocalTrade: value.canLocalTrade === true,
+		canAutoTrade: value.canAutoTrade === true,
+		canUseBrowser: value.canUseBrowser === true,
+		canUseComputer: value.canUseComputer === true,
+		canRunTerminal: value.canRunTerminal === true,
+		canInstallPlugins: value.canInstallPlugins === true,
+		canConfigurePlugins: value.canConfigurePlugins === true,
+		canConfigureConnectors: value.canConfigureConnectors === true,
+	};
+}
+
 function parseAgentSelfStatusSnapshot(
 	body: unknown,
 ): AgentSelfStatusSnapshot | null {
@@ -74,71 +180,12 @@ function parseAgentSelfStatusSnapshot(
 	if (!isAgentAutomationMode(body.automationMode)) return null;
 	if (!isTradePermissionMode(body.tradePermissionMode)) return null;
 	if (typeof body.shellEnabled !== "boolean") return null;
-	if (!isRecord(body.wallet)) return null;
-	if (!isWalletSource(body.wallet.walletSource)) return null;
-	const evmAddress = nullableString(body.wallet.evmAddress);
-	const evmAddressShort = nullableString(body.wallet.evmAddressShort);
-	const solanaAddress = nullableString(body.wallet.solanaAddress);
-	const solanaAddressShort = nullableString(body.wallet.solanaAddressShort);
-	const executionBlockedReason = nullableString(
-		body.wallet.executionBlockedReason,
-	);
-	if (
-		evmAddress === undefined ||
-		evmAddressShort === undefined ||
-		solanaAddress === undefined ||
-		solanaAddressShort === undefined ||
-		typeof body.wallet.hasWallet !== "boolean" ||
-		typeof body.wallet.hasEvm !== "boolean" ||
-		typeof body.wallet.hasSolana !== "boolean" ||
-		typeof body.wallet.localSignerAvailable !== "boolean" ||
-		typeof body.wallet.managedBscRpcReady !== "boolean" ||
-		typeof body.wallet.rpcReady !== "boolean" ||
-		typeof body.wallet.pluginEvmLoaded !== "boolean" ||
-		typeof body.wallet.pluginEvmRequired !== "boolean" ||
-		typeof body.wallet.executionReady !== "boolean" ||
-		executionBlockedReason === undefined
-	) {
-		return null;
-	}
-
-	if (!isRecord(body.plugins)) return null;
-	const active = parseStringArray(body.plugins.active);
-	const aiProviders = parseStringArray(body.plugins.aiProviders);
-	const connectors = parseStringArray(body.plugins.connectors);
-	const totalActive = finiteNumber(body.plugins.totalActive);
-	if (
-		active === null ||
-		aiProviders === null ||
-		connectors === null ||
-		totalActive === null
-	) {
-		return null;
-	}
-
-	if (!isRecord(body.capabilities)) return null;
-	const canTrade = body.capabilities.canTrade;
-	const canLocalTrade = body.capabilities.canLocalTrade;
-	const canAutoTrade = body.capabilities.canAutoTrade;
-	const canUseBrowser = body.capabilities.canUseBrowser;
-	const canUseComputer = body.capabilities.canUseComputer;
-	const canRunTerminal = body.capabilities.canRunTerminal;
-	const canInstallPlugins = body.capabilities.canInstallPlugins;
-	const canConfigurePlugins = body.capabilities.canConfigurePlugins;
-	const canConfigureConnectors = body.capabilities.canConfigureConnectors;
-	if (
-		typeof canTrade !== "boolean" ||
-		typeof canLocalTrade !== "boolean" ||
-		typeof canAutoTrade !== "boolean" ||
-		typeof canUseBrowser !== "boolean" ||
-		typeof canUseComputer !== "boolean" ||
-		typeof canRunTerminal !== "boolean" ||
-		typeof canInstallPlugins !== "boolean" ||
-		typeof canConfigurePlugins !== "boolean" ||
-		typeof canConfigureConnectors !== "boolean"
-	) {
-		return null;
-	}
+	const wallet = parseAgentWallet(body.wallet);
+	if (wallet === null) return null;
+	const plugins = parseAgentPlugins(body.plugins);
+	if (plugins === null) return null;
+	const capabilities = parseAgentCapabilities(body.capabilities);
+	if (capabilities === null) return null;
 
 	const registrySummary = optionalString(body.registrySummary);
 	if (registrySummary === false) return null;
@@ -152,40 +199,9 @@ function parseAgentSelfStatusSnapshot(
 		automationMode: body.automationMode,
 		tradePermissionMode: body.tradePermissionMode,
 		shellEnabled: body.shellEnabled,
-		wallet: {
-			walletSource: body.wallet.walletSource,
-			evmAddress,
-			evmAddressShort,
-			solanaAddress,
-			solanaAddressShort,
-			hasWallet: body.wallet.hasWallet,
-			hasEvm: body.wallet.hasEvm,
-			hasSolana: body.wallet.hasSolana,
-			localSignerAvailable: body.wallet.localSignerAvailable,
-			managedBscRpcReady: body.wallet.managedBscRpcReady,
-			rpcReady: body.wallet.rpcReady,
-			pluginEvmLoaded: body.wallet.pluginEvmLoaded,
-			pluginEvmRequired: body.wallet.pluginEvmRequired,
-			executionReady: body.wallet.executionReady,
-			executionBlockedReason,
-		},
-		plugins: {
-			totalActive,
-			active,
-			aiProviders,
-			connectors,
-		},
-		capabilities: {
-			canTrade,
-			canLocalTrade,
-			canAutoTrade,
-			canUseBrowser,
-			canUseComputer,
-			canRunTerminal,
-			canInstallPlugins,
-			canConfigurePlugins,
-			canConfigureConnectors,
-		},
+		wallet,
+		plugins,
+		capabilities,
 		...(registrySummary === undefined ? {} : { registrySummary }),
 	};
 }

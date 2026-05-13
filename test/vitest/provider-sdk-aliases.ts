@@ -1,6 +1,11 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Plugin } from "vite";
+
+type ProviderSdkShimPlugin = {
+  name: string;
+  enforce: "pre";
+  resolveId(source: string): string | null;
+};
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
@@ -22,7 +27,7 @@ export const providerSdkAliases = [
   },
 ];
 
-export function providerSdkShimPlugin(): Plugin {
+export function providerSdkShimPlugin(): ProviderSdkShimPlugin {
   return {
     name: "provider-sdk-shims",
     enforce: "pre",

@@ -127,6 +127,7 @@
 		"@ai-sdk/provider": "^3.0.10",
 		"@ai-sdk/provider-utils": "^4.0.7",
 		"@anthropic-ai/sdk": "^0.92.0",
+		"@bufbuild/protobuf": "^2.11.0",
 		"@elizaos/prompts": "2.0.0-beta.1",
 		"@noble/ciphers": "2.2.0",
 		"@noble/hashes": "2.2.0",

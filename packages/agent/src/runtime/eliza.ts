@@ -298,12 +298,20 @@ async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   return _pluginSqlPromise;
 }
 
-let _pluginLocalEmbeddingPromise: Promise<unknown> | null = null;
-async function getPluginLocalEmbedding(): Promise<unknown> {
+let _pluginLocalEmbeddingPromise: Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> | null = null;
+async function getPluginLocalEmbedding(): Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> {
   if (!_pluginLocalEmbeddingPromise) {
-    _pluginLocalEmbeddingPromise = loadOptionalPlugin(
-      "@elizaos/plugin-local-embedding",
-    );
+    _pluginLocalEmbeddingPromise = (async () => {
+      try {
+        return await import("@elizaos/plugin-local-embedding");
+      } catch {
+        return null;
+      }
+    })();
   }
   return _pluginLocalEmbeddingPromise;
 }
