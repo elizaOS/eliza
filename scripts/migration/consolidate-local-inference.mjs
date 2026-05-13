@@ -404,11 +404,19 @@ function printReport({ preflight, validation }) {
 	for (const m of validation.validated) {
 		const status = m.ok ? green("✓") : red("✗");
 		const kind = m.type === "dir" ? cyan("dir ") : "file";
-		const count = m.type === "dir" ? `(${m.fileCount} files)` : "";
+		const count =
+			m.type === "dir"
+				? `(${m.fileCount} tracked${m.fsCount && m.fsCount !== m.fileCount ? `, ${m.fsCount} on disk` : ""})`
+				: "";
 		console.log(
 			`  ${status} ${kind} ${m.src.padEnd(64)} → ${m.dst}  ${count}`,
 		);
 		if (m.notes && VERBOSE) console.log(`         ${yellow(`note: ${m.notes}`)}`);
+		if (m.submodulePath) {
+			console.log(
+				`         ${cyan(`contains submodule gitlink: ${m.submodulePath} (git mv handles relocation in modern git)`)}`,
+			);
+		}
 		if (m.gitmodules) {
 			console.log(
 				`         ${cyan(`.gitmodules: ${m.gitmodules.old} → ${m.gitmodules.new}`)}`,
