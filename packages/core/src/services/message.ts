@@ -2662,9 +2662,28 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- answer directly in the agent's voice",
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
-	"- you have NOT executed any tools, actions, or sub-agents on this turn — do not claim to have done so",
-	"- if the user asked you to perform an action you cannot complete in plain text, say you couldn't run it this turn and ask them to try again",
+	"- this reply is JUST TEXT. you have NOT run any tool, action, sub-agent,",
+	"  file write, file edit, shell command, search, or any other operation",
+	"  on this turn. you are only composing a text reply.",
+	"- DO NOT claim — directly OR by implication — that you wrote a file,",
+	"  ran a command, spawned a sub-agent, executed a tool, completed the",
+	"  user's task, or performed any side effect. words like 'wrote',",
+	"  'created', 'ran', 'executed', 'spawned', 'sent', 'updated',",
+	"  'finished', 'done' applied to the user's request in this reply",
+	"  are false.",
+	"- do not split the user's request into 'i couldn't spawn the X but",
+	"  i did Y' — Y is also an action you did not perform.",
+	"- if the user's request needs a tool you cannot run as plain text,",
+	"  say so plainly and ask them to retry. otherwise just answer.",
+	"- never emit JSON, tool-call args, or function-call shapes in the reply.",
 ].join("\n");
+
+// Generic fallback reply used when TEXT_SMALL leaks structured content
+// into what should be a plain-prose direct reply. Keeps the user-facing
+// channel friendly and honest instead of shipping the model's raw
+// reasoning + tool-arg JSON.
+const DIRECT_REPLY_STRUCTURED_LEAK_FALLBACK =
+	"i hit a snag generating a reply this turn — give me another shot in a sec.";
 
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
@@ -2688,7 +2707,32 @@ async function generateDirectReplyOnce(args: {
 		`routing_thought: ${args.messageHandler.thought}`,
 	].join("\n");
 	const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-	return getV5ModelText(raw).trim();
+	const text = getV5ModelText(raw).trim();
+	// Same structural guard as `synthesizeSimpleReplyFromPlainText` /
+	// `messageHandlerFromFieldResult`, applied at the LAST mile. Weak
+	// planners on Cerebras periodically emit a tool-call JSON object —
+	// either bare `{"action":...}` or raw tool args like
+	// `{"path":"...","contents":"..."}` — into the direct-reply text
+	// despite the anti-hallucination rules in the prompt. The model
+	// followed the rule against "claiming to have done the work" but
+	// disclosed the work it would have done as structured content. Don't
+	// ship that as the reply; emit a clean retry message instead.
+	if (
+		text.startsWith("{") ||
+		text.startsWith("[") ||
+		containsEmbeddedJsonObject(text)
+	) {
+		args.runtime.logger.info(
+			{
+				src: "service:message",
+				origin: "generate-direct-reply",
+				rawLen: text.length,
+			},
+			"Suppressed direct-reply leak (structured content in prose field); shipping generic retry",
+		);
+		return DIRECT_REPLY_STRUCTURED_LEAK_FALLBACK;
+	}
+	return text;
 }
 
 /**
