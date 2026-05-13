@@ -28,7 +28,9 @@ import {
 	toInstalledCarrotSnapshot,
 	uninstallInstalledCarrot,
 } from "@elizaos/electrobun-carrots";
+import { resolveApiToken } from "@elizaos/shared";
 import { Utils } from "electrobun/bun";
+import { logger } from "../logger.js";
 import type { SendToWebview } from "../types.js";
 
 export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
@@ -280,6 +282,11 @@ export class CarrotManager {
 		}
 
 		fs.mkdirSync(carrot.stateDir, { recursive: true });
+		if (carrot.install.permissionsGranted.isolation === "isolated-process") {
+			logger.warn(
+				`[carrots] ${id}: manifest requests isolation:isolated-process but the host runs all carrots as shared-worker today; falling back. Process isolation lands when a Bun.spawn-based runner is wired.`,
+			);
+		}
 		const context = buildCarrotRuntimeContext(
 			carrot.currentDir,
 			carrot.stateDir,
@@ -470,6 +477,17 @@ export class CarrotManager {
 		handle.postMessage(response);
 	}
 
+	/**
+	 * Auth-token model (MVP): each carrot worker has its own
+	 * `context.authToken` stored in-process on the host. `get-auth-token` is
+	 * lazy — the first call seeds the slot from `resolveApiToken()` so a
+	 * carrot can call Milady's HTTP API as the user without seeing the
+	 * underlying env var. `set-auth-token` lets a carrot REPLACE ITS OWN
+	 * token (Farm-login style flows); cross-carrot exfiltration is prevented
+	 * by keying read/write off the calling worker's id. The MVP forwards the
+	 * host token verbatim; the production hook is a per-carrot scoped JWT
+	 * issued by the auth pairing layer — schema unchanged.
+	 */
 	private async dispatchHostRequest(
 		callerId: string,
 		method: string,
@@ -486,6 +504,33 @@ export class CarrotManager {
 			case "stop-carrot": {
 				const targetId = hostRequestStringField(params, "id");
 				this.stopWorker(targetId);
+				return { ok: true };
+			}
+			case "get-auth-token": {
+				const record = this.workers.get(callerId);
+				if (!record?.context) {
+					throw new Error(`Carrot ${callerId} has no runtime context.`);
+				}
+				if (record.context.authToken === null) {
+					record.context.authToken = resolveApiToken();
+				}
+				return { token: record.context.authToken };
+			}
+			case "set-auth-token": {
+				const record = this.workers.get(callerId);
+				if (!record?.context) {
+					throw new Error(`Carrot ${callerId} has no runtime context.`);
+				}
+				if (!isRecord(params)) {
+					throw new Error("set-auth-token: missing params object.");
+				}
+				const token = params.token;
+				if (token !== null && typeof token !== "string") {
+					throw new Error(
+						"set-auth-token: token must be a string or null.",
+					);
+				}
+				record.context.authToken = token;
 				return { ok: true };
 			}
 			default:
