@@ -305,11 +305,19 @@ export function CarrotManagerSection() {
           Carrots are Electrobun's sandboxed mini-app primitive. Each runs in
           its own Bun Worker with a scoped state path, log file, and auth token.{" "}
           <span className="text-warn">
-            <code>host:*</code> grants are enforced at the host action gates;{" "}
-            <code>bun:*</code> grants are advisory metadata today (Bun does not
-            yet enforce per-Worker permissions).
+            Permissions are declared in the manifest and shown here at install —
+            runtime enforcement is not wired yet. <code>bun:*</code> grants also
+            depend on a Bun runtime feature (Worker permissions) that doesn't
+            ship today.
           </span>{" "}
           Process isolation lands when a Bun.spawn-based runner is wired.
+        </p>
+        <p className="text-xs text-muted">
+          <span className="text-warn">Auth token:</span> a carrot can request
+          your API token via the host bridge and call Milady's HTTP API as you.
+          Future versions will issue per-carrot scoped tokens; the current
+          bridge forwards the host token verbatim. Only install carrots from
+          sources you trust.
         </p>
         {storeRoot ? (
           <p className="text-[11px] text-muted/80">
