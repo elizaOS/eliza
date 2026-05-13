@@ -3,6 +3,7 @@ import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
 import {
 	buildPlannerActionGrammar,
+	buildPlannerParamsSkeleton,
 	buildResponseGrammar,
 	clearResponseGrammarCache,
 	withGuidedDecodeProviderOptions,
@@ -332,6 +333,135 @@ describe("buildPlannerActionGrammar — Stage-2 per-action grammar", () => {
 		const a = buildPlannerActionGrammar([makeAction("A"), makeAction("B")]);
 		const b = buildPlannerActionGrammar([makeAction("B"), makeAction("A")]);
 		expect(b).toBe(a);
+	});
+});
+
+describe("buildPlannerParamsSkeleton — second-pass per-action parameters", () => {
+	it("returns a `{}` literal span when the action has no parameters", () => {
+		const sk = buildPlannerParamsSkeleton(makeAction("NO_PARAMS"));
+		expect(sk.spans).toEqual([{ kind: "literal", value: "{}" }]);
+	});
+
+	it("emits a free-string span for a string param with no enum", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("FREE", {
+				parameters: [
+					{
+						name: "text",
+						description: "free text",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		);
+		const valueSpans = sk.spans.filter((s) => s.kind !== "literal");
+		expect(valueSpans).toEqual([{ kind: "free-string", key: "text" }]);
+	});
+
+	it("collapses a single-value string enum to a literal", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("ONE", {
+				parameters: [
+					{
+						name: "op",
+						description: "only one op",
+						required: true,
+						schema: { type: "string", enum: ["send"] },
+					},
+				],
+			}),
+		);
+		const opSpan = sk.spans.find((s) => s.key === "op");
+		expect(opSpan).toEqual({ kind: "literal", key: "op", value: '"send"' });
+	});
+
+	it("pins a multi-value string enum as an enum span (the gap this closes)", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("MULTI", {
+				parameters: [
+					{
+						name: "kind",
+						description: "one of several kinds",
+						required: true,
+						schema: {
+							type: "string",
+							enum: ["user", "channel", "thread"],
+						},
+					},
+				],
+			}),
+		);
+		const kindSpan = sk.spans.find((s) => s.key === "kind");
+		expect(kindSpan?.kind).toBe("enum");
+		expect(kindSpan?.enumValues).toEqual(["user", "channel", "thread"]);
+	});
+
+	it("falls back to free-json for non-string parameter types", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("NESTED", {
+				parameters: [
+					{
+						name: "context",
+						description: "an object",
+						required: true,
+						schema: {
+							type: "object",
+							properties: { kind: { type: "string", enum: ["a", "b"] } },
+						},
+					},
+				],
+			}),
+		);
+		const ctxSpan = sk.spans.find((s) => s.key === "context");
+		expect(ctxSpan).toEqual({ kind: "free-json", key: "context" });
+	});
+
+	it("differentiates the skeleton id when enum constraints differ", () => {
+		// Same param names, different enum sets — id must differ so a downstream
+		// grammar cache doesn't return a stale compilation.
+		const noEnum = buildPlannerParamsSkeleton(
+			makeAction("X", {
+				parameters: [
+					{
+						name: "k",
+						description: "",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		);
+		const withEnum = buildPlannerParamsSkeleton(
+			makeAction("X", {
+				parameters: [
+					{
+						name: "k",
+						description: "",
+						required: true,
+						schema: { type: "string", enum: ["a", "b"] },
+					},
+				],
+			}),
+		);
+		expect(noEnum.id).not.toBe(withEnum.id);
+	});
+
+	it("rejects non-string enum members (mixed-type enums fall through to free-string)", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("MIXED", {
+				parameters: [
+					{
+						name: "n",
+						description: "mixed",
+						required: true,
+						schema: { type: "string", enum: ["a", 1] as unknown as string[] },
+					},
+				],
+			}),
+		);
+		const nSpan = sk.spans.find((s) => s.key === "n");
+		expect(nSpan).toEqual({ kind: "free-string", key: "n" });
 	});
 });
 
