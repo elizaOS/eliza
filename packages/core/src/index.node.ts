@@ -188,10 +188,19 @@ export {
 	registerLocalizedExamplesProvider,
 } from "./runtime/localized-examples-provider";
 export {
+	getMessageHandlerReply,
+	type MessageHandlerRoute,
+	parseMessageHandlerOutput,
+	routeMessageHandlerOutput,
+	SIMPLE_CONTEXT_ID,
+	type V5MessageHandlerOutput,
+} from "./runtime/message-handler";
+export {
 	type ExtractedPlanAction,
 	type ExtractOptions,
 	extractPlanActionsFromContent,
 } from "./runtime/plan-actions-extractor";
+export { looksLikeRefusal } from "./runtime/refusal-detector";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";
@@ -203,6 +212,17 @@ export * from "./runtime/sub-planner";
 export * from "./runtime/system-prompt";
 export * from "./runtime/trajectory-recorder";
 export * from "./runtime/turn-controller";
+export {
+	type CallModelWithValidationOptions,
+	type CallModelWithValidationResult,
+	callModelWithValidation,
+	DEFAULT_REMOTE_REROLL_BUDGET,
+	getProviderForModelType,
+	type ParseAndValidateResult,
+	parseAndValidate,
+	rerollBudgetCeilingFromSetting,
+	SchemaValidationFailedError,
+} from "./runtime/validated-model-call";
 // Runtime composition (loadCharacters, createRuntimes, getBasicCapabilitiesSettings, mergeSettingsInto) - node only
 export * from "./runtime-composition";
 export * from "./runtime-env";
