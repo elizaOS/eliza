@@ -1,4 +1,4 @@
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import {
   client,
   type RuntimeDebugSnapshot,
@@ -379,6 +379,7 @@ export function RuntimeView({
   const [depth, setDepth] = useState(10);
   const [maxArrayLength, setMaxArrayLength] = useState(1000);
   const [maxObjectEntries, setMaxObjectEntries] = useState(1000);
+  const snapshotRequestIdRef = useRef(0);
 
   const sectionData =
     activeSection === "summary"
@@ -388,6 +389,8 @@ export function RuntimeView({
     activeSection === "summary" ? "$runtime" : `$${activeSection}`;
 
   const loadSnapshot = useCallback(async () => {
+    const requestId = snapshotRequestIdRef.current + 1;
+    snapshotRequestIdRef.current = requestId;
     setLoading(true);
     setError(null);
     try {
@@ -396,13 +399,17 @@ export function RuntimeView({
         maxArrayLength,
         maxObjectEntries,
       });
+      if (snapshotRequestIdRef.current !== requestId) return;
       setSnapshot(next);
     } catch (err) {
+      if (snapshotRequestIdRef.current !== requestId) return;
       setError(
         err instanceof Error ? err.message : "Failed to load runtime snapshot",
       );
     } finally {
-      setLoading(false);
+      if (snapshotRequestIdRef.current === requestId) {
+        setLoading(false);
+      }
     }
   }, [depth, maxArrayLength, maxObjectEntries]);
 

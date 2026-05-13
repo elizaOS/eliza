@@ -647,7 +647,13 @@ export interface ActionResult {
 	/** Optional text description of the result */
 	text?: string;
 
-	/** Text that is safe to surface directly to the user */
+	/**
+	 * Optional clean user-facing answer. When set, the planner-loop's
+	 * terminal-FINISH fallback uses this as the reply shown to the user
+	 * instead of the diagnostic `text`. Leave unset for log-emitting
+	 * actions (BASH, file readers); set for Q&A actions, REPLY actions,
+	 * and content generators.
+	 */
 	userFacingText?: string;
 
 	/** Values to merge into the state */

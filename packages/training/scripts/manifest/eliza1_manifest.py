@@ -37,6 +37,10 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "0_8b",
     "2b",
     "4b",
+    "9b",
+    "27b",
+    "27b-256k",
+    "27b-1m",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -120,29 +124,96 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
+    "9b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "27b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "27b-256k": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "27b-1m": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("metal", "vulkan", "cpu"),
     "2b": ("metal", "vulkan", "cpu"),
     "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
+    "9b": "Q8_0",
+    "27b": "Q8_0",
+    "27b-256k": "Q8_0",
+    "27b-1m": "Q8_0",
 }
 
+VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("kokoro",),
+    "2b": ("kokoro",),
+    "4b": ("kokoro",),
+    # 9B is the boundary tier: laptop installs use Kokoro, workstation/server
+    # installs can use OmniVoice cloning when the heavier assets are present.
+    "9b": ("kokoro", "omnivoice"),
+    "27b": ("omnivoice",),
+    "27b-256k": ("omnivoice",),
+    "27b-1m": ("omnivoice",),
+}
 
-def required_voice_artifacts_for_tier(tier: str) -> tuple[str, str]:
-    """Return the frozen OmniVoice GGUF pair required for ``tier``."""
+KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
+    "kokoro/model_q4.onnx",
+    "kokoro/tokenizer.json",
+    "kokoro/voices/af_bella.bin",
+)
 
-    quant = VOICE_QUANT_BY_TIER[tier]
-    return (
-        f"omnivoice-base-{quant}.gguf",
-        f"omnivoice-tokenizer-{quant}.gguf",
-    )
+
+def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
+    """Return the frozen TTS artifacts required for ``tier``.
+
+    Paths are relative to the bundle's ``tts/`` directory. Small tiers ship
+    Kokoro for low-latency local/mobile TTS, 27B-class tiers ship OmniVoice for
+    voice cloning, and the 9B boundary tier carries both.
+    """
+
+    out: list[str] = []
+    backends = VOICE_BACKENDS_BY_TIER[tier]
+    if "kokoro" in backends:
+        out.extend(KOKORO_REQUIRED_ARTIFACTS)
+    if "omnivoice" in backends:
+        quant = VOICE_QUANT_BY_TIER[tier]
+        out.extend(
+            (
+                f"omnivoice-base-{quant}.gguf",
+                f"omnivoice-tokenizer-{quant}.gguf",
+            )
+        )
+    return tuple(out)
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")

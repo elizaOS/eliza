@@ -194,4 +194,42 @@ describe("CustomModelSearch", () => {
 
     expect(screen.getByText("Llama 3.2 1B GGUF")).toBeTruthy();
   });
+
+  it("hides completed results immediately after the user starts a different valid query", async () => {
+    vi.useFakeTimers();
+    const nextModel: CatalogModel = {
+      ...hfModel,
+      id: "hf:Meta/Llama-3.2-1B-GGUF::llama-3.2-1b-q4_k_m.gguf",
+      displayName: "Llama 3.2 1B GGUF",
+      hfRepo: "Meta/Llama-3.2-1B-GGUF",
+      ggufFile: "llama-3.2-1b-q4_k_m.gguf",
+      params: "1B",
+    };
+    searchHuggingFaceGguf
+      .mockResolvedValueOnce({ models: [hfModel] })
+      .mockResolvedValueOnce({ models: [nextModel] });
+    renderSearch();
+
+    const input = screen.getByPlaceholderText(
+      "Search custom Hugging Face GGUF repos",
+    );
+    fireEvent.change(input, { target: { value: "qwen" } });
+    await act(async () => {
+      vi.advanceTimersByTime(450);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Qwen3.5 0.8B GGUF")).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "llama" } });
+    expect(screen.queryByText("Qwen3.5 0.8B GGUF")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(450);
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("Llama 3.2 1B GGUF")).toBeTruthy();
+  });
 });

@@ -6,7 +6,7 @@ Date: 2026-05-12
 
 Replace the current pre-chat runtime gate with a calm, voice-first companion start. The first frame is a blue sky, then slow infinite clouds, a reactive avatar, compact conversation history, and a ChatGPT-like composer optimized for text, voice, dictation, and attachments.
 
-The setup path stays simple: choose Cloud, Remote, or Local; choose language; verify speaker and microphone; collect owner facts; land in the companion chat. Desktop should converge on the same companion experience plus a tray runtime and a thin always-available bottom bar.
+The setup path stays simple: choose Cloud, On-Device, or Remote; choose language; complete the selected connection path; verify speaker and microphone; land in the companion chat. Desktop should converge on the same companion experience plus a tray runtime and a thin always-available bottom bar.
 
 ## Goals
 
@@ -14,7 +14,7 @@ The setup path stays simple: choose Cloud, Remote, or Local; choose language; ve
 - Make sky/clouds a replaceable background module that can be edited through a `BACKGROUND_EDIT` agent action.
 - Make onboarding feel like the product: an assistant is immediately available, especially during Cloud setup.
 - Collapse Cloud onboarding to one agent per user. No cloud agent picker.
-- Start Local model download immediately when Local is selected, with hardware and disk warnings before completion.
+- Start local model download immediately when On-Device local-only is selected, with hardware and disk warnings before completion.
 - Move language selection into onboarding and remove theme selection from onboarding.
 - Make voice setup first-class: speaker test, mic permission, input selection, live waveform, retries, and skip paths.
 - Make the companion screen the post-onboarding default on mobile and desktop.
@@ -53,11 +53,11 @@ Performance budget:
 
 ### 2. Runtime Choice
 
-The first decision is still where the agent runs, but the choices are equal and visible:
+The first decision is still where the agent runs, with Cloud recommended and the choices visible in this order:
 
 - Cloud: sign in with Eliza Cloud, chat immediately with a tenant-isolated setup agent, provision the container in the background, then transfer conversation and memories into the container agent.
-- Remote: enter or discover an existing agent URL, verify connectivity, and continue.
-- Local: start model download immediately, warn about slow hardware or insufficient disk, and continue through setup while download runs.
+- On-Device: choose whether to use Eliza Cloud services or stay local-only.
+- Remote: enter existing remote agent credentials, pair, verify connectivity, and continue.
 
 Cloud behavior:
 
@@ -67,13 +67,13 @@ Cloud behavior:
 - When the container is ready, chat transcript, extracted facts, and memories are handed to the container agent.
 - The agent says and writes that setup is complete, then subsequent responses come from the container.
 
-Local behavior:
+On-Device behavior:
 
-- Local selection starts downloading the preferred Eliza-1 model immediately.
-- If the user also has Eliza Cloud available, the app can use Cloud while the local model downloads.
+- Cloud services routes the user through Eliza Cloud sign-in and can use Cloud while local capability is prepared.
+- Local-only starts downloading the preferred Eliza-1 model immediately.
 - If no model is loaded, the agent tells the user it is still loading/downloading.
 - At the end of onboarding, if the model is not ready, the agent says and writes: "I'm still downloading the local models, so you'll need to wait for me to finish to keep going."
-- Hardware checks warn below 24 GB effective VRAM/shared memory and on insufficient disk space.
+- Hardware checks warn below 24 GB unified memory on Mac, below 16 GB VRAM on CUDA devices, and on insufficient disk space.
 
 Remote behavior:
 
@@ -309,7 +309,7 @@ Agent view actions:
 - No white frame appears during cold load in browser, desktop, iOS, or Android.
 - Cloud path lands in chat immediately after sign-in while provisioning continues.
 - Cloud user never sees an agent picker.
-- Local path starts model download before language selection and shows hardware/disk warnings when applicable.
+- On-Device local-only starts model download before audio setup and shows hardware/disk warnings when applicable.
 - Language selection changes app copy and agent language.
 - Speaker and mic flow can be completed, retried, or skipped.
 - Companion screen is reachable after onboarding and is the default post-setup screen.
@@ -318,7 +318,7 @@ Agent view actions:
 - User-facing navigation says Views, not Apps.
 - Plugins can register `views`.
 - Kokoro voice lines are generated or a build task documents why they could not be generated.
-- E2E tests cover Cloud, Remote, Local downloading, skipped audio, successful audio, and desktop bar.
+- E2E tests cover Cloud, On-Device cloud services, On-Device local-only downloading, Remote pairing, skipped audio, successful audio, and desktop bar.
 
 ## Prototype
 

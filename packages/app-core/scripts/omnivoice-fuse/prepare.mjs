@@ -1675,11 +1675,31 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "mtmd.cpp qwen3a audio preprocessor",
     );
   }
-  if (
-    !mtmd.includes('aud_beg = "<|audio_start|>";') ||
-    !mtmd.includes('proj == PROJECTOR_TYPE_QWEN3A')
-  ) {
-    const replacement = `        if (proj == PROJECTOR_TYPE_QWEN3A) {
+  // Detect "already applied" in two flavors:
+  //   (a) This patch ran on a clean fork that originally had a QWEN2A-only
+  //       audio_bos/eos branch → patcher inserted a new QWEN3A branch with
+  //       <|audio_start|>/<|audio_end|>.
+  //   (b) The fork itself merged QWEN3A under the QWEN2A/QWEN25O audio_bos/eos
+  //       branch (fork commit 2f80716c "updates" in v1.1.x+). In that case the
+  //       fork has decided QWEN3A uses audio_bos/eos like QWEN2A, and this
+  //       eliza-side backport must NOT try to splice in audio_start/end on top
+  //       — there is no QWEN2A-only anchor left to replace, and the operator
+  //       fork has chosen the token strings. Treat as already applied.
+  const variantA =
+    mtmd.includes('aud_beg = "<|audio_start|>";') &&
+    mtmd.includes("proj == PROJECTOR_TYPE_QWEN3A");
+  const variantB = mtmd.includes(
+    "if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN3A || proj == PROJECTOR_TYPE_QWEN25O) {",
+  );
+  if (!variantA && !variantB) {
+    mtmd = replaceRequired(
+      mtmd,
+      `        if (proj == PROJECTOR_TYPE_QWEN2A) {
+            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
+            aud_beg = "<|audio_bos|>";
+            aud_end = "<|audio_eos|>";
+`,
+      `        if (proj == PROJECTOR_TYPE_QWEN3A) {
             // <|audio_start|> ... (embeddings replacing <|audio_pad|>) ... <|audio_end|>
             aud_beg = "<|audio_start|>";
             aud_end = "<|audio_end|>";
@@ -1688,27 +1708,9 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
             // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
             aud_beg = "<|audio_bos|>";
             aud_end = "<|audio_eos|>";
-`;
-    const qwen2OnlyAnchor = `        if (proj == PROJECTOR_TYPE_QWEN2A) {
-            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
-            aud_beg = "<|audio_bos|>";
-            aud_end = "<|audio_eos|>";
-`;
-    const currentCombinedAnchor = `        if (proj == PROJECTOR_TYPE_QWEN2A || proj == PROJECTOR_TYPE_QWEN3A || proj == PROJECTOR_TYPE_QWEN25O) {
-            // <|audio_bos|> ... (embeddings) ... <|audio_eos|>
-            aud_beg = "<|audio_bos|>";
-            aud_end = "<|audio_eos|>";
-`;
-    if (mtmd.includes(qwen2OnlyAnchor)) {
-      mtmd = mtmd.replace(qwen2OnlyAnchor, replacement);
-    } else {
-      mtmd = replaceRequired(
-        mtmd,
-        currentCombinedAnchor,
-        replacement,
-        "mtmd.cpp qwen3a audio special tokens",
-      );
-    }
+`,
+      "mtmd.cpp qwen3a audio special tokens",
+    );
   }
   if (mtmd !== fs.readFileSync(mtmdPath, "utf8")) {
     fs.writeFileSync(mtmdPath, mtmd, "utf8");

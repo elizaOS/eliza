@@ -422,24 +422,37 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@ai-sdk/anthropic": "^3.0.13",
+        "@ai-sdk/gateway": "^3.0.109",
         "@ai-sdk/google": "^3.0.8",
         "@ai-sdk/openai": "^3.0.9",
+        "@ai-sdk/provider": "^3.0.10",
+        "@ai-sdk/provider-utils": "^4.0.7",
+        "@anthropic-ai/sdk": "^0.92.0",
         "@elizaos/prompts": "2.0.0-beta.1",
         "@noble/ciphers": "2.2.0",
         "@noble/hashes": "2.2.0",
         "@openrouter/ai-sdk-provider": "^2.0.0",
+        "@standard-schema/spec": "^1.0.0",
         "adze": "^2.2.5",
         "ai": "^6.0.30",
+        "coding-agent-adapters": "0.16.3",
         "dedent": "^1.7.1",
         "dotenv": "^17.2.3",
         "drizzle-orm": "0.45.2",
+        "eventsource-parser": "^3.0.8",
         "fast-redact": "^3.5.0",
         "file-type": "^22.0.0",
         "fs-extra": "^11.3.2",
+        "git-workspace-service": "0.4.5",
+        "glob": "^13.0.0",
         "handlebars": "^4.7.8",
         "json5": "^2.2.3",
         "mammoth": "^1.9.0",
         "markdown-it": "^14.1.0",
+        "pdfjs-dist": "^5.4.530",
+        "underscore": "^1.13.8",
+        "undici": "8.2.0",
+        "unique-names-generator": "^4.7.1",
         "unpdf": "^1.4.0",
         "uuid": "^14.0.0",
         "yaml": "^2.7.0",
@@ -454,7 +467,9 @@
         "@types/node": "^25.0.3",
         "@types/react-test-renderer": "^19.0.0",
         "@vitest/coverage-v8": "^4.0.0",
+        "esbuild": "^0.28.0",
         "react-test-renderer": "^19.0.0",
+        "sharp": "^0.34.5",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
@@ -8392,6 +8407,8 @@
 
     "pbkdf2": ["pbkdf2@3.1.5", "", { "dependencies": { "create-hash": "^1.2.0", "create-hmac": "^1.1.7", "ripemd160": "^2.0.3", "safe-buffer": "^5.2.1", "sha.js": "^2.4.12", "to-buffer": "^1.2.1" } }, "sha512-Q3CG/cYvCO1ye4QKkuH7EXxs3VC/rI1/trd+qX2+PolbaKG0H+bgcZzrTt96mMyRtejk+JMCiLUn3y29W8qmFQ=="],
 
+    "pdfjs-dist": ["pdfjs-dist@5.7.284", "", { "optionalDependencies": { "@napi-rs/canvas": "^0.1.100" } }, "sha512-h4EdYQczmGhbOlqc3PPZwxevn7ApdWPbovAuWXOB/DjIyigSnwfy2oze7c6mRcSr9XgLp3eN3EeL4DyySTPMFw=="],
+
     "peek-readable": ["peek-readable@4.1.0", "", {}, "sha512-ZI3LnwUv5nOGbQzD9c2iDG6toheuXSZP5esSHBjopsXH4dg19soufvpUGA3uohi5anFtGb2lhAVdHzH6R/Evvg=="],
 
     "pend": ["pend@1.2.0", "", {}, "sha512-F3asv42UuXchdzt+xXqfW1OGlVBe+mxa2mqI0pg5yAHZPvFmY3Y6drSf/GQ1A86WgWEN9Kzh/WrgKa6iGcHXLg=="],
@@ -9121,6 +9138,8 @@
     "unhomoglyph": ["unhomoglyph@1.0.6", "", {}, "sha512-7uvcWI3hWshSADBu4JpnyYbTVc7YlhF5GDW/oPD5AxIxl34k4wXR3WDkPnzLxkN32LiTCTKMQLtKVZiwki3zGg=="],
 
     "unicode-segmenter": ["unicode-segmenter@0.14.5", "", {}, "sha512-jHGmj2LUuqDcX3hqY12Ql+uhUTn8huuxNZGq7GvtF6bSybzH3aFgedYu/KTzQStEgt1Ra2F3HxadNXsNjb3m3g=="],
+
+    "unique-names-generator": ["unique-names-generator@4.7.1", "", {}, "sha512-lMx9dX+KRmG8sq6gulYYpKWZc9RlGsgBR6aoO8Qsm3qvkSJ+3rAymr+TnV8EDMrIrwuFJ4kruzMWM/OpYzPoow=="],
 
     "universal-github-app-jwt": ["universal-github-app-jwt@1.2.0", "", { "dependencies": { "@types/jsonwebtoken": "^9.0.0", "jsonwebtoken": "^9.0.2" } }, "sha512-dncpMpnsKBk0eetwfN8D8OUHGfiDhhJ+mtsbMl+7PfW7mYjiH8LIcqRmYMtzYLgSh47HjfdBtrBwIQ/gizKR3g=="],
 

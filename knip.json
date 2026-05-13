@@ -224,7 +224,12 @@
       "ignore": ["dist/**"]
     },
     "packages/examples/aws": {
-      "entry": ["handler.ts", "server-local.ts", "test-client.ts", "test-local.ts"],
+      "entry": [
+        "handler.ts",
+        "server-local.ts",
+        "test-client.ts",
+        "test-local.ts"
+      ],
       "project": ["*.ts"],
       "ignore": ["dist/**", ".eliza/**"],
       "ignoreBinaries": ["sam"]
@@ -264,6 +269,11 @@
       "ignore": [".generated/**"],
       "ignoreBinaries": ["xcrun"]
     },
+    "packages/examples/convex": {
+      "entry": ["test-client.ts", "convex/*.ts"],
+      "project": ["test-client.ts", "convex/**/*.ts"],
+      "ignore": ["convex/_generated/**"]
+    },
     "packages/agent": {
       "entry": [
         "src/**/*.{ts,tsx}",
@@ -277,16 +287,8 @@
         "test/**/*.{ts,tsx}",
         "*.ts"
       ],
-      "ignore": [
-        "dist/**",
-        "dist-mobile*/**"
-      ],
-      "ignoreDependencies": [
-        "node:sqlite",
-        "ws",
-        "@types/ws",
-        "x402-fetch"
-      ]
+      "ignore": ["dist/**", "dist-mobile*/**"],
+      "ignoreDependencies": ["node:sqlite", "ws", "@types/ws", "x402-fetch"]
     },
     "packages/core": {
       "entry": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],

@@ -1,9 +1,0 @@
-{
-  "entry": [
-    "test-client.ts",
-    "convex/*.ts"
-  ],
-  "ignore": [
-    "convex/_generated/**"
-  ]
-}

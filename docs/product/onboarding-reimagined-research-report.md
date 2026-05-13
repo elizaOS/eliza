@@ -185,7 +185,7 @@ The mocked end-to-end prototype is at:
 It includes:
 
 - Blue first paint and slow independent cloud animation.
-- Runtime choices: Cloud, Remote, Local.
+- Runtime choices: Cloud, On-Device, Remote.
 - Language step.
 - Speaker/mic setup with generated Kokoro audio.
 - Owner fact collection.

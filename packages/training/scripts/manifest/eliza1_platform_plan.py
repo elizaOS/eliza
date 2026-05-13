@@ -39,12 +39,20 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q3_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
+    "9b": "Q4_K_M",
+    "27b": "Q4_K_M",
+    "27b-256k": "Q4_K_M",
+    "27b-1m": "Q4_K_M",
 }
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("32k",),
     "2b": ("32k", "64k"),
     "4b": ("64k", "128k"),
+    "9b": ("64k", "128k"),
+    "27b": ("128k",),
+    "27b-256k": ("256k",),
+    "27b-1m": ("1m",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -107,6 +115,35 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-x64-vulkan",
         "linux-x64-cpu",
         "windows-x64-cpu",
+    ),
+    "9b": (
+        "darwin-arm64-metal",
+        "linux-x64-vulkan",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+        "windows-x64-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+    ),
+    "27b": (
+        "darwin-arm64-metal",
+        "linux-x64-vulkan",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+        "windows-x64-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+    ),
+    "27b-256k": (
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+    ),
+    "27b-1m": (
+        "linux-x64-cuda",
+        "linux-aarch64-cuda",
     ),
 }
 

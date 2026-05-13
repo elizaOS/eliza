@@ -1068,6 +1068,11 @@ export function buildLibllamaForAbi({
       // depfiles for this cross-build; object depfiles still cover source
       // rebuilds and target-level dependencies still order the ggml family.
       "-DCMAKE_LINK_DEPENDS_USE_LINKER=FALSE",
+      // `extraCmakeFlags` carries the omnivoice fused-build flags
+      // (-DELIZA_FUSE_OMNIVOICE=ON, etc.) when the explicit-triple
+      // path asked for a fused build. Empty for the non-fused bulk
+      // --abi path.
+      ...extraCmakeFlags,
     ],
     {},
   );
@@ -1174,8 +1179,48 @@ export function buildLibllamaForAbi({
     );
   }
 
+  // Stage the fused-build artifacts when they are present: libelizainference.so
+  // (the SHARED target the cmake graft declares) plus the legacy CLI smoke
+  // target llama-omnivoice-server. We do NOT throw when these are missing —
+  // a non-fused build (extraBuildTargets empty) won't produce them, and the
+  // caller is responsible for invoking `verifyFusedSymbols` only on fused
+  // targets. Mirrors the dflash install-loop's conditional copy of the same
+  // pair.
+  const fusedLibSrcCandidates = [
+    path.join(buildDir, "libelizainference.so"),
+    path.join(buildDir, "src", "libelizainference.so"),
+    path.join(buildDir, "bin", "libelizainference.so"),
+  ];
+  const fusedLibSrc =
+    fusedLibSrcCandidates.find((c) => fs.existsSync(c)) ??
+    locateBuiltLib(buildDir, "libelizainference.so");
+  let fusedLibOut = null;
+  if (fusedLibSrc) {
+    fusedLibOut = path.join(abiAssetDir, "libelizainference.so");
+    fs.copyFileSync(fusedLibSrc, fusedLibOut);
+    log(
+      `[compile-libllama] Copied libelizainference.so for ${abi} (${(fs.statSync(fusedLibOut).size / (1024 * 1024)).toFixed(2)} MB).`,
+    );
+  }
+  const fusedServerSrcCandidates = [
+    path.join(buildDir, "bin", "llama-omnivoice-server"),
+    path.join(buildDir, "llama-omnivoice-server"),
+  ];
+  const fusedServerSrc = fusedServerSrcCandidates.find((c) => fs.existsSync(c));
+  let fusedServerOut = null;
+  if (fusedServerSrc) {
+    fusedServerOut = path.join(abiAssetDir, "llama-omnivoice-server");
+    fs.copyFileSync(fusedServerSrc, fusedServerOut);
+    fs.chmodSync(fusedServerOut, 0o755);
+    log(
+      `[compile-libllama] Copied llama-omnivoice-server for ${abi} (${(fs.statSync(fusedServerOut).size / (1024 * 1024)).toFixed(2)} MB).`,
+    );
+  }
+
   const stripTargets = [...supportOuts, llamaOut, ...sonameAliases];
   if (llamaServerOut) stripTargets.push(llamaServerOut);
+  if (fusedLibOut) stripTargets.push(fusedLibOut);
+  if (fusedServerOut) stripTargets.push(fusedServerOut);
   for (const out of stripTargets) {
     const sizeBefore = fs.statSync(out).size;
     const stripped = stripBinary({ filePath: out, zigBin, log });
@@ -1193,9 +1238,16 @@ export function buildLibllamaForAbi({
       );
     }
   }
-  // Re-chmod llama-server after strip — system strip may reset perms.
+  // Re-chmod executables after strip — system strip may reset perms.
   if (llamaServerOut) fs.chmodSync(llamaServerOut, 0o755);
-  return { llama: llamaOut, ggml: supportOuts, llamaServer: llamaServerOut };
+  if (fusedServerOut) fs.chmodSync(fusedServerOut, 0o755);
+  return {
+    llama: llamaOut,
+    ggml: supportOuts,
+    llamaServer: llamaServerOut,
+    elizainference: fusedLibOut,
+    omnivoiceServer: fusedServerOut,
+  };
 }
 
 /**

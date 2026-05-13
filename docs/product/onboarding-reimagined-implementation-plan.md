@@ -53,16 +53,16 @@ Owner files:
 
 Tasks:
 
-- Create explicit steps: runtime, language, speaker, microphone, owner facts, final handoff.
+- Create explicit steps: runtime, branch connection, language, speaker, microphone, final handoff.
 - Persist progress and allow resume.
 - Remove theme selector from onboarding.
 - Move language into onboarding and update app/agent language together.
-- Render Cloud, Remote, and Local as equal cards.
+- Render Cloud, On-Device, and Remote as first-run cards, with Cloud recommended.
 - Keep current `RuntimeGate` available behind fallback flag.
 
 Tests:
 
-- Cloud, Remote, Local can complete.
+- Cloud, On-Device cloud services, On-Device local-only, and Remote can complete.
 - Back/forward/resume works.
 - Theme controls do not appear.
 - Language persists and changes copy before voice step.
@@ -101,7 +101,7 @@ Parallel notes:
 
 - Can be developed against mocked UI contracts while Workstream B lands.
 
-## Workstream D: Local Model Download, Hardware, and Disk Checks
+## Workstream D: On-Device Model Download, Hardware, and Disk Checks
 
 Owner files:
 
@@ -112,20 +112,20 @@ Owner files:
 
 Tasks:
 
-- Start model download immediately when Local is selected, before later onboarding steps.
+- Start model download immediately when On-Device local-only is selected, before later onboarding steps.
 - Add disk-space probe to local inference API.
 - Warn below 24 GB effective VRAM/shared memory.
 - Warn when free disk is below selected model size plus safety margin.
-- If Cloud is available, route temporary chat to Cloud while Local downloads.
+- If Cloud is available, route temporary chat to Cloud while local models download.
 - If no model is available, make the agent answer with local-loading status.
 - Add end-of-onboarding blocker message if model still downloading.
 
 Tests:
 
-- Download POST is sent once per local selection.
+- Download POST is sent once per local-only selection.
 - Insufficient disk warning appears.
 - Under-24 GB warning appears.
-- Cloud fallback responses stop once local model is active.
+- Cloud fallback responses stop once the local model is active.
 - Download interruption/resume works.
 
 Parallel notes:
@@ -159,7 +159,7 @@ Tests:
 
 Parallel notes:
 
-- Independent from Cloud and Local model work.
+- Independent from Cloud and On-Device model work.
 
 ## Workstream F: Companion Chat Surface
 
@@ -356,7 +356,7 @@ Owner files:
 
 Tasks:
 
-- Add E2E matrix for Cloud, Remote, Local, audio skipped, audio accepted, desktop bar.
+- Add E2E matrix for Cloud, On-Device cloud services, On-Device local-only, Remote, audio skipped, audio accepted, desktop bar.
 - Add screenshot baselines for desktop and mobile onboarding.
 - Add first-paint no-white test.
 - Add Lighthouse/performance budget for background animation.
@@ -392,8 +392,8 @@ Parallel notes:
 
 1. Land flags and blue first paint.
 2. Land background host with static slow-clouds module.
-3. Land onboarding-v2 with mocked Cloud/Remote/Local outcomes.
-4. Integrate Local download and warnings.
+3. Land onboarding-v2 with mocked Cloud/On-Device/Remote outcomes.
+4. Integrate On-Device local-only download and warnings.
 5. Integrate Cloud setup agent and handoff.
 6. Integrate voice setup and Kokoro assets.
 7. Switch post-onboarding target to companion screen.
@@ -409,4 +409,4 @@ Parallel notes:
 - Always-on capture can create trust and compliance risk. Consent, visible state, retention, delete, and audit are part of MVP.
 - Cloud handoff can lose memory or duplicate messages. Treat handoff as a transactional migration with idempotent replay.
 - Apps-to-Views rename touches many files. Use compatibility aliases and route redirects until plugins migrate.
-- Local model download can fail or take too long. The UI needs honest status, cloud fallback, and resumable downloads.
+- Local model download can fail or take too long. The UI needs honest On-Device status, cloud fallback, and resumable downloads.

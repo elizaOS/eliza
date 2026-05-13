@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { resolveBrowserStewardApiUrl } from "@/lib/steward-url";
+import { getErrorMessage } from "../../lib/error-message";
 import { syncStewardSessionCookie } from "../../lib/steward-session";
 import { resolveLoginReturnTo } from "./login-return-to";
 import { buildStewardOAuthAuthorizeUrl, type StewardOAuthProvider } from "./steward-oauth-url";
@@ -71,10 +72,6 @@ const CALLBACK_UNKNOWN_MESSAGE = "Couldn't complete sign-in. Try again.";
 
 function hasAnyWalletProvider(providers: StewardProviders): boolean {
   return Boolean(providers.siwe || providers.siws);
-}
-
-function getErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
 }
 
 export default function StewardLoginSection() {
