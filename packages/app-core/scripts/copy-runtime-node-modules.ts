@@ -1824,34 +1824,6 @@ function main(): void {
  * `nodeModulesDir`. Throws with the full list of missing packages so ops
  * can locate the exact expected path without guessing.
  */
-export function assertRequiredBundledPackagesLanded(
-  nodeModulesDir: string,
-  alwaysBundled: Set<string>,
-): void {
-  const missing: string[] = [];
-
-  for (const pkg of alwaysBundled) {
-    const pkgJsonPath = pkg.startsWith("@")
-      ? path.join(nodeModulesDir, ...pkg.split("/"), "package.json")
-      : path.join(nodeModulesDir, pkg, "package.json");
-
-    if (!fs.existsSync(pkgJsonPath)) {
-      missing.push(
-        `  ${pkg} (expected at ${pkgJsonPath})`,
-      );
-    }
-  }
-
-  if (missing.length > 0) {
-    throw new Error(
-      [
-        `${missing.length} required runtime package(s) are missing from ${nodeModulesDir} after copy+prune:`,
-        ...missing,
-      ].join("\n"),
-    );
-  }
-}
-
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
