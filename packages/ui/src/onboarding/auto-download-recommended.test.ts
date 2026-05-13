@@ -86,9 +86,6 @@ describe("autoDownloadRecommendedLocalModelInBackground", () => {
       "http://127.0.0.1:31337",
     );
 
-    // Mobile TEXT_LARGE ladder: [4B, 2B, 0.8B]. On 8 GB iOS simulator,
-    // eliza-1-4b (minRamGb 10) doesn't fit; eliza-1-2b (Qwen3.5-2B,
-    // minRamGb 4, sizeGb 1.4) fits and is the queued default.
     expect(mockClient.startLocalInferenceDownload).toHaveBeenCalledWith(
       "eliza-1-2b",
     );

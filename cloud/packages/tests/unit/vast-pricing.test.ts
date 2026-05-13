@@ -1,5 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { calculateCost } from "@/lib/pricing";
+import { describe, expect, mock, test } from "bun:test";
+
+mock.module("@/db/repositories/ai-pricing", () => ({
+  aiPricingRepository: {
+    listActiveEntriesForProviderModelPairs: async () => [],
+  },
+}));
+
+const { calculateCost } = await import("@/lib/pricing");
 
 describe("Vast pricing", () => {
   test("calculates token cost from the internal Vast pricing snapshot", async () => {

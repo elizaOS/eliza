@@ -81,7 +81,7 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// elizaOS/llama.cpp @ v1.0.0-eliza (commit 08032d57) — the unified fork that
+// elizaOS/llama.cpp @ bfab6689 — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
@@ -101,7 +101,8 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || "v1.0.0-eliza";
+const DEFAULT_REF = "bfab6689d7640db682b73f05a6af64b244a69dbd";
+const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
 const SUBMODULE_DIR = path.resolve(
@@ -948,9 +949,29 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
   }
   let content = fs.readFileSync(specPath, "utf8");
   const original = content;
+  const hasDflashDispatch = (source) =>
+    source.includes(
+      "bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));",
+    ) ||
+    source.includes(
+      "bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);",
+    );
+  if (
+    hasDflashDispatch(content) &&
+    content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) &&
+    content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
+  ) {
+    return;
+  }
   content = content.replace(
     "        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT));\n",
     "        bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));\n        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT)) || has_dflash;\n",
+  );
+  content = content.replace(
+    "        bool has_draft = !params.mparams_dft.path.empty();\n",
+    "        bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);\n        bool has_draft = !params.mparams_dft.path.empty();\n",
   );
   content = content.replace(
     "        static_assert(COMMON_SPECULATIVE_TYPE_COUNT == 8);\n",
@@ -961,15 +982,18 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
     "            configs.push_back(common_speculative_config(has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT, params));\n",
   );
   content = content.replace(
-    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
-    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n",
   );
   if (content === original) {
     return;
   }
   if (
-    !content.includes("bool has_dflash =") ||
-    !content.includes("COMMON_SPECULATIVE_TYPE_COUNT == 9")
+    !hasDflashDispatch(content) ||
+    !content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) ||
+    !content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
   ) {
     throw new Error(
       `[dflash-build] patchDflashSpeculativeDispatch: patch verification failed for ${specPath}`,
@@ -1473,7 +1497,7 @@ function cmakeFlagsForTarget(target, ctx) {
     // `ggml_backend_cpu_init` (per-backend symbol name), so the loader
     // fails and inference can't run. -DGGML_BACKEND_DL=OFF embeds the
     // backend's init directly into the binary.
-    flags.push("-DGGML_BACKEND_DL=OFF", "-DBUILD_SHARED_LIBS=OFF");
+    flags.push("-DGGML_BACKEND_DL=OFF");
   } else if (platform === "ios") {
     // iOS cross-compile (host must be macOS with Xcode). The Capacitor
     // plugin's xcframework patch consumes the resulting static archive +
@@ -1686,6 +1710,10 @@ function defaultSourceCheckoutDir() {
   return standaloneCacheDir();
 }
 
+function isCommitSha(ref) {
+  return /^[0-9a-f]{7,40}$/i.test(ref);
+}
+
 function parseArgs(argv) {
   const args = {
     cacheDir: defaultSourceCheckoutDir(),
@@ -1808,6 +1836,11 @@ function ensureCheckout(cacheDir, ref) {
     // new artifact.
     run("git", ["reset", "--hard", "FETCH_HEAD"], { cwd: cacheDir });
     run("git", ["clean", "-fd"], { cwd: cacheDir });
+  } else if (isCommitSha(ref)) {
+    fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
+    run("git", ["clone", "--depth=1", "--no-checkout", REMOTE, cacheDir]);
+    run("git", ["fetch", "--depth=1", "origin", ref], { cwd: cacheDir });
+    run("git", ["checkout", "FETCH_HEAD"], { cwd: cacheDir });
   } else {
     fs.mkdirSync(path.dirname(cacheDir), { recursive: true });
     run("git", ["clone", "--depth=1", "--branch", ref, REMOTE, cacheDir]);
@@ -2144,6 +2177,38 @@ function sourceContainsDflashDraft(root) {
     (argSource.includes("common_speculative_types_from_names") ||
       argSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH"))
   );
+}
+
+function sourceContainsCpuTbqKernels(root) {
+  if (!root) return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  const sources = [
+    path.join(root, "ggml", "include", "ggml.h"),
+    path.join(root, "ggml", "src", "ggml.c"),
+    path.join(root, "ggml", "src", "ggml-quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "ggml-cpu.c"),
+  ];
+  if (sources.some((source) => !fs.existsSync(source))) {
+    return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  }
+  const source = sources.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+  return {
+    turbo3:
+      source.includes("GGML_TYPE_TBQ3_0") &&
+      source.includes("quantize_row_tbq3_0") &&
+      source.includes("dequantize_row_tbq3_0") &&
+      source.includes("ggml_vec_dot_tbq3_0_f32"),
+    turbo4:
+      source.includes("GGML_TYPE_TBQ4_0") &&
+      source.includes("quantize_row_tbq4_0") &&
+      source.includes("dequantize_row_tbq4_0") &&
+      source.includes("ggml_vec_dot_tbq4_0_f32"),
+    turbo3_tcq:
+      source.includes("GGML_TYPE_TBQ3_TCQ") &&
+      source.includes("quantize_row_tbq3_tcq") &&
+      source.includes("dequantize_row_tbq3_tcq") &&
+      source.includes("QK_TBQ3_TCQ"),
+  };
 }
 
 function ensureLegacyDflashDrafterCheckout(sourceDir) {
@@ -2486,14 +2551,21 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     kernels.turbo3_tcq = /turbo3[-_]?tcq|tcq/.test(names);
     kernels.qjl_full = /qjl/.test(names);
     kernels.polarquant = /polar(?:quant)?|q4[-_]?polar/.test(names);
-    // CPU build inlines the turbo quantization paths inside ggml-cpu and
-    // links a single ggml-turbo-quant.c.o into ggml-base. Treat its presence
-    // as evidence both turbo3 and turbo4 paths are compiled in. DFlash is
-    // not inferred from turbo/flash-attention objects: publishable Eliza-1
-    // builds must carry the native dflash-draft speculative state.
-    if (backend === "cpu" && /ggml-turbo-quant\.c\.o/.test(names)) {
-      kernels.turbo3 = true;
-      kernels.turbo4 = true;
+    if (backend === "cpu") {
+      if (/ggml-turbo-quant\.c\.(?:o|obj)/.test(names)) {
+        kernels.turbo3 = true;
+        kernels.turbo4 = true;
+      }
+      const hasCompiledTbqCore =
+        /ggml-quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]ggml-cpu\.c\.(?:o|obj)/.test(names);
+      if (hasCompiledTbqCore) {
+        const sourceKernels = sourceContainsCpuTbqKernels(cacheDir);
+        kernels.turbo3 = kernels.turbo3 || sourceKernels.turbo3;
+        kernels.turbo4 = kernels.turbo4 || sourceKernels.turbo4;
+        kernels.turbo3_tcq = kernels.turbo3_tcq || sourceKernels.turbo3_tcq;
+      }
     }
   }
 
@@ -3068,10 +3140,17 @@ function writeCapabilities({
       : backend === "vulkan"
         ? vulkanRuntimeDispatchStatus(shippedKernels, target)
         : null;
+  const allowSmokeIncompleteBuild =
+    process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1";
+  const allowReducedKernelBuild =
+    process.env.ELIZA_DFLASH_ALLOW_REDUCED_KERNELS === "1";
   const allowUnverifiedVulkanBuild =
     backend === "vulkan" &&
-    (process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1" ||
-      process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1");
+    process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1";
+  const incompleteKernelAllowance =
+    allowSmokeIncompleteBuild ||
+    allowReducedKernelBuild ||
+    allowUnverifiedVulkanBuild;
   const capabilities = {
     target,
     platform,
@@ -3087,7 +3166,9 @@ function writeCapabilities({
     draftArchitectures: supportedArchitectures,
     publishable: missing.length === 0,
     missingRequiredKernels: missing,
-    smokeOnlyIncompleteAllowed:
+    smokeOnlyIncompleteAllowed: missing.length > 0 && allowSmokeIncompleteBuild,
+    reducedOptimizationLocalMode: missing.length > 0 && allowReducedKernelBuild,
+    unverifiedVulkanRuntimeAllowed:
       missing.length > 0 && allowUnverifiedVulkanBuild,
     shippedKernels,
     runtimeDispatch,
@@ -3099,10 +3180,15 @@ function writeCapabilities({
     `${JSON.stringify(capabilities, null, 2)}\n`,
   );
   if (missing.length > 0) {
-    if (allowUnverifiedVulkanBuild) {
+    if (incompleteKernelAllowance) {
+      const allowance = allowReducedKernelBuild
+        ? "reduced-optimization local build"
+        : allowSmokeIncompleteBuild
+          ? "smoke-only incomplete kernel build"
+          : "unverified Vulkan runtime build";
       console.warn(
-        `[dflash-build] target=${target} built with unverified Vulkan runtime kernels: ${missing.join(", ")}. ` +
-          `This is allowed only for the graph-dispatch smoke bootstrap; CAPABILITIES.json is diagnostic, publishable=false, and must not be published until vulkan-runtime-dispatch-evidence.json is generated and the target is rebuilt without the unverified-build env override.`,
+        `[dflash-build] target=${target} built as ${allowance}: ${missing.join(", ")}. ` +
+          `CAPABILITIES.json is diagnostic, publishable=false, and this artifact must not be published until the missing kernel dispatch evidence is present and the target is rebuilt without the incomplete-build override.`,
       );
       return capabilities;
     }

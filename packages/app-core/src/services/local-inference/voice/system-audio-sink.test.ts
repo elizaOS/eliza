@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { WavFileAudioSink } from "./system-audio-sink";
 
 describe("WavFileAudioSink", () => {
-  it("drain drops buffered chunks before finalize", () => {
+  it("drain resets buffered samples without dropping artifact chunks", async () => {
     const dir = mkdtempSync(path.join(tmpdir(), "eliza-audio-sink-"));
     const filePath = path.join(dir, "out.wav");
     try {
@@ -15,13 +15,13 @@ describe("WavFileAudioSink", () => {
 
       sink.drain();
       expect(sink.bufferedSamples()).toBe(0);
-      sink.finalize();
+      await sink.finalize();
 
       const wav = readFileSync(filePath);
       expect(wav.subarray(0, 4).toString("ascii")).toBe("RIFF");
       expect(wav.subarray(8, 12).toString("ascii")).toBe("WAVE");
-      expect(wav.readUInt32LE(40)).toBe(0);
-      expect(wav.length).toBe(44);
+      expect(wav.readUInt32LE(40)).toBe(6);
+      expect(wav.length).toBe(50);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

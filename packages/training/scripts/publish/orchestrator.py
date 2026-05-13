@@ -538,7 +538,6 @@ def _expected_payload_paths(
     ):
         expected.extend(_relative_file_paths(layout.get(kind_src, []), ctx.bundle_dir))
 
-    licenses_dir = ctx.bundle_dir / "licenses"
     expected.extend(f"licenses/{name}" for name in _license_files_for_layout(layout))
 
     evals_dir = ctx.bundle_dir / "evals"

@@ -91,7 +91,7 @@ describe("resolveRamBudget", () => {
     // bundle's KV-cache footprint at its 32k default ctx.
     expect(budget.minMb).toBe(4 * 1024);
     expect(budget.recommendedMb).toBeGreaterThan(budget.minMb);
-    expect(budget.recommendedMb).toBe(4 * 1024 + 69);
+    expect(budget.recommendedMb).toBe(4 * 1024 + 75);
   });
 
   it("never consults the loader for a non-Eliza-1 model", () => {

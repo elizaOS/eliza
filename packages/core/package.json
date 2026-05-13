@@ -121,6 +121,7 @@
 		"@ai-sdk/anthropic": "^3.0.13",
 		"@ai-sdk/google": "^3.0.8",
 		"@ai-sdk/openai": "^3.0.9",
+		"@bufbuild/protobuf": "^2.12.0",
 		"@elizaos/prompts": "2.0.0-beta.1",
 		"@noble/ciphers": "2.2.0",
 		"@noble/hashes": "2.2.0",

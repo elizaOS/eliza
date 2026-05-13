@@ -29,6 +29,9 @@
       "@elizaos/plugin-computeruse": [
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
+      "@elizaos/plugin-coding-tools": [
+        "../../plugins/plugin-coding-tools/src/index.ts"
+      ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
       ],

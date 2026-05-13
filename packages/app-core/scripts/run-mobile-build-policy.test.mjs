@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  IOS_OFFICIAL_PODS,
   resolveIosBuildTarget,
   resolveMobileBuildPolicy,
 } from "./run-mobile-build.mjs";
@@ -72,5 +73,14 @@ test("resolveIosBuildTarget honors simulator overrides used by local iOS smoke b
       sdk: "iphonesimulator",
       reason: "explicit environment override",
     },
+  );
+});
+
+test("iOS background runner pod resolves through the official package", () => {
+  assert.equal(
+    IOS_OFFICIAL_PODS.find(
+      ([name]) => name === "CapacitorBackgroundRunner",
+    )?.[1],
+    "@capacitor/background-runner",
   );
 });

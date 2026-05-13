@@ -83,107 +83,9 @@ async function startMockServer(
 }> {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-      const rawUrl =
-        typeof input === "string" || input instanceof URL ? input : input.url;
-      const url = new URL(rawUrl);
-      const method = (init?.method ?? "GET").toUpperCase();
-      if (method === "GET" && url.pathname === "/health") {
-        return Response.json({ status: "ok" });
-      }
-      if (method === "GET" && url.pathname === "/v1/models") {
-        return Response.json({ data: [{ id: "mock" }] });
-      }
-      if (method === "GET" && url.pathname === "/metrics") {
-        const body = [
-          `llamacpp:prompt_tokens_total ${state.promptTokensTotal}`,
-          `llamacpp:n_tokens_predicted_total ${state.predictedTokensTotal}`,
-          `llamacpp:n_prompt_tokens_processed_total ${state.promptTokensProcessedTotal}`,
-          `llamacpp:n_drafted_total ${state.draftedTotal}`,
-          `llamacpp:n_accepted_total ${state.acceptedTotal}`,
-          `llamacpp:kv_cache_tokens 0`,
-          `llamacpp:kv_cache_used_cells 0`,
-        ].join("\n");
-        return new Response(body, { status: 200 });
-      }
-      if (method === "POST" && url.pathname === "/v1/chat/completions") {
-        const body = readFetchBody(init);
-        const payload = JSON.parse(body) as {
-          slot_id?: number;
-          messages: Array<{ content: string }>;
-        };
-        const slotId =
-          typeof payload.slot_id === "number" ? payload.slot_id : -1;
-        const promptText = payload.messages
-          .map((m) => String(m.content ?? ""))
-          .join("\n");
-        // 1 token per word for the simulator. Realistic enough for cache
-        // accounting; the actual number doesn't matter for these tests.
-        const promptTokens = promptText.split(/\s+/).filter(Boolean).length;
-        const cachedPrefix = state.prefixCachedTokensBySlot.get(slotId) ?? 0;
-        // Whatever's longer than cachedPrefix has to be freshly prefilled.
-        const freshTokens = Math.max(0, promptTokens - cachedPrefix);
-        const cacheHitTokens = promptTokens - freshTokens;
-        state.freshPrefillBySlot.set(
-          slotId,
-          (state.freshPrefillBySlot.get(slotId) ?? 0) + freshTokens,
-        );
-        state.cacheHitsBySlot.set(
-          slotId,
-          (state.cacheHitsBySlot.get(slotId) ?? 0) + cacheHitTokens,
-        );
-        // The whole prompt is now cached for this slot's next call.
-        state.prefixCachedTokensBySlot.set(slotId, promptTokens);
-        state.promptTokensTotal += promptTokens;
-        state.promptTokensProcessedTotal += freshTokens;
-        const completionTokens = 10;
-        state.predictedTokensTotal += completionTokens;
-        // The patched plan has a drafter model, so production now requires
-        // positive speculative-decoding counters for every generation.
-        state.draftedTotal += 16;
-        state.acceptedTotal += 12;
-        return Response.json({
-          choices: [
-            {
-              message: {
-                role: "assistant",
-                content: `mock-response slot=${slotId} fresh=${freshTokens} hit=${cacheHitTokens}`,
-              },
-            },
-          ],
-          usage: {
-            prompt_tokens: promptTokens,
-            completion_tokens: completionTokens,
-          },
-        });
-      }
-      if (method === "POST" && /^\/slots\/\d+$/.test(url.pathname)) {
-        const slotIdMatch = url.pathname.match(/^\/slots\/(\d+)$/);
-        if (slotIdMatch) {
-          const slotId = Number(slotIdMatch[1]);
-          const action = url.searchParams.get("action") ?? "";
-          state.slotEvents.push(`${action}:${slotId}`);
-          const body = readFetchBody(init);
-          let filename: string | undefined;
-          try {
-            const parsed = JSON.parse(body) as { filename?: string };
-            filename = parsed.filename;
-          } catch {
-            // Mock tolerates an empty body — older test paths may not send one
-          }
-          if (action === "save" && filename) {
-            // Touch the file the dflash-server expects to find on restore.
-            fs.writeFileSync(path.join(slotDir, filename), `slot=${slotId}`);
-          }
-          if (action === "restore") {
-            // Synthetic restore: assume previously-saved prefix had 4000 tokens.
-            state.prefixCachedTokensBySlot.set(slotId, 4000);
-          }
-        }
-        return Response.json({});
-      }
-      return new Response(null, { status: 404 });
-    }),
+    vi.fn((input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+      handleMockFetch(input, init, state, slotDir),
+    ),
   );
   return {
     baseUrl: "http://dflash-cache-flow.test",
@@ -191,6 +93,123 @@ async function startMockServer(
       vi.unstubAllGlobals();
     },
   };
+}
+
+function handleMockFetch(
+  input: Parameters<typeof fetch>[0],
+  init: RequestInit | undefined,
+  state: MockState,
+  slotDir: string,
+): Response {
+  const rawUrl =
+    typeof input === "string" || input instanceof URL ? input : input.url;
+  const url = new URL(rawUrl);
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET") return handleMockGet(url, state);
+  if (method === "POST" && url.pathname === "/v1/chat/completions") {
+    return handleMockChatCompletion(init, state);
+  }
+  if (method === "POST" && /^\/slots\/\d+$/.test(url.pathname)) {
+    return handleMockSlotRequest(url, init, state, slotDir);
+  }
+  return new Response(null, { status: 404 });
+}
+
+function handleMockGet(url: URL, state: MockState): Response {
+  if (url.pathname === "/health") return Response.json({ status: "ok" });
+  if (url.pathname === "/v1/models") {
+    return Response.json({ data: [{ id: "mock" }] });
+  }
+  if (url.pathname !== "/metrics") return new Response(null, { status: 404 });
+  const body = [
+    `llamacpp:prompt_tokens_total ${state.promptTokensTotal}`,
+    `llamacpp:n_tokens_predicted_total ${state.predictedTokensTotal}`,
+    `llamacpp:n_prompt_tokens_processed_total ${state.promptTokensProcessedTotal}`,
+    `llamacpp:n_drafted_total ${state.draftedTotal}`,
+    `llamacpp:n_accepted_total ${state.acceptedTotal}`,
+    `llamacpp:kv_cache_tokens 0`,
+    `llamacpp:kv_cache_used_cells 0`,
+  ].join("\n");
+  return new Response(body, { status: 200 });
+}
+
+function handleMockChatCompletion(
+  init: RequestInit | undefined,
+  state: MockState,
+): Response {
+  const payload = JSON.parse(readFetchBody(init)) as {
+    slot_id?: number;
+    messages: Array<{ content: string }>;
+  };
+  const slotId = typeof payload.slot_id === "number" ? payload.slot_id : -1;
+  const promptText = payload.messages
+    .map((m) => String(m.content ?? ""))
+    .join("\n");
+  const promptTokens = promptText.split(/\s+/).filter(Boolean).length;
+  const cachedPrefix = state.prefixCachedTokensBySlot.get(slotId) ?? 0;
+  const freshTokens = Math.max(0, promptTokens - cachedPrefix);
+  const cacheHitTokens = promptTokens - freshTokens;
+  state.freshPrefillBySlot.set(
+    slotId,
+    (state.freshPrefillBySlot.get(slotId) ?? 0) + freshTokens,
+  );
+  state.cacheHitsBySlot.set(
+    slotId,
+    (state.cacheHitsBySlot.get(slotId) ?? 0) + cacheHitTokens,
+  );
+  state.prefixCachedTokensBySlot.set(slotId, promptTokens);
+  state.promptTokensTotal += promptTokens;
+  state.promptTokensProcessedTotal += freshTokens;
+  const completionTokens = 10;
+  state.predictedTokensTotal += completionTokens;
+  state.draftedTotal += 16;
+  state.acceptedTotal += 12;
+  return Response.json({
+    choices: [
+      {
+        message: {
+          role: "assistant",
+          content: `mock-response slot=${slotId} fresh=${freshTokens} hit=${cacheHitTokens}`,
+        },
+      },
+    ],
+    usage: {
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+    },
+  });
+}
+
+function handleMockSlotRequest(
+  url: URL,
+  init: RequestInit | undefined,
+  state: MockState,
+  slotDir: string,
+): Response {
+  const slotIdMatch = url.pathname.match(/^\/slots\/(\d+)$/);
+  if (!slotIdMatch) return Response.json({});
+  const slotId = Number(slotIdMatch[1]);
+  const action = url.searchParams.get("action") ?? "";
+  state.slotEvents.push(`${action}:${slotId}`);
+  const filename = readMockSlotFilename(init);
+  if (action === "save" && filename) {
+    fs.writeFileSync(path.join(slotDir, filename), `slot=${slotId}`);
+  }
+  if (action === "restore") {
+    state.prefixCachedTokensBySlot.set(slotId, 4000);
+  }
+  return Response.json({});
+}
+
+function readMockSlotFilename(
+  init: RequestInit | undefined,
+): string | undefined {
+  try {
+    const parsed = JSON.parse(readFetchBody(init)) as { filename?: string };
+    return parsed.filename;
+  } catch {
+    return undefined;
+  }
 }
 
 function readFetchBody(init: RequestInit | undefined): string {
@@ -347,7 +366,6 @@ describe("conversation handle API: single conversation hits cache 95%+", () => {
     const hitRate = totalCacheRead / totalInput;
     // Surface the measured hit rate so a human can see the actual number
     // — the 95% threshold is a hard floor, but reporting helps tune.
-    // eslint-disable-next-line no-console
     console.log(
       `[dflash-cache-flow] 50-turn hit rate=${(hitRate * 100).toFixed(2)}% (cache_read=${totalCacheRead}/input=${totalInput})`,
     );

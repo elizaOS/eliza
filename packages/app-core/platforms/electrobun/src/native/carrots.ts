@@ -283,8 +283,10 @@ export class CarrotManager {
 		try {
 			const handle = this.workerRunner.start(carrot);
 			record.handle = handle;
-			handle.onMessage((message) => this.handleWorkerMessage(id, message));
-			handle.onError((error) => this.markWorkerError(id, error));
+			handle.onMessage((message) =>
+				this.handleWorkerMessage(id, handle, message),
+			);
+			handle.onError((error) => this.markWorkerError(id, handle, error));
 			handle.postMessage(buildWorkerInitMessage(carrot, context));
 			status.state = "running";
 			this.emitWorkerChanged(status);
@@ -383,10 +385,15 @@ export class CarrotManager {
 		this.events = {};
 	}
 
-	private handleWorkerMessage(id: string, message: CarrotWorkerMessage): void {
+	private handleWorkerMessage(
+		id: string,
+		handle: CarrotWorkerHandle,
+		message: CarrotWorkerMessage,
+	): void {
+		const record = this.workers.get(id);
+		if (record?.handle !== handle) return;
+
 		if (message.type === "ready") {
-			const record = this.workers.get(id);
-			if (!record) return;
 			record.status.state = "running";
 			record.status.error = null;
 			this.emitWorkerChanged(record.status);
@@ -394,8 +401,7 @@ export class CarrotManager {
 		}
 
 		if (message.type !== "action") return;
-		const record = this.workers.get(id);
-		if (!record?.context) return;
+		if (!record.context) return;
 
 		const logLine = actionLogPayload(message);
 		if (logLine) {
@@ -409,9 +415,13 @@ export class CarrotManager {
 		}
 	}
 
-	private markWorkerError(id: string, error: Error): void {
+	private markWorkerError(
+		id: string,
+		handle: CarrotWorkerHandle,
+		error: Error,
+	): void {
 		const record = this.workers.get(id);
-		if (!record) return;
+		if (record?.handle !== handle) return;
 		record.status.state = "error";
 		record.status.error = error.message;
 		record.status.stoppedAt = this.now();
