@@ -117,7 +117,7 @@
     "three": "^0.184.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "8.3.1",
+    "@capacitor/cli": "8.3.4",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.0.0",
