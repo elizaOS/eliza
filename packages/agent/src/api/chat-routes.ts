@@ -181,15 +181,42 @@ function getLatestVisibleResponseMessageText(
   return "";
 }
 
-function isMobileLocalSimpleChat(
+/**
+ * Decide whether to route a chat turn around Stage-1 RESPONSE_HANDLER and
+ * straight to the simple-reply template. The bypass exists because small
+ * local models (Eliza-1 base/SFT GGUFs below ~7B) cannot reliably invoke
+ * the `HANDLE_RESPONSE` tool against the ~19 KB Stage-1 system prompt and
+ * emit raw prose that the runtime renders verbatim as the assistant
+ * reply. See elizaOS/eliza#7618.
+ *
+ * Three triggers, any of which fires the bypass:
+ *
+ * 1. `ELIZA_FORCE_DIRECT_REPLY=1` — explicit user/operator opt-in.
+ *    Highest precedence; works on every transport (CLI, mobile, web).
+ *    Useful when running a non-tool-call-capable model through any
+ *    surface and the operator just wants short direct replies.
+ *
+ * 2. `ELIZA_DEVICE_BRIDGE_ENABLED=1` + `ELIZA_LOCAL_LLAMA=1` — the mobile
+ *    /AOSP bridge route is wired against the bundled llama.cpp local
+ *    model. The aosp-local-inference plugin sets `ELIZA_LOCAL_LLAMA=1`
+ *    at boot (see agent-model.ts ENV_PROVIDER_SIGNALS). When both are
+ *    present the active TEXT model is the on-device llama.cpp and the
+ *    Stage-1 prompt is unsafe to use.
+ *
+ * 3. `ELIZA_DEVICE_BRIDGE_ENABLED=1` + client-set
+ *    `message.content.conversationMode === "simple"` — backwards
+ *    compatibility for clients that already opt in explicitly (voice
+ *    channels in useChatSend, iOS smoke test in app/main.tsx).
+ */
+export function shouldUseSimpleChatBypass(
   message: ReturnType<typeof createMessageMemory>,
 ): boolean {
+  if (process.env.ELIZA_FORCE_DIRECT_REPLY === "1") return true;
+  if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED !== "1") return false;
+  if (process.env.ELIZA_LOCAL_LLAMA === "1") return true;
   const conversationMode = (message.content as { conversationMode?: unknown })
     .conversationMode;
-  return (
-    process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1" &&
-    conversationMode === "simple"
-  );
+  return conversationMode === "simple";
 }
 
 function sanitizeMobileLocalSimpleReply(text: string): string {
@@ -1596,7 +1623,7 @@ export async function generateChatResponse(
               return;
             }
 
-            if (isMobileLocalSimpleChat(message)) {
+            if (shouldUseSimpleChatBypass(message)) {
               const simpleResult = await generateMobileLocalSimpleReply(
                 runtime,
                 message,
