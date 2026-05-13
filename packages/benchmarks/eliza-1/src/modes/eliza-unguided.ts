@@ -5,20 +5,33 @@
  * — the model free-runs and the runner parses JSON post-hoc. This is the
  * baseline we measure the guided mode against.
  */
-import { type EngineLike, resolveElizaEngine } from "../engine-resolver.ts";
+import {
+  type Eliza1TierId,
+  type EngineLike,
+  resolveElizaEngine,
+} from "../engine-resolver.ts";
 import { approxTokens } from "../metrics.ts";
 import type { ModeAdapter, ModeRequest, ModeResult } from "../types.ts";
+
+export interface ElizaUnguidedModeOptions {
+  tier?: Eliza1TierId;
+}
 
 export class ElizaUnguidedMode implements ModeAdapter {
   readonly id = "unguided" as const;
   private engine: EngineLike | null = null;
   private skipReason: string | null = null;
   private resolved = false;
+  private readonly tier: Eliza1TierId | undefined;
+
+  constructor(options: ElizaUnguidedModeOptions = {}) {
+    this.tier = options.tier;
+  }
 
   async available(): Promise<string | null> {
     if (this.resolved) return this.skipReason;
     this.resolved = true;
-    const result = await resolveElizaEngine();
+    const result = await resolveElizaEngine(this.tier);
     if (result.kind === "skip") {
       this.skipReason = result.reason;
       return this.skipReason;

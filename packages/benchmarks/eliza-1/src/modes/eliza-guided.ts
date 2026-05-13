@@ -9,7 +9,11 @@
  * When the engine isn't available the mode reports a skip reason; the runner
  * surfaces it in the report.
  */
-import { type EngineLike, resolveElizaEngine } from "../engine-resolver.ts";
+import {
+  type Eliza1TierId,
+  type EngineLike,
+  resolveElizaEngine,
+} from "../engine-resolver.ts";
 import { approxTokens } from "../metrics.ts";
 import type {
   ModeAdapter,
@@ -36,16 +40,25 @@ interface BenchSkeleton {
   spans: BenchSkeletonSpan[];
 }
 
+export interface ElizaGuidedModeOptions {
+  tier?: Eliza1TierId;
+}
+
 export class ElizaGuidedMode implements ModeAdapter {
   readonly id = "guided" as const;
   private engine: EngineLike | null = null;
   private skipReason: string | null = null;
   private resolved = false;
+  private readonly tier: Eliza1TierId | undefined;
+
+  constructor(options: ElizaGuidedModeOptions = {}) {
+    this.tier = options.tier;
+  }
 
   async available(): Promise<string | null> {
     if (this.resolved) return this.skipReason;
     this.resolved = true;
-    const result = await resolveElizaEngine();
+    const result = await resolveElizaEngine(this.tier);
     if (result.kind === "skip") {
       this.skipReason = result.reason;
       return this.skipReason;

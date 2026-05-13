@@ -105,9 +105,11 @@ export async function resolveElizaModelPath(
   if (!model) return null;
   const root = paths.elizaModelsDir();
   // The catalog `ggufFile` is relative to the model's bundle root; we look
-  // for the file under <root>/<tier>/<rel> following the convention used
-  // by the eliza-1 downloader.
+  // for the file under `<root>/<tier>.bundle/<rel>` following the convention
+  // used by the eliza-1 downloader (`bundleDirname()` appends `.bundle`).
+  // Legacy / non-bundled layouts are probed as a fallback.
   const candidates = [
+    path.join(root, `${tierId}.bundle`, model.ggufFile),
     path.join(root, tierId, model.ggufFile),
     path.join(root, model.ggufFile),
   ];
