@@ -1967,7 +1967,7 @@ const IOS_PERMISSION_KEYS = [
 export const IOS_OFFICIAL_PODS = [
   ["CapacitorApp", "@capacitor/app"],
   ["CapacitorBarcodeScanner", "@capacitor/barcode-scanner"],
-  ["CapacitorBackgroundRunner", "@capacitor-community/background-runner"],
+  ["CapacitorBackgroundRunner", "@capacitor/background-runner"],
   // Preferences is intentionally installed through CocoaPods on iOS because
   // Capacitor's generated SPM package is stripped below for this plugin.
   ["CapacitorPreferences", "@capacitor/preferences"],
