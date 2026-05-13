@@ -223,3 +223,67 @@ Then the user must still teardown the VM via nebius CLI after re-auth.
 
 I am DONE for this agent run — handing off to next H200-MONITOR or to user for nebius re-auth.
 
+
+# H200-MONITOR-4 — FINAL UPDATE 2026-05-13 05:14 UTC
+
+## Manual rsync fetch COMPLETED
+- Both checkpoints fully local at `/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/`
+- `checkpoint-500/`: 3.3 GB (model.safetensors 1.5GB + optimizer.pt 2.0GB + tokenizer/config)
+- `checkpoint-1000/`: 3.4 GB (same shape)
+- Total fetched: 7.14 GB at ~1.3 MB/s avg (1h35m wall)
+- rsync log: `/tmp/q35-0_8b-v4-manual-fetch.log` (PID 4024662 exited cleanly)
+
+## Training loss curve from trainer_state.json
+- **step 490 → 500**: train loss 8.95 → 8.82, eval_loss=1.255 (eval ran 37 min)
+- **step 990 → 1000**: train loss 7.22 → 7.06, eval_loss=1.145 (eval ran 15 min, eval cache warm)
+- LR schedule: linear warmup from 1e-5, currently 9.86e-6 at step 1000
+- grad_norm 83→100→125→144 (volatile, expected at very early epoch)
+- Conclusion: model is clearly learning, but eval_loss=1.145 at 10.4% of epoch 1 is too early for a quality `format_ok ≥ 0.70` gate clear. Loss curve trajectory looks sane and matches the 0.6b reference.
+
+## Gate eval: NOT RUN
+- The pipeline's gate eval (`run_pipeline.py --eval-mode full`) only runs AFTER training completes. We hit the driver's 6h cap mid-training. No `gate_report.json` exists.
+- Per Case 2 in the brief, this is a "partial checkpoint, no gate_report" outcome → iterate (not publish).
+
+## v5 cannot start until USER re-auths nebius
+
+### Steps for user
+1. `~/.nebius/bin/nebius iam get-access-token` (opens browser, complete federation OAuth)
+2. `~/.nebius/bin/nebius iam whoami` (verify)
+3. Teardown v4 VM:
+   ```
+   export PATH="$HOME/.nebius/bin:$PATH"
+   export NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec
+   cd /home/shaw/milady/eliza/packages/training
+   NEBIUS_VM_NAME=eliza-train-h200-0_8b-v4 bash scripts/train_nebius.sh teardown
+   ```
+
+### v5 patch required first (before relaunch)
+1. **Patch `scripts/train_nebius.sh` line 439** — raise the 6h hardcoded cap to `${ELIZA_REMOTE_RUN_TIMEOUT_H:-12}*60`. Without this, any retry will hit the same 6h wall.
+2. **Patch the EXIT trap (line 582)** — change `teardown || true` to `fetch || true; teardown || true` so a 6h-cap bail still pulls partial checkpoints back before attempting nebius teardown. Right now `set -euo pipefail` causes `fetch` to be skipped after `run_remote` returns 1.
+3. **Patch `instance_up()` in watcher scripts** — don't swallow nebius CLI failures as "no" (the v4 watcher bug). Use SSH-based liveness as primary, nebius CLI as confirmation only.
+4. Consider plumbing `MAX_STEPS` from env → `run_pipeline.py` → `train_local.py` for budget-bound runs (1500 steps in 12h target).
+
+### v5 launch (after patches + auth)
+```
+NEBIUS_VM_NAME=eliza-train-h200-0_8b-v5 \
+  ELIZA_REMOTE_RUN_TIMEOUT_H=12 \
+  bash packages/training/scripts/train_nebius.sh full \
+  --registry-key qwen3.5-0.8b \
+  --run-name eliza-1-0_8b-apollo-fullcorpus-h200-v5-$(date +%s)
+```
+Then arm a fresh watcher copied from `/tmp/nebius-finish-q35-0_8b-v4b.sh` (SSH-based liveness).
+
+## Sibling agents NOT TOUCHED
+- CUDA-FINISH-3's failed cuda-fused build (no retry from me).
+- ACTION-PERSONALITY-BENCH's local llama-server (3712834) — left running.
+
+## Files for next agent
+- `/home/shaw/milady/eliza/.swarm/STATUS.md` — this file (state of affairs)
+- `/tmp/URGENT-NEBIUS-TEARDOWN-NEEDED.md` — user-facing teardown instructions
+- `/tmp/q35-0_8b-v4-launch.log` — full v4 driver log
+- `/tmp/q35-0_8b-v4-watcher.log` — original (broken) v4 watcher log
+- `/tmp/q35-0_8b-v4b-watcher.log` — fallback watcher log
+- `/tmp/q35-0_8b-v4-manual-fetch.log` — manual rsync log
+- `/tmp/nebius-finish-q35-0_8b-v4b.sh` — SSH-based watcher template for v5
+- `packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/` — both partial checkpoints (500 + 1000) with full trainer state
+
