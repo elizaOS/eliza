@@ -169,7 +169,7 @@ jobs:
           git -C "${TARGET_DIR}" rev-parse HEAD
 
       - name: Cache omnivoice cmake build dir
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/inference/omnivoice.cpp/build
           key: omnivoice-build-${{ matrix.target }}-${{ hashFiles('packages/inference/build-omnivoice.mjs') }}
