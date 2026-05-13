@@ -511,7 +511,7 @@ jobs:
 
       - name: Setup Python
         if: ${{ env.PUBLISH_SKIPPED != '1' }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
