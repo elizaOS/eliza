@@ -51,6 +51,8 @@ export default defineConfig({
       pluginAlias("plugin-mcp"),
       pluginAlias("plugin-sql"),
       pluginAlias("plugin-streaming"),
+      pluginAlias("plugin-agent-orchestrator"),
+      pluginAlias("plugin-shell", path.join(repoRoot, "plugins/plugin-shell/index.ts")),
     ],
   },
   test: {
