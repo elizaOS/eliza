@@ -1,0 +1,39 @@
+{
+  "project_name": "Q1 Product Launch",
+  "project_id": "proj_2026q1_launch",
+  "department": "Engineering",
+  "start_date": "2026-01-15",
+  "target_launch": "2026-03-01",
+  "team": [
+    {
+      "feishu_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa04",
+      "name": "Wang Jun",
+      "role": "Project Manager"
+    },
+    {
+      "feishu_id": "ou_3b8c2d1e4f5a6b7c",
+      "name": "Zhang Wei",
+      "role": "Backend Lead"
+    },
+    {
+      "feishu_id": "ou_7c1d4e5f2a3b8c09",
+      "name": "Li Mei",
+      "role": "Mobile Designer"
+    },
+    {
+      "feishu_id": "ou_9e2f1a4b5c3d7e8f",
+      "name": "Chen Bo",
+      "role": "Data Engineer"
+    }
+  ],
+  "milestones": [
+    { "name": "API v3 complete", "date": "2026-02-14", "status": "on_track" },
+    { "name": "UI redesign complete", "date": "2026-02-20", "status": "on_track" },
+    { "name": "Analytics MVP", "date": "2026-02-25", "status": "on_track" },
+    { "name": "Internal beta", "date": "2026-02-28", "status": "pending" },
+    { "name": "Public launch", "date": "2026-03-01", "status": "pending" }
+  ],
+  "feishu_group_chat_id": "oc_d7e4f5a1b2c3d4e5",
+  "wiki_space_id": "7189432056123",
+  "doc_token": "doxcnHj1K2m3N4o5P6q7R8s9"
+}

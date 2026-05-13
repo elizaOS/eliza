@@ -1,0 +1,12 @@
+[
+  {"task_id": "TODO-501", "title": "需求优先级排序", "description": "完成Q2需求优先级文档", "status": "completed", "priority": "high", "due_date": "2026-03-22", "assignee": "王明", "tags": ["产品"]},
+  {"task_id": "TODO-502", "title": "微服务拆分评估", "description": "评估微服务拆分方案可行性", "status": "in_progress", "priority": "high", "due_date": "2026-03-25", "assignee": "李华", "tags": ["技术"]},
+  {"task_id": "TODO-503", "title": "客户反馈汇总", "description": "收集并汇总Top客户反馈", "status": "completed", "priority": "medium", "due_date": "2026-03-20", "assignee": "赵蕾", "tags": ["客户"]},
+  {"task_id": "TODO-504", "title": "API网关设计", "description": "编写API网关技术设计文档", "status": "in_progress", "priority": "high", "due_date": "2026-03-25", "assignee": "李华", "tags": ["技术"]},
+  {"task_id": "TODO-505", "title": "压力测试", "description": "执行系统压力测试并出报告", "status": "completed", "priority": "high", "due_date": "2026-03-22", "assignee": "马强", "tags": ["运维"]},
+  {"task_id": "TODO-506", "title": "前端性能优化", "description": "前端性能优化方案设计", "status": "pending", "priority": "medium", "due_date": "2026-03-24", "assignee": "周明", "tags": ["前端"]},
+  {"task_id": "TODO-507", "title": "鼎新合同方案", "description": "更新鼎新软件的合同方案", "status": "pending", "priority": "high", "due_date": "2026-03-25", "assignee": "赵蕾", "tags": ["客户"]},
+  {"task_id": "TODO-508", "title": "日常代码审查", "description": "本周PR代码审查", "status": "completed", "priority": "low", "due_date": "2026-03-22", "assignee": "李华", "tags": ["日常"]},
+  {"task_id": "TODO-509", "title": "更新Jira面板", "description": "更新项目管理面板", "status": "pending", "priority": "low", "due_date": "2026-03-26", "assignee": "王明", "tags": ["日常"]},
+  {"task_id": "TODO-510", "title": "团队周报整理", "description": "汇总团队成员周报", "status": "pending", "priority": "low", "due_date": "2026-03-26", "assignee": "王明", "tags": ["日常"]}
+]

@@ -1,0 +1,39 @@
+task_id: M024_video_factory_promo_webpage
+task_name: Video Factory Promo Webpage
+version: "1.0"
+category: video_webpage
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    老板让我给咱们工厂做个宣传页，正好看到这段拍我们生产线的视频。帮我从视频里把关键信息整理出来：生产的是什么东西？用了什么核心技术或制作工艺？这个东西有哪些优良的性能？视频里有没有出现产能数据？视频有没有字幕说明？然后做个内容详细丰富的中文宣传单页HTML，保存为 /workspace/output.html，风格要工业感但现代。整体要配色和谐、审美在线。
+  language: zh
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files:
+  - fixtures/take_recording.py
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 5 --interval 1.0 --wait-before 2"
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+  - /workspace/output.html
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch video to extract factory info, answer 5 QA questions, then create
+  an industrial-modern styled HTML promo page at /workspace/output.html.
+primary_dimensions:
+  - completion
+  - robustness

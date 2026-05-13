@@ -24,6 +24,7 @@ import { jobs } from "@/db/schemas/jobs";
 import { getElizaAgentPublicWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { assertSafeOutboundUrl } from "@/lib/security/outbound-url";
+import { apiKeysService } from "@/lib/services/api-keys";
 import {
   stripReservedElizaConfigKeys,
   withReusedElizaCharacterOwnership,
@@ -34,7 +35,10 @@ import { elizaProvisionAdvisoryLockSql } from "./eliza-provision-lock";
 import { prepareManagedElizaEnvironment } from "./managed-eliza-env";
 import { getNeonClient, NeonClientError } from "./neon-client";
 import { JOB_TYPES } from "./provisioning-job-types";
-import { createSandboxProvider, type SandboxProvider } from "./sandbox-provider";
+import {
+  createSandboxProvider,
+  type SandboxProvider,
+} from "./sandbox-provider";
 
 /** Shared Neon project used as branch parent for per-agent databases. */
 const NEON_PARENT_PROJECT_ID: string = process.env.NEON_PARENT_PROJECT_ID ?? "";
@@ -87,7 +91,9 @@ export interface SnapshotResult {
 const MAX_BACKUPS = 10;
 type LifecycleTx = Parameters<Parameters<Database["transaction"]>[0]>[0];
 
-function isDockerSandboxMetadata(value: unknown): value is DockerSandboxMetadata {
+function isDockerSandboxMetadata(
+  value: unknown,
+): value is DockerSandboxMetadata {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -158,7 +164,9 @@ export class ElizaSandboxService {
     return this._providerPromise;
   }
 
-  private getAgentApiToken(rec: Pick<AgentSandbox, "id" | "environment_vars">): string | undefined {
+  private getAgentApiToken(
+    rec: Pick<AgentSandbox, "id" | "environment_vars">,
+  ): string | undefined {
     const envVars = rec.environment_vars as Record<string, string> | null;
     const apiToken =
       envVars?.ELIZA_API_TOKEN?.trim() ||
@@ -173,8 +181,12 @@ export class ElizaSandboxService {
     return apiToken;
   }
 
-  private getAgentJsonHeaders(rec: Pick<AgentSandbox, "id" | "environment_vars">) {
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+  private getAgentJsonHeaders(
+    rec: Pick<AgentSandbox, "id" | "environment_vars">,
+  ) {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
     const apiToken = this.getAgentApiToken(rec);
     if (apiToken) {
       headers.Authorization = `Bearer ${apiToken}`;
@@ -185,9 +197,12 @@ export class ElizaSandboxService {
   }
 
   private getRuntimeAgentsFromBody(body: unknown): RuntimeAgentSummary[] {
-    const root = body && typeof body === "object" ? (body as Record<string, unknown>) : {};
+    const root =
+      body && typeof body === "object" ? (body as Record<string, unknown>) : {};
     const data =
-      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+      root.data && typeof root.data === "object"
+        ? (root.data as Record<string, unknown>)
+        : {};
     const rawAgents = Array.isArray(root.agents)
       ? root.agents
       : Array.isArray(data.agents)
@@ -209,7 +224,9 @@ export class ElizaSandboxService {
           status: typeof agent.status === "string" ? agent.status : undefined,
         };
       })
-      .filter((agent): agent is RuntimeAgentSummary => Boolean(agent?.id || agent?.name));
+      .filter((agent): agent is RuntimeAgentSummary =>
+        Boolean(agent?.id || agent?.name),
+      );
   }
 
   private isRuntimeAgentReady(agent: RuntimeAgentSummary | undefined): boolean {
@@ -218,7 +235,9 @@ export class ElizaSandboxService {
     return status === "active" || status === "running" || status === "ready";
   }
 
-  private selectRuntimeAgent(agents: RuntimeAgentSummary[]): RuntimeAgentSummary | undefined {
+  private selectRuntimeAgent(
+    agents: RuntimeAgentSummary[],
+  ): RuntimeAgentSummary | undefined {
     return agents.find((agent) => this.isRuntimeAgentReady(agent)) ?? agents[0];
   }
 
@@ -250,16 +269,26 @@ export class ElizaSandboxService {
     }
     return {
       supported: true,
-      agents: this.getRuntimeAgentsFromBody(await agentsRes.json().catch(() => ({}))),
+      agents: this.getRuntimeAgentsFromBody(
+        await agentsRes.json().catch(() => ({})),
+      ),
     };
   }
 
   private buildRuntimeBootstrapAgent(
-    rec: Pick<AgentSandbox, "id" | "agent_name" | "agent_config" | "environment_vars">,
+    rec: Pick<
+      AgentSandbox,
+      "id" | "agent_name" | "agent_config" | "environment_vars"
+    >,
   ) {
     const rawConfig =
-      rec.agent_config && typeof rec.agent_config === "object" && !Array.isArray(rec.agent_config)
-        ? ({ ...(rec.agent_config as Record<string, unknown>) } as Record<string, unknown>)
+      rec.agent_config &&
+      typeof rec.agent_config === "object" &&
+      !Array.isArray(rec.agent_config)
+        ? ({ ...(rec.agent_config as Record<string, unknown>) } as Record<
+            string,
+            unknown
+          >)
         : {};
     const rawName =
       typeof rawConfig.name === "string" && rawConfig.name.trim()
@@ -273,13 +302,19 @@ export class ElizaSandboxService {
       rawConfig.settings &&
       typeof rawConfig.settings === "object" &&
       !Array.isArray(rawConfig.settings)
-        ? ({ ...(rawConfig.settings as Record<string, unknown>) } as Record<string, unknown>)
+        ? ({ ...(rawConfig.settings as Record<string, unknown>) } as Record<
+            string,
+            unknown
+          >)
         : {};
     const rawSecrets =
       rawSettings.secrets &&
       typeof rawSettings.secrets === "object" &&
       !Array.isArray(rawSettings.secrets)
-        ? ({ ...(rawSettings.secrets as Record<string, unknown>) } as Record<string, unknown>)
+        ? ({ ...(rawSettings.secrets as Record<string, unknown>) } as Record<
+            string,
+            unknown
+          >)
         : {};
     const environmentVars =
       rec.environment_vars && typeof rec.environment_vars === "object"
@@ -287,7 +322,8 @@ export class ElizaSandboxService {
         : {};
     const secrets: Record<string, unknown> = { ...rawSecrets };
     for (const key of RUNTIME_AGENT_SECRET_KEYS) {
-      const current = typeof secrets[key] === "string" ? secrets[key].trim() : "";
+      const current =
+        typeof secrets[key] === "string" ? secrets[key].trim() : "";
       const next = environmentVars[key]?.trim();
       if (!current && next) {
         secrets[key] = next;
@@ -385,9 +421,14 @@ export class ElizaSandboxService {
       throw new Error(`Runtime agent create returned HTTP ${createRes.status}`);
     }
 
-    const body = (await createRes.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await createRes.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const data =
-      body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : {};
+      body.data && typeof body.data === "object"
+        ? (body.data as Record<string, unknown>)
+        : {};
     const runtimeAgentId = typeof data.id === "string" ? data.id : undefined;
     if (!runtimeAgentId) {
       throw new Error("Runtime agent create response was missing data.id");
@@ -422,7 +463,8 @@ export class ElizaSandboxService {
 
     const afterStart = await this.listRuntimeAgents(rec);
     const started =
-      afterStart.agents.find((agent) => agent.id === runtimeAgentId) ?? afterStart.agents[0];
+      afterStart.agents.find((agent) => agent.id === runtimeAgentId) ??
+      afterStart.agents[0];
     if (!this.isRuntimeAgentReady(started)) {
       throw new Error("Runtime agent did not become active after start");
     }
@@ -430,7 +472,11 @@ export class ElizaSandboxService {
   }
 
   private stableBridgeUuid(raw: string): string {
-    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(raw)) {
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        raw,
+      )
+    ) {
       return raw;
     }
     const hash = crypto.createHash("sha256").update(raw).digest("hex");
@@ -450,7 +496,10 @@ export class ElizaSandboxService {
     return this.stableBridgeUuid(raw);
   }
 
-  private stableBridgeChannelId(agentId: string, params: Record<string, unknown>): string {
+  private stableBridgeChannelId(
+    agentId: string,
+    params: Record<string, unknown>,
+  ): string {
     const raw =
       typeof params.roomId === "string" && params.roomId.trim()
         ? params.roomId.trim()
@@ -490,6 +539,18 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
   }
 
+  async updateAgentEnvironment(
+    agentId: string,
+    orgId: string,
+    environmentVars: Record<string, string>,
+  ): Promise<AgentSandbox | undefined> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec) return undefined;
+    return agentSandboxesRepository.update(rec.id, {
+      environment_vars: environmentVars,
+    });
+  }
+
   async getAgentForWrite(agentId: string, orgId: string) {
     return agentSandboxesRepository.findByIdAndOrgForWrite(agentId, orgId);
   }
@@ -498,14 +559,21 @@ export class ElizaSandboxService {
     return agentSandboxesRepository.listByOrganization(orgId);
   }
 
-  async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
+  async deleteAgent(
+    agentId: string,
+    orgId: string,
+  ): Promise<DeleteAgentResult> {
     return dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as const;
 
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(
+        tx,
+        agentId,
+        orgId,
+      );
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
         return {
           success: false,
@@ -536,11 +604,14 @@ export class ElizaSandboxService {
             } as const;
           }
 
-          logger.info("[agent-sandbox] Sandbox already absent during delete cleanup", {
-            sandboxId: rec.sandbox_id,
-            status: rec.status,
-            error: errorMessage,
-          });
+          logger.info(
+            "[agent-sandbox] Sandbox already absent during delete cleanup",
+            {
+              sandboxId: rec.sandbox_id,
+              status: rec.status,
+              error: errorMessage,
+            },
+          );
         }
       }
       if (rec.neon_project_id) {
@@ -567,6 +638,19 @@ export class ElizaSandboxService {
       `);
       const deletedSandbox = result.rows[0];
 
+      if (deletedSandbox) {
+        // Best-effort: revoke the per-agent API key. A failure here doesn't
+        // un-delete the sandbox; the key just lingers as inactive data.
+        try {
+          await apiKeysService.revokeForAgent(agentId);
+        } catch (err) {
+          logger.warn("[agent-sandbox] Failed to revoke per-agent API key", {
+            agentId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+
       return deletedSandbox
         ? ({ success: true, deletedSandbox } as const)
         : ({ success: false, error: "Agent not found" } as const);
@@ -577,7 +661,8 @@ export class ElizaSandboxService {
 
   async provision(agentId: string, orgId: string): Promise<ProvisionResult> {
     let rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
-    if (!rec) return { success: false, error: "Agent not found" } as ProvisionResult;
+    if (!rec)
+      return { success: false, error: "Agent not found" } as ProvisionResult;
 
     const lock = await agentSandboxesRepository.trySetProvisioning(rec.id);
     if (!lock) {
@@ -609,7 +694,10 @@ export class ElizaSandboxService {
       }
       dbUri = db.connectionUri!;
       // Neon provision updates DB but doesn't return the full record; re-fetch to avoid stale data
-      const refreshed = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+      const refreshed = await agentSandboxesRepository.findByIdAndOrg(
+        agentId,
+        orgId,
+      );
       if (refreshed) {
         rec = refreshed;
       }
@@ -649,7 +737,9 @@ export class ElizaSandboxService {
 
       try {
         // 2. Sandbox (via provider)
-        handle = await (await this.getProvider()).create({
+        handle = await (
+          await this.getProvider()
+        ).create({
           agentId: rec.id,
           agentName: rec.agent_name ?? "CloudAgent",
           organizationId: rec.organization_id,
@@ -676,7 +766,9 @@ export class ElizaSandboxService {
           throw new Error("Sandbox health check timed out");
         }
 
-        const dockerMeta = isDockerSandboxMetadata(handle.metadata) ? handle.metadata : undefined;
+        const dockerMeta = isDockerSandboxMetadata(handle.metadata)
+          ? handle.metadata
+          : undefined;
         const runtimeRec = {
           ...rec,
           sandbox_id: handle.sandboxId,
@@ -694,12 +786,18 @@ export class ElizaSandboxService {
         // 4. Restore from backup
         const backup = await agentSandboxesRepository.getLatestBackup(rec.id);
         if (backup)
-          await this.pushState(handle.bridgeUrl, backup.state_data as AgentBackupStateData, {
-            trusted: true,
-          });
+          await this.pushState(
+            handle.bridgeUrl,
+            backup.state_data as AgentBackupStateData,
+            {
+              trusted: true,
+            },
+          );
 
         // 5. Mark running + persist provider-specific metadata
-        const updateData: Parameters<typeof agentSandboxesRepository.update>[1] = {
+        const updateData: Parameters<
+          typeof agentSandboxesRepository.update
+        >[1] = {
           status: "running",
           sandbox_id: handle.sandboxId,
           bridge_url: handle.bridgeUrl,
@@ -710,14 +808,22 @@ export class ElizaSandboxService {
 
         if (dockerMeta) {
           if (dockerMeta.nodeId) updateData.node_id = dockerMeta.nodeId;
-          if (dockerMeta.containerName) updateData.container_name = dockerMeta.containerName;
-          if (dockerMeta.bridgePort) updateData.bridge_port = dockerMeta.bridgePort;
-          if (dockerMeta.webUiPort) updateData.web_ui_port = dockerMeta.webUiPort;
-          if (dockerMeta.headscaleIp) updateData.headscale_ip = dockerMeta.headscaleIp;
-          if (dockerMeta.dockerImage) updateData.docker_image = dockerMeta.dockerImage;
+          if (dockerMeta.containerName)
+            updateData.container_name = dockerMeta.containerName;
+          if (dockerMeta.bridgePort)
+            updateData.bridge_port = dockerMeta.bridgePort;
+          if (dockerMeta.webUiPort)
+            updateData.web_ui_port = dockerMeta.webUiPort;
+          if (dockerMeta.headscaleIp)
+            updateData.headscale_ip = dockerMeta.headscaleIp;
+          if (dockerMeta.dockerImage)
+            updateData.docker_image = dockerMeta.dockerImage;
         }
 
-        const updated = await agentSandboxesRepository.update(rec.id, updateData);
+        const updated = await agentSandboxesRepository.update(
+          rec.id,
+          updateData,
+        );
 
         logger.info("[agent-sandbox] Provisioned", {
           agentId: rec.id,
@@ -735,19 +841,25 @@ export class ElizaSandboxService {
         const msg = err instanceof Error ? err.message : String(err);
         lastError = msg;
 
-        logger.warn("[agent-sandbox] Post-create failure, cleaning up container", {
-          agentId: rec.id,
-          sandboxId: handle.sandboxId,
-          attempt,
-          error: msg,
-        });
-
-        await (await this.getProvider()).stop(handle.sandboxId).catch((stopErr) => {
-          logger.error("[agent-sandbox] Ghost container cleanup failed", {
+        logger.warn(
+          "[agent-sandbox] Post-create failure, cleaning up container",
+          {
+            agentId: rec.id,
             sandboxId: handle.sandboxId,
-            error: stopErr instanceof Error ? stopErr.message : String(stopErr),
+            attempt,
+            error: msg,
+          },
+        );
+
+        await (await this.getProvider())
+          .stop(handle.sandboxId)
+          .catch((stopErr) => {
+            logger.error("[agent-sandbox] Ghost container cleanup failed", {
+              sandboxId: handle.sandboxId,
+              error:
+                stopErr instanceof Error ? stopErr.message : String(stopErr),
+            });
           });
-        });
 
         // Check if it's a unique constraint error (port collision) -> retry
         const isUniqueConstraintError =
@@ -782,7 +894,14 @@ export class ElizaSandboxService {
 
   private async getSafeBridgeEndpoint(
     sandboxOrBridgeUrl:
-      | Pick<AgentSandbox, "bridge_url" | "node_id" | "bridge_port" | "headscale_ip" | "sandbox_id">
+      | Pick<
+          AgentSandbox,
+          | "bridge_url"
+          | "node_id"
+          | "bridge_port"
+          | "headscale_ip"
+          | "sandbox_id"
+        >
       | string,
     path: string,
     options?: { trusted?: boolean },
@@ -792,14 +911,22 @@ export class ElizaSandboxService {
         return new URL(path, sandboxOrBridgeUrl).toString();
       }
 
-      return (await assertSafeOutboundUrl(new URL(path, sandboxOrBridgeUrl).toString())).toString();
+      return (
+        await assertSafeOutboundUrl(
+          new URL(path, sandboxOrBridgeUrl).toString(),
+        )
+      ).toString();
     }
 
-    const dockerBridgeBaseUrl = await this.getTrustedDockerBridgeBaseUrl(sandboxOrBridgeUrl);
+    const dockerBridgeBaseUrl =
+      await this.getTrustedDockerBridgeBaseUrl(sandboxOrBridgeUrl);
     if (
       dockerBridgeBaseUrl &&
       sandboxOrBridgeUrl.bridge_url &&
-      this.matchesTrustedDockerBridge(sandboxOrBridgeUrl.bridge_url, dockerBridgeBaseUrl)
+      this.matchesTrustedDockerBridge(
+        sandboxOrBridgeUrl.bridge_url,
+        dockerBridgeBaseUrl,
+      )
     ) {
       return new URL(path, dockerBridgeBaseUrl).toString();
     }
@@ -813,7 +940,9 @@ export class ElizaSandboxService {
     }
 
     return (
-      await assertSafeOutboundUrl(new URL(path, sandboxOrBridgeUrl.bridge_url).toString())
+      await assertSafeOutboundUrl(
+        new URL(path, sandboxOrBridgeUrl.bridge_url).toString(),
+      )
     ).toString();
   }
 
@@ -886,7 +1015,8 @@ export class ElizaSandboxService {
     }
 
     const host =
-      sandbox.headscale_ip || (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
+      sandbox.headscale_ip ||
+      (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
     if (!host) {
       return null;
     }
@@ -902,7 +1032,8 @@ export class ElizaSandboxService {
     }
 
     const host =
-      sandbox.headscale_ip || (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
+      sandbox.headscale_ip ||
+      (await dockerNodesRepository.findByNodeId(sandbox.node_id))?.hostname;
     if (!host) {
       return null;
     }
@@ -927,7 +1058,10 @@ export class ElizaSandboxService {
       return false;
     }
 
-    if (candidate.protocol !== "http:" || !this.isAgentPrivateBridgeHost(candidate.hostname)) {
+    if (
+      candidate.protocol !== "http:" ||
+      !this.isAgentPrivateBridgeHost(candidate.hostname)
+    ) {
       return false;
     }
 
@@ -949,8 +1083,12 @@ export class ElizaSandboxService {
     );
   }
 
-  private isLegacyDockerSandboxId(sandboxId: string | null | undefined): boolean {
-    return typeof sandboxId === "string" && /^agent-[0-9a-f-]{36}$/i.test(sandboxId);
+  private isLegacyDockerSandboxId(
+    sandboxId: string | null | undefined,
+  ): boolean {
+    return (
+      typeof sandboxId === "string" && /^agent-[0-9a-f-]{36}$/i.test(sandboxId)
+    );
   }
 
   private isAgentPrivateBridgeHost(hostname: string): boolean {
@@ -958,7 +1096,9 @@ export class ElizaSandboxService {
       return false;
     }
 
-    const [first, second] = hostname.split(".").map((part) => Number.parseInt(part, 10));
+    const [first, second] = hostname
+      .split(".")
+      .map((part) => Number.parseInt(part, 10));
     // CGNAT (100.64.0.0/10)
     if (first === 100 && second >= 64 && second <= 127) return true;
     // RFC1918: 10.0.0.0/8
@@ -989,8 +1129,15 @@ export class ElizaSandboxService {
 
   // Bridge
 
-  async bridge(agentId: string, orgId: string, rpc: BridgeRequest): Promise<BridgeResponse> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+  async bridge(
+    agentId: string,
+    orgId: string,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec?.bridge_url) {
       logger.warn("[agent-sandbox] Bridge call to non-running sandbox", {
         agentId,
@@ -1030,7 +1177,10 @@ export class ElizaSandboxService {
     }
   }
 
-  private async bridgeStatus(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+  private async bridgeStatus(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
     const runtimeAgents = await this.listRuntimeAgents(rec);
     if (runtimeAgents.supported) {
       const agent = this.selectRuntimeAgent(runtimeAgents.agents);
@@ -1057,7 +1207,10 @@ export class ElizaSandboxService {
       return {
         jsonrpc: "2.0",
         id: rpc.id,
-        error: { code: -32000, message: `Bridge returned HTTP ${rootRes.status}` },
+        error: {
+          code: -32000,
+          message: `Bridge returned HTTP ${rootRes.status}`,
+        },
       };
     }
 
@@ -1072,9 +1225,14 @@ export class ElizaSandboxService {
     };
   }
 
-  private async bridgeMessageSend(rec: AgentSandbox, rpc: BridgeRequest): Promise<BridgeResponse> {
+  private async bridgeMessageSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+  ): Promise<BridgeResponse> {
     const params =
-      rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
+      rpc.params && typeof rpc.params === "object"
+        ? (rpc.params as Record<string, unknown>)
+        : {};
     const text = typeof params.text === "string" ? params.text : "";
     if (!text.trim()) {
       return {
@@ -1124,12 +1282,18 @@ export class ElizaSandboxService {
     return {
       jsonrpc: "2.0",
       id: rpc.id,
-      error: { code: -32000, message: "Bridge message produced an empty response" },
+      error: {
+        code: -32000,
+        message: "Bridge message produced an empty response",
+      },
     };
   }
 
   private bridgeResponseHasText(response: BridgeResponse): boolean {
-    return typeof response.result?.text === "string" && response.result.text.trim().length > 0;
+    return (
+      typeof response.result?.text === "string" &&
+      response.result.text.trim().length > 0
+    );
   }
 
   private async bridgeConversationMessageSend(
@@ -1156,13 +1320,17 @@ export class ElizaSandboxService {
       };
     }
 
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     return {
       jsonrpc: "2.0",
       id: rpc.id,
       result: {
         text: this.extractBridgeMessageText(body) ?? "",
-        agentName: typeof body.agentName === "string" ? body.agentName : undefined,
+        agentName:
+          typeof body.agentName === "string" ? body.agentName : undefined,
         conversationId,
       },
     };
@@ -1173,7 +1341,8 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     params: Record<string, unknown>,
   ): Promise<BridgeResponse> {
-    const runtimeAgent = (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
+    const runtimeAgent =
+      (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
     if (!runtimeAgent?.id) {
       return {
         jsonrpc: "2.0",
@@ -1182,7 +1351,11 @@ export class ElizaSandboxService {
       };
     }
 
-    const sessionId = await this.createBridgeMessagingSession(rec, runtimeAgent.id, params);
+    const sessionId = await this.createBridgeMessagingSession(
+      rec,
+      runtimeAgent.id,
+      params,
+    );
     const messageEndpoint = await this.getAgentApiEndpoint(
       rec,
       `/api/messaging/sessions/${encodeURIComponent(sessionId)}/messages`,
@@ -1201,8 +1374,15 @@ export class ElizaSandboxService {
       };
     }
 
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const agentText = await this.waitForBridgeSessionAgentReply(rec, sessionId, runtimeAgent.id);
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const agentText = await this.waitForBridgeSessionAgentReply(
+      rec,
+      sessionId,
+      runtimeAgent.id,
+    );
     return {
       jsonrpc: "2.0",
       id: rpc.id,
@@ -1222,7 +1402,8 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     params: Record<string, unknown>,
   ): Promise<BridgeResponse> {
-    const runtimeAgent = (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
+    const runtimeAgent =
+      (await this.ensureRuntimeAgentStarted(rec)) ?? undefined;
     if (!runtimeAgent?.id) {
       return {
         jsonrpc: "2.0",
@@ -1239,7 +1420,9 @@ export class ElizaSandboxService {
     const res = await fetch(messageEndpoint, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
-      body: JSON.stringify(this.buildBridgeCentralChannelMessageBody(params, runtimeAgent.id)),
+      body: JSON.stringify(
+        this.buildBridgeCentralChannelMessageBody(params, runtimeAgent.id),
+      ),
       signal: AbortSignal.timeout(60_000),
     });
     if (res.status === 404) {
@@ -1256,7 +1439,10 @@ export class ElizaSandboxService {
       };
     }
 
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const data = this.nestedBridgeRecord(body.data) ?? {};
     const agentText = await this.waitForBridgeCentralChannelAgentReply(
       rec,
@@ -1273,7 +1459,11 @@ export class ElizaSandboxService {
         agentName: runtimeAgent.name,
         channelId,
         messageId:
-          typeof data.id === "string" ? data.id : typeof body.id === "string" ? body.id : undefined,
+          typeof data.id === "string"
+            ? data.id
+            : typeof body.id === "string"
+              ? body.id
+              : undefined,
       },
     };
   }
@@ -1283,9 +1473,15 @@ export class ElizaSandboxService {
     rpc: BridgeRequest,
     params: Record<string, unknown>,
   ): Promise<BridgeResponse> {
-    const { body, status } = await this.requestBridgeOpenAiChatCompletion(rec, params);
+    const { body, status } = await this.requestBridgeOpenAiChatCompletion(
+      rec,
+      params,
+    );
     if (status === 404) {
-      throw new BridgeRouteUnavailableError("OpenAI chat compatibility API is unavailable", status);
+      throw new BridgeRouteUnavailableError(
+        "OpenAI chat compatibility API is unavailable",
+        status,
+      );
     }
     if (status < 200 || status >= 300) {
       return {
@@ -1293,7 +1489,9 @@ export class ElizaSandboxService {
         id: rpc.id,
         error: {
           code: -32000,
-          message: this.extractBridgeErrorMessage(body) ?? `Bridge returned HTTP ${status}`,
+          message:
+            this.extractBridgeErrorMessage(body) ??
+            `Bridge returned HTTP ${status}`,
         },
       };
     }
@@ -1313,27 +1511,39 @@ export class ElizaSandboxService {
     rec: AgentSandbox,
     params: Record<string, unknown>,
   ): Promise<{ status: number; body: Record<string, unknown> }> {
-    const endpoint = await this.getAgentApiEndpoint(rec, "/v1/chat/completions");
+    const endpoint = await this.getAgentApiEndpoint(
+      rec,
+      "/v1/chat/completions",
+    );
     const res = await fetch(endpoint, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
       body: JSON.stringify(this.buildBridgeOpenAiChatBody(params)),
       signal: AbortSignal.timeout(120_000),
     });
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     return { status: res.status, body };
   }
 
-  private buildBridgeOpenAiChatBody(params: Record<string, unknown>): Record<string, unknown> {
+  private buildBridgeOpenAiChatBody(
+    params: Record<string, unknown>,
+  ): Record<string, unknown> {
     const text = typeof params.text === "string" ? params.text : "";
     const roomId =
-      typeof params.roomId === "string" && params.roomId.trim() ? params.roomId.trim() : "default";
+      typeof params.roomId === "string" && params.roomId.trim()
+        ? params.roomId.trim()
+        : "default";
     const userId =
       typeof params.userId === "string" && params.userId.trim()
         ? params.userId.trim()
         : this.stableBridgeUserId(params);
     const source =
-      typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud";
+      typeof params.source === "string" && params.source.trim()
+        ? params.source.trim()
+        : "cloud";
 
     return {
       model: "eliza",
@@ -1348,7 +1558,9 @@ export class ElizaSandboxService {
     };
   }
 
-  private buildBridgeNoReplyFallbackText(params: Record<string, unknown>): string | null {
+  private buildBridgeNoReplyFallbackText(
+    params: Record<string, unknown>,
+  ): string | null {
     const text = typeof params.text === "string" ? params.text.trim() : "";
     if (!text) return null;
 
@@ -1367,9 +1579,13 @@ export class ElizaSandboxService {
     params: Record<string, unknown>,
   ): Promise<string> {
     const source =
-      typeof params.source === "string" && params.source.trim() ? params.source : "cloud";
+      typeof params.source === "string" && params.source.trim()
+        ? params.source
+        : "cloud";
     const roomId =
-      typeof params.roomId === "string" && params.roomId.trim() ? params.roomId : "default";
+      typeof params.roomId === "string" && params.roomId.trim()
+        ? params.roomId
+        : "default";
     const endpoint = await this.getAgentApiEndpoint(rec, "/api/conversations");
     const res = await fetch(endpoint, {
       method: "POST",
@@ -1382,7 +1598,10 @@ export class ElizaSandboxService {
     });
     if (!res.ok) {
       if (res.status === 404) {
-        throw new BridgeRouteUnavailableError("Conversation API is unavailable", res.status);
+        throw new BridgeRouteUnavailableError(
+          "Conversation API is unavailable",
+          res.status,
+        );
       }
       throw new Error(`Bridge conversation create returned HTTP ${res.status}`);
     }
@@ -1392,7 +1611,9 @@ export class ElizaSandboxService {
     };
     const conversationId = body.conversation?.id;
     if (typeof conversationId !== "string" || !conversationId.trim()) {
-      throw new Error("Bridge conversation create response was missing conversation.id");
+      throw new Error(
+        "Bridge conversation create response was missing conversation.id",
+      );
     }
     return conversationId;
   }
@@ -1402,7 +1623,10 @@ export class ElizaSandboxService {
     runtimeAgentId: string,
     params: Record<string, unknown>,
   ): Promise<string> {
-    const endpoint = await this.getAgentApiEndpoint(rec, "/api/messaging/sessions");
+    const endpoint = await this.getAgentApiEndpoint(
+      rec,
+      "/api/messaging/sessions",
+    );
     const res = await fetch(endpoint, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
@@ -1416,7 +1640,9 @@ export class ElizaSandboxService {
               : "cloud",
           roomId: typeof params.roomId === "string" ? params.roomId : undefined,
           sender:
-            params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+            params.sender &&
+            typeof params.sender === "object" &&
+            !Array.isArray(params.sender)
               ? params.sender
               : undefined,
         },
@@ -1424,13 +1650,20 @@ export class ElizaSandboxService {
       signal: AbortSignal.timeout(15_000),
     });
     if (res.status === 404) {
-      throw new BridgeRouteUnavailableError("Messaging sessions API is unavailable", res.status);
+      throw new BridgeRouteUnavailableError(
+        "Messaging sessions API is unavailable",
+        res.status,
+      );
     }
     if (!res.ok) {
       throw new Error(`Bridge session create returned HTTP ${res.status}`);
     }
-    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-    const sessionId = typeof body.sessionId === "string" ? body.sessionId : undefined;
+    const body = (await res.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const sessionId =
+      typeof body.sessionId === "string" ? body.sessionId : undefined;
     if (!sessionId) {
       throw new Error("Bridge session create response was missing sessionId");
     }
@@ -1443,16 +1676,21 @@ export class ElizaSandboxService {
     const body: Record<string, unknown> = {
       text: typeof params.text === "string" ? params.text : "",
       source:
-        typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+        typeof params.source === "string" && params.source.trim()
+          ? params.source.trim()
+          : "cloud",
       metadata: {
         ...(params.metadata &&
         typeof params.metadata === "object" &&
         !Array.isArray(params.metadata)
           ? (params.metadata as Record<string, unknown>)
           : {}),
-        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+        bridgeRoomId:
+          typeof params.roomId === "string" ? params.roomId : undefined,
         bridgeSender:
-          params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+          params.sender &&
+          typeof params.sender === "object" &&
+          !Array.isArray(params.sender)
             ? params.sender
             : undefined,
       },
@@ -1470,10 +1708,14 @@ export class ElizaSandboxService {
     return body;
   }
 
-  private buildBridgeSessionMessageBody(params: Record<string, unknown>): Record<string, unknown> {
+  private buildBridgeSessionMessageBody(
+    params: Record<string, unknown>,
+  ): Record<string, unknown> {
     return {
       content: typeof params.text === "string" ? params.text : "",
-      attachments: Array.isArray(params.attachments) ? params.attachments : undefined,
+      attachments: Array.isArray(params.attachments)
+        ? params.attachments
+        : undefined,
       metadata: {
         ...(params.metadata &&
         typeof params.metadata === "object" &&
@@ -1484,7 +1726,8 @@ export class ElizaSandboxService {
           typeof params.source === "string" && params.source.trim()
             ? params.source.trim()
             : "cloud",
-        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+        bridgeRoomId:
+          typeof params.roomId === "string" ? params.roomId : undefined,
       },
     };
   }
@@ -1494,11 +1737,15 @@ export class ElizaSandboxService {
     runtimeAgentId: string,
   ): Record<string, unknown> {
     const metadata =
-      params.metadata && typeof params.metadata === "object" && !Array.isArray(params.metadata)
+      params.metadata &&
+      typeof params.metadata === "object" &&
+      !Array.isArray(params.metadata)
         ? { ...(params.metadata as Record<string, unknown>) }
         : {};
     const sender =
-      params.sender && typeof params.sender === "object" && !Array.isArray(params.sender)
+      params.sender &&
+      typeof params.sender === "object" &&
+      !Array.isArray(params.sender)
         ? (params.sender as Record<string, unknown>)
         : {};
     const displayName =
@@ -1525,10 +1772,13 @@ export class ElizaSandboxService {
         channelType: "DM",
         targetUserId: runtimeAgentId,
         user_display_name: displayName,
-        bridgeRoomId: typeof params.roomId === "string" ? params.roomId : undefined,
+        bridgeRoomId:
+          typeof params.roomId === "string" ? params.roomId : undefined,
       },
       source_type:
-        typeof params.source === "string" && params.source.trim() ? params.source.trim() : "cloud",
+        typeof params.source === "string" && params.source.trim()
+          ? params.source.trim()
+          : "cloud",
     };
   }
 
@@ -1538,7 +1788,9 @@ export class ElizaSandboxService {
 
     const root = body as Record<string, unknown>;
     const data =
-      root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : {};
+      root.data && typeof root.data === "object"
+        ? (root.data as Record<string, unknown>)
+        : {};
     const result =
       root.result && typeof root.result === "object"
         ? (root.result as Record<string, unknown>)
@@ -1589,7 +1841,10 @@ export class ElizaSandboxService {
     );
   }
 
-  private bridgeMessageIdMatches(value: unknown, runtimeAgentId?: string): boolean {
+  private bridgeMessageIdMatches(
+    value: unknown,
+    runtimeAgentId?: string,
+  ): boolean {
     return (
       typeof runtimeAgentId === "string" &&
       runtimeAgentId.length > 0 &&
@@ -1604,19 +1859,39 @@ export class ElizaSandboxService {
       : null;
   }
 
-  private isBridgeAgentMessage(message: Record<string, unknown>, runtimeAgentId?: string): boolean {
-    if (message.isAgent === true || message.fromAgent === true || message.isBot === true) {
+  private isBridgeAgentMessage(
+    message: Record<string, unknown>,
+    runtimeAgentId?: string,
+  ): boolean {
+    if (
+      message.isAgent === true ||
+      message.fromAgent === true ||
+      message.isBot === true
+    ) {
       return true;
     }
-    if (message.isAgent === false || message.fromAgent === false || message.isBot === false) {
+    if (
+      message.isAgent === false ||
+      message.fromAgent === false ||
+      message.isBot === false
+    ) {
       return false;
     }
-    const sourceType = this.normalizeBridgeRole(message.sourceType ?? message.source_type);
+    const sourceType = this.normalizeBridgeRole(
+      message.sourceType ?? message.source_type,
+    );
     if (sourceType === "agent_response") {
       return true;
     }
 
-    for (const key of ["role", "type", "senderType", "senderRole", "authorRole", "messageType"]) {
+    for (const key of [
+      "role",
+      "type",
+      "senderType",
+      "senderRole",
+      "authorRole",
+      "messageType",
+    ]) {
       const value = message[key];
       if (this.bridgeRoleIsAgent(value)) return true;
       if (this.bridgeRoleIsUser(value)) return false;
@@ -1625,9 +1900,17 @@ export class ElizaSandboxService {
     for (const key of ["sender", "author", "from", "entity", "metadata"]) {
       const nested = this.nestedBridgeRecord(message[key]);
       if (!nested) continue;
-      if (nested.isAgent === true || nested.fromAgent === true || nested.isBot === true)
+      if (
+        nested.isAgent === true ||
+        nested.fromAgent === true ||
+        nested.isBot === true
+      )
         return true;
-      if (nested.isAgent === false || nested.fromAgent === false || nested.isBot === false) {
+      if (
+        nested.isAgent === false ||
+        nested.fromAgent === false ||
+        nested.isBot === false
+      ) {
         return false;
       }
       for (const nestedKey of ["role", "type", "senderType", "authorRole"]) {
@@ -1635,13 +1918,27 @@ export class ElizaSandboxService {
         if (this.bridgeRoleIsAgent(nestedValue)) return true;
         if (this.bridgeRoleIsUser(nestedValue)) return false;
       }
-      for (const nestedIdKey of ["id", "entityId", "agentId", "runtimeAgentId", "senderId"]) {
-        if (this.bridgeMessageIdMatches(nested[nestedIdKey], runtimeAgentId)) return true;
+      for (const nestedIdKey of [
+        "id",
+        "entityId",
+        "agentId",
+        "runtimeAgentId",
+        "senderId",
+      ]) {
+        if (this.bridgeMessageIdMatches(nested[nestedIdKey], runtimeAgentId))
+          return true;
       }
     }
 
-    for (const idKey of ["entityId", "agentId", "runtimeAgentId", "senderId", "authorId"]) {
-      if (this.bridgeMessageIdMatches(message[idKey], runtimeAgentId)) return true;
+    for (const idKey of [
+      "entityId",
+      "agentId",
+      "runtimeAgentId",
+      "senderId",
+      "authorId",
+    ]) {
+      if (this.bridgeMessageIdMatches(message[idKey], runtimeAgentId))
+        return true;
     }
 
     return false;
@@ -1685,15 +1982,27 @@ export class ElizaSandboxService {
     return null;
   }
 
-  private extractBridgeMessageText(message: Record<string, unknown>): string | null {
-    for (const key of ["text", "fullText", "content", "message", "body", "reply", "response"]) {
+  private extractBridgeMessageText(
+    message: Record<string, unknown>,
+  ): string | null {
+    for (const key of [
+      "text",
+      "fullText",
+      "content",
+      "message",
+      "body",
+      "reply",
+      "response",
+    ]) {
       const text = this.extractBridgeTextValue(message[key]);
       if (text) return text;
     }
     return null;
   }
 
-  private extractBridgeErrorMessage(body: Record<string, unknown>): string | null {
+  private extractBridgeErrorMessage(
+    body: Record<string, unknown>,
+  ): string | null {
     const error = this.nestedBridgeRecord(body.error);
     if (error) {
       const message = this.extractBridgeTextValue(error.message);
@@ -1701,10 +2010,15 @@ export class ElizaSandboxService {
       const text = this.extractBridgeTextValue(error);
       if (text) return text;
     }
-    return this.extractBridgeTextValue(body.message) ?? this.extractBridgeTextValue(body);
+    return (
+      this.extractBridgeTextValue(body.message) ??
+      this.extractBridgeTextValue(body)
+    );
   }
 
-  private extractOpenAiChatCompletionText(body: Record<string, unknown>): string | null {
+  private extractOpenAiChatCompletionText(
+    body: Record<string, unknown>,
+  ): string | null {
     const choices = Array.isArray(body.choices) ? body.choices : [];
     for (const choice of choices) {
       const choiceRecord = this.nestedBridgeRecord(choice);
@@ -1731,7 +2045,8 @@ export class ElizaSandboxService {
     );
 
     for (let attempt = 0; attempt < 24; attempt++) {
-      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+      if (attempt > 0)
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
       const res = await fetch(endpoint, {
         method: "GET",
         headers: this.getAgentJsonHeaders(rec),
@@ -1742,7 +2057,8 @@ export class ElizaSandboxService {
       const messages = this.getBridgeMessages(body);
       for (const message of messages.toReversed()) {
         const record = this.nestedBridgeRecord(message);
-        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
+        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId))
+          continue;
         const text = this.extractBridgeMessageText(record);
         if (text) return text;
       }
@@ -1762,7 +2078,8 @@ export class ElizaSandboxService {
     );
 
     for (let attempt = 0; attempt < 20; attempt++) {
-      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 2_500));
+      if (attempt > 0)
+        await new Promise((resolve) => setTimeout(resolve, 2_500));
       const res = await fetch(endpoint, {
         method: "GET",
         headers: this.getAgentJsonHeaders(rec),
@@ -1773,7 +2090,8 @@ export class ElizaSandboxService {
       const messages = this.getBridgeMessages(body);
       for (const message of messages.toReversed()) {
         const record = this.nestedBridgeRecord(message);
-        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId)) continue;
+        if (!record || !this.isBridgeAgentMessage(record, runtimeAgentId))
+          continue;
         const text = this.extractBridgeMessageText(record);
         if (text) return text;
       }
@@ -1859,15 +2177,22 @@ export class ElizaSandboxService {
     body?: string | null,
     query?: string,
   ): Promise<Response | null> {
-    if (!ElizaSandboxService.ALLOWED_WORKFLOW_PATH_PATTERNS.some((re) => re.test(workflowPath))) {
+    if (
+      !ElizaSandboxService.ALLOWED_WORKFLOW_PATH_PATTERNS.some((re) =>
+        re.test(workflowPath),
+      )
+    ) {
       logger.warn("[agent-sandbox] Rejected workflow proxy: invalid path", {
         agentId,
         workflowPath,
       });
-      return new Response(JSON.stringify({ error: "Invalid workflow endpoint" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Invalid workflow endpoint" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     let sanitizedQuery = "";
@@ -1882,13 +2207,19 @@ export class ElizaSandboxService {
       sanitizedQuery = filtered.toString();
     }
 
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec) {
-      logger.warn("[agent-sandbox] Workflow proxy: sandbox not found or not running", {
-        agentId,
-        orgId,
-        workflowPath,
-      });
+      logger.warn(
+        "[agent-sandbox] Workflow proxy: sandbox not found or not running",
+        {
+          agentId,
+          orgId,
+          workflowPath,
+        },
+      );
       return null;
     }
     if (!rec.bridge_url) {
@@ -1905,7 +2236,9 @@ export class ElizaSandboxService {
       const envVars = rec.environment_vars as Record<string, string> | null;
       const apiToken = envVars?.ELIZA_API_TOKEN;
       if (!apiToken) {
-        logger.warn("[agent-sandbox] No ELIZA_API_TOKEN for workflow proxy", { agentId });
+        logger.warn("[agent-sandbox] No ELIZA_API_TOKEN for workflow proxy", {
+          agentId,
+        });
       }
 
       const agentBaseDomain = process.env.ELIZA_CLOUD_AGENT_BASE_DOMAIN;
@@ -1959,10 +2292,13 @@ export class ElizaSandboxService {
         agentId,
         walletPath,
       });
-      return new Response(JSON.stringify({ error: "Invalid wallet endpoint" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Invalid wallet endpoint" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     // Sanitize query parameters
@@ -1978,13 +2314,19 @@ export class ElizaSandboxService {
       sanitizedQuery = filtered.toString();
     }
 
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec) {
-      logger.warn("[agent-sandbox] Wallet proxy: sandbox not found or not running", {
-        agentId,
-        orgId,
-        walletPath,
-      });
+      logger.warn(
+        "[agent-sandbox] Wallet proxy: sandbox not found or not running",
+        {
+          agentId,
+          orgId,
+          walletPath,
+        },
+      );
       return null;
     }
     if (!rec.bridge_url) {
@@ -2066,10 +2408,13 @@ export class ElizaSandboxService {
         agentId,
         schedulePath,
       });
-      return new Response(JSON.stringify({ error: "Invalid schedule endpoint" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ error: "Invalid schedule endpoint" }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     let sanitizedQuery = "";
@@ -2077,20 +2422,28 @@ export class ElizaSandboxService {
       const params = new URLSearchParams(query);
       const filtered = new URLSearchParams();
       for (const [key, value] of params) {
-        if (ElizaSandboxService.ALLOWED_LIFEOPS_SCHEDULE_QUERY_PARAMS.has(key)) {
+        if (
+          ElizaSandboxService.ALLOWED_LIFEOPS_SCHEDULE_QUERY_PARAMS.has(key)
+        ) {
           filtered.set(key, value);
         }
       }
       sanitizedQuery = filtered.toString();
     }
 
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec) {
-      logger.warn("[agent-sandbox] Schedule proxy: sandbox not found or not running", {
-        agentId,
-        orgId,
-        schedulePath,
-      });
+      logger.warn(
+        "[agent-sandbox] Schedule proxy: sandbox not found or not running",
+        {
+          agentId,
+          orgId,
+          schedulePath,
+        },
+      );
       return null;
     }
     if (!rec.bridge_url) {
@@ -2151,8 +2504,15 @@ export class ElizaSandboxService {
     }
   }
 
-  async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+  async bridgeStream(
+    agentId: string,
+    orgId: string,
+    rpc: BridgeRequest,
+  ): Promise<Response | null> {
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec?.bridge_url) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
         agentId,
@@ -2162,7 +2522,9 @@ export class ElizaSandboxService {
     }
 
     const params =
-      rpc.params && typeof rpc.params === "object" ? (rpc.params as Record<string, unknown>) : {};
+      rpc.params && typeof rpc.params === "object"
+        ? (rpc.params as Record<string, unknown>)
+        : {};
     const fallbackText = this.buildBridgeNoReplyFallbackText(params);
 
     try {
@@ -2179,35 +2541,50 @@ export class ElizaSandboxService {
       });
       if (res.ok) return res;
       if (res.status !== 404) {
-        logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
-          agentId,
-          status: res.status,
-        });
+        logger.warn(
+          "[agent-sandbox] Bridge stream conversation request failed",
+          {
+            agentId,
+            status: res.status,
+          },
+        );
       }
     } catch (error) {
       if (!(error instanceof BridgeRouteUnavailableError)) {
-        logger.warn("[agent-sandbox] Bridge stream conversation request failed", {
-          agentId,
-          method: rpc.method,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.warn(
+          "[agent-sandbox] Bridge stream conversation request failed",
+          {
+            agentId,
+            method: rpc.method,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
 
     try {
       return await this.bridgeOpenAiChatCompletionSse(rec, params);
     } catch (error) {
-      logger.warn("[agent-sandbox] Bridge stream compatibility request failed", {
-        agentId,
-        method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[agent-sandbox] Bridge stream compatibility request failed",
+        {
+          agentId,
+          method: rpc.method,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
 
     try {
-      const centralResponse = await this.bridgeCentralChannelMessageSend(rec, rpc, params);
+      const centralResponse = await this.bridgeCentralChannelMessageSend(
+        rec,
+        rpc,
+        params,
+      );
       if (this.bridgeResponseHasText(centralResponse)) {
-        return this.createBridgeSseTextResponse(centralResponse.result!.text as string);
+        return this.createBridgeSseTextResponse(
+          centralResponse.result!.text as string,
+        );
       }
       if (centralResponse.error) {
         return this.createBridgeSseErrorResponse(centralResponse.error.message);
@@ -2216,11 +2593,14 @@ export class ElizaSandboxService {
         return this.createBridgeSseTextResponse(fallbackText);
       }
     } catch (error) {
-      logger.warn("[agent-sandbox] Bridge stream central-channel request failed", {
-        agentId,
-        method: rpc.method,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[agent-sandbox] Bridge stream central-channel request failed",
+        {
+          agentId,
+          method: rpc.method,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
 
     if (fallbackText) {
@@ -2234,11 +2614,15 @@ export class ElizaSandboxService {
     rec: AgentSandbox,
     params: Record<string, unknown>,
   ): Promise<Response | null> {
-    const { body, status } = await this.requestBridgeOpenAiChatCompletion(rec, params);
+    const { body, status } = await this.requestBridgeOpenAiChatCompletion(
+      rec,
+      params,
+    );
     if (status === 404) return null;
     if (status < 200 || status >= 300) {
       return this.createBridgeSseErrorResponse(
-        this.extractBridgeErrorMessage(body) ?? `Bridge returned HTTP ${status}`,
+        this.extractBridgeErrorMessage(body) ??
+          `Bridge returned HTTP ${status}`,
       );
     }
 
@@ -2263,13 +2647,16 @@ export class ElizaSandboxService {
   }
 
   private createBridgeSseErrorResponse(message: string): Response {
-    return new Response(`event: error\ndata: ${JSON.stringify({ message })}\n\n`, {
-      status: 200,
-      headers: {
-        "Content-Type": "text/event-stream; charset=utf-8",
-        "Cache-Control": "no-cache, no-transform",
+    return new Response(
+      `event: error\ndata: ${JSON.stringify({ message })}\n\n`,
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+        },
       },
-    });
+    );
   }
 
   // Snapshots
@@ -2279,8 +2666,12 @@ export class ElizaSandboxService {
     orgId: string,
     type: AgentBackupSnapshotType = "manual",
   ): Promise<SnapshotResult> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
-    if (!rec?.bridge_url) return { success: false, error: "Sandbox is not running" };
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
+    if (!rec?.bridge_url)
+      return { success: false, error: "Sandbox is not running" };
 
     const { stateData, sizeBytes } = await this.fetchSnapshotState(rec);
 
@@ -2303,7 +2694,11 @@ export class ElizaSandboxService {
     return { success: true, backup };
   }
 
-  async restore(agentId: string, orgId: string, backupId?: string): Promise<SnapshotResult> {
+  async restore(
+    agentId: string,
+    orgId: string,
+    backupId?: string,
+  ): Promise<SnapshotResult> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     if (!rec) return { success: false, error: "Agent not found" };
 
@@ -2318,7 +2713,9 @@ export class ElizaSandboxService {
     }
 
     if (rec.status !== "running" && backupId) {
-      const latestBackup = await agentSandboxesRepository.getLatestBackup(rec.id);
+      const latestBackup = await agentSandboxesRepository.getLatestBackup(
+        rec.id,
+      );
       if (!latestBackup || backup.id !== latestBackup.id) {
         return {
           success: false,
@@ -2333,10 +2730,15 @@ export class ElizaSandboxService {
     }
 
     const prov = await this.provision(agentId, orgId);
-    return prov.success ? { success: true, backup } : { success: false, error: prov.error };
+    return prov.success
+      ? { success: true, backup }
+      : { success: false, error: prov.error };
   }
 
-  async listBackups(agentId: string, orgId: string): Promise<AgentSandboxBackup[]> {
+  async listBackups(
+    agentId: string,
+    orgId: string,
+  ): Promise<AgentSandboxBackup[]> {
     const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
     return rec ? agentSandboxesRepository.listBackups(rec.id) : [];
   }
@@ -2344,7 +2746,10 @@ export class ElizaSandboxService {
   // Heartbeat
 
   async heartbeat(agentId: string, orgId: string): Promise<boolean> {
-    const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
+    const rec = await agentSandboxesRepository.findRunningSandbox(
+      agentId,
+      orgId,
+    );
     if (!rec?.bridge_url) return false;
 
     const res = await (async () => {
@@ -2381,7 +2786,10 @@ export class ElizaSandboxService {
 
   // Shutdown
 
-  async shutdown(agentId: string, orgId: string): Promise<{ success: boolean; error?: string }> {
+  async shutdown(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; error?: string }> {
     let snapshotAgentId: string | null = null;
     let preShutdownSnapshot: {
       stateData: AgentBackupStateData;
@@ -2391,13 +2799,15 @@ export class ElizaSandboxService {
 
     const snapshotSource = await this.getAgentForWrite(agentId, orgId);
     if (snapshotSource?.status === "running" && snapshotSource.bridge_url) {
-      preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource).catch((error) => {
-        logger.warn("[agent-sandbox] Pre-shutdown backup fetch failed", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        return null;
-      });
+      preShutdownSnapshot = await this.fetchSnapshotState(snapshotSource).catch(
+        (error) => {
+          logger.warn("[agent-sandbox] Pre-shutdown backup fetch failed", {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return null;
+        },
+      );
     }
 
     const result = await dbWrite.transaction(async (tx) => {
@@ -2406,7 +2816,11 @@ export class ElizaSandboxService {
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
       if (!rec) return { success: false, error: "Agent not found" } as const;
 
-      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(
+        tx,
+        agentId,
+        orgId,
+      );
       if (rec.status === "provisioning" || hasActiveProvisionJob) {
         return {
           success: false,
@@ -2455,12 +2869,14 @@ export class ElizaSandboxService {
     });
 
     if (result.success && snapshotAgentId) {
-      await agentSandboxesRepository.pruneBackups(snapshotAgentId, MAX_BACKUPS).catch((error) => {
-        logger.warn("[agent-sandbox] Backup pruning failed after shutdown", {
-          agentId,
-          error: error instanceof Error ? error.message : String(error),
+      await agentSandboxesRepository
+        .pruneBackups(snapshotAgentId, MAX_BACKUPS)
+        .catch((error) => {
+          logger.warn("[agent-sandbox] Backup pruning failed after shutdown", {
+            agentId,
+            error: error instanceof Error ? error.message : String(error),
+          });
         });
-      });
       logger.info("[agent-sandbox] Shutdown complete", { agentId });
     }
 
@@ -2469,7 +2885,11 @@ export class ElizaSandboxService {
 
   // Private helpers
 
-  private async lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void> {
+  private async lockLifecycle(
+    tx: LifecycleTx,
+    agentId: string,
+    orgId: string,
+  ): Promise<void> {
     await tx.execute(elizaProvisionAdvisoryLockSql(orgId, agentId));
   }
 
@@ -2527,7 +2947,10 @@ export class ElizaSandboxService {
       throw new Error("Sandbox is not running");
     }
 
-    const snapshotEndpoint = await this.getAgentApiEndpoint(rec, "/api/snapshot");
+    const snapshotEndpoint = await this.getAgentApiEndpoint(
+      rec,
+      "/api/snapshot",
+    );
     const res = await fetch(snapshotEndpoint, {
       method: "POST",
       headers: this.getAgentJsonHeaders(rec),
@@ -2617,7 +3040,10 @@ export class ElizaSandboxService {
     return { success: true, connectionUri: sharedDbUrl };
   }
 
-  private async cleanupNeon(projectId: string | null | undefined, branchId?: string | null) {
+  private async cleanupNeon(
+    projectId: string | null | undefined,
+    branchId?: string | null,
+  ) {
     // In shared-DB mode no per-agent Neon project exists; nothing to clean up.
     if (!projectId) return;
 
@@ -2632,10 +3058,13 @@ export class ElizaSandboxService {
       }
     } catch (error) {
       if (error instanceof NeonClientError && error.statusCode === 404) {
-        logger.info("[agent-sandbox] Neon resource already absent during cleanup", {
-          projectId,
-          branchId,
-        });
+        logger.info(
+          "[agent-sandbox] Neon resource already absent during cleanup",
+          {
+            projectId,
+            branchId,
+          },
+        );
         return;
       }
       throw error;
@@ -2673,7 +3102,11 @@ export class ElizaSandboxService {
   ) {
     const restoreEndpoint =
       typeof sandboxOrBridgeUrl === "string"
-        ? await this.getSafeBridgeEndpoint(sandboxOrBridgeUrl, "/api/restore", options)
+        ? await this.getSafeBridgeEndpoint(
+            sandboxOrBridgeUrl,
+            "/api/restore",
+            options,
+          )
         : await this.getAgentApiEndpoint(sandboxOrBridgeUrl, "/api/restore");
     const res = await fetch(restoreEndpoint, {
       method: "POST",
@@ -2686,7 +3119,9 @@ export class ElizaSandboxService {
     });
     if (!res.ok) {
       const text = await res.text().catch(() => "");
-      throw new Error(`State restore failed: HTTP ${res.status} ${text.slice(0, 200)}`);
+      throw new Error(
+        `State restore failed: HTTP ${res.status} ${text.slice(0, 200)}`,
+      );
     }
   }
 }

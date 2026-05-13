@@ -40,7 +40,7 @@
     }
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts",
+    "build": "tsup --config tsup.config.ts && tsc --declaration --emitDeclarationOnly --noEmit false --outDir dist --rootDir src",
     "check": "tsc --noEmit",
     "test": "vitest run --config ./vitest.config.ts",
     "test:watch": "vitest --config ./vitest.config.ts",

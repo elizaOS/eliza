@@ -1,7 +1,3 @@
-// @ts-nocheck — pending migration: @huggingface/transformers 3->4
-// (PreTrainedModel/Florence2 interface changes), @elizaos/core logger
-// signature drift (structured-context overload removed), and
-// GenerateTextParams.{modelType,runtime} field removal. Tracked separately.
 import fs, { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -48,7 +44,7 @@ export class VisionManager {
     this.modelsDir = path.join(path.dirname(cacheDir), "models", "vision");
     this.cacheDir = cacheDir;
     this.ensureModelsDirExists();
-    this.downloadManager = DownloadManager.getInstance(this.cacheDir, this.modelsDir);
+    DownloadManager.getInstance(this.cacheDir, this.modelsDir);
     this.platformConfig = this.getPlatformConfig();
     logger.debug("VisionManager initialized");
   }
@@ -226,22 +222,28 @@ export class VisionManager {
         })) as Florence2Processor;
         logger.success("Vision processor loaded successfully");
       } catch (error) {
-        logger.error("Failed to load vision processor:", {
-          error: error instanceof Error ? error.message : String(error),
-          stack: error instanceof Error ? error.stack : undefined,
-          modelId: modelSpec.modelId,
-        });
+        logger.error(
+          {
+            error: error instanceof Error ? error.message : String(error),
+            stack: error instanceof Error ? error.stack : undefined,
+            modelId: modelSpec.modelId,
+          },
+          "Failed to load vision processor:"
+        );
         throw error;
       }
 
       this.initialized = true;
       logger.success("Vision model initialization complete");
     } catch (error) {
-      logger.error("Vision model initialization failed:", {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        modelsDir: this.modelsDir,
-      });
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          modelsDir: this.modelsDir,
+        },
+        "Vision model initialization failed:"
+      );
       throw error;
     }
   }
@@ -266,19 +268,25 @@ export class VisionManager {
       const buffer = Buffer.from(await response.arrayBuffer());
       const mimeType = response.headers.get("content-type") || "image/jpeg";
 
-      logger.info("Image fetched successfully:", {
-        mimeType,
-        bufferSize: buffer.length,
-        status: response.status,
-      });
+      logger.info(
+        {
+          mimeType,
+          bufferSize: buffer.length,
+          status: response.status,
+        },
+        "Image fetched successfully:"
+      );
 
       return { buffer, mimeType };
     } catch (error) {
-      logger.error("Failed to fetch image:", {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        url,
-      });
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          url,
+        },
+        "Failed to fetch image:"
+      );
       throw error;
     }
   }
@@ -300,7 +308,10 @@ export class VisionManager {
       const { buffer, mimeType } = await this.fetchImage(imageUrl);
 
       logger.info("Creating image blob...");
-      const blob = new Blob([buffer], { type: mimeType });
+      const imageArrayBuffer = new ArrayBuffer(buffer.byteLength);
+      const imageBytes = new Uint8Array(imageArrayBuffer);
+      imageBytes.set(buffer);
+      const blob = new Blob([imageBytes], { type: mimeType });
       logger.info("Converting blob to RawImage...");
       const image = await RawImage.fromBlob(blob as globalThis.Blob);
 
@@ -336,22 +347,28 @@ export class VisionManager {
         description: detailedCaption,
       };
 
-      logger.success("Image processing complete:", {
-        titleLength: response.title.length,
-        descriptionLength: response.description.length,
-      });
+      logger.success(
+        {
+          titleLength: response.title.length,
+          descriptionLength: response.description.length,
+        },
+        "Image processing complete:"
+      );
 
       return response;
     } catch (error) {
-      logger.error("Image processing failed:", {
-        error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined,
-        imageUrl,
-        modelInitialized: this.initialized,
-        hasModel: !!this.model,
-        hasProcessor: !!this.processor,
-        hasTokenizer: !!this.tokenizer,
-      });
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          stack: error instanceof Error ? error.stack : undefined,
+          imageUrl,
+          modelInitialized: this.initialized,
+          hasModel: !!this.model,
+          hasProcessor: !!this.processor,
+          hasTokenizer: !!this.tokenizer,
+        },
+        "Image processing failed:"
+      );
       throw error;
     }
   }

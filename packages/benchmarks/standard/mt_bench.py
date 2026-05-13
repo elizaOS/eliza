@@ -87,16 +87,27 @@ SMOKE_QUESTIONS: tuple[dict[str, object], ...] = (
 JUDGE_SYSTEM_PROMPT = (
     "You are a careful, impartial judge. Rate the assistant's response to the "
     "user question on a scale of 1 (worst) to 10 (best). Consider helpfulness, "
-    "relevance, accuracy, depth, and creativity. After explaining briefly, "
-    "output the final rating on its own line in the exact form: "
-    '"Rating: [[<integer>]]" — e.g. "Rating: [[7]]".'
+    "relevance, accuracy, depth, and creativity. Your first line must be the "
+    'final rating in the exact form: "Rating: [[<integer>]]" - e.g. '
+    '"Rating: [[7]]". After that, add at most two brief explanatory sentences.'
 )
 
-_RATING_RE = re.compile(r"\bRating:\s*\[\[(\d{1,2})\]\]")
+_RATING_PATTERNS = (
+    re.compile(r"\bRating:\s*\[\[(\d{1,2})\]\]", re.IGNORECASE),
+    re.compile(
+        r"\b(?:final\s+rating|rating|score)\s*[:=]\s*"
+        r"(?:\[\[|\[)?\s*(\d{1,2})(?:\s*/\s*10)?\s*(?:\]\]|\])?",
+        re.IGNORECASE,
+    ),
+)
 
 
 def _extract_rating(text: str) -> float | None:
-    match = _RATING_RE.search(text or "")
+    match = None
+    for pattern in _RATING_PATTERNS:
+        match = pattern.search(text or "")
+        if match:
+            break
     if not match:
         return None
     try:
@@ -112,7 +123,17 @@ def _build_judge_prompt(question: str, answer: str, turn: int) -> str:
     return (
         f"[Question (turn {turn})]\n{question}\n\n"
         f"[Assistant Response]\n{answer}\n\n"
-        f'Provide the rating as "Rating: [[N]]" where N is an integer 1-10.'
+        f'First line only: "Rating: [[N]]" where N is an integer 1-10. '
+        f"Then optionally explain briefly."
+    )
+
+
+def _build_strict_judge_prompt(question: str, answer: str, turn: int) -> str:
+    return (
+        f"Rate this turn from 1 to 10 and return only the rating line.\n\n"
+        f"[Question (turn {turn})]\n{question}\n\n"
+        f"[Assistant Response]\n{answer}\n\n"
+        f'Output exactly: "Rating: [[N]]"'
     )
 
 
@@ -320,7 +341,26 @@ class MTBenchRunner:
         except Exception as exc:  # noqa: BLE001
             log.warning("judge failed (turn %d): %s", turn, exc)
             return None
-        return _extract_rating(judgement.text)
+        rating = _extract_rating(judgement.text)
+        if rating is not None:
+            return rating
+
+        retry_msgs = [
+            ChatMessage(
+                role="system",
+                content='Return only one line in the exact form "Rating: [[N]]".',
+            ),
+            ChatMessage(
+                role="user",
+                content=_build_strict_judge_prompt(question, answer, turn=turn),
+            ),
+        ]
+        try:
+            retry = self._judge.generate(retry_msgs, cfg)
+        except Exception as exc:  # noqa: BLE001
+            log.warning("judge retry failed (turn %d): %s", turn, exc)
+            return None
+        return _extract_rating(retry.text)
 
 
 class _MTBenchFactory(RunnerFactory):

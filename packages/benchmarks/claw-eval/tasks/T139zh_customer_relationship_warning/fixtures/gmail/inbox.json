@@ -1,0 +1,41 @@
+[
+  {
+    "message_id": "msg_901",
+    "from": "wangtong_liuwei@wantong.com",
+    "to": "me@company.com",
+    "subject": "关于续约条款的咨询",
+    "date": "2026-03-20T09:00:00Z",
+    "body": "您好，我们的合同快到期了，想提前了解一下续约的条款和价格。我们对目前的服务比较满意，但希望能在价格上有些优惠。请尽快安排时间沟通。——刘卫，万通物流",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_902",
+    "from": "dingxin_lina@dingxin.com",
+    "to": "me@company.com",
+    "subject": "服务升级意向",
+    "date": "2026-02-10T09:00:00Z",
+    "body": "你好，我们一直在使用贵公司的产品，想了解一下是否有更高级的服务方案。我们的业务规模在扩大，现有方案可能不够用了。——李娜，鼎新软件",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_903",
+    "from": "admin@company.com",
+    "to": "all@company.com",
+    "subject": "清明节放假通知",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "全体同事：清明节放假安排为4月4日-4月6日，共3天。请提前安排好工作。——行政部",
+    "labels": [
+      "inbox",
+      "通知"
+    ],
+    "is_read": true
+  }
+]

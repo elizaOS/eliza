@@ -1,0 +1,47 @@
+[
+  {
+    "article_id": "KB-601",
+    "title": "API Error Code Troubleshooting Guide",
+    "category": "Technical Documentation",
+    "tags": ["API", "error", "500", "troubleshooting"],
+    "content": "## API Error Troubleshooting Guide\n\n### 500 Internal Server Error\n1. Check server-side logs (/var/log/app/error.log)\n2. Verify database connection pool status\n3. Check dependent service health\n4. If intermittent, may be connection pool exhaustion or memory leak\n\n### Troubleshooting Steps\n- Use curl to directly call the endpoint to confirm the issue\n- Check Nginx access log for upstream response times\n- Review JVM heap memory usage\n\n### Common Solutions\n- Increase connection pool max_connections\n- Restart application service to release connections\n- Add request rate limiting for protection",
+    "last_updated": "2026-03-15",
+    "views": 1523
+  },
+  {
+    "article_id": "KB-602",
+    "title": "Data Export Operations Manual",
+    "category": "User Guide",
+    "tags": ["export", "data", "bulk", "operations"],
+    "content": "## Data Export Guide\n\n### Method 1: Admin Panel Export\n- Suitable for up to 100,000 records\n- Set time range and click export\n- If timeout occurs, narrow the time range\n\n### Method 2: API Bulk Export\n- POST /api/v2/export/async\n- Supports 1,000,000+ records\n- Download link sent via email after generation\n\n### Method 3: Contact Technical Support\n- For more than 3,000,000 records, contact technical support\n- Offline data package delivery can be arranged",
+    "last_updated": "2026-02-20",
+    "views": 876
+  },
+  {
+    "article_id": "KB-603",
+    "title": "System Performance Optimization Tips",
+    "category": "Technical Documentation",
+    "tags": ["performance", "optimization", "loading", "cache"],
+    "content": "## System Performance Optimization\n\n### Frontend Performance\n- Enable CDN for static resource acceleration\n- Enable Gzip compression\n- Use lazy loading to reduce initial page load time\n\n### Backend Performance\n- Add indexes to database queries\n- Use Redis to cache hot data\n- Use gRPC for inter-service communication\n\n### Note: This article was last updated in June 2025; some information may be outdated",
+    "last_updated": "2025-06-01",
+    "views": 2100
+  },
+  {
+    "article_id": "KB-604",
+    "title": "Permission Management Best Practices",
+    "category": "User Guide",
+    "tags": ["permissions", "roles", "management", "RBAC"],
+    "content": "## Permission Management Guide\n\n### Role Permission Configuration\n1. Modify role permissions in Admin Panel -> Role Management\n2. Users must re-login after changes for them to take effect\n3. Some permissions are cached; wait up to 15 minutes\n\n### Common Issues\n- Permissions not taking effect: Ask user to sign out and re-login\n- Permission conflicts: Check if user belongs to multiple role groups\n- Special permissions: Some sensitive permissions require admin approval before taking effect\n\n### Important Notes\n- When modifying permissions in bulk, test in staging environment first\n- Avoid directly modifying super admin permissions",
+    "last_updated": "2026-03-01",
+    "views": 1350
+  },
+  {
+    "article_id": "KB-605",
+    "title": "New Employee Onboarding Guide",
+    "category": "Process Standards",
+    "tags": ["onboarding", "new employee", "process"],
+    "content": "## New Employee Onboarding Process\n\n1. Collect office equipment\n2. Set up corporate email and OA account\n3. Complete security training\n4. Join department group chats\n\n### IT Related\n- For VPN configuration, contact IT operations\n- For code repository access, request from tech team lead",
+    "last_updated": "2026-01-10",
+    "views": 3200
+  }
+]

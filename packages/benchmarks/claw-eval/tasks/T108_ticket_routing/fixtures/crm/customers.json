@@ -1,0 +1,54 @@
+[
+  {
+    "customer_id": "CUS-501",
+    "name": "Dingxin Software",
+    "contact_person": "Manager Zhou",
+    "email": "zhoujl@dingxin-soft.com",
+    "phone": "13900501001",
+    "industry": "Software",
+    "tier": "vip",
+    "annual_revenue": 5200000,
+    "last_contact_date": "2026-03-20",
+    "status": "active",
+    "notes": "Three-year strategic contract, extremely high SLA requirements, requires 4-hour response"
+  },
+  {
+    "customer_id": "CUS-502",
+    "name": "Hanhai E-commerce",
+    "contact_person": "Director Lin",
+    "email": "lin@hanhai-ec.com",
+    "phone": "13900501002",
+    "industry": "E-commerce",
+    "tier": "standard",
+    "annual_revenue": 800000,
+    "last_contact_date": "2026-03-15",
+    "status": "active",
+    "notes": "Annual renewal imminent (expires April), recent decline in usage frequency"
+  },
+  {
+    "customer_id": "CUS-503",
+    "name": "Public institution user",
+    "contact_person": "Teacher Zhang",
+    "email": "zhang@edu-gov.cn",
+    "phone": "13900501003",
+    "industry": "Education",
+    "tier": "standard",
+    "annual_revenue": 200000,
+    "last_contact_date": "2026-02-28",
+    "status": "active",
+    "notes": "Government procurement customer, simple issues but requires patient communication"
+  },
+  {
+    "customer_id": "CUS-504",
+    "name": "Wantong Logistics",
+    "contact_person": "Director Zhao",
+    "email": "zhao@wantong-logistics.com",
+    "phone": "13900501004",
+    "industry": "Logistics",
+    "tier": "vip",
+    "annual_revenue": 3800000,
+    "last_contact_date": "2026-03-22",
+    "status": "active",
+    "notes": "Top logistics industry customer, extremely high system stability requirements"
+  }
+]

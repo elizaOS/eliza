@@ -1,0 +1,173 @@
+task_id: C30zh_data_troubleshooting
+task_name: 数据排查
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: Jira里灰度发布的时间戳和埋点数据对不上，Kibana日志里也看到几条时间戳异常的记录，这种情况一般排查思路是什么？有没有可能是Jira的webhook回调延迟导致的，还是说更可能是埋点SDK的问题？
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算、数据分析和时间线推演。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息（如埋点SDK已知问题、Jira webhook机制等）。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一家中型 B2B SaaS 公司的高级产品经理，同时作为产品线负责人管理一个六人的产品团队。你本科读的是软件工程，毕业后做了两年半的 Java 后端开发，后来发现自己在业务理解和全局推动上比纯写代码更有优势，于是转型做了产品经理，至今已有六年产品经验。你的日常围绕产品路线图规划、需求评审与优先级排序、Sprint 计划与迭代节奏把控、跨部门资源协调（研发、设计、市场、客户成功、销售）以及团队成员的成长管理展开。你用
+    Scrum 跑迭代，对交付时间节点和需求质量有极高的标准，团队成员都清楚在你面前不能用"差不多""大概"这种含糊的词。
+
+
+    你刚结束一场拖了将近两个小时的季度 OKR 复盘会。这个季度有两个关键 KR 未达标，你在会上直接指出了核心卡点——产品需求从定义到研发交付的流转环节信息丢失严重，跨部门协作效率远低于预期。会后你有些疲惫，但内心更强烈的是一股"问题既然定位清楚了，就得马上推方案"的紧迫感，顺带还有点对会上某些同事含糊其辞的不满。你之前在一个技术管理播客里听人提过 AI 对话工具可以辅助做结构化分析和流程梳理，正好看到同事群里有人在聊
+    OpenClaw，趁着这股劲儿自己也打开来试试，想看看它到底能不能帮上忙。
+
+
+    你日常高频使用 Jira 管理需求池和迭代看板，用 Confluence 写 PRD 和技术方案文档，在飞书上做日常沟通、会议纪要和项目周报。你会自己写 SQL 跑用户行为数据和核心业务指标，偶尔登录 Kibana 查看线上报错日志协助定位问题，也看得懂 GitLab 上的 MR 差异和提交记录。你对甘特图、燃尽图、用户故事地图、RICE 优先级模型这些产品管理工具驾轻就熟，在 OKR 拆解和
+    SOP 设计上有一套成熟的实操方法论。你对基础的预算管理和人员考核也有实操经验，碰到合规和法务问题知道该找谁对齐。最近你在持续关注 AI 在产品管理中的应用场景。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本情况时提供）：
+
+    - 时间戳偏差量级：差了将近两周，不是秒级延迟
+
+    - 对齐方式：SQL跑出的功能模块使用率数据与Jira灰度发布时间线手动对比，发现数据量明显偏少
+
+    - 灰度发布的功能：一个新的数据看板模块，面向企业客户的管理后台
+
+
+    第二批信息（助手追问技术细节或你觉得合适时提供）：
+
+    - SQL查询条件：WHERE条件用的是 server_time >= ''2024-05-01'' AND server_time < ''2024-06-01''，跑出来的数据量明显少了两周左右
+
+    - 灰度是分批放量的：4月18日第一批5%用户，4月28日第二批30%，5月8日全量100%
+
+    - 数据库里时间字段有两个：client_time（客户端上报时间）和 server_time（服务端入库时间），SQL用的是 server_time
+
+    - Jira上灰度发布的时间线记录的是北京时间（UTC+8）
+
+
+    第三批信息（助手深入追问时提供）：
+
+    - Kibana日志里看到有少量事件的 client_time 是4月下旬，但 server_time 落在5月初，好像有几天的入库延迟
+
+    - 你不太确定第一批5%灰度用的埋点SDK版本和后面两批是不是一样的，"好像研发说第一批上线后改过一版SDK，但我没确认具体改了什么"
+
+    - 数据库的 server_time 字段存的是 UTC 时间，但你写SQL的时候没有做时区转换，直接用北京时间的日期去筛选的
+
+    - 你在Kibana里还看到第一批灰度期间有几条 event_type 为 null 的异常记录，不知道跟这个问题有没有关系
+
+
+    ## 信息矛盾（你不知道这些矛盾的存在，只是如实描述看到的现象）
+
+    - 你说"差了两周"，但实际原因是灰度4月18日就开始了而SQL只查5月的数据——缺失的恰好是4月18日到4月30日这段数据（约12-13天）
+
+    - 你提到Kibana有"时间戳异常"的记录，但这些记录的异常（client_time在4月、server_time在5月）其实是正常的入库延迟现象，并非真正的异常——只是因为你SQL只看5月才觉得"对不上"
+
+    - 你说数据库存UTC但写SQL用北京时间——这会导致额外8小时的偏差，但跟两周的差距比起来是次要问题，不过是一个好的助手应该发现的隐患
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出分析和建议。用户可能会追问或修改需求，请耐心回应。
+
+    这是一道数据排查诊断题，关键是帮用户定位根因，而非泛泛地列出所有可能性。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中的意图理解、工具使用质量
+- name: numerical_quality
+  weight: 0.25
+  check:
+    type: llm_judge
+    description: 时间线推算与数据一致性分析的准确性
+- name: content_quality
+  weight: 0.4
+  check:
+    type: llm_judge
+    description: 最终回答的完整性、领域知识和根因定位准确度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在数据排查多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：对话过程中的意图理解与工具使用\n  - 数值分析(25%)：时间线推算与数据一致性校验\n  - 内容质量(40%)：根因定位准确度、领域知识和行动方案"
+reference_solution: '1. 询问关键信息：时间戳偏差的量级、SQL查询的WHERE时间范围、埋点与Jira时间线的对齐方式、灰度分批情况
+
+  2. 核心诊断：两周级偏差排除webhook延迟和SDK时钟漂移；根因是SQL只查5月数据但灰度4月18日已开始，缺失4月18-30日约12天数据
+
+  3. 次要问题：数据库存UTC但SQL用北京时间未做时区转换（额外8小时偏差）；第一批灰度SDK版本可能不同导致少量异常记录
+
+  4. Kibana异常记录实为正常入库延迟，client_time在4月但server_time落入5月属正常现象
+
+  5. 验证步骤：扩展SQL时间范围到4月中旬重跑、按天聚合对比灰度批次时间线、检查client_time vs server_time字段差异、确认SDK版本一致性'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

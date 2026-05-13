@@ -1,0 +1,22 @@
+{"type": "session_start", "session_id": "discord_6537760", "model": "gpt-4o-2025-01-10", "created_at": "2026-03-10T13:57:06.401605", "user_id": "cron-scheduler", "channel": "discord"}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-10T13:57:20.572629", "session_id": "discord_6537760", "seq": 1}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-10T14:01:06.917599", "session_id": "discord_6537760", "seq": 2, "usage": {"prompt_tokens": 1692, "completion_tokens": 1779, "total_tokens": 801}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-10T14:04:48.342983", "session_id": "discord_6537760", "seq": 3}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-10T14:08:01.869404", "session_id": "discord_6537760", "seq": 4, "usage": {"prompt_tokens": 5235, "completion_tokens": 3830, "total_tokens": 6916}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-10T14:09:53.193079", "session_id": "discord_6537760", "seq": 5}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-10T14:12:57.289788", "session_id": "discord_6537760", "seq": 6}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-10T14:13:49.919352", "session_id": "discord_6537760", "seq": 7, "usage": {"prompt_tokens": 7655, "completion_tokens": 3047, "total_tokens": 745}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-10T14:17:59.022561", "session_id": "discord_6537760", "seq": 8}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-10T14:21:46.152960", "session_id": "discord_6537760", "seq": 9, "usage": {"prompt_tokens": 1528, "completion_tokens": 2445, "total_tokens": 8879}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-10T14:24:27.347908", "session_id": "discord_6537760", "seq": 10, "usage": {"prompt_tokens": 6565, "completion_tokens": 834, "total_tokens": 1875}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-10T14:25:33.096624", "session_id": "discord_6537760", "seq": 11}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-10T14:26:06.210750", "session_id": "discord_6537760", "seq": 12}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-10T14:30:03.123558", "session_id": "discord_6537760", "seq": 13}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-10T14:31:31.640736", "session_id": "discord_6537760", "seq": 14, "usage": {"prompt_tokens": 2876, "completion_tokens": 1133, "total_tokens": 11904}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-10T14:32:09.771834", "session_id": "discord_6537760", "seq": 15, "usage": {"prompt_tokens": 4032, "completion_tokens": 3217, "total_tokens": 10907}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-10T14:33:45.309234", "session_id": "discord_6537760", "seq": 16, "usage": {"prompt_tokens": 7474, "completion_tokens": 473, "total_tokens": 11377}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-10T14:38:00.940367", "session_id": "discord_6537760", "seq": 17}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-10T14:40:14.437961", "session_id": "discord_6537760", "seq": 18, "usage": {"prompt_tokens": 6297, "completion_tokens": 1051, "total_tokens": 6999}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-10T14:41:02.551478", "session_id": "discord_6537760", "seq": 19}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-10T14:44:20.512182", "session_id": "discord_6537760", "seq": 20}
+{"type": "session_end", "session_id": "discord_6537760", "ended_at": "2026-03-10T14:44:30.512182", "total_messages": 20, "status": "completed"}

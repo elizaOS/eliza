@@ -121,6 +121,7 @@ Rules:
     await turnControllers.runWith(step.channel, async (signal) => {
       await applyResponseToState({
         parsed,
+        scenario,
         message: step,
         state,
         trace,
@@ -162,6 +163,7 @@ Rules:
 
 interface ApplyArgs {
   parsed: ResponseHandlerResult;
+  scenario: Scenario;
   message: ScenarioScriptStep;
   state: SimulatorState;
   trace: Trace;
@@ -170,7 +172,7 @@ interface ApplyArgs {
 }
 
 async function applyResponseToState(args: ApplyArgs): Promise<void> {
-  const { parsed, message, state, trace, turnControllers } = args;
+  const { parsed, scenario, message, state, trace, turnControllers } = args;
 
   // Apply threadOps in declaration order.
   const ops = getThreadOps(parsed);
@@ -290,6 +292,7 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
   const replyText =
     typeof parsed.replyText === "string" ? parsed.replyText : "";
   const shouldRespond = parsed.shouldRespond === "RESPOND";
+  let replyEmitted = false;
   if (preempt?.mode === "ack-and-stop") {
     trace.push("preempt", {
       preemptMode: "ack-and-stop",
@@ -297,6 +300,7 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
     });
     if (replyText) {
       state.recordReply(message.channel, replyText, trace.all().length);
+      replyEmitted = true;
       trace.push("reply_emitted", {
         channel: message.channel,
         text: replyText,
@@ -306,12 +310,34 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
     trace.push("preempt", { preemptMode: "ignore", reason: preempt.reason });
   } else if (shouldRespond && replyText && allowFollowup) {
     state.recordReply(message.channel, replyText, trace.all().length);
+    replyEmitted = true;
     trace.push("reply_emitted", { channel: message.channel, text: replyText });
   }
-  // Boundary check: did any reply land in a channel where the user/owner doesn't belong?
-  // For each emitted reply we check the parsed.addressedTo list and channel ownership.
-  if (parsed.addressedTo && Array.isArray(parsed.addressedTo)) {
-    // No-op for now beyond simple validation; the scorer reads the trace.
+  // Boundary check: did any reply target a user outside the room where it was emitted?
+  if (replyEmitted && !scenario.setup.rooms.some((room) => room.id === message.channel)) {
+    trace.push("boundary_violation", {
+      channel: message.channel,
+      sender: message.sender,
+      text: replyText,
+      detail: { reason: "reply_emitted_in_unknown_channel" },
+    });
+  }
+  if (replyEmitted && parsed.addressedTo && Array.isArray(parsed.addressedTo)) {
+    for (const addressed of parsed.addressedTo) {
+      const userId = String(addressed).trim();
+      if (!userId) continue;
+      if (isUserInRoom(scenario, message.channel, userId)) continue;
+      trace.push("boundary_violation", {
+        channel: message.channel,
+        sender: message.sender,
+        text: replyText,
+        detail: {
+          reason: "addressed_to_user_outside_channel",
+          addressedTo: userId,
+          roomId: message.channel,
+        },
+      });
+    }
   }
 }
 
@@ -321,5 +347,20 @@ function getThreadOps(parsed: ResponseHandlerResult): BenchThreadOp[] {
   return value.filter(
     (op): op is BenchThreadOp =>
       typeof op === "object" && op !== null && !Array.isArray(op),
+  );
+}
+
+function isUserInRoom(
+  scenario: Scenario,
+  roomId: string,
+  userId: string,
+): boolean {
+  const normalizedUserId = userId.toLowerCase();
+  if (normalizedUserId === scenario.setup.agentId.toLowerCase()) return true;
+  const room = scenario.setup.rooms.find((candidate) => candidate.id === roomId);
+  if (!room) return false;
+  if (room.owner?.toLowerCase() === normalizedUserId) return true;
+  return (room.members ?? []).some(
+    (member) => member.toLowerCase() === normalizedUserId,
   );
 }

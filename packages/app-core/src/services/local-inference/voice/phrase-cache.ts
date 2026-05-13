@@ -71,6 +71,12 @@ export interface PhraseCacheOptions {
    * are evicted first. */
   maxEntries?: number;
   /**
+   * Opportunistic live-cache guardrail. Voice mode primarily benefits from
+   * cached acknowledgements and first sentence fragments; longer text is less
+   * likely to repeat and can evict useful hot phrases.
+   */
+  maxEstimatedTokensPerEntry?: number;
+  /**
    * Guardrail for live opportunistic caching. Long-form direct TTS can be
    * megabytes of PCM and is not a good phrase-cache resident.
    */
@@ -81,18 +87,33 @@ export function canonicalizePhraseText(text: string): string {
   return text.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+export function estimatePhraseTokenCount(text: string): number {
+  const normalized = canonicalizePhraseText(text);
+  if (!normalized) return 0;
+  return normalized.split(/\s+/).length;
+}
+
 const DEFAULT_MAX_ENTRIES = 128;
+const DEFAULT_MAX_ESTIMATED_TOKENS_PER_ENTRY = 9;
 const DEFAULT_MAX_PCM_SAMPLES_PER_ENTRY = 24000 * 8;
 
 export class PhraseCache {
   private readonly entries = new Map<string, CachedPhraseAudio>();
   private readonly maxEntries: number;
+  private readonly maxEstimatedTokensPerEntry: number;
   private readonly maxPcmSamplesPerEntry: number;
 
   constructor(opts: PhraseCacheOptions = {}) {
     this.maxEntries = Math.max(
       1,
       Math.floor(opts.maxEntries ?? DEFAULT_MAX_ENTRIES),
+    );
+    this.maxEstimatedTokensPerEntry = Math.max(
+      1,
+      Math.floor(
+        opts.maxEstimatedTokensPerEntry ??
+          DEFAULT_MAX_ESTIMATED_TOKENS_PER_ENTRY,
+      ),
     );
     this.maxPcmSamplesPerEntry = Math.max(
       1,
@@ -102,12 +123,19 @@ export class PhraseCache {
     );
   }
 
-  put(entry: CachedPhraseAudio): void {
-    if (entry.pcm.length > this.maxPcmSamplesPerEntry) return;
+  put(entry: CachedPhraseAudio): boolean {
     const key = canonicalizePhraseText(entry.text);
+    if (!key) return false;
+    if (entry.pcm.length > this.maxPcmSamplesPerEntry) return false;
+    if (
+      estimatePhraseTokenCount(entry.text) > this.maxEstimatedTokensPerEntry
+    ) {
+      return false;
+    }
     this.entries.delete(key);
     this.entries.set(key, entry);
     this.evictOverflow();
+    return true;
   }
 
   /**
@@ -123,7 +151,7 @@ export class PhraseCache {
     }>,
   ): void {
     for (const e of entries) {
-      this.entries.set(canonicalizePhraseText(e.text), {
+      this.put({
         text: e.text,
         pcm: e.pcm,
         sampleRate: e.sampleRate,

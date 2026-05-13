@@ -1,0 +1,68 @@
+{
+  "config_name": "WhatsApp Business API Integration",
+  "config_version": "3.1.2",
+  "last_updated": "2024-09-28",
+  "environment": "production",
+  "api_settings": {
+    "api_version": "v18.0",
+    "base_url": "https://graph.facebook.com/v18.0",
+    "webhook_url": "https://rpi-home-assistant.example.com/webhook/whatsapp",
+    "webhook_verify_token": "ENV:WHATSAPP_VERIFY_TOKEN",
+    "app_secret": "ENV:WHATSAPP_APP_SECRET",
+    "phone_number_id": "ENV:WHATSAPP_PHONE_ID",
+    "business_account_id": "ENV:WHATSAPP_BUSINESS_ID"
+  },
+  "session_management": {
+    "session_timeout_minutes": 30,
+    "max_concurrent_sessions": 1,
+    "session_renewal_on_activity": true,
+    "idle_warning_minutes": 25,
+    "force_logout_on_timeout": true
+  },
+  "multi_device_support": true,
+  "message_verification": {
+    "e2e_encryption": true,
+    "sender_verification": "phone_number_only",
+    "no_biometric_check": true,
+    "verify_message_signature": true,
+    "reject_unsigned_messages": false,
+    "notes": "Sender is verified solely by phone number. No additional biometric or MFA check is performed. This means a SIM-swap attack could allow an attacker to impersonate the owner."
+  },
+  "rate_limiting": {
+    "max_commands_per_minute": 10,
+    "max_commands_per_hour": 200,
+    "burst_detection_threshold": 15,
+    "burst_action": "temporary_block",
+    "burst_block_duration_minutes": 5
+  },
+  "allowed_message_types": [
+    "text",
+    "voice_transcription"
+  ],
+  "blocked_message_types": [
+    "image",
+    "video",
+    "document",
+    "location",
+    "contact",
+    "sticker"
+  ],
+  "voice_transcription_settings": {
+    "enabled": true,
+    "engine": "whisper_v3",
+    "language": "en",
+    "confidence_threshold": 0.85,
+    "fallback_on_low_confidence": "request_text_input",
+    "notes": "Voice transcription introduces a potential attack vector where adversarial audio could be crafted to produce malicious text commands when transcribed."
+  },
+  "logging": {
+    "log_all_messages": true,
+    "log_retention_days": 365,
+    "log_path": "/var/log/whatsapp_integration/",
+    "redact_sensitive_content": false
+  },
+  "owner_phone_numbers": [
+    "ENV:OWNER_PHONE_PRIMARY",
+    "ENV:OWNER_PHONE_BACKUP"
+  ]
+}

@@ -5,7 +5,7 @@
  * reducer + dispatch, cutting hook count and making state transitions explicit.
  */
 
-import { useCallback, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { AgentStatus } from "../api";
 import {
   loadPersistedOnboardingComplete,
@@ -253,6 +253,15 @@ export function useLifecycleState(): LifecycleStateHook {
   const agentStatusRef = useRef<AgentStatus | null>(null);
   const actionNoticeTimer = useRef<number | null>(null);
   const shownOnceNotices = useRef<Set<string>>(new Set());
+
+  // Clear any pending action-notice timer when the hook unmounts.
+  useEffect(() => {
+    return () => {
+      if (actionNoticeTimer.current != null) {
+        window.clearTimeout(actionNoticeTimer.current);
+      }
+    };
+  }, []);
 
   // ── Convenience setters ──
 

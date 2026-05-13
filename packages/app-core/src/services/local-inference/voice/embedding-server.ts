@@ -2,16 +2,16 @@
  * Lazy embedding `llama-server` sidecar for Eliza-1 bundles.
  *
  * Per `packages/inference/AGENTS.md` §1, the embedding model is either the
- * text backbone with `--pooling last` (`0_6b`) or a dedicated
- * `embedding/eliza-1-embedding.gguf` (Qwen3-Embedding-0.6B) on the larger
- * tiers. This sidecar runs a *separate* `llama-server` against whichever
+ * text backbone with `--pooling last` (`0_8b` / `2b`) or a dedicated
+ * `embedding/eliza-1-embedding.gguf` on the larger tiers. This sidecar runs a
+ * *separate* `llama-server` against whichever
  * GGUF the route resolved:
- *   - `0_6b` pooled-text → the text backbone GGUF, with `--embeddings
- *     --pooling last` (the model is 0.6B; the OS shares the mmap pages
+ *   - `0_8b` / `2b` pooled-text → the text backbone GGUF, with `--embeddings
+ *     --pooling last` (the model is 0.8B; the OS shares the mmap pages
  *     with the chat server's already-mapped copy of the same file — no
  *     duplicate *bundle* weights, AGENTS.md §1).
- *   - `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` → the dedicated
- *     `embedding/eliza-1-embedding.gguf` (Qwen3-Embedding-0.6B).
+ *   - `4b`/`9b`/`27b`/`27b-256k`/`27b-1m` → the dedicated
+ *     `embedding/eliza-1-embedding.gguf`.
  * In both cases the process is started **lazily, on the first `embed()`
  * call**, so a voice-off / RAG-off agent never pages the embedding
  * weights. This is what gives the AGENTS.md §1 embedding region a real
@@ -48,8 +48,8 @@ const EMBED_TIMEOUT_MS = 60_000;
  * throughput wants a *single* forward pass to cover as many short texts as
  * possible — so the physical micro-batch (`-ub`) is bumped to the logical
  * batch (`-b`) so a `/v1/embeddings` call with many inputs is one ubatch
- * rather than chunked. The Qwen3-Embedding-0.6B model is tiny (~600 MB
- * Q8_0), so a 4096-token batch is comfortable. (`llama-server` defaults
+ * rather than chunked. The dedicated Eliza-1 embedding model is small enough
+ * that a 4096-token batch is comfortable. (`llama-server` defaults
  * are 2048 / 512 — and 512 silently caps batching at ~512 tokens.)
  */
 const EMBED_BATCH_SIZE = 4096;
@@ -60,11 +60,11 @@ const EMBED_UBATCH_SIZE = 4096;
  * llama-server processes each input on its own sequence; `--parallel N`
  * lets up to N of them ride the same forward pass instead of being
  * serialized one-by-one. 16 covers a typical RAG batch; each slot's KV is
- * tiny at 0.6B / 8k ctx.
+ * tiny at 0.8B / 8k ctx.
  */
 const EMBED_PARALLEL = 16;
 
-/** Context window for the embedding server. Qwen3-Embedding-0.6B is 32k-ctx; cap modestly for RAM. */
+/** Context window for the embedding server. The dedicated embedding model is 32k-ctx; cap modestly for RAM. */
 const EMBED_CTX_SIZE = 8192;
 
 interface EmbeddingServerConfig {
@@ -299,9 +299,9 @@ export class EmbeddingServer {
 
 /**
  * Build a lazy `EmbeddingServer` for a route's source. For `pooled-text`
- * (`0_6b`) the GGUF is the text backbone; for `dedicated-region` it is the
- * `embedding/` GGUF. Either way the sidecar gets `--embeddings --pooling
- * last` (the route's `embeddingServerFlags`).
+ * (`0_8b` / `2b`) the GGUF is the text backbone; for `dedicated-region` it
+ * is the `embedding/` GGUF. Either way the sidecar gets `--embeddings
+ * --pooling last` (the route's `embeddingServerFlags`).
  */
 export function embeddingServerForRoute(
   route: LocalEmbeddingRoute,

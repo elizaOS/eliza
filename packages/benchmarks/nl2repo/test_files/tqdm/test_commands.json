@@ -1,0 +1,1 @@
+["echo \"__version__ = '0.0.1'\" > tqdm/version.py","SETUPTOOLS_SCM_PRETEND_VERSION_FOR_TQDM=0.0.1 pip install -e .","pytest --continue-on-collection-errors tests"]

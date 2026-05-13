@@ -513,7 +513,7 @@ export class Downloader {
 
       if (response.statusCode >= 400) {
         throw new Error(
-          `HTTP ${response.statusCode} from HuggingFace for ${catalogEntry.hfRepo}`,
+          `HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}`,
         );
       }
       let effectiveStartByte = startByte;
@@ -676,6 +676,7 @@ export class Downloader {
       manifestPath,
       record,
       0,
+      catalogEntry.bundleManifestSha256,
     );
 
     const manifest = parseBundleManifestOrThrow(
@@ -872,7 +873,7 @@ export class Downloader {
 
     if (response.statusCode >= 400) {
       throw new Error(
-        `HTTP ${response.statusCode} from HuggingFace for ${catalogEntry.hfRepo}/${remotePath}`,
+        `HTTP ${response.statusCode} from model hub for ${catalogEntry.hfRepo}/${remotePath}`,
       );
     }
     if (startByte > 0 && response.statusCode !== 206) {

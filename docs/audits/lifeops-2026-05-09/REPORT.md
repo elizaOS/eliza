@@ -190,7 +190,7 @@ score/rank/RRF/matchedBy/stageScores, tier A/B/omitted), and emits it via
 
 `StartTrajectoryInput` and `RecordedTrajectory` extended with `runId?: string`,
 `scenarioId?: string`. `JsonFileTrajectoryRecorder.startTrajectory` reads from
-`MILADY_LIFEOPS_RUN_ID` / `MILADY_LIFEOPS_SCENARIO_ID` env vars when those
+`ELIZA_LIFEOPS_RUN_ID` / `ELIZA_LIFEOPS_SCENARIO_ID` env vars when those
 fields are missing on the input. The scenario CLI sets both before each
 scenario boots.
 
@@ -198,10 +198,10 @@ scenario boots.
 
 `packages/scenario-runner/src/cli.ts`:
 - New `--run-dir <dir>` flag.
-- When set, the CLI exports `MILADY_TRAJECTORY_DIR=<runDir>/trajectories`
-  before runtime creation, plus `MILADY_LIFEOPS_RUN_ID` and
-  `MILADY_LIFEOPS_RUN_DIR`.
-- Per scenario, sets `MILADY_LIFEOPS_SCENARIO_ID=<scenario.id>`.
+- When set, the CLI exports `ELIZA_TRAJECTORY_DIR=<runDir>/trajectories`
+  before runtime creation, plus `ELIZA_LIFEOPS_RUN_ID` and
+  `ELIZA_LIFEOPS_RUN_DIR`.
+- Per scenario, sets `ELIZA_LIFEOPS_SCENARIO_ID=<scenario.id>`.
 - Drops `matrix.json` next to `trajectories/` so the aggregator can pick it up.
 
 ### 2.5 Aggregator script
@@ -402,7 +402,7 @@ Sample messageHandler usage capture (Anthropic-shaped):
 Cerebras for the agent under test whenever `CEREBRAS_API_KEY` was in env
 (because Cerebras was first in the preference order and its key alone was
 enough to enroll). After the fix, both require an *explicit* opt-in via
-`MILADY_PROVIDER=cerebras` or `OPENAI_BASE_URL` set to a `*.cerebras.ai`
+`ELIZA_PROVIDER=cerebras` or `OPENAI_BASE_URL` set to a `*.cerebras.ai`
 endpoint. With those unset, the agent falls through to Anthropic Opus 4.7
 while the eval/judge/teacher pipeline keeps using Cerebras gpt-oss-120b.
 
@@ -517,12 +517,12 @@ of the highest-leverage adds:
 | F5 | Fix `onboarding-presets.ts` circular init | **DONE** | `first-time-setup.ts:48` made `getDefaultOnboardingAgentName()` lazy; `eliza-scenarios list` now boots |
 | F6 | Drop `ea.schedule.recurring-relationship-block` catalog entry | **DONE** | Removed from `executive-assistant-transcript.catalog.json` |
 | F7 | Strengthen 4 LARP scenarios | **DONE** | `signature-deadline.e2e`, `flight-rebook.e2e`, `followup-repair.e2e`, `morning-brief.e2e` now use Cerebras `judgeRubric` |
-| F8 | Eval key isolation (don't auto-select Cerebras for agent) | **DONE** | `real-runtime.ts:createCerebrasProviderConfigFromEnv` + `live-provider.ts:selectLiveProvider` both gated on `MILADY_PROVIDER=cerebras` or explicit `OPENAI_BASE_URL=cerebras` — no longer auto-enroll |
+| F8 | Eval key isolation (don't auto-select Cerebras for agent) | **DONE** | `real-runtime.ts:createCerebrasProviderConfigFromEnv` + `live-provider.ts:selectLiveProvider` both gated on `ELIZA_PROVIDER=cerebras` or explicit `OPENAI_BASE_URL=cerebras` — no longer auto-enroll |
 | F9 | Mockoon HTTP mocks for all connectors | **DONE** | 18 environments × 67 routes under `test/mocks/mockoon/`, `start-all.mjs` / `stop-all.mjs`, `mockoon-redirect.ts` wired into plugin init, `LIFEOPS_USE_MOCKOON=1` toggle |
 | F10 | Implement 5 missing actions + 1 provider | **DONE (audit was wrong)** | All 6 already implemented in source (`plugin.ts:315-346`); the audit's "unexercised" was about test coverage, not source. Added 6 new test files (30/30 pass) + 3 scenarios. Discovered: 16 existing `*.integration.test.ts` files in app-lifeops were excluded from CI (`vitest.config.ts:105` + `integration.config.ts:115-119` mismatch). **Fixed in this commit by extending integration.config.ts include patterns.** |
 | F11 | Top-15 missing scenarios | **DONE** | All 15 land under `test/scenarios/lifeops.{calendar,morning-brief,inbox-triage,habits,sleep,payments,reminders,documents,planner,security}/` + `browser.lifeops/`. Real schemas, real assertions, Cerebras-judge rubrics, anti-LARP discipline verified. |
 | F12 | Wire training pipeline + run optimizer | **DONE** | Full pipeline ships + verified: Cerebras teacher in `dataset-generator.ts`, train CLI rewired to consume `getTrainingUseModelAdapter` when `TRAIN_MODEL_PROVIDER=cerebras` (was a stub-echo before). Converter ships `eliza_native_v1` rows directly. Mixed-pass-and-fail builder at `scripts/lifeops-build-mixed-training-set.mjs` joins Cerebras passing rows + Anthropic failing rows for reward variation. End-to-end test on a 10-row pass-only dataset: baseline=1.000 optimized=1.000 (Cerebras reproduces correct LIFE actions). Optimizer entry: `bun run lifeops:optimize --run-dir <dir>` or `node scripts/lifeops-optimize-planner.mjs ...`. |
-| F13 | CI gate for benchmark | **DONE** | `.github/workflows/lifeops-bench.yml` — pull-request-triggered (paths gated to `plugins/app-{lifeops,training}/**`, `packages/scenario-runner/**`, `packages/core/src/runtime/**`, `test/scenarios/lifeops.**`, `scripts/lifeops-*.mjs`, `scripts/aggregate-lifeops-run.mjs`) plus `workflow_dispatch` with a `variants` input. Job: typecheck (core + scenario-runner + app-lifeops + app-training) → `bun run lifeops:verify-cerebras` → `bun run lifeops:full --skip-integration --variants <variant>`. Uploads the `~/.milady/runs/lifeops/<runId>/` directory and posts cache hit % + accuracy as a PR comment via `actions/github-script`. Skips (does not fail) when `CEREBRAS_API_KEY` or `ANTHROPIC_API_KEY` is missing. `timeout-minutes: 30`. |
+| F13 | CI gate for benchmark | **DONE** | `.github/workflows/lifeops-bench.yml` — pull-request-triggered (paths gated to `plugins/app-{lifeops,training}/**`, `packages/scenario-runner/**`, `packages/core/src/runtime/**`, `test/scenarios/lifeops.**`, `scripts/lifeops-*.mjs`, `scripts/aggregate-lifeops-run.mjs`) plus `workflow_dispatch` with a `variants` input. Job: typecheck (core + scenario-runner + app-lifeops + app-training) → `bun run lifeops:verify-cerebras` → `bun run lifeops:full --skip-integration --variants <variant>`. Uploads the `~/.eliza/runs/lifeops/<runId>/` directory and posts cache hit % + accuracy as a PR comment via `actions/github-script`. Skips (does not fail) when `CEREBRAS_API_KEY` or `ANTHROPIC_API_KEY` is missing. `timeout-minutes: 30`. |
 | F14 | Anthropic plugin response normalizer drops `cache_*` | **DONE** | Fixed in `plugins/plugin-anthropic/models/text.ts:normalizeAnthropicUsage` — now reads AI SDK v6 fields (`inputTokens`, `inputTokenDetails.cacheReadTokens`, `inputTokenDetails.cacheWriteTokens`, `providerMetadata.anthropic.cacheCreationInputTokens`) plus the legacy field names. Verified live: Haiku 4.5 messageHandler now records `cacheReadInputTokens=4344, cacheCreationInputTokens=483, costUsd=0.00256`. See `10-recorder-fixes.md`. |
 | F15 | Anthropic vs Cerebras planner-prompt portability | **OPEN — needs design** | Multi-variant runs: Cerebras direct 89.5%, distracted-rambling 100%; Anthropic Opus 4.7 direct 10.5%, distracted-rambling 5.3%. Anthropic chooses `REPLY` with clarifying-questions on most cases. The training pipeline (F12) is now wired to feed Anthropic-fail rows + Cerebras-pass rows to the optimizer; running with the full mixed dataset will tune a prompt that pushes Anthropic toward acting. |
 | F16 | Optimizer model name on recorder stages | **DONE** | Fixed in `plugins/plugin-anthropic/models/text.ts:buildNativeTextResult` — emits `providerMetadata: mergeProviderModelName(...)` matching the OpenAI plugin pattern. Cerebras was already populating modelName via plugin-openai; the audit was Anthropic-only. Verified: planner stage now records `modelName: claude-haiku-4-5-20251001`. See `10-recorder-fixes.md`. |
@@ -548,7 +548,7 @@ End-to-end native-backend instruction-search pass on a balanced 5-pass + 5-fail 
 | 8 pass + 8 fail | 16 | 0.563 | **0.813** | **+25pp** |
 
 The 16-row optimized prompt is at
-`~/.milady/optimized-prompts/action_planner/instruction-search-2026-05-10T02-45-19-478Z.json`.
+`~/.eliza/optimized-prompts/action_planner/instruction-search-2026-05-10T02-45-19-478Z.json`.
 Highlights of what the optimizer learned (vs the hand-written baseline):
 
 - Explicit JSON output schema with action-name allowlist

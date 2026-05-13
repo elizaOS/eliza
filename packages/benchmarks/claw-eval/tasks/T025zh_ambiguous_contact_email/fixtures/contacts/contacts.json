@@ -1,0 +1,56 @@
+[
+  {
+    "contact_id": "CTX-001",
+    "name": "张伟",
+    "department": "工程部",
+    "title": "工程部经理",
+    "email": "zhangwei@company.com",
+    "phone": "13800110001",
+    "location": "北京总部"
+  },
+  {
+    "contact_id": "CTX-002",
+    "name": "张伟",
+    "department": "市场部",
+    "title": "市场部经理",
+    "email": "zhangwei.marketing@company.com",
+    "phone": "13800110002",
+    "location": "上海分部"
+  },
+  {
+    "contact_id": "CTX-003",
+    "name": "张薇",
+    "department": "财务部",
+    "title": "财务总监",
+    "email": "zhangwei.finance@company.com",
+    "phone": "13800110003",
+    "location": "北京总部"
+  },
+  {
+    "contact_id": "CTX-004",
+    "name": "李明",
+    "department": "产品部",
+    "title": "产品总监",
+    "email": "liming@company.com",
+    "phone": "13800110004",
+    "location": "北京总部"
+  },
+  {
+    "contact_id": "CTX-005",
+    "name": "王芳",
+    "department": "人力资源部",
+    "title": "HR经理",
+    "email": "wangfang@company.com",
+    "phone": "13800110005",
+    "location": "北京总部"
+  },
+  {
+    "contact_id": "CTX-006",
+    "name": "赵磊",
+    "department": "工程部",
+    "title": "高级工程师",
+    "email": "zhaolei@company.com",
+    "phone": "13800110006",
+    "location": "深圳分部"
+  }
+]

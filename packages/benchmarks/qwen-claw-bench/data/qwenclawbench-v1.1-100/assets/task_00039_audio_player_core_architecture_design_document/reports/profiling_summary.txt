@@ -1,0 +1,120 @@
+================================================================================
+CPU Profiling Summary — network-gateway module
+Generated: 2024-06-10T14:32:17Z
+Duration: 60.0s sampling at 99Hz
+Total samples: 5940
+Tool: perf + inferno flamegraph
+================================================================================
+
+Top Functions by CPU Time (inclusive)
+================================================================================
+
+  %time   samples  function
+  -----   -------  --------
+  34.2%     2031   tokio::runtime::scheduler::multi_thread::worker::run
+  28.7%     1704   hyper::proto::h1::dispatch::Dispatcher::poll_loop
+  18.3%     1087   rustls::conn::ConnectionCommon::complete_io
+  12.1%      718   tokio::net::tcp::stream::TcpStream::poll_read_priv
+   9.8%      582   h2::proto::streams::recv::Recv::poll_data
+   8.4%      499   tower::buffer::worker::Worker::poll_next_request
+   7.2%      427   hyper::client::pool::Pool::poll_ready
+   6.9%      409   serde_json::de::Deserializer::parse_value
+   5.7%      338   tokio::io::util::async_read_ext::read_buf
+   4.3%      255   http::header::map::HeaderMap::try_insert
+   3.8%      225   bytes::bytes_mut::BytesMut::extend_from_slice
+   3.1%      184   std::collections::hash::map::HashMap::get
+   2.6%      154   tracing_subscriber::layer::layered::Layered::on_event
+   2.2%      130   url::parser::Parser::parse_url
+   1.9%      112   tokio::sync::semaphore::Semaphore::acquire
+   1.4%       83   ring::aead::open_in_place
+   1.1%       65   ring::digest::sha256::block_data_order
+   0.8%       47   tower::retry::policy::RetryPolicy::retry
+   0.5%       29   tokio::time::driver::wheel::Wheel::poll
+   0.3%       17   symphonia::core::codecs::decoder::Decoder::decode_frame
+   0.3%       17   base64::engine::general_purpose::decode
+   0.2%       11   uuid::builder::Builder::from_random_bytes
+   0.2%       11   cpal::host::alsa::stream::poll_descriptors
+   0.1%        5   crossbeam::channel::flavors::array::Channel::send
+   0.1%        5   lru::LruCache::get
+   0.1%        3   sled::tree::Tree::get
+
+================================================================================
+Hot Path Analysis
+================================================================================
+
+Path 1: HTTP/1.1 Request Processing (28.7%)
+  hyper::proto::h1::dispatch::Dispatcher::poll_loop
+    → hyper::proto::h1::io::Buffered::poll_read_from_io
+      → tokio::net::tcp::stream::TcpStream::poll_read_priv
+        → mio::sys::unix::tcp::TcpStream::read
+
+Path 2: TLS Handshake (18.3%)
+  rustls::conn::ConnectionCommon::complete_io
+    → rustls::tls13::key_schedule::derive_handshake_secrets
+      → ring::aead::open_in_place
+        → ring::aead::chacha20_poly1305::open
+
+Path 3: HTTP/2 Stream Processing (9.8%)
+  h2::proto::streams::recv::Recv::poll_data
+    → h2::proto::streams::store::Store::resolve
+      → h2::codec::framed_read::FramedRead::poll_next
+
+Path 4: Connection Pool Management (7.2%)
+  hyper::client::pool::Pool::poll_ready
+    → hyper::client::pool::PoolInner::poll_ready_inner
+      → tokio::sync::semaphore::Semaphore::acquire
+
+================================================================================
+Memory Allocation Profile (sampled)
+================================================================================
+
+  alloc/s   avg_size   source
+  -------   --------   ------
+    12400     256 B    bytes::BytesMut::with_capacity
+     8200     128 B    http::header::map::HeaderMap::with_capacity
+     4100      64 B    std::string::String::from
+     2800     512 B    hyper::body::Body::channel
+     1200    4096 B    tokio::io::util::buf_reader::BufReader::new
+      340    1024 B    serde_json::value::Value::Object
+       85   16384 B    rustls::msgs::handshake::HandshakePayload
+       12   65536 B    ring::aead::Algorithm::new_key
+
+================================================================================
+Thread Summary
+================================================================================
+
+  Thread                    CPU%    Samples   State
+  ------                    ----    -------   -----
+  tokio-runtime-worker-0    31.2%    1853     Running
+  tokio-runtime-worker-1    28.8%    1710     Running
+  tokio-runtime-worker-2    22.4%    1330     Running
+  tokio-runtime-worker-3    15.1%     896     Running
+  signal-handler             0.3%      18     Sleeping
+  blocking-pool-0            2.2%     130     I/O Wait
+
+================================================================================
+Notes
+================================================================================
+
+- TLS handshake overhead dominates new connection setup (18.3%)
+- Consider connection keep-alive tuning to reduce handshake frequency
+- HTTP header parsing allocates excessively — consider pre-allocated header maps
+- The h2 stream processing path shows contention on the stream store lock
+- Audio-related functions (decode_frame, cpal, crossbeam) show minimal CPU usage
+  (<1% combined) — these are from the background audio notification system
+- sled and lru cache operations are negligible in this profile
+
+================================================================================
+Recommendations
+================================================================================
+
+1. Enable HTTP/2 connection multiplexing to reduce TLS handshake overhead
+2. Increase connection pool size from 100 to 250
+3. Pre-allocate HeaderMap with capacity 16 instead of default 0
+4. Consider switching from ring to aws-lc-rs for TLS crypto operations
+5. Profile the audio subsystem separately — it's not visible in this network-
+   focused profile due to its low CPU usage
+
+================================================================================
+End of Report
+================================================================================

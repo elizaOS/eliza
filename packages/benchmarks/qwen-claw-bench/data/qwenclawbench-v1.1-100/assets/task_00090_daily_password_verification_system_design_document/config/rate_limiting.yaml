@@ -1,0 +1,45 @@
+# Rate Limiting Configuration
+# Service: auth-gateway
+# Last Updated: 2024-11-05
+
+global:
+  enabled: true
+  rate_limit: "100/min"
+  burst_allowance: 20
+  response_code_on_limit: 429
+
+per_user:
+  enabled: true
+  rate_limit: "5/min"
+  burst_allowance: 2
+  identifier: "user_id"
+
+endpoints:
+  auth_verification:
+    path: "/api/v2/auth/verify-daily-password"
+    max_attempts: 3
+    window_seconds: 300
+    lockout_seconds: 900
+    lockout_response: "Too many failed attempts. Account locked for 15 minutes."
+
+  auth_status:
+    path: "/api/v2/auth/status"
+    rate_limit: "30/min"
+    burst_allowance: 5
+
+progressive_delay:
+  enabled: true
+  base_delay_ms: 1000
+  multiplier: 2
+  max_delay_ms: 16000
+  reset_after_seconds: 600
+
+ip_blocklist:
+  enabled: true
+  threshold_failed_attempts: 50
+  window_minutes: 60
+  block_duration_hours: 24
+  whitelist:
+    - "10.0.0.0/8"
+    - "172.16.0.0/12"
+    - "192.168.0.0/16"

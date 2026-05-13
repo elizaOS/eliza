@@ -189,7 +189,17 @@ Examples:
     parser.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "eliza"],
+        choices=[
+            "openai",
+            "groq",
+            "openrouter",
+            "anthropic",
+            "google",
+            "ollama",
+            "vllm",
+            "cerebras",
+            "eliza",
+        ],
         default=None,
         help="Force specific model provider (auto-detected if not set; 'eliza' uses TS agent)",
     )
@@ -405,8 +415,12 @@ def main() -> int:
             provider = "groq"
         elif os.environ.get("OPENROUTER_API_KEY"):
             provider = "openrouter"
+        elif os.environ.get("CEREBRAS_API_KEY"):
+            provider = "cerebras"
         elif os.environ.get("OPENAI_API_KEY"):
             provider = "openai"
+        elif os.environ.get("VLLM_BASE_URL"):
+            provider = "vllm"
 
     model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
     if not model_name:
@@ -422,6 +436,19 @@ def main() -> int:
         os.environ["GROQ_SMALL_MODEL"] = model_name
         os.environ["OPENROUTER_LARGE_MODEL"] = model_name
         os.environ["OPENROUTER_SMALL_MODEL"] = model_name
+        os.environ["CEREBRAS_MODEL"] = model_name
+        os.environ["CEREBRAS_LARGE_MODEL"] = model_name
+        os.environ["CEREBRAS_SMALL_MODEL"] = model_name
+        if provider == "cerebras":
+            os.environ.setdefault("OPENAI_BASE_URL", "https://api.cerebras.ai/v1")
+            if os.environ.get("CEREBRAS_API_KEY"):
+                os.environ.setdefault("OPENAI_API_KEY", os.environ["CEREBRAS_API_KEY"])
+        elif provider == "vllm":
+            os.environ.setdefault(
+                "OPENAI_BASE_URL",
+                os.environ.get("VLLM_BASE_URL", "http://127.0.0.1:8001/v1"),
+            )
+            os.environ.setdefault("OPENAI_API_KEY", os.environ.get("VLLM_API_KEY", "dummy"))
 
     if config.use_mock:
         logger.warning(
@@ -434,6 +461,8 @@ def main() -> int:
             "openrouter": "OPENROUTER_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "google": "GOOGLE_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
+            "vllm": "OPENAI_API_KEY",
         }.get(provider, "OPENAI_API_KEY")
         if not os.environ.get(key_var):
             logger.error(

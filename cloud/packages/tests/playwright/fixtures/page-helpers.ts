@@ -5,6 +5,17 @@ const DOCUMENT_OK_STATUSES = [200, 304] as const;
 const PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE_NAME = "eliza-test-auth";
 const STEWARD_AUTHED_COOKIE_NAME = "steward-authed";
 const STEWARD_TOKEN_KEY = "steward_session_token";
+const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
+const RENDER_TELEMETRY_ERRORS_KEY = "__ELIZA_PLAYWRIGHT_RENDER_TELEMETRY_ERRORS__";
+
+interface RenderTelemetryIssue {
+  source?: string;
+  name?: string;
+  severity?: string;
+  renderCount?: number;
+  threshold?: number;
+  windowMs?: number;
+}
 
 function resolveBaseUrl(baseUrl?: string): URL {
   return new URL(baseUrl || process.env.PLAYWRIGHT_BASE_URL || "http://localhost:3000");
@@ -141,6 +152,51 @@ export function expectNoBadApiResponses(
   expect(formatted, `${label} included auth/server failures`).toEqual([]);
 }
 
+export async function installRenderTelemetryGuard(page: Page): Promise<void> {
+  await page.addInitScript(
+    ({ errorsKey, eventName }) => {
+      const global = window as typeof window & {
+        __ELIZA_PLAYWRIGHT_RENDER_TELEMETRY_INSTALLED__?: boolean;
+      } & Record<string, unknown>;
+      global[errorsKey] = [];
+      if (global.__ELIZA_PLAYWRIGHT_RENDER_TELEMETRY_INSTALLED__) return;
+      global.__ELIZA_PLAYWRIGHT_RENDER_TELEMETRY_INSTALLED__ = true;
+
+      window.addEventListener(eventName, (event) => {
+        const detail = (event as CustomEvent<RenderTelemetryIssue>).detail;
+        if (detail?.severity === "error") {
+          const errors = global[errorsKey];
+          if (Array.isArray(errors)) errors.push(detail);
+        }
+      });
+    },
+    { errorsKey: RENDER_TELEMETRY_ERRORS_KEY, eventName: RENDER_TELEMETRY_EVENT },
+  );
+}
+
+export async function expectNoRenderTelemetryErrors(page: Page, label: string): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+  await page.waitForTimeout(50);
+
+  const errors = await page.evaluate<RenderTelemetryIssue[]>((errorsKey) => {
+    const value = (window as typeof window & Record<string, unknown>)[errorsKey];
+    return Array.isArray(value) ? (value as RenderTelemetryIssue[]) : [];
+  }, RENDER_TELEMETRY_ERRORS_KEY);
+
+  const formatted = errors.map(
+    (issue) =>
+      `${issue.name ?? "unknown"} rendered ${issue.renderCount ?? "?"} times in ${
+        issue.windowMs ?? "?"
+      }ms`,
+  );
+  expect(formatted, `${label} had render telemetry errors`).toEqual([]);
+}
+
 export async function expectNoHorizontalOverflow(page: Page, label: string): Promise<void> {
   const overflow = await page.evaluate(() => {
     const viewportWidth = document.documentElement.clientWidth;
@@ -170,10 +226,12 @@ export async function expectNoHorizontalOverflow(page: Page, label: string): Pro
 }
 
 export async function smokeTestPage(page: Page, path: string): Promise<Response | null> {
+  await installRenderTelemetryGuard(page);
   const response = await page.goto(path, { waitUntil: "domcontentloaded" });
   expectRouteResponseOk(response, path);
   await expect(page.locator("html")).toBeAttached();
   await expect.poll(() => page.evaluate(() => document.readyState)).toMatch(/interactive|complete/);
+  await expectNoRenderTelemetryErrors(page, path);
   return response;
 }
 

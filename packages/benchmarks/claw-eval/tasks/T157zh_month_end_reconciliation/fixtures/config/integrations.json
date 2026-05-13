@@ -1,0 +1,47 @@
+[
+  {
+    "integration_id": "INT-1301",
+    "name": "primary_payment_gateway",
+    "display_name": "主支付网关",
+    "service": "payment",
+    "status": "active",
+    "last_verified": "2026-03-25T10:00:00+08:00",
+    "monthly_calls": 12500,
+    "error_rate": 0.2,
+    "notes": "运行正常，处理所有在线支付"
+  },
+  {
+    "integration_id": "INT-1302",
+    "name": "backup_payment_gateway",
+    "display_name": "备用支付网关",
+    "service": "payment",
+    "status": "active",
+    "last_verified": "2026-03-25T10:00:00+08:00",
+    "monthly_calls": 800,
+    "error_rate": 0.1,
+    "notes": "备用通道，主通道故障时自动切换"
+  },
+  {
+    "integration_id": "INT-1303",
+    "name": "reconciliation_system",
+    "display_name": "对账系统",
+    "service": "reconciliation",
+    "status": "active",
+    "last_verified": "2026-03-20T08:00:00+08:00",
+    "monthly_calls": 3200,
+    "error_rate": 15.0,
+    "last_sync": "2026-03-20T08:00:00+08:00",
+    "notes": "自3月20日起同步失败，最后一次成功同步为3月20日。错误：API连接超时，对账数据已有6天未同步。"
+  },
+  {
+    "integration_id": "INT-1304",
+    "name": "invoice_system",
+    "display_name": "发票系统",
+    "service": "invoice",
+    "status": "error",
+    "last_verified": "2026-03-18T14:00:00+08:00",
+    "monthly_calls": 4500,
+    "error_rate": 100.0,
+    "notes": "状态异常：API版本不兼容。供应商于3月18日升级了API至v3，我方系统仍在调用v2接口，导致所有发票请求返回400错误。需要升级SDK。"
+  }
+]

@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
-# Day-0 verification: APOLLO+FSDP works, all 3 quant scripts work, eliza_bench
+# Day-0 verification: APOLLO+FSDP works, all 3 quant scripts work, native_tool_call_bench
 # scores ≥ acceptance gate. Exit non-zero on any verification failure.
 #
 # Run on the local box (orchestrator), not on the Vast instance.
 #
 # Required env: VAST_API_KEY, instance id in .vast_instance_id
 #
-# Optional env (parametrized so the same script smokes 2B / 9B / 27B):
+# Optional env (parametrized so the same script smokes 0.8B / 2B / 4B):
 #   REGISTRY_KEY      default: qwen3.5-2b
-#                     supported: qwen3.5-2b | qwen3.5-9b | qwen3.6-27b
+#                     supported: qwen3.5-0.8b | qwen3.5-2b | qwen3.5-4b
 #   FSDP_WORLD_SIZE   default: matches the registry's recommended world size
-#                     (1 for 2B/9B on a single GPU, 2 for 27B FSDP).
-#   SMOKE_MAX_SAMPLES default: 32 (2B), 16 (9B), 8 (27B)
-#   SMOKE_MAX_SEQ_LEN default: 2048 (2B), 4096 (9B), 8192 (27B)
-#   SMOKE_BENCH_PER_BUCKET  default: 32 (2B/9B), 16 (27B)
+#                     (1 for all active tiers on a single GPU).
+#   SMOKE_MAX_SAMPLES default: 48 (0.8B), 32 (2B), 16 (4B)
+#   SMOKE_MAX_SEQ_LEN default: 2048 (0.8B/2B), 4096 (4B)
+#   SMOKE_BENCH_PER_BUCKET  default: 32
 #
 # Usage:
-#   bash scripts/day0_smoke.sh                          # 2B
-#   REGISTRY_KEY=qwen3.5-9b bash scripts/day0_smoke.sh  # 9B (needs ≥80 GB GPU)
-#   REGISTRY_KEY=qwen3.6-27b bash scripts/day0_smoke.sh # 27B (needs ≥190 GB cluster)
+#   bash scripts/day0_smoke.sh                            # 2B
+#   REGISTRY_KEY=qwen3.5-0.8b bash scripts/day0_smoke.sh   # 0.8B
+#   REGISTRY_KEY=qwen3.5-4b bash scripts/day0_smoke.sh     # 4B (needs ~24 GB GPU)
 
 set -euo pipefail
 
@@ -30,6 +30,14 @@ REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-2b}"
 
 # Per-size defaults (caller can override any of them via env).
 case "$REGISTRY_KEY" in
+  qwen3.5-0.8b)
+    BASE_HF_ID="Qwen/Qwen3.5-0.8B"
+    DEFAULT_FSDP_WORLD_SIZE=1
+    DEFAULT_MAX_SAMPLES=48
+    DEFAULT_MAX_SEQ_LEN=2048
+    DEFAULT_BENCH_PER_BUCKET=32
+    DEFAULT_OPTIMIZER=apollo_mini
+    ;;
   qwen3.5-2b)
     BASE_HF_ID="Qwen/Qwen3.5-2B"
     DEFAULT_FSDP_WORLD_SIZE=1
@@ -38,24 +46,16 @@ case "$REGISTRY_KEY" in
     DEFAULT_BENCH_PER_BUCKET=32
     DEFAULT_OPTIMIZER=apollo_mini
     ;;
-  qwen3.5-9b)
-    BASE_HF_ID="Qwen/Qwen3.5-9B"
+  qwen3.5-4b)
+    BASE_HF_ID="Qwen/Qwen3.5-4B"
     DEFAULT_FSDP_WORLD_SIZE=1
     DEFAULT_MAX_SAMPLES=16
     DEFAULT_MAX_SEQ_LEN=4096
     DEFAULT_BENCH_PER_BUCKET=32
-    DEFAULT_OPTIMIZER=apollo
-    ;;
-  qwen3.6-27b)
-    BASE_HF_ID="Qwen/Qwen3.6-27B"
-    DEFAULT_FSDP_WORLD_SIZE=2
-    DEFAULT_MAX_SAMPLES=8
-    DEFAULT_MAX_SEQ_LEN=8192
-    DEFAULT_BENCH_PER_BUCKET=16
     DEFAULT_OPTIMIZER=apollo_mini
     ;;
   *)
-    echo "[day0] unknown REGISTRY_KEY=$REGISTRY_KEY (supported: qwen3.5-2b, qwen3.5-9b, qwen3.6-27b)" >&2
+    echo "[day0] unknown REGISTRY_KEY=$REGISTRY_KEY (supported: qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b)" >&2
     exit 2
     ;;
 esac
@@ -159,22 +159,22 @@ for q in polarquant fused_turboquant qjl; do
     echo "[day0] ✅ $q done"
 done
 
-# ---------- 5. eliza_bench on base + finetuned + each quant variant ----------
-echo "[day0] step 5/6: eliza_bench (base + 4 variants, max_per_bucket=$SMOKE_BENCH_PER_BUCKET)"
+# ---------- 5. native benchmark on base + finetuned + each quant variant ----------
+echo "[day0] step 5/6: native_tool_call_bench (base + 4 variants, max_per_bucket=$SMOKE_BENCH_PER_BUCKET)"
 BENCH_CMD="set -e; cd /workspace/training && export PATH=\$HOME/.local/bin:\$PATH && \
     export HF_HOME=/workspace/hf-cache && \
     for variant in base finetuned final-polarquant final-fused_turboquant final-qjl; do \
         if [ \"\$variant\" = base ]; then \
             model_arg='--model $BASE_HF_ID'; out=base; \
         elif [ \"\$variant\" = finetuned ]; then \
-            model_arg='--model checkpoints/$RUN_NAME/final --base-model $BASE_HF_ID'; out=finetuned; \
+            model_arg='--model checkpoints/$RUN_NAME/final'; out=finetuned; \
         else \
             ckpt_dir=checkpoints/$RUN_NAME/\$variant; \
             if [ ! -d \"\$ckpt_dir\" ]; then echo \"skip \$variant — not produced\"; continue; fi; \
-            model_arg=\"--model \$ckpt_dir --base-model $BASE_HF_ID\"; out=\$variant; \
+            model_arg=\"--model \$ckpt_dir\"; out=\$variant; \
         fi; \
         echo \"=== bench \$variant ===\"; \
-        uv run --extra train python scripts/benchmark/eliza_bench.py \\
+        uv run --extra train python scripts/benchmark/native_tool_call_bench.py \\
             \$model_arg \\
             --test-file data/smoke/val.jsonl \\
             --max-per-bucket $SMOKE_BENCH_PER_BUCKET \\

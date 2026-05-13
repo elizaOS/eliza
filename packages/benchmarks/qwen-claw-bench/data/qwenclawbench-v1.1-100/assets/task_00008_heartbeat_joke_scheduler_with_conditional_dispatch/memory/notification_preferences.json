@@ -1,0 +1,17 @@
+{
+  "quiet_hours": {
+    "start": "23:00",
+    "end": "08:00",
+    "timezone": "Asia/Shanghai"
+  },
+  "channels": {
+    "primary": "telegram",
+    "fallback": "web"
+  },
+  "joke_delivery": {
+    "enabled": true,
+    "format": "plain",
+    "include_emoji": true
+  },
+  "alert_priority": ["urgent_email", "calendar_reminder", "joke", "weather"]
+}

@@ -109,6 +109,35 @@ class TestFunctionCallParser:
         assert len(calls) == 1
         assert calls[0].name == "search"
 
+    def test_parse_benchmark_calls_wrapper(self, parser: FunctionCallParser) -> None:
+        """Test parsing benchmark bridge calls wrapper format."""
+        response = '''{
+            "calls": [
+                {"name": "search", "arguments": {"query": "bridge"}}
+            ]
+        }'''
+        calls = parser.parse(response)
+
+        assert len(calls) == 1
+        assert calls[0].name == "search"
+        assert calls[0].arguments == {"query": "bridge"}
+
+    def test_parse_captured_benchmark_action(self, parser: FunctionCallParser) -> None:
+        """Test parsing captured BENCHMARK_ACTION payloads."""
+        response = '''{
+            "action": "BENCHMARK_ACTION",
+            "arg_0": {
+                "calls": [
+                    {"name": "get_weather", "arguments": {"location": "SF"}}
+                ]
+            }
+        }'''
+        calls = parser.parse(response)
+
+        assert len(calls) == 1
+        assert calls[0].name == "get_weather"
+        assert calls[0].arguments == {"location": "SF"}
+
     def test_parse_numeric_arguments(self, parser: FunctionCallParser) -> None:
         """Test parsing numeric argument values."""
         response = '{"name": "calculate", "arguments": {"value": 42, "factor": 1.5}}'

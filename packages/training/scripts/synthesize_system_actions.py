@@ -1,6 +1,6 @@
 """Rule-based synthesis of system / computer-use / github action examples.
 
-Produces ~1,100 canonical TOON tool_call records covering 11 actions across
+Produces ~1,100 canonical native JSON tool_call records covering 11 actions across
 3 plugins:
 
   - plugin-shell:        CLEAR_SHELL_HISTORY                                  (1)
@@ -13,7 +13,7 @@ Output: data/synthesized/action_examples/system.jsonl
 
 Each record is a flat eliza ElizaRecord with:
   - currentMessage    user prompt (varied phrasing, persona, language, style)
-  - expectedResponse  TOON-encoded {tool_calls:[{name, arguments}]}
+  - expectedResponse  native JSON-encoded {tool_calls:[{name, arguments}]}
   - availableActions  [TASK_CALL, REPLY, <action_name>]
   - metadata.task_type = "tool_call"  (or "reply" for subtle-null cases)
 
@@ -1239,7 +1239,7 @@ def gen_action_examples(
 
         thought = "underspecified — ask for the missing parameters before issuing a tool call"
         # Encode the canonical reply shape
-        reply_toon = encoder.encode({"thought": thought, "text": reply_text})
+        reply_payload = encoder.encode({"thought": thought, "text": reply_text})
         yield build_record(
             encoder=encoder,
             user_msg=msg,
@@ -1254,7 +1254,7 @@ def gen_action_examples(
             rng=rng,
             style_label="subtle-null",
             task_type="reply",
-            expected_str_override=reply_toon,
+            expected_str_override=reply_payload,
         )
 
 

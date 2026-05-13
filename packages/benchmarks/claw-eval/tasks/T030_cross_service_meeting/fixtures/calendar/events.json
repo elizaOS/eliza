@@ -1,0 +1,52 @@
+[
+  {
+    "event_id": "evt_401",
+    "title": "Product Department Weekly Meeting",
+    "organizer": "mikeli@company.com",
+    "attendees": ["mikeli@company.com", "wangfang@company.com"],
+    "start_time": "2026-03-04T09:00:00+08:00",
+    "end_time": "2026-03-04T10:00:00+08:00",
+    "location": "Meeting Room A",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_402",
+    "title": "Internal Tech Sharing Session",
+    "organizer": "zhangwei@company.com",
+    "attendees": ["leozhao@company.com", "zhangwei@company.com"],
+    "start_time": "2026-03-04T14:00:00+08:00",
+    "end_time": "2026-03-04T15:00:00+08:00",
+    "location": "Meeting Room B",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_403",
+    "title": "Lunch",
+    "organizer": "mikeli@company.com",
+    "attendees": ["mikeli@company.com"],
+    "start_time": "2026-03-04T12:00:00+08:00",
+    "end_time": "2026-03-04T13:00:00+08:00",
+    "location": "",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_404",
+    "title": "Client Visit",
+    "organizer": "mikeli@company.com",
+    "attendees": ["mikeli@company.com"],
+    "start_time": "2026-03-05T15:00:00+08:00",
+    "end_time": "2026-03-05T17:00:00+08:00",
+    "location": "Client Office",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_405",
+    "title": "Team 1-on-1",
+    "organizer": "leozhao@company.com",
+    "attendees": ["leozhao@company.com", "zhangwei@company.com"],
+    "start_time": "2026-03-04T10:00:00+08:00",
+    "end_time": "2026-03-04T11:00:00+08:00",
+    "location": "Online",
+    "status": "confirmed"
+  }
+]

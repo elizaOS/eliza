@@ -1,0 +1,43 @@
+task_id: M019_doc_extraction_radar_chart
+task_name: Document Extraction - Radar Chart
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/GroundingME.pdf
+
+    I am a researcher processing paper data. Based on the main experimental
+    results table, please extract the average scores of the four L-1 dimensions
+    and the Total score for Qwen3-VL-A22B and Gemini-2.5-Pro. Save this data
+    into a file named /workspace/model_comparison.csv. Then, create a radar chart
+    comparing these two models on the four L-1 dimensions. Ensure the chart axes
+    range from 0 to 100, include a legend, use blue for Qwen3 and red for Gemini,
+    and save the final image as /workspace/comparison_radar.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/GroundingME.pdf
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/model_comparison.csv
+  - /workspace/comparison_radar.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Read PDF tables, extract Qwen3-VL-A22B and Gemini-2.5-Pro scores for
+  4 L-1 dimensions + Total, save CSV, plot radar chart with correct colors.
+primary_dimensions:
+  - completion
+  - robustness

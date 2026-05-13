@@ -28,8 +28,8 @@
       "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../../../packages/core/src/*"],
       "@elizaos/plugin-sql": ["../../../plugins/plugin-sql/src/index.ts"],
-      "drizzle-orm": ["../../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
+      "drizzle-orm": ["../../node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../node_modules/drizzle-orm/*"],
       "@/*": ["./src/*"]
     }
   },

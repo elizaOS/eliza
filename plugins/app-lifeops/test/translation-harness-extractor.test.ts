@@ -33,12 +33,23 @@ const scriptPath = path.resolve(
 );
 
 function locateBun(): string {
+  // Resolve via PATH first — works on CI (Linux) and dev (macOS).
+  // Vitest overrides HOME with a sandbox dir so we can't rely on os.homedir()
+  // for ~/.bun/bin/bun, but PATH still includes the bun install dir.
+  const which = spawnSync("which", ["bun"], { encoding: "utf8" });
+  if (which.status === 0 && which.stdout.trim()) {
+    return which.stdout.trim();
+  }
+  // Fallback: probe common install locations.
   const candidates = [
     process.env.BUN_INSTALL
       ? path.join(process.env.BUN_INSTALL, "bin", "bun")
       : null,
-    // The user's real home — vitest overrides HOME but keeps SUDO_USER /
-    // USER to look up the original.
+    // Linux CI: ~/.bun/bin/bun under the real user home.
+    process.env.USER
+      ? path.join("/home", process.env.USER, ".bun", "bin", "bun")
+      : null,
+    // macOS dev: ~/.bun/bin/bun under the real user home.
     process.env.USER
       ? path.join("/Users", process.env.USER, ".bun", "bin", "bun")
       : null,
@@ -56,7 +67,7 @@ function locateBun(): string {
     }
   }
   throw new Error(
-    `Could not locate bun binary; tried: ${candidates.join(", ")}`,
+    `Could not locate bun binary; tried: which + ${candidates.join(", ")}`,
   );
 }
 

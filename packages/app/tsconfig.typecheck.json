@@ -12,6 +12,9 @@
       ],
       "@elizaos/app-companion": ["../../plugins/app-companion/dist/index.d.ts"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/dist/index.d.ts"],
+      "@elizaos/app-messages/register": [
+        "../../plugins/app-messages/dist/register.d.ts"
+      ],
       "@elizaos/app-phone": ["../../plugins/app-phone/dist/index.d.ts"],
       "@elizaos/app-shopify": ["../../plugins/app-shopify/dist/index.d.ts"],
       "@elizaos/app-steward": ["../../plugins/app-steward/dist/index.d.ts"],

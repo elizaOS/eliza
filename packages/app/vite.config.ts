@@ -182,6 +182,14 @@ function createAppPluginBrowserAliases() {
       });
       break;
     }
+
+    const registerEntry = path.join(pkgDir, "src/register.ts");
+    if (fs.existsSync(registerEntry)) {
+      aliases.push({
+        find: new RegExp(`^${escapeRegExp(pkgName)}/register$`),
+        replacement: registerEntry,
+      });
+    }
   }
 
   return aliases;

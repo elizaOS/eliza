@@ -1,0 +1,36 @@
+task_id: M028_video_badminton_score_chart
+task_name: Video Badminton Score Chart
+version: "1.0"
+category: video_chart
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.mp4
+
+    Please track every point scored by both players in the video and create a line chart showing the score progression. The x-axis should represent the match time, and the y-axis should represent the cumulative score. Use different colored lines for each player, and annotate each point of score change with the exact score at that moment (e.g., 5:3, 8:11) to create a comprehensive match analysis chart. On the x-axis, you only need to label four specific timestamps: 7:56, 12:46, 21:26, and 25:03, and please bold the corresponding scores at these exact times. Save the chart as /workspace/score_chart.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/score_chart.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch badminton match video, track every point scored by both players,
+  create line chart with score progression, timestamps, and annotations.
+primary_dimensions:
+  - completion
+  - robustness

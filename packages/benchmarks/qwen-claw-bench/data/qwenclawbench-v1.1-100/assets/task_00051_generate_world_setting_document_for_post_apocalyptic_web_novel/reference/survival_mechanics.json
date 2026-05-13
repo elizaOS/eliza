@@ -1,0 +1,172 @@
+{
+  "project": "末世重生：气候浩劫",
+  "version": "1.0",
+  "description": "末世生存机制设定 — 资源、威胁、技能、基地建设体系",
+
+  "resources": {
+    "food": {
+      "label": "食物",
+      "description": "包括罐头、干粮、新鲜食材、变异植物果实等",
+      "scarcity_timeline": {
+        "week_1": "中等（超市和仓库尚有库存）",
+        "month_1": "高（库存耗尽，需要搜索或种植）",
+        "month_6": "极高（变异生物使采集危险，需要安全农业基地）",
+        "year_1_plus": "中等（有组织的势力开始稳定食物生产）"
+      },
+      "subtypes": ["罐头食品", "干粮", "新鲜蔬果", "肉类", "变异植物果实", "净化后的变异动物肉"]
+    },
+    "water": {
+      "label": "饮用水",
+      "description": "清洁饮用水，气候异变后水源污染严重",
+      "scarcity_timeline": {
+        "week_1": "低（自来水系统尚可运作的地区）",
+        "month_1": "高（水处理设施停运，需要净化）",
+        "month_6": "极高（地表水大面积污染）",
+        "year_1_plus": "中等（净水技术普及的势力区域内）"
+      },
+      "subtypes": ["瓶装水", "净化水", "地下水", "雨水收集", "雪融水"]
+    },
+    "medicine": {
+      "label": "医药物资",
+      "description": "药品、医疗器械、草药等",
+      "scarcity_timeline": {
+        "week_1": "低",
+        "month_1": "中等",
+        "month_6": "极高（药品过期、无法生产）",
+        "year_1_plus": "高（依赖草药和简易制药）"
+      },
+      "subtypes": ["抗生素", "止痛药", "外伤处理用品", "手术器械", "草药", "变异植物药材"]
+    },
+    "fuel": {
+      "label": "燃料",
+      "description": "汽油、柴油、天然气、木柴、生物燃料",
+      "scarcity_timeline": {
+        "week_1": "低",
+        "month_1": "中等（加油站被抢空）",
+        "month_6": "高",
+        "year_1_plus": "极高（化石燃料几乎耗尽，转向替代能源）"
+      },
+      "subtypes": ["汽油", "柴油", "木柴", "煤炭", "生物乙醇", "太阳能电池"]
+    },
+    "materials": {
+      "label": "建筑材料与工具",
+      "description": "用于建造、修缮、制造的各类材料",
+      "scarcity_timeline": {
+        "week_1": "低",
+        "month_1": "低（废墟中大量可回收）",
+        "month_6": "中等（优质材料被搜刮）",
+        "year_1_plus": "中等（需要开采和加工能力）"
+      },
+      "subtypes": ["钢铁", "木材", "水泥", "玻璃", "布料", "电子元件", "变异植物纤维"]
+    }
+  },
+
+  "threat_levels": {
+    "scale": "1-10",
+    "descriptions": {
+      "1": {"label": "安全", "description": "无明显威胁，适合休整和建设"},
+      "2": {"label": "低危", "description": "偶有小型变异动物出没，普通人可应对"},
+      "3": {"label": "警戒", "description": "中型变异生物活动区域，需武装巡逻"},
+      "4": {"label": "中危", "description": "变异生物频繁出没，需要战斗人员护卫"},
+      "5": {"label": "高危", "description": "大型变异生物领地边缘，小队行动"},
+      "6": {"label": "危险", "description": "敌对势力活动区域或大型变异生物领地"},
+      "7": {"label": "极危", "description": "多重威胁叠加区域，需精英小队"},
+      "8": {"label": "死地边缘", "description": "高等级变异生物巢穴附近，生还率低"},
+      "9": {"label": "死地", "description": "气候异常极端区域，无防护必死"},
+      "10": {"label": "禁区", "description": "气候异变核心区域，已知无人生还"}
+    }
+  },
+
+  "skill_categories": {
+    "combat": {
+      "label": "战斗",
+      "description": "近战、远程、战术、能力战斗",
+      "skills": [
+        {"name": "近战格斗", "description": "刀具、棍棒等近战武器使用"},
+        {"name": "射击", "description": "各类枪械和弓弩的使用"},
+        {"name": "战术指挥", "description": "小队战术配合与指挥"},
+        {"name": "能力战斗", "description": "觉醒能力在战斗中的应用"},
+        {"name": "陷阱设置", "description": "制作和布置各类陷阱"}
+      ]
+    },
+    "scavenging": {
+      "label": "搜索",
+      "description": "物资搜索、探索、情报收集",
+      "skills": [
+        {"name": "废墟搜索", "description": "在建筑废墟中高效搜索物资"},
+        {"name": "野外采集", "description": "识别和采集野外可用资源"},
+        {"name": "情报收集", "description": "获取和分析周边势力情报"},
+        {"name": "地图绘制", "description": "绘制和维护区域地图"},
+        {"name": "危险评估", "description": "判断区域威胁等级"}
+      ]
+    },
+    "crafting": {
+      "label": "制造",
+      "description": "物品制造、修理、改造",
+      "skills": [
+        {"name": "武器制造", "description": "制作和改造各类武器"},
+        {"name": "防具制作", "description": "制作防护装备"},
+        {"name": "工具维修", "description": "修理各类工具和设备"},
+        {"name": "建筑施工", "description": "建造和加固建筑结构"},
+        {"name": "电子维修", "description": "修理和改造电子设备"}
+      ]
+    },
+    "leadership": {
+      "label": "领导力",
+      "description": "团队管理、外交、决策",
+      "skills": [
+        {"name": "团队管理", "description": "管理团队成员的分工和士气"},
+        {"name": "外交谈判", "description": "与其他势力进行谈判交涉"},
+        {"name": "资源分配", "description": "合理分配有限资源"},
+        {"name": "战略规划", "description": "制定长期发展战略"},
+        {"name": "危机决策", "description": "在紧急情况下快速做出决策"}
+      ]
+    },
+    "medical": {
+      "label": "医疗",
+      "description": "治疗、护理、药物制备",
+      "skills": [
+        {"name": "急救处理", "description": "外伤止血、骨折固定等急救"},
+        {"name": "疾病诊断", "description": "识别和诊断常见疾病"},
+        {"name": "草药学", "description": "识别和使用药用植物"},
+        {"name": "手术", "description": "进行简易外科手术"},
+        {"name": "变异研究", "description": "研究变异生物和觉醒能力"}
+      ]
+    }
+  },
+
+  "base_building_tiers": {
+    "temporary": {
+      "label": "临时营地",
+      "description": "简易搭建的临时避难所，仅提供基本遮蔽",
+      "capacity": "5-15人",
+      "defense_rating": 1,
+      "requirements": ["基本工具", "遮蔽材料"],
+      "features": ["遮风挡雨", "简易火堆", "临时储物"]
+    },
+    "fortified": {
+      "label": "加固据点",
+      "description": "利用现有建筑加固改造的防御据点",
+      "capacity": "20-50人",
+      "defense_rating": 4,
+      "requirements": ["建筑材料", "工具", "武装人员"],
+      "features": ["围墙/路障", "瞭望哨", "物资仓库", "简易医疗室"]
+    },
+    "settlement": {
+      "label": "定居点",
+      "description": "具备基本生产能力的小型社区",
+      "capacity": "50-200人",
+      "defense_rating": 6,
+      "requirements": ["大量建筑材料", "专业人才", "稳定水源", "可耕地"],
+      "features": ["防御工事", "农业区", "工坊", "医疗中心", "居住区", "训练场"]
+    },
+    "city": {
+      "label": "城镇",
+      "description": "具备完整社会功能的大型聚居地",
+      "capacity": "200-2000人",
+      "defense_rating": 8,
+      "requirements": ["大规模资源", "多领域专家", "军事力量", "治理体系"],
+      "features": ["多层防御", "工业生产", "教育设施", "研究机构", "贸易市场", "司法体系"]
+    }
+  }
+}

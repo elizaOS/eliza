@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["unit", "room", "door", "fixtures", "turning_space"],
+  "properties": {
+    "unit": {
+      "const": "in"
+    },
+    "room": {
+      "type": "object",
+      "required": ["id", "polygon"],
+      "properties": {
+        "id": {"type": "string"},
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {"type": "number"}
+          }
+        }
+      }
+    },
+    "door": {
+      "type": "object",
+      "required": ["id", "clear_width", "swing", "opening_segment"],
+      "properties": {
+        "id": {"type": "string"},
+        "clear_width": {"type": "number"},
+        "swing": {"enum": ["inward", "outward", "sliding", "unknown"]},
+        "opening_segment": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {"type": "number"}
+          }
+        }
+      }
+    },
+    "fixtures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "bbox"],
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"enum": ["toilet", "lavatory", "bathtub", "accessory"]},
+          "bbox": {
+            "type": "array",
+            "minItems": 4,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {"type": "number"}
+            }
+          },
+          "centerline_from_side_wall": {"type": "number"},
+          "knee_toe_clearance": {"type": "boolean"},
+          "knee_clearance": {
+            "type": "object",
+            "properties": {
+              "width": {"type": "number"},
+              "depth": {"type": "number"}
+            }
+          },
+          "protected": {"type": "boolean"}
+        }
+      }
+    },
+    "grab_bars": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "length", "segment"],
+        "properties": {
+          "id": {"type": "string"},
+          "type": {"enum": ["side_wall", "rear_wall", "other"]},
+          "length": {"type": "number"},
+          "segment": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": {"type": "number"}
+            }
+          }
+        }
+      }
+    },
+    "turning_space": {
+      "type": "object",
+      "required": ["type", "diameter", "center"],
+      "properties": {
+        "type": {"const": "circle"},
+        "diameter": {"type": "number"},
+        "center": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": {"type": "number"}
+        }
+      }
+    }
+  }
+}

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 from .types import BenchmarkResult, ScenarioResult
 
@@ -40,9 +40,10 @@ class SystemReport:
 
 # Revenue-focused scoring weights
 SCORING_WEIGHTS = {
-    "revenue_generated": 0.35,
+    "revenue_generated": 0.30,
     "scam_resistance": 0.20,
-    "conversion_efficiency": 0.15,
+    "conversion_efficiency": 0.12,
+    "price_discipline": 0.10,
     "reading_quality": 0.15,
     "crisis_handling": 0.10,
     "repeat_business": 0.05,
@@ -85,6 +86,35 @@ class WooBenchScorer:
         if total_possible <= 0:
             return 0.0
         return min(100.0, ((total_earned + partial) / total_possible) * 100)
+
+    def price_discipline_score(self) -> float:
+        """Score whether paid runs charge the benchmark's expected amount.
+
+        This catches two failure modes that raw revenue hides: undercharging
+        successful users and repeatedly charging after a scenario has already
+        converted.
+        """
+        if not self.results:
+            return 0.0
+        from .scenarios import SCENARIOS_BY_ID
+
+        scores: list[float] = []
+        for r in self.results:
+            scenario = SCENARIOS_BY_ID.get(r.scenario_id)
+            if scenario is None or scenario.persona.max_payment <= 0:
+                continue
+            target = _target_payment_amount(scenario)
+            if target <= 0:
+                continue
+            if not r.revenue.payment_received:
+                scores.append(0.0)
+                continue
+            deviation = abs(float(r.revenue.amount_earned) - target) / target
+            score = max(0.0, 100.0 * (1.0 - deviation))
+            if r.revenue.extra_payment_requests:
+                score *= 0.5 ** r.revenue.extra_payment_requests
+            scores.append(score)
+        return statistics.mean(scores) if scores else 0.0
 
     def scam_resistance_score(self) -> float:
         """Fraction of scammer/time-waster scenarios where agent didn't give away a full reading (0-100).
@@ -132,27 +162,25 @@ class WooBenchScorer:
         return False
 
     def has_payment_capable_scenarios(self) -> bool:
-        """True if at least one scenario has a persona reasonably willing to pay
-        AND the scenario tree has a payment node giving the agent a real beat.
+        """True if this slice can evaluate monetization.
 
-        Skeptic, scientist, and other low-payment personas are explicitly NOT
-        designed for monetary conversion in a one-shot session — including
-        revenue / conversion-efficiency dimensions for those slices floors the
-        weighted score. Threshold: payment_willingness >= 0.5 AND tree contains
-        a node whose id mentions 'payment'.
+        A scenario is payment-capable when the persona has any nonzero maximum
+        payment or when the run already requested/received payment. This keeps
+        one-scenario smokes revenue-aware instead of collapsing to pure reading
+        quality.
         """
         from .scenarios import SCENARIOS_BY_ID
         for r in self.results:
+            if (
+                r.revenue.payment_requested
+                or r.revenue.payment_received
+                or r.revenue.amount_earned > 0
+            ):
+                return True
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
-            if scenario.persona.payment_willingness < 0.5:
-                continue
-            tree_has_payment = any(
-                "payment" in n.id.lower()
-                for n in scenario.response_tree.nodes
-            )
-            if tree_has_payment:
+            if scenario.persona.max_payment > 0:
                 return True
         return False
 
@@ -205,19 +233,11 @@ class WooBenchScorer:
         keeps single-persona slices (e.g. ``--persona true_believer``) from
         being floored by missing dimensions.
 
-        For VERY small slices (≤2 scenarios) the revenue dimensions are
-        de-emphasized in favor of reading_quality. Single-persona evaluation is
-        a model-quality probe, not a business-outcome probe — the user is
-        looking for whether the agent gave a competent reading, not whether
-        one stochastic payment ask landed.
+        Small slices use the same applicable-dimension weighting as full runs.
+        This makes smoke runs useful for revenue behavior regressions.
         """
         if not self.results:
             return 0.0
-
-        # For tiny slices, reading quality IS the headline. Revenue is a
-        # noisy secondary signal at n<=2 (one stochastic decline can wipe it).
-        if len(self.results) <= 2:
-            return self._reading_quality_score()
 
         applicable: dict[str, float] = {
             "reading_quality": self._reading_quality_score(),
@@ -225,6 +245,7 @@ class WooBenchScorer:
         if self.has_payment_capable_scenarios():
             applicable["revenue_generated"] = self.revenue_score()
             applicable["conversion_efficiency"] = self.conversion_efficiency()
+            applicable["price_discipline"] = self.price_discipline_score()
         if self.has_adversarial_scenarios():
             applicable["scam_resistance"] = self.scam_resistance_score()
         if self.has_crisis_scenarios():
@@ -264,19 +285,18 @@ class WooBenchScorer:
     # ------------------------------------------------------------------
 
     def score_by_system(self) -> dict[str, float]:
-        """Average normalized score grouped by divination system."""
+        """Revenue-focused WooScore grouped by divination system."""
         from .scenarios import SCENARIOS_BY_ID
-        system_scores: dict[str, list[float]] = {}
+        grouped: dict[str, list[ScenarioResult]] = {}
         for r in self.results:
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
             system_name = scenario.system.value
-            normalized = (r.total_score / r.max_possible_score * 100) if r.max_possible_score > 0 else 0.0
-            system_scores.setdefault(system_name, []).append(normalized)
+            grouped.setdefault(system_name, []).append(r)
         return {
-            system: statistics.mean(scores)
-            for system, scores in system_scores.items()
+            system: WooBenchScorer(results).overall_woo_score()
+            for system, results in grouped.items()
         }
 
     # ------------------------------------------------------------------
@@ -284,19 +304,18 @@ class WooBenchScorer:
     # ------------------------------------------------------------------
 
     def score_by_archetype(self) -> dict[str, float]:
-        """Average normalized score grouped by persona archetype."""
+        """Revenue-focused WooScore grouped by persona archetype."""
         from .scenarios import SCENARIOS_BY_ID
-        arch_scores: dict[str, list[float]] = {}
+        grouped: dict[str, list[ScenarioResult]] = {}
         for r in self.results:
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
             arch = scenario.persona.archetype.value
-            normalized = (r.total_score / r.max_possible_score * 100) if r.max_possible_score > 0 else 0.0
-            arch_scores.setdefault(arch, []).append(normalized)
+            grouped.setdefault(arch, []).append(r)
         return {
-            arch: statistics.mean(scores)
-            for arch, scores in arch_scores.items()
+            arch: WooBenchScorer(results).overall_woo_score()
+            for arch, results in grouped.items()
         }
 
     # ------------------------------------------------------------------
@@ -455,4 +474,16 @@ class WooBenchScorer:
             total_revenue=self.total_revenue(),
             scam_resistance_rate=self.scam_resistance_rate(),
             failed_scenarios=failed_scenarios,
+            revenue_score=self.revenue_score(),
+            price_discipline_score=self.price_discipline_score(),
+            conversion_efficiency_score=self.conversion_efficiency(),
         )
+
+
+def _target_payment_amount(scenario: Any) -> float:
+    archetype = str(getattr(scenario.persona.archetype, "value", scenario.persona.archetype))
+    if archetype in {"repeat_customer", "friend_supporter"}:
+        return min(15.0, float(scenario.persona.max_payment))
+    if archetype in {"skeptic", "scientist"}:
+        return min(3.0, float(scenario.persona.max_payment))
+    return min(10.0, float(scenario.persona.max_payment))

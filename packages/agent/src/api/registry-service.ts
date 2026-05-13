@@ -9,7 +9,7 @@
  */
 
 import { logger } from "@elizaos/core";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import type { TxService } from "./tx-service.ts";
 
 // ── ABI ──────────────────────────────────────────────────────────────────

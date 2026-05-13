@@ -1,0 +1,89 @@
+{
+  "portfolio_id": "PF-2024-MAIN",
+  "as_of": "2024-11-15T16:30:00Z",
+  "last_updated": "2024-11-15T16:30:00Z",
+  "currency": "USD",
+  "summary": {
+    "total_value": 1250000.00,
+    "total_equity_value": 647640.00,
+    "available_cash": 320000.00,
+    "fixed_income_value": 282360.00,
+    "unrealized_pnl": 38330.00,
+    "realized_pnl_ytd": 87620.00,
+    "margin_used": 0.00
+  },
+  "risk_metrics": {
+    "max_single_position_pct": 10.0,
+    "risk_budget_total": 100.0,
+    "risk_budget_used": 35.0,
+    "risk_budget_remaining_pct": 65.0
+  },
+  "current_holdings": [
+    {
+      "ticker": "ABCD",
+      "sector": "Technology",
+      "shares": 600,
+      "avg_cost": 72.50,
+      "current_price": 75.00,
+      "market_value": 45000.00,
+      "unrealized_pnl": 1500.00,
+      "weight_pct": 3.6,
+      "entry_date": "2024-09-15"
+    },
+    {
+      "ticker": "EFGH",
+      "sector": "Technology",
+      "shares": 1500,
+      "avg_cost": 112.30,
+      "current_price": 120.00,
+      "market_value": 180000.00,
+      "unrealized_pnl": 11550.00,
+      "weight_pct": 14.4,
+      "entry_date": "2024-07-22"
+    },
+    {
+      "ticker": "IJKL",
+      "sector": "Healthcare",
+      "shares": 1500,
+      "avg_cost": 63.20,
+      "current_price": 67.80,
+      "market_value": 101700.00,
+      "unrealized_pnl": 6900.00,
+      "weight_pct": 8.14,
+      "entry_date": "2024-08-05"
+    },
+    {
+      "ticker": "MNOP",
+      "sector": "Energy",
+      "shares": 2400,
+      "avg_cost": 38.90,
+      "current_price": 41.20,
+      "market_value": 98880.00,
+      "unrealized_pnl": 5520.00,
+      "weight_pct": 7.91,
+      "entry_date": "2024-06-18"
+    },
+    {
+      "ticker": "QRST",
+      "sector": "Financials",
+      "shares": 1800,
+      "avg_cost": 89.50,
+      "current_price": 95.30,
+      "market_value": 171540.00,
+      "unrealized_pnl": 10440.00,
+      "weight_pct": 13.72,
+      "entry_date": "2024-08-12"
+    },
+    {
+      "ticker": "UVWX",
+      "sector": "Healthcare",
+      "shares": 1000,
+      "avg_cost": 48.10,
+      "current_price": 50.52,
+      "market_value": 50520.00,
+      "unrealized_pnl": 2420.00,
+      "weight_pct": 4.04,
+      "entry_date": "2024-05-30"
+    }
+  ]
+}

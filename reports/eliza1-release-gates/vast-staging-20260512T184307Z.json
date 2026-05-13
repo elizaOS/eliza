@@ -1,0 +1,19 @@
+{
+  "gate": "live_vast_staging_deploy",
+  "status": "pass",
+  "completedAt": "2026-05-12T18:43:07.421Z",
+  "baseUrl": "http://ssh3.vast.ai:11983",
+  "model": "vast/eliza-1-27b-256k",
+  "standIn": true,
+  "modelArtifact": "unsloth/Qwen3.6-27B-GGUF/Qwen3.6-27B-UD-Q3_K_XL.gguf",
+  "instanceId": "36201983",
+  "modelsStatus": 200,
+  "chatLatencyMs": 1577,
+  "totalLatencyMs": 2308,
+  "usage": {
+    "prompt_tokens": 22,
+    "completion_tokens": 6,
+    "total_tokens": 28
+  },
+  "summary": "Vast staging responded in 1577ms"
+}

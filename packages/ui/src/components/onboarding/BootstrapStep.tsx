@@ -19,10 +19,10 @@
  *   network → surfaces to user; never treated as success.
  */
 
-import { cn } from "@elizaos/ui";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { client } from "../../api";
 import type { BootstrapExchangeResult } from "../../api/client-agent";
+import { cn } from "../../lib/utils";
 import {
   OnboardingField,
   onboardingDetailStackClassName,

@@ -15,8 +15,19 @@
  * `grammar` / `prefill` / `responseSkeleton` ignore them, full stop.
  */
 
-import type { ResponseSkeleton, ResponseSkeletonSpan } from "@elizaos/core";
+import type {
+  JSONSchema,
+  ResponseSkeleton,
+  ResponseSkeletonSpan,
+} from "@elizaos/core";
 
+export {
+  repairStructuredOutput,
+  type StructuredOutputRepairOptions,
+  type StructuredOutputRepairResult,
+  type StructuredOutputRepairStatus,
+  StructuredOutputRepairStream,
+} from "./structured-output/deterministic-repair";
 export type { ResponseSkeleton, ResponseSkeletonSpan };
 
 /**
@@ -55,6 +66,8 @@ export interface StructuredGenerateParams {
    * positions of the envelope.
    */
   responseSkeleton?: ResponseSkeleton;
+  /** Optional whole-response JSON schema from `GenerateTextParams`. */
+  responseSchema?: JSONSchema;
   /**
    * Explicit GBNF grammar string. When both `grammar` and `responseSkeleton`
    * are present, the explicit `grammar` wins (W3 contract).

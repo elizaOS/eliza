@@ -1,16 +1,12 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import type {
   CompleteLifeOpsOccurrenceRequest,
   CreateLifeOpsDefinitionRequest,
   LifeOpsDefinitionRecord,
   LifeOpsOccurrence,
   LifeOpsOccurrenceView,
+  LifeOpsOwnership,
+  LifeOpsOwnershipInput,
+  LifeOpsReminderPlan,
   LifeOpsTaskDefinition,
   SnoozeLifeOpsOccurrenceRequest,
   UpdateLifeOpsDefinitionRequest,
@@ -81,10 +77,60 @@ export interface LifeOpsDefinitionService {
   ): Promise<LifeOpsOccurrenceView>;
 }
 
+type ReminderPlanDraft = ReturnType<typeof normalizeReminderPlanDraft>;
+
+type DefinitionMixinDependencies = LifeOpsServiceBase & {
+  getDefinitionRecord(definitionId: string): Promise<LifeOpsDefinitionRecord>;
+  ensureGoalExists(
+    goalId: string | null,
+    ownership: LifeOpsOwnership,
+  ): Promise<string | null>;
+  syncReminderPlan(
+    definition: LifeOpsTaskDefinition,
+    draft: ReminderPlanDraft | undefined,
+  ): Promise<LifeOpsReminderPlan | null>;
+  syncGoalLink(definition: LifeOpsTaskDefinition): Promise<void>;
+  refreshDefinitionOccurrences(
+    definition: LifeOpsTaskDefinition,
+    now?: Date,
+  ): Promise<void>;
+  syncNativeAppleReminderForDefinition(args: {
+    definition: LifeOpsTaskDefinition | null;
+    previousDefinition?: LifeOpsTaskDefinition | null;
+  }): Promise<LifeOpsTaskDefinition | null>;
+  syncWebsiteAccessState(now?: Date): Promise<void>;
+  getFreshOccurrence(
+    occurrenceId: string,
+    now?: Date,
+  ): Promise<{
+    definition: LifeOpsTaskDefinition;
+    occurrence: LifeOpsOccurrence;
+  }>;
+  awardWebsiteAccessGrant(
+    definition: LifeOpsTaskDefinition,
+    occurrenceId: string,
+    now?: Date,
+  ): Promise<void>;
+  resolveReminderEscalation(args: {
+    ownerType: "occurrence" | "calendar_event";
+    ownerId: string;
+    resolvedAt: string;
+    resolution: "completed" | "skipped" | "snoozed";
+    note?: string | null;
+  }): Promise<void>;
+  normalizeOwnership(
+    input: LifeOpsOwnershipInput | undefined,
+    current?: LifeOpsOwnership,
+  ): LifeOpsOwnership;
+};
+
 export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsDefinitionService> {
-  return class extends Base {
+  const DefinitionsBase =
+    Base as unknown as Constructor<DefinitionMixinDependencies>;
+
+  class LifeOpsDefinitionServiceMixin extends DefinitionsBase {
     async listDefinitions(): Promise<LifeOpsDefinitionRecord[]> {
       const definitions = await this.repository.listDefinitions(this.agentId());
       const plans = await this.repository.listReminderPlansForOwners(
@@ -574,5 +620,10 @@ export function withDefinitions<TBase extends Constructor<LifeOpsServiceBase>>(
       }
       return view;
     }
-  } as MixinClass<TBase, LifeOpsDefinitionService>;
+  }
+
+  return LifeOpsDefinitionServiceMixin as unknown as MixinClass<
+    TBase,
+    LifeOpsDefinitionService
+  >;
 }

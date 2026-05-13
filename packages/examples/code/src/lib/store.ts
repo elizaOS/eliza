@@ -598,36 +598,3 @@ export const useStore = create<ElizaCodeState>((set, get) => ({
     );
   },
 }));
-
-// ============================================================================
-// Selectors
-// ============================================================================
-
-export const selectCurrentRoom = (state: ElizaCodeState) =>
-  state.rooms.find((r) => r.id === state.currentRoomId);
-
-export const selectCurrentTask = (state: ElizaCodeState) =>
-  state.currentTaskId
-    ? state.tasks.find((t) => t.id === state.currentTaskId)
-    : null;
-
-export const selectMessages = (state: ElizaCodeState) => {
-  const room = selectCurrentRoom(state);
-  return room?.messages ?? [];
-};
-
-export const selectTaskStats = (state: ElizaCodeState) => ({
-  total: state.tasks.length,
-  running: state.tasks.filter((t) => t.metadata?.status === "running").length,
-  completed: state.tasks.filter((t) => t.metadata?.status === "completed")
-    .length,
-  failed: state.tasks.filter((t) => t.metadata?.status === "failed").length,
-  pending: state.tasks.filter((t) => t.metadata?.status === "pending").length,
-});
-
-export const selectIsTaskPaneVisible = (state: ElizaCodeState) =>
-  computeTaskPaneVisible(
-    state.taskPaneVisibility,
-    state.tasks,
-    state.focusedPane,
-  );

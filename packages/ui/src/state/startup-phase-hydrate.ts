@@ -23,7 +23,7 @@ import {
   type Tab,
   tabFromPath,
 } from "../navigation";
-import { resolveApiUrl } from "../utils";
+import { isTransientOptionalFetchFailure, resolveApiUrl } from "../utils";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -152,18 +152,6 @@ export async function runHydrating(
   dispatch: (event: StartupEvent) => void,
   cancelled: { current: boolean },
 ): Promise<void> {
-  const isTransientOptionalFetchFailure = (err: unknown): boolean => {
-    if (!(err instanceof Error)) return false;
-    const maybeApiError = err as Error & {
-      kind?: string;
-      path?: string;
-    };
-    return (
-      err.name === "ApiError" &&
-      maybeApiError.kind === "network" &&
-      /^(Failed to fetch|Request aborted)$/i.test(err.message)
-    );
-  };
   const warn = (scope: string, err: unknown) => {
     if (isTransientOptionalFetchFailure(err)) return;
     console.warn(`[eliza][startup:init] ${scope}`, err);

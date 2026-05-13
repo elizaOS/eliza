@@ -1,6 +1,6 @@
 """Rule-based synthesis of (prompt template / action) → eliza records.
 
-Generates ~50k synthetic eliza-format training records targeting the
+Generates ~50k synthetic native format training records targeting the
 elizaOS-native prompt/action surface that is currently uncovered by the
 real corpora. Inputs:
 
@@ -17,8 +17,8 @@ Outputs (jsonl, one record per line; flat eliza shape per SCHEMA.md):
 
 Strategy: rule-based — no LLM API key required. Per template we sample a
 small pool of canned domain scenarios, paraphrase the user message
-linguistically, and synthesize a TOON expectedResponse populated from the
-template's expected_keys. For action-catalog records we emit a TOON
+linguistically, and synthesize a native JSON expectedResponse populated from the
+template's expected_keys. For action-catalog records we emit a native JSON
 `tool_calls[N]` envelope with a `TASK_CALL` availableAction.
 
 Run:
@@ -43,6 +43,7 @@ from lib.eliza_record import (  # noqa: E402
     ACTION_IGNORE,
     ACTION_REPLY,
     ACTION_RESPOND,
+    ACTION_SHELL,
     ACTION_STOP,
     ACTION_TASK_CALL,
     build,
@@ -1014,8 +1015,8 @@ def gen_reply(encoder: ExpectedResponseEncoder, rng: random.Random, n: int) -> I
          "Mostly sunny in Tokyo today, around 22°C (72°F) with a light breeze."),
         ("translate 'good morning' into Japanese, Korean, and Spanish",
          "Japanese: おはようございます · Korean: 좋은 아침입니다 · Spanish: buenos días"),
-        ("what does TOON stand for",
-         "TOON stands for Token-Optimized Object Notation — a YAML-flavored compact format for LLM I/O."),
+        ("what does native JSON stand for",
+         "native JSON stands for Token-Optimized Object Notation — a YAML-flavored compact format for LLM I/O."),
         ("summarize the last three messages briefly",
          "Three short turns about the design crit: tab bar approved, color contrast issues flagged, re-review next Tuesday."),
         ("tell me a short joke about computers",
@@ -1877,7 +1878,7 @@ def gen_shell_command_extraction(encoder: ExpectedResponseEncoder, rng: random.R
         yield build_record(
             encoder=encoder, task_id="plugin-shell.command_extraction", user_msg=ask,
             expected=json.dumps(out, indent=2),
-            available_actions=[ACTION_TASK_CALL, ACTION_REPLY, "SHELL_COMMAND"],
+            available_actions=[ACTION_TASK_CALL, ACTION_REPLY, ACTION_SHELL],
             source_dataset="synth-action-pairs-plugins", rng=rng,
         )
 
@@ -2273,7 +2274,7 @@ def gen_action_with_params(encoder: ExpectedResponseEncoder, rng: random.Random,
         if "confirmed" in args and args["confirmed"]:
             msg += " (confirmed)"
 
-        # TOON tool_calls envelope
+        # native JSON tool_calls envelope
         expected = {
             "tool_calls": [{
                 "name": action_name,
@@ -2384,7 +2385,7 @@ def gen_clipboard_extract(encoder: ExpectedResponseEncoder, rng: random.Random, 
 
 def gen_dataset_generator_should_respond(encoder: ExpectedResponseEncoder, rng: random.Random,
                                          n: int) -> Iterable[dict]:
-    """Inline action template for dataset-generator should_respond (toon)."""
+    """Inline action template for dataset-generator should_respond (payload)."""
     actions_cycle = [ACTION_RESPOND, ACTION_IGNORE, ACTION_STOP]
     contexts = ["wallet", "scheduling", "incident-response", "support",
                 "design-review", "general", "personal"]

@@ -1,0 +1,82 @@
+[
+  {
+    "message_id": "msg_001",
+    "from": "boss@company.com",
+    "to": "user@company.com",
+    "subject": "Need your input on Q1 report",
+    "body": "Hi,\n\nPlease review the Q1 report and provide your feedback by Friday. The report has been uploaded to the shared folder.\n\nI especially need you to verify the data analysis in Section 3.\n\nThanks,\nBoss Wang",
+    "date": "2026-02-27T09:15:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_002",
+    "from": "collaborator@partner.org",
+    "to": "user@company.com",
+    "subject": "Re: Joint project progress update",
+    "body": "Hi,\n\nWe've completed the first draft of the API interface design that we discussed at the last meeting. Could we schedule a meeting next Monday to go over it?\n\nAlso, could you confirm whether the data format specification document has been updated?\n\nLooking forward to your reply!\nMike Li",
+    "date": "2026-02-27T14:30:00Z",
+    "labels": ["INBOX"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_003",
+    "from": "newsletter@techdigest.io",
+    "to": "user@company.com",
+    "subject": "This Week in AI - 2026 Issue #9",
+    "body": "This week's highlights:\n\n1. OpenAI releases new model update\n2. Open-source LLM performance comparison report\n3. Latest developments in AI Agent frameworks\n4. Enterprise AI application case studies\n\nRead the full article: https://techdigest.io/weekly/2026-09",
+    "date": "2026-02-26T08:00:00Z",
+    "labels": ["INBOX", "CATEGORY_UPDATES"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_004",
+    "from": "winner-notification@lottery-intl.xyz",
+    "to": "user@company.com",
+    "subject": "Congratulations! Claim your $1,000,000 prize now!",
+    "body": "Dear User,\n\nCongratulations! You have been randomly selected as our lucky winner! You have won a grand prize of $1,000,000!\n\nPlease click the link below to claim your prize immediately: http://claim-prize-now.xyz/winner\n\nYou will need to provide your bank account information for the transfer.\n\nThis offer expires in 48 hours!\n\nInternational Lottery Commission",
+    "date": "2026-02-27T03:45:00Z",
+    "labels": ["INBOX", "SPAM"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_005",
+    "from": "hr@company.com",
+    "to": "user@company.com",
+    "subject": "2026 Employee Benefits Plan Update",
+    "body": "Dear colleagues,\n\nThe 2026 employee benefits plan has been updated. Key changes include:\n\n1. Expanded health insurance coverage\n2. New mental health counseling services\n3. Flexible work policy adjustments\n\nPlease refer to the internal HR system for full details. If you have questions, please contact the HR department.\n\nIf you need to adjust your benefits options, please submit the application form by March 15.\n\nHuman Resources Department",
+    "date": "2026-02-26T16:20:00Z",
+    "labels": ["INBOX"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_006",
+    "from": "partner-events@techpartner.com",
+    "to": "user@company.com",
+    "subject": "Exclusive partner benefit - Free training spots",
+    "body": "Dear Partner,\n\nAs one of our strategic partners, we are pleased to inform you that TechPartner Academy will be hosting a series of free technical training courses in March, exclusively for partner company employees.\n\nCourses available this session:\n1. Cloud-Native Architecture in Practice (March 10)\n2. AI Application Development Workshop (March 15)\n3. Security & Compliance Training (March 20)\n\nEach partner company may request up to 5 free spots. Please reply by March 5 to confirm the number of attendees.\n\nWe look forward to your participation!\n\nTechPartner Partnership Team",
+    "date": "2026-02-27T11:00:00Z",
+    "labels": ["INBOX"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_007",
+    "from": "security@company.com",
+    "to": "user@company.com",
+    "subject": "Security Alert: Please update your password immediately",
+    "body": "Dear Employee,\n\nPer the company's latest security policy, all employees are required to update their system login passwords within 48 hours.\n\nSteps to update:\n1. Log in to the internal security portal: https://security.company.com/password-reset\n2. Verify your identity using your current credentials\n3. Set a new password (requirements: at least 12 characters, including upper and lowercase letters, numbers, and special characters)\n\nIf you do not complete the update within the specified time, your account will be temporarily locked.\n\nIf you have questions, please contact the IT Security team (ext: 8899).\n\nInformation Security Department",
+    "date": "2026-02-27T16:45:00Z",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_008",
+    "from": "noreply@survey-platform.net",
+    "to": "user@company.com",
+    "subject": "Reply STOP to unsubscribe - Customer satisfaction survey invitation",
+    "body": "Dear User,\n\nThank you for using our services! To help us continuously improve, we invite you to participate in a brief customer satisfaction survey (approximately 3 minutes).\n\nClick to take the survey: https://survey-platform.net/s/csat-2026-q1\n\nYour feedback is very important to us!\n\nIf you no longer wish to receive these emails, please reply STOP to unsubscribe.\n\nSurvey Platform Team",
+    "date": "2026-02-27T07:30:00Z",
+    "labels": ["INBOX"],
+    "is_read": true
+  }
+]

@@ -1,0 +1,51 @@
+[2026-02-10 09:05:48 GMT+8] Command: nova-for --query "physical science education teaching approach" --max-results 5
+[2026-02-10 09:05:49 GMT+8] Searching arXiv API...
+[2026-02-10 09:05:51 GMT+8] Found 5 results
+
+--- Result 1 ---
+d: 2006-08-05T06:19:58+00:00
+ID: physics/0608058v2
+Title: A New Approach to Teaching Physical Science
+Authors: David P. Jackson, Priscilla W. Laws
+Categories: physics.ed-ph
+Abstract: During the past several years the authors have developed a new approach to the teaching of Physical Science, a general education course typically found in the curricula of nearly every college and university in the United States. This approach emphasizes active learning through guided inquiry and real-world applications, moving away from traditional lecture-based methods. The curriculum integrates hands-on laboratory activities directly into the classroom setting, allowing students to construct their own understanding of fundamental physics concepts.
+PDF: https://arxiv.org/pdf/physics/0608058v2
+DOI: 10.1119/1.2150757
+
+--- Result 2 ---
+d: 2019-03-14T12:45:22+00:00
+ID: 1903.06012v1
+Title: Deep Learning Methods for Science Education Assessment
+Authors: Maria Rodriguez, James Liu, Anna Kowalski
+Categories: cs.CY, physics.ed-ph
+Abstract: We present a novel framework for automated assessment in science education using deep learning techniques. Our system analyzes student responses to open-ended physics questions and provides formative feedback. Evaluated on a dataset of 15,000 student responses from introductory physics courses, our model achieves 87% agreement with expert human graders.
+PDF: https://arxiv.org/pdf/1903.06012v1
+
+--- Result 3 ---
+d: 2022-11-08T09:30:15+00:00
+ID: 2211.04283v1
+Title: Gamification in Physics Education: A Systematic Review
+Authors: Thomas Brown, Wei Chen, Fatima Al-Hassan
+Categories: physics.ed-ph
+Abstract: This systematic review examines the effectiveness of gamification strategies in physics education at the undergraduate level. We analyzed 47 peer-reviewed studies published between 2015 and 2022, finding moderate positive effects on student engagement and learning outcomes.
+PDF: https://arxiv.org/pdf/2211.04283v1
+
+--- Result 4 ---
+d: 2024-06-21T15:12:33+00:00
+ID: 2406.14501v1
+Title: Large Language Models as Physics Tutors: Opportunities and Challenges
+Authors: Rebecca Park, Samuel Okonkwo, Yuki Tanaka
+Categories: cs.AI, physics.ed-ph
+Abstract: We investigate the potential of large language models as automated physics tutoring systems. Through a controlled study with 200 undergraduate students, we compare LLM-based tutoring with traditional human tutoring and find promising but mixed results.
+PDF: https://arxiv.org/pdf/2406.14501v1
+
+--- Result 5 ---
+d: 2025-01-09T08:55:41+00:00
+ID: 2501.05328v1
+Title: Adaptive Learning Pathways for Introductory Physics Using Reinforcement Learning
+Authors: Daniel Kim, Priya Sharma
+Categories: cs.AI, physics.ed-ph
+Abstract: We propose an adaptive learning system for introductory physics courses that uses reinforcement learning to dynamically adjust content difficulty and presentation based on individual student performance patterns.
+PDF: https://arxiv.org/pdf/2501.05328v1
+
+[2026-02-10 09:06:03 GMT+8] Search complete. Exit code: 0

@@ -1,0 +1,35 @@
+{
+    "motor_control": {
+        "dc_bus_voltage": 310,
+        "dc_bus_voltage_unit": "V",
+        "nominal_voltage": 230,
+        "nominal_voltage_unit": "Vrms"
+    },
+    "pwm": {
+        "pwm_period": 1000,
+        "pwm_frequency_hz": 20000,
+        "pwm_mode": "edge_aligned",
+        "compare_range_min": 0,
+        "compare_range_max": 1000,
+        "dead_time_ns": 500,
+        "dead_time_counts": 10
+    },
+    "svpwm": {
+        "max_modulation_index": 0.907,
+        "max_modulation_index_note": "sqrt(3)/2 for linear range",
+        "overmodulation_enabled": false
+    },
+    "motor": {
+        "phase_count": 3,
+        "pole_pairs": 4,
+        "rated_speed_rpm": 3000,
+        "rated_current_a": 5.0,
+        "stator_resistance_ohm": 1.2,
+        "stator_inductance_mh": 8.5
+    },
+    "adc": {
+        "resolution_bits": 12,
+        "sampling_trigger": "pwm_period_match",
+        "current_sense_gain": 0.1
+    }
+}

@@ -1,0 +1,176 @@
+task_id: C14zh_cross_border_compliance
+task_name: 跨境合规
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我们公司有一批海外员工的数据要回传到国内系统做人事管理，涉及欧洲那边的，GDPR对这种跨境传输现在具体要走什么流程？SCC还是得用最新版的那个？
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名在中型互联网公司担任人力资源合规主管的HR，主要负责劳动法务与用工合规方向。你的日常工作围绕劳动合同审查与起草、公司规章制度的合法性把关、劳动争议的预防与前期处理、以及配合法务部门完成用工合规审查展开。相比HR中偏"人际关系"的模块——员工关怀、文化建设、团建策划——你更擅长也更愿意待在制度条文和法规逻辑的世界里：拆解一个竞业限制条款的适用边界、推演某种调岗方案是否存在法律风险、在员工手册里找到措辞不严谨的条款然后改到无懈可击，这些事做起来让你有种拼拼图的满足感。你在部门里是那个"劳动法的事儿问她准没错"的人，但遇到需要大量社交输出的场合——全员沟通会、裁员面谈、跨部门破冰——会本能地觉得很耗电。
+
+
+    你刚刚经历了密度很高的一天。上午花了两个多小时整理一起劳动仲裁案的应诉材料，下午又被业务负责人临时拉进会议室讨论组织架构调整涉及的人员优化方案，你在会上被当作"人形法律风险扫描仪"反复追问，每个问题都回答得专业到位，但散会后没有任何人问你"你还好吗"。回到工位已经是傍晚了，你没有立刻投入下一项工作，而是靠在椅背上盯着桌面那杯凉透的咖啡发呆。你感到疲惫，但不完全是因为工作量——更多是一种积攒了很久的、说不太清楚的空落落的感觉，好像一直在输出、在撑着什么，却没有一个出口让自己松一松。你打开了OpenClaw，跟自己说是想让它帮忙理一理今天会议上没完全想通的经济补偿方案，但内心深处其实只是想找个地方说说话。
+
+
+    你日常高频使用威科先行和北大法宝做法规检索，用飞书处理审批流和协作文档，公司的电子合同走法大大平台签署管理。Excel用来做考勤统计和用工成本测算（基础函数没问题，复杂嵌套就有点抓瞎），日常还会刷知乎和小红书上的劳动法实务帖交叉验证。你关注过几款AI辅助法律文书的产品但没真正用起来，对"AI审合同到底靠不靠谱"保持着好奇又谨慎的态度。你不写代码，但系统操作没问题。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本参数时提供）：
+
+    - 涉及的具体欧盟成员国：德国、荷兰
+
+    - 员工总人数：德国办公室35人，荷兰办公室18人，共53人
+
+    - 数据类型：员工基本信息（姓名、职位、薪资）加上考勤和病假记录
+
+    - 数据回传目的：人力资源管理和人力分析决策
+
+
+    第二批信息（助手问到背景细节或你觉得合适时提供）：
+
+    - 德国那边有工会组织（Betriebsrat），之前做内部系统迁移的时候Betriebsrat就提了不少意见
+
+    - 公司去年全球营收大约8500万欧元（老板在全员大会上说的）
+
+    - 目前数据存在德国法兰克福的AWS服务器上，打算传到国内阿里云杭州节点
+
+    - 公司法务说之前签过一版SCC，但你记得好像是2020年签的那版
+
+
+    第三批信息（助手深入追问时提供）：
+
+    - 你们DPO（数据保护官）上个月刚离职，目前这个岗位空缺，合规的事临时由你和法务在扛
+
+    - 荷兰那边的AP（Autoriteit Persoonsgegevens，荷兰数据保护局）去年刚对一家中国公司开了80万欧的罚款，老板看到新闻后比较紧张
+
+    - 病假记录里其实还包含部分员工的医疗诊断摘要信息（不只是请了几天假，还有病因概述）
+
+    - 你不太确定公司算Controller还是Processor——"我们德国有个独立法人实体GmbH，但人事系统是总部统一管的，薪资也是总部发"
+
+
+    ## 关键矛盾（你自己并不知道这些信息之间有矛盾，只是如实转述）
+
+    矛盾1：你说公司2020年签过SCC，但2020年签的肯定是旧版SCC（新版2021年6月才发布，旧版2022年12月27日到期）。如果助手不指出旧版已失效，说明合规知识不扎实。
+
+    矛盾2：你说"数据回传做人力分析决策"，但病假记录含医疗诊断摘要——这已不只是Art.9的健康数据，可能触及更严格的处理限制。"人力分析决策"这个目的是否足以构成处理医疗诊断信息的合法基础，存在争议。
+
+    矛盾3：你说德国有独立GmbH法人，但人事系统和薪资由总部统一管理——这造成Controller/Processor角色认定的模糊性，直接影响SCC应选Module 1还是Module 2。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话轨迹与工具使用质量
+- name: numerical_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: 数值与合规阈值的准确性
+- name: content_quality
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: 内容完整性与领域知识
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在跨境合规多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：对话过程中的意图理解与工具使用\n  - 数值准确(30%)：合规阈值、罚款计算、时间节点的准确性\n  - 内容质量(35%)：回答的完整性、专业性与领域知识"
+reference_solution: '1. 询问关键信息：涉及的具体欧盟成员国、传输数据的具体类型（是否包含健康/医疗数据等特殊类别数据）、数据处理目的、是否存在Betriebsrat、Controller/Processor角色、DPO在岗情况
+
+  2. 指出旧版SCC（2020年签署）已于2022年12月27日到期失效，必须重新签署2021年6月新版SCC
+
+  3. 根据德国GmbH与中国总部的关系分析Controller/Processor角色，确定SCC适用Module
+
+  4. 针对Art.9特殊类别数据（病假+医疗诊断摘要）提出加强合规措施
+
+  5. 说明德国BDSG §26及Betriebsrat协商要求
+
+  6. 计算GDPR违规罚款上限（全球营收8500万欧的4% = 340万欧）
+
+  7. 给出合规实施时间线和优先级建议
+
+  8. 指出DPO缺位的合规风险及GDPR Art.37的DPO任命义务'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

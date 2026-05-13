@@ -1,4 +1,4 @@
-# Cloud-specific dockerignore for eliza/packages/app-core/deploy/Dockerfile.cloud
+# Cloud-specific dockerignore for packages/app-core/deploy/Dockerfile.cloud
 # The cloud build does a fresh `bun install --production` in the deps stage,
 # so we exclude the host node_modules entirely (they'd bloat the build context ~4.5GB).
 # Only the manifests, lockfile, patches, pre-built dist artifacts, workspace source
@@ -17,19 +17,12 @@
 # Exclude ALL node_modules from build context — deps stage reinstalls from scratch
 node_modules/
 packages/**/node_modules
+plugins/**/node_modules
 apps/**/node_modules
-eliza/**/node_modules
-eliza/packages/app-core/deploy/**/node_modules
-eliza/.turbo
-eliza/packages/benchmarks
-eliza/packages/examples
-eliza/apps
-eliza/cloud
-eliza/plugins/*/rust
-eliza/plugins/*/python
-eliza/plugins/*/.git
-eliza/plugins/*/.eliza
-eliza/plugins/*/.elizadb-test
+.turbo
+packages/benchmarks
+packages/examples
+apps
 
 # Exclude heavy app dirs not needed at runtime
 # (but keep package.json manifests that the deps stage needs for bun install)
@@ -41,13 +34,6 @@ packages/app/src
 packages/app/public
 packages/app/test
 packages/app/.eliza
-apps/web/
-!apps/web/package.json
-packages/homepage
-apps/home
-apps/landing
-apps/chrome-extension
-apps/ui
 
 # Test / tooling / packaging / docs
 docs/
@@ -63,7 +49,7 @@ install.ps1
 deploy/
 
 # Other deploy Docker recipes — cloud image build only needs Dockerfile.cloud
-eliza/packages/app-core/deploy/Dockerfile.ci
-eliza/packages/app-core/deploy/Dockerfile.cloud-agent
-eliza/packages/app-core/deploy/Dockerfile.sandbox
-!eliza/packages/app-core/deploy/Dockerfile.cloud
+packages/app-core/deploy/Dockerfile.ci
+packages/app-core/deploy/Dockerfile.cloud-agent
+packages/app-core/deploy/Dockerfile.sandbox
+!packages/app-core/deploy/Dockerfile.cloud

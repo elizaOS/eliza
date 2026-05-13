@@ -1,6 +1,5 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { strict as assert } from "node:assert";
-import type { IAgentRuntime, Memory, TestSuite } from "@elizaos/core";
+import type { IAgentRuntime, Memory, State, TestSuite } from "@elizaos/core";
 import { Keypair } from "@solana/web3.js";
 import { meteoraPositionProvider } from "../providers/positionProvider.ts";
 import type { MeteoraLpService } from "../services/MeteoraLpService.ts";
@@ -133,16 +132,16 @@ export const meteoraScenarios: TestSuite = {
 
         // Test that the position provider is properly registered and can be called
         // Create a minimal Memory object for testing
-        const testMemory = {
+        const testMemory: Memory = {
           id: "test-memory-id",
-          userId: "test-user",
+          entityId: "test-user",
           agentId: "test-agent",
           roomId: "test-room",
           content: { text: "test message" },
           createdAt: Date.now(),
-        } as Memory;
+        };
 
-        const context = await meteoraPositionProvider.get(runtime, testMemory);
+        const context = await meteoraPositionProvider.get(runtime, testMemory, createTestState());
 
         assert(
           typeof context === "object" && context !== null,
@@ -291,16 +290,16 @@ export const meteoraScenarios: TestSuite = {
         assert(marketData[testPool.id] !== undefined, "Should get market data for test pool");
 
         // 3. Check position provider context
-        const testMemory2 = {
+        const testMemory2: Memory = {
           id: "test-memory-id-2",
-          userId: "test-user",
+          entityId: "test-user",
           agentId: "test-agent",
           roomId: "test-room",
           content: { text: "test message" },
           createdAt: Date.now(),
-        } as Memory;
+        };
 
-        const context = await meteoraPositionProvider.get(runtime, testMemory2);
+        const context = await meteoraPositionProvider.get(runtime, testMemory2, createTestState());
         assert(typeof context === "object" && context !== null, "Position provider should work");
         assert(
           "data" in context && "values" in context && "text" in context,
@@ -319,3 +318,7 @@ export const meteoraScenarios: TestSuite = {
 };
 
 export default meteoraScenarios;
+
+function createTestState(): State {
+  return { values: {}, data: {}, text: "" };
+}

@@ -1,0 +1,34 @@
+{"type": "session_start", "session_id": "subagent_4232345", "model": "deepseek-r1", "created_at": "2026-03-06T11:42:26.203452", "user_id": "system", "channel": "internal"}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-06T11:45:44.247080", "session_id": "subagent_4232345", "seq": 1, "usage": {"prompt_tokens": 4724, "completion_tokens": 1277, "total_tokens": 5416}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-06T11:47:54.612473", "session_id": "subagent_4232345", "seq": 2, "usage": {"prompt_tokens": 4997, "completion_tokens": 3500, "total_tokens": 2350}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-06T11:49:28.481625", "session_id": "subagent_4232345", "seq": 3, "usage": {"prompt_tokens": 1233, "completion_tokens": 278, "total_tokens": 779}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-06T11:49:37.088490", "session_id": "subagent_4232345", "seq": 4, "usage": {"prompt_tokens": 6567, "completion_tokens": 1101, "total_tokens": 2699}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-06T11:51:41.178517", "session_id": "subagent_4232345", "seq": 5}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-06T11:56:28.365772", "session_id": "subagent_4232345", "seq": 6, "usage": {"prompt_tokens": 5501, "completion_tokens": 2068, "total_tokens": 4752}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-06T11:58:54.874870", "session_id": "subagent_4232345", "seq": 7}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-06T12:03:48.554756", "session_id": "subagent_4232345", "seq": 8}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-06T12:07:04.044971", "session_id": "subagent_4232345", "seq": 9}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-06T12:07:40.341812", "session_id": "subagent_4232345", "seq": 10, "usage": {"prompt_tokens": 4450, "completion_tokens": 130, "total_tokens": 9663}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-06T12:11:33.035496", "session_id": "subagent_4232345", "seq": 11}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-06T12:14:34.382661", "session_id": "subagent_4232345", "seq": 12}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-06T12:17:31.912903", "session_id": "subagent_4232345", "seq": 13, "usage": {"prompt_tokens": 3217, "completion_tokens": 3465, "total_tokens": 10622}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-06T12:20:35.220272", "session_id": "subagent_4232345", "seq": 14}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-06T12:23:38.701384", "session_id": "subagent_4232345", "seq": 15}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-06T12:25:48.256893", "session_id": "subagent_4232345", "seq": 16}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-06T12:30:34.301206", "session_id": "subagent_4232345", "seq": 17, "usage": {"prompt_tokens": 4980, "completion_tokens": 1712, "total_tokens": 4187}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-06T12:30:35.891686", "session_id": "subagent_4232345", "seq": 18, "usage": {"prompt_tokens": 3305, "completion_tokens": 1412, "total_tokens": 4269}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-06T12:34:23.938776", "session_id": "subagent_4232345", "seq": 19, "usage": {"prompt_tokens": 3648, "completion_tokens": 1142, "total_tokens": 6260}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-06T12:35:17.438702", "session_id": "subagent_4232345", "seq": 20}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-06T12:40:04.914705", "session_id": "subagent_4232345", "seq": 21}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-06T12:43:48.917494", "session_id": "subagent_4232345", "seq": 22}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-06T12:44:59.490869", "session_id": "subagent_4232345", "seq": 23}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-06T12:46:14.610898", "session_id": "subagent_4232345", "seq": 24, "usage": {"prompt_tokens": 7002, "completion_tokens": 3701, "total_tokens": 3540}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-06T12:48:02.618587", "session_id": "subagent_4232345", "seq": 25}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-06T12:52:48.458535", "session_id": "subagent_4232345", "seq": 26, "usage": {"prompt_tokens": 3198, "completion_tokens": 2481, "total_tokens": 9750}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-06T12:53:54.792106", "session_id": "subagent_4232345", "seq": 27}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-06T12:56:39.241119", "session_id": "subagent_4232345", "seq": 28}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-06T13:00:04.692586", "session_id": "subagent_4232345", "seq": 29}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-06T13:04:51.642233", "session_id": "subagent_4232345", "seq": 30}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-06T13:09:08.591746", "session_id": "subagent_4232345", "seq": 31}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-06T13:10:11.006330", "session_id": "subagent_4232345", "seq": 32}
+{"type": "session_end", "session_id": "subagent_4232345", "ended_at": "2026-03-06T13:10:21.006330", "total_messages": 32, "status": "completed"}

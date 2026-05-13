@@ -1,0 +1,34 @@
+# Retrieval System Configuration
+# Last updated: 2024-05-20
+# Owner: Memory Retrieval Team
+
+# Number of seed memories to select per query
+seed_quota: 10
+
+# Context expansion window: retrieve ±N entries around each seed
+context_window: 3
+
+# Maximum total results returned after expansion and dedup
+max_total_results: 50
+
+# Sort order for final result set before truncation
+# Options: timestamp_desc, timestamp_asc, relevance_desc
+sort_order: 'timestamp_desc'
+
+# Deduplication strategy when context windows overlap
+# Options: keep_first, keep_highest_score, merge
+dedup_strategy: 'keep_first'
+
+# Primary scoring method for seed selection
+# Options: keyword_match, semantic, hybrid
+scoring_method: 'keyword_match'
+
+# Minimum relevance threshold for seed candidates
+min_relevance_threshold: 0.3
+
+# Enable logging of dropped entries during truncation
+log_dropped_entries: true
+
+# Feature flags
+enable_context_expansion: true
+enable_deduplication: true

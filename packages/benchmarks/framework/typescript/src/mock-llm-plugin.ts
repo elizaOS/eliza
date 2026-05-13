@@ -2,7 +2,7 @@
  * Mock LLM Plugin for Framework Benchmarking
  *
  * Replaces all LLM model handlers with deterministic, zero-latency handlers
- * that return pre-computed valid TOON responses. This isolates framework
+ * that return pre-computed valid JSON responses. This isolates framework
  * overhead from LLM latency for accurate performance measurement.
  */
 
@@ -19,35 +19,47 @@ import {
 // ─── Mock response constants ───────────────────────────────────────────────
 
 /** Response for shouldRespond evaluations (TEXT_SMALL / dynamicPromptExec) */
-const SHOULD_RESPOND_TOON = `name: BenchmarkAgent
-reasoning: The message is directed at me. I should respond.
-action: RESPOND`;
+const SHOULD_RESPOND_JSON = JSON.stringify({
+  name: "BenchmarkAgent",
+  reasoning: "The message is directed at me. I should respond.",
+  action: "RESPOND",
+});
 
 /** Response for main message handler (TEXT_LARGE / dynamicPromptExec) */
-const MESSAGE_HANDLER_TOON = `thought: Processing benchmark message. Will reply with a fixed response.
-actions: REPLY
-providers:
-text: This is a fixed benchmark response from the mock LLM plugin.
-simple: true`;
+const MESSAGE_HANDLER_JSON = JSON.stringify({
+  thought: "Processing benchmark message. Will reply with a fixed response.",
+  actions: ["REPLY"],
+  providers: [],
+  text: "This is a fixed benchmark response from the mock LLM plugin.",
+  simple: true,
+});
 
 /** Response for reply action (TEXT_LARGE direct calls) */
-const REPLY_ACTION_TOON = `thought: Generating a reply for the benchmark.
-text: Fixed reply from mock LLM plugin.`;
+const REPLY_ACTION_JSON = JSON.stringify({
+  thought: "Generating a reply for the benchmark.",
+  text: "Fixed reply from mock LLM plugin.",
+});
 
 /** Multi-step decision response (marks task as finished immediately) */
-const MULTI_STEP_DECISION_TOON = `thought: The task is straightforward, completing immediately.
-action:
-providers:
-isFinish: true`;
+const MULTI_STEP_DECISION_JSON = JSON.stringify({
+  thought: "The task is straightforward, completing immediately.",
+  action: null,
+  providers: [],
+  isFinish: true,
+});
 
 /** Multi-step summary response */
-const MULTI_STEP_SUMMARY_TOON = `thought: Summarizing benchmark run.
-text: Benchmark multi-step task completed successfully.`;
+const MULTI_STEP_SUMMARY_JSON = JSON.stringify({
+  thought: "Summarizing benchmark run.",
+  text: "Benchmark multi-step task completed successfully.",
+});
 
 /** Reflection evaluator response */
-const REFLECTION_TOON = `thought: Benchmark interaction processed normally.
-facts:
-relationships:`;
+const REFLECTION_JSON = JSON.stringify({
+  thought: "Benchmark interaction processed normally.",
+  facts: [],
+  relationships: [],
+});
 
 /** Fixed 384-dimension embedding vector (all zeros). Frozen to prevent mutation. */
 const ZERO_EMBEDDING: readonly number[] = Object.freeze(
@@ -68,7 +80,7 @@ function detectAndRespondTextLarge(
 
   // Multi-step decision template
   if (prompt.includes("Multi-Step Workflow") || prompt.includes("isFinish")) {
-    return MULTI_STEP_DECISION_TOON;
+    return MULTI_STEP_DECISION_JSON;
   }
 
   // Multi-step summary template
@@ -76,7 +88,7 @@ function detectAndRespondTextLarge(
     prompt.includes("Execution Trace") ||
     prompt.includes("Summarize what the assistant")
   ) {
-    return MULTI_STEP_SUMMARY_TOON;
+    return MULTI_STEP_SUMMARY_JSON;
   }
 
   // Reflection evaluator template
@@ -84,7 +96,7 @@ function detectAndRespondTextLarge(
     prompt.includes("Generate Agent Reflection") ||
     prompt.includes("Extract Facts")
   ) {
-    return REFLECTION_TOON;
+    return REFLECTION_JSON;
   }
 
   // Reply action template
@@ -92,11 +104,11 @@ function detectAndRespondTextLarge(
     prompt.includes("Generate dialog for the character") &&
     !prompt.includes("decide what actions")
   ) {
-    return REPLY_ACTION_TOON;
+    return REPLY_ACTION_JSON;
   }
 
   // Default: message handler response
-  return MESSAGE_HANDLER_TOON;
+  return MESSAGE_HANDLER_JSON;
 }
 
 function detectAndRespondTextSmall(
@@ -110,7 +122,7 @@ function detectAndRespondTextSmall(
     prompt.includes("should respond") ||
     prompt.includes("RESPOND | IGNORE | STOP")
   ) {
-    return SHOULD_RESPOND_TOON;
+    return SHOULD_RESPOND_JSON;
   }
 
   // Boolean footer (yes/no responses)
@@ -120,11 +132,11 @@ function detectAndRespondTextSmall(
 
   // Post generation
   if (prompt.includes("Generate dialog")) {
-    return MESSAGE_HANDLER_TOON;
+    return MESSAGE_HANDLER_JSON;
   }
 
   // Default for small model
-  return SHOULD_RESPOND_TOON;
+  return SHOULD_RESPOND_JSON;
 }
 
 // ─── Dummy providers for scaling tests ──────────────────────────────────────

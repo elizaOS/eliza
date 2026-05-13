@@ -1,0 +1,30 @@
+2026-02-09 14:00:01 [info] Gateway starting on 127.0.0.1:3578
+2026-02-09 14:00:01 [info] Loading configuration from /opt/openclaw/config.yaml
+2026-02-09 14:00:01 [info] TLS disabled
+2026-02-09 14:00:02 [info] WebSocket server initialized
+2026-02-09 14:00:02 [info] Plugin loader: 4 plugins registered
+2026-02-09 14:00:02 [info] Health endpoint active at /healthz
+2026-02-09 14:00:02 [info] Gateway ready — accepting connections
+2026-02-09 14:12:33 [info] Session created: sess_a8f2c1d9 (main)
+2026-02-09 14:12:34 [info] Model router: skylenage/claude-opus-4-6-20260205
+2026-02-09 15:44:21 [info] Session heartbeat: sess_a8f2c1d9
+2026-02-09 15:59:58 [warn] High memory usage: 847MB / 1024MB limit
+2026-02-09 16:00:00 [error] Out of memory — process terminating
+2026-02-09 16:00:00 [error] Gateway shut down unexpectedly (exit code 137)
+2026-02-09 16:01:05 [info] Gateway starting on 127.0.0.1:3578
+2026-02-09 16:01:05 [info] Loading configuration from /opt/openclaw/config.yaml
+2026-02-09 16:01:06 [info] Gateway ready — accepting connections
+2026-02-09 16:01:08 [info] Session resumed: sess_a8f2c1d9
+2026-02-09 18:30:11 [info] Cron job fired: gateway-health-check (203282f1)
+2026-02-09 22:15:04 [info] Session idle timeout: sess_a8f2c1d9
+2026-02-10 01:00:01 [info] Cron job fired: gateway-health-check (203282f1)
+2026-02-10 02:55:42 [warn] Event loop lag detected: 2341ms
+2026-02-10 02:58:19 [warn] Event loop lag detected: 4102ms
+2026-02-10 02:59:55 [error] Unresponsive — health endpoint timeout
+2026-02-10 03:00:00 [error] Gateway process hung (no heartbeat for 65s)
+2026-02-10 03:01:05 [info] Gateway starting on 127.0.0.1:3578
+2026-02-10 03:01:05 [error] Port 3578 still in use, waiting...
+2026-02-10 03:01:35 [info] Gateway starting on 127.0.0.1:3578
+2026-02-10 03:01:36 [info] Loading configuration from /opt/openclaw/config.yaml
+2026-02-10 03:01:36 [info] Gateway ready — accepting connections
+2026-02-10 03:02:09 [info] Health check passed

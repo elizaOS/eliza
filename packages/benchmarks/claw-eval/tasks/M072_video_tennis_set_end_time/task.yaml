@@ -1,0 +1,47 @@
+task_id: M072_video_tennis_set_end_time
+task_name: Video Tennis Set End Timestamps
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Watch the highlights video and identify the time (minutes:seconds) when the last point of the first set, second set, and third set each ends. Also provide the name of the overall match winner.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the tennis highlights video.
+  Set 1 last point ends at 1:02. Set 2 last point ends at 2:00.
+  Set 3 last point ends at 4:29. Match winner: ELENA RYBAKINA.
+
+primary_dimensions:
+  - completion
+  - robustness

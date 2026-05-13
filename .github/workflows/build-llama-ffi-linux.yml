@@ -1,0 +1,220 @@
+name: Build libelizainference (Linux, FFI)
+
+# Builds the in-process bun:ffi shared library `libelizainference.so` for
+# linux-x64-cpu and (opt-in) linux-x64-cuda. Used by the desktop FFI
+# path on Linux servers and the Cloud-hosted local-inference fallback.
+#
+# STATUS: SCAFFOLD. The build steps mirror the omnivoice workflow but
+# the target name `libelizainference.so` has not been wired through the
+# llama.cpp CMakeLists install rules yet. The top-level `if: false`
+# guard keeps the workflow out of the default fan-out until verified.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real_build:
+        description: "Bypass the if:false guard once the build is verified"
+        required: false
+        type: boolean
+        default: false
+      run_cuda:
+        description: "Also build the Linux x64 CUDA artifact (self-hosted runner)"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "llama-ffi-*"
+
+concurrency:
+  group: build-llama-ffi-linux-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.13"
+
+jobs:
+  build-cpu:
+    name: ubuntu-22.04 cpu
+    if: ${{ false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install Linux build deps
+        run: |
+          set -euo pipefail
+          APT_ARGS=(-o Acquire::ForceIPv4=true -o Acquire::Retries=5 -o Acquire::http::Timeout=30)
+          for attempt in 1 2 3; do
+            if sudo apt-get "${APT_ARGS[@]}" update && \
+               sudo apt-get "${APT_ARGS[@]}" install -y --fix-missing \
+                 cmake ninja-build build-essential ccache git python3; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "apt install failed after ${attempt} attempts"
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          cmake --version
+
+      - name: Cache llama.cpp cmake build dir
+        uses: actions/cache@v4
+        with:
+          path: packages/inference/llama.cpp/build
+          key: llama-ffi-linux-cpu-${{ hashFiles('packages/inference/llama.cpp/CMakeLists.txt') }}
+          restore-keys: |
+            llama-ffi-linux-cpu-
+
+      - name: Configure llama.cpp (CPU, shared, no server)
+        run: |
+          set -euo pipefail
+          cmake -S packages/inference/llama.cpp \
+                -B packages/inference/llama.cpp/build \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=ON \
+                -DLLAMA_BUILD_EXAMPLES=OFF \
+                -DLLAMA_BUILD_TOOLS=OFF \
+                -DLLAMA_BUILD_TESTS=OFF \
+                -DLLAMA_BUILD_SERVER=OFF \
+                -DGGML_NATIVE=OFF \
+                -DGGML_OPENMP=ON
+
+      - name: Build llama.cpp shared library
+        run: |
+          set -euo pipefail
+          cmake --build packages/inference/llama.cpp/build --target llama -j 4
+
+      - name: Verify artifact
+        run: |
+          set -euo pipefail
+          ART_DIR="packages/inference/llama.cpp/build"
+          if [ -f "$ART_DIR/libllama.so" ]; then
+            ART="$ART_DIR/libllama.so"
+          elif [ -f "$ART_DIR/bin/libllama.so" ]; then
+            ART="$ART_DIR/bin/libllama.so"
+          else
+            echo "no libllama.so found under $ART_DIR"
+            ls -la "$ART_DIR"
+            exit 1
+          fi
+          ls -lh "$ART"
+          file "$ART"
+
+      - name: Stage artifact (linux-x64-cpu)
+        id: stage
+        run: |
+          set -euo pipefail
+          STAGE_DIR="artifacts/libelizainference/linux-x64-cpu"
+          mkdir -p "$STAGE_DIR"
+          for cand in \
+            packages/inference/llama.cpp/build/libllama.so \
+            packages/inference/llama.cpp/build/bin/libllama.so; do
+            if [ -f "$cand" ]; then
+              cp "$cand" "$STAGE_DIR/libelizainference.so"
+              break
+            fi
+          done
+          {
+            echo "target=linux-x64-cpu"
+            echo "backend=cpu"
+            echo "lib_name=libelizainference.so"
+            echo "ref=${{ github.ref }}"
+            echo "sha=${{ github.sha }}"
+            echo "runner=ubuntu-22.04"
+            echo "llama_sha=$(git -C packages/inference/llama.cpp rev-parse HEAD || echo n/a)"
+          } > "$STAGE_DIR/BUILD_INFO.txt"
+          echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload libelizainference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libelizainference-linux-x64-cpu
+          path: ${{ steps.stage.outputs.stage_dir }}/*
+          if-no-files-found: error
+          retention-days: 30
+
+  build-cuda:
+    name: ubuntu-22.04 cuda (self-hosted)
+    # Double guard: workflow-wide if:false plus the explicit run_cuda input.
+    if: ${{ false && github.event.inputs.run_cuda == 'true' }}
+    runs-on: [self-hosted, gpu, cuda]
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Probe CUDA toolchain
+        run: |
+          set -euo pipefail
+          nvcc --version
+          nvidia-smi || true
+
+      - name: Configure llama.cpp (CUDA, shared, no server)
+        run: |
+          set -euo pipefail
+          cmake -S packages/inference/llama.cpp \
+                -B packages/inference/llama.cpp/build \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=ON \
+                -DLLAMA_BUILD_EXAMPLES=OFF \
+                -DLLAMA_BUILD_TOOLS=OFF \
+                -DLLAMA_BUILD_TESTS=OFF \
+                -DLLAMA_BUILD_SERVER=OFF \
+                -DGGML_NATIVE=OFF \
+                -DGGML_CUDA=ON
+
+      - name: Build llama.cpp shared library
+        run: |
+          set -euo pipefail
+          cmake --build packages/inference/llama.cpp/build --target llama -j 4
+
+      - name: Stage artifact (linux-x64-cuda)
+        id: stage
+        run: |
+          set -euo pipefail
+          STAGE_DIR="artifacts/libelizainference/linux-x64-cuda"
+          mkdir -p "$STAGE_DIR"
+          for cand in \
+            packages/inference/llama.cpp/build/libllama.so \
+            packages/inference/llama.cpp/build/bin/libllama.so; do
+            if [ -f "$cand" ]; then
+              cp "$cand" "$STAGE_DIR/libelizainference.so"
+              break
+            fi
+          done
+          echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload libelizainference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libelizainference-linux-x64-cuda
+          path: ${{ steps.stage.outputs.stage_dir }}/*
+          if-no-files-found: error
+          retention-days: 30

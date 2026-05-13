@@ -1,8 +1,15 @@
+"use client";
+
+// Sibling primitive mirrored at packages/ui/src/components/ui/status-badge.tsx. The two
+// workspaces (Eliza-UI and Cloud-UI) cannot depend on each other today, so
+// these files are intentional siblings. When changing behavior, props, or
+// visual semantics, update both — or extract to a shared package per
+// docs/frontend-cleanup-2026-05-12/15-cloud-eliza-primitive-dedup.md.
+
 /**
  * Status badge component with semantic color variants.
  * Replaces 10+ inline status badge patterns across the app.
  */
-"use client";
 
 import { Loader2 } from "lucide-react";
 import * as React from "react";

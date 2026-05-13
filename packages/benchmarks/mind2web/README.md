@@ -6,8 +6,8 @@ Evaluates ElizaOS agents on real-world web navigation and interaction tasks.
 
 ## Features
 
-- **Canonical ElizaOS Integration**: Uses `runtime.message_service.handle_message()` for the full agent loop
-- **Multiple Model Providers**: Groq (fast/cheap), OpenAI, Anthropic
+- **Canonical ElizaOS Integration**: Uses the TypeScript benchmark bridge for the full agent loop
+- **Multiple Model Providers**: Groq, OpenAI, OpenRouter, Cerebras through OpenAI-compatible local calls, or the Eliza bridge
 - **Comprehensive Metrics**: Task success, step accuracy, element accuracy, operation accuracy
 - **Multiple Splits**: Cross-Task, Cross-Website, Cross-Domain evaluation
 
@@ -17,7 +17,7 @@ Evaluates ElizaOS agents on real-world web navigation and interaction tasks.
 
 ```bash
 # From repo root
-PYTHONPATH=packages python -m benchmarks.mind2web --sample
+PYTHONPATH=packages python -m benchmarks.mind2web --sample --mock
 ```
 
 ### Run with Groq (Fast and Cheap)
@@ -34,7 +34,7 @@ PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider
 
 ```bash
 export OPENAI_API_KEY=your_key_here
-PYTHONPATH=packages python -m benchmarks.mind2web --sample --real-llm --provider groq --model openai/gpt-oss-120b
+PYTHONPATH=packages python -m benchmarks.mind2web --sample --provider openai --model openai/gpt-oss-120b
 ```
 
 ### Run Full Benchmark from HuggingFace
@@ -63,8 +63,9 @@ Task Selection:
   --max-steps N         Maximum steps per task (default: 20)
 
 Model Configuration:
-  --real-llm            Use real LLM via ElizaOS (requires API key)
-  --provider PROVIDER   groq, openai, openrouter, anthropic, or auto (default)
+  --mock                Use deterministic ground-truth replay for offline smoke tests
+  --real-llm            Deprecated alias for --provider eliza when no provider is specified
+  --provider PROVIDER   groq, openai, openrouter, cerebras, eliza, or auto (default)
   --model MODEL         Model name for OpenAI-compatible providers
   --temperature T       LLM temperature (default: 0.0)
 

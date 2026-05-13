@@ -87,6 +87,62 @@ _TOOL_CALL_RE: Final[re.Pattern[str]] = re.compile(
 )
 
 
+def _coerce_arguments_object(raw: Any, *, raw_block: str) -> dict[str, Any]:
+    """Normalize tool-call arguments into a JSON object."""
+    if isinstance(raw, str):
+        if not raw:
+            return {}
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise ProviderError(
+                "Hermes <tool_call> arguments string was not valid JSON",
+                status=None,
+                body=raw_block,
+                provider="hermes",
+            ) from exc
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ProviderError(
+            "Hermes <tool_call> arguments was not a dict",
+            status=None,
+            body=raw_block,
+            provider="hermes",
+        )
+    return raw
+
+
+def _payload_name_and_arguments(
+    payload: dict[str, Any], *, raw_block: str
+) -> tuple[str, dict[str, Any]]:
+    """Accept common Hermes/OpenAI-compatible tool-call payload variants."""
+    name = payload.get("name")
+    if not isinstance(name, str) or not name:
+        name = payload.get("tool")
+    if not isinstance(name, str) or not name:
+        function = payload.get("function")
+        if isinstance(function, dict):
+            name = function.get("name")
+    if not isinstance(name, str) or not name:
+        raise ProviderError(
+            "Hermes <tool_call> missing 'name'",
+            status=None,
+            body=raw_block,
+            provider="hermes",
+        )
+
+    if "arguments" in payload:
+        raw_arguments = payload.get("arguments")
+    elif "args" in payload:
+        raw_arguments = payload.get("args")
+    elif "parameters" in payload:
+        raw_arguments = payload.get("parameters")
+    else:
+        raw_arguments = {}
+    return name, _coerce_arguments_object(raw_arguments, raw_block=raw_block)
+
+
 def _build_hermes_system_prompt(tools: list[dict[str, Any]] | None) -> str:
     """Render the Hermes system prompt, embedding the OpenAI tools list."""
     tools_payload: list[dict[str, Any]] = []
@@ -141,12 +197,10 @@ def _convert_messages_to_hermes(
                 function = tc.get("function") or {}
                 name = function.get("name") or ""
                 arguments_raw = function.get("arguments")
-                if isinstance(arguments_raw, str):
-                    arguments = json.loads(arguments_raw) if arguments_raw else {}
-                elif isinstance(arguments_raw, dict):
-                    arguments = arguments_raw
-                else:
-                    arguments = {}
+                arguments = _coerce_arguments_object(
+                    arguments_raw,
+                    raw_block=json.dumps(tc),
+                )
                 payload = json.dumps(
                     {"name": name, "arguments": arguments},
                     separators=(",", ":"),
@@ -176,7 +230,15 @@ def _parse_hermes_response_text(text: str) -> tuple[str | None, list[ToolCall]]:
     parsed: list[ToolCall] = []
     matches = list(_TOOL_CALL_RE.finditer(text))
     for index, match in enumerate(matches):
-        payload = json.loads(match.group(1))
+        try:
+            payload = json.loads(match.group(1))
+        except json.JSONDecodeError as exc:
+            raise ProviderError(
+                "Hermes <tool_call> block was not valid JSON",
+                status=None,
+                body=match.group(0),
+                provider="hermes",
+            ) from exc
         if not isinstance(payload, dict):
             raise ProviderError(
                 "Hermes <tool_call> payload was not a JSON object",
@@ -184,22 +246,7 @@ def _parse_hermes_response_text(text: str) -> tuple[str | None, list[ToolCall]]:
                 body=match.group(0),
                 provider="hermes",
             )
-        name = payload.get("name")
-        arguments = payload.get("arguments", {})
-        if not isinstance(name, str) or not name:
-            raise ProviderError(
-                "Hermes <tool_call> missing 'name'",
-                status=None,
-                body=match.group(0),
-                provider="hermes",
-            )
-        if not isinstance(arguments, dict):
-            raise ProviderError(
-                "Hermes <tool_call> 'arguments' was not a dict",
-                status=None,
-                body=match.group(0),
-                provider="hermes",
-            )
+        name, arguments = _payload_name_and_arguments(payload, raw_block=match.group(0))
         parsed.append(ToolCall(id=f"call_{index}", name=name, arguments=arguments))
     if parsed:
         prose = _TOOL_CALL_RE.sub("", text).strip()

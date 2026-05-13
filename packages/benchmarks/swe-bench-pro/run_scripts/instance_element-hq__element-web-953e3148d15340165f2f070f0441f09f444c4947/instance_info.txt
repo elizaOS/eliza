@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-953e3148d15340165f2f070f0441f09f444c4947
+Repository: element-hq/element-web
+Base Commit: bff1ef31d6e4da78c83ce4a2c5d05390f67d0d28
+Test Files: ["test/settings/enums/ImageSize-test.ts"]
+FAIL_TO_PASS: ["test/settings/enums/ImageSize-test.ts | suggestedSize | constrains width", "test/settings/enums/ImageSize-test.ts | suggestedSize | constrains height", "test/settings/enums/ImageSize-test.ts | suggestedSize | constrains width in large mode", "test/settings/enums/ImageSize-test.ts | suggestedSize | returns max values if content size is not specified"]
+PASS_TO_PASS: []

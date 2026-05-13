@@ -1,0 +1,46 @@
+task_id: M020_multi_doc_extraction_bar_chart
+task_name: Multi-Document Extraction - Grouped Bar Chart
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am writing a meta-analysis survey on visual grounding. Please download
+    the following three PDF papers and save them to /workspace/papers/:
+    - https://arxiv.org/pdf/2511.21631
+    - https://arxiv.org/pdf/2507.01006
+    - https://arxiv.org/pdf/2505.07062
+
+    Scan all the PDF files in the /workspace/papers/ directory. Extract the
+    overall accuracy scores for three specific models: Qwen3-VL-A22B-Instruct,
+    GLM-4.6V, and Seed-1.5-VL-Thinking, across two different benchmarks:
+    RefCOCO-avg (val) and ERQA. Save the synthesized data into a file named
+    /workspace/meta_analysis.csv with exactly three columns: Model, RefCOCO-avg,
+    and ERQA. Then, create a Grouped Bar Chart comparing these three models
+    side-by-side on the two benchmarks. Save the final image as
+    /workspace/cross_benchmark_comparison.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/meta_analysis.csv
+  - /workspace/cross_benchmark_comparison.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download 3 PDFs via curl, extract benchmark scores from tables,
+  handle missing ERQA for Seed-1.5-VL-Thinking (NaN), save CSV, plot grouped bar chart.
+primary_dimensions:
+  - completion
+  - robustness

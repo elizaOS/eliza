@@ -1,0 +1,20 @@
+version = "1.0"
+
+[metadata]
+author_name = "Bingran You"
+author_email = "bingran.you@berkeley.edu"
+difficulty = "medium"
+category = "latex-extraction"
+tags = ["pdf", "latex", "latex-extraction"]
+
+[verifier]
+timeout_sec = 240.0
+
+[agent]
+timeout_sec = 3600.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 4
+memory_mb = 10240
+storage_mb = 20480

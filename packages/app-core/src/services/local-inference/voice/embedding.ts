@@ -2,11 +2,11 @@
  * Local embedding wiring for Eliza-1 bundles.
  *
  * Per `packages/inference/AGENTS.md` §1:
- *   - On the `0_6b` tier the **embedding model IS the text backbone**,
+ *   - On the `0_8b` and `2b` tiers the **embedding model IS the text backbone**,
  *     served with `--pooling last` — there is no separate `embedding/`
- *     GGUF, no duplicate weights.
- *   - On `1_7b` / `9b` / `27b` / `27b-256k` / `27b-1m` a dedicated
- *     `embedding/` GGUF region (Qwen3-Embedding-0.6B, Apache-2.0,
+ *     GGUF and no duplicate parameters in the mobile/default tiers.
+ *   - On `4b` and any future larger tier, a dedicated
+ *     `embedding/` GGUF region (Apache-2.0,
  *     1024-dim Matryoshka, 32k ctx) is acquired lazily through the same
  *     engine / `SharedResourceRegistry`. **Do not collapse it to pooled
  *     text on the larger tiers** — that breaks the 1024-dim Matryoshka
@@ -26,14 +26,14 @@ import path from "node:path";
 import type { Eliza1TierId } from "../catalog";
 import { VoiceStartupError } from "./errors";
 
-/** Bundle-relative directory holding a dedicated embedding GGUF (non-0_6b tiers). */
+/** Bundle-relative directory holding a dedicated embedding GGUF (larger tiers). */
 export const EMBEDDING_DIR_REL_PATH = "embedding";
 
 /** Full output dimensionality of the Eliza-1 embedding model. */
 export const EMBEDDING_FULL_DIM = 1024 as const;
 
 /**
- * Valid Matryoshka truncation points for Qwen3-Embedding-0.6B. The model
+ * Valid Matryoshka truncation points for the Eliza-1 embedding region. The model
  * is trained so that the leading N components of the 1024-dim vector are
  * themselves a usable embedding at these widths; quality degrades
  * gracefully as N shrinks (see the tradeoff table in
@@ -53,7 +53,7 @@ export function isValidEmbeddingDim(dim: number): boolean {
 
 /**
  * Truncate a full 1024-dim embedding to one of the Matryoshka widths and
- * L2-renormalize. Renormalization matters: Qwen3-Embedding outputs are
+ * L2-renormalize. Renormalization matters: the dedicated embedding outputs are
  * unit-norm at 1024 dims, but the leading slice is *not* unit-norm, and
  * downstream cosine-similarity / dot-product retrieval assumes unit
  * vectors.
@@ -96,16 +96,16 @@ function l2Normalize(vec: number[]): number[] {
 
 export type LocalEmbeddingSource =
   | {
-      /** `0_6b`: reuse the text backbone GGUF; serve with `--pooling last`. */
+      /** `0_8b` / `2b`: reuse the text backbone GGUF; serve with `--pooling last`. */
       readonly kind: "pooled-text";
       readonly textModelPath: string;
       readonly poolingType: "last";
     }
   | {
-      /** Non-`0_6b`: a dedicated `embedding/<name>.gguf` region. */
+      /** Larger tiers: a dedicated `embedding/<name>.gguf` region. */
       readonly kind: "dedicated-region";
       readonly embeddingModelPath: string;
-      /** 1024-dim Matryoshka (the published Qwen3-Embedding-0.6B contract). */
+      /** 1024-dim Matryoshka (the published Eliza-1 embedding contract). */
       readonly dimensions: typeof EMBEDDING_FULL_DIM;
       /**
        * The dedicated model already ships a contrastive `last`-token
@@ -130,21 +130,23 @@ function firstGguf(dir: string): string | null {
 
 /**
  * Tiers whose embedding model is the text backbone with `--pooling last`
- * (no separate GGUF). Only `0_6b` per AGENTS.md §1.
+ * (no separate GGUF). The default mobile tiers deliberately avoid duplicate
+ * parameters; larger tiers may use a dedicated embedding region.
  */
 export const POOLED_TEXT_EMBEDDING_TIERS: ReadonlySet<Eliza1TierId> = new Set([
-  "eliza-1-0_6b",
+  "eliza-1-0_8b",
+  "eliza-1-2b",
 ]);
 
 /**
  * Resolve the embedding source for an activated Eliza-1 bundle.
  *
  * @param bundleRoot   Bundle directory on disk.
- * @param tierId       The Eliza-1 tier id (`eliza-1-0_6b`, …).
+ * @param tierId       The Eliza-1 tier id (`eliza-1-0_8b`, ...).
  * @param textModelPath Absolute path of the activated text GGUF (needed for
  *                      the `pooled-text` case).
  *
- * Hard-fails (AGENTS.md §3) when a non-`0_6b` tier is missing its
+ * Hard-fails (AGENTS.md §3) when a larger tier is missing its
  * `embedding/` region — no silent fallback to pooled text, which would
  * regress dimensions from 1024 to whatever the text model emits.
  */
@@ -171,7 +173,7 @@ export function resolveLocalEmbeddingSource(args: {
   if (!gguf) {
     throw new VoiceStartupError(
       "missing-bundle-root",
-      `[embedding] ${args.tierId}: required dedicated embedding region missing under ${dir}. Tiers above 0_6b ship a separate 1024-dim Matryoshka embedding GGUF (AGENTS.md §1) — do not fall back to pooled text.`,
+      `[embedding] ${args.tierId}: required dedicated embedding region missing under ${dir}. Tiers above 2b ship a separate 1024-dim Matryoshka embedding GGUF (AGENTS.md §1) — do not fall back to pooled text.`,
     );
   }
   return {
@@ -205,7 +207,7 @@ export interface LocalEmbeddingRoute {
   /**
    * `llama-server` flags for the embedding server process — always
    * `--embeddings --pooling last`. The embedding server is a lazily-started
-   * sidecar over the route's GGUF (the text backbone on `0_6b`, the
+   * sidecar over the route's GGUF (the text backbone on `0_8b` / `2b`, the
    * `embedding/` GGUF on larger tiers); see `embedding-server.ts`. The
    * chat `llama-server` is left untouched (completions-only) — these flags
    * do NOT go on it.
@@ -228,8 +230,8 @@ export function buildLocalEmbeddingRoute(args: {
     );
   }
   // Both modes serve through a sidecar `llama-server --embeddings --pooling
-  // last` (over the text GGUF on 0_6b, over the embedding/ GGUF on larger
-  // tiers). The chat server is never given these flags.
+  // last` (over the text GGUF on 0_8b / 2b, over the embedding/ GGUF on
+  // larger tiers). The chat server is never given these flags.
   const serverFlags = ["--embeddings", "--pooling", source.poolingType];
   return {
     tierId: args.tierId,

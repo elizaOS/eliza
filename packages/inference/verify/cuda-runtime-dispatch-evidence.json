@@ -7,11 +7,42 @@
   "runtimeReady": true,
   "generatedFrom": "/home/shaw/eliza/eliza/packages/inference/verify/hardware-results/cuda-linux-rtx5080-2026-05-11.json",
   "target": "linux-x64-cuda",
-  "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, compute capability 12.0; driver 580.142, CUDA runtime 13.0). Build: nvcc 12.0 (distro) — sm_90/89/86/80 SASS + compute_90 PTX, driver JIT-compiles the PTX to sm_120 SASS at load. nvcc >= 12.8 would add native sm_120 SASS.",
-  "atCommit": "08032d57e15574f2a7ca19fc3f29510c8673d590",
+  "device": "NVIDIA GeForce RTX 5080 Laptop GPU (Blackwell, compute capability 12.0; driver 580.142, CUDA runtime 13.0). Build: nvcc 12.8 V12.8.93 — real native sm_120a SASS (no longer PTX JIT). Install: ~/.eliza/local-inference/bin/dflash/linux-x64-cuda/ (forkCommit a61c93aaa5 = v1.2.0-eliza, builtAt 2026-05-12T17:16:58Z, libggml-cuda.so.0.9.7 = 473 MB).",
+  "atCommit": "a61c93aaa5899c17bb1bc32b5645ebb4276c2746",
   "smokeTarget": "cuda-verify",
   "smokeCommand": "make -C packages/inference/verify cuda-verify cuda-verify-fused",
-  "evidenceDate": "2026-05-11",
+  "evidenceDate": "2026-05-12",
+  "fullIntegrationBuild": {
+    "status": "verified-here",
+    "target": "linux-x64-cuda",
+    "installPath": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cuda",
+    "forkCommit": "a61c93aaa5899c17bb1bc32b5645ebb4276c2746",
+    "forkTag": "v1.2.0-eliza",
+    "builtAt": "2026-05-12T17:16:58Z",
+    "nvccVersion": "12.8.93",
+    "archList": "90a;90;89;86;80;100;120 (real sm_120 SASS via CUDA 12.8)",
+    "libGgmlCudaSizeMb": 473,
+    "binaries": ["llama-bench", "llama-cli", "llama-completion", "llama-server", "llama-speculative-simple"],
+    "llamaBenchSmoke": {
+      "model": "eliza-1-0_6b.bundle/text/eliza-1-0_6b-32k.gguf (Qwen3-0.6B Q3_K_M, 389 MiB)",
+      "ngl": 99,
+      "pp512_d0_tps": 19932.12,
+      "tg128_d0_tps": 345.47,
+      "pp512_d16000_tps": 1956.05,
+      "tg128_d16000_tps": 108.50,
+      "buildId": "a61c93a (1)"
+    },
+    "llamaServerSmoke": {
+      "port": 19998,
+      "ngl": 99,
+      "ctx": 4096,
+      "slots": 4,
+      "health": "ok",
+      "completion32TokensPredictedTps": 420.57,
+      "completion32TokensPromptTps": 1092.66,
+      "metricsEnabled": true
+    }
+  },
   "kernels": {
     "turbo3": {
       "runtimeCapabilityKey": "turbo3",

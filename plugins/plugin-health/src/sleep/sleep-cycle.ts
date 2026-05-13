@@ -2,9 +2,11 @@ import type {
   LifeOpsActivitySignal,
   LifeOpsDayBoundary,
   LifeOpsHealthSignal,
+  LifeOpsHealthSignalSource,
   LifeOpsSleepCycle,
   LifeOpsSleepCycleEvidence,
   LifeOpsSleepCycleType,
+  LifeOpsSleepHealthProvider,
 } from "../contracts/health.js";
 import { LIFEOPS_HEALTH_SIGNAL_SOURCES } from "../contracts/health.js";
 import {
@@ -33,11 +35,31 @@ export type LifeOpsSleepEpisode = {
   current: boolean;
   confidence: number;
   source: "health" | "activity_gap";
+  /** Populated for `source === "health"` episodes; tracks which provider
+   *  contributed the sleep window so callers can attribute provenance. */
+  healthProvider?: LifeOpsSleepHealthProvider;
   observedMs?: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Map a raw health-signal source to the canonical sleep health provider name.
+ *  Apple's HealthKit (`healthkit`) and Android Health Connect
+ *  (`health_connect`) are both labelled `"apple_health"` since HealthKit is
+ *  the on-device aggregator for Apple Health data.
+ */
+function _signalSourceToHealthProvider(
+  source: LifeOpsHealthSignalSource,
+): LifeOpsSleepHealthProvider {
+  if (source === "healthkit" || source === "health_connect") {
+    return "apple_health";
+  }
+  if (source === "oura") {
+    return "oura";
+  }
+  return null;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -203,6 +225,27 @@ function parseHealthSleepEpisodes(args: {
   nowMs: number;
 }): LifeOpsSleepEpisode[] {
   const deduped = new Map<string, LifeOpsSleepEpisode>();
+  // Track which health providers contributed to each dedup key so we can
+  // mark overlapping windows as "merged" when two sources cover the same night.
+  const providersSeen = new Map<string, Set<LifeOpsSleepHealthProvider>>();
+
+  function mergeProviders(
+    key: string,
+    incoming: LifeOpsSleepHealthProvider,
+  ): LifeOpsSleepHealthProvider {
+    const seen =
+      providersSeen.get(key) ?? new Set<LifeOpsSleepHealthProvider>();
+    seen.add(incoming);
+    providersSeen.set(key, seen);
+    const nonNull = [...seen].filter(
+      (p): p is "apple_health" | "oura" => p !== null,
+    );
+    if (nonNull.length >= 2) {
+      return "merged";
+    }
+    return nonNull[0] ?? incoming ?? null;
+  }
+
   for (const signal of args.signals) {
     const health = resolveHealthSignal(signal);
     const sleep = health && isRecord(health.sleep) ? health.sleep : null;
@@ -223,6 +266,9 @@ function parseHealthSleepEpisodes(args: {
         ? sleep.durationMinutes
         : null;
     const observedAt = Date.parse(signal.observedAt);
+    const healthProvider = health
+      ? _signalSourceToHealthProvider(health.source)
+      : null;
 
     if (
       sleep.isSleeping === true &&
@@ -234,12 +280,15 @@ function parseHealthSleepEpisodes(args: {
       }) &&
       !hasActiveSignalAfter(args.signals, observedAt + 5 * 60_000)
     ) {
-      deduped.set(`health-current:${asleepAt}`, {
+      const key = `health-current:${asleepAt}`;
+      const resolvedProvider = mergeProviders(key, healthProvider);
+      deduped.set(key, {
         startMs: asleepAt,
         endMs: null,
         current: true,
         confidence: 0.96,
         source: "health",
+        healthProvider: resolvedProvider,
         observedMs: observedAt,
       });
       continue;
@@ -252,12 +301,15 @@ function parseHealthSleepEpisodes(args: {
         durationMinutes,
       });
       if (normalizedEndMs !== null) {
-        deduped.set(`health:${asleepAt}:${normalizedEndMs}`, {
+        const key = `health:${asleepAt}:${normalizedEndMs}`;
+        const resolvedProvider = mergeProviders(key, healthProvider);
+        deduped.set(key, {
           startMs: asleepAt,
           endMs: normalizedEndMs,
           current: false,
           confidence: 0.93,
           source: "health",
+          healthProvider: resolvedProvider,
         });
         continue;
       }
@@ -272,12 +324,15 @@ function parseHealthSleepEpisodes(args: {
       }) &&
       !hasActiveSignalAfter(args.signals, observedAt + 5 * 60_000)
     ) {
-      deduped.set(`health-observed:${observedAt}`, {
+      const key = `health-observed:${observedAt}`;
+      const resolvedProvider = mergeProviders(key, healthProvider);
+      deduped.set(key, {
         startMs: observedAt,
         endMs: null,
         current: true,
         confidence: 0.88,
         source: "health",
+        healthProvider: resolvedProvider,
         observedMs: observedAt,
       });
     }
@@ -566,6 +621,13 @@ export function resolveLifeOpsSleepCycle(args: {
           startAt: new Date(episode.startMs).toISOString(),
           endAt: toIso(episode.endMs),
           source: episode.source,
+          // Propagate provider provenance for health-signal episodes so callers
+          // can distinguish Apple Health vs Oura windows without re-inspecting
+          // the raw activity signals.
+          ...(episode.healthProvider !== undefined &&
+            episode.source === "health" && {
+              healthProvider: episode.healthProvider,
+            }),
           confidence: episode.confidence,
         }),
       )

@@ -43,6 +43,28 @@ class TestEconomicModel:
 
         assert weather1 == weather2
 
+    def test_get_weather_does_not_reset_demand_rng(self) -> None:
+        """Weather lookup should not make seeded demand sequences nondeterministic."""
+        env = VendingEnvironment(seed=42)
+        product = env.products["water"]
+
+        model1 = EconomicModel(seed=123)
+        model2 = EconomicModel(seed=123)
+        sim_date = date(2025, 7, 15)
+
+        weather1 = model1.get_weather(sim_date, seed_offset=42)
+        weather2 = model2.get_weather(sim_date, seed_offset=42)
+        demands1 = [
+            model1.calculate_demand(product, Decimal("1.25"), weather1, Season.SUMMER, 2)
+            for _ in range(5)
+        ]
+        demands2 = [
+            model2.calculate_demand(product, Decimal("1.25"), weather2, Season.SUMMER, 2)
+            for _ in range(5)
+        ]
+
+        assert demands1 == demands2
+
     def test_operational_fees(self) -> None:
         """Test operational fee calculation."""
         model = EconomicModel()
@@ -177,6 +199,19 @@ class TestVendingEnvironment:
 
         # Initial net worth should equal initial cash (no inventory)
         assert env.get_net_worth() == Decimal("500.00")
+
+    def test_starter_inventory_preserves_initial_net_worth(self) -> None:
+        """Starter inventory should create sellable stock without free value."""
+        env = VendingEnvironment(
+            initial_cash=Decimal("500.00"),
+            seed=42,
+            starter_inventory=True,
+        )
+
+        assert env.get_net_worth() == Decimal("500.00")
+        assert env.state.cash_on_hand < Decimal("500.00")
+        assert sum(slot.quantity for slot in env.state.machine.slots) > 0
+        assert env.state.notes["starter_inventory"]
 
     def test_simulate_day(self) -> None:
         """Test simulating a single day."""

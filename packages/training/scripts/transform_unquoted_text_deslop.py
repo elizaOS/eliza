@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Final deslop pass for reply records with unquoted TOON `text:` values.
+"""Final deslop pass for reply records with unquoted native JSON `text:` values.
 
 Earlier deslop transforms used a regex that only matched
     text: "quoted value"
@@ -29,13 +29,13 @@ from transform_casual_reply_shorten import (  # noqa: E402
 )
 from transform_task_reply_deslop import deslop_task_text  # noqa: E402
 
-# Unquoted TOON text: value extends to end of line (or next \n).
+# Unquoted native JSON text: value extends to end of line (or next \n).
 UNQUOTED_TEXT_RE = re.compile(
     r'(^|\n)(text:\s*)([^"\n][^\n]*)(?=\n|$)',
 )
 
 
-def update_text_field(toon: str, *, idx: int, casual: bool, stats: dict) -> str:
+def update_text_field(payload: str, *, idx: int, casual: bool, stats: dict) -> str:
     def _replace(match: re.Match) -> str:
         prefix, key, value = match.groups()
         original_value = value
@@ -51,7 +51,7 @@ def update_text_field(toon: str, *, idx: int, casual: bool, stats: dict) -> str:
             return f'{prefix}{key}{json.dumps(new_value, ensure_ascii=False)}'
         return f"{prefix}{key}{new_value}"
 
-    return UNQUOTED_TEXT_RE.sub(_replace, toon)
+    return UNQUOTED_TEXT_RE.sub(_replace, payload)
 
 
 def transform_record(rec: dict, idx: int, stats: dict) -> dict:

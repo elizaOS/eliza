@@ -1,0 +1,56 @@
+task_id: M004_countdown_fireworks
+task_name: Countdown with Fireworks
+version: "2.0"
+category: multimodal_webpage
+difficulty: medium
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/config.json — countdown and fireworks configuration
+
+    Please read the config file, then generate /workspace/output.html to create a countdown timer with fireworks:
+    1. Display a countdown starting from the configured number of seconds
+    2. Use the specified font size, colors, and background
+    3. When the countdown reaches zero, display the celebration message
+    4. Launch animated fireworks with the configured colors and particle count
+    5. Fireworks should burst from multiple points with expanding particle effects
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/config.json
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 15 --interval 0.5 --wait-before 1"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read config.json, create HTML with Canvas for fireworks.
+  Countdown timer decrements each second, displayed large and centered.
+  After countdown reaches 0, show message and trigger firework particle system.
+  Fireworks use random positions, config colors, particle physics (gravity, fade).
+
+primary_dimensions: [completion, robustness]

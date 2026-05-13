@@ -1,0 +1,8 @@
+[
+  {"contact_id": "CON-601", "name": "Wang Ming", "email": "wangming@company.com", "phone": "13900139001", "department": "Project Management", "title": "Senior Project Manager", "responsibilities": ["Alpha project management","Gamma project management","Cross-team coordination"]},
+  {"contact_id": "CON-602", "name": "Li Hua", "email": "lihua@company.com", "phone": "13900139002", "department": "Technology", "title": "Senior Architect", "responsibilities": ["Alpha technical architecture","Technical design review","Code review"]},
+  {"contact_id": "CON-603", "name": "Zhao Lei", "email": "zhaolei@company.com", "phone": "13900139003", "department": "Product", "title": "Senior Product Manager", "responsibilities": ["Beta product planning","Gamma client liaison","Requirements analysis"]},
+  {"contact_id": "CON-604", "name": "Zhang Wei", "email": "zhangwei@company.com", "phone": "13900139004", "department": "Development", "title": "Backend Developer", "responsibilities": ["Beta backend development","Database design","API development"]},
+  {"contact_id": "CON-605", "name": "Ma Qiang", "email": "maqiang@company.com", "phone": "13900139005", "department": "Operations", "title": "Operations Engineer", "responsibilities": ["Alpha deployment environment","System operations","CI/CD pipeline"]},
+  {"contact_id": "CON-606", "name": "Zhou Ming", "email": "zhouming@company.com", "phone": "13900139006", "department": "Development", "title": "Frontend Developer", "responsibilities": ["Beta frontend development","UI design implementation","Frontend performance optimization"]}
+]

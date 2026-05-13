@@ -8,6 +8,7 @@ import type {
 	RegisteredEvaluator,
 	UUID,
 } from "../../../types/index.ts";
+import { isSyntheticConversationArtifactMemory } from "../../../utils/synthetic-conversation-artifact.ts";
 import type { MemoryService } from "../services/memory-service.ts";
 import { logAdvancedMemoryTrajectory } from "../trajectory.ts";
 import { LongTermMemoryCategory, type MemoryExtraction } from "../types.ts";
@@ -90,6 +91,7 @@ function toStringArray(value: unknown): string[] {
 
 function isDialogueMessage(msg: Memory): boolean {
 	return (
+		!isSyntheticConversationArtifactMemory(msg) &&
 		!(
 			(msg.content?.type as string) === "action_result" &&
 			(msg.metadata?.type as string) === "action_result"
@@ -269,9 +271,9 @@ async function prepareLongTermMemory(
 			: "None yet";
 	return {
 		memoryService,
-		recentMessages: recentRaw.sort(
-			(a, b) => (a.createdAt || 0) - (b.createdAt || 0),
-		),
+		recentMessages: recentRaw
+			.filter((memory) => !isSyntheticConversationArtifactMemory(memory))
+			.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
 		existingMemories,
 		currentMessageCount,
 	};
@@ -438,7 +440,7 @@ Quality gates:
 - Adds new information not already present.
 - Maximum three memories.
 
-Do not extract one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, or generic patterns.
+Do not extract one-time tasks, current bugs, exploratory questions, temporary context, pleasantries, generic patterns, rolling summaries, compacted ledgers, or synthetic compaction artifacts.
 
 Existing long-term memories:
 ${prepared.existingMemories}

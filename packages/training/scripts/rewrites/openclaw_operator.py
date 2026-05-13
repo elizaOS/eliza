@@ -1,7 +1,7 @@
 """Rewriter for openclaw-operator.
 
 Original shape (mis-classified as `agent_trace`):
-    expectedResponse TOON:
+    expectedResponse native JSON:
         thought: "..."
         text: "[{\"name\":\"foo\",\"arguments\":{...}}, ...]"
 
@@ -90,7 +90,7 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
         branch = "natural_reply"
 
     try:
-        new_toon = encoder.encode(new_payload)
+        new_payload = encoder.encode(new_payload)
     except Exception:
         return None
 
@@ -100,6 +100,6 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     new_md["_rewriter_branch"] = branch
 
     new_record = dict(record)
-    new_record["expectedResponse"] = new_toon
+    new_record["expectedResponse"] = new_payload
     new_record["metadata"] = new_md
     return new_record

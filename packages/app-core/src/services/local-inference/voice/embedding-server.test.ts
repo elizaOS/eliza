@@ -4,7 +4,7 @@
  *   - the constructor hard-fails when the GGUF doesn't exist (no silent
  *     placeholder server — Commandment 8)
  *   - `embeddingServerForRoute` picks the text backbone GGUF for the
- *     `0_6b` pooled-text route and the `embedding/` GGUF for the
+ *     `0_8b` / `2b` pooled-text route and the `embedding/` GGUF for the
  *     dedicated-region route, and forwards the route's `--embeddings
  *     --pooling last` flags
  *   - `embed([])` short-circuits to `[]` without starting a process
@@ -22,7 +22,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildLocalEmbeddingRoute, EMBEDDING_DIR_REL_PATH } from "./embedding";
+import { buildLocalEmbeddingRoute } from "./embedding";
 import { EmbeddingServer, embeddingServerForRoute } from "./embedding-server";
 import { VoiceStartupError } from "./errors";
 
@@ -85,14 +85,14 @@ describe("EmbeddingServer.embed — pure short-circuits", () => {
 });
 
 describe("embeddingServerForRoute", () => {
-  it("0_6b pooled-text route → sidecar over the text backbone GGUF with --embeddings --pooling last", () => {
+  it("0_8b pooled-text route → sidecar over the text backbone GGUF with --embeddings --pooling last", () => {
     const bundleRoot = tmpBundle();
     const textPath = writeGguf(
-      path.join(bundleRoot, "text", "eliza-1-0_6b-32k.gguf"),
+      path.join(bundleRoot, "text", "eliza-1-0_8b-32k.gguf"),
     );
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_6b",
+      tierId: "eliza-1-0_8b",
       textModelPath: textPath,
     });
     // No throw → the sidecar's GGUF (the text backbone) exists and the
@@ -102,42 +102,26 @@ describe("embeddingServerForRoute", () => {
     expect(srv.isRunning()).toBe(false);
   });
 
-  it("1_7b dedicated-region route → sidecar over the embedding/ GGUF", () => {
+  it("2b pooled-text route → sidecar over the text backbone GGUF", () => {
     const bundleRoot = tmpBundle();
-    writeGguf(
-      path.join(
-        bundleRoot,
-        EMBEDDING_DIR_REL_PATH,
-        "qwen3-embedding-0.6b.gguf",
-      ),
+    const textPath = writeGguf(
+      path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf"),
     );
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-1_7b",
-      textModelPath: "/unused.gguf",
+      tierId: "eliza-1-2b",
+      textModelPath: textPath,
     });
     const srv = embeddingServerForRoute(route);
     expect(srv).toBeInstanceOf(EmbeddingServer);
     expect(srv.isRunning()).toBe(false);
   });
-
-  it("dedicated-region route with a missing embedding/ GGUF never reaches the sidecar (route build hard-fails first)", () => {
-    const bundleRoot = tmpBundle();
-    expect(() =>
-      buildLocalEmbeddingRoute({
-        bundleRoot,
-        tierId: "eliza-1-9b",
-        textModelPath: "/unused.gguf",
-      }),
-    ).toThrow(VoiceStartupError);
-  });
-
   it("forwards gpuLayers / threads opts through to the sidecar config without spawning", () => {
     const bundleRoot = tmpBundle();
     const textPath = writeGguf(path.join(bundleRoot, "text", "t.gguf"));
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_6b",
+      tierId: "eliza-1-0_8b",
       textModelPath: textPath,
     });
     const srv = embeddingServerForRoute(route, { gpuLayers: 0, threads: 4 });

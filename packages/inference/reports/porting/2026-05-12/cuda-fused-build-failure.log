@@ -1,0 +1,358 @@
+Removing build/
+[dflash-build] checkout a61c93aaa5899c17bb1bc32b5645ebb4276c2746 (submodule packages/inference/llama.cpp)
+[dflash-build] shallow checkout; skipping ancestry check for minimum known-good DFlash/SWA commit 7c7818aafc7599996268226e2e56099f4f38e972
+From https://github.com/elizaOS/omnivoice.cpp
+ * branch            38f824023d12b21a7c324651b18bd90f16d8bb86 -> FETCH_HEAD
+HEAD is now at 38f8240 doc
+[dflash-build] omnivoice-fuse: pin=38f824023d12b21a7c324651b18bd90f16d8bb86 ggmlSubmodule=0e3980ef205ea3639650f59e54cfeecd7d947700 sources=38 cmakeGraftAppended=false
+[dflash-build] building target=linux-x64-cuda-fused
+[dflash-build] dflash-draft architecture support already present
+[cpu-simd-kernels] mirrored 13 QJL kernel TUs + qjl.h into ggml-cpu/qjl/; ggml-cpu/CMakeLists.txt already-current (QJL source list + QJL_HAVE_* dispatch defines).
+[cpu-polar-kernels] mirrored 3 polarquant _preht TUs + cpu-features header + 2 generated shim files into ggml-cpu/polarquant/; ggml-cpu/CMakeLists.txt already-current (Polar _preht source list + POLARQUANT_HAVE_* defines).
+[cpu-thread-parallelism] ggml-cpu.c already-current; quants-qjl.c already-current; fused-attn-qjl-tbq.c already-current (ATTN_SCORE_QJL + FUSED_ATTN_QJL_TBQ now split over ith/nth).
+[cuda-kernels] staged 1 CUDA kernel(s): fused-attn-qjl-tbq.cu (needs -DGGML_CUDA_FUSED_ATTN_QJL=ON from build-llama-cpp-dflash.mjs)
+[dflash-build] llama-server sources already carry the DFlash verifier-stream patch (sentinel present)
+[dflash-build] server structured-output features verified across tools/server/server-task.cpp, tools/server/server-task.h, tools/server/server-common.cpp, tools/server/server-common.h, tools/server/server-context.cpp, tools/server/server-context.h, tools/server/server-http.cpp, tools/server/server.cpp: grammar_lazy, json_schema, response_format, prefill_assistant
+[dflash-build] tools/server/server.cpp already carries the omnivoice /v1/audio/speech route (sentinel present)
+-- The C compiler identification is GNU 13.3.0
+-- The CXX compiler identification is GNU 13.3.0
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Check for working C compiler: /usr/bin/cc - skipped
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Check for working CXX compiler: /usr/bin/c++ - skipped
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+CMAKE_BUILD_TYPE=Release
+-- Found Git: /usr/bin/git (found version "2.43.0")
+-- The ASM compiler identification is GNU
+-- Found assembler: /usr/bin/cc
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD
+-- Performing Test CMAKE_HAVE_LIBC_PTHREAD - Success
+-- Found Threads: TRUE
+-- Warning: ccache not found - consider installing it for faster compilation or disable this warning with GGML_CCACHE=OFF
+-- CMAKE_SYSTEM_PROCESSOR: x86_64
+-- GGML_SYSTEM_ARCH: x86
+-- Including CPU backend
+-- Found OpenMP_C: -fopenmp (found version "4.5")
+-- Found OpenMP_CXX: -fopenmp (found version "4.5")
+-- Found OpenMP: TRUE (found version "4.5")
+-- x86 detected
+-- Adding CPU backend variant ggml-cpu: -march=native
+-- Found CUDAToolkit: /usr/local/cuda-12.8/targets/x86_64-linux/include (found version "12.8.93")
+-- CUDA Toolkit found
+-- The CUDA compiler identification is NVIDIA 12.8.93
+-- Detecting CUDA compiler ABI info
+-- Detecting CUDA compiler ABI info - done
+-- Check for working CUDA compiler: /usr/local/cuda-12.8/bin/nvcc - skipped
+-- Detecting CUDA compile features
+-- Detecting CUDA compile features - done
+-- Replacing 120 in CMAKE_CUDA_ARCHITECTURES with 120a
+-- Replacing 120-real in CMAKE_CUDA_ARCHITECTURES_NATIVE with 120a-real
+-- Using CMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80;100;120a CMAKE_CUDA_ARCHITECTURES_NATIVE=120a-real
+-- ggml-cuda: GGML_CUDA_FUSED_ATTN_QJL enabled (fused QJL-K + TBQ-V attention)
+-- CUDA host compiler is GNU 13.3.0
+-- Including CUDA backend
+-- ggml version: 0.9.7
+-- ggml commit:  a61c93aa-dirty
+-- Found OpenSSL: /usr/lib/x86_64-linux-gnu/libcrypto.so (found version "3.0.13")
+-- Performing Test OPENSSL_VERSION_SUPPORTED
+-- Performing Test OPENSSL_VERSION_SUPPORTED - Success
+-- OpenSSL found: 3.0.13
+-- Generating embedded license file for target: common
+-- Configuring done (3.0s)
+-- Generating done (0.1s)
+-- Build files have been written to: /home/shaw/milady/eliza/packages/inference/llama.cpp/build/linux-x64-cuda-fused
+[  0%] Building CXX object common/CMakeFiles/build_info.dir/build-info.cpp.o
+[  0%] Building CXX object vendor/cpp-httplib/CMakeFiles/cpp-httplib.dir/httplib.cpp.o
+[  0%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml.c.o
+[  0%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml.cpp.o
+[  1%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-alloc.c.o
+[  1%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-backend.cpp.o
+[  1%] Built target build_info
+[  1%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-opt.cpp.o
+[  1%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/ggml-threading.cpp.o
+[  1%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-quants.c.o
+[  1%] Building CXX object ggml/src/CMakeFiles/ggml-base.dir/gguf.cpp.o
+[  2%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/quants-qjl.c.o
+[  2%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_dispatch.c.o
+[  2%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_projection.c.o
+[  2%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_quantize_ref.c.o
+[  2%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_quantize_avx2.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_quantize_avx2.c:111: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  3%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_quantize_neon.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c:108: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  3%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_score_ref.c.o
+[  3%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_score_i8_ref.c.o
+[  3%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_score_avx2.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_score_avx2.c:127: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  3%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_score_avxvnni.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_score_avxvnni.c:152: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  3%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_score_neon.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_score_neon.c:67: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  4%] Building C object ggml/src/CMakeFiles/ggml-base.dir/ggml-cpu/qjl/qjl_score_dotprod.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_score_dotprod.c:81: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  4%] Linking CXX shared library ../../bin/libggml-base.so
+[  4%] Built target ggml-base
+[  4%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.c.o
+[  4%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ggml-cpu.cpp.o
+[  4%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/repack.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/hbm.cpp.o
+[  6%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/acc.cu.o
+[  6%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/quants.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c: In function ‘ggml_compute_forward’:
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c:1735:5: warning: enumeration value ‘GGML_OP_ATTN_SCORE_TBQ’ not handled in switch [-Wswitch]
+ 1735 |     switch (tensor->op) {
+      |     ^~~~~~
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/ggml-cpu.c:1735:5: warning: enumeration value ‘GGML_OP_ATTN_SCORE_POLAR’ not handled in switch [-Wswitch]
+[  6%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/quants-polar.c.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/traits.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/amx.cpp.o
+[  6%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/amx/mmq.cpp.o
+[  7%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/binary-ops.cpp.o
+[  7%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/unary-ops.cpp.o
+[  7%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/vec.cpp.o
+[  7%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/ops.cpp.o
+[  7%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/quants-qjl.c.o
+[  8%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_dispatch.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/ops.cpp: In function ‘void ggml_compute_forward_clamp(const ggml_compute_params*, ggml_tensor*)’:
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/ops.cpp:5555:12: warning: enumeration value ‘GGML_TYPE_QJL1_256’ not handled in switch [-Wswitch]
+ 5555 |     switch (src0->type) {
+      |            ^
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/ops.cpp:5555:12: warning: enumeration value ‘GGML_TYPE_Q4_POLAR’ not handled in switch [-Wswitch]
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/ops.cpp:5555:12: warning: enumeration value ‘GGML_TYPE_TBQ3_TCQ’ not handled in switch [-Wswitch]
+[  8%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_projection.c.o
+[  8%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_quantize_ref.c.o
+[  8%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_quantize_avx2.c.o
+[  8%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_quantize_neon.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_quantize_neon.c:108: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  8%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_ref.c.o
+[  9%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_i8_ref.c.o
+[  9%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_avx2.c.o
+[  9%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_avxvnni.c.o
+[  9%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_neon.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_score_neon.c:67: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[  9%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/qjl/qjl_score_dotprod.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/qjl/qjl_score_dotprod.c:81: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[ 10%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/fused-q4-polar-dot.c.o
+[ 10%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/fused-q4-polar-dot-avx2.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-q4-polar-dot-avx2.c:148:8: warning: no previous prototype for ‘ggml_vec_dot_q4_polar_q8_0_fused_avx2’ [-Wmissing-prototypes]
+  148 | double ggml_vec_dot_q4_polar_q8_0_fused_avx2(int nb_polar,
+      |        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 10%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/fused-q4-polar-dot-neon.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-q4-polar-dot-neon.c:168: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[ 10%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/fused-attn-qjl-tbq.c.o
+[ 10%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/fused-attn-qjl-tbq-avx2.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-attn-qjl-tbq.c:174:6: warning: no previous prototype for ‘fused_attn_v_mix_ref’ [-Wmissing-prototypes]
+  174 | void fused_attn_v_mix_ref(int n_tokens, const float * w,
+      |      ^~~~~~~~~~~~~~~~~~~~
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-attn-qjl-tbq.c:211:6: warning: no previous prototype for ‘fused_attn_qjl_tbq_ref’ [-Wmissing-prototypes]
+  211 | void fused_attn_qjl_tbq_ref(int n_tokens,
+      |      ^~~~~~~~~~~~~~~~~~~~~~
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-attn-qjl-tbq-avx2.c:42:7: warning: no previous prototype for ‘qjl_score_one_avx2’ [-Wmissing-prototypes]
+   42 | float qjl_score_one_avx2(const float * q_sketch, const uint8_t * signs) {
+      |       ^~~~~~~~~~~~~~~~~~
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-attn-qjl-tbq-avx2.c:142:6: warning: no previous prototype for ‘fused_attn_v_mix_avx2’ [-Wmissing-prototypes]
+  142 | void fused_attn_v_mix_avx2(int n_tokens, const float * w,
+      |      ^~~~~~~~~~~~~~~~~~~~~
+[ 10%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/fused-attn-qjl-tbq-neon.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-attn-qjl-tbq-neon.c:160: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[ 12%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/fused-hadamard-polar-dot.c.o
+[ 12%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/polarquant/polar_dot_preht_ref.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-hadamard-polar-dot.c:75:8: warning: no previous prototype for ‘ggml_vec_dot_q4_polar_q8_0_fused_hadamard_ref’ [-Wmissing-prototypes]
+   75 | double ggml_vec_dot_q4_polar_q8_0_fused_hadamard_ref(int n_pairs,
+      |        ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/fused-hadamard-polar-dot.c:174:6: warning: no previous prototype for ‘ggml_vec_dot_q4_polar_q8_0_fused_hadamard’ [-Wmissing-prototypes]
+  174 | void ggml_vec_dot_q4_polar_q8_0_fused_hadamard(int n, float * GGML_RESTRICT s,
+      |      ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[ 12%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/polarquant/polar_dot_preht_avx2.c.o
+[ 12%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/polarquant/polar_dot_preht_neon.c.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cpu/polarquant/polar_dot_preht_neon.c:78: warning: ISO C forbids an empty translation unit [-Wpedantic]
+[ 12%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/polarquant/polarquant_preht_dispatch.c.o
+[ 13%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/llamafile/sgemm.cpp.o
+[ 13%] Building C object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/arch/x86/quants.c.o
+[ 13%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/add-id.cu.o
+[ 13%] Building CXX object ggml/src/CMakeFiles/ggml-cpu.dir/ggml-cpu/arch/x86/repack.cpp.o
+[ 14%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/arange.cu.o
+[ 14%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/argmax.cu.o
+[ 14%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/argsort.cu.o
+[ 14%] Linking CXX shared library ../../bin/libggml-cpu.so
+[ 14%] Built target ggml-cpu
+[ 14%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/binbcast.cu.o
+[ 15%] Linking CXX static library libcpp-httplib.a
+[ 15%] Built target cpp-httplib
+[ 15%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/clamp.cu.o
+[ 17%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/concat.cu.o
+[ 17%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/conv-transpose-1d.cu.o
+[ 17%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/conv2d-dw.cu.o
+[ 17%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/conv2d-transpose.cu.o
+[ 17%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/conv2d.cu.o
+[ 17%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/convert.cu.o
+[ 18%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/count-equal.cu.o
+[ 18%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/cpy.cu.o
+[ 18%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/cross-entropy-loss.cu.o
+[ 18%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/cumsum.cu.o
+[ 18%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/diag.cu.o
+[ 19%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/diagmask.cu.o
+[ 19%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/fattn-tile.cu.o
+[ 19%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/fattn-wmma-f16.cu.o
+[ 19%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/fattn.cu.o
+[ 19%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/fill.cu.o
+[ 19%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/fused-attn-qjl-tbq.cu.o
+[ 20%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/getrows.cu.o
+[ 20%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/ggml-cuda.cu.o
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cuda/fused-attn-qjl-tbq.cu:289:17: warning: no previous declaration for ‘void fused_attn_qjl_tbq_cuda(const float*, const void*, const void*, int, int, int, int, float, int, float*, cudaStream_t)’ [-Wmissing-declarations]
+  289 | extern "C" void fused_attn_qjl_tbq_cuda(
+      |                 ^~~~~~~~~~~~~~~~~~~~~~~
+/home/shaw/milady/eliza/packages/inference/llama.cpp/ggml/src/ggml-cuda/fused-attn-qjl-tbq.cu:307:17: warning: no previous declaration for ‘void qjl_score_dp4a_cuda(const int8_t*, const float*, const void*, int, int, int, float*, cudaStream_t)’ [-Wmissing-declarations]
+  307 | extern "C" void qjl_score_dp4a_cuda(
+      |                 ^~~~~~~~~~~~~~~~~~~
+[ 20%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/gla.cu.o
+[ 20%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/im2col.cu.o
+[ 20%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/mean.cu.o
+[ 21%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/mmf.cu.o
+[ 21%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/mmid.cu.o
+[ 21%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/mmq.cu.o
+[ 21%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/mmvf.cu.o
+[ 21%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/mmvq.cu.o
+[ 23%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/norm.cu.o
+[ 23%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/opt-step-adamw.cu.o
+[ 23%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/opt-step-sgd.cu.o
+[ 23%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/out-prod.cu.o
+[ 23%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/pad.cu.o
+[ 23%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/pad_reflect_1d.cu.o
+[ 24%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/polarquant.cu.o
+[ 24%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/pool2d.cu.o
+[ 24%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/qjl.cu.o
+[ 24%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/quantize.cu.o
+[ 24%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/roll.cu.o
+[ 25%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/rope.cu.o
+[ 25%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/scale.cu.o
+[ 25%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/set-rows.cu.o
+[ 25%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/set.cu.o
+[ 25%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/softcap.cu.o
+[ 25%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/softmax.cu.o
+[ 26%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/solve_tri.cu.o
+[ 26%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/ssm-conv.cu.o
+[ 26%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/ssm-scan.cu.o
+[ 26%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/sum.cu.o
+[ 26%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/sumrows.cu.o
+[ 28%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/top-k.cu.o
+[ 28%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/topk-moe.cu.o
+[ 28%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/tri.cu.o
+[ 28%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/tsembd.cu.o
+[ 28%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/turbo-tcq.cu.o
+[ 28%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/unary.cu.o
+[ 29%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/upscale.cu.o
+[ 29%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/wkv.cu.o
+[ 29%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq112-dv112.cu.o
+[ 29%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq128-dv128.cu.o
+[ 29%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq256-dv256.cu.o
+[ 30%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq40-dv40.cu.o
+[ 30%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq576-dv512.cu.o
+[ 30%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq64-dv64.cu.o
+[ 30%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq72-dv72.cu.o
+[ 30%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq80-dv80.cu.o
+[ 30%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-tile-instance-dkq96-dv96.cu.o
+[ 31%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_1-ncols2_16.cu.o
+[ 31%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_1-ncols2_32.cu.o
+[ 31%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_1-ncols2_8.cu.o
+[ 31%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_16-ncols2_1.cu.o
+[ 31%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_16-ncols2_2.cu.o
+[ 32%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_16-ncols2_4.cu.o
+[ 32%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_16.cu.o
+[ 32%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_32.cu.o
+[ 32%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_4.cu.o
+[ 32%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_2-ncols2_8.cu.o
+[ 32%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_32-ncols2_1.cu.o
+[ 34%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_32-ncols2_2.cu.o
+[ 34%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_16.cu.o
+[ 34%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_2.cu.o
+[ 34%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_4.cu.o
+[ 34%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_4-ncols2_8.cu.o
+[ 35%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_64-ncols2_1.cu.o
+[ 35%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_1.cu.o
+[ 35%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_2.cu.o
+[ 35%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_4.cu.o
+[ 35%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-mma-f16-instance-ncols1_8-ncols2_8.cu.o
+[ 35%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq1_s.cu.o
+[ 36%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq2_s.cu.o
+[ 36%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq2_xs.cu.o
+[ 36%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq2_xxs.cu.o
+[ 36%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq3_s.cu.o
+[ 36%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq3_xxs.cu.o
+[ 37%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq4_nl.cu.o
+[ 37%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-iq4_xs.cu.o
+[ 37%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-mxfp4.cu.o
+[ 37%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q1_0.cu.o
+[ 37%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q1_0_g128.cu.o
+[ 37%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q2_k.cu.o
+[ 39%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q3_k.cu.o
+[ 39%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q4_0.cu.o
+[ 39%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q4_1.cu.o
+[ 39%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q4_k.cu.o
+[ 39%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q5_0.cu.o
+[ 40%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q5_1.cu.o
+[ 40%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q5_k.cu.o
+[ 40%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q6_k.cu.o
+[ 40%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmq-instance-q8_0.cu.o
+[ 40%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_1.cu.o
+[ 40%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_10.cu.o
+[ 41%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_11.cu.o
+[ 41%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_12.cu.o
+[ 41%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_13.cu.o
+[ 41%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_14.cu.o
+[ 41%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_15.cu.o
+[ 42%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_16.cu.o
+[ 42%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_2.cu.o
+[ 42%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_3.cu.o
+[ 42%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_4.cu.o
+[ 42%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_5.cu.o
+[ 42%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_6.cu.o
+[ 43%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_7.cu.o
+[ 43%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_8.cu.o
+[ 43%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/mmf-instance-ncols_9.cu.o
+[ 43%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-f16-f16.cu.o
+[ 43%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-f16-q4_0.cu.o
+[ 45%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-f16-q4_1.cu.o
+[ 45%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-f16-q5_0.cu.o
+[ 45%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-f16-q5_1.cu.o
+[ 45%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-f16-q8_0.cu.o
+[ 45%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_0-f16.cu.o
+[ 45%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_0-q4_0.cu.o
+[ 46%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_0-q4_1.cu.o
+[ 46%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_0-q5_0.cu.o
+[ 46%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_0-q5_1.cu.o
+[ 46%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_0-q8_0.cu.o
+[ 46%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_1-f16.cu.o
+[ 47%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_1-q4_0.cu.o
+[ 47%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_1-q4_1.cu.o
+[ 47%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_1-q5_0.cu.o
+[ 47%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_1-q5_1.cu.o
+[ 47%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q4_1-q8_0.cu.o
+[ 47%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_0-f16.cu.o
+[ 48%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_0-q4_0.cu.o
+[ 48%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_0-q4_1.cu.o
+[ 48%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_0-q5_0.cu.o
+[ 48%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_0-q5_1.cu.o
+[ 48%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_0-q8_0.cu.o
+[ 50%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_1-f16.cu.o
+[ 50%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_1-q4_0.cu.o
+[ 50%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_1-q4_1.cu.o
+[ 50%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_1-q5_0.cu.o
+[ 50%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_1-q5_1.cu.o
+[ 50%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q5_1-q8_0.cu.o
+[ 51%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q8_0-f16.cu.o
+[ 51%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q8_0-q4_0.cu.o
+[ 51%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q8_0-q4_1.cu.o
+[ 51%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q8_0-q5_0.cu.o
+[ 51%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q8_0-q5_1.cu.o
+[ 52%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-q8_0-q8_0.cu.o
+[ 52%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-tbq3_0-tbq3_0.cu.o
+[ 52%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-tbq3_0-tbq4_0.cu.o
+[ 52%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-tbq4_0-tbq3_0.cu.o
+[ 52%] Building CUDA object ggml/src/ggml-cuda/CMakeFiles/ggml-cuda.dir/template-instances/fattn-vec-instance-tbq4_0-tbq4_0.cu.o
+[dflash-build] cmake --build /home/shaw/milady/eliza/packages/inference/llama.cpp/build/linux-x64-cuda-fused --target llama-server llama-cli llama-speculative-simple llama-mtmd-cli omnivoice-core elizainference llama-omnivoice-server -j 6 failed with null

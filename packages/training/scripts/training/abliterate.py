@@ -15,7 +15,7 @@ Reference: Arditi et al., "Refusal in Language Models Is Mediated by a Single
 Direction", arXiv:2406.11717. Implementation: heretic-llm v1.2 (AGPL-3.0,
 runtime dependency only).
 
-NOTE on Qwen3.5/3.6 hybrid attention: Qwen3.5 MoE blocks are a 4-layer period
+NOTE on Qwen3.5 hybrid attention: Qwen3.5 MoE blocks are a 4-layer period
 of 3x Gated DeltaNet (linear attention, recurrent state) + 1x Gated Attention
 (full softmax). The refusal direction lives in the residual stream that is
 shared across both, but only the GA `self_attn.o_proj` and the dense
@@ -47,9 +47,8 @@ log = logging.getLogger("abliterate")
 
 # Eval gate thresholds from Arditi et al. + Heretic's published runs on the
 # Qwen3.5 line (KL ~0.06 typical, refusal <1% on 100-prompt probes). We hold
-# 0.5 / 5% as the "publish" floor — looser than Heretic's typical so that 27B
-# still lands on the right side without re-tuning, tighter than huihui-ai's
-# observed 88.8% compliance on Qwen3.6-27B (which is a known regression).
+# 0.5 / 5% as the "publish" floor — looser than Heretic's typical and tight
+# enough to block degraded variants from entering the active Eliza-1 line.
 KL_GATE_MAX = 0.5
 REFUSAL_RATE_GATE_MAX = 0.05
 
@@ -222,7 +221,7 @@ distribution of it, so the AGPL terms do not propagate.
 
 def _render_card(cfg: AblitConfig, meta: dict) -> str:
     entry = registry_get(cfg.registry_key)
-    qwen_tag = "qwen3.5" if "3.5" in entry.hf_id else "qwen3.6"
+    qwen_tag = "qwen3.5"
     return _MODEL_CARD_TEMPLATE.format(
         source_repo=entry.eliza_repo_id or entry.hf_id,
         short_name=entry.eliza_short_name or entry.short_name,
@@ -252,12 +251,12 @@ def run(cfg: AblitConfig) -> int:
     log.info("strength=%.2f target_layer_pct=%.2f", cfg.strength, cfg.target_layer_pct)
 
     if cfg.dry_run:
-        # Dry-run inspects the registry + Qwen3.5/3.6 layer counts without
+        # Dry-run inspects the registry + Qwen3.5 layer counts without
         # touching CUDA. The hybrid period is 4 (3xGDN + 1xGA), and the
         # configured direction-layer percentage selects a layer index that
         # may itself be GDN — we surface that so the operator can sanity
         # check before burning a long bake.
-        n_layers = {"qwen3.5-2b": 24, "qwen3.5-9b": 28, "qwen3.6-27b": 64}.get(
+        n_layers = {"qwen3.5-0.8b": 24, "qwen3.5-2b": 24, "qwen3.5-4b": 32}.get(
             cfg.registry_key, 0,
         )
         layer_index = _layer_index(n_layers, cfg.target_layer_pct) if n_layers else -1

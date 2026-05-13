@@ -1,0 +1,12 @@
+[
+  {
+    "message_id": "msg_751",
+    "from": "boss@company.com",
+    "to": "me@company.com",
+    "subject": "请整理本周AI行业简报",
+    "date": "2026-03-25T08:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "请整理本周AI和大模型相关的行业动态，按主题分类后发给团队。重点关注：模型发布、应用落地、芯片进展。周五前完成。"
+  }
+]

@@ -254,6 +254,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               onClick={refresh}
               disabled={loading}
               aria-label={t("actions.refresh", { defaultValue: "Refresh" })}
+              data-testid="contacts-refresh"
             >
               <RefreshCw
                 className={`h-4 w-4 ${loading ? "animate-spin" : ""}`}
@@ -265,6 +266,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               className="h-9 w-9 rounded-xl text-muted hover:text-txt"
               onClick={handleOpenNew}
               aria-label={t("contacts.new", { defaultValue: "New contact" })}
+              data-testid="contacts-new"
             >
               <Plus className="h-4 w-4" />
             </Button>
@@ -286,6 +288,7 @@ export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
               aria-label={t("contacts.search", {
                 defaultValue: "Search contacts",
               })}
+              data-testid="contacts-search"
             />
           </div>
         </div>
@@ -359,16 +362,12 @@ function ContactList({
   if (empty) {
     return (
       <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-4 py-16 text-center">
-        <UserRound className="h-10 w-10 text-muted" />
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12">
+          <UserRound className="h-7 w-7 text-accent" />
+        </div>
         <div className="text-sm font-medium text-txt">
           {t("contacts.empty.title", { defaultValue: "No contacts yet" })}
         </div>
-        <p className="text-xs text-muted">
-          {t("contacts.empty.body", {
-            defaultValue:
-              "Import a vCard file or tap the plus button to create one.",
-          })}
-        </p>
         <Button variant="default" onClick={onImport} className="mt-2">
           <Upload className="mr-2 h-4 w-4" />
           {t("contacts.import", { defaultValue: "Import vCard" })}

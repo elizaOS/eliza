@@ -1,0 +1,91 @@
+# Output Formatting Specification
+# RMIT Academic English Listening Exercise Generator
+# Version: 3.2 | Effective: 2024-06-15
+
+output_format: "markdown"
+
+file_naming:
+  pattern: "listening_exercise_{topic_slug}_{date}.md"
+  example: "listening_exercise_urban_sustainability_20240920.md"
+
+required_sections:
+  - name: "Expanded Academic Lecture"
+    order: 1
+    heading_level: 1
+    content_type: "prose"
+    metadata:
+      - word_count: true
+      - paragraph_count: false
+    notes: "Full expanded lecture text, 850-950 words. Must include all key statistics from source material."
+
+  - name: "Fill-in-the-Blank Questions"
+    order: 2
+    heading_level: 1
+    content_type: "numbered_list"
+    blank_format: "______"
+    question_numbering: "arabic"
+    instruction_text: "Complete the sentences below. Write NO MORE THAN TWO WORDS AND/OR A NUMBER for each answer."
+
+  - name: "Answer Key"
+    order: 3
+    heading_level: 1
+    content_type: "table"
+    columns:
+      - "Q#"
+      - "Answer"
+      - "Type"
+    type_values: ["T-0", "T-1"]
+    footer:
+      - t1_count_display: true
+      - t1_ratio_display: true
+
+  - name: "Trap Analysis per Question"
+    order: 4
+    heading_level: 1
+    content_type: "subsections"
+    per_question_fields:
+      - "answer"
+      - "type"
+      - "lecture_sentence"
+      - "question_stem"
+      - "justification"
+
+  - name: "Synonym Substitution Verification for T-1 Questions"
+    order: 5
+    heading_level: 1
+    content_type: "subsections"
+    applies_to: "T-1 questions only"
+    verification_includes:
+      - "synonym_pair_table"
+      - "content_word_extraction"
+      - "repetition_rate_percentage"
+    synonym_pair_table_columns:
+      - "Lecture Term"
+      - "Question Term"
+      - "Relationship"
+    repetition_rate_format: "(shared_content_words / total_content_words) × 100 = XX.X%"
+
+word_count_display: true
+t1_ratio_display: true
+
+summary_statistics_table:
+  enabled: true
+  position: "end"
+  metrics:
+    - label: "Lecture word count"
+      target: "850-950"
+    - label: "Question count"
+      target: "10-12"
+    - label: "T-1 ratio"
+      target: "0.35-0.40"
+    - label: "Max repetition rate"
+      target: "≤ 40%"
+    - label: "Min synonym pairs per T-1"
+      target: "≥ 1"
+
+markdown_conventions:
+  heading_style: "atx"
+  table_alignment: "left"
+  code_blocks: "fenced"
+  emphasis: "asterisk"
+  list_style: "numbered for questions, bulleted for analysis"

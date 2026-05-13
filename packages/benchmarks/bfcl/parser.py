@@ -173,6 +173,22 @@ class FunctionCallParser:
                     normalized_args = self._normalize_arguments(args)
                     calls.append(FunctionCall(name=name, arguments=normalized_args))
 
+            # Benchmark wrapper format: {"calls": [{"name": ..., "arguments": ...}]}
+            elif "calls" in data:
+                calls_raw = data.get("calls")
+                if isinstance(calls_raw, list):
+                    for item in calls_raw:
+                        calls.extend(self._extract_calls_from_json(item))
+                elif isinstance(calls_raw, dict):
+                    calls.extend(self._extract_calls_from_json(calls_raw))
+
+            # Captured action format: {"action": "BENCHMARK_ACTION", "arg_0": {"calls": [...]}}
+            elif data.get("action") == "BENCHMARK_ACTION":
+                for key in ("arg_0", "payload", "params", "arguments"):
+                    nested = data.get(key)
+                    if isinstance(nested, (dict, list)):
+                        calls.extend(self._extract_calls_from_json(nested))
+
             # Function wrapper format
             elif "function" in data:
                 func = data["function"]
@@ -276,8 +292,10 @@ class FunctionCallParser:
 
                     calls.append(FunctionCall(name=name, arguments=arguments))
 
-            except ElementTree.ParseError:
-                continue
+            except (ElementTree.ParseError, ImportError):
+                fallback = self._parse_function_call_xml_fallback(match)
+                if fallback is not None:
+                    calls.append(fallback)
 
         return calls
 
@@ -311,10 +329,78 @@ class FunctionCallParser:
                     if name.lower() != "root":
                         calls.append(FunctionCall(name=name, arguments=arguments))
 
-            except ElementTree.ParseError:
-                continue
+            except (ElementTree.ParseError, ImportError):
+                calls.extend(self._parse_params_xml_fallback(match))
 
         return calls
+
+    def _parse_function_call_xml_fallback(self, xml_body: str) -> Optional[FunctionCall]:
+        """Parse the simple BFCL XML shape without ElementTree/pyexpat.
+
+        Some CI and local Python builds have a broken pyexpat extension. BFCL
+        XML responses use a small fixed wrapper, so a conservative fallback
+        avoids turning parser availability into benchmark false negatives.
+        """
+        name_match = re.search(
+            r"<name>\s*(.*?)\s*</name>",
+            xml_body,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if not name_match:
+            return None
+
+        name = name_match.group(1).strip()
+        arguments: dict[str, ArgumentValue] = {}
+        args_match = re.search(
+            r"<arguments>\s*(.*?)\s*</arguments>",
+            xml_body,
+            re.DOTALL | re.IGNORECASE,
+        )
+        if args_match:
+            args_text = args_match.group(1).strip()
+            if args_text:
+                try:
+                    parsed = json.loads(args_text)
+                    if isinstance(parsed, dict):
+                        arguments = self._normalize_arguments(parsed)
+                except json.JSONDecodeError:
+                    arguments = self._parse_xml_scalar_children(args_text)
+
+        return FunctionCall(name=name, arguments=arguments)
+
+    def _parse_params_xml_fallback(self, xml_body: str) -> list[FunctionCall]:
+        """Parse ElizaOS params XML without ElementTree/pyexpat."""
+        calls: list[FunctionCall] = []
+        for action_match in re.finditer(
+            r"<([A-Za-z_][\w.-]*)\b[^>]*>(.*?)</\1>",
+            xml_body,
+            re.DOTALL,
+        ):
+            name = action_match.group(1)
+            body = action_match.group(2)
+            if name.lower() in {"params", "root"}:
+                continue
+            calls.append(
+                FunctionCall(
+                    name=name,
+                    arguments=self._parse_xml_scalar_children(body),
+                )
+            )
+        return calls
+
+    def _parse_xml_scalar_children(self, xml_body: str) -> dict[str, ArgumentValue]:
+        """Extract direct scalar child tags from a simple XML fragment."""
+        arguments: dict[str, ArgumentValue] = {}
+        for param_match in re.finditer(
+            r"<([A-Za-z_][\w.-]*)\b[^>]*>(.*?)</\1>",
+            xml_body,
+            re.DOTALL,
+        ):
+            key = param_match.group(1)
+            value = param_match.group(2).strip()
+            if value:
+                arguments[key] = self._parse_value(value)
+        return arguments
 
     def _parse_natural_language(self, response: str) -> list[FunctionCall]:
         """Extract function calls from natural language text."""

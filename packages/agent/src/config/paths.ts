@@ -99,7 +99,7 @@ const STEWARD_CREDENTIALS_FILENAME = "steward-credentials.json";
 
 /**
  * Canonical path to the persisted Steward credentials file.
- * Honors the `ELIZA_STATE_DIR` > `ELIZA_STATE_DIR` > `~/.${namespace}`
+ * Honors the `ELIZA_STATE_DIR` (legacy `MILADY_STATE_DIR`) > `~/.${namespace}`
  * resolver.
  */
 export function resolveStewardCredentialsPath(

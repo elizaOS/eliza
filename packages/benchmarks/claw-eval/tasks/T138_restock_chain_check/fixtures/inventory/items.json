@@ -1,0 +1,10 @@
+[
+  {"product_id": "INV-801", "name": "A4 Printing Paper", "category": "Stationery", "quantity": 80, "unit": "boxes", "reorder_level": 50, "supplier_integration": "INT-801", "last_restock": "2026-03-23"},
+  {"product_id": "INV-802", "name": "Ballpoint Pens", "category": "Stationery", "quantity": 200, "unit": "pcs", "reorder_level": 100, "supplier_integration": "INT-801", "last_restock": "2026-03-23"},
+  {"product_id": "INV-803", "name": "27-inch Monitor", "category": "IT Equipment", "quantity": 2, "unit": "units", "reorder_level": 5, "supplier_integration": "INT-802", "last_restock": "2026-02-15"},
+  {"product_id": "INV-804", "name": "Mechanical Keyboard", "category": "IT Equipment", "quantity": 3, "unit": "pcs", "reorder_level": 10, "supplier_integration": "INT-802", "last_restock": "2026-02-15"},
+  {"product_id": "INV-805", "name": "Hand Soap", "category": "Cleaning Supplies", "quantity": 5, "unit": "bottles", "reorder_level": 20, "supplier_integration": "INT-803", "last_restock": "2026-02-01"},
+  {"product_id": "INV-806", "name": "Trash Bags", "category": "Cleaning Supplies", "quantity": 10, "unit": "rolls", "reorder_level": 30, "supplier_integration": "INT-803", "last_restock": "2026-02-01"},
+  {"product_id": "INV-807", "name": "Ink Cartridge", "category": "Consumables", "quantity": 1, "unit": "pcs", "reorder_level": 5, "supplier_integration": "INT-804", "last_restock": "2026-03-05"},
+  {"product_id": "INV-808", "name": "Office Chair", "category": "Furniture", "quantity": 15, "unit": "units", "reorder_level": 5, "supplier_integration": "INT-801", "last_restock": "2026-03-01"}
+]

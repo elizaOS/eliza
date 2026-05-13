@@ -43,9 +43,9 @@ def detect_output_format(template: str) -> str:
     if re.search(r"</?[a-z_][a-z_0-9]*\s*[/>]", template):
         # e.g. <thought>, <response>, </think>, <action>
         return "xml"
-    # TOON heuristic: explicit "TOON" mention or example block of `key: value`
-    if "toon" in body:
-        return "toon"
+    # native JSON heuristic: explicit "native JSON" mention or example block of `key: value`
+    if "payload" in body:
+        return "payload"
     # crude: 3+ consecutive lines that look like `key: value`
     kv_lines = 0
     max_run = 0
@@ -57,7 +57,7 @@ def detect_output_format(template: str) -> str:
         else:
             kv_lines = 0
     if max_run >= 3:
-        return "toon"
+        return "payload"
     return "text"
 
 
@@ -67,7 +67,7 @@ def extract_expected_keys(template: str, output_format: str) -> list[str]:
         # Match keys in JSON-ish blocks
         for m in re.finditer(r'"([a-zA-Z_][a-zA-Z0-9_]*)"\s*:', template):
             keys.add(m.group(1))
-    elif output_format == "toon":
+    elif output_format == "payload":
         # Look at lines that occur after an "Example:" / "output:" label
         in_example = False
         for raw in template.splitlines():
@@ -547,7 +547,7 @@ def build_lifeops_entries() -> list[dict[str, Any]]:
         actions = list(entry.get("actions", []))
         # filter out REPLY similar to TS code
         actions = [a for a in actions if a != "REPLY"]
-        expected_action = actions[0] if actions else None
+        expected_action = tool_calls[0] if actions else None
         title = entry.get("title", scen_id)
         domain = entry.get("suite", "executive-assistant")
         base_prompt = (

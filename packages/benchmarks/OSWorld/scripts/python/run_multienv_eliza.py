@@ -43,6 +43,7 @@ import json
 import logging
 import os
 import sys
+from typing import Any
 
 # Ensure the OSWorld root is on the Python path
 OSWORLD_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -64,6 +65,43 @@ from lib_run_single import run_single_example
 from lib_results_logger import log_task_error
 
 logger = logging.getLogger("osworld.eliza.runner")
+
+_DELEGATE_HARNESSES = {"hermes", "openclaw"}
+
+
+def _selected_delegate_harness() -> str:
+    return (
+        os.environ.get("ELIZA_BENCH_HARNESS")
+        or os.environ.get("BENCHMARK_HARNESS")
+        or ""
+    ).strip().lower()
+
+
+def _configure_bridge_model_env(model: str) -> None:
+    model_name = (model or "").strip()
+    if not model_name:
+        return
+    os.environ["BENCHMARK_MODEL_NAME"] = model_name
+    for key in (
+        "MODEL_NAME",
+        "OPENAI_LARGE_MODEL",
+        "OPENAI_SMALL_MODEL",
+        "GROQ_LARGE_MODEL",
+        "GROQ_SMALL_MODEL",
+        "OPENROUTER_LARGE_MODEL",
+        "OPENROUTER_SMALL_MODEL",
+        "CEREBRAS_LARGE_MODEL",
+        "CEREBRAS_SMALL_MODEL",
+    ):
+        os.environ.setdefault(key, model_name)
+
+
+def should_start_eliza_server() -> bool:
+    """True when this run needs the TS Eliza benchmark server."""
+    return (
+        _selected_delegate_harness() not in _DELEGATE_HARNESSES
+        and not os.environ.get("ELIZA_BENCH_URL")
+    )
 
 
 def parse_args() -> argparse.Namespace:
@@ -164,6 +202,19 @@ def load_tasks(args: argparse.Namespace) -> list[dict[str, object]]:
     return tasks
 
 
+def load_tasks_for_run(args: argparse.Namespace) -> list[dict[str, object]]:
+    """Load benchmark tasks, or a synthetic task for dry-run smoke tests."""
+    if args.dry_run:
+        return [
+            {
+                "id": "osworld_eliza_dry_run",
+                "snapshot": "dry_run",
+                "instruction": "Dry-run smoke task for OSWorld harness wiring.",
+            }
+        ]
+    return load_tasks(args)
+
+
 def create_eliza_agent(args: argparse.Namespace) -> object:
     """Create and initialize the elizaOS bridge OSWorld agent.
 
@@ -171,14 +222,16 @@ def create_eliza_agent(args: argparse.Namespace) -> object:
     benchmark bridge — the legacy Python ``AgentRuntime`` path has been
     removed.
     """
-    if not os.environ.get("ELIZA_BENCH_URL"):
+    _configure_bridge_model_env(args.model)
+    server_manager = None
+    if should_start_eliza_server():
         from eliza_adapter.server_manager import ElizaServerManager
 
-        mgr = ElizaServerManager()
-        mgr.start()
-        os.environ["ELIZA_BENCH_TOKEN"] = mgr.token
+        server_manager = ElizaServerManager()
+        server_manager.start()
+        os.environ["ELIZA_BENCH_TOKEN"] = server_manager.token
         os.environ.setdefault(
-            "ELIZA_BENCH_URL", f"http://localhost:{mgr.port}"
+            "ELIZA_BENCH_URL", f"http://localhost:{server_manager.port}"
         )
 
     from eliza_adapter.osworld import ElizaBridgeOSWorldAgent
@@ -197,7 +250,14 @@ def create_eliza_agent(args: argparse.Namespace) -> object:
         screen_width=1920,
         screen_height=1080,
     )
-    asyncio.run(agent.async_init())
+    if server_manager is not None:
+        setattr(agent, "_eliza_server_manager", server_manager)
+    try:
+        asyncio.run(agent.async_init())
+    except Exception:
+        if server_manager is not None:
+            server_manager.stop()
+        raise
     return agent
 
 
@@ -256,11 +316,12 @@ class _DryRunAgent:
 
 def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
     """Run the OSWorld benchmark with the Eliza agent."""
-    tasks = load_tasks(args)
+    tasks = load_tasks_for_run(args)
     logger.info("Loaded %d tasks", len(tasks))
 
     # Create agent
     agent = _DryRunAgent() if args.dry_run else create_eliza_agent(args)
+    server_manager = getattr(agent, "_eliza_server_manager", None)
 
     # Create environment
     env_kwargs = {
@@ -275,117 +336,129 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
     if args.region:
         env_kwargs["region"] = args.region
 
-    if args.dry_run:
-        env = _DryRunEnv()
-    else:
-        if DesktopEnv is None:
-            raise RuntimeError(
-                f"OSWorld dependencies are not installed: {DESKTOP_ENV_IMPORT_ERROR}"
-            )
-        env = DesktopEnv(**env_kwargs)
-    if args.dry_run:
-        import lib_run_single
-
-        lib_run_single.time.sleep = lambda _seconds: None
+    env: Any | None = None
+    original_sleep: Any | None = None
 
     # Results
     scores: list[float] = []
     results: list[dict[str, object]] = []
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    try:
+        if args.dry_run:
+            env = _DryRunEnv()
+            import lib_run_single
 
-    for i, task in enumerate(tasks):
-        task_id = task["id"]
-        domain = task.get("snapshot", "unknown")
-        instruction = task.get("instruction", "")
+            original_sleep = lib_run_single.time.sleep
+            lib_run_single.time.sleep = lambda _seconds: None
+        else:
+            if DesktopEnv is None:
+                raise RuntimeError(
+                    f"OSWorld dependencies are not installed: {DESKTOP_ENV_IMPORT_ERROR}"
+                )
+            env = DesktopEnv(**env_kwargs)
 
-        logger.info("=" * 60)
-        logger.info("Task %d/%d: %s (%s)", i + 1, len(tasks), task_id, domain)
-        logger.info("Instruction: %s", instruction)
-        logger.info("=" * 60)
+        for i, task in enumerate(tasks):
+            task_id = task["id"]
+            domain = task.get("snapshot", "unknown")
+            instruction = task.get("instruction", "")
 
-        # Create result directory
-        example_result_dir = os.path.join(
-            args.result_dir,
-            args.action_space,
-            args.observation_type,
-            args.model.replace("/", "_"),
-            domain,
-            task_id,
-        )
-        os.makedirs(example_result_dir, exist_ok=True)
+            logger.info("=" * 60)
+            logger.info("Task %d/%d: %s (%s)", i + 1, len(tasks), task_id, domain)
+            logger.info("Instruction: %s", instruction)
+            logger.info("=" * 60)
 
-        try:
-            run_single_example(
-                agent=agent,
-                env=env,
-                example=task,
-                max_steps=args.max_steps,
-                instruction=instruction,
-                args=args,
-                example_result_dir=example_result_dir,
-                scores=scores,
+            # Create result directory
+            example_result_dir = os.path.join(
+                args.result_dir,
+                args.action_space,
+                args.observation_type,
+                args.model.replace("/", "_"),
+                str(domain),
+                str(task_id),
             )
+            os.makedirs(example_result_dir, exist_ok=True)
 
-            result_val = scores[-1] if scores else 0.0
-            results.append({
-                "task_id": task_id,
-                "domain": domain,
-                "instruction": instruction,
-                "score": result_val,
-                "result_dir": example_result_dir,
-            })
+            try:
+                run_single_example(
+                    agent=agent,
+                    env=env,
+                    example=task,
+                    max_steps=args.max_steps,
+                    instruction=instruction,
+                    args=args,
+                    example_result_dir=example_result_dir,
+                    scores=scores,
+                )
 
-            logger.info("Task %s: score=%.2f", task_id, result_val)
+                result_val = scores[-1] if scores else 0.0
+                results.append({
+                    "task_id": task_id,
+                    "domain": domain,
+                    "instruction": instruction,
+                    "score": result_val,
+                    "result_dir": example_result_dir,
+                })
 
-        except Exception as e:
-            logger.error("Task %s failed with error: %s", task_id, e, exc_info=True)
-            with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
-                f.write("0.0\n")
-            with open(os.path.join(example_result_dir, "traj.jsonl"), "a", encoding="utf-8") as f:
-                f.write(json.dumps({"Error": str(e)}))
-                f.write("\n")
-            log_task_error(task, str(e), example_result_dir, args)
-            results.append({
-                "task_id": task_id,
-                "domain": domain,
-                "instruction": instruction,
-                "score": 0.0,
-                "error": str(e),
-            })
-            scores.append(0.0)
+                logger.info("Task %s: score=%.2f", task_id, result_val)
 
-    # Summary
-    total = len(scores)
-    passed = sum(1 for s in scores if s > 0)
-    avg_score = sum(scores) / total if total > 0 else 0
+            except Exception as e:
+                logger.error("Task %s failed with error: %s", task_id, e, exc_info=True)
+                with open(os.path.join(example_result_dir, "result.txt"), "w", encoding="utf-8") as f:
+                    f.write("0.0\n")
+                with open(os.path.join(example_result_dir, "traj.jsonl"), "a", encoding="utf-8") as f:
+                    f.write(json.dumps({"Error": str(e)}))
+                    f.write("\n")
+                log_task_error(task, str(e), example_result_dir, args)
+                results.append({
+                    "task_id": task_id,
+                    "domain": domain,
+                    "instruction": instruction,
+                    "score": 0.0,
+                    "error": str(e),
+                })
+                scores.append(0.0)
 
-    summary = {
-        "model": args.model,
-        "agent": "eliza",
-        "observation_type": args.observation_type,
-        "action_space": args.action_space,
-        "total_tasks": total,
-        "passed_tasks": passed,
-        "overall_success_rate": avg_score,
-        "timestamp": timestamp,
-        "results": results,
-    }
+        # Summary
+        total = len(scores)
+        passed = sum(1 for s in scores if s > 0)
+        avg_score = sum(scores) / total if total > 0 else 0
 
-    # Save summary
-    summary_path = os.path.join(args.result_dir, f"osworld-eliza-results-{timestamp}.json")
-    os.makedirs(os.path.dirname(summary_path), exist_ok=True)
-    with open(summary_path, "w") as f:
-        json.dump(summary, f, indent=2, default=str)
+        summary = {
+            "model": args.model,
+            "agent": "eliza",
+            "observation_type": args.observation_type,
+            "action_space": args.action_space,
+            "total_tasks": total,
+            "passed_tasks": passed,
+            "overall_success_rate": avg_score,
+            "timestamp": timestamp,
+            "results": results,
+        }
 
-    logger.info("=" * 60)
-    logger.info("BENCHMARK COMPLETE")
-    logger.info("  Total tasks: %d", total)
-    logger.info("  Passed: %d", passed)
-    logger.info("  Success rate: %.2f%%", avg_score * 100)
-    logger.info("  Results: %s", summary_path)
-    logger.info("=" * 60)
+        # Save summary
+        summary_path = os.path.join(args.result_dir, f"osworld-eliza-results-{timestamp}.json")
+        os.makedirs(os.path.dirname(summary_path), exist_ok=True)
+        with open(summary_path, "w") as f:
+            json.dump(summary, f, indent=2, default=str)
 
-    return summary
+        logger.info("=" * 60)
+        logger.info("BENCHMARK COMPLETE")
+        logger.info("  Total tasks: %d", total)
+        logger.info("  Passed: %d", passed)
+        logger.info("  Success rate: %.2f%%", avg_score * 100)
+        logger.info("  Results: %s", summary_path)
+        logger.info("=" * 60)
+
+        return summary
+    finally:
+        if original_sleep is not None:
+            import lib_run_single
+
+            lib_run_single.time.sleep = original_sleep
+        if env is not None:
+            env.close()
+        if server_manager is not None:
+            server_manager.stop()
 
 
 def main() -> None:

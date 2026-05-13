@@ -65,7 +65,7 @@ function eliza1MobileManifest(): Record<string, unknown> {
       vision: [],
       dflash: [
         {
-          path: "dflash/drafter-1_7b.gguf",
+          path: "dflash/drafter-2b.gguf",
           sha256: "0".repeat(64),
           ctx: 32768,
         },

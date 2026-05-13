@@ -1,0 +1,123 @@
+[
+  {
+    "transaction_id": "TXN-1101",
+    "date": "2026-03-05",
+    "amount": 150000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Network Equipment",
+    "description": "Procurement from Supplier A: 50x Smart Router X1 at 3,000 CNY/unit",
+    "status": "cancelled",
+    "reference": "ITEM-1101",
+    "supplier": "Supplier A",
+    "cancel_reason": "Supplier shipment suspended"
+  },
+  {
+    "transaction_id": "TXN-1102",
+    "date": "2026-03-06",
+    "amount": 80000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Network Equipment",
+    "description": "Procurement from Supplier A: 20x Switch S200 at 4,000 CNY/unit",
+    "status": "cancelled",
+    "reference": "ITEM-1102",
+    "supplier": "Supplier A",
+    "cancel_reason": "Supplier shipment suspended"
+  },
+  {
+    "transaction_id": "TXN-1103",
+    "date": "2026-03-07",
+    "amount": 60000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Security Equipment",
+    "description": "Procurement from Supplier A: 10x Firewall F500 at 6,000 CNY/unit",
+    "status": "cancelled",
+    "reference": "ITEM-1103",
+    "supplier": "Supplier A",
+    "cancel_reason": "Supplier shipment suspended"
+  },
+  {
+    "transaction_id": "TXN-1104",
+    "date": "2026-03-08",
+    "amount": 45000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Network Equipment",
+    "description": "Procurement from Supplier A: 30x Fiber Optic Module at 1,500 CNY/unit",
+    "status": "cancelled",
+    "reference": "ITEM-1108",
+    "supplier": "Supplier A",
+    "cancel_reason": "Supplier shipment suspended"
+  },
+  {
+    "transaction_id": "TXN-1105",
+    "date": "2026-03-10",
+    "amount": 25000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Accessories",
+    "description": "Procurement from Supplier B: 500x Cat6 Network Cable boxes at 50 CNY/box",
+    "status": "completed",
+    "reference": "ITEM-1104",
+    "supplier": "Supplier B"
+  },
+  {
+    "transaction_id": "TXN-1106",
+    "date": "2026-03-12",
+    "amount": 35000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Power Equipment",
+    "description": "Procurement from Supplier B: 10x UPS Power Supply at 3,500 CNY/unit",
+    "status": "completed",
+    "reference": "ITEM-1106",
+    "supplier": "Supplier B"
+  },
+  {
+    "transaction_id": "TXN-1107",
+    "date": "2026-03-11",
+    "amount": 240000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Servers",
+    "description": "Procurement from Supplier C: 8x Server R720 at 30,000 CNY/unit",
+    "status": "completed",
+    "reference": "ITEM-1105",
+    "supplier": "Supplier C"
+  },
+  {
+    "transaction_id": "TXN-1108",
+    "date": "2026-03-15",
+    "amount": 180000.00,
+    "currency": "CNY",
+    "type": "sales receipt",
+    "category": "Customer Payment",
+    "description": "Customer CUS-1101 Dingxin Software: Order #A001 payment received for routers + switches",
+    "status": "completed",
+    "reference": "CUS-1101"
+  },
+  {
+    "transaction_id": "TXN-1109",
+    "date": "2026-03-16",
+    "amount": 95000.00,
+    "currency": "CNY",
+    "type": "sales receipt",
+    "category": "Customer Payment",
+    "description": "Customer CUS-1102 Hanhai E-commerce: Order #A002 payment received for switches + firewalls",
+    "status": "completed",
+    "reference": "CUS-1102"
+  },
+  {
+    "transaction_id": "TXN-1110",
+    "date": "2026-03-17",
+    "amount": 220000.00,
+    "currency": "CNY",
+    "type": "sales receipt",
+    "category": "Customer Payment",
+    "description": "Customer CUS-1103 Wantong Logistics: Order #A003 payment received for routers + firewalls + fiber optic modules",
+    "status": "completed",
+    "reference": "CUS-1103"
+  }
+]

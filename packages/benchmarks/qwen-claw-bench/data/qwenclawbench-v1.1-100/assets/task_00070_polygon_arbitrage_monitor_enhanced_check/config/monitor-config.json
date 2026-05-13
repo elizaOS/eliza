@@ -1,0 +1,65 @@
+{
+  "rpc_url": "https://polygon-mainnet.g.alchemy.com/v2/placeholder_replace_before_use",
+  "rpc_fallback": "https://polygon-rpc.com",
+  "chain_id": 137,
+  "wallet_address": "0x4a1E8bCd9F7c2A5d3fE6b0C8a4D9e2F1c7B3a6D",
+  "contracts": {
+    "POL": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+    "USDC": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    "WETH": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+    "QUICKSWAP_ROUTER": "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff",
+    "SUSHISWAP_ROUTER": "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
+    "UNISWAP_V3_ROUTER": "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+  },
+  "dex_pairs": [
+    {
+      "name": "quickswap_pol_usdc",
+      "dex": "quickswap",
+      "pair": "0x6e7a5FAFcec6BB1e78bAE2A1F0B612012BF14827",
+      "token0": "POL",
+      "token1": "USDC"
+    },
+    {
+      "name": "sushiswap_pol_usdc",
+      "dex": "sushiswap",
+      "pair": "0xcd353F79d9FADe311fC3119B841e1f456b54e858",
+      "token0": "POL",
+      "token1": "USDC"
+    },
+    {
+      "name": "uniswap_v3_pol_usdc",
+      "dex": "uniswap_v3",
+      "pool": "0xA374094527e1673A86dE625aa7475B80d8cDE385",
+      "fee_tier": 3000,
+      "token0": "POL",
+      "token1": "USDC"
+    }
+  ],
+  "alert_thresholds": {
+    "pol_min_balance": 50.0,
+    "usdc_min_balance": 100.0,
+    "slippage_warn_pct": 1.5,
+    "min_profit_usd": 0.50,
+    "max_gas_gwei": 200
+  },
+  "notifications": {
+    "webhook_url": "https://hooks.clawd.internal/notify/poly-arb-a2ce4b5b",
+    "alert_channel": "telegram",
+    "quiet_hours": {
+      "start": "01:00",
+      "end": "06:00",
+      "timezone": "Asia/Shanghai"
+    }
+  },
+  "gas": {
+    "max_priority_fee_gwei": 35,
+    "max_fee_gwei": 100,
+    "gas_limit_swap": 250000,
+    "gas_limit_approve": 60000
+  },
+  "monitor": {
+    "interval_seconds": 300,
+    "tx_log_retention_days": 30,
+    "balance_cache_ttl_seconds": 60
+  }
+}

@@ -14,7 +14,14 @@
  *
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
 import crypto from "crypto";
 import { v4 as uuidv4 } from "uuid";
 import { API_KEY_PREFIX_LENGTH } from "@/lib/pricing";
@@ -93,7 +100,10 @@ describe("ApiKeysService", () => {
       const generated = apiKeysService.generateApiKey();
 
       // Act - Manually compute hash
-      const manualHash = crypto.createHash("sha256").update(generated.key).digest("hex");
+      const manualHash = crypto
+        .createHash("sha256")
+        .update(generated.key)
+        .digest("hex");
 
       // Assert
       expect(generated.hash).toBe(manualHash);
@@ -332,7 +342,10 @@ describe("ApiKeysService", () => {
       const { apiKey, plainKey } = await apiKeysService.create(keyData);
 
       // Assert - The stored key_hash should be SHA256 of plainKey
-      const expectedHash = crypto.createHash("sha256").update(plainKey).digest("hex");
+      const expectedHash = crypto
+        .createHash("sha256")
+        .update(plainKey)
+        .digest("hex");
       expect(apiKey.key_hash).toBe(expectedHash);
 
       // Cleanup
@@ -611,6 +624,90 @@ describe("ApiKeysService", () => {
 
       // Cleanup
       await cleanupTestData(connectionString, testData.organization.id);
+    });
+  });
+
+  describe("createForAgent / revokeForAgent", () => {
+    test("creates a key bound to the sandbox via canonical name", async () => {
+      const sandboxId = uuidv4();
+
+      const { apiKey, plainKey } = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxId,
+      });
+
+      expect(apiKey.name).toBe(`agent-sandbox:${sandboxId}`);
+      expect(apiKey.permissions).toContain("agent");
+      expect(plainKey).toMatch(/^eliza_[0-9a-f]{64}$/);
+
+      const validated = await apiKeysService.validateApiKey(plainKey);
+      expect(validated?.id).toBe(apiKey.id);
+    });
+
+    test("re-running create for the same sandbox revokes the old key", async () => {
+      const sandboxId = uuidv4();
+
+      const first = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxId,
+      });
+      const second = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxId,
+      });
+
+      expect(second.apiKey.id).not.toBe(first.apiKey.id);
+      expect(await apiKeysService.validateApiKey(first.plainKey)).toBeNull();
+      expect((await apiKeysService.validateApiKey(second.plainKey))?.id).toBe(
+        second.apiKey.id,
+      );
+    });
+
+    test("revokeForAgent removes the key from DB and cache", async () => {
+      const sandboxId = uuidv4();
+      const { plainKey } = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxId,
+      });
+      // Prime cache
+      await apiKeysService.validateApiKey(plainKey);
+
+      await apiKeysService.revokeForAgent(sandboxId);
+
+      expect(await apiKeysService.validateApiKey(plainKey)).toBeNull();
+    });
+
+    test("revokeForAgent is a no-op when no key exists for the sandbox", async () => {
+      // Unprovisioned-then-deleted agents hit this path: deleteAgent calls
+      // revokeForAgent unconditionally, so it must tolerate missing keys.
+      await apiKeysService.revokeForAgent(uuidv4());
+    });
+
+    test("revokeForAgent only touches the target sandbox's key", async () => {
+      const sandboxA = uuidv4();
+      const sandboxB = uuidv4();
+
+      const a = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxA,
+      });
+      const b = await apiKeysService.createForAgent({
+        organizationId: testData.organization.id,
+        userId: testData.user.id,
+        agentSandboxId: sandboxB,
+      });
+
+      await apiKeysService.revokeForAgent(sandboxA);
+
+      expect(await apiKeysService.validateApiKey(a.plainKey)).toBeNull();
+      expect((await apiKeysService.validateApiKey(b.plainKey))?.id).toBe(
+        b.apiKey.id,
+      );
     });
   });
 });

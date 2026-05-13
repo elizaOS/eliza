@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-12T12:53:11.479Z",
+  "runs": [
+    {
+      "schemaVersion": 1,
+      "generatedAt": "2026-05-12T12:53:11.478Z",
+      "harness": "packages/inference/verify/e2e_loop_bench.mjs",
+      "host": {
+        "platform": "linux",
+        "arch": "x64",
+        "cpus": 24,
+        "cpuModel": "Intel(R) Core(TM) Ultra 9 275HX",
+        "totalMemMb": 31440
+      },
+      "request": {
+        "tier": "0_6b",
+        "backend": "cpu",
+        "turns": 1,
+        "nPredict": 40,
+        "ttsSteps": 32,
+        "micTtsSteps": 32,
+        "wavs": 0,
+        "refs": 0
+      },
+      "bundle": {
+        "dir": "/tmp/fake-bundle",
+        "tier": "0_6b",
+        "ramBudgetMb": null
+      },
+      "engine": {
+        "dir": "/home/shaw/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused",
+        "backend": "cpu",
+        "backendMismatch": null,
+        "fused": true,
+        "caps": {
+          "dflash": false,
+          "turbo3": true,
+          "turbo4": true,
+          "turbo3_tcq": false,
+          "qjl_full": true,
+          "polarquant": true,
+          "lookahead": true,
+          "ngramDraft": true
+        }
+      },
+      "status": "needs-bundle",
+      "reason": "bundle is missing one of text/drafter/tts-model/tts-codec/asr GGUFs (stand-in or incomplete)",
+      "bundleArtifacts": {
+        "text": false,
+        "drafter": false,
+        "ttsModel": false,
+        "ttsCodec": false,
+        "asr": false
+      },
+      "e2eLoopOk": false
+    }
+  ]
+}

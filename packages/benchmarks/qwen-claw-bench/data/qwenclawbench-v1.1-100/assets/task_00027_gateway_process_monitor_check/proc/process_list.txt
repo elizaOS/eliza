@@ -1,0 +1,25 @@
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.1 169436 13200 ?        Ss   Feb09   0:03 /sbin/init
+root           2  0.0  0.0      0     0 ?        S    Feb09   0:00 [kthreadd]
+root          11  0.0  0.0      0     0 ?        I<   Feb09   0:00 [rcu_tasks_kthread]
+root          12  0.0  0.0      0     0 ?        I<   Feb09   0:00 [rcu_tasks_rude_kthread]
+root          13  0.0  0.0      0     0 ?        I<   Feb09   0:00 [rcu_tasks_trace_kthread]
+root          14  0.0  0.0      0     0 ?        S    Feb09   0:01 [ksoftirqd/0]
+root          85  0.0  0.0      0     0 ?        S    Feb09   0:00 [kdevtmpfs]
+root         162  0.0  0.2  76332 19072 ?        Ss   Feb09   0:02 /lib/systemd/systemd-journald
+root         193  0.0  0.0  25728  6016 ?        Ss   Feb09   0:01 /lib/systemd/systemd-udevd
+systemd+     312  0.0  0.1  90396  8192 ?        Ssl  Feb09   0:03 /lib/systemd/systemd-timesyncd
+message+     340  0.0  0.0   8796  4608 ?        Ss   Feb09   0:01 @dbus-daemon --system
+root         345  0.0  0.1  33804 11392 ?        Ss   Feb09   0:00 /usr/sbin/cron -f -P
+syslog       347  0.0  0.1 224412  8448 ?        Ssl  Feb09   0:04 /usr/sbin/rsyslogd -n -iNONE
+root         352  0.0  0.0   6300  3072 ?        Ss   Feb09   0:00 /usr/sbin/sshd -D
+root         361  0.0  0.2  29316 18816 ?        Ss   Feb09   0:00 /lib/systemd/systemd-logind
+root         399  0.0  0.0   5848  1792 tty1     Ss+  Feb09   0:00 /sbin/agetty -o -p -- \u --noclear - linux
+root         400  0.0  0.0   5892  1792 ttyS0    Ss+  Feb09   0:00 /sbin/agetty -o -p -- \u --keep-baud 115200,57600,38400,9600 - vt220
+node         512  0.2  1.5 1045320 124416 ?      Ssl  Feb09   1:47 /usr/local/bin/node /usr/local/lib/node_modules/pm2/bin/pm2-runtime start ecosystem.config.js
+node         589  0.0  0.3 729128 29696 ?        Sl   Feb09   0:12 node /home/node/.nvm/versions/node/v24.14.0/bin/npx tailscaled
+root         601  0.0  0.0  11012  5376 ?        Ss   Feb09   0:00 nginx: master process /usr/sbin/nginx -g daemon off;
+www-data     602  0.0  0.0  11460  3584 ?        S    Feb09   0:00 nginx: worker process
+www-data     603  0.0  0.0  11460  3584 ?        S    Feb09   0:00 nginx: worker process
+root         892  0.0  0.1  15876  9600 pts/0    Ss   22:29   0:00 bash
+root         903  0.0  0.0  17440  3456 pts/0    R+   22:31   0:00 ps aux

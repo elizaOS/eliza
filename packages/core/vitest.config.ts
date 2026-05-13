@@ -40,6 +40,11 @@ export default defineConfig({
 			"**/dist/**",
 			"**/.claude/**",
 			".claude/**",
+			"**/*.e2e.test.*",
+			"**/*.live.test.*",
+			"**/*.live.e2e.test.*",
+			"**/*.real.test.*",
+			"**/*.real.e2e.test.*",
 			// Playwright e2e specs must be run with `npm run test:e2e` (playwright test), not vitest
 			"e2e/**",
 		],

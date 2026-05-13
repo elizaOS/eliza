@@ -91,6 +91,12 @@ export class ApiKeysRepository {
     });
   }
 
+  async findByName(name: string): Promise<ApiKey[]> {
+    return await dbRead.query.apiKeys.findMany({
+      where: eq(apiKeys.name, name),
+    });
+  }
+
   // ============================================================================
   // WRITE OPERATIONS (use primary)
   // ============================================================================
@@ -106,7 +112,10 @@ export class ApiKeysRepository {
   /**
    * Updates an existing API key.
    */
-  async update(id: string, data: Partial<NewApiKey>): Promise<ApiKey | undefined> {
+  async update(
+    id: string,
+    data: Partial<NewApiKey>,
+  ): Promise<ApiKey | undefined> {
     const [updated] = await dbWrite
       .update(apiKeys)
       .set({
@@ -148,7 +157,20 @@ export class ApiKeysRepository {
         is_active: false,
         updated_at: new Date(),
       })
-      .where(and(eq(apiKeys.user_id, userId), eq(apiKeys.name, name), eq(apiKeys.is_active, true)));
+      .where(
+        and(
+          eq(apiKeys.user_id, userId),
+          eq(apiKeys.name, name),
+          eq(apiKeys.is_active, true),
+        ),
+      );
+  }
+
+  async deleteByName(name: string): Promise<ApiKey[]> {
+    return await dbWrite
+      .delete(apiKeys)
+      .where(eq(apiKeys.name, name))
+      .returning();
   }
 }
 

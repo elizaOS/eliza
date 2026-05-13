@@ -1,0 +1,16 @@
+{
+  "id": "working-reminder-001",
+  "enabled": true,
+  "schedule": "10 9 * * 1-5",
+  "sessionTarget": "isolated",
+  "payload": {
+    "kind": "agentTurn",
+    "message": "Use: message action=send channel=telegram to=5992622663\nRemind the user: Time to stand up and stretch!",
+    "deliver": true
+  },
+  "delivery": {
+    "mode": "announce",
+    "channel": "telegram",
+    "to": "5992622663"
+  }
+}

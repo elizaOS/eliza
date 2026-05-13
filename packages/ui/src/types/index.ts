@@ -1,1 +1,1 @@
-export type * from "../../../shared/src/types/index";
+export type * from "@elizaos/shared/types/index";

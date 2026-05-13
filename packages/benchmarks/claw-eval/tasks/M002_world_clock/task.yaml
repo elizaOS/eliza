@@ -1,0 +1,56 @@
+task_id: M002_world_clock
+task_name: World Clock Dashboard
+version: "2.0"
+category: multimodal_webpage
+difficulty: medium
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/config.json — world clock configuration
+
+    Please read the config file, then generate /workspace/output.html to display multiple analog clocks showing different time zones:
+    1. Show one clock for each city defined in the config
+    2. Each clock should display the correct time for its timezone
+    3. Use the specified colors for each clock
+    4. Label each clock with its city name
+    5. Arrange clocks according to the layout setting
+    6. All clocks should animate in real-time
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/config.json
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 10 --interval 0.5 --wait-before 2"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read config.json, create 4 analog clocks in horizontal layout.
+  Each clock uses its timezone_offset to display local time.
+  Apply per-clock colors, labels, and shared background/size from config.
+
+primary_dimensions: [completion, robustness]

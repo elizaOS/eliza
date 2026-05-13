@@ -1,0 +1,76 @@
+# Nightly per-GPU voice-bench smoke run.
+#
+# STATUS: stub. Gated `if: false` until a self-hosted CUDA GPU runner is
+# wired. L4 (the cheapest GitHub-hosted GPU runner) is a reasonable
+# starting target; for the full matrix (3090 / 4090 / 5090 / H200) we
+# need a self-hosted pool.
+#
+# Per docs/inference/gpu-tier.md the per-GPU autotune profiles live in
+# packages/inference/configs/gpu/, and `voice-bench bench gpu` prints
+# the resolved plan for the host card. Once a real cuda PipelineDriver
+# is wired (see packages/inference/voice-bench/README.md "Wiring the
+# real pipeline"), this workflow runs the actual benchmark.
+
+name: gpu-bench-nightly
+
+on:
+  schedule:
+    # Nightly at 06:00 UTC. Adjust once we know what window the
+    # self-hosted runners are available.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      bundle:
+        description: "Bundle id (e.g. eliza-1-9b)"
+        required: false
+        default: "eliza-1-9b"
+
+jobs:
+  detect:
+    name: detect host GPU
+    if: false # stub — flip to true when a GPU runner is online
+    runs-on: [self-hosted, linux, gpu, cuda]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: install
+        run: bun install --frozen-lockfile
+      - name: probe GPU + print autotune plan
+        run: |
+          bun run --cwd packages/inference/voice-bench bench gpu \
+            --bundle "${{ github.event.inputs.bundle || 'eliza-1-9b' }}" \
+            | tee gpu-plan.json
+      - name: upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-plan
+          path: gpu-plan.json
+
+  bench:
+    name: voice-bench (cuda)
+    needs: detect
+    if: false # stub — needs a real cuda PipelineDriver wired in voice-bench/bin/voice-bench
+    runs-on: [self-hosted, linux, gpu, cuda]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: install
+        run: bun install --frozen-lockfile
+      - name: run voice-bench
+        run: |
+          bun run --cwd packages/inference/voice-bench bench \
+            --bundle "${{ github.event.inputs.bundle || 'eliza-1-9b' }}" \
+            --backend cuda \
+            --scenario all \
+            --runs 5 \
+            --output bench.json
+      - name: upload bench result
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ github.run_id }}
+          path: bench.json

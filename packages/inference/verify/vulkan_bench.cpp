@@ -313,8 +313,8 @@ static double bench_dispatch(const Vk & v, const DispatchCfg & cfg, int warmup, 
 struct TurboPush { uint32_t head_dim, n_kv, kv_stride_blocks, q_head, head_offset_bytes; };
 struct QjlPush   { uint32_t n_heads, n_kv_heads, n_tokens, proj_dim; };
 struct PolarPush { uint32_t n_rows, head_dim, use_qjl, k_offset_bytes, q_offset, y_offset; };
-struct FusedTbqPush   { uint32_t n_heads, n_kv_heads, n_tokens, q_pos, sm_scale_bits, kv_tile; };
-struct FusedPolarPush { uint32_t n_heads, n_kv_heads, n_tokens, q_pos, sm_scale_bits, v_use_qjl, kv_tile; };
+struct FusedTbqPush   { uint32_t n_heads, n_kv_heads, n_tokens, q_pos, sm_scale_bits, kv_tile, causal, q_pos_base; };
+struct FusedPolarPush { uint32_t n_heads, n_kv_heads, n_tokens, q_pos, sm_scale_bits, v_use_qjl, kv_tile, causal, q_pos_base; };
 
 template <typename T> static std::vector<uint8_t> as_bytes(const T & t) {
     return std::vector<uint8_t>((const uint8_t *)&t, (const uint8_t *)&t + sizeof(T));
@@ -469,8 +469,8 @@ int main(int argc, char ** argv) {
             uint32_t sm_bits = 0; std::memcpy(&sm_bits, &sm_scale, sizeof(uint32_t));
             DispatchCfg cfg; cfg.spv = load_spirv(spv_path(spv_dir, name).c_str());
             cfg.bindings = { &qs, &k, &vv, &out };
-            if (is_polar) { FusedPolarPush pc{ n_heads, n_kv_heads, n_kv, 0, sm_bits, 1u, 0u }; cfg.push_bytes = as_bytes(pc); }
-            else          { FusedTbqPush   pc{ n_heads, n_kv_heads, n_kv, 0, sm_bits, 0u };     cfg.push_bytes = as_bytes(pc); }
+            if (is_polar) { FusedPolarPush pc{ n_heads, n_kv_heads, n_kv, 0, sm_bits, 1u, 0u, 0u, 0u }; cfg.push_bytes = as_bytes(pc); }
+            else          { FusedTbqPush   pc{ n_heads, n_kv_heads, n_kv, 0, sm_bits, 0u, 0u, 0u };     cfg.push_bytes = as_bytes(pc); }
             cfg.gx = n_heads; cfg.gy = 1; cfg.gz = 1;
             double us = bench_dispatch(v, cfg, warmup, runs);
             rows.push_back(Row{ name, spv_path(spv_dir, name), n_kv, n_heads, 1, us });

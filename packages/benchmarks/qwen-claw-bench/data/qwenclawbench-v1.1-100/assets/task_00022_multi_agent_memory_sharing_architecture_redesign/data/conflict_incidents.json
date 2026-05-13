@@ -1,0 +1,439 @@
+{
+  "report_generated": "2024-11-14T08:00:00Z",
+  "reporting_period": {
+    "start": "2024-09-15T00:00:00Z",
+    "end": "2024-11-14T00:00:00Z"
+  },
+  "total_incidents": 25,
+  "summary": {
+    "data_loss_incidents": 4,
+    "by_conflict_type": {
+      "concurrent_write": 11,
+      "version_mismatch": 5,
+      "schema_drift": 9
+    },
+    "by_resolution": {
+      "last_write_wins": 8,
+      "manual": 10,
+      "rollback": 6,
+      "merge": 1
+    },
+    "avg_resolution_time_minutes": 81.8
+  },
+  "incidents": [
+    {
+      "incident_id": "CONF-2024-0001",
+      "timestamp": "2024-09-25T17:01:00Z",
+      "agents_involved": [
+        "customer_agent",
+        "analytics_agent",
+        "coding_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_002",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 2,
+      "severity": "low",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0002",
+      "timestamp": "2024-09-27T10:21:00Z",
+      "agents_involved": [
+        "ops_agent",
+        "coding_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_004",
+      "conflict_type": "schema_drift",
+      "resolution": "rollback",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 73,
+      "severity": "low",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0003",
+      "timestamp": "2024-10-01T15:48:00Z",
+      "agents_involved": [
+        "analytics_agent",
+        "ops_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.workflow_state/wf_002",
+      "conflict_type": "schema_drift",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 213,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0004",
+      "timestamp": "2024-10-03T19:59:00Z",
+      "agents_involved": [
+        "customer_agent",
+        "ops_agent",
+        "research_agent"
+      ],
+      "shared_resource_id": "shared.entity_store/ent_312",
+      "conflict_type": "schema_drift",
+      "resolution": "rollback",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 18,
+      "severity": "low",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0005",
+      "timestamp": "2024-10-05T22:52:00Z",
+      "agents_involved": [
+        "analytics_agent",
+        "customer_agent",
+        "research_agent"
+      ],
+      "shared_resource_id": "shared.config_cache/cfg_022",
+      "conflict_type": "version_mismatch",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 116,
+      "severity": "medium",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0006",
+      "timestamp": "2024-10-09T16:47:00Z",
+      "agents_involved": [
+        "coding_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.entity_store/ent_205",
+      "conflict_type": "concurrent_write",
+      "resolution": "rollback",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 71,
+      "severity": "medium",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0007",
+      "timestamp": "2024-10-12T17:52:00Z",
+      "agents_involved": [
+        "coding_agent",
+        "analytics_agent"
+      ],
+      "shared_resource_id": "shared.config_cache/cfg_035",
+      "conflict_type": "schema_drift",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 182,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0008",
+      "timestamp": "2024-10-17T12:02:00Z",
+      "agents_involved": [
+        "analytics_agent",
+        "coding_agent"
+      ],
+      "shared_resource_id": "shared.entity_store/ent_205",
+      "conflict_type": "schema_drift",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 94,
+      "severity": "low",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0009",
+      "timestamp": "2024-10-18T06:06:00Z",
+      "agents_involved": [
+        "ops_agent",
+        "research_agent"
+      ],
+      "shared_resource_id": "shared.entity_store/ent_312",
+      "conflict_type": "schema_drift",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 81,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0010",
+      "timestamp": "2024-10-18T14:02:00Z",
+      "agents_involved": [
+        "customer_agent",
+        "research_agent",
+        "analytics_agent"
+      ],
+      "shared_resource_id": "shared.config_cache/cfg_022",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 1,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0011",
+      "timestamp": "2024-10-18T19:33:00Z",
+      "agents_involved": [
+        "ops_agent",
+        "coding_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_003",
+      "conflict_type": "schema_drift",
+      "resolution": "rollback",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 92,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0012",
+      "timestamp": "2024-10-20T11:23:00Z",
+      "agents_involved": [
+        "research_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.entity_store/ent_312",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 9,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0013",
+      "timestamp": "2024-10-22T19:48:00Z",
+      "agents_involved": [
+        "customer_agent",
+        "ops_agent"
+      ],
+      "shared_resource_id": "shared.config_cache/cfg_010",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": true,
+      "data_loss_description": "Agent customer_agent overwrote changes from ops_agent without merge",
+      "resolution_time_minutes": 104,
+      "severity": "high",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0014",
+      "timestamp": "2024-10-24T11:48:00Z",
+      "agents_involved": [
+        "ops_agent",
+        "research_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_002",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": true,
+      "data_loss_description": "Agent ops_agent overwrote changes from research_agent without merge",
+      "resolution_time_minutes": 101,
+      "severity": "high",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0015",
+      "timestamp": "2024-10-25T14:47:00Z",
+      "agents_involved": [
+        "ops_agent",
+        "research_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.workflow_state/wf_003",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": true,
+      "data_loss_description": "Agent ops_agent overwrote changes from research_agent without merge",
+      "resolution_time_minutes": 68,
+      "severity": "high",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0016",
+      "timestamp": "2024-10-26T13:55:00Z",
+      "agents_involved": [
+        "research_agent",
+        "analytics_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.entity_store/ent_312",
+      "conflict_type": "version_mismatch",
+      "resolution": "rollback",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 42,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0017",
+      "timestamp": "2024-10-29T21:56:00Z",
+      "agents_involved": [
+        "ops_agent",
+        "research_agent",
+        "coding_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_004",
+      "conflict_type": "schema_drift",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 47,
+      "severity": "medium",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0018",
+      "timestamp": "2024-10-31T18:38:00Z",
+      "agents_involved": [
+        "analytics_agent",
+        "customer_agent",
+        "coding_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_011",
+      "conflict_type": "version_mismatch",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 164,
+      "severity": "medium",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0019",
+      "timestamp": "2024-10-31T20:42:00Z",
+      "agents_involved": [
+        "analytics_agent",
+        "coding_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.workflow_state/wf_003",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": true,
+      "data_loss_description": "Agent analytics_agent overwrote changes from coding_agent without merge",
+      "resolution_time_minutes": 33,
+      "severity": "high",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0020",
+      "timestamp": "2024-11-04T09:56:00Z",
+      "agents_involved": [
+        "coding_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_013",
+      "conflict_type": "version_mismatch",
+      "resolution": "merge",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 82,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0021",
+      "timestamp": "2024-11-04T13:30:00Z",
+      "agents_involved": [
+        "analytics_agent",
+        "research_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_013",
+      "conflict_type": "concurrent_write",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 110,
+      "severity": "low",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0022",
+      "timestamp": "2024-11-05T16:47:00Z",
+      "agents_involved": [
+        "customer_agent",
+        "analytics_agent",
+        "ops_agent"
+      ],
+      "shared_resource_id": "shared.workflow_state/wf_003",
+      "conflict_type": "version_mismatch",
+      "resolution": "rollback",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 86,
+      "severity": "medium",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0023",
+      "timestamp": "2024-11-06T13:15:00Z",
+      "agents_involved": [
+        "coding_agent",
+        "customer_agent"
+      ],
+      "shared_resource_id": "shared.config_cache/cfg_010",
+      "conflict_type": "concurrent_write",
+      "resolution": "last_write_wins",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 6,
+      "severity": "low",
+      "post_mortem_completed": false
+    },
+    {
+      "incident_id": "CONF-2024-0024",
+      "timestamp": "2024-11-10T18:02:00Z",
+      "agents_involved": [
+        "coding_agent",
+        "analytics_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_013",
+      "conflict_type": "concurrent_write",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 197,
+      "severity": "low",
+      "post_mortem_completed": true
+    },
+    {
+      "incident_id": "CONF-2024-0025",
+      "timestamp": "2024-11-12T07:38:00Z",
+      "agents_involved": [
+        "research_agent",
+        "customer_agent",
+        "analytics_agent"
+      ],
+      "shared_resource_id": "shared.knowledge_base/kg_004",
+      "conflict_type": "schema_drift",
+      "resolution": "manual",
+      "data_loss": false,
+      "data_loss_description": null,
+      "resolution_time_minutes": 52,
+      "severity": "low",
+      "post_mortem_completed": false
+    }
+  ]
+}

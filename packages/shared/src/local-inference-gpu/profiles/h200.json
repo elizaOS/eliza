@@ -1,0 +1,26 @@
+{
+  "id": "h200",
+  "display_name": "NVIDIA H200",
+  "vram_gb": 141,
+  "cuda_compute": "9.0",
+  "features": ["fp16", "bf16", "int8", "int4", "fp8"],
+  "recommended_tiers": {
+    "primary": "27b-q8",
+    "secondary": "27b-f16",
+    "heavy": "27b-256k"
+  },
+  "llama_cpp_flags": {
+    "n_gpu_layers": 99,
+    "tensor_split": null,
+    "flash_attn": true,
+    "use_mmap": false,
+    "numa": true
+  },
+  "dflash": {
+    "enabled": true,
+    "drafter_tier": "2b",
+    "speculative_window": 10
+  },
+  "ctx_size_tokens": 262144,
+  "notes": "141 GB HBM3e. SXM5 form factor. Fits 27B at full F16. NUMA-aware for multi-socket SXM. DFlash with 2B drafter for high throughput."
+}

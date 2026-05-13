@@ -1,0 +1,26 @@
+{
+  "meta": {
+    "stock_id": "002117.SZ",
+    "stock_name": "DongGang Shares",
+    "sector": "Printing & IT Services",
+    "listing_date": "2007-08-21",
+    "market_cap_cny_100m": 45.2,
+    "pe_ttm": 22.8,
+    "pb": 2.1,
+    "dividend_yield_pct": 1.85,
+    "float_share_pct": 78.5,
+    "logical_date": "2026-02-12"
+  },
+  "tech_panel": {
+    "data_status": "unavailable",
+    "indicators": null
+  },
+  "news_panel": {
+    "data_status": "unavailable",
+    "articles": null
+  },
+  "sentiment_panel": {
+    "data_status": "unavailable",
+    "scores": null
+  }
+}

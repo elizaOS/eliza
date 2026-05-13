@@ -42,6 +42,10 @@
 #   GGUF_PYTHONPATH     — optional path to llama.cpp's gguf-py package when
 #                         it is not bundled next to LLAMA_SERVER_BIN.
 #   LLAMA_CACHE_TYPE_K/V — optional KV cache type for TurboQuant-capable forks.
+#   LLAMA_FLASH_ATTN    — when truthy, passes `-fa on`.
+#   LLAMA_JINJA         — when truthy, enables llama.cpp Jinja chat templates.
+#   LLAMA_REASONING_FORMAT — optional reasoning parser format, e.g. `none`.
+#   LLAMA_DISABLE_THINKING — when truthy, passes enable_thinking=false.
 #   LLAMA_EXTRA_ARGS    — extra args appended verbatim.
 #
 # This script is idempotent: re-runs reuse the cached GGUF and only relaunch
@@ -73,9 +77,20 @@ DFLASH_REPAIR_DRAFTER="${DFLASH_REPAIR_DRAFTER:-1}"
 GGUF_PYTHONPATH="${GGUF_PYTHONPATH:-}"
 LLAMA_CACHE_TYPE_K="${LLAMA_CACHE_TYPE_K:-}"
 LLAMA_CACHE_TYPE_V="${LLAMA_CACHE_TYPE_V:-}"
+LLAMA_FLASH_ATTN="${LLAMA_FLASH_ATTN:-}"
+LLAMA_JINJA="${LLAMA_JINJA:-}"
+LLAMA_REASONING_FORMAT="${LLAMA_REASONING_FORMAT:-}"
+LLAMA_DISABLE_THINKING="${LLAMA_DISABLE_THINKING:-}"
 LLAMA_EXTRA_ARGS="${LLAMA_EXTRA_ARGS:-}"
 
 mkdir -p "$MODEL_DIR" "$PYWORKER_DIR" "$(dirname "$LLAMA_LOG")"
+
+is_truthy() {
+  case "${1,,}" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # 1. Clone or refresh the PyWorker repo.
 if [ -d "$PYWORKER_DIR/.git" ]; then
@@ -223,6 +238,9 @@ PY
 
 if [ -n "$DRAFTER_PATH" ]; then
   DRAFTER_PATH="$(repair_dflash_drafter_if_needed "$MODEL_PATH" "$DRAFTER_PATH")"
+  LLAMA_JINJA="${LLAMA_JINJA:-1}"
+  LLAMA_REASONING_FORMAT="${LLAMA_REASONING_FORMAT:-none}"
+  LLAMA_DISABLE_THINKING="${LLAMA_DISABLE_THINKING:-1}"
 fi
 
 # 4. Launch llama-server in the background. If it's already running (e.g.
@@ -238,6 +256,18 @@ LLAMA_ARGS=(
     --metrics
     --log-disable
 )
+if is_truthy "$LLAMA_FLASH_ATTN"; then
+  LLAMA_ARGS+=(-fa on)
+fi
+if is_truthy "$LLAMA_JINJA"; then
+  LLAMA_ARGS+=(--jinja)
+fi
+if [ -n "$LLAMA_REASONING_FORMAT" ]; then
+  LLAMA_ARGS+=(--reasoning-format "$LLAMA_REASONING_FORMAT")
+fi
+if is_truthy "$LLAMA_DISABLE_THINKING"; then
+  LLAMA_ARGS+=(--chat-template-kwargs '{"enable_thinking":false}')
+fi
 if [ -n "$DRAFTER_PATH" ]; then
   LLAMA_ARGS+=(
     -md "$DRAFTER_PATH"
@@ -246,9 +276,6 @@ if [ -n "$DRAFTER_PATH" ]; then
     --ctx-size-draft "$LLAMA_DRAFT_CONTEXT"
     --draft-min "$LLAMA_DRAFT_MIN"
     --draft-max "$LLAMA_DRAFT_MAX"
-    --jinja
-    --reasoning off
-    --chat-template-kwargs '{"enable_thinking":false}'
   )
 fi
 if [ -n "$LLAMA_CACHE_TYPE_K" ]; then

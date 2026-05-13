@@ -1,0 +1,68 @@
+[
+  {
+    "product_id": "ITEM-801",
+    "name": "A4 paper",
+    "category": "Stationery",
+    "quantity": 150,
+    "unit": "box",
+    "unit_cost": 25.00,
+    "location": "Warehouse A-01",
+    "reorder_level": 50,
+    "supplier": "Office Easy"
+  },
+  {
+    "product_id": "ITEM-802",
+    "name": "Ink cartridge HP-12A",
+    "category": "Consumables",
+    "quantity": 20,
+    "unit": "unit",
+    "unit_cost": 180.00,
+    "location": "Warehouse A-02",
+    "reorder_level": 10,
+    "supplier": "HP Authorized"
+  },
+  {
+    "product_id": "ITEM-803",
+    "name": "Mechanical keyboard",
+    "category": "IT Equipment",
+    "quantity": 45,
+    "unit": "unit",
+    "unit_cost": 350.00,
+    "location": "Warehouse B-01",
+    "reorder_level": 15,
+    "supplier": "JD Enterprise"
+  },
+  {
+    "product_id": "ITEM-804",
+    "name": "24-inch monitor",
+    "category": "IT Equipment",
+    "quantity": 12,
+    "unit": "unit",
+    "unit_cost": 1500.00,
+    "location": "Warehouse B-02",
+    "reorder_level": 5,
+    "supplier": "Dell Direct"
+  },
+  {
+    "product_id": "ITEM-805",
+    "name": "USB cable",
+    "category": "Consumables",
+    "quantity": 200,
+    "unit": "piece",
+    "unit_cost": 15.00,
+    "location": "Warehouse A-03",
+    "reorder_level": 50,
+    "supplier": "Office Easy"
+  },
+  {
+    "product_id": "ITEM-806",
+    "name": "Mousepad",
+    "category": "Stationery",
+    "quantity": 100,
+    "unit": "unit",
+    "unit_cost": 8.00,
+    "location": "Warehouse A-01",
+    "reorder_level": 30,
+    "supplier": "Office Easy"
+  }
+]

@@ -1,22 +1,21 @@
-import type { CreditReservation } from "@/lib/services/credits";
+import type { CreditReconciliationResult, CreditReservation } from "@/lib/services/credits";
 
 export function createCreditReservationSettler(
   reservation: CreditReservation | undefined,
-): (actualCost: number) => Promise<void> {
-  let settlePromise: Promise<void> | null = null;
+): (actualCost: number) => Promise<CreditReconciliationResult | null> {
+  let settlePromise: Promise<CreditReconciliationResult | void> | null = null;
 
   return async (actualCost: number) => {
-    if (!reservation) return;
+    if (!reservation) return null;
 
     if (settlePromise) {
-      await settlePromise;
-      return;
+      return (await settlePromise) ?? null;
     }
 
     settlePromise = reservation.reconcile(actualCost);
 
     try {
-      await settlePromise;
+      return (await settlePromise) ?? null;
     } catch (error) {
       settlePromise = null;
       throw error;

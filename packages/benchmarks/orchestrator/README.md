@@ -204,7 +204,7 @@ a self-hosted vLLM endpoint started via ``vllm serve``.
 /opt/miniconda3/bin/python -m benchmarks.orchestrator compare \
   --a "vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1" \
   --b "vllm:Qwen/Qwen3.5-2B@http://127.0.0.1:8002/v1" \
-  --benchmarks eliza-format,bfcl,realm,context-bench
+  --benchmarks action-calling,bfcl,realm,context-bench
 ```
 
 Optional flags:
@@ -222,11 +222,11 @@ Output:
 Comparison ID: cmp_20260504T120000Z_a1b2c3d4
 A: vllm:elizaos/eliza-1-2b @ http://127.0.0.1:8001/v1
 B: vllm:Qwen/Qwen3.5-2B @ http://127.0.0.1:8002/v1
-Benchmarks: eliza-format, bfcl, realm, context-bench
+Benchmarks: action-calling, bfcl, realm, context-bench
 
 benchmark      | A: vllm:elizaos/eliza-1-2b | B: vllm:Qwen/Qwen3.5-2B | delta (B-A) | winner
 ---------------+----------------------------+-------------------------+-------------+-------
-eliza-format   | 0.9120                     | 0.7430                  | -0.1690     | A
+action-calling | 0.9120                     | 0.7430                  | -0.1690     | A
 bfcl           | 0.6840                     | 0.6920                  | +0.0080     | B
 realm          | 0.5510                     | 0.5310                  | -0.0200     | A
 context-bench  | 0.7400                     | 0.7250                  | -0.0150     | A

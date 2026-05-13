@@ -1,10 +1,3 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.recordScreenTimeEvent`).
-// Type checking each mixin in isolation surfaces 700+ phantom errors because
-// the local TBase constraint can't see sibling mixin methods. Real type
-// safety is enforced at the composed-service level (LifeOpsService class).
-// Refactoring requires either declaration-merging every cross-mixin method
-// or moving to a single composed interface — tracked as separate work.
 import crypto from "node:crypto";
 import path from "node:path";
 import { resolveOAuthDir } from "@elizaos/agent";
@@ -71,6 +64,63 @@ const VALID_SOURCE_KINDS: readonly LifeOpsPaymentSourceKind[] = [
 
 const EMAIL_SOURCE_LABEL = "Email bills";
 const SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS = new Set(["plaid", "paypal"]);
+
+type PlaidPaymentMetadata = Record<string, unknown> & {
+  accessToken?: unknown;
+  cursor?: string;
+};
+
+type PaypalCapability = { hasReporting: boolean; hasIdentity: boolean };
+
+type PaypalPaymentMetadata = Record<string, unknown> & {
+  accessToken?: unknown;
+  refreshToken?: unknown;
+  tokenExpiresAt?: string;
+  scope?: string;
+  capability?: PaypalCapability;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isPaypalCapability(value: unknown): value is PaypalCapability {
+  return (
+    isRecord(value) &&
+    typeof value.hasReporting === "boolean" &&
+    typeof value.hasIdentity === "boolean"
+  );
+}
+
+function readPlaidPaymentMetadata(value: unknown): PlaidPaymentMetadata | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const metadata: PlaidPaymentMetadata = { ...value };
+  if (typeof metadata.cursor !== "string") {
+    delete metadata.cursor;
+  }
+  return metadata;
+}
+
+function readPaypalPaymentMetadata(
+  value: unknown,
+): PaypalPaymentMetadata | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  const metadata: PaypalPaymentMetadata = { ...value };
+  if (typeof metadata.tokenExpiresAt !== "string") {
+    delete metadata.tokenExpiresAt;
+  }
+  if (typeof metadata.scope !== "string") {
+    delete metadata.scope;
+  }
+  if (!isPaypalCapability(metadata.capability)) {
+    delete metadata.capability;
+  }
+  return metadata;
+}
 
 function paymentTokenStorageRoot(env: NodeJS.ProcessEnv = process.env): string {
   return path.join(resolveOAuthDir(env), "lifeops", "payments");
@@ -263,6 +313,9 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ) {
   class LifeOpsPaymentsMixin extends Base {
+    public plaidManagedClientCache: PlaidManagedClient | null = null;
+    public paypalManagedClientCache: PaypalManagedClient | null = null;
+
     async listPaymentSources(): Promise<LifeOpsPaymentSource[]> {
       const sources = await this.repository.listPaymentSources(this.agentId());
       return sources.map((source) => sanitizePaymentSourceForClient(source));
@@ -888,10 +941,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       if (source.kind !== "plaid") {
         fail(409, `Source ${sourceId} is not a Plaid source.`);
       }
-      const plaidMetadata =
-        (source.metadata?.plaid as
-          | { accessToken?: unknown; cursor?: string }
-          | undefined) ?? null;
+      const plaidMetadata = readPlaidPaymentMetadata(source.metadata.plaid);
       const accessToken = readPaymentMetadataToken(
         plaidMetadata?.accessToken,
         "Plaid access",
@@ -1095,15 +1145,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       if (source.kind !== "paypal") {
         fail(409, `Source ${sourceId} is not a PayPal source.`);
       }
-      let paypalMetadata =
-        (source.metadata?.paypal as
-          | {
-              accessToken?: unknown;
-              refreshToken?: unknown;
-              tokenExpiresAt?: string;
-              capability?: { hasReporting: boolean; hasIdentity: boolean };
-            }
-          | undefined) ?? null;
+      let paypalMetadata = readPaypalPaymentMetadata(source.metadata.paypal);
       let accessToken = readPaymentMetadataToken(
         paypalMetadata?.accessToken,
         "PayPal access",

@@ -43,6 +43,7 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
+import { extractPlanActionsFromContent } from "./plan-actions-extractor";
 import {
 	cacheProviderOptions,
 	toolMessageContent,
@@ -864,6 +865,35 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	};
 }
 
+/**
+ * Try to recover a single PLAN_ACTIONS invocation from raw model text using
+ * the strict extractor. Returns null when ambiguous (surrounding prose, multiple
+ * blocks, malformed JSON) so the caller can fall through to other paths.
+ *
+ * Logs when recovery fires so deployments can see whether weak-planner models
+ * are silently relying on this path instead of the native tool-call API.
+ */
+export function tryRecoverPlanActionsFromText(
+	text: string,
+): PlannerToolCall | null {
+	const extracted = extractPlanActionsFromContent(text);
+	if (!extracted) return null;
+
+	logger.info(
+		{
+			src: "planner-loop",
+			action: extracted.action,
+			recoverySource: extracted.recoverySource,
+		},
+		"Recovered planner action from content (Stage 2 planner)",
+	);
+
+	return {
+		name: extracted.action,
+		params: extracted.parameters,
+	};
+}
+
 function parseJsonPlannerOutput(raw: string): {
 	thought?: string;
 	toolCalls: PlannerToolCall[];
@@ -881,6 +911,18 @@ function parseJsonPlannerOutput(raw: string): {
 				toolCalls: arrayToolCalls,
 				messageToUser: undefined,
 				raw: { toolCalls: array } as Record<string, unknown>,
+			};
+		}
+		// Strict PLAN_ACTIONS-in-content extractor: fires when the model emitted
+		// exactly one PLAN_ACTIONS({...}) block as text with no surrounding prose.
+		// Must run AFTER the JSON/array paths fail so we don't shadow valid JSON.
+		const recovered = tryRecoverPlanActionsFromText(trimmed);
+		if (recovered) {
+			return {
+				thought: undefined,
+				toolCalls: [recovered],
+				messageToUser: undefined,
+				raw: { text: trimmed, recoveredFromContent: true },
 			};
 		}
 		return {

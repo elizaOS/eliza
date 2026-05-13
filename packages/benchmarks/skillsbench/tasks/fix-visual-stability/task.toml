@@ -1,0 +1,21 @@
+version = "1.0"
+
+[metadata]
+author_name = "Roey Ben Chaim"
+author_email = "roey.benhaim@gmail.com"
+difficulty = "hard"
+category = "web-performance"
+tags = ["react", "nextjs", "cls", "flickering", "visual-stability"]
+required_skills = ["browser-testing", "react-best-practices", "web-interface-guidelines"]
+
+[verifier]
+timeout_sec = 450.0
+
+[agent]
+timeout_sec = 3000.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 2
+memory_mb = 4096
+storage_mb = 10240

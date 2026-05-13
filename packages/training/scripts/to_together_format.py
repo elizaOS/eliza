@@ -21,10 +21,10 @@ Together.ai conversational format
       ]
     }
 
-We deliberately keep `expectedResponse` (the canonical TOON planner envelope)
+We deliberately keep `expectedResponse` (the canonical native JSON planner envelope)
 verbatim as the assistant turn — that's what we want the model to learn to
 emit. The Together SDK's tool-call structured form is not used here; the
-elizaOS runtime decodes raw TOON text from the model output.
+elizaOS runtime decodes raw native JSON text from the model output.
 
 Limits:
 - 25 GB per training/validation file (Together CLI cap).

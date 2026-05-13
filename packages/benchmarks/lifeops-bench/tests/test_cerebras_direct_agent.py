@@ -18,6 +18,7 @@ from eliza_lifeops_bench.agents import (
     OpenAICompatAgent,
     build_cerebras_direct_agent,
 )
+from eliza_lifeops_bench.agents._openai_compat import message_turns_to_openai
 from eliza_lifeops_bench.clients.cerebras import CerebrasClient
 from eliza_lifeops_bench.types import MessageTurn
 
@@ -95,6 +96,44 @@ def test_build_cerebras_direct_agent_returns_open_ai_compat_agent() -> None:
 # ---------------------------------------------------------------------------
 
 
+def test_message_turns_to_openai_normalizes_tool_call_history() -> None:
+    """Provider history must use OpenAI's nested shape with JSON string args."""
+    messages = message_turns_to_openai(
+        [
+            MessageTurn(
+                role="assistant",
+                content="",
+                tool_calls=[
+                    {
+                        "id": "flat_1",
+                        "name": "MESSAGE",
+                        "kwargs": {"operation": "search_inbox"},
+                    }
+                ],
+            )
+        ]
+    )
+    assert messages == [
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {
+                    "id": "flat_1",
+                    "type": "function",
+                    "function": {
+                        "name": "MESSAGE",
+                        "arguments": json.dumps(
+                            {"operation": "search_inbox"},
+                            sort_keys=True,
+                        ),
+                    },
+                }
+            ],
+        }
+    ]
+
+
 @pytest.mark.asyncio
 async def test_cerebras_direct_agent_returns_tool_call_turn() -> None:
     """Native ``tool_calls`` in the response surface as ``tool_calls`` on the turn."""
@@ -160,6 +199,8 @@ async def test_cerebras_direct_agent_returns_tool_call_turn() -> None:
     assert agent.total_cost_usd == getattr(turn, "cost_usd")  # noqa: B009
     assert getattr(turn, "input_tokens") == 100  # noqa: B009
     assert getattr(turn, "output_tokens") == 25  # noqa: B009
+    assert getattr(turn, "cache_read_input_tokens") == 0  # noqa: B009
+    assert getattr(turn, "cache_creation_input_tokens") is None  # noqa: B009
 
     # Wire format: tools threaded through unchanged; messages in OpenAI shape.
     body = captured[0]
@@ -325,6 +366,11 @@ async def test_cerebras_direct_agent_multi_turn_threads_tool_results() -> None:
     last_body = captured[2]
     msg_roles = [m["role"] for m in last_body["messages"]]
     assert msg_roles == ["user", "assistant", "tool", "assistant", "tool"]
+    assert last_body["messages"][1]["content"] is None
+    assert isinstance(
+        last_body["messages"][1]["tool_calls"][0]["function"]["arguments"],
+        str,
+    )
     assert last_body["messages"][2]["tool_call_id"] == "call_1"
     assert last_body["messages"][4]["tool_call_id"] == "call_2"
 
@@ -347,6 +393,38 @@ async def test_cerebras_direct_agent_propagates_provider_error() -> None:
     try:
         with pytest.raises(ProviderError):
             await agent([MessageTurn(role="user", content="hi")], [])
+    finally:
+        await http_client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_cerebras_direct_agent_raises_provider_error_on_bad_tool_args() -> None:
+    """Native tool_call arguments must be valid JSON objects."""
+    from eliza_lifeops_bench.clients.base import ProviderError
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json=_cerebras_response(
+                text=None,
+                tool_calls=[
+                    {
+                        "id": "call_bad",
+                        "type": "function",
+                        "function": {
+                            "name": "MAIL.send",
+                            "arguments": "{not json}",
+                        },
+                    }
+                ],
+            ),
+        )
+
+    transport = httpx.MockTransport(handler)
+    agent, http_client = _build_agent_with_transport(transport)
+    try:
+        with pytest.raises(ProviderError, match="not valid JSON"):
+            await agent([MessageTurn(role="user", content="email Alice")], [])
     finally:
         await http_client.aclose()
 

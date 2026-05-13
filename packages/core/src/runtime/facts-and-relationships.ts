@@ -13,6 +13,7 @@ import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
+import { isSyntheticConversationArtifactMemory } from "../utils/synthetic-conversation-artifact";
 import { parseJsonObject } from "./json-output";
 import { buildCanonicalSystemPrompt } from "./system-prompt";
 
@@ -649,23 +650,7 @@ function isLowSignalCandidate(value: string): boolean {
 }
 
 function isSyntheticMemory(memory: Memory): boolean {
-	const metadata =
-		memory.metadata && typeof memory.metadata === "object"
-			? (memory.metadata as Record<string, unknown>)
-			: {};
-	const source = typeof metadata.source === "string" ? metadata.source : "";
-	const tags = Array.isArray(metadata.tags)
-		? metadata.tags.filter((tag): tag is string => typeof tag === "string")
-		: [];
-	const text =
-		typeof memory.content?.text === "string" ? memory.content.text : "";
-	return (
-		/\b(?:compaction|compactor|synthetic)\b/i.test(source) ||
-		tags.some((tag) => /\b(?:compaction|compactor|synthetic)\b/i.test(tag)) ||
-		/^\[(?:conversation|system) (?:summary|hybrid-ledger|state)\]/i.test(
-			text.trim(),
-		)
-	);
+	return isSyntheticConversationArtifactMemory(memory);
 }
 
 function resolveRelationshipEntityId(

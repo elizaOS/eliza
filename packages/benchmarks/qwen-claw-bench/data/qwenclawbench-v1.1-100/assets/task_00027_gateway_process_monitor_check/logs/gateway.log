@@ -1,0 +1,30 @@
+[2026-02-10T08:14:22.341Z] INFO  gateway: OpenClaw gateway v2.7.3 starting...
+[2026-02-10T08:14:22.445Z] INFO  gateway: Loading config from /root/openclaw/config/gateway.yaml
+[2026-02-10T08:14:22.512Z] INFO  gateway: Initializing plugin: telegram
+[2026-02-10T08:14:22.689Z] INFO  gateway: Initializing plugin: device-pair
+[2026-02-10T08:14:22.901Z] INFO  gateway: Initializing plugin: discord
+[2026-02-10T08:14:23.103Z] INFO  gateway: Model provider configured: anthropic (claude-opus-4-6-20260205)
+[2026-02-10T08:14:23.211Z] INFO  gateway: Heartbeat interval set to 1800000ms
+[2026-02-10T08:14:23.215Z] INFO  gateway: Gateway listening on 0.0.0.0:3578
+[2026-02-10T08:14:23.218Z] INFO  gateway: OpenClaw gateway ready (startup: 877ms)
+[2026-02-10T08:14:53.220Z] DEBUG heartbeat: Heartbeat tick — 0 pending jobs
+[2026-02-10T08:44:53.221Z] DEBUG heartbeat: Heartbeat tick — 0 pending jobs
+[2026-02-10T09:14:53.219Z] DEBUG heartbeat: Heartbeat tick — 1 pending jobs
+[2026-02-10T09:14:53.334Z] INFO  cron: Executing job [daily-summary] in isolated session
+[2026-02-10T09:15:12.891Z] INFO  cron: Job [daily-summary] completed (19557ms)
+[2026-02-10T12:32:17.004Z] WARN  gateway: Memory usage elevated: 487MB / 1024MB (47.6%)
+[2026-02-10T14:01:44.112Z] INFO  plugin:telegram: Message received from user 8837291 in chat -100194827
+[2026-02-10T14:01:44.889Z] INFO  session: Creating session sess_tg_8837291_1707573704
+[2026-02-10T14:01:52.331Z] INFO  session: Session sess_tg_8837291_1707573704 — agent turn completed (7442ms)
+[2026-02-10T18:47:33.667Z] ERROR gateway: Unhandled promise rejection: ECONNRESET — socket hang up
+[2026-02-10T18:47:33.668Z] WARN  gateway: Recovering from transient error...
+[2026-02-10T18:47:34.102Z] INFO  gateway: Connection recovered successfully
+[2026-02-10T21:30:01.445Z] INFO  plugin:discord: Reconnecting to Discord gateway (session resume)
+[2026-02-10T21:30:02.112Z] INFO  plugin:discord: Discord gateway reconnected
+[2026-02-10T22:15:08.901Z] ERROR gateway: Process received SIGTERM
+[2026-02-10T22:15:08.903Z] INFO  gateway: Graceful shutdown initiated...
+[2026-02-10T22:15:09.112Z] INFO  plugin:telegram: Disconnecting...
+[2026-02-10T22:15:09.334Z] INFO  plugin:discord: Disconnecting...
+[2026-02-10T22:15:09.556Z] INFO  plugin:device-pair: Disconnecting...
+[2026-02-10T22:15:09.778Z] INFO  gateway: All plugins disconnected
+[2026-02-10T22:15:09.780Z] INFO  gateway: OpenClaw gateway stopped

@@ -114,7 +114,7 @@ def stable_id(*parts: object) -> str:
 
 @dataclass
 class ElizaRecord:
-    """Flat eliza-format training record. One row = one supervised example."""
+    """Flat native format training record. One row = one supervised example."""
 
     roomName: str
     agentId: str

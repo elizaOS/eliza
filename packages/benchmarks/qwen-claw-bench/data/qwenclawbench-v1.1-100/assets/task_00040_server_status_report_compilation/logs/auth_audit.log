@@ -1,0 +1,30 @@
+Nov 01 05:57:31 prod-web-node03 sshd[43873]: Accepted publickey for admin from 10.20.30.10 port 44043 ssh2: RSA SHA256:3FJ8ewyUC2WBDJjBWPJb/s7ajJXP6wQ9LugEy19hI1G
+Nov 01 06:05:20 prod-web-node03 systemd-logind[1089]: Session 862 logged out. Waiting for processes to exit.
+Nov 01 17:22:22 prod-web-node03 sshd[57532]: Accepted password for admin from 10.20.30.10 port 42827 ssh2
+Nov 01 17:44:15 prod-web-node03 sshd[33910]: pam_unix(sshd:session): session opened for user deploy by (uid=0)
+Nov 01 18:51:30 prod-web-node03 sshd[19968]: Accepted publickey for admin from 10.20.30.50 port 55419 ssh2: RSA SHA256:+VdTBzBQ7Yo8PwIHoJ73fZbB/P5lJc6/TN5ihZ25sbm
+Nov 02 08:27:20 prod-web-node03 sshd[24656]: Accepted password for admin from 10.20.30.22 port 40830 ssh2
+Nov 02 21:16:28 prod-web-node03 sshd[51210]: pam_unix(sshd:session): session opened for user deploy by (uid=0)
+Nov 02 22:37:38 prod-web-node03 sshd[11625]: Accepted password for deploy from 10.20.30.151 port 42170 ssh2
+Nov 03 11:20:20 prod-web-node03 sshd[13004]: Accepted publickey for admin from 10.20.30.131 port 43884 ssh2: RSA SHA256:Y9yqMNiLCT4SEU3xPkc56Z5eaLaJ1aqA9KVh6ZQsKB6
+Nov 04 01:52:12 prod-web-node03 sshd[59040]: Failed password for ubuntu from 185.220.101.34 port 49932 ssh2
+Nov 04 10:28:15 prod-web-node03 sshd[49186]: Accepted password for admin from 10.20.30.131 port 46317 ssh2
+Nov 06 00:49:47 prod-web-node03 sshd[20305]: Accepted publickey for admin from 10.20.30.10 port 63684 ssh2: RSA SHA256:Us02Qot5KKMoslkfwVKwNHVZ8F6FWk2PkgLVyWdQthG
+Nov 06 13:47:16 prod-web-node03 sshd[48364]: pam_unix(sshd:session): session opened for user deploy by (uid=0)
+Nov 06 18:47:19 prod-web-node03 sshd[34291]: Accepted password for monitor from 10.20.30.22 port 52605 ssh2
+Nov 06 19:58:57 prod-web-node03 sshd[35884]: Accepted publickey for monitor from 10.20.30.10 port 59598 ssh2: RSA SHA256:HLudz8ExQPVWuGXyg3t7t+o2qcVFZAOItHRKYPgHt25
+Nov 06 21:05:56 prod-web-node03 systemd-logind[1089]: Session 723 logged out. Waiting for processes to exit.
+Nov 07 08:51:16 prod-web-node03 systemd-logind[1089]: Session 206 logged out. Waiting for processes to exit.
+Nov 07 21:47:11 prod-web-node03 systemd-logind[1089]: Session 599 logged out. Waiting for processes to exit.
+Nov 08 00:51:35 prod-web-node03 sshd[51549]: Accepted password for monitor from 10.20.30.131 port 40602 ssh2
+Nov 08 05:59:56 prod-web-node03 systemd-logind[1089]: Session 911 logged out. Waiting for processes to exit.
+Nov 08 18:24:12 prod-web-node03 sshd[22523]: Accepted password for monitor from 10.20.30.151 port 61507 ssh2
+Nov 08 23:57:56 prod-web-node03 sshd[36058]: Accepted publickey for monitor from 10.20.30.50 port 48240 ssh2: RSA SHA256:7ziqDEef1+v6D/wMNOPpM4jFMRtRCzt+pyviUwGx3uO
+Nov 09 11:26:57 prod-web-node03 sshd[26133]: Accepted publickey for admin from 10.20.30.50 port 62776 ssh2: RSA SHA256:NJHBpXxlGbUZaiJbWNVA7w1nHplhJk1C7jD/wyh3x6V
+Nov 10 12:13:31 prod-web-node03 sshd[31704]: Accepted password for deploy from 10.20.30.50 port 46288 ssh2
+Nov 10 15:14:32 prod-web-node03 sshd[18481]: Accepted publickey for admin from 10.20.30.22 port 46270 ssh2: RSA SHA256:AYnWfQf7AwOJY7IHk8GDJxVN/5cUfmDB4tRBd3RmPeN
+Nov 11 04:44:30 prod-web-node03 systemd-logind[1089]: Session 676 logged out. Waiting for processes to exit.
+Nov 11 07:14:20 prod-web-node03 sshd[26215]: Accepted password for admin from 10.20.30.151 port 46360 ssh2
+Nov 11 10:09:39 prod-web-node03 sshd[26352]: Accepted publickey for admin from 10.20.30.131 port 44728 ssh2: RSA SHA256:K3UmRtT3zHplCPCnOa9d1EtBjQtv5L/4AH2LhcnEaTG
+Nov 11 23:17:06 prod-web-node03 sshd[14896]: Accepted publickey for admin from 10.20.30.131 port 63943 ssh2: RSA SHA256:+AVPXLwbiiXYQbA2yuaZr7tHZINjTnmD4/fjDZPsyOl
+Nov 12 09:11:06 prod-web-node03 sshd[11675]: Accepted password for monitor from 10.20.30.22 port 51922 ssh2

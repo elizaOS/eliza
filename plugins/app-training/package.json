@@ -27,7 +27,7 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
-    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/agent": "2.0.0-beta.2",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",
     "@elizaos/ui": "2.0.0-beta.2"
@@ -52,6 +52,9 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "dotenv": "^17.2.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
   }
 }

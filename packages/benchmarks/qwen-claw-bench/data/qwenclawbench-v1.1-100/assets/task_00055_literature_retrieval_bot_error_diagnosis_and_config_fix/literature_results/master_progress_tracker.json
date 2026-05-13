@@ -1,0 +1,12 @@
+{
+  "version": 259,
+  "schema_version": 1,
+  "last_updated": "2026-02-10T16:30:00Z",
+  "total_papers_found": 47,
+  "retrieval_runs": 12,
+  "errors_encountered": 57,
+  "status": "degraded",
+  "last_successful_run": "2026-02-10T14:45:07Z",
+  "active_source_keys": ["pubmed_amr", "pubmed_phage", "pubmed_crispr_dx", "biorxiv_amr", "nature_micro"],
+  "notes": "Multiple tool failures detected. Switched to stable_literature_retrieval.py on 2026-02-09 after ImportError. Errors persisting despite fix."
+}

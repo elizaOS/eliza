@@ -157,6 +157,37 @@ def test_build_argv_includes_model_thinking_message(client: OpenClawClient) -> N
     assert argv[argv.index("--message") + 1] == "say PONG"
 
 
+def test_build_argv_flattens_chat_history_and_tools(client: OpenClawClient) -> None:
+    argv = client.build_argv(
+        "latest request",
+        {
+            "messages": [
+                {"role": "system", "content": "system rules"},
+                {"role": "user", "content": "first request"},
+                {"role": "assistant", "content": "first answer"},
+                {"role": "user", "content": "latest request"},
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_order",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+            "session_id": "loca-session",
+        },
+    )
+
+    message = argv[argv.index("--message") + 1]
+    assert "OpenClaw benchmark harness" in message
+    assert "lookup_order" in message
+    assert "system: system rules" in message
+    assert "assistant: first answer" in message
+    assert "user: latest request" in message
+
+
 def test_build_argv_does_not_double_prefix_model(fake_binary: Path) -> None:
     """When ``model`` already contains '/', no extra provider prefix is added."""
     c = OpenClawClient(binary_path=fake_binary, model="anthropic/claude-3-5-sonnet")
@@ -170,6 +201,71 @@ def test_build_argv_passes_session_and_agent(client: OpenClawClient) -> None:
     assert argv[argv.index("--session-id") + 1] == "abc-123"
     assert "--agent" in argv
     assert argv[argv.index("--agent") + 1] == "ops"
+
+
+def test_build_openai_body_includes_generation_options(fake_binary: Path) -> None:
+    c = OpenClawClient(
+        binary_path=fake_binary,
+        temperature=0.2,
+        reasoning_effort="low",
+        max_tokens=512,
+    )
+    body = c.build_openai_compatible_body(
+        "hi",
+        {
+            "max_tokens": 256,
+            "tool_choice": "none",
+            "tools": [{"type": "function", "function": {"name": "LOOKUP"}}],
+        },
+    )
+    assert body["temperature"] == 0.2
+    assert body["reasoning_effort"] == "low"
+    assert body["max_completion_tokens"] == 256
+    assert body["tool_choice"] == "none"
+    assert body["tools"] == [{"type": "function", "function": {"name": "LOOKUP"}}]
+
+
+def test_build_openai_body_preserves_messages_and_tool_pairs(fake_binary: Path) -> None:
+    c = OpenClawClient(binary_path=fake_binary, direct_openai_compatible=True)
+    body = c.build_openai_compatible_body(
+        "ignored when messages are present",
+        {
+            "messages": [
+                {"role": "system", "content": "system"},
+                {"role": "user", "content": "look up order 12"},
+                {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_1",
+                            "function": {
+                                "name": "lookup_order",
+                                "arguments": '{"order_id":12}',
+                            },
+                        }
+                    ],
+                },
+                {"role": "tool", "tool_call_id": "call_1", "content": "shipped"},
+            ],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_order",
+                        "parameters": {"type": "object"},
+                    },
+                }
+            ],
+        },
+    )
+
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    assert messages[0] == {"role": "system", "content": "system"}
+    assert messages[2]["content"] is None
+    assert messages[2]["tool_calls"][0]["function"]["name"] == "lookup_order"
+    assert messages[3]["tool_call_id"] == "call_1"
 
 
 def test_client_session_id_passed(
@@ -227,6 +323,28 @@ def test_client_send_message_parses_json(
     assert isinstance(result, MessageResponse)
     assert result.text == "PONG"
     assert result.actions == []
+
+
+def test_client_base_url_does_not_bypass_cli_by_default(
+    fake_binary: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A live OpenClaw harness may set base_url for provider routing; that must
+    still exercise the CLI unless direct_openai_compatible is explicit."""
+    monkeypatch.delenv("OPENCLAW_DIRECT_OPENAI_COMPAT", raising=False)
+    monkeypatch.delenv("OPENCLAW_USE_CLI", raising=False)
+    c = OpenClawClient(
+        binary_path=fake_binary,
+        repo_path=fake_binary.parent,
+        base_url="https://api.cerebras.ai/v1",
+    )
+    with patch("openclaw_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=json.dumps({"reply": "ok"}), rc=0)
+        result = c.send_message("hi")
+    assert result.text == "ok"
+    argv = mock_run.call_args.args[0]
+    assert argv[0] == str(fake_binary)
+    assert "agent" in argv
 
 
 def test_client_handles_warnings_before_json(
@@ -360,6 +478,45 @@ def test_response_from_payload_normalizes_tool_calls() -> None:
     assert r.actions == ["FOO", "BAR"]
     assert r.params["FOO"] == {"x": 1}
     assert r.params["BAR"] == {"y": 2}
+
+
+def test_response_from_payload_does_not_count_text_embedded_tool_call_by_default() -> None:
+    payload = {
+        "reply": (
+            'Need lookup.<tool_call>{"tool": "SEARCH", '
+            '"args": {"query": "approvals"}}</tool_call>'
+        )
+    }
+    r = _response_from_payload(payload)
+    assert r.text == payload["reply"]
+    assert r.actions == []
+    assert "tool_calls" not in r.params
+    assert r.params["_meta"]["openclaw_adapter"]["counts_text_embedded_tool_calls"] is False
+
+
+def test_response_from_payload_can_mark_explicit_legacy_text_tool_call_mode() -> None:
+    payload = {
+        "reply": (
+            'Need lookup.<tool_call>{"tool": "SEARCH", '
+            '"args": {"query": "approvals"}}</tool_call>'
+        )
+    }
+    r = _response_from_payload(payload, allow_text_tool_calls=True)
+    assert r.text == "Need lookup."
+    assert r.actions == ["SEARCH"]
+    assert r.params["SEARCH"] == {"query": "approvals"}
+    assert r.params["tool_calls"][0]["name"] == "SEARCH"
+    assert r.params["_meta"]["openclaw_adapter"]["counts_text_embedded_tool_calls"] is True
+
+
+def test_response_from_payload_preserves_scalar_arguments() -> None:
+    payload = {
+        "reply": "ok",
+        "tool_calls": [{"id": "c1", "name": "RUN", "arguments": "echo hello"}],
+    }
+    r = _response_from_payload(payload)
+    assert r.params["RUN"] == "echo hello"
+    assert r.params["tool_calls"][0]["arguments"] == "echo hello"
 
 
 def test_response_from_payload_stashes_usage_under_meta() -> None:

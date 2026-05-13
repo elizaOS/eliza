@@ -30,4 +30,5 @@ export * from "./sql-compat";
 export * from "./streaming-text";
 export * from "./subscription-auth";
 export * from "./trajectory-format";
+export * from "./transient-fetch";
 export * from "./tts-debug";

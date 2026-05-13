@@ -1,0 +1,62 @@
+task_id: M037_video_food_shop_search
+task_name: Vlog Food Shop Search and Mapping
+version: "2.0"
+category: multimodal
+difficulty: hard
+tags: [multimodal]
+prompt:
+  text: |
+    帮我查一下这个vlog中出现的所有吃食的店铺，整理每个店铺的地理位置，帮我记录下来（每家店名、地理位置、照片），我要一一去打卡。
+
+    The container has the following file:
+    - /workspace/fixtures/BV1brPYzMEax.mp4 — a Shanghai food vlog
+
+    Please output a structured document (markdown or HTML) with each shop's:
+    1. Shop name
+    2. Geographic location / address
+    3. A photo from the video
+
+    Save your output to /workspace/output.md or /workspace/output.html
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/BV1brPYzMEax.mp4
+
+sandbox_grader_files: []
+
+env_snapshot_commands:
+  - "cat /workspace/output.md 2>/dev/null || cat /workspace/output.html 2>/dev/null || echo 'NO_OUTPUT'"
+
+env_snapshot_files:
+  - /workspace/output.md
+  - /workspace/output.html
+  - /workspace/*.png
+  - /workspace/*.jpg
+
+local_grader_files:
+  - fixtures/gt_1.png
+  - fixtures/gt_2.png
+  - fixtures/gt_3.png
+  - fixtures/gt_4.png
+  - fixtures/gt_5.png
+  - fixtures/gt_6.png
+  - fixtures/gt_7.png
+  - fixtures/gt_8.png
+  - fixtures/gt_9.png
+
+environment:
+  timeout_seconds: 900
+  max_turns: 40
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+primary_dimensions:
+  - completion
+  - robustness

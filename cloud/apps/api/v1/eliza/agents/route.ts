@@ -8,7 +8,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { userCharactersRepository } from "@/db/repositories/characters";
-import { ApiError, NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  NotFoundError,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { checkAgentCreditGate } from "@/lib/services/agent-billing-gate";
@@ -37,7 +41,9 @@ type UserCharacter = Awaited<
 >[number];
 
 function toIsoString(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
 }
 
 function toIsoStringOrNull(value: Date | string | null): string | null {
@@ -52,7 +58,10 @@ function stringConfigValue(
   return typeof value === "string" ? value : null;
 }
 
-function toAgentListItemDto(agent: Agent, character: UserCharacter | undefined): AgentListItemDto {
+function toAgentListItemDto(
+  agent: Agent,
+  character: UserCharacter | undefined,
+): AgentListItemDto {
   return {
     id: agent.id,
     agentName: agent.agent_name,
@@ -64,10 +73,16 @@ function toAgentListItemDto(agent: Agent, character: UserCharacter | undefined):
     createdAt: toIsoString(agent.created_at),
     updatedAt: toIsoString(agent.updated_at),
     token_address:
-      character?.token_address ?? stringConfigValue(agent.agent_config, "tokenContractAddress"),
-    token_chain: character?.token_chain ?? stringConfigValue(agent.agent_config, "chain"),
-    token_name: character?.token_name ?? stringConfigValue(agent.agent_config, "tokenName"),
-    token_ticker: character?.token_ticker ?? stringConfigValue(agent.agent_config, "tokenTicker"),
+      character?.token_address ??
+      stringConfigValue(agent.agent_config, "tokenContractAddress"),
+    token_chain:
+      character?.token_chain ?? stringConfigValue(agent.agent_config, "chain"),
+    token_name:
+      character?.token_name ??
+      stringConfigValue(agent.agent_config, "tokenName"),
+    token_ticker:
+      character?.token_ticker ??
+      stringConfigValue(agent.agent_config, "tokenTicker"),
   };
 }
 
@@ -76,18 +91,28 @@ app.get("/", async (c) => {
   const agents = await elizaSandboxService.listAgents(user.organization_id);
 
   const characterIds = Array.from(
-    new Set(agents.map((a) => a.character_id).filter((id): id is string => id != null)),
+    new Set(
+      agents
+        .map((a) => a.character_id)
+        .filter((id): id is string => id != null),
+    ),
   );
   const characters =
     characterIds.length > 0
-      ? await userCharactersRepository.findByIdsInOrganization(characterIds, user.organization_id)
+      ? await userCharactersRepository.findByIdsInOrganization(
+          characterIds,
+          user.organization_id,
+        )
       : [];
   const charMap = new Map(characters.map((ch) => [ch.id, ch]));
 
   const response: AgentsResponse = {
     success: true,
     data: agents.map((agent) =>
-      toAgentListItemDto(agent, agent.character_id ? charMap.get(agent.character_id) : undefined),
+      toAgentListItemDto(
+        agent,
+        agent.character_id ? charMap.get(agent.character_id) : undefined,
+      ),
     ),
   };
 
@@ -102,7 +127,9 @@ app.post("/", async (c) => {
 
   const parsed = createAgentSchema.safeParse(body);
   if (!parsed.success) {
-    throw ValidationError("Invalid request data", { issues: parsed.error.issues });
+    throw ValidationError("Invalid request data", {
+      issues: parsed.error.issues,
+    });
   }
 
   const creditCheck = await checkAgentCreditGate(user.organization_id);
@@ -112,27 +139,28 @@ app.post("/", async (c) => {
       balance: creditCheck.balance,
       required: AGENT_PRICING.MINIMUM_DEPOSIT,
     });
-    throw new ApiError(402, "insufficient_credits", creditCheck.error ?? "Insufficient credits", {
-      requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
-      currentBalance: creditCheck.balance,
-    });
+    throw new ApiError(
+      402,
+      "insufficient_credits",
+      creditCheck.error ?? "Insufficient credits",
+      {
+        requiredBalance: AGENT_PRICING.MINIMUM_DEPOSIT,
+        currentBalance: creditCheck.balance,
+      },
+    );
   }
 
   if (parsed.data.characterId) {
-    const character = await userCharactersRepository.findByIdInOrganizationForWrite(
-      parsed.data.characterId,
-      user.organization_id,
-    );
+    const character =
+      await userCharactersRepository.findByIdInOrganizationForWrite(
+        parsed.data.characterId,
+        user.organization_id,
+      );
 
     if (!character) throw NotFoundError("Character not found");
   }
 
   const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
-  const managedEnvironment = await prepareManagedElizaEnvironment({
-    existingEnv: parsed.data.environmentVars,
-    organizationId: user.organization_id,
-    userId: user.id,
-  });
 
   const agent = await elizaSandboxService.createAgent({
     organizationId: user.organization_id,
@@ -142,8 +170,23 @@ app.post("/", async (c) => {
     agentConfig: parsed.data.characterId
       ? withReusedElizaCharacterOwnership(sanitizedConfig)
       : sanitizedConfig,
-    environmentVars: managedEnvironment.environmentVars,
+    environmentVars: parsed.data.environmentVars,
   });
+
+  const managedEnvironment = await prepareManagedElizaEnvironment({
+    existingEnv: parsed.data.environmentVars,
+    organizationId: user.organization_id,
+    userId: user.id,
+    agentSandboxId: agent.id,
+  });
+
+  if (managedEnvironment.changed) {
+    await elizaSandboxService.updateAgentEnvironment(
+      agent.id,
+      user.organization_id,
+      managedEnvironment.environmentVars,
+    );
+  }
 
   logger.info("[agent-api] Agent created", {
     agentId: agent.id,

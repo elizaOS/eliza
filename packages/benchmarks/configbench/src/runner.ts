@@ -12,16 +12,65 @@ async function runHandler(
   progressCallback?: (scenarioId: string, index: number, total: number) => void,
 ): Promise<ScenarioOutcome[]> {
   const outcomes: ScenarioOutcome[] = [];
-  if (handler.setup) await handler.setup();
-
-  for (let i = 0; i < scenarios.length; i++) {
-    const scenario = scenarios[i];
-    progressCallback?.(scenario.id, i + 1, scenarios.length);
-    outcomes.push(await handler.run(scenario));
+  if (handler.setup) {
+    try {
+      await handler.setup();
+    } catch (error) {
+      return scenarios.map((scenario) =>
+        failedOutcome(scenario, 0, `setup failed: ${errorMessage(error)}`),
+      );
+    }
   }
 
-  if (handler.teardown) await handler.teardown();
+  try {
+    for (let i = 0; i < scenarios.length; i++) {
+      const scenario = scenarios[i];
+      progressCallback?.(scenario.id, i + 1, scenarios.length);
+      const started = Date.now();
+      try {
+        outcomes.push(await handler.run(scenario));
+      } catch (error) {
+        outcomes.push(
+          failedOutcome(scenario, Date.now() - started, errorMessage(error)),
+        );
+      }
+    }
+  } finally {
+    if (handler.teardown) {
+      try {
+        await handler.teardown();
+      } catch (error) {
+        const message = `ERROR: teardown failed: ${errorMessage(error)}`;
+        for (const outcome of outcomes) outcome.traces.push(message);
+      }
+    }
+  }
   return outcomes;
+}
+
+function failedOutcome(
+  scenario: Scenario,
+  latencyMs: number,
+  error: string,
+): ScenarioOutcome {
+  return {
+    scenarioId: scenario.id,
+    agentResponses: [],
+    secretsInStorage: {},
+    pluginsLoaded: [],
+    secretLeakedInResponse: false,
+    leakedValues: [],
+    refusedInPublic: false,
+    pluginActivated: null,
+    pluginDeactivated: null,
+    latencyMs,
+    traces: [`ERROR: ${error}`],
+    error,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export async function runBenchmark(

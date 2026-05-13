@@ -1,0 +1,63 @@
+buildroot:
+  latest_version: "2024.02"
+  release_date: "2024-03-01"
+  supported_archs:
+    - ARM (Cortex-A, Cortex-M)
+    - AArch64
+    - RISC-V (32/64)
+    - MIPS
+    - x86
+    - x86_64
+    - PowerPC
+    - Xtensa
+    - Microblaze
+  key_features:
+    - Minimal configuration with menuconfig/xconfig
+    - Fast build times compared to Yocto
+    - Simple Makefile-based package infrastructure
+    - Built-in toolchain generation or external toolchain support
+    - Rootfs overlay support
+    - Legal compliance report generation (license manifest)
+    - Reproducible builds support
+    - Integration with defconfig for board-specific configurations
+  learning_curve: beginner
+  typical_build_time_minutes: 30
+  disk_space_gb: 8
+  documentation_url: "https://buildroot.org/downloads/manual/manual.html"
+  package_count: 2800
+  default_init_system: busybox
+  cross_compilation_only: true
+
+yocto:
+  latest_version: "5.0"
+  codename: "Scarthgap"
+  release_date: "2024-04-01"
+  supported_archs:
+    - ARM (Cortex-A, Cortex-R, Cortex-M)
+    - AArch64
+    - RISC-V (32/64)
+    - MIPS
+    - x86
+    - x86_64
+    - PowerPC
+    - Xtensa
+    - Microblaze
+    - LoongArch
+  key_features:
+    - Layer-based architecture for modularity
+    - BitBake build engine with recipe-based package definitions
+    - Extensive BSP support from silicon vendors
+    - Shared State Cache (sstate) for incremental builds
+    - Multiconfig support for heterogeneous SoCs
+    - Comprehensive SDK generation (eSDK and standard SDK)
+    - CVE checking and security scanning built-in
+    - OE-Core with thousands of community-maintained recipes
+    - devtool for rapid recipe development and testing
+    - SPDX license compliance and SBOM generation
+  learning_curve: advanced
+  typical_build_time_minutes: 180
+  disk_space_gb: 80
+  documentation_url: "https://docs.yoctoproject.org/"
+  recipe_count: 8500
+  default_init_system: systemd
+  cross_compilation_only: false

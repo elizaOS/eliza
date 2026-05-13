@@ -70,11 +70,14 @@ On every cold start the on-start script:
 Vast manages the queue, load balancer, and autoscaler. Configure the endpoint
 via `cloud/scripts/vast/provision-endpoint.ts`:
 
-- `min_workers = 1`, `inactivity_timeout = -1` → always one warm worker.
-- `max_workers = 8`.
-- `target_util = 0.9`.
-- `search_params`: `gpu_name=RTX_5090`, `reliability ≥ 0.9`, verified,
-  `gpu_ram ≥ 25000 MB`, `disk_space ≥ 50 GB`.
+- Endpoint autoscaling defaults: `min_load=1`, `cold_workers=1`,
+  `max_workers=8`, `target_util=0.85`, `cold_mult=2.5`.
+- Worker hardware comes from the selected manifest, not from hardcoded defaults.
+  For example, the 27B manifest requests 2 GPUs, roughly 176 GiB VRAM,
+  120 GiB disk, 500 Mbps ingress, verified hosts, and H200/B200-class GPUs.
+- Override controls with `VAST_MIN_LOAD`, `VAST_COLD_WORKERS`,
+  `VAST_MAX_WORKERS`, `VAST_TARGET_UTIL`, `VAST_GPU_RAM_GB`, or
+  `VAST_SEARCH_PARAMS` only for a measured staging experiment.
 
 ## End-to-end provisioning
 
@@ -86,12 +89,20 @@ PYWORKER_REF=<commit-sha> \
 bun cloud/scripts/vast/upsert-template.ts
 # → prints VAST_TEMPLATE_ID=<n>
 
-# 2. Provision (or update) the endpoint.
-VASTAI_API_KEY=vastai_… VAST_TEMPLATE_ID=<n> \
+# 2. Provision the endpoint + workergroup from the same manifest.
+VASTAI_API_KEY=vastai_… \
+VAST_TEMPLATE_ID=<n> \
+ELIZA_VAST_MANIFEST=eliza-1-27b.json \
 bun cloud/scripts/vast/provision-endpoint.ts
 
-# 3. Wire the cloud Worker to forward to the endpoint.
-wrangler secret put VAST_BASE_URL    # e.g. https://run.vast.ai/route/abc123
+# 3. Smoke the live endpoint.
+VAST_BASE_URL=https://openai.vast.ai/eliza-cloud-eliza-1-27b \
+VAST_API_KEY=<endpoint-token> \
+VAST_MODEL=eliza-1-27b \
+bun run --cwd cloud vast:smoke
+
+# 4. Wire the cloud Worker to forward to the endpoint.
+wrangler secret put VAST_BASE_URL_ELIZA_1_27B
 wrangler secret put VAST_API_KEY     # endpoint-specific token, NOT the CLI key
 ```
 
@@ -191,11 +202,21 @@ bun run vast:doctor
 
 ## Routing from eliza/cloud
 
-The cloud Worker routes `vast/eliza-1-27b` requests through
-`VastProvider` (`packages/lib/providers/vast.ts`), which posts to
-`${VAST_BASE_URL}/v1/chat/completions` with `Authorization: Bearer
-${VAST_API_KEY}`. Both secrets are wrangler-managed and listed in
-`apps/api/wrangler.toml`.
+The cloud Worker routes `vast/eliza-1-*` requests through `VastProvider`
+(`packages/lib/providers/vast.ts`). Prefer one endpoint per model tier:
+
+- `VAST_BASE_URL_ELIZA_1_2B`
+- `VAST_BASE_URL_ELIZA_1_9B`
+- `VAST_BASE_URL_ELIZA_1_27B`
+
+All can share `VAST_API_KEY`, or a tier can use `VAST_API_KEY_ELIZA_1_27B`.
+`VAST_API_MODEL_ELIZA_1_27B` overrides the model id sent upstream; by default
+the provider sends the vLLM served name (`eliza-1-27b`) for
+`vast/eliza-1-27b`. `VAST_BASE_URL` remains as a global compatibility fallback
+but should not be used for production multi-tier routing.
+
+When 27B and 9B have dedicated endpoint URLs, provider fallback can route
+retryable 5xx/timeout/capacity errors from 27B to 9B, and from 9B to 2B.
 
 ## Swapping in a fine-tuned model
 

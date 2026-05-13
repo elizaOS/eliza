@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import { CheckCircle2 } from "lucide-react";
 import { useMemo } from "react";
 import type {
@@ -9,6 +8,7 @@ import type {
   InstalledModel,
   ModelBucket,
 } from "../../api/client-local-inference";
+import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
   bucketLabel,

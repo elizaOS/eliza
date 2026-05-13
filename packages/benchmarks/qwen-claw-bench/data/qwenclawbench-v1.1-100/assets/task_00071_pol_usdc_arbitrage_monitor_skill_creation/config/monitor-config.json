@@ -1,0 +1,33 @@
+{
+  "rpc_url": "https://polygon-rpc.com",
+  "rpc_url_fallback": "https://rpc-mainnet.matic.quiknode.pro",
+  "wallet_address": "0x7a3B9c2dE41f8C6bA5e9D0123fAbCdEf56789012",
+  "contracts": {
+    "POL": "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+    "USDC": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    "WETH": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619"
+  },
+  "dex_routers": {
+    "quickswap_v3": "0xf5b509bB0909a69B1c207E495f687a596C168E12",
+    "sushiswap": "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
+    "uniswap_v3": "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+  },
+  "thresholds": {
+    "pol_balance_warn": 50,
+    "usdc_balance_warn": 100,
+    "daily_profit_target": 25,
+    "max_failed_tx_per_hour": 3,
+    "min_arb_profit_usdc": 0.50,
+    "max_gas_price_gwei": 150,
+    "slippage_tolerance": 0.005
+  },
+  "tx_log_file": "transactions.log",
+  "alert_webhook": "",
+  "monitor_interval_seconds": 900,
+  "cron_task_id": "a2ce4b5b-63bf-4235-a84d-5a66cf18532f",
+  "enabled_pairs": [
+    "POL/USDC",
+    "WETH/USDC",
+    "POL/WETH"
+  ]
+}

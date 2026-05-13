@@ -17,16 +17,23 @@
  *   - `StubOmniVoiceBackend` implements the same seam for scheduler tests.
  */
 
-import { describe, expect, it } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { fakeFfi } from "./__test-helpers__/fake-ffi";
 import {
+  EngineVoiceBridge,
   FfiOmniVoiceBackend,
   isStreamingTtsBackend,
   nativeRejectedRangeToRollbackRange,
   StubOmniVoiceBackend,
   type TtsPcmChunk,
 } from "./engine-bridge";
-import type { Phrase, SpeakerPreset } from "./types";
+import type { VoiceLifecycleLoaders } from "./lifecycle";
+import type { MmapRegionHandle, RefCountedResource } from "./shared-resources";
+import type { OmniVoiceBackend, Phrase, SpeakerPreset } from "./types";
+import { writeVoicePresetFile } from "./voice-preset-format";
 
 function phrase(text: string): Phrase {
   return {
@@ -43,6 +50,33 @@ function preset(): SpeakerPreset {
     voiceId: "default",
     embedding: new Float32Array(4),
     bytes: new Uint8Array(0),
+  };
+}
+
+function writePresetBundle(root: string): void {
+  mkdirSync(path.join(root, "cache"), { recursive: true });
+  const embedding = new Float32Array(16);
+  for (let i = 0; i < embedding.length; i++) embedding[i] = (i + 1) / 100;
+  writeFileSync(
+    path.join(root, "cache", "voice-preset-default.bin"),
+    Buffer.from(writeVoicePresetFile({ embedding, phrases: [] })),
+  );
+}
+
+function lifecycleLoadersOk(): VoiceLifecycleLoaders {
+  const region: MmapRegionHandle = {
+    id: "region-ok",
+    path: "/tmp/tts-ok",
+    sizeBytes: 1024,
+    async evictPages() {},
+    async release() {},
+  };
+  const refc: RefCountedResource = { id: "refc-ok", async release() {} };
+  return {
+    loadTtsRegion: async () => region,
+    loadAsrRegion: async () => region,
+    loadVoiceCaches: async () => refc,
+    loadVoiceSchedulerNodes: async () => refc,
   };
 }
 
@@ -107,6 +141,90 @@ describe("FfiOmniVoiceBackend — streaming TTS routing", () => {
     expect(out.pcm.length).toBe(7);
     expect(out.sampleRate).toBe(16_000);
     expect(out.phraseId).toBe(1);
+  });
+
+  it("passes NULL for the default speaker preset so OmniVoice uses bundle defaults", async () => {
+    const speakerIds: Array<string | null> = [];
+    const base = fakeFfi("ignored", {
+      ttsSamples: 4,
+      ttsStreamSupported: true,
+    });
+    const backend = new FfiOmniVoiceBackend({
+      ffi: {
+        ...base,
+        ttsSynthesizeStream: (args) => {
+          speakerIds.push(args.speakerPresetId);
+          return base.ttsSynthesizeStream(args);
+        },
+      },
+      ctx: 1n,
+      sampleRate: 24_000,
+    });
+
+    await backend.synthesize({
+      phrase: phrase("hello"),
+      preset: preset(),
+      cancelSignal: { cancelled: false },
+    });
+
+    expect(speakerIds).toEqual([null]);
+  });
+
+  it("preserves non-default speaker preset ids for multi-voice bundles", async () => {
+    const speakerIds: Array<string | null> = [];
+    const base = fakeFfi("ignored", {
+      ttsSamples: 4,
+      ttsStreamSupported: false,
+    });
+    const backend = new FfiOmniVoiceBackend({
+      ffi: {
+        ...base,
+        ttsSynthesize: (args) => {
+          speakerIds.push(args.speakerPresetId);
+          return base.ttsSynthesize(args);
+        },
+      },
+      ctx: 1n,
+      sampleRate: 24_000,
+    });
+
+    await backend.synthesize({
+      phrase: phrase("hello"),
+      preset: { ...preset(), voiceId: "narrator" },
+      cancelSignal: { cancelled: false },
+    });
+
+    expect(speakerIds).toEqual(["narrator"]);
+  });
+
+  it("batch transcribe uses the fused batch ABI with the original sample rate", async () => {
+    const seen: Array<{ sampleRateHz: number; samples: number }> = [];
+    const base = fakeFfi("ignored", {
+      ttsSamples: 4,
+      asrStreamSupported: true,
+    });
+    const backend = new FfiOmniVoiceBackend({
+      ffi: {
+        ...base,
+        asrTranscribe: (args) => {
+          seen.push({
+            sampleRateHz: args.sampleRateHz,
+            samples: args.pcm.length,
+          });
+          return "Hello, say hello back.";
+        },
+      },
+      ctx: 1n,
+      sampleRate: 24_000,
+    });
+
+    const transcript = await backend.transcribe({
+      pcm: new Float32Array(24_000),
+      sampleRate: 24_000,
+    });
+
+    expect(transcript).toBe("Hello, say hello back.");
+    expect(seen).toEqual([{ sampleRateHz: 24_000, samples: 24_000 }]);
   });
 
   it("a pre-set cancelSignal short-circuits synthesizeStream before the body chunk", async () => {
@@ -193,5 +311,74 @@ describe("StubOmniVoiceBackend — streaming seam", () => {
       },
     });
     expect(res.cancelled).toBe(true);
+  });
+});
+
+describe("EngineVoiceBridge direct synthesis guard", () => {
+  let bundleRoot: string;
+
+  beforeEach(() => {
+    bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-engine-bridge-"));
+    writePresetBundle(bundleRoot);
+  });
+
+  afterEach(() => {
+    rmSync(bundleRoot, { recursive: true, force: true });
+  });
+
+  it("rejects direct WAV synthesis on the stub backend", async () => {
+    const bridge = EngineVoiceBridge.start({
+      bundleRoot,
+      useFfiBackend: false,
+      lifecycleLoaders: lifecycleLoadersOk(),
+    });
+    await bridge.arm();
+
+    await expect(bridge.synthesizeTextToWav("hello")).rejects.toMatchObject({
+      code: "missing-fused-build",
+    });
+  });
+
+  it("routes one-shot transcription through the backend batch ABI without resampling first", async () => {
+    let observedSampleRate = 0;
+    let observedSamples = 0;
+    const backend = {
+      async synthesize() {
+        return {
+          phraseId: 0,
+          fromIndex: 0,
+          toIndex: 0,
+          pcm: new Float32Array(1),
+          sampleRate: 24_000,
+        };
+      },
+      async transcribe(args: { pcm: Float32Array; sampleRate: number }) {
+        observedSampleRate = args.sampleRate;
+        observedSamples = args.pcm.length;
+        return "Hello, say hello back.";
+      },
+    } as OmniVoiceBackend & {
+      transcribe(args: {
+        pcm: Float32Array;
+        sampleRate: number;
+      }): Promise<string>;
+    };
+    const bridge = EngineVoiceBridge.start({
+      bundleRoot,
+      useFfiBackend: false,
+      lifecycleLoaders: lifecycleLoadersOk(),
+      backendOverride: backend,
+    });
+    await bridge.arm();
+
+    const pcm = new Float32Array(24_000);
+    const transcript = await bridge.transcribePcm({
+      pcm,
+      sampleRate: 24_000,
+    });
+
+    expect(transcript).toBe("Hello, say hello back.");
+    expect(observedSampleRate).toBe(24_000);
+    expect(observedSamples).toBe(24_000);
   });
 });

@@ -12,7 +12,7 @@ export type VrmEngineState = {
 
 type UpdateCallback = () => void;
 
-export type CameraAnimationConfig = {
+type CameraAnimationConfig = {
   /** Enable subtle camera movement */
   enabled: boolean;
   /** Horizontal sway amplitude (default: 0.08) */

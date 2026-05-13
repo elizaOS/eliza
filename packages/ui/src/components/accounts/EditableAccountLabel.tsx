@@ -1,4 +1,3 @@
-import { cn, Input } from "@elizaos/ui";
 import { Pencil } from "lucide-react";
 import {
   type FormEvent,
@@ -7,6 +6,8 @@ import {
   useEffect,
   useState,
 } from "react";
+import { cn } from "../../lib/utils";
+import { Input } from "../ui/input";
 
 export interface EditableAccountLabelProps {
   value: string;

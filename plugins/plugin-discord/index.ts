@@ -299,4 +299,31 @@ export type {
 	RolePermissionsChangedPayload,
 } from "./types";
 export { DiscordEventTypes } from "./types";
-export * from "./user-account-scraper";
+export {
+	buildDiscordProbeScript,
+	captureDiscordDeliveryStatus,
+	closeDiscordTab,
+	DISCORD_APP_URL,
+	DISCORD_PROVIDER_ID,
+	DISCORD_USER_ACCOUNT_SCRAPER_SERVICE_TYPE,
+	type DiscordDesktopCdpStatus,
+	type DiscordDmInboxProbe,
+	type DiscordMessageSearchResult,
+	type DiscordTabIdentity,
+	type DiscordTabProbe,
+	type DiscordUserAccountScraper,
+	DiscordUserAccountScraperImpl,
+	type DiscordVisibleDmPreview,
+	discordBrowserWorkspaceAvailable,
+	discordUserAccountPartitionFor,
+	emptyDiscordDmInboxProbe,
+	ensureDiscordTab,
+	getDiscordDesktopCdpStatus,
+	navigateDiscordTabToHome,
+	probeDiscordCapturedPage,
+	probeDiscordDocumentState,
+	probeDiscordTab,
+	relaunchDiscordDesktopForCdp,
+	searchDiscordMessages,
+	sendDiscordViaDesktopCdp,
+} from "./user-account-scraper";

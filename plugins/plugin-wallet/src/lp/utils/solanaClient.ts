@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger } from "@elizaos/core";
 import { Connection, clusterApiUrl, Keypair, PublicKey } from "@solana/web3.js";
 import bs58 from "bs58";
@@ -75,7 +74,10 @@ export async function loadWallet(
         const signer = Keypair.fromSecretKey(secretKey);
         return { signer, address: signer.publicKey };
       } catch (e2) {
-        logger.error("Error decoding private key:", e2);
+        logger.error(
+          "Error decoding private key:",
+          e2 instanceof Error ? e2.message : String(e2),
+        );
         throw new Error(
           "Invalid private key format - must be base58 or base64 encoded",
         );

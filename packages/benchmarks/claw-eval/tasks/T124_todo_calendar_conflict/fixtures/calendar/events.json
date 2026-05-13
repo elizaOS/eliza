@@ -1,0 +1,57 @@
+[
+  {
+    "event_id": "evt_301",
+    "title": "Full-day training: Project Management Methodology",
+    "start_time": "2026-03-27T09:00:00+08:00",
+    "end_time": "2026-03-27T17:00:00+08:00",
+    "location": "Training Center",
+    "organizer": "HR Dept",
+    "attendees": ["me", "entire team"],
+    "description": "Mandatory training, full day, attendance required",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_302",
+    "title": "All-hands meeting",
+    "start_time": "2026-03-28T14:00:00+08:00",
+    "end_time": "2026-03-28T17:00:00+08:00",
+    "location": "Main Auditorium",
+    "organizer": "CEO Office",
+    "attendees": ["all employees"],
+    "description": "Q1 summary meeting + Q2 planning, mandatory attendance",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_303",
+    "title": "Client visit: Wantong Logistics",
+    "start_time": "2026-03-30T08:00:00+08:00",
+    "end_time": "2026-03-30T18:00:00+08:00",
+    "location": "Wantong Logistics HQ (offsite)",
+    "organizer": "Zhao Lei",
+    "attendees": ["me", "Zhao Lei"],
+    "description": "Important VIP client on-site visit, full-day business trip",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_304",
+    "title": "Tech sharing session",
+    "start_time": "2026-03-29T14:00:00+08:00",
+    "end_time": "2026-03-29T15:30:00+08:00",
+    "location": "Meeting Room A",
+    "organizer": "Li Hua",
+    "attendees": ["R&D team"],
+    "description": "Internal team tech sharing",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_305",
+    "title": "Lunch meeting: new employee introductions",
+    "start_time": "2026-03-31T12:00:00+08:00",
+    "end_time": "2026-03-31T13:00:00+08:00",
+    "location": "Cafeteria private room",
+    "organizer": "HR",
+    "attendees": ["management"],
+    "description": "Welcome lunch for newly onboarded colleagues",
+    "status": "confirmed"
+  }
+]

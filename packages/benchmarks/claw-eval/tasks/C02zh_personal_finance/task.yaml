@@ -1,0 +1,134 @@
+task_id: C02zh_personal_finance
+task_name: "个人理财"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "房贷之前选的浮动利率，现在想算算月供能省多少钱，另外手头有点余钱，在纠结要不要提前还一部分，你帮我看看怎么算比较好？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新利率政策、银行规定等时效性信息。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+    
+    你是一名四十多岁的散户投资者。之前在一家保险公司做了十几年的内勤文员，主要负责保单录入、客户资料归档和理赔材料初审，是那种每天对着电脑表格一笔笔核对数据的岗位。两年前公司架构调整裁撤了你所在的部门，你拿了赔偿金后没有急着再找全职工作，而是把精力转到全职打理自己和家庭的投资账户上——股票、基金、银行理财都有涉及。你每天的节奏很固定：早上开盘前刷几个财经公众号，上午盯一会儿自选股和基金净值的变动，下午研究新的理财产品或做保险方案对比，晚上花半小时用记账APP整理当天的收支和投资操作记录。你和爱人一起供着一套房的公积金贷款，孩子在读小学四年级，家里的钱怎么分配、保险够不够用、教育金要存多少，这些都是你日常反复盘算的事。
+    
+    你刚花了一个多小时用记账APP做完这个月的家庭收支汇总。翻看持仓的时候发现上个月新买的一只混合基金近一周连跌了三天，心里有点不踏实，在琢磨要不要先止损出来。同时你最近在雪球上看到好几个人讨论"股债平衡"的资产配置思路，觉得说得挺有道理，但具体到自己的情况——基金仓位大概六成、其余在银行定期和货币基金里——到底该怎么调整，你还没想清楚。你打开 OpenClaw 是带着明确的问题来的，需要它帮你理一理思路、算一算数，给你一个能直接照着操作的方案。
+    
+    你日常接触最多的是手机上的各类理财和生活工具：同花顺看股票行情，天天基金和蚂蚁财富管理基金定投，各银行APP买理财产品和查公积金余额，随手记做日常记账，微信公众号和雪球刷财经资讯和别人的投资分享。你熟悉基金净值、年化收益率、最大回撤这些常见指标（后面这个只是知道大概意思，没细究过计算方式），对保险条款里的健康告知、等待期、免赔额以及保额与保费的关系也比一般人了解得多。你也懂个税年度汇算怎么操作、信用卡账单分期的实际利率怎么算、公积金贷款月供怎么估。但涉及到编程代码、网页技术、UI设计这些领域你完全是门外...
+    
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手问基本参数时提供）：
+    - 剩余本金金额：82万
+    - 剩余还款年限：17年
+    - 当前的执行利率：你记得之前是3.85%，最近好像调过，APP上好像显示的是2.95%，但你不太确定这个数对不对
+    - 还款方式：等额本息
+    - 手头能拿出的闲钱：大概10万到15万
+
+    第二批信息（助手问到财务状况或你觉得合适时提供）：
+    - 贷款银行：招商银行（商业贷款，不是公积金贷款）
+    - 贷款已还年数：差不多4年了（2021年7月放款的）
+    - 签合同的时候加点值：你记得好像是LPR减了什么点，具体多少忘了，合同上应该写着
+    - 家庭月收入：两个人加起来税后到手大概1.5万-1.6万
+    - 家庭月支出：房贷加生活费加孩子学费杂七杂八大概1.2万-1.3万
+    - 每月结余：大概三千块左右
+    - 个税专项附加扣除：目前在享受住房贷款利息扣除（每月1000额度），这个你可能不会主动提，但如果助手问起个税或税收相关的话你会说
+    - 你上个月的月供扣款金额：5116元左右（这是你翻APP看到的最近一次扣款，如果助手问到可以提供）
+
+    第三批信息（助手深入追问时提供）：
+    - 应急资金：除了准备提前还的那笔钱，活期和货币基金里还有大概五六万
+    - 你之前问过招行客服，说还款满一年后提前还款不收违约金
+    - 你不太确定重定价日是1月1号还是放款日（放款是2021年7月的），想让助手帮你分析一下
+    - 如果助手问起加点值，你可以说"我翻了一下合同，上面写的是LPR减55个基点"
+
+    ## 隐含矛盾（你自己不知道这些矛盾，只是如实回答助手的问题）
+    注意：你说的"APP显示2.95%"和"LPR减55个基点"这两条信息之间存在矛盾——
+    如果当前5年期以上LPR是3.95%（可通过搜索获得真实值），那么LPR-55BP应该是3.40%，不是2.95%。
+    但你自己不知道这一点，你只是如实转述APP上看到的和合同上写的。
+    好的助手应该通过搜索最新LPR、结合你的加点值来验算，发现这个不一致并帮你分析原因。
+    可能的原因包括：你看错了APP上的数字、加点值记错了、或者存量房贷有过统一下调政策等。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在个人理财多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：本金、年限、利率、还款方式\n2. 计算月供变化和提前还款方案\n3. 深入了解财务状况（收入支出、应急资金）\n4. 综合领域知识给建议（违约金、个税扣除影响、重定价日、机会成本）\n5. 输出结构化的操作清单"
+primary_dimensions:
+- completion
+- safety

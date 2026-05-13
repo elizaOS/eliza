@@ -1,0 +1,56 @@
+{"type": "session_start", "session_id": "isolated_5660027", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-19T03:08:11.429255", "user_id": "cron-scheduler", "channel": "internal"}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-19T03:11:06.734690", "session_id": "isolated_5660027", "seq": 1}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-19T03:11:13.337479", "session_id": "isolated_5660027", "seq": 2}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-19T03:13:19.101464", "session_id": "isolated_5660027", "seq": 3, "usage": {"prompt_tokens": 3854, "completion_tokens": 2769, "total_tokens": 11039}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T03:15:44.243134", "session_id": "isolated_5660027", "seq": 4}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-19T03:15:59.855848", "session_id": "isolated_5660027", "seq": 5}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T03:17:37.968164", "session_id": "isolated_5660027", "seq": 6}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-19T03:19:32.660135", "session_id": "isolated_5660027", "seq": 7}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-19T03:24:10.060888", "session_id": "isolated_5660027", "seq": 8}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T03:24:46.131317", "session_id": "isolated_5660027", "seq": 9}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-19T03:28:35.638017", "session_id": "isolated_5660027", "seq": 10}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-19T03:31:13.712415", "session_id": "isolated_5660027", "seq": 11}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-19T03:33:08.325682", "session_id": "isolated_5660027", "seq": 12, "usage": {"prompt_tokens": 6079, "completion_tokens": 2026, "total_tokens": 11824}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-19T03:37:41.266041", "session_id": "isolated_5660027", "seq": 13}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-19T03:39:58.390254", "session_id": "isolated_5660027", "seq": 14, "usage": {"prompt_tokens": 654, "completion_tokens": 2130, "total_tokens": 8021}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-19T03:44:15.330317", "session_id": "isolated_5660027", "seq": 15}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-19T03:46:08.596474", "session_id": "isolated_5660027", "seq": 16, "usage": {"prompt_tokens": 1481, "completion_tokens": 3062, "total_tokens": 5961}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-19T03:49:51.393237", "session_id": "isolated_5660027", "seq": 17}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-19T03:54:16.755463", "session_id": "isolated_5660027", "seq": 18, "usage": {"prompt_tokens": 877, "completion_tokens": 1328, "total_tokens": 8372}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-19T03:59:04.482361", "session_id": "isolated_5660027", "seq": 19}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-19T04:01:41.816773", "session_id": "isolated_5660027", "seq": 20, "usage": {"prompt_tokens": 1667, "completion_tokens": 1554, "total_tokens": 8708}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-19T04:04:46.371855", "session_id": "isolated_5660027", "seq": 21, "usage": {"prompt_tokens": 1746, "completion_tokens": 765, "total_tokens": 4018}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-19T04:05:30.237703", "session_id": "isolated_5660027", "seq": 22, "usage": {"prompt_tokens": 4419, "completion_tokens": 886, "total_tokens": 5939}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-19T04:09:55.627611", "session_id": "isolated_5660027", "seq": 23, "usage": {"prompt_tokens": 4632, "completion_tokens": 2323, "total_tokens": 6663}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-19T04:13:12.588620", "session_id": "isolated_5660027", "seq": 24}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T04:15:45.147512", "session_id": "isolated_5660027", "seq": 25}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-19T04:16:48.822433", "session_id": "isolated_5660027", "seq": 26, "usage": {"prompt_tokens": 6366, "completion_tokens": 1492, "total_tokens": 11232}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-19T04:20:54.754630", "session_id": "isolated_5660027", "seq": 27, "usage": {"prompt_tokens": 4415, "completion_tokens": 1736, "total_tokens": 10654}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-19T04:25:19.386922", "session_id": "isolated_5660027", "seq": 28, "usage": {"prompt_tokens": 1222, "completion_tokens": 2028, "total_tokens": 11852}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T04:27:31.213188", "session_id": "isolated_5660027", "seq": 29}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-19T04:30:39.145517", "session_id": "isolated_5660027", "seq": 30}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-19T04:33:08.711136", "session_id": "isolated_5660027", "seq": 31, "usage": {"prompt_tokens": 2775, "completion_tokens": 823, "total_tokens": 6707}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-19T04:34:19.744617", "session_id": "isolated_5660027", "seq": 32, "usage": {"prompt_tokens": 4619, "completion_tokens": 3617, "total_tokens": 6568}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T04:35:24.722981", "session_id": "isolated_5660027", "seq": 33}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-19T04:37:25.020223", "session_id": "isolated_5660027", "seq": 34, "usage": {"prompt_tokens": 7817, "completion_tokens": 3662, "total_tokens": 11809}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-19T04:41:57.806818", "session_id": "isolated_5660027", "seq": 35}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-19T04:43:42.213191", "session_id": "isolated_5660027", "seq": 36, "usage": {"prompt_tokens": 650, "completion_tokens": 3592, "total_tokens": 11461}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-19T04:47:18.344488", "session_id": "isolated_5660027", "seq": 37}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-19T04:49:38.839048", "session_id": "isolated_5660027", "seq": 38}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-19T04:51:47.381527", "session_id": "isolated_5660027", "seq": 39}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-19T04:52:10.711748", "session_id": "isolated_5660027", "seq": 40}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-19T04:55:50.451085", "session_id": "isolated_5660027", "seq": 41, "usage": {"prompt_tokens": 2388, "completion_tokens": 3440, "total_tokens": 3408}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-19T04:58:35.496063", "session_id": "isolated_5660027", "seq": 42, "usage": {"prompt_tokens": 6822, "completion_tokens": 2026, "total_tokens": 1777}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-19T05:02:02.436589", "session_id": "isolated_5660027", "seq": 43, "usage": {"prompt_tokens": 2405, "completion_tokens": 2370, "total_tokens": 6283}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-19T05:05:31.003750", "session_id": "isolated_5660027", "seq": 44, "usage": {"prompt_tokens": 5635, "completion_tokens": 3833, "total_tokens": 889}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-19T05:07:06.413949", "session_id": "isolated_5660027", "seq": 45}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-19T05:08:47.803980", "session_id": "isolated_5660027", "seq": 46, "usage": {"prompt_tokens": 7398, "completion_tokens": 547, "total_tokens": 4786}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-19T05:10:40.060531", "session_id": "isolated_5660027", "seq": 47}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-19T05:12:22.363225", "session_id": "isolated_5660027", "seq": 48, "usage": {"prompt_tokens": 239, "completion_tokens": 525, "total_tokens": 5152}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-19T05:13:00.938731", "session_id": "isolated_5660027", "seq": 49, "usage": {"prompt_tokens": 6006, "completion_tokens": 2427, "total_tokens": 8694}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-19T05:13:18.897370", "session_id": "isolated_5660027", "seq": 50}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T05:16:54.697387", "session_id": "isolated_5660027", "seq": 51}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-19T05:20:19.793662", "session_id": "isolated_5660027", "seq": 52, "usage": {"prompt_tokens": 5431, "completion_tokens": 3445, "total_tokens": 8456}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-19T05:22:47.827288", "session_id": "isolated_5660027", "seq": 53}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-19T05:23:44.228042", "session_id": "isolated_5660027", "seq": 54}
+{"type": "session_end", "session_id": "isolated_5660027", "ended_at": "2026-03-19T05:23:54.228042", "total_messages": 54, "status": "timeout"}

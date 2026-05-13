@@ -1,0 +1,19 @@
+{
+  "pending": [
+    {
+      "id": "pod_001",
+      "topic": "AI Trends in 2025",
+      "status": "queued",
+      "created": "2025-06-08T14:30:00Z",
+      "sources": ["https://example.com/ai-trends-2025"]
+    },
+    {
+      "id": "pod_002",
+      "topic": "Rust vs Go for Backend Services",
+      "status": "generating",
+      "created": "2025-06-09T09:15:00Z",
+      "sources": []
+    }
+  ],
+  "completed": []
+}

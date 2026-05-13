@@ -15,6 +15,7 @@ Pod::Spec.new do |s|
   s.dependency 'Capacitor'
   s.dependency 'LlamaCppCapacitor'
   s.frameworks = 'JavaScriptCore', 'Network', 'Accelerate', 'Metal', 'MetalKit', 'MetalPerformanceShaders', 'Foundation', 'LlamaCpp'
+  s.libraries = 'c++', 'c++abi'
   s.swift_version = '5.9'
 
   s.pod_target_xcconfig = {

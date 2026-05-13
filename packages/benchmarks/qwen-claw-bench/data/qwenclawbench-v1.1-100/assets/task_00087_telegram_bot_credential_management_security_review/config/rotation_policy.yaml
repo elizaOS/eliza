@@ -1,0 +1,47 @@
+# Credential Rotation Policy
+# Enforced by InfoSec team — see JIRA SEC-442
+# All production credentials must be rotated per the schedule below.
+
+policy:
+  rotation_interval_days: 90
+  grace_period_days: 7
+  notification_channels: ["slack", "email"]
+  compliance_standard: "SOC2-Type-II"
+  enforcement: "advisory"
+  escalation_after_days: 14
+
+credentials:
+  notification_bot_token:
+    last_rotated: "2024-04-15"
+    next_rotation: "2024-07-14"
+    owner: "@sarah_ops"
+    status: "active"
+    notes: "Rotate via BotFather /revoke then /newbot"
+
+  transaction_bot_token:
+    last_rotated: "2024-08-01"
+    next_rotation: "2024-10-30"
+    owner: "@mike_dev"
+    status: "active"
+    notes: "Coordinate with exchange integration team before rotating"
+
+  analytics_bot_token:
+    last_rotated: "2024-10-20"
+    next_rotation: "2025-01-18"
+    owner: "@data_team"
+    status: "active"
+    notes: "Used for dashboard metric collection"
+
+  database_password:
+    last_rotated: "2024-10-01"
+    next_rotation: "2024-12-30"
+    owner: "@infra_team"
+    status: "active"
+    notes: "Requires coordinated deploy — update all service configs"
+
+  api_key_production:
+    last_rotated: "2024-09-15"
+    next_rotation: "2024-12-14"
+    owner: "@infra_team"
+    status: "active"
+    notes: "Exchange API key — rate limits reset on rotation"

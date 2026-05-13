@@ -1,0 +1,56 @@
+task_id: M003_solar_system
+task_name: Solar System Animation
+version: "2.0"
+category: multimodal_webpage
+difficulty: medium
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/planets.json — solar system configuration
+
+    Please read the config file, then generate /workspace/output.html to create an animated solar system visualization:
+    1. Display the sun at the center with the specified color and size
+    2. Show each planet orbiting the sun along its defined orbit path
+    3. Use the correct colors, sizes, and orbital radii from the config
+    4. Inner planets should orbit faster than outer planets (follow the period settings)
+    5. Show orbit paths and planet labels as configured
+    6. Saturn should display a ring if configured
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/planets.json
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 10 --interval 0.5 --wait-before 2"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read planets.json, create SVG/Canvas solar system with animated orbital motion.
+  Use requestAnimationFrame, compute planet positions with trigonometric functions.
+  Period determines angular velocity. Apply colors, sizes, ring for Saturn.
+
+primary_dimensions: [completion, robustness]

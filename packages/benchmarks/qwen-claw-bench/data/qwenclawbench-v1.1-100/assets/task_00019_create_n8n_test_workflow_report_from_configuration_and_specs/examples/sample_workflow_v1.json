@@ -1,0 +1,77 @@
+{
+  "name": "Old_Test_Workflow",
+  "comment": "Last updated: 2021-03-15",
+  "workflowsDir": "/home/n8n/data/workflows",
+  "nodes": [
+    {
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {}
+    },
+    {
+      "name": "Set Test Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [480, 300],
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "testName",
+              "value": "Legacy_Smoke_Test"
+            },
+            {
+              "name": "testTimestamp",
+              "value": "2021-03-15T09:00:00Z"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "Validate Results",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [710, 300],
+      "parameters": {
+        "functionCode": "const testName = items[0].json.testName;\nconst testTimestamp = items[0].json.testTimestamp;\nif (testName && testTimestamp) {\n  return [{ json: { status: 'pass', message: 'All fields present' } }];\n}\nreturn [{ json: { status: 'fail', message: 'Missing required fields' } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Set Test Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Test Variables": {
+      "main": [
+        [
+          {
+            "node": "Validate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v0",
+    "timezone": "America/New_York",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "id": "wf_legacy_001",
+  "createdAt": "2021-03-15T08:00:00.000Z",
+  "updatedAt": "2021-03-15T12:30:00.000Z"
+}

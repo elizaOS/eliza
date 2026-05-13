@@ -1,4 +1,3 @@
-// @ts-nocheck — tests use plain objects instead of generated proto message instances
 import { describe, expect, it, vi } from "vitest";
 import {
   LpManagementService,

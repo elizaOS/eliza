@@ -1,4 +1,4 @@
-export type ModelProvider = "anthropic" | "openai";
+type ModelProvider = "anthropic" | "openai";
 
 export function resolveModelProvider(
   env: Record<string, string | undefined>,

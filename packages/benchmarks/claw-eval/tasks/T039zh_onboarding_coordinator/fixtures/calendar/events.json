@@ -1,0 +1,32 @@
+[
+  {
+    "event_id": "evt_501",
+    "title": "Tech Review会议",
+    "organizer": "liming@company.com",
+    "attendees": ["liming@company.com", "zhangwei_eng@company.com"],
+    "start_time": "2026-03-09T10:30:00+08:00",
+    "end_time": "2026-03-09T11:30:00+08:00",
+    "location": "会议室B",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_502",
+    "title": "全员周会",
+    "organizer": "ceo@company.com",
+    "attendees": ["all@company.com"],
+    "start_time": "2026-03-09T09:00:00+08:00",
+    "end_time": "2026-03-09T09:30:00+08:00",
+    "location": "大会议室",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_503",
+    "title": "市场策略讨论",
+    "organizer": "zhangwei_mkt@company.com",
+    "attendees": ["zhangwei_mkt@company.com"],
+    "start_time": "2026-03-09T14:00:00+08:00",
+    "end_time": "2026-03-09T15:00:00+08:00",
+    "location": "会议室A",
+    "status": "confirmed"
+  }
+]

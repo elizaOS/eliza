@@ -88,14 +88,14 @@ This branch now has the following foundation:
   `packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` and refuses
   to fall back to the JSContext compatibility host. The repo now has the
   CocoaPods gate, dynamic Swift loader, Eliza C ABI shim, agent-side stdio
-  bridge, and React transport selection. The remaining full-backend blocker is
-  the Bun/WebKit fork producing that signed iOS framework and passing simulator
-  then developer-signed device smoke tests.
-- The iOS ITTP kernel intentionally reports `task_service_unavailable` for
-  `/api/background/run-due-tasks` and `/api/internal/wake`; Capacitor
-  BackgroundRunner runs in a separate JSContext and cannot call the WebView
-  kernel while suspended. This preserves the single `ScheduledTask` primitive
-  instead of adding a parallel mobile task store.
+  bridge, React transport selection, and simulator packaging/smoke coverage for
+  the `ElizaBunEngine.xcframework` artifact.
+- The iOS background runner intentionally reports unavailable/skipped local
+  wakes for both `bun-host-ipc` and ITTP compatibility mode. Capacitor
+  BackgroundRunner runs in a separate JSContext and cannot call the foreground
+  native runtime bridge or WebView kernel while suspended. This preserves the
+  single `ScheduledTask` primitive instead of adding a parallel mobile task
+  store.
 
 ## Policy Baseline
 
@@ -133,13 +133,15 @@ Allowed shape:
 
 - Bundle signed native frameworks at build time, including the on-device
   llama.cpp bridge used by local inference.
-- Bake `runtimeMode=local` into the Capacitor app and route the stable
-  `http://127.0.0.1:31337` local-agent URL through an in-process route kernel
-  or a native app-owned IPC surface such as `WKURLSchemeHandler`.
-- For full Bun sideload builds, route that stable local-agent URL through
-  Capacitor/native IPC into the signed Bun framework. Internal loopback inside
-  the Bun process is acceptable as an implementation detail while the backend
-  still exposes Node HTTP routes; the WebView must not depend on it.
+- Bake `runtimeMode=local` into the Capacitor app and route local-agent
+  requests as path-only IPC through the Capacitor/native bridge. The stable iOS
+  local identity is `eliza-local-agent://ipc`; legacy loopback-looking URLs are
+  compatibility aliases only and must never require a bound socket in iOS
+  full-Bun mode.
+- For full Bun sideload builds, route local-agent requests through
+  Capacitor/native IPC into the signed Bun framework. The full-Bun bridge must
+  dispatch backend routes in process; it must not open a TCP/WebSocket listener
+  or require the WebView to reach a local port.
 - Run the backend as signed/bundled app code, JSCore/QuickJS/WASM code shipped
   with the app, or user-authored IDE content inside the mobile-safe runtime.
 

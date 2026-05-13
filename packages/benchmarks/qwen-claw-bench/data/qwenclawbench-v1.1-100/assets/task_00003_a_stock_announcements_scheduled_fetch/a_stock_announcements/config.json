@@ -1,0 +1,60 @@
+{
+  "fetch_interval_minutes": 15,
+  "request_timeout": 30,
+  "max_retries": 3,
+  "sources": {
+    "cninfo": {
+      "enabled": true,
+      "api_url": "http://www.cninfo.com.cn/new/disclosure",
+      "search_endpoint": "/fulltext",
+      "headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "Accept": "application/json",
+        "Referer": "http://www.cninfo.com.cn/"
+      }
+    },
+    "eastmoney": {
+      "enabled": true,
+      "api_url": "https://np-anotice-stock.eastmoney.com/api",
+      "search_endpoint": "/security/ann",
+      "headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+      }
+    }
+  },
+  "watchlist": [
+    "000001",
+    "000002",
+    "000651",
+    "000858",
+    "600036",
+    "600519",
+    "600887",
+    "601318",
+    "601398",
+    "603288"
+  ],
+  "categories": [
+    "annual_report",
+    "quarterly_report",
+    "interim_report",
+    "profit_forecast",
+    "dividend",
+    "share_change",
+    "board_resolution",
+    "related_transaction",
+    "equity_incentive",
+    "major_event"
+  ],
+  "output": {
+    "format": "json",
+    "also_markdown": true,
+    "max_files_per_day": 96,
+    "retention_days": 90
+  },
+  "notifications": {
+    "enabled": false,
+    "webhook_url": "",
+    "keywords_alert": ["profit warning", "suspension", "restructuring", "delisting"]
+  }
+}

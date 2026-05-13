@@ -180,7 +180,7 @@ def deslop_task_text(text: str, *, stats: dict) -> str:
     return text if text else original
 
 
-TOON_TEXT_RE = re.compile(
+NATIVE_JSON_TEXT_RE = re.compile(
     r'(^|\n)(text:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
@@ -203,7 +203,7 @@ def transform_record(rec: dict, stats: dict) -> dict:
         new_inner = deslop_task_text(inner, stats=stats)
         return f"{prefix}{key}{json.dumps(new_inner, ensure_ascii=False)}{suffix}"
 
-    new_er = TOON_TEXT_RE.sub(_replace, er)
+    new_er = NATIVE_JSON_TEXT_RE.sub(_replace, er)
     if new_er != er:
         rec["expectedResponse"] = new_er
         stats["records_changed"] = stats.get("records_changed", 0) + 1

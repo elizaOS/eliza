@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlayerState",
+  "description": "Schema for the persisted audio player state stored in sled",
+  "type": "object",
+  "properties": {
+    "current_track_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "UUID of the currently loaded track, or null if no track is loaded"
+    },
+    "queue": {
+      "type": "array",
+      "description": "Ordered list of tracks in the playback queue",
+      "items": {
+        "type": "object",
+        "properties": {
+          "track_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "artist": {
+            "type": "string"
+          },
+          "album": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "file_path": {
+            "type": "string"
+          },
+          "codec": {
+            "type": "string",
+            "enum": ["mp3", "flac", "ogg", "wav", "aac"]
+          },
+          "file_size_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sample_rate": {
+            "type": "integer",
+            "enum": [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000]
+          },
+          "bit_depth": {
+            "type": "integer",
+            "enum": [16, 24, 32]
+          },
+          "channels": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 8
+          }
+        },
+        "required": ["track_id", "title", "artist", "duration_ms", "file_path", "codec"]
+      },
+      "maxItems": 10000
+    },
+    "queue_position": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Index of the current track in the queue"
+    },
+    "play_mode": {
+      "type": "string",
+      "enum": ["sequential", "shuffle", "repeat_one", "repeat_all"],
+      "description": "Current playback mode"
+    },
+    "playback_position_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current playback position in milliseconds"
+    },
+    "volume": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Current volume level (0.0 = muted, 1.0 = max)"
+    },
+    "speed": {
+      "type": "number",
+      "minimum": 0.25,
+      "maximum": 4.0,
+      "description": "Current playback speed multiplier"
+    },
+    "shuffle_seed": {
+      "type": ["integer", "null"],
+      "description": "Seed used for the current shuffle order, null if not in shuffle mode"
+    },
+    "is_playing": {
+      "type": "boolean",
+      "description": "Whether audio was playing when state was saved"
+    },
+    "last_saved_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 timestamp of when this state was last saved"
+    }
+  },
+  "required": ["queue", "queue_position", "play_mode"],
+  "additionalProperties": false
+}

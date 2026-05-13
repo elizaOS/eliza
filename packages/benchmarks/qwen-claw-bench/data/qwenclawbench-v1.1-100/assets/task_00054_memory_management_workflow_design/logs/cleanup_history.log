@@ -1,0 +1,47 @@
+# ============================================
+# Memory Cleanup Job History
+# Cleanup runs daily at 02:00 UTC
+# Configuration: retention_days=90, auto_purge=true
+# ============================================
+
+2024-07-11T16:32:00Z [INFO ] CLEANUP_START - Beginning scheduled cleanup run
+2024-07-11T16:32:00Z [INFO ] CLEANUP_CONFIG - retention_days=90, max_items=500, purge_strategy=oldest_first
+2024-07-11T16:32:05Z [INFO ] CLEANUP_SCAN - Scanning memory store: 41 items found
+2024-07-11T16:32:12Z [INFO ] CLEANUP_DELETE - Identified 3 expired items for removal
+2024-07-11T16:32:45Z [INFO ] CLEANUP_SUMMARY - items_reviewed=41, items_deleted=3, items_summarized=0
+2024-07-11T16:32:45Z [INFO ] CLEANUP_COMPLETE - Cleanup run finished successfully
+
+2024-07-26T16:35:00Z [INFO ] CLEANUP_START - Beginning scheduled cleanup run
+2024-07-26T16:35:00Z [INFO ] CLEANUP_CONFIG - retention_days=90, max_items=500, purge_strategy=oldest_first
+2024-07-26T16:35:05Z [INFO ] CLEANUP_SCAN - Scanning memory store: 43 items found
+2024-07-26T16:35:12Z [INFO ] CLEANUP_RESULT - No expired items found. All items within retention window.
+2024-07-26T16:35:54Z [INFO ] CLEANUP_SUMMARY - items_reviewed=43, items_deleted=0, items_summarized=0
+2024-07-26T16:35:54Z [INFO ] CLEANUP_COMPLETE - Cleanup run finished successfully
+
+2024-08-09T16:33:00Z [INFO ] CLEANUP_START - Beginning scheduled cleanup run
+2024-08-09T16:33:00Z [INFO ] CLEANUP_CONFIG - retention_days=90, max_items=500, purge_strategy=oldest_first
+2024-08-09T16:33:05Z [INFO ] CLEANUP_SCAN - Scanning memory store: 45 items found
+2024-08-09T16:33:12Z [INFO ] CLEANUP_DELETE - Identified 1 expired items for removal
+2024-08-09T16:34:13Z [INFO ] CLEANUP_SUMMARY - items_reviewed=45, items_deleted=1, items_summarized=0
+2024-08-09T16:34:13Z [INFO ] CLEANUP_COMPLETE - Cleanup run finished successfully
+
+2024-08-24T16:38:00Z [INFO ] CLEANUP_START - Beginning scheduled cleanup run
+2024-08-24T16:38:00Z [INFO ] CLEANUP_CONFIG - retention_days=90, max_items=500, purge_strategy=oldest_first
+2024-08-24T16:38:05Z [INFO ] CLEANUP_SCAN - Scanning memory store: 41 items found
+2024-08-24T16:38:12Z [INFO ] CLEANUP_RESULT - No expired items found. All items within retention window.
+2024-08-24T16:38:20Z [INFO ] CLEANUP_SUMMARY - items_reviewed=41, items_deleted=0, items_summarized=0
+2024-08-24T16:38:20Z [INFO ] CLEANUP_COMPLETE - Cleanup run finished successfully
+
+2024-09-09T16:40:00Z [INFO ] CLEANUP_START - Beginning scheduled cleanup run
+2024-09-09T16:40:00Z [INFO ] CLEANUP_CONFIG - retention_days=90, max_items=500, purge_strategy=oldest_first
+2024-09-09T16:40:05Z [INFO ] CLEANUP_SCAN - Scanning memory store: 46 items found
+2024-09-09T16:40:12Z [INFO ] CLEANUP_DELETE - Identified 5 expired items for removal
+2024-09-09T16:41:27Z [INFO ] CLEANUP_SUMMARY - items_reviewed=46, items_deleted=5, items_summarized=0
+2024-09-09T16:41:27Z [INFO ] CLEANUP_COMPLETE - Cleanup run finished successfully
+
+2024-09-25T16:38:00Z [INFO ] CLEANUP_START - Beginning scheduled cleanup run
+2024-09-25T16:38:00Z [INFO ] CLEANUP_CONFIG - retention_days=90, max_items=500, purge_strategy=oldest_first
+2024-09-25T16:38:05Z [INFO ] CLEANUP_SCAN - Scanning memory store: 42 items found
+2024-09-25T16:38:12Z [INFO ] CLEANUP_RESULT - No expired items found. All items within retention window.
+2024-09-25T16:39:03Z [INFO ] CLEANUP_SUMMARY - items_reviewed=42, items_deleted=0, items_summarized=0
+2024-09-25T16:39:03Z [INFO ] CLEANUP_COMPLETE - Cleanup run finished successfully

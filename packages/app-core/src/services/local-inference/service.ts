@@ -20,7 +20,7 @@ import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
-import { searchHuggingFaceGguf } from "./hf-search";
+import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import { buildTextGenerationReadiness } from "./readiness";
 import {
   chooseSmallerFallbackModel,
@@ -209,6 +209,14 @@ export class LocalInferenceService {
     limit?: number,
   ): Promise<CatalogModel[]> {
     return searchHuggingFaceGguf(query, limit);
+  }
+
+  async searchModelHub(
+    query: string,
+    hub: "huggingface" | "modelscope",
+    limit?: number,
+  ): Promise<CatalogModel[]> {
+    return searchModelHubGguf(query, hub, limit);
   }
 
   /**

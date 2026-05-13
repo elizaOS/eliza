@@ -609,7 +609,7 @@ export async function handleLocalInferenceCompatRoutes(
     return true;
   }
 
-  // ── GET: HuggingFace search ─────────────────────────────────────────
+  // ── GET: explicit custom model search (Hugging Face / ModelScope) ───
   if (method === "GET" && pathname === "/api/local-inference/hf-search") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     const q = url.searchParams.get("q")?.trim() ?? "";
@@ -621,14 +621,21 @@ export async function handleLocalInferenceCompatRoutes(
     const limit = limitRaw
       ? Math.max(1, Math.min(50, Number.parseInt(limitRaw, 10) || 12))
       : 12;
+    const hub =
+      url.searchParams.get("hub")?.trim().toLowerCase() === "modelscope"
+        ? "modelscope"
+        : "huggingface";
     try {
-      const models = await localInferenceService.searchHuggingFace(q, limit);
+      const models =
+        typeof localInferenceService.searchModelHub === "function"
+          ? await localInferenceService.searchModelHub(q, hub, limit)
+          : await localInferenceService.searchHuggingFace(q, limit);
       sendJsonResponse(res, 200, { models });
     } catch (err) {
       sendJsonErrorResponse(
         res,
         502,
-        err instanceof Error ? err.message : "HuggingFace search failed",
+        err instanceof Error ? err.message : "Model search failed",
       );
     }
     return true;

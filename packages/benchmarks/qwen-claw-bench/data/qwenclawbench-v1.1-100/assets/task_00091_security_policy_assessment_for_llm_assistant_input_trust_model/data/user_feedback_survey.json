@@ -1,0 +1,242 @@
+[
+  {
+    "respondent_id": "RESP-2024-001",
+    "date": "2024-11-25",
+    "satisfaction_score": 4,
+    "workflow_blocked": "none",
+    "frustration_level": "low",
+    "comment": "Love the WhatsApp integration. Fast and reliable."
+  },
+  {
+    "respondent_id": "RESP-2024-002",
+    "date": "2024-10-15",
+    "satisfaction_score": 3,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "medium",
+    "comment": "The PDF blocking policy makes no sense for my daily workflow. I need to summarize vendor proposals."
+  },
+  {
+    "respondent_id": "RESP-2024-003",
+    "date": "2024-11-26",
+    "satisfaction_score": 3,
+    "workflow_blocked": "extract_webpage",
+    "frustration_level": "medium",
+    "comment": "Wanted to summarize a news article but web content is blocked. Had to copy the text myself."
+  },
+  {
+    "respondent_id": "RESP-2024-004",
+    "date": "2024-10-12",
+    "satisfaction_score": 1,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Cannot get the assistant to read my PDF reports. Had to manually copy-paste everything."
+  },
+  {
+    "respondent_id": "RESP-2024-005",
+    "date": "2024-10-14",
+    "satisfaction_score": 2,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "medium",
+    "comment": "PDF summarization should be a basic feature. The current block is too aggressive."
+  },
+  {
+    "respondent_id": "RESP-2024-006",
+    "date": "2024-10-23",
+    "satisfaction_score": 1,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Spent 20 minutes trying to get a PDF summarized. Eventually gave up and did it manually."
+  },
+  {
+    "respondent_id": "RESP-2024-007",
+    "date": "2024-12-15",
+    "satisfaction_score": 2,
+    "workflow_blocked": "translate_email",
+    "frustration_level": "medium",
+    "comment": "Cannot forward emails for summarization. Very inconvenient for long email threads."
+  },
+  {
+    "respondent_id": "RESP-2024-008",
+    "date": "2024-11-16",
+    "satisfaction_score": 1,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Cannot get the assistant to read my PDF reports. Had to manually copy-paste everything."
+  },
+  {
+    "respondent_id": "RESP-2024-009",
+    "date": "2024-11-12",
+    "satisfaction_score": 1,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Tried to get a summary of a 50-page PDF and was told it's an untrusted source. Come on."
+  },
+  {
+    "respondent_id": "RESP-2024-010",
+    "date": "2024-12-11",
+    "satisfaction_score": 2,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "I understand the security concerns but blocking ALL PDF operations is overkill."
+  },
+  {
+    "respondent_id": "RESP-2024-011",
+    "date": "2024-10-16",
+    "satisfaction_score": 2,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Would be great if the assistant could summarize PDFs in a read-only mode."
+  },
+  {
+    "respondent_id": "RESP-2024-012",
+    "date": "2024-10-03",
+    "satisfaction_score": 3,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "medium",
+    "comment": "The strict PDF policy is driving users to find workarounds, which is probably less secure."
+  },
+  {
+    "respondent_id": "RESP-2024-013",
+    "date": "2024-11-27",
+    "satisfaction_score": 3,
+    "workflow_blocked": "none",
+    "frustration_level": "none",
+    "comment": "The keyboard input works great. No issues with local usage."
+  },
+  {
+    "respondent_id": "RESP-2024-014",
+    "date": "2024-12-14",
+    "satisfaction_score": 3,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "medium",
+    "comment": "The PDF blocking policy makes no sense for my daily workflow. I need to summarize vendor proposals."
+  },
+  {
+    "respondent_id": "RESP-2024-015",
+    "date": "2024-10-13",
+    "satisfaction_score": 2,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Tried to get a summary of a 50-page PDF and was told it's an untrusted source. Come on."
+  },
+  {
+    "respondent_id": "RESP-2024-016",
+    "date": "2024-12-14",
+    "satisfaction_score": 3,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "medium",
+    "comment": "Had to manually retype 3 pages of a PDF because the assistant wouldn't process it."
+  },
+  {
+    "respondent_id": "RESP-2024-017",
+    "date": "2024-11-02",
+    "satisfaction_score": 1,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "My entire job involves reviewing PDFs. This policy makes the assistant useless for me."
+  },
+  {
+    "respondent_id": "RESP-2024-018",
+    "date": "2024-11-13",
+    "satisfaction_score": 2,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "My entire job involves reviewing PDFs. This policy makes the assistant useless for me."
+  },
+  {
+    "respondent_id": "RESP-2024-019",
+    "date": "2024-11-01",
+    "satisfaction_score": 2,
+    "workflow_blocked": "translate_email",
+    "frustration_level": "medium",
+    "comment": "Cannot forward emails for summarization. Very inconvenient for long email threads."
+  },
+  {
+    "respondent_id": "RESP-2024-020",
+    "date": "2024-12-01",
+    "satisfaction_score": 3,
+    "workflow_blocked": "none",
+    "frustration_level": "none",
+    "comment": "Works fine for my use case. I mostly use WhatsApp for quick commands."
+  },
+  {
+    "respondent_id": "RESP-2024-021",
+    "date": "2024-11-15",
+    "satisfaction_score": 4,
+    "workflow_blocked": "none",
+    "frustration_level": "low",
+    "comment": "Great tool. The security model gives me confidence."
+  },
+  {
+    "respondent_id": "RESP-2024-022",
+    "date": "2024-11-24",
+    "satisfaction_score": 3,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Tried to get a summary of a 50-page PDF and was told it's an untrusted source. Come on."
+  },
+  {
+    "respondent_id": "RESP-2024-023",
+    "date": "2024-10-30",
+    "satisfaction_score": 2,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Would be great if the assistant could summarize PDFs in a read-only mode."
+  },
+  {
+    "respondent_id": "RESP-2024-024",
+    "date": "2024-11-07",
+    "satisfaction_score": 3,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "I understand the security concerns but blocking ALL PDF operations is overkill."
+  },
+  {
+    "respondent_id": "RESP-2024-025",
+    "date": "2024-11-05",
+    "satisfaction_score": 1,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "The PDF blocking policy makes no sense for my daily workflow. I need to summarize vendor proposals."
+  },
+  {
+    "respondent_id": "RESP-2024-026",
+    "date": "2024-11-05",
+    "satisfaction_score": 4,
+    "workflow_blocked": "none",
+    "frustration_level": "none",
+    "comment": "The local keyboard access is seamless. No complaints."
+  },
+  {
+    "respondent_id": "RESP-2024-027",
+    "date": "2024-10-09",
+    "satisfaction_score": 2,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "Had to manually retype 3 pages of a PDF because the assistant wouldn't process it."
+  },
+  {
+    "respondent_id": "RESP-2024-028",
+    "date": "2024-10-07",
+    "satisfaction_score": 3,
+    "workflow_blocked": "summarize_pdf",
+    "frustration_level": "high",
+    "comment": "My entire job involves reviewing PDFs. This policy makes the assistant useless for me."
+  },
+  {
+    "respondent_id": "RESP-2024-029",
+    "date": "2024-12-08",
+    "satisfaction_score": 3,
+    "workflow_blocked": "configure_from_doc",
+    "frustration_level": "high",
+    "comment": "Cannot configure the system based on setup instructions in a Word doc. Very annoying."
+  },
+  {
+    "respondent_id": "RESP-2024-030",
+    "date": "2024-12-09",
+    "satisfaction_score": 5,
+    "workflow_blocked": "none",
+    "frustration_level": "none",
+    "comment": "The local keyboard access is seamless. No complaints."
+  }
+]

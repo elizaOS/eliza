@@ -1,0 +1,54 @@
+{
+  "title": "Morning Digest {{DATE}}",
+  "folder_token": "fldcnXYZ123abc",
+  "blocks": [
+    {
+      "block_type": 2,
+      "heading1": {
+        "elements": [{"text_run": {"content": "☀️ Morning News Digest — {{DATE}}"}}]
+      }
+    },
+    {
+      "block_type": 3,
+      "heading2": {
+        "elements": [{"text_run": {"content": "🌍 Top Headlines"}}]
+      }
+    },
+    {
+      "block_type": 17,
+      "bulleted_list": {
+        "elements": [{"text_run": {"content": "{{PLACEHOLDER_HEADLINES}}"}}]
+      }
+    },
+    {
+      "block_type": 3,
+      "heading2": {
+        "elements": [{"text_run": {"content": "💻 Tech & Hacker News"}}]
+      }
+    },
+    {
+      "block_type": 17,
+      "bulleted_list": {
+        "elements": [{"text_run": {"content": "{{PLACEHOLDER_TECH}}"}}]
+      }
+    },
+    {
+      "block_type": 3,
+      "heading2": {
+        "elements": [{"text_run": {"content": "📈 Markets"}}]
+      }
+    },
+    {
+      "block_type": 22,
+      "table": {
+        "note": "Market data table inserted dynamically"
+      }
+    },
+    {
+      "block_type": 3,
+      "heading2": {
+        "elements": [{"text_run": {"content": "🌤️ Weather"}}]
+      }
+    }
+  ]
+}

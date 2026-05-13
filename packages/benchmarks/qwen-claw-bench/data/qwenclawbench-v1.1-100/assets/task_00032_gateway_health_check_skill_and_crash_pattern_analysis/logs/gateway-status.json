@@ -1,0 +1,14 @@
+{
+  "last_check": "2026-02-10T03:02:09+08:00",
+  "status": "healthy",
+  "uptime_seconds": 94,
+  "last_restart": "2026-02-10T03:01:35+08:00",
+  "restart_reason": "process_hung",
+  "total_restarts_24h": 2,
+  "checks_performed_24h": 28,
+  "checks_failed_24h": 2,
+  "availability_pct_24h": 99.86,
+  "consecutive_healthy": 1,
+  "gateway_version": "1.4.2",
+  "pid": 28491
+}

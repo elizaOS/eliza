@@ -1,0 +1,59 @@
+task_id: M077_doc_extraction_cross_modality
+task_name: Document Extraction - Cross-Modality Analysis
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am a researcher studying how LLaVA-OneVision performs across single-image,
+    multi-image, and video scenarios. From the paper "LLaVA-OneVision: Easy
+    Visual Task Transfer", I need to merge
+    data from Table 3 (single-image benchmarks) and Table 5 (video benchmarks)
+    to compare models across both modalities.
+
+    Specifically:
+    1. From Table 3 (single-image benchmarks), extract each model's scores on:
+       AI2D (test), ChartQA (test), DocVQA (test), MathVista (testmini),
+       MMMU (val), MMVet (test).
+    2. From Table 5 (video benchmarks), extract each model's scores on:
+       ActivityNet-QA (test), EgoSchema (test), MLVU (m-avg), MVBench (test),
+       PerceptionTest (val), VideoMME (wo subs).
+    3. Join these tables by model name. Only include all LLaVA-OV variants
+       (0.5B, 7B, 72B, both SI and final) and GPT-4V.
+    4. Compute an "Average_Single_Image" score as the mean of the 6 single-image
+       metrics (skip missing values), and an "Average_Video" score as the mean of
+       the 6 video metrics (skip missing values).
+    5. Sort by Average_Video score in descending order.
+    6. Save as /workspace/llava_ov_cross_modality.csv with columns: Model, AI2D,
+       ChartQA, DocVQA, MathVista, MMMU, MMVet, ActivityNetQA, EgoSchema, MLVU,
+       MVBench, PerceptionTest, VideoMME, Average_Single_Image, Average_Video.
+    7. Create a scatter plot (/workspace/llava_ov_cross_modality_chart.png) with
+       Average_Single_Image on x-axis and Average_Video on y-axis. Label each
+       point with the model name. Add a diagonal reference line (y=x).
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/llava_ov_cross_modality.csv
+  - /workspace/llava_ov_cross_modality_chart.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Find and read the LLaVA-OneVision paper, extract Table 3 (single-image) and
+  Table 5 (video), join by model name for LLaVA-OV variants + GPT-4V, compute
+  average scores, sort by Average_Video descending, save CSV and scatter plot
+  with y=x diagonal.
+primary_dimensions:
+  - completion
+  - robustness

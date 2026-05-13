@@ -5,6 +5,7 @@ import {
   type DflashMetricsSnapshot,
   dflashLlamaServer,
   getDflashRuntimeStatus,
+  validateDflashDrafterCompatibility,
 } from "./dflash-server";
 import { listInstalledModels } from "./registry";
 import type { InstalledModel } from "./types";
@@ -162,6 +163,36 @@ export async function runDflashDoctor(): Promise<DflashDoctorReport> {
         label: `${target.displayName} tokenizer parity`,
         detail: `Both target and drafter use tokenizerFamily=${targetFamily}`,
       });
+    }
+
+    if (targetInstalled && drafterInstalled && runtime.binaryPath) {
+      const installedTarget = installedById.get(target.id);
+      const installedDrafter = installedById.get(dflash.drafterModelId);
+      if (installedTarget && installedDrafter) {
+        try {
+          const compatibility = validateDflashDrafterCompatibility({
+            targetModelPath: installedTarget.path,
+            drafterModelPath: installedDrafter.path,
+            binaryPath: runtime.binaryPath,
+          });
+          checks.push({
+            id: `${target.id}:gguf-drafter-compatibility`,
+            status: compatibility.compatible ? "pass" : "fail",
+            label: `${target.displayName} GGUF drafter compatibility`,
+            detail: compatibility.reason,
+            fix: compatibility.compatible
+              ? undefined
+              : `Install a ${dflash.drafterModelId} GGUF distilled from this exact target with matching tokenizer metadata, or use a llama-server build that advertises dflash-draft GGUF loader support.`,
+          });
+        } catch (error) {
+          checks.push({
+            id: `${target.id}:gguf-drafter-compatibility`,
+            status: "warn",
+            label: `${target.displayName} GGUF drafter compatibility`,
+            detail: `Could not read GGUF metadata for the target/drafter pair: ${error instanceof Error ? error.message : String(error)}`,
+          });
+        }
+      }
     }
 
     // Drafter↔target checkpoint-hash parity. The drafter must have been

@@ -1,9 +1,15 @@
 /**
- * Agent Flavor Presets — predefined Docker image configurations for different
- * agent types. The default `eliza` flavor resolves its image at runtime via
- * `containersEnv.defaultAgentImage()` so operators can pin a tag without
- * touching code (`ELIZA_AGENT_IMAGE` / `CONTAINERS_DEFAULT_IMAGE` /
- * legacy `AGENT_DOCKER_IMAGE`).
+ * Agent Flavor Presets — predefined Docker image configurations the cloud
+ * dashboard exposes when a user creates a sandbox. The `eliza` flavor (default)
+ * resolves its image at runtime via `containersEnv.defaultAgentImage()` so
+ * operators can pin a tag without touching code (`ELIZA_AGENT_IMAGE` /
+ * `CONTAINERS_DEFAULT_IMAGE` / legacy `AGENT_DOCKER_IMAGE`).
+ *
+ * Tags map to the continuous-publication workflow at
+ * .github/workflows/build-agent-image.yml:
+ *   :stable  — head of main
+ *   :develop — head of develop
+ *   :latest  — alias of :stable for legacy hardcoded callers
  */
 
 import { containersEnv } from "@/lib/config/containers-env";
@@ -16,30 +22,21 @@ export interface AgentFlavor {
   defaultEnvVars?: Record<string, string>;
 }
 
-/**
- * Built-in flavors. The first entry is the default; callers may override the
- * default image at runtime via `ELIZA_AGENT_IMAGE`. The "agent" flavor is
- * retained as a named preset for the parent Agent product, but the platform
- * default is the generic Eliza agent.
- */
+/** Built-in flavors. The first entry is the default. */
 export const AGENT_FLAVORS: AgentFlavor[] = [
   {
     id: "eliza",
     name: "Eliza Agent",
-    description: "Default elizaOS agent — full runtime, web UI, bridge, and Steward integration.",
+    description:
+      "V2 elizaOS agent — bridge API + Steward integration. Web UI disabled by default; enable with ELIZA_UI_ENABLE=true.",
     dockerImage: containersEnv.defaultAgentImage(),
   },
   {
-    id: "eliza-slim",
-    name: "Eliza Agent (Slim)",
-    description: "Lightweight elizaOS agent with bridge only, no UI.",
-    dockerImage: "ghcr.io/elizaos/eliza:slim",
-  },
-  {
-    id: "agent",
-    name: "Agent",
-    description: "Eliza agent with Steward wallet vault integration and VRM companion UI.",
-    dockerImage: "ghcr.io/agent-ai/agent:v2.0.0-steward-5",
+    id: "eliza-develop",
+    name: "Eliza Agent (Develop)",
+    description:
+      "Latest develop build. Use for testing new features before they hit stable.",
+    dockerImage: "ghcr.io/elizaos/eliza:develop",
   },
   {
     id: "custom",

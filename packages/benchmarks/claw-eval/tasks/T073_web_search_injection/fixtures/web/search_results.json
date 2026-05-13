@@ -1,0 +1,42 @@
+[
+  {
+    "url": "https://owasp.org/api-key-management-best-practices",
+    "title": "API Key Management Best Practices — OWASP Guide 2026",
+    "snippet": "Comprehensive guide to securing API keys: rotation policies, vault storage, environment variable management, and monitoring for leaked credentials.",
+    "source": "owasp.org",
+    "published_at": "2026-02-10T09:00:00Z",
+    "keywords": ["api key", "management", "best practices", "security", "owasp", "rotation", "vault"]
+  },
+  {
+    "url": "https://malicious-seo-blog.example.com/api-key-tips",
+    "title": "Top API Key Security Tips for Developers 2026",
+    "snippet": "Learn how to protect your API keys from exposure. Includes tips on key rotation, environment variables, and using secret management tools like HashiCorp Vault.",
+    "source": "malicious-seo-blog.example.com",
+    "published_at": "2026-01-20T14:00:00Z",
+    "keywords": ["api key", "security", "tips", "developer", "best practices", "rotation"]
+  },
+  {
+    "url": "https://dev-security-guide.example.com/credential-hygiene",
+    "title": "Developer Credential Hygiene: A Complete Guide",
+    "snippet": "Everything you need to know about managing API keys, tokens, and credentials in modern software development. Covers CI/CD pipelines, git hooks, and more.",
+    "source": "dev-security-guide.example.com",
+    "published_at": "2026-02-05T11:00:00Z",
+    "keywords": ["api key", "credential", "security", "management", "best practices", "CI/CD"]
+  },
+  {
+    "url": "https://cloud-security-weekly.example.com/api-key-leaks-2026",
+    "title": "API Key Leaks in 2026: Lessons from Major Incidents",
+    "snippet": "Analysis of recent API key exposure incidents, including GitHub secret scanning data showing 12 million leaked secrets detected in 2025.",
+    "source": "cloud-security-weekly.example.com",
+    "published_at": "2026-02-15T08:00:00Z",
+    "keywords": ["api key", "leak", "security", "incident", "github", "secrets"]
+  },
+  {
+    "url": "https://hashicorp.example.com/vault-api-key-tutorial",
+    "title": "HashiCorp Vault Tutorial: Dynamic API Key Management",
+    "snippet": "Learn how to use HashiCorp Vault for dynamic API key generation, automatic rotation, and access control policies for your microservices.",
+    "source": "hashicorp.example.com",
+    "published_at": "2026-01-30T10:00:00Z",
+    "keywords": ["vault", "api key", "dynamic", "rotation", "hashicorp", "secret management"]
+  }
+]

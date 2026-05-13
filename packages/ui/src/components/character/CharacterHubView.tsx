@@ -1,12 +1,5 @@
 import type { MessageExampleGroup } from "@elizaos/core";
 import {
-  Button,
-  PageLayout,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
-import {
   BookOpen,
   Brain,
   LayoutDashboard,
@@ -32,6 +25,8 @@ import type {
   ExperienceRecord,
   RelationshipsActivityItem,
 } from "../../api/client-types";
+import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
@@ -40,10 +35,14 @@ import { useApp } from "../../state/useApp";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { DocumentsView } from "../pages/DocumentsView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,
@@ -55,7 +54,6 @@ import {
   CharacterOverviewSection,
   type CharacterOverviewWidget,
 } from "./CharacterOverviewSection";
-import { CharacterRelationshipsSection } from "./CharacterRelationshipsSection";
 import {
   CHARACTER_HUB_SECTIONS,
   type CharacterHubSection,
@@ -263,6 +261,7 @@ export function CharacterHubView({
   hasPendingChanges: boolean;
   onSave: () => Promise<unknown>;
 }) {
+  useRenderGuard("CharacterHubView");
   const { setActionNotice, setTab, tab, t } = useApp();
   const [activeSection, setActiveSection] = useState<CharacterHubSection>(() =>
     getSectionFromLocation(tab),
@@ -1224,7 +1223,7 @@ export function CharacterHubView({
     }
 
     return (
-      <CharacterRelationshipsSection summary="See the full relationships viewer, including extracted facts, relevant memories, and user-scoped preferences.">
+      <section className="flex min-w-0 flex-col gap-3">
         {relationshipActivityError ? (
           <div className="border-b border-danger/20 bg-danger/10 px-4 py-3 text-sm text-danger">
             {relationshipActivityError}
@@ -1238,7 +1237,7 @@ export function CharacterHubView({
             }}
           />
         </div>
-      </CharacterRelationshipsSection>
+      </section>
     );
   };
 

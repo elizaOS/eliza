@@ -1,0 +1,87 @@
+[
+  {
+    "transaction_id": "TXN-601",
+    "date": "2026-01-05",
+    "amount": 120000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-601",
+    "customer_name": "中和集团",
+    "type": "月度服务费",
+    "category": "服务收入",
+    "description": "中和集团2026年1月标准版服务费",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-602",
+    "date": "2026-02-05",
+    "amount": 240000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-601",
+    "customer_name": "中和集团",
+    "type": "月度服务费",
+    "category": "服务收入",
+    "description": "中和集团2026年2月服务费（含加购模块）",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-603",
+    "date": "2026-03-05",
+    "amount": 240000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-601",
+    "customer_name": "中和集团",
+    "type": "月度服务费",
+    "category": "服务收入",
+    "description": "中和集团2026年3月服务费（含加购模块）",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-604",
+    "date": "2026-03-05",
+    "amount": -50000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-602",
+    "customer_name": "前锋科技",
+    "type": "服务中断补偿",
+    "category": "补偿支出",
+    "description": "前锋科技3月服务中断补偿（已审批，待执行）",
+    "status": "pending",
+    "approved_by": "刘洋"
+  },
+  {
+    "transaction_id": "TXN-605",
+    "date": "2026-02-15",
+    "amount": 40000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-603",
+    "customer_name": "阳光传媒",
+    "type": "月度服务费",
+    "category": "服务收入",
+    "description": "阳光传媒2026年2月服务费",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-606",
+    "date": "2026-03-18",
+    "amount": 40000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-603",
+    "customer_name": "阳光传媒",
+    "type": "月度服务费补缴",
+    "category": "服务收入",
+    "description": "阳光传媒2026年3月服务费（延迟补缴）",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-607",
+    "date": "2026-01-05",
+    "amount": 30000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-602",
+    "customer_name": "前锋科技",
+    "type": "月度服务费",
+    "category": "服务收入",
+    "description": "前锋科技2026年1月服务费",
+    "status": "completed"
+  }
+]

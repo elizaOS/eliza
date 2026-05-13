@@ -1,0 +1,43 @@
+task_id: M018_doc_extraction_line_chart
+task_name: Document Extraction - Line Chart
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am a researcher processing paper data. Please download and read this PDF:
+    https://openaccess.thecvf.com/content/CVPR2025/papers/Fu_Video-MME_The_First-Ever_Comprehensive_Evaluation_Benchmark_of_Multi-modal_LLMs_in_CVPR_2025_paper.pdf
+
+    Based on the main experimental results table, please extract the "w/ subs"
+    (with subtitles) scores of the three video durations (Short, Medium, Long)
+    and the Overall score for VILA-1.5 and Gemini 1.5 Pro. Save this data into
+    a file named /workspace/duration_comparison.csv. Then, create a line chart
+    with markers comparing the performance trend of these two models across the
+    three video durations. Ensure the y-axis ranges from 0 to 100, include a
+    legend, use green for VILA-1.5 and purple for Gemini, and save the final
+    image as /workspace/duration_trend.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/duration_comparison.csv
+  - /workspace/duration_trend.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download PDF via curl, read tables with Read,
+  extract VILA-1.5 and Gemini 1.5 Pro "w/ subs" scores, save CSV, plot line chart.
+primary_dimensions:
+  - completion
+  - robustness

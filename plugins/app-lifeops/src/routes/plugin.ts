@@ -381,7 +381,7 @@ const LIFEOPS_STATIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/features/toggle" },
   // Browser extension self-registration.
   { type: "POST", path: "/api/lifeops/browser/register" },
-  // W1-E knowledge-graph: entities + relationships.
+  // Knowledge-graph: entities + relationships.
   { type: "GET", path: "/api/lifeops/entities" },
   { type: "POST", path: "/api/lifeops/entities" },
   { type: "GET", path: "/api/lifeops/entities/resolve" },
@@ -450,7 +450,7 @@ const LIFEOPS_DYNAMIC_ROUTES: RouteSpec[] = [
   { type: "POST", path: "/api/lifeops/occurrences/:id/snooze" },
   // /api/lifeops/website-access/callbacks/:key/resolve
   { type: "POST", path: "/api/lifeops/website-access/callbacks/:key/resolve" },
-  // W1-E knowledge graph dynamic routes.
+  // Knowledge-graph dynamic routes.
   { type: "GET", path: "/api/lifeops/entities/:id" },
   { type: "PATCH", path: "/api/lifeops/entities/:id" },
   { type: "POST", path: "/api/lifeops/entities/:id/identities" },
@@ -752,7 +752,6 @@ const lifeOpsPluginRoutes: Route[] = [
   ),
   ...buildRawRoutes(LIFEOPS_STATIC_ROUTES, lifeOpsRouteHandler()),
   ...buildRawRoutes(LIFEOPS_DYNAMIC_ROUTES, lifeOpsRouteHandler()),
-  // W1-A — ScheduledTask spine REST surface (`docs/audit/wave1-interfaces.md` §1.6).
   ...buildRawRoutes(SCHEDULED_TASKS_ROUTE_PATHS, scheduledTasksRouteHandler()),
   ...buildRawRoutes(LIFEOPS_SLEEP_ROUTES, sleepRouteHandler()),
   ...buildRawRoutes(WEBSITE_BLOCKER_ROUTES, websiteBlockerRouteHandler()),

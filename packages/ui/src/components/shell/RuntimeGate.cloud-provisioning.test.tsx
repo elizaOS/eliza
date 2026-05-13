@@ -97,6 +97,7 @@ vi.mock("../../onboarding/mobile-runtime-mode", () => ({
   ANDROID_LOCAL_AGENT_API_BASE: "http://127.0.0.1:31337",
   ANDROID_LOCAL_AGENT_LABEL: "On-device agent",
   ANDROID_LOCAL_AGENT_SERVER_ID: "local:android",
+  IOS_LOCAL_AGENT_IPC_BASE: "eliza-local-agent://ipc",
   MOBILE_LOCAL_AGENT_API_BASE: "http://127.0.0.1:31337",
   MOBILE_LOCAL_AGENT_LABEL: "On-device agent",
   MOBILE_RUNTIME_MODE_STORAGE_KEY: "eliza:mobile-runtime-mode",
@@ -425,21 +426,21 @@ describe("RuntimeGate onboarding choices", () => {
     await waitFor(() => expect(agentStartMock).toHaveBeenCalledTimes(1));
   });
 
-  it("starts iOS local mode through the shared mobile local target", async () => {
+  it("starts iOS local mode through the IPC local target", async () => {
     platformState.isIOS = true;
 
     render(<RuntimeGate />);
     await startLocalFromWelcome();
 
     expect(clientMock.setBaseUrl).toHaveBeenCalledWith(
-      "http://127.0.0.1:31337",
+      "eliza-local-agent://ipc",
     );
     expect(clientMock.setToken).toHaveBeenCalledWith(null);
     expect(savePersistedActiveServerMock).toHaveBeenCalledWith({
       id: "local:mobile",
       kind: "remote",
       label: "On-device agent",
-      apiBase: "http://127.0.0.1:31337",
+      apiBase: "eliza-local-agent://ipc",
     });
     expect(persistMobileRuntimeModeForServerTargetMock).toHaveBeenCalledWith(
       "local",

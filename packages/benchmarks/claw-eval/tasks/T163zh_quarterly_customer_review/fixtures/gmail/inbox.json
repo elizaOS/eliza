@@ -1,0 +1,133 @@
+[
+  {
+    "message_id": "msg_1601",
+    "from": "dingxin_lina@dingxin.com",
+    "to": "me@company.com",
+    "subject": "关于续约条款的讨论",
+    "date": "2026-03-20T09:00:00Z",
+    "body": "您好，我们当前的合同将在9月底到期，想提前沟通一下续约事宜。鼎新软件今年业务增长不错，我们希望在续约时能扩展更多模块。请安排时间面谈。——李娜，鼎新软件",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1602",
+    "from": "dingxin_lina@dingxin.com",
+    "to": "me@company.com",
+    "subject": "Q1项目进展汇报",
+    "date": "2026-02-15T09:00:00Z",
+    "body": "您好，就1月份上线的新模块使用情况做个汇报：系统运行稳定，用户反馈良好，日活提升了15%。我们对后续合作充满信心。——李娜，鼎新软件",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1603",
+    "from": "hanhai_zhangqiang@hanhai.com",
+    "to": "me@company.com",
+    "subject": "关于服务响应速度的投诉",
+    "date": "2026-03-18T09:00:00Z",
+    "body": "你好，我必须反映一个问题：最近两周我们提了3个工单，平均响应时间超过48小时，严重影响了我们的业务。瀚海电商对目前的服务质量非常不满，希望尽快改善。——张强，瀚海电商",
+    "labels": [
+      "inbox",
+      "客户",
+      "投诉"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1604",
+    "from": "hanhai_zhangqiang@hanhai.com",
+    "to": "me@company.com",
+    "subject": "咨询数据分析新功能",
+    "date": "2026-03-05T09:00:00Z",
+    "body": "你好，听说你们最近上线了数据分析模块，我们很感兴趣。能否安排一个demo？虽然预算有限，但如果效果好我们会考虑升级。——张强，瀚海电商",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1605",
+    "from": "wantong_liuwei@wantong.com",
+    "to": "me@company.com",
+    "subject": "感谢贵公司优质服务",
+    "date": "2026-03-22T09:00:00Z",
+    "body": "你好，万通物流使用贵公司系统已经两年了，Q1的运营效率提升了20%。特别感谢技术团队快速响应我们的定制需求。我们计划在Q2进一步扩大合作范围。——刘卫，万通物流",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1606",
+    "from": "wantong_liuwei@wantong.com",
+    "to": "me@company.com",
+    "subject": "讨论Q2扩展方案",
+    "date": "2026-02-28T09:00:00Z",
+    "body": "你好，我们正在规划Q2的IT投入，希望能将贵公司的系统扩展到华南分公司。请提供一份扩展方案和报价。——刘卫，万通物流",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1607",
+    "from": "qianfeng_wangli@qianfeng.com",
+    "to": "me@company.com",
+    "subject": "系统使用问题咨询",
+    "date": "2026-01-20T09:00:00Z",
+    "body": "你好，我们在使用过程中遇到了一些问题，系统偶尔出现卡顿。另外，我们内部在重新评估IT支出，可能需要调整合作方案。——王力，前锋科技",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1608",
+    "from": "yangguang_chenyu@yangguang.com",
+    "to": "me@company.com",
+    "subject": "Q1季度业务复盘与Q2规划",
+    "date": "2026-03-15T09:00:00Z",
+    "body": "你好，阳光传媒Q1业绩超预期，AI内容工具的应用效果显著。我们计划Q2进一步加大投入，希望能获得更多技术支持和定制化方案。——陈宇，阳光传媒",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1609",
+    "from": "gonggong_liujian@gov-agency.cn",
+    "to": "me@company.com",
+    "subject": "关于2026年度预算方案的询问",
+    "date": "2026-02-10T09:00:00Z",
+    "body": "你好，我单位正在编制2026年度信息化预算，需要贵公司提供不同配置方案的报价。请在2月底前发送。——刘建，公共机构信息科",
+    "labels": [
+      "inbox",
+      "客户"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1610",
+    "from": "admin@company.com",
+    "to": "all@company.com",
+    "subject": "关于Q2团建活动的通知",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "全体同事：Q2团建活动定于4月中旬，请各部门提前安排好工作。详细方案将于下周公布。——行政部",
+    "labels": [
+      "inbox",
+      "通知"
+    ],
+    "is_read": true
+  }
+]

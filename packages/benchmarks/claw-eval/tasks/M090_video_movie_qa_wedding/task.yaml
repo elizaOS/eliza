@@ -1,0 +1,51 @@
+task_id: M090_video_movie_qa_wedding
+task_name: Movie Scene QA - Wedding Hall Characters
+version: "1.0"
+category: video_search
+difficulty: easy
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。这是一段约51秒的电影片段，展示了一个婚宴大厅的场景。
+
+    请观看这段电影片段并回答以下问题，将答案保存到 /workspace/answer.txt：
+    (1) 视频开头，走进婚宴大厅的男子发现自己的穿着和谁"撞衫"了？那个人的职业/角色是什么？
+    (2) 在圆桌上，被朋友们起哄即兴作诗的人叫什么（根据对话内容推断）？
+    (3) 这个片段来自哪部电影？
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+
+env_snapshot_files:
+  - /workspace/answer.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  观看《夏洛特烦恼》婚宴场景：
+  (1) 夏洛和主持人/司仪撞衫，两人都穿黑色西装+白衬衫
+  (2) 被起哄作诗的人叫袁华
+  (3) 电影名是《夏洛特烦恼》
+  评分：0.3 + 0.3 + 0.4
+
+primary_dimensions:
+  - completion
+  - robustness

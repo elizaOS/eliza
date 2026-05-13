@@ -1,13 +1,5 @@
 import type { Readable } from "node:stream";
-import {
-	AudioPlayerStatus,
-	createAudioPlayer,
-	createAudioResource,
-	entersState,
-	NoSubscriberBehavior,
-	type VoiceConnection,
-	VoiceConnectionStatus,
-} from "@discordjs/voice";
+import type { VoiceConnection } from "@discordjs/voice";
 import {
 	type IAgentRuntime,
 	logger,
@@ -25,6 +17,7 @@ import {
 import type { DiscordService } from "./service";
 import { ServiceType } from "./types";
 import { sendMessageInChunks } from "./utils";
+import { loadDiscordVoiceModule } from "./voice";
 
 const TEST_IMAGE_URL =
 	"https://github.com/elizaOS/awesome-eliza/blob/main/assets/eliza-logo.jpg?raw=true";
@@ -252,6 +245,8 @@ export class DiscordTestSuite implements TestSuite {
 			}
 
 			try {
+				const { entersState, VoiceConnectionStatus } =
+					await loadDiscordVoiceModule();
 				await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
 				logger.success(`Voice connection is ready in guild: ${guildId}`);
 			} catch (error) {
@@ -443,6 +438,12 @@ export class DiscordTestSuite implements TestSuite {
 		responseStream: ReadableStream | NodeJS.ReadableStream | Readable,
 		connection: VoiceConnection,
 	) {
+		const {
+			AudioPlayerStatus,
+			createAudioPlayer,
+			createAudioResource,
+			NoSubscriberBehavior,
+		} = await loadDiscordVoiceModule();
 		const audioPlayer = createAudioPlayer({
 			behaviors: {
 				noSubscriber: NoSubscriberBehavior.Pause,

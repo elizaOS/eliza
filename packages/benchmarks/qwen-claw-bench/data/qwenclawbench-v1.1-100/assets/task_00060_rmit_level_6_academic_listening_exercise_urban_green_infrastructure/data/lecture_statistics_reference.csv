@@ -1,0 +1,26 @@
+statistic_id,metric,value,unit,source_year,context
+STAT-001,runoff_reduction,28,%,2019,Green roof stormwater retention in temperate urban catchments
+STAT-002,annual_savings,2.7,million USD,2020,Economic benefits of comprehensive green infrastructure programmes
+STAT-003,temperature_reduction,3.5,°F,2021,Urban heat island mitigation through vegetated surfaces
+STAT-004,green_roof_coverage_growth,17,% annual increase,2023,Global green roof market expansion rate
+STAT-005,energy_savings_cooling,25,%,2022,Reduction in building cooling costs from green roof installation
+STAT-006,property_value_increase,6.5,%,2021,Average property value uplift near green infrastructure
+STAT-007,co2_sequestration_rate,1.8,kg/m²/year,2022,Carbon dioxide captured by extensive green roofs annually
+STAT-008,biodiversity_species_count,112,species,2023,Average invertebrate species recorded on biodiverse green roofs
+STAT-009,permeable_pavement_infiltration,80,%,2020,Rainfall infiltration rate through permeable concrete systems
+STAT-010,urban_tree_canopy_target,30,%,2022,Recommended minimum urban tree canopy coverage
+STAT-011,sewer_overflow_reduction,45,%,2021,Decrease in combined sewer overflow events with green infrastructure
+STAT-012,roi_break_even_years,15,years,2022,Typical payback period for municipal green infrastructure investment
+STAT-013,air_quality_improvement,8,% PM2.5 reduction,2023,Particulate matter reduction in areas with urban forests
+STAT-014,green_job_creation,14500,jobs per billion USD,2022,Employment generated per billion dollars of green infrastructure spending
+STAT-015,noise_reduction,10,dB,2020,Sound attenuation provided by green walls and vegetated barriers
+STAT-016,water_quality_improvement,60,% pollutant removal,2021,Pollutant removal efficiency of bioretention systems
+STAT-017,heat_related_mortality_reduction,12,%,2022,Decrease in heat-related deaths in greened urban districts
+STAT-018,urban_flood_risk_reduction,22,%,2023,Reduction in urban flood probability with distributed green infrastructure
+STAT-019,green_roof_lifespan,40,years,2021,Expected service life of properly maintained extensive green roofs
+STAT-020,evapotranspiration_cooling,2.1,°C,2022,Localised cooling effect from evapotranspiration in urban parks
+STAT-021,impervious_surface_percentage,65,%,2023,Average impervious surface coverage in major metropolitan areas
+STAT-022,stormwater_fee_savings,0.35,USD/sq ft/year,2022,Annual stormwater fee reduction from green roof credits
+STAT-023,pollinator_habitat_increase,40,%,2023,Increase in pollinator populations near urban green corridors
+STAT-024,meta_analysis_city_count,47,cities,2022,Number of cities included in comprehensive heat island meta-analysis
+STAT-025,policy_adoption_rate,34,% of municipalities,2023,Proportion of surveyed cities with mandatory green infrastructure policies

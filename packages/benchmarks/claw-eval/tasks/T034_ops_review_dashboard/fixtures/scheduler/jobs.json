@@ -1,0 +1,109 @@
+[
+  {
+    "job_id": "JOB-101",
+    "name": "daily_report_generation",
+    "description": "Automatically generate daily operations report",
+    "cron_expression": "0 6 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T06:00:00+08:00",
+    "next_run": "2026-03-02T06:00:00+08:00",
+    "average_duration_seconds": 120,
+    "tags": ["reporting", "daily"]
+  },
+  {
+    "job_id": "JOB-102",
+    "name": "database_backup",
+    "description": "Full database backup every day at 2 AM",
+    "cron_expression": "0 2 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T02:00:00+08:00",
+    "next_run": "2026-03-02T02:00:00+08:00",
+    "average_duration_seconds": 1800,
+    "tags": ["backup", "critical"]
+  },
+  {
+    "job_id": "JOB-103",
+    "name": "inventory_sync",
+    "description": "Sync inventory data to search index every 30 minutes",
+    "cron_expression": "*/30 * * * *",
+    "enabled": true,
+    "last_status": "failed",
+    "last_run": "2026-03-01T10:30:00+08:00",
+    "next_run": "2026-03-01T11:00:00+08:00",
+    "error": "Connection timeout to inventory API after 30s",
+    "average_duration_seconds": 45,
+    "tags": ["sync", "inventory"],
+    "execution_history": [
+      {
+        "run_at": "2026-03-01T10:30:00+08:00",
+        "status": "failed",
+        "error": "Connection timeout to inventory API after 30s",
+        "duration_seconds": 30
+      },
+      {
+        "run_at": "2026-03-01T10:00:00+08:00",
+        "status": "failed",
+        "error": "Connection timeout to inventory API after 30s",
+        "duration_seconds": 30
+      },
+      {
+        "run_at": "2026-03-01T09:30:00+08:00",
+        "status": "failed",
+        "error": "Connection timeout to inventory API after 30s",
+        "duration_seconds": 30
+      },
+      {
+        "run_at": "2026-03-01T09:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 42
+      },
+      {
+        "run_at": "2026-03-01T08:30:00+08:00",
+        "status": "success",
+        "duration_seconds": 38
+      }
+    ],
+    "notes": "This job syncs inventory data to the search indexer service (INT-107). 3 consecutive failures may cause the search index data to become stale."
+  },
+  {
+    "job_id": "JOB-104",
+    "name": "monitoring_health_check",
+    "description": "Run system health check every 5 minutes",
+    "cron_expression": "*/5 * * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T10:35:00+08:00",
+    "next_run": "2026-03-01T10:40:00+08:00",
+    "average_duration_seconds": 5,
+    "tags": ["monitoring", "critical"]
+  },
+  {
+    "job_id": "JOB-105",
+    "name": "crm_data_export",
+    "description": "Export CRM data for analytics every day at 2 AM",
+    "cron_expression": "0 2 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-02-24T02:00:00+08:00",
+    "next_run": "2026-03-02T02:00:00+08:00",
+    "average_duration_seconds": 600,
+    "tags": ["crm", "export", "data"],
+    "notes": "Last successful run was 5 days ago (Feb 24). Has not executed since then. The scheduler may not have triggered it correctly or the job may have been skipped. CRM data may be stale."
+  },
+  {
+    "job_id": "JOB-106",
+    "name": "email_digest",
+    "description": "Send daily email digest to management",
+    "cron_expression": "0 8 * * *",
+    "enabled": false,
+    "last_status": "success",
+    "last_run": "2026-02-23T08:00:00+08:00",
+    "disabled_by": "admin",
+    "disabled_date": "2026-02-23",
+    "disabled_reason": "Daily email digest paused pending confirmation of updated recipient list",
+    "average_duration_seconds": 30,
+    "tags": ["email", "notification"]
+  }
+]

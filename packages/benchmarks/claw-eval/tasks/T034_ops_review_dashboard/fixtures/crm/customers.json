@@ -1,0 +1,69 @@
+[
+  {
+    "customer_id": "CUS-301",
+    "name": "Yongkang Smart",
+    "tier": "vip",
+    "status": "active",
+    "annual_revenue": 12000000,
+    "contact_person": "Mr. Ma",
+    "contact_email": "ma@yongkang-smart.com",
+    "contact_phone": "138-0000-1001",
+    "industry": "Smart Home",
+    "contract_end_date": "2026-12-31",
+    "recent_interactions": [
+      {
+        "date": "2026-02-27",
+        "type": "complaint",
+        "channel": "phone",
+        "handled_by": "Chen (Manager)",
+        "notes": "Complained about Smart Camera Pro quality issues. Out of 500 units purchased in bulk, 89 are defective (17.8% defect rate). Threatened to terminate partnership. Demands: 1) Full refund for defective products 2) Quality improvement plan 3) Will switch suppliers if no response within one week."
+      },
+      {
+        "date": "2026-01-15",
+        "type": "order",
+        "channel": "system",
+        "notes": "Bulk purchase of 500 Smart Camera Pro units, order amount ¥2,500,000"
+      }
+    ]
+  },
+  {
+    "customer_id": "CUS-302",
+    "name": "Hengxin Electronics",
+    "tier": "standard",
+    "status": "active",
+    "annual_revenue": 3500000,
+    "contact_person": "Mr. Liu",
+    "contact_email": "liu@hengxin.com",
+    "contact_phone": "139-0000-2002",
+    "industry": "Electronics Manufacturing",
+    "contract_end_date": "2026-09-30",
+    "recent_interactions": [
+      {
+        "date": "2026-02-20",
+        "type": "inquiry",
+        "channel": "email",
+        "notes": "Inquired about bulk purchase discount for Enterprise Router X1"
+      }
+    ]
+  },
+  {
+    "customer_id": "CUS-303",
+    "name": "Minghui Tech",
+    "tier": "vip",
+    "status": "active",
+    "annual_revenue": 8000000,
+    "contact_person": "Mr. Zhao",
+    "contact_email": "zhao@minghui-tech.com",
+    "contact_phone": "137-0000-3003",
+    "industry": "IoT",
+    "contract_end_date": "2027-03-31",
+    "recent_interactions": [
+      {
+        "date": "2026-02-25",
+        "type": "meeting",
+        "channel": "video conference",
+        "notes": "Quarterly business review. Expressed satisfaction with Smart Lock S1 product. Plans to expand purchases next quarter."
+      }
+    ]
+  }
+]

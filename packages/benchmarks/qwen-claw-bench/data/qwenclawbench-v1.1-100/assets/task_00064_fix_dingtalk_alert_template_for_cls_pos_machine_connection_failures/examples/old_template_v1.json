@@ -1,0 +1,1 @@
+{"msgtype":"text","text":{"content":"告警名称: 收款机连接失败告警\n告警时间: {{.AlarmTime}}\n触发条件: {{.Condition}}\n{{range $.QueryResult[0]}}{{if or .sn .shopNo .message}}设备SN: {{.sn}}\n门店名: {{.shopName}}\n门店NO: {{.shopNo}}\n日志时间: {{.logTime}}\n告警信息: {{.message}}\n---\n{{end}}{{end}}告警详情: {{.DetailUrl}}\n通知类型: {{.NotifyType}}"}}

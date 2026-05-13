@@ -1,0 +1,1 @@
+["pip install -e .","python -m pytest --continue-on-collection-errors -n 0 tests/test_all.py  -v -s"]

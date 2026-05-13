@@ -65,6 +65,17 @@ const INVALID_STEPS = [
   "providersfeatures",
 ] as const;
 
+function unsafeOnboardingStep(value: string): OnboardingStep {
+  return value as OnboardingStep;
+}
+
+function unsafeRevertArgs(args: {
+  current: string;
+  target: string;
+}): Parameters<typeof canRevertOnboardingTo>[0] {
+  return args as Parameters<typeof canRevertOnboardingTo>[0];
+}
+
 /**
  * Deterministic mulberry32 PRNG. Fuzz failures must be reproducible — a fixed
  * seed plus a pure generator means a failing iteration index identifies the
@@ -110,9 +121,7 @@ describe("getOnboardingStepIndex", () => {
   });
 
   it.each(INVALID_STEPS)("returns -1 for invalid id %j", (bad) => {
-    // @ts-expect-error — intentionally passing an out-of-domain string to
-    // pin the function's runtime guard against untrusted input.
-    expect(getOnboardingStepIndex(bad)).toBe(-1);
+    expect(getOnboardingStepIndex(unsafeOnboardingStep(bad))).toBe(-1);
   });
 });
 
@@ -130,8 +139,7 @@ describe("resolveOnboardingNextStep (exhaustive linear forward)", () => {
   });
 
   it.each(INVALID_STEPS)("invalid id %j -> null", (bad) => {
-    // @ts-expect-error — runtime-guard probe with out-of-domain input.
-    expect(resolveOnboardingNextStep(bad)).toBeNull();
+    expect(resolveOnboardingNextStep(unsafeOnboardingStep(bad))).toBeNull();
   });
 
   it("for every valid step, result is either null or a configured step id", () => {
@@ -158,8 +166,7 @@ describe("resolveOnboardingPreviousStep (exhaustive linear backward)", () => {
   });
 
   it.each(INVALID_STEPS)("invalid id %j -> null", (bad) => {
-    // @ts-expect-error — runtime-guard probe with out-of-domain input.
-    expect(resolveOnboardingPreviousStep(bad)).toBeNull();
+    expect(resolveOnboardingPreviousStep(unsafeOnboardingStep(bad))).toBeNull();
   });
 
   it("for every valid step, result is either null or a configured step id", () => {
@@ -223,11 +230,12 @@ describe("canRevertOnboardingTo (sidebar jump rules)", () => {
   it("invalid current is rejected", () => {
     for (const bad of INVALID_STEPS) {
       expect(
-        canRevertOnboardingTo({
-          // @ts-expect-error — runtime-guard probe with out-of-domain input.
-          current: bad,
-          target: "deployment",
-        }),
+        canRevertOnboardingTo(
+          unsafeRevertArgs({
+            current: bad,
+            target: "deployment",
+          }),
+        ),
       ).toBe(false);
     }
   });
@@ -235,11 +243,12 @@ describe("canRevertOnboardingTo (sidebar jump rules)", () => {
   it("invalid target is rejected", () => {
     for (const bad of INVALID_STEPS) {
       expect(
-        canRevertOnboardingTo({
-          current: "features",
-          // @ts-expect-error — runtime-guard probe with out-of-domain input.
-          target: bad,
-        }),
+        canRevertOnboardingTo(
+          unsafeRevertArgs({
+            current: "features",
+            target: bad,
+          }),
+        ),
       ).toBe(false);
     }
   });
@@ -419,8 +428,9 @@ describe("getFlaminaTopicForOnboardingStep", () => {
   });
 
   it.each(INVALID_STEPS)("invalid %j -> null", (bad) => {
-    // @ts-expect-error — runtime-guard probe with out-of-domain input.
-    expect(getFlaminaTopicForOnboardingStep(bad)).toBeNull();
+    expect(
+      getFlaminaTopicForOnboardingStep(unsafeOnboardingStep(bad)),
+    ).toBeNull();
   });
 });
 
@@ -577,31 +587,25 @@ describe("fuzz: random walks", () => {
     // Mixed universe of valid and invalid step ids. The functions under test
     // accept only `OnboardingStep`, but at runtime their input comes from
     // persisted storage / query params and may be anything — that's exactly
-    // the surface this fuzz probe pins. Type the universe as `string` and
-    // cast at each callsite via @ts-expect-error so the looseness stays
-    // localized.
+    // the surface this fuzz probe pins.
     const universe: readonly string[] = [...EXPECTED_ORDER, ...INVALID_STEPS];
 
     for (let i = 0; i < WALKS; i += 1) {
       const current = pick(rng, universe);
+      const step = unsafeOnboardingStep(current);
 
-      // @ts-expect-error — fuzz probe; runtime guards must hold for any string.
-      expect(() => resolveOnboardingNextStep(current)).not.toThrow();
-      // @ts-expect-error — fuzz probe.
-      expect(() => resolveOnboardingPreviousStep(current)).not.toThrow();
+      expect(() => resolveOnboardingNextStep(step)).not.toThrow();
+      expect(() => resolveOnboardingPreviousStep(step)).not.toThrow();
 
-      // @ts-expect-error — fuzz probe.
-      const nxt = resolveOnboardingNextStep(current);
+      const nxt = resolveOnboardingNextStep(step);
       if (nxt !== null) expect(STEP_IDS).toContain(nxt);
 
-      // @ts-expect-error — fuzz probe.
-      const prv = resolveOnboardingPreviousStep(current);
+      const prv = resolveOnboardingPreviousStep(step);
       if (prv !== null) expect(STEP_IDS).toContain(prv);
 
       const target = pick(rng, universe);
       expect(() =>
-        // @ts-expect-error — fuzz probe.
-        canRevertOnboardingTo({ current, target }),
+        canRevertOnboardingTo(unsafeRevertArgs({ current, target })),
       ).not.toThrow();
     }
   });

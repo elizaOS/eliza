@@ -1,0 +1,36 @@
+task_id: M027_video_food_memo
+task_name: Video Food Memo
+version: "1.0"
+category: video_qa
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    河南的美食真不错，看这个视频帮我写个markdown格式的备忘录。把视频里出现的每一道美食的名称、视频中的相应传承人的姓名以及是第几代、美食的制作方法、美食的口感整理好。
+  language: zh
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files: []
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Use ReadMedia to extract frames from the Henan food video.
+  Identify each dish, craftsman name/generation, cooking method, and taste.
+  Format as markdown memo.
+primary_dimensions:
+  - completion
+  - robustness

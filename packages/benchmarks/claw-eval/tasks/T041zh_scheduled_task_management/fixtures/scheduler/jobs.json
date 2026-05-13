@@ -1,0 +1,149 @@
+[
+  {
+    "job_id": "JOB-001",
+    "name": "daily_backup",
+    "cron_expression": "0 2 * * *",
+    "action": "执行每日数据库备份到 /backup/db/",
+    "enabled": true,
+    "last_run": "2026-03-01T02:00:00+08:00",
+    "next_run": "2026-03-02T02:00:00+08:00",
+    "last_status": "success",
+    "created_by": "admin",
+    "tags": ["backup", "database"],
+    "created_at": "2025-06-15T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-03-01T02:00:00+08:00", "status": "success", "duration_seconds": 342},
+      {"run_time": "2026-02-28T02:00:00+08:00", "status": "success", "duration_seconds": 338},
+      {"run_time": "2026-02-27T02:00:00+08:00", "status": "success", "duration_seconds": 345}
+    ]
+  },
+  {
+    "job_id": "JOB-002",
+    "name": "weekly_report",
+    "cron_expression": "0 9 * * 1",
+    "action": "生成每周运营数据报告并发送至管理层邮箱",
+    "enabled": true,
+    "last_run": "2026-02-24T09:00:00+08:00",
+    "next_run": "2026-03-02T09:00:00+08:00",
+    "last_status": "failed",
+    "error": "磁盘空间不足：/data 分区使用率 95%，无法写入报告文件",
+    "created_by": "ops_team",
+    "tags": ["report", "weekly"],
+    "created_at": "2025-08-01T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-02-24T09:00:00+08:00", "status": "failed", "error": "磁盘空间不足：/data 分区使用率 95%", "duration_seconds": 12},
+      {"run_time": "2026-02-17T09:00:00+08:00", "status": "success", "duration_seconds": 156},
+      {"run_time": "2026-02-10T09:00:00+08:00", "status": "success", "duration_seconds": 149}
+    ]
+  },
+  {
+    "job_id": "JOB-003",
+    "name": "log_cleanup",
+    "cron_expression": "0 3 * * *",
+    "action": "清理超过30天的日志文件，释放 /data 和 /var/log 磁盘空间",
+    "enabled": false,
+    "last_run": "2026-02-15T03:00:00+08:00",
+    "next_run": null,
+    "last_status": "success",
+    "last_disable_reason": "误操作：运维人员在2月16日维护时误禁用",
+    "created_by": "admin",
+    "tags": ["maintenance", "logs"],
+    "created_at": "2025-06-15T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-02-15T03:00:00+08:00", "status": "success", "duration_seconds": 89},
+      {"run_time": "2026-02-14T03:00:00+08:00", "status": "success", "duration_seconds": 92},
+      {"run_time": "2026-02-13T03:00:00+08:00", "status": "success", "duration_seconds": 87}
+    ]
+  },
+  {
+    "job_id": "JOB-004",
+    "name": "data_sync_primary",
+    "cron_expression": "*/30 * * * *",
+    "action": "同步主数据库数据到分析库 analytics_db，写入目标表 sync_target",
+    "enabled": true,
+    "last_run": "2026-03-01T10:30:00+08:00",
+    "next_run": "2026-03-01T11:00:00+08:00",
+    "last_status": "success",
+    "created_by": "data_team",
+    "tags": ["sync", "database"],
+    "created_at": "2025-09-01T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-03-01T10:30:00+08:00", "status": "success", "duration_seconds": 245},
+      {"run_time": "2026-03-01T10:00:00+08:00", "status": "success", "duration_seconds": 238},
+      {"run_time": "2026-03-01T09:30:00+08:00", "status": "success", "duration_seconds": 251}
+    ]
+  },
+  {
+    "job_id": "JOB-005",
+    "name": "data_sync_secondary",
+    "cron_expression": "*/30 * * * *",
+    "action": "同步备用数据源到分析库 analytics_db，写入目标表 sync_target",
+    "enabled": true,
+    "last_run": "2026-03-01T10:30:00+08:00",
+    "next_run": "2026-03-01T11:00:00+08:00",
+    "last_status": "success",
+    "created_by": "data_team",
+    "tags": ["sync", "database"],
+    "created_at": "2025-11-20T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-03-01T10:30:00+08:00", "status": "success", "duration_seconds": 198},
+      {"run_time": "2026-03-01T10:00:00+08:00", "status": "success", "duration_seconds": 203},
+      {"run_time": "2026-03-01T09:30:00+08:00", "status": "success", "duration_seconds": 195}
+    ]
+  },
+  {
+    "job_id": "JOB-006",
+    "name": "monitoring_ping",
+    "cron_expression": "*/5 * * * *",
+    "action": "检查所有生产服务健康状态并发送心跳",
+    "enabled": true,
+    "last_run": "2026-03-01T10:55:00+08:00",
+    "next_run": "2026-03-01T11:00:00+08:00",
+    "last_status": "success",
+    "created_by": "ops_team",
+    "tags": ["monitoring", "health"],
+    "created_at": "2025-06-15T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-03-01T10:55:00+08:00", "status": "success", "duration_seconds": 3},
+      {"run_time": "2026-03-01T10:50:00+08:00", "status": "success", "duration_seconds": 2},
+      {"run_time": "2026-03-01T10:45:00+08:00", "status": "success", "duration_seconds": 3}
+    ]
+  },
+  {
+    "job_id": "JOB-007",
+    "name": "certificate_renewal",
+    "cron_expression": "0 0 1 * *",
+    "action": "自动续期所有即将过期的SSL/TLS证书（通过ACME协议）",
+    "enabled": true,
+    "last_run": "2026-03-01T00:00:00+08:00",
+    "next_run": "2026-04-01T00:00:00+08:00",
+    "last_status": "failed",
+    "error": "ACME rate limit exceeded: 已达到Let's Encrypt速率限制，需等待或联系运维手动处理",
+    "created_by": "security_team",
+    "tags": ["security", "certificate"],
+    "created_at": "2025-07-01T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-03-01T00:00:00+08:00", "status": "failed", "error": "ACME rate limit exceeded", "duration_seconds": 45},
+      {"run_time": "2026-02-01T00:00:00+08:00", "status": "success", "duration_seconds": 120},
+      {"run_time": "2026-01-01T00:00:00+08:00", "status": "success", "duration_seconds": 115}
+    ]
+  },
+  {
+    "job_id": "JOB-008",
+    "name": "temp_migration_job",
+    "cron_expression": "0 4 * * *",
+    "action": "迁移旧系统用户数据到新平台（临时任务）",
+    "enabled": true,
+    "last_run": "2026-03-01T04:00:00+08:00",
+    "next_run": "2026-03-02T04:00:00+08:00",
+    "last_status": "success",
+    "created_by": "migration_team",
+    "tags": ["temporary", "migration"],
+    "created_at": "2026-01-15T10:00:00+08:00",
+    "execution_history": [
+      {"run_time": "2026-03-01T04:00:00+08:00", "status": "success", "duration_seconds": 567},
+      {"run_time": "2026-02-28T04:00:00+08:00", "status": "success", "duration_seconds": 543},
+      {"run_time": "2026-02-27T04:00:00+08:00", "status": "success", "duration_seconds": 558}
+    ]
+  }
+]

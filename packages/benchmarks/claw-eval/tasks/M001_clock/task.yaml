@@ -1,0 +1,55 @@
+task_id: M001_clock
+task_name: Analog Clock from Config
+version: "2.0"
+category: multimodal_webpage
+difficulty: medium
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/config.json — clock configuration parameters
+
+    Please read the config file, then generate /workspace/output.html to create an animated analog clock based on the config:
+    1. Display a circular clock face with hour/minute/second hands
+    2. Use the colors, sizes, and options specified in the config
+    3. The clock should show the correct time for the configured timezone
+    4. Second hand should move smoothly in real-time
+    5. Include number markers or tick marks as configured
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/config.json
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 10 --interval 0.5 --wait-before 2"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read config.json, create an SVG or Canvas-based analog clock with animated hands.
+  Use requestAnimationFrame or setInterval to update hand positions every second.
+  Apply timezone_offset to compute displayed time. Style with config colors.
+
+primary_dimensions: [completion, robustness]

@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { logger } from "@elizaos/core";
 import type { BirdeyeApiParams } from "./types/api/common";
 import type {
@@ -443,9 +442,9 @@ export async function makeApiRequest<T>(
       headers: {
         "X-API-KEY": apiKey,
         "x-chain": chain,
-        ...(body && { "Content-Type": "application/json" }),
+        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
-      ...(body && { body: JSON.stringify(body) }),
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
     });
 
     if (!response.ok) {
@@ -681,7 +680,7 @@ export const waitFor = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
 export const convertToStringParams = (
-  params: BirdeyeApiParams,
+  params: BirdeyeApiParams | Record<string, unknown>,
 ): Record<string, string> => {
   const result: Record<string, string> = {};
   for (const [key, value] of Object.entries(params || {})) {

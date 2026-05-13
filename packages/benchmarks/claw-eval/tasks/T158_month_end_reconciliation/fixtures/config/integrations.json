@@ -1,0 +1,47 @@
+[
+  {
+    "integration_id": "INT-1301",
+    "name": "primary_payment_gateway",
+    "display_name": "Primary Payment Gateway",
+    "service": "payment",
+    "status": "active",
+    "last_verified": "2026-03-25T10:00:00+08:00",
+    "monthly_calls": 12500,
+    "error_rate": 0.2,
+    "notes": "Running normally, processes all online payments"
+  },
+  {
+    "integration_id": "INT-1302",
+    "name": "backup_payment_gateway",
+    "display_name": "Backup Payment Gateway",
+    "service": "payment",
+    "status": "active",
+    "last_verified": "2026-03-25T10:00:00+08:00",
+    "monthly_calls": 800,
+    "error_rate": 0.1,
+    "notes": "Backup channel, auto-switches when primary gateway fails"
+  },
+  {
+    "integration_id": "INT-1303",
+    "name": "reconciliation_system",
+    "display_name": "Reconciliation System",
+    "service": "reconciliation",
+    "status": "active",
+    "last_verified": "2026-03-20T08:00:00+08:00",
+    "monthly_calls": 3200,
+    "error_rate": 15.0,
+    "last_sync": "2026-03-20T08:00:00+08:00",
+    "notes": "Sync failing since March 20th, last successful sync was March 20th. Error: API connection timeout, reconciliation data has not been synced for 6 days."
+  },
+  {
+    "integration_id": "INT-1304",
+    "name": "invoice_system",
+    "display_name": "Invoice System",
+    "service": "invoice",
+    "status": "error",
+    "last_verified": "2026-03-18T14:00:00+08:00",
+    "monthly_calls": 4500,
+    "error_rate": 100.0,
+    "notes": "Status abnormal: API version incompatibility. Vendor upgraded API to v3 on March 18th, our system is still calling v2 interface, causing all invoice requests to return 400 errors. SDK upgrade required."
+  }
+]

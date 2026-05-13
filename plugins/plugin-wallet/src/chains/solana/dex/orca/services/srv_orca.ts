@@ -1,9 +1,10 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, Service } from "@elizaos/core";
 
 export class OrcaService extends Service {
+  [key: string]: unknown;
+
   static serviceType = "ORCA_SERVICE";
-  capabilityDescription = "Provides Orca DEX integration for LP management";
+  capabilityDescription = "Provides standardized access to DEX liquidity pools." as const;
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);

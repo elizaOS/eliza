@@ -26,7 +26,7 @@
     "autonomous"
   ],
   "dependencies": {
-    "@elizaos/agent": "2.0.0-beta.1",
+    "@elizaos/agent": "2.0.0-beta.2",
     "@elizaos/app-core": "2.0.0-beta.3",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",

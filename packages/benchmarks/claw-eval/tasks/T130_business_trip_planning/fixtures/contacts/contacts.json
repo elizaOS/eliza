@@ -1,0 +1,82 @@
+[
+  {
+    "contact_id": "CT-401",
+    "name": "Manager Chen",
+    "department": "Shanghai Office",
+    "title": "Client Relations Manager",
+    "email": "chen@company-sh.com",
+    "phone": "13800401001",
+    "location": "Shanghai",
+    "notes": "Responsible for VIP client relations in Shanghai area"
+  },
+  {
+    "contact_id": "CT-402",
+    "name": "Director Wu",
+    "department": "Shanghai Office",
+    "title": "Shanghai Office Head",
+    "email": "wu@company-sh.com",
+    "phone": "13800401002",
+    "location": "Shanghai",
+    "notes": "Shanghai office director"
+  },
+  {
+    "contact_id": "CT-403",
+    "name": "Li Wei",
+    "department": "Shenzhen Branch",
+    "title": "Technical Manager",
+    "email": "liwei@company-sz.com",
+    "phone": "13800401003",
+    "location": "Shenzhen",
+    "notes": "Shenzhen branch technical lead, responsible for microservice architecture"
+  },
+  {
+    "contact_id": "CT-404",
+    "name": "Engineer Huang",
+    "department": "Shenzhen Branch",
+    "title": "Senior Engineer",
+    "email": "huang@company-sz.com",
+    "phone": "13800401004",
+    "location": "Shenzhen",
+    "notes": "Shenzhen branch senior engineer"
+  },
+  {
+    "contact_id": "CT-405",
+    "name": "VP Zhang",
+    "department": "Beijing HQ",
+    "title": "Vice President",
+    "email": "zhang@company-bj.com",
+    "phone": "13800401005",
+    "location": "Beijing",
+    "notes": "Beijing HQ, oversees strategy and business development"
+  },
+  {
+    "contact_id": "CT-406",
+    "name": "Secretary Liu",
+    "department": "Beijing HQ",
+    "title": "Executive Office Secretary",
+    "email": "liu@company-bj.com",
+    "phone": "13800401006",
+    "location": "Beijing",
+    "notes": "Responsible for annual meeting organization and reception arrangements"
+  },
+  {
+    "contact_id": "CT-407",
+    "name": "Wang Ming",
+    "department": "Local - Product Dept",
+    "title": "Tech Director",
+    "email": "wangming@company.com",
+    "phone": "13800401007",
+    "location": "Local",
+    "notes": "Product review meeting organizer"
+  },
+  {
+    "contact_id": "CT-408",
+    "name": "Zhao Lei",
+    "department": "Local - Sales Dept",
+    "title": "Account Manager",
+    "email": "zhaolei@company.com",
+    "phone": "13800401008",
+    "location": "Local",
+    "notes": "Responsible for VIP client relationship maintenance"
+  }
+]

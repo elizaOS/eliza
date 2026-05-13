@@ -14,7 +14,6 @@ import {
   type Memory,
   ModelType,
   type Plugin,
-  type State,
   type UUID,
 } from "@elizaos/core";
 
@@ -41,6 +40,8 @@ type IterationResult = {
   expectedTranscript: string | null;
   transcriptionExactMatch: boolean | null;
   transcriptionNormalizedMatch: boolean | null;
+  transcriptionWer: number | null;
+  transcriptionCer: number | null;
   speechEndToTextMs: number;
   transcriptionMs: number;
   responseHandlerDecisionMs: number;
@@ -56,6 +57,7 @@ type IterationResult = {
   voiceFirstTokenUncachedMs: number;
   voiceFirstTokenCachedMs: number;
   ttsFirstSentenceCacheHit: boolean;
+  ttsFirstSentenceCacheEligible: boolean;
   ttsRemainderMs: number;
   ttsCachedPipelineMs: number;
   endToEndMs: number;
@@ -93,6 +95,7 @@ type IterationResult = {
   responseSegmentation: {
     firstSentence: string;
     remainder: string;
+    firstSentenceEstimatedTokens: number;
   };
 };
 
@@ -155,6 +158,9 @@ type BenchmarkOutput = {
       p95TtsCachedPipelineMs: number;
       p99TtsCachedPipelineMs: number;
       firstSentenceCacheHitRate: number;
+      firstSentenceCacheEligibleRate: number;
+      avgTranscriptionWer: number;
+      avgTranscriptionCer: number;
       transcriptionNormalizedAccuracy: number;
       avgEndToEndMs: number;
       p95EndToEndMs: number;
@@ -204,6 +210,10 @@ type ModelOutputInspection = {
 };
 type GroqPluginModule = { groqPlugin?: Plugin; default?: Plugin };
 type ElevenLabsPluginModule = { elevenLabsPlugin?: Plugin; default?: Plugin };
+type LocalEmbeddingPluginModule = {
+  localEmbeddingPlugin?: Plugin;
+  default?: Plugin;
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VOICEBENCH_DIR = resolve(__dirname, "../..");
@@ -213,101 +223,6 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000101" as UUID;
 const USER_ENTITY_ID = "00000000-0000-0000-0000-000000000102" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000103" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-000000000104" as UUID;
-
-const MOCK_TRANSCRIPT = "Hello there. This is a short voice benchmark sample.";
-const MOCK_TEXT_RESPONSE = "Mock voicebench response is ready.";
-const MOCK_MESSAGE_HANDLER_TOON = `thought: Running deterministic voicebench mock response.
-actions: REPLY
-providers:
-text: ${MOCK_TEXT_RESPONSE}
-simple: true`;
-const MOCK_NON_SIMPLE_HANDLER_TOON = `thought: Running deterministic voicebench mock response with provider context.
-actions: REPLY
-providers: VOICEBENCH_CONTEXT
-text: ${MOCK_TEXT_RESPONSE}
-simple: false`;
-const MOCK_REPLY_TOON = `thought: Generating deterministic benchmark dialog.
-text: ${MOCK_TEXT_RESPONSE}`;
-const MOCK_SHOULD_RESPOND_TOON = `name: VoicebenchAgent
-reasoning: Voicebench messages should receive a benchmark response.
-action: RESPOND`;
-const ZERO_EMBEDDING = Object.freeze(
-  new Array(384).fill(0),
-) as readonly number[];
-
-function mockTextHandler(params: Record<string, unknown>): string {
-  const prompt = String(params.prompt ?? "");
-  if (
-    prompt.includes("should respond") ||
-    prompt.includes("RESPOND | IGNORE | STOP")
-  ) {
-    return MOCK_SHOULD_RESPOND_TOON;
-  }
-  if (prompt.includes("Generate dialog for the character")) {
-    return MOCK_REPLY_TOON;
-  }
-  if (prompt.includes("Voicebench non-simple path")) {
-    return MOCK_NON_SIMPLE_HANDLER_TOON;
-  }
-  return MOCK_MESSAGE_HANDLER_TOON;
-}
-
-function readModelParams(params: unknown): Record<string, unknown> {
-  return params && typeof params === "object"
-    ? (params as Record<string, unknown>)
-    : {};
-}
-
-const mockVoicebenchPlugin: Plugin = {
-  name: "voicebench-mock-models",
-  description:
-    "Deterministic voicebench model handlers for credential-free smoke tests",
-  providers: [
-    {
-      name: "VOICEBENCH_CONTEXT",
-      description: "Static provider context for voicebench mock runs",
-      get: async (
-        _runtime: IAgentRuntime,
-        _message: Memory,
-        _state?: State,
-      ) => ({
-        text: "Voicebench mock provider context.",
-        values: { voicebenchContext: "mock" },
-        data: {},
-      }),
-    },
-  ],
-  models: {
-    [ModelType.TEXT_SMALL]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.TEXT_LARGE]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.RESPONSE_HANDLER]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.ACTION_PLANNER]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.TEXT_COMPLETION]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
-    [ModelType.TRANSCRIPTION]: async () => MOCK_TRANSCRIPT,
-    [ModelType.TEXT_TO_SPEECH]: async (_runtime, input) => {
-      const text =
-        typeof input === "string"
-          ? input
-          : String((input as { text?: unknown })?.text ?? "");
-      return new TextEncoder().encode(`voicebench-mock-audio:${text}`);
-    },
-  },
-};
-
-const voicebenchEmbeddingFallbackPlugin: Plugin = {
-  name: "voicebench-embedding-fallback",
-  description:
-    "Deterministic embedding handler for VoiceBench providers without embeddings",
-  models: {
-    [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
-  },
-};
 
 function parseArg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -333,6 +248,38 @@ function normalizeText(text: string): string {
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function levenshteinDistance<T>(a: readonly T[], b: readonly T[]): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const curr = new Array<number>(b.length + 1);
+  for (let i = 1; i <= a.length; i += 1) {
+    curr[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitution = Object.is(a[i - 1], b[j - 1]) ? 0 : 1;
+      curr[j] = Math.min(
+        prev[j] + 1,
+        curr[j - 1] + 1,
+        prev[j - 1] + substitution,
+      );
+    }
+    for (let j = 0; j <= b.length; j += 1) prev[j] = curr[j];
+  }
+  return prev[b.length] ?? 0;
+}
+
+function wordErrorRate(reference: string, hypothesis: string): number | null {
+  const refWords = normalizeText(reference).split(/\s+/).filter(Boolean);
+  if (refWords.length === 0) return null;
+  const hypWords = normalizeText(hypothesis).split(/\s+/).filter(Boolean);
+  return levenshteinDistance(refWords, hypWords) / refWords.length;
+}
+
+function characterErrorRate(reference: string, hypothesis: string): number | null {
+  const refChars = Array.from(normalizeText(reference).replace(/\s+/g, ""));
+  if (refChars.length === 0) return null;
+  const hypChars = Array.from(normalizeText(hypothesis).replace(/\s+/g, ""));
+  return levenshteinDistance(refChars, hypChars) / refChars.length;
 }
 
 function normalizeCacheKeyText(text: string): string {
@@ -383,7 +330,7 @@ function splitFirstSentence(text: string): {
   if (!stripped) {
     return { firstSentence: "", remainder: "" };
   }
-  const match = stripped.match(/[.!?](?:["')\]]+)?\s/);
+  const match = stripped.match(/[,.!?;:](?:["')\]]+)?(?:\s+|$)/);
   if (!match || typeof match.index !== "number") {
     return { firstSentence: stripped, remainder: "" };
   }
@@ -391,6 +338,12 @@ function splitFirstSentence(text: string): {
   const firstSentence = stripped.slice(0, end).trim();
   const remainder = stripped.slice(end).trim();
   return { firstSentence: firstSentence || stripped, remainder };
+}
+
+function estimateTokenCount(text: string): number {
+  const normalized = normalizeCacheKeyText(text);
+  if (!normalized) return 0;
+  return normalized.split(/\s+/).filter(Boolean).length;
 }
 
 function inspectModelOutput(raw: string): ModelOutputInspection {
@@ -482,13 +435,6 @@ function loadDatasetSamples(datasetPath: string): {
         return remapped;
       }
     }
-    const fallbackAudio = process.env.VOICEBENCH_AUDIO_PATH;
-    if (fallbackAudio) {
-      const fallback = resolve(fallbackAudio);
-      if (existsSync(fallback)) {
-        return fallback;
-      }
-    }
     throw new Error(`Dataset audio file not found: ${direct}`);
   };
   const samples: DatasetSample[] = rawSamples.map((sample, idx) => {
@@ -550,7 +496,12 @@ async function seedRuntimeGraph(
 
 async function resolvePlugins(profile: string): Promise<Plugin[]> {
   if (profile === "mock") {
-    return [mockVoicebenchPlugin];
+    throw new Error(
+      "VoiceBench mock profile has been removed. Use groq or elevenlabs with real credentials and real audio.",
+    );
+  }
+  if (profile !== "groq" && profile !== "elevenlabs") {
+    throw new Error(`Unsupported VoiceBench real profile: ${profile}`);
   }
 
   // Try the npm-published packages first (the workspace install path), then
@@ -568,8 +519,26 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error("Failed to load Groq TypeScript plugin");
   }
 
+  let embeddingModule: LocalEmbeddingPluginModule;
+  try {
+    embeddingModule = (await import(
+      "@elizaos/plugin-local-embedding"
+    )) as LocalEmbeddingPluginModule;
+  } catch {
+    embeddingModule = (await import(
+      "../../../../../plugins/plugin-local-embedding/src/index.ts"
+    )) as LocalEmbeddingPluginModule;
+  }
+  const localEmbedding =
+    embeddingModule?.localEmbeddingPlugin ?? embeddingModule?.default;
+  if (!localEmbedding) {
+    throw new Error(
+      "Failed to load local embedding plugin. VoiceBench no longer registers zero-vector fallback embeddings.",
+    );
+  }
+
   if (profile !== "elevenlabs") {
-    return [groq, voicebenchEmbeddingFallbackPlugin];
+    return [groq, localEmbedding];
   }
 
   let elevenLabsModule: ElevenLabsPluginModule;
@@ -588,7 +557,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error("Failed to load ElevenLabs TypeScript plugin");
   }
 
-  return [groq, elevenLabs, voicebenchEmbeddingFallbackPlugin];
+  return [groq, elevenLabs, localEmbedding];
 }
 
 async function createRuntime(
@@ -677,8 +646,11 @@ async function main(): Promise<void> {
   const output = parseArg("output");
   const timestamp = parseArg("timestamp") ?? `${Date.now()}`;
 
-  if (!audioPath) {
-    throw new Error("--audio is required");
+  if (!audioPath && !datasetPath) {
+    throw new Error("--audio is required when --dataset is not provided");
+  }
+  if (audioPath && !existsSync(resolve(audioPath))) {
+    throw new Error(`--audio file not found: ${resolve(audioPath)}`);
   }
   if (!output) {
     throw new Error("--output is required");
@@ -707,18 +679,14 @@ async function main(): Promise<void> {
   const datasetName = dataset ? dataset.datasetName : "single-audio";
   const samples: DatasetSample[] = dataset
     ? dataset.samples
-    : [{ id: "single-audio", audioPath, expectedText: null }];
+    : [{ id: "single-audio", audioPath: audioPath!, expectedText: null }];
 
   const sttProvider =
-    profile === "mock"
-      ? "voicebench-mock-models"
-      : profile === "elevenlabs"
+    profile === "elevenlabs"
         ? "elevenLabs"
         : "groq";
   const ttsProvider =
-    profile === "mock"
-      ? "voicebench-mock-models"
-      : profile === "elevenlabs"
+    profile === "elevenlabs"
         ? "elevenLabs"
         : "groq";
 
@@ -768,6 +736,14 @@ async function main(): Promise<void> {
               ? normalizeText(transcriptText) ===
                 normalizeText(expectedTranscript)
               : null;
+          const transcriptionWer =
+            typeof expectedTranscript === "string"
+              ? wordErrorRate(expectedTranscript, transcriptText)
+              : null;
+          const transcriptionCer =
+            typeof expectedTranscript === "string"
+              ? characterErrorRate(expectedTranscript, transcriptText)
+              : null;
 
           const userPrompt = `${transcriptText}\n\n${config.responsePrompt}`;
           const message: Memory = {
@@ -813,20 +789,34 @@ async function main(): Promise<void> {
           const responseTtftMs =
             (firstResponseAt ?? responseEnd) - responseStart;
           const speechToResponseStartMs = transcriptionMs + responseTtftMs;
-          const rawResponseText =
+          const rawResponseText = (
             callbackText ||
             responseResult.responseContent?.text ||
-            "Voicebench fallback response.";
+            ""
+          ).trim();
+          if (!rawResponseText) {
+            throw new Error(
+              `VoiceBench sample ${sample.id} produced no agent response text`,
+            );
+          }
           const boundedResponse = enforceResponseBudget(
             rawResponseText,
             responseMaxChars,
           );
-          const responseText =
-            boundedResponse.text || "Voicebench fallback response.";
+          const responseText = boundedResponse.text.trim();
+          if (!responseText) {
+            throw new Error(
+              `VoiceBench sample ${sample.id} response became empty after budget enforcement`,
+            );
+          }
 
           const segmented = splitFirstSentence(responseText);
           const firstSentence = segmented.firstSentence || responseText;
           const remainder = segmented.remainder;
+          const firstSentenceEstimatedTokens = estimateTokenCount(firstSentence);
+          const ttsFirstSentenceCacheEligible =
+            firstSentenceEstimatedTokens > 0 &&
+            firstSentenceEstimatedTokens < 10;
           const firstSentenceKey = `${profile}|${ttsProvider}|${normalizeCacheKeyText(firstSentence)}`;
 
           const uncachedFirstSentenceStart = nowMs();
@@ -938,6 +928,10 @@ async function main(): Promise<void> {
             expectedTranscript,
             transcriptionExactMatch,
             transcriptionNormalizedMatch,
+            transcriptionWer:
+              transcriptionWer === null ? null : round(transcriptionWer),
+            transcriptionCer:
+              transcriptionCer === null ? null : round(transcriptionCer),
             speechEndToTextMs: round(transcriptionMs),
             transcriptionMs: round(transcriptionMs),
             responseHandlerDecisionMs: round(responseTtftMs),
@@ -955,6 +949,7 @@ async function main(): Promise<void> {
             voiceFirstTokenUncachedMs: round(uncachedFirstSentenceMs),
             voiceFirstTokenCachedMs: round(cachedFirstSentenceMs),
             ttsFirstSentenceCacheHit: cachedHit,
+            ttsFirstSentenceCacheEligible,
             ttsRemainderMs: round(ttsRemainderMs),
             ttsCachedPipelineMs: round(ttsCachedPipelineMs),
             endToEndMs: round(endToEndMs),
@@ -992,6 +987,7 @@ async function main(): Promise<void> {
             responseSegmentation: {
               firstSentence: truncate(firstSentence),
               remainder: truncate(remainder),
+              firstSentenceEstimatedTokens,
             },
           };
 
@@ -1241,6 +1237,27 @@ async function main(): Promise<void> {
       ),
       firstSentenceCacheHitRate: round(
         average(rows.map((entry) => (entry.ttsFirstSentenceCacheHit ? 1 : 0))),
+      ),
+      firstSentenceCacheEligibleRate: round(
+        average(
+          rows.map((entry) =>
+            entry.ttsFirstSentenceCacheEligible ? 1 : 0,
+          ),
+        ),
+      ),
+      avgTranscriptionWer: round(
+        average(
+          rows
+            .map((entry) => entry.transcriptionWer)
+            .filter((value): value is number => value !== null),
+        ),
+      ),
+      avgTranscriptionCer: round(
+        average(
+          rows
+            .map((entry) => entry.transcriptionCer)
+            .filter((value): value is number => value !== null),
+        ),
       ),
       transcriptionNormalizedAccuracy: round(
         average(

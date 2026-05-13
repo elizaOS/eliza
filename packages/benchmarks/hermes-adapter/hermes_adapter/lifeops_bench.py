@@ -12,6 +12,7 @@ hermes-agent venv as the source of truth for tool execution.
 
 from __future__ import annotations
 
+import json
 import logging
 import time
 from typing import Any, Awaitable, Callable, Final
@@ -28,6 +29,101 @@ logger = logging.getLogger(__name__)
 _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
     "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
 }
+
+
+def _tool_name_from_manifest(tool: dict[str, Any]) -> str | None:
+    """Return the benchmark tool name from flat or OpenAI tool schemas."""
+    name = tool.get("name")
+    if isinstance(name, str) and name.strip():
+        return name.strip()
+    function = tool.get("function")
+    if isinstance(function, dict):
+        fn_name = function.get("name")
+        if isinstance(fn_name, str) and fn_name.strip():
+            return fn_name.strip()
+    return None
+
+
+def _json_prefix_candidates(text: str) -> list[object]:
+    """Decode JSON object/array candidates embedded in model text."""
+    stripped = text.strip()
+    if not stripped:
+        return []
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            stripped = "\n".join(lines[1:-1]).strip()
+
+    decoder = json.JSONDecoder()
+    candidates: list[object] = []
+    for start in (idx for idx, ch in enumerate(stripped) if ch in "[{"):
+        try:
+            value, _end = decoder.raw_decode(stripped[start:])
+        except json.JSONDecodeError:
+            continue
+        candidates.append(value)
+        break
+    return candidates
+
+
+def _iter_tool_records(value: object) -> list[dict[str, Any]]:
+    if isinstance(value, list):
+        return [item for item in value if isinstance(item, dict)]
+    if isinstance(value, dict):
+        calls = value.get("calls") or value.get("tool_calls")
+        if calls is not None:
+            return _iter_tool_records(calls)
+        return [value]
+    return []
+
+
+def _recover_text_tool_calls(
+    text: str,
+    tools: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Promote explicit Hermes JSON action text to benchmark tool calls."""
+    allowed_names = {
+        name
+        for tool in tools
+        for name in [_tool_name_from_manifest(tool)]
+        if name is not None
+    }
+    if not allowed_names:
+        return []
+
+    out: list[dict[str, Any]] = []
+    for candidate in _json_prefix_candidates(text):
+        for record in _iter_tool_records(candidate):
+            function = record.get("function")
+            source = function if isinstance(function, dict) else record
+            name_raw = (
+                source.get("name")
+                or source.get("tool")
+                or source.get("tool_name")
+                or source.get("function_name")
+            )
+            if not isinstance(name_raw, str) or name_raw not in allowed_names:
+                continue
+            args = (
+                source.get("arguments")
+                if "arguments" in source
+                else source.get("parameters", source.get("args", {}))
+            )
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            if not isinstance(args, dict):
+                args = {}
+            out.append(
+                {
+                    "id": str(record.get("id") or f"text_call_{len(out)}"),
+                    "type": "function",
+                    "function": {"name": name_raw, "arguments": dict(args)},
+                }
+            )
+    return out
 
 
 def _compute_cost_usd(
@@ -100,11 +196,61 @@ def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[st
     return out
 
 
+def _build_bench_preamble(
+    tools: list[dict[str, Any]],
+    world_context: dict[str, Any] | None = None,
+) -> str:
+    """Build a shape-hint preamble for hermes/openclaw bench sessions (P1-7).
+
+    Injected as the first system turn before the scenario instruction so the
+    agent knows:
+    1. Exact action names and parameter schemas (use the tool list verbatim).
+    2. The ``ENTITY`` contact-create convention (subaction=create with name/email).
+    3. The search-before-write rule (look up existing records before creating).
+    4. IDs of seeded contacts/events (when world_context is provided) so the
+       agent can reference them directly without a search round-trip.
+
+    This replaces zero-shot guessing with explicit context — the eliza-runtime
+    adapter already receives personality prompts that cover this, so we skip
+    it there and inject only here (hermes + openclaw).
+    """
+    lines: list[str] = [
+        "You are operating in LifeOpsBench. Use the exact action names and "
+        "parameter schemas shown in your tool list — do not invent synonyms. "
+        "For contacts, use ENTITY with subaction='create' and provide name and "
+        "email at the top level of the arguments object. "
+        "Always search for existing records before creating new ones.",
+    ]
+
+    # Surface seeded contact IDs so the agent can reference them directly.
+    if world_context:
+        contacts = world_context.get("contacts", {})
+        if contacts:
+            snippets = [
+                f"  {cid}: {c.get('display_name', '?')} <{c.get('primary_email', '?')}>"
+                for cid, c in list(contacts.items())[:10]
+            ]
+            lines.append("Seeded contacts (use these IDs to reference existing people):")
+            lines.extend(snippets)
+
+        events = world_context.get("calendar_events", {})
+        if events:
+            snippets = [
+                f"  {eid}: {e.get('title', '?')} @ {e.get('start', '?')}"
+                for eid, e in list(events.items())[:10]
+            ]
+            lines.append("Seeded calendar events:")
+            lines.extend(snippets)
+
+    return "\n".join(lines)
+
+
 def build_lifeops_bench_agent_fn(
     *,
     client: HermesClient | None = None,
     system_prompt: str | None = None,
     model_name: str | None = None,
+    inject_preamble: bool = True,
 ) -> Callable[[list[Any], list[dict[str, Any]]], Awaitable[Any]]:
     """Create a LifeOpsBench-compatible ``agent_fn`` backed by hermes-agent.
 
@@ -112,6 +258,11 @@ def build_lifeops_bench_agent_fn(
     ``agent_fn(history: list[MessageTurn], tools: list[dict]) -> MessageTurn``
     so it plugs into ``LifeOpsBenchRunner`` exactly like the eliza-adapter
     equivalent.
+
+    ``inject_preamble`` (default ``True``) prepends a shape-hint system
+    message on the first turn of each new session so hermes/openclaw receive
+    the same structural context that the eliza-runtime adapter gets via its
+    personality prompts (P1-7). Set to ``False`` to disable for ablation runs.
     """
     from eliza_lifeops_bench.types import (  # noqa: WPS433 — lazy
         MessageTurn,
@@ -144,6 +295,16 @@ def build_lifeops_bench_agent_fn(
         context: dict[str, object] = {"messages": messages}
         if tools:
             context["tools"] = tools
+
+        # P1-7: inject shape-hint preamble before the first user turn so
+        # hermes/openclaw know the expected action names, the ENTITY.create
+        # convention, and seeded object IDs. We only inject on the first turn
+        # (no existing assistant turn) to avoid polluting multi-turn history.
+        if inject_preamble and not any(m.get("role") == "assistant" for m in messages):
+            preamble = _build_bench_preamble(list(tools) if tools else [])
+            if preamble and not any(m.get("role") == "system" for m in messages):
+                messages.insert(0, {"role": "system", "content": preamble})
+
         if system_prompt:
             # Prepend system prompt to the threaded message list (only if the
             # caller didn't already include one in history).
@@ -182,6 +343,8 @@ def build_lifeops_bench_agent_fn(
                         "function": {"name": name, "arguments": args},
                     }
                 )
+        if not tool_calls:
+            tool_calls = _recover_text_tool_calls(resp.text or "", tools)
 
         turn = MessageTurn(
             role="assistant",
@@ -219,5 +382,3 @@ def build_lifeops_bench_agent_fn(
         return turn
 
     return _agent_fn
-
-

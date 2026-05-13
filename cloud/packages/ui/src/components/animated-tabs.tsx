@@ -36,12 +36,6 @@ export function AnimatedTabs({
   const tabsRef = useRef(tabs);
   const valueRef = useRef(value);
 
-  // Keep refs in sync
-  useEffect(() => {
-    tabsRef.current = tabs;
-    valueRef.current = value;
-  }, [tabs, value]);
-
   const updateIndicator = useCallback((shouldAnimate: boolean = true) => {
     const container = containerRef.current;
     if (!container) return;
@@ -65,10 +59,12 @@ export function AnimatedTabs({
     }
   }, []); // Stable - uses refs
 
-  // Update indicator on value/tabs change
+  // Keep refs in sync, then update the indicator for new tab/value props.
   useEffect(() => {
+    tabsRef.current = tabs;
+    valueRef.current = value;
     updateIndicator(true);
-  }, [updateIndicator]);
+  }, [tabs, updateIndicator, value]);
 
   // Update indicator on resize (without animation) - stable handler
   useEffect(() => {

@@ -26,7 +26,18 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-import fire
+try:
+    import fire
+except ModuleNotFoundError:  # pragma: no cover - only needed for programmatic runners
+    class _MissingFire:
+        @staticmethod
+        def Fire(*_args: object, **_kwargs: object) -> None:
+            raise ModuleNotFoundError(
+                "The optional 'fire' package is required only for the "
+                "run_react.py command-line entrypoint."
+            )
+
+    fire = _MissingFire()
 import requests
 from dotenv import load_dotenv
 import random
@@ -194,6 +205,16 @@ def select_summary_tail(messages: List[Dict[str, Any]], max_messages: int = 8) -
             return tail
 
 
+def usage_int(usage: Dict[str, Any], *keys: str) -> int:
+    """Read provider usage across snake_case and camelCase API shapes."""
+
+    for key in keys:
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            return int(value)
+    return 0
+
+
 def compute_api_token_metrics(usage_tracking: List[Dict[str, Any]]) -> Dict[str, int]:
     """Aggregate provider usage for a run."""
 
@@ -204,9 +225,13 @@ def compute_api_token_metrics(usage_tracking: List[Dict[str, Any]]) -> Dict[str,
     api_max_total_tokens = 0
 
     for usage in usage_tracking or []:
-        prompt_tokens = int(usage.get("prompt_tokens", 0) or 0)
-        completion_tokens = int(usage.get("completion_tokens", 0) or 0)
-        total_tokens = int(usage.get("total_tokens", 0) or 0)
+        prompt_tokens = usage_int(usage, "prompt_tokens", "promptTokens")
+        completion_tokens = usage_int(
+            usage,
+            "completion_tokens",
+            "completionTokens",
+        )
+        total_tokens = usage_int(usage, "total_tokens", "totalTokens")
 
         api_prompt_tokens += prompt_tokens
         api_completion_tokens += completion_tokens
@@ -221,6 +246,57 @@ def compute_api_token_metrics(usage_tracking: List[Dict[str, Any]]) -> Dict[str,
         "api_max_prompt_tokens": api_max_prompt_tokens,
         "api_max_total_tokens": api_max_total_tokens,
     }
+
+
+def _snapshot_loca_output_files(agent_workspace: Path) -> Dict[str, bytes]:
+    """Snapshot editable task-output files before the model starts working."""
+
+    if not agent_workspace.exists():
+        return {}
+    snapshots: Dict[str, bytes] = {}
+    for path in sorted(agent_workspace.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(agent_workspace)
+        if rel.parts and rel.parts[0] in {"memory", ".git"}:
+            continue
+        if path.name.startswith("."):
+            continue
+        try:
+            snapshots[str(rel)] = path.read_bytes()
+        except OSError:
+            continue
+    return snapshots
+
+
+def _unchanged_loca_output_files(
+    agent_workspace: Path,
+    snapshots: Dict[str, bytes],
+) -> List[str]:
+    """Return tracked output files that still match their initial contents."""
+
+    unchanged: List[str] = []
+    for rel, initial_content in sorted(snapshots.items()):
+        try:
+            current_content = (agent_workspace / rel).read_bytes()
+        except OSError:
+            continue
+        if current_content == initial_content:
+            unchanged.append(rel)
+    return unchanged
+
+
+def _loca_output_completion_rejection(unchanged_files: List[str]) -> str:
+    listed = ", ".join(unchanged_files[:8])
+    if len(unchanged_files) > 8:
+        listed += f", and {len(unchanged_files) - 8} more"
+    return (
+        "Your previous response was not accepted because the requested output "
+        f"file(s) are still unchanged: {listed}. Existing rows may be examples "
+        "or placeholders. Use the available tools to derive the final state and "
+        "call filesystem_write_file or filesystem_edit_file to update every "
+        "requested file before replying or calling claim_done."
+    )
 
 
 def extract_stop_reason(response: Dict[str, Any]) -> Optional[str]:
@@ -388,7 +464,7 @@ def setup_mcp_servers(
             continue
             
         server_type = server_config.get("type")
-        params = server_config.get("params", {})
+        params = dict(server_config.get("params", {}))
         
         # Replace path placeholders
         for key, value in params.items():
@@ -910,9 +986,13 @@ def make_aihubmix_api_request(
                     # Extract token usage information if available
                     if "usage" in res:
                         usage = res.get("usage", {})
-                        prompt_tokens = usage.get("prompt_tokens", 0)
-                        completion_tokens = usage.get("completion_tokens", 0)
-                        total_tokens = usage.get("total_tokens", 0)
+                        prompt_tokens = usage_int(usage, "prompt_tokens", "promptTokens")
+                        completion_tokens = usage_int(
+                            usage,
+                            "completion_tokens",
+                            "completionTokens",
+                        )
+                        total_tokens = usage_int(usage, "total_tokens", "totalTokens")
                         if verbose:
                             print(f"Token usage: prompt_tokens={prompt_tokens}, completion_tokens={completion_tokens}, total_tokens={total_tokens}")
 
@@ -1531,6 +1611,14 @@ def run_single_task(
 
         # Build the user prompt with optional enhancements
         enhanced_user_prompt = user_prompt
+        enhanced_user_prompt += (
+            "\n\n"
+            "LOCA completion protocol:\n"
+            "- Existing workspace files may contain examples or placeholders; use them for headers, schema, and formatting only.\n"
+            "- Do not treat existing rows as proof that the task is complete.\n"
+            "- Derive the final requested state from the provided tools, local_db files, workspace files, and memory records.\n"
+            "- For CSV-output tasks, overwrite or edit every requested CSV file with the derived final rows before replying or calling claim_done."
+        )
 
         # Add memory protocol if memory_tool is included
         if has_memory_tool:
@@ -1569,6 +1657,7 @@ def run_single_task(
         messages = [{"role": "user", "content": enhanced_user_prompt}]
         initial_user_message = {"role": "user", "content": enhanced_user_prompt}  # Save for context_summary
         full_messages_history.append(initial_user_message.copy())  # Add initial user prompt to full history
+        initial_output_snapshots = _snapshot_loca_output_files(agent_workspace)
         
         # Prepare output path - save trajectory in task workspace
         save_file = task_workspace / "trajectory.json"
@@ -1626,11 +1715,23 @@ def run_single_task(
                 usage = raw_resp['usage']
                 usage_tracking.append({
                     'step': step_count,
-                    'prompt_tokens': usage.get('prompt_tokens', 0),
-                    'completion_tokens': usage.get('completion_tokens', 0),
-                    'total_tokens': usage.get('total_tokens', 0),
-                    'prompt_cache_hit_tokens': usage.get('prompt_cache_hit_tokens', 0),
-                    'prompt_cache_miss_tokens': usage.get('prompt_cache_miss_tokens', 0),
+                    'prompt_tokens': usage_int(usage, 'prompt_tokens', 'promptTokens'),
+                    'completion_tokens': usage_int(
+                        usage,
+                        'completion_tokens',
+                        'completionTokens',
+                    ),
+                    'total_tokens': usage_int(usage, 'total_tokens', 'totalTokens'),
+                    'prompt_cache_hit_tokens': usage_int(
+                        usage,
+                        'prompt_cache_hit_tokens',
+                        'cachedTokens',
+                        'cached_tokens',
+                    ),
+                    'prompt_cache_miss_tokens': usage_int(
+                        usage,
+                        'prompt_cache_miss_tokens',
+                    ),
                 })
 
             # Update messages if they were trimmed
@@ -1826,6 +1927,41 @@ def run_single_task(
             # Save a copy of messages to full history before potential reset
             full_messages_history.append(call_messages.copy())
 
+            tool_calls = call_messages.get("tool_calls") or []
+            if not tool_calls:
+                unchanged_output_files = _unchanged_loca_output_files(
+                    agent_workspace,
+                    initial_output_snapshots,
+                )
+                if unchanged_output_files and (
+                    max_steps is None or step_count < max_steps
+                ):
+                    rejection = {
+                        "role": "user",
+                        "content": _loca_output_completion_rejection(
+                            unchanged_output_files
+                        ),
+                    }
+                    messages.append(rejection)
+                    full_messages_history.append(rejection.copy())
+                    episode.append({
+                        "observation": obs,
+                        "action": response,
+                        "reward": 0.0,
+                        "info": {
+                            "completion_rejected": "unchanged_output_files",
+                            "unchanged_output_files": unchanged_output_files,
+                        },
+                    })
+                    stop_reason = None
+                    if verbose:
+                        print(
+                            f"[Task {task_id} | {task_label}] Rejected final "
+                            f"response because output files are unchanged: "
+                            f"{unchanged_output_files}"
+                        )
+                    continue
+
             if verbose:
                 print("response", response)
 
@@ -1952,7 +2088,7 @@ def run_single_task(
                     print(f"[Task {task_id} | {task_label}] Warning: Failed to calculate tokens using tiktoken: {e}", file=sys.stderr)
                     # Fallback to usage from API response
                     usage = response.get('raw_response', {}).get('usage', {})
-                    total_tokens = usage.get('total_tokens', 0)
+                    total_tokens = usage_int(usage, 'total_tokens', 'totalTokens')
 
                 # Check if memory warning should be issued (when memory_tool is enabled)
                 memory_warning_threshold_tokens = reset_size * memory_warning_threshold
@@ -2058,7 +2194,7 @@ def run_single_task(
                     print(f"[Task {task_id} | {task_label}] Warning: Failed to calculate tokens using tiktoken: {e}", file=sys.stderr)
                     # Fallback to usage from API response
                     usage = response.get('raw_response', {}).get('usage', {})
-                    total_tokens = usage.get('total_tokens', 0)
+                    total_tokens = usage_int(usage, 'total_tokens', 'totalTokens')
 
                 # Check if memory warning should be issued (when memory_tool is enabled) for thinking_reset
                 thinking_memory_warning_threshold_tokens = reset_size * memory_warning_threshold
@@ -2165,7 +2301,7 @@ def run_single_task(
                     print(f"[Task {task_id} | {task_label}] Warning: Failed to calculate tokens using tiktoken: {e}", file=sys.stderr)
                     # Fallback to usage from API response
                     usage = response.get('raw_response', {}).get('usage', {})
-                    total_tokens = usage.get('total_tokens', 0)
+                    total_tokens = usage_int(usage, 'total_tokens', 'totalTokens')
 
                 # Check if memory warning should be issued (when memory_tool is enabled)
                 memory_warning_threshold_tokens = reset_size * memory_warning_threshold

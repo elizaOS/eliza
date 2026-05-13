@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import * as anchor from "@coral-xyz/anchor";
 import {
   type IAgentRuntime,
@@ -9,19 +8,11 @@ import {
   type TransactionResult,
 } from "@elizaos/core";
 import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { autoFillYByStrategy, DLMM, StrategyType } from "../utils/dlmm.ts";
+import { autoFillYByStrategy, DLMM, type LbPosition, StrategyType } from "../utils/dlmm.ts";
 import { sendTransaction } from "../utils/sendTransaction.ts";
 
 const { BN } = anchor;
-
-/** Narrow view of a DLMM position used by this service */
-interface MeteoraDlmmPositionView {
-  publicKey: PublicKey;
-  positionData: {
-    positionBinData: Array<{ binId: number; binLiquidity: string }>;
-  };
-  getAmounts: () => { x: anchor.BN; y: anchor.BN };
-}
+const DEFAULT_SOLANA_RPC_URL = "https://api.mainnet-beta.solana.com";
 
 /** Response shape from Meteora DLMM API */
 interface MeteoraPoolResponse {
@@ -32,21 +23,25 @@ interface MeteoraPoolResponse {
   name_y?: string;
   decimals_x: number;
   decimals_y: number;
+  apr?: number;
+  liquidity?: string | number;
   tvl?: number;
   volume_24h?: number;
   fee_percentage?: number;
 }
 
 export class MeteoraLpService extends Service {
+  [key: string]: unknown;
+
   public static readonly serviceType = "meteora-lp";
   public readonly capabilityDescription =
-    "Provides liquidity pool data and interaction for the Meteora DEX.";
+    "Provides standardized access to DEX liquidity pools." as const;
   private connection: Connection;
   private readonly METEORA_API_URL = "https://dlmm-api.meteora.ag/pair/all";
 
   constructor(runtime?: IAgentRuntime) {
     super(runtime);
-    const rpcUrl = runtime.getSetting("SOLANA_RPC_URL") || "https://api.mainnet-beta.solana.com";
+    const rpcUrl = getRuntimeStringSetting(runtime, "SOLANA_RPC_URL") ?? DEFAULT_SOLANA_RPC_URL;
     this.connection = new Connection(rpcUrl, "confirmed");
   }
 
@@ -89,7 +84,7 @@ export class MeteoraLpService extends Service {
           // The API does not provide APY or TVL directly in this endpoint.
           // These would need to be fetched from another source or calculated.
           apy: pool.apr ? pool.apr / 100 : 0, // Handle missing apr field
-          tvl: pool.liquidity ? parseFloat(pool.liquidity) : 0, // Parse liquidity string to number
+          tvl: pool.liquidity ? Number(pool.liquidity) : 0, // Parse liquidity string to number
         })
       );
 
@@ -287,16 +282,17 @@ export class MeteoraLpService extends Service {
     try {
       const userPubKey = new PublicKey(userAccountPublicKey);
 
-      let position: MeteoraDlmmPositionView | null = null;
+      let position: LbPosition | null = null;
       let poolAddress: string = "";
 
       try {
         // First, assume the identifier is a position public key
         const positionPubKey = new PublicKey(poolOrPositionIdentifier);
-        const dlmmPool = await DLMM.create(
-          this.connection,
-          (await this.connection.getAccountInfo(positionPubKey))?.owner
-        );
+        const positionAccount = await this.connection.getAccountInfo(positionPubKey);
+        if (!positionAccount) {
+          throw new Error(`Position account not found: ${poolOrPositionIdentifier}`);
+        }
+        const dlmmPool = await DLMM.create(this.connection, positionAccount.owner);
         position = await dlmmPool.getPosition(positionPubKey);
         poolAddress = dlmmPool.pubkey.toBase58();
       } catch (_e) {
@@ -329,7 +325,6 @@ export class MeteoraLpService extends Service {
         throw new Error(`Could not find pool info for ${poolAddress}`);
       }
 
-      const { x, y } = position.getAmounts();
       const totalLiquidity = position.positionData.positionBinData.reduce(
         (acc: anchor.BN, bin: { binLiquidity: string }) => acc.add(new BN(bin.binLiquidity)),
         new BN(0)
@@ -340,13 +335,13 @@ export class MeteoraLpService extends Service {
           ...poolInfo.tokenA,
           address: poolInfo.tokenA.mint,
           decimals: poolInfo.tokenA.decimals ?? 0,
-          balance: x.toString(),
+          balance: position.positionData.totalXAmount,
         },
         {
           ...poolInfo.tokenB,
           address: poolInfo.tokenB.mint,
           decimals: poolInfo.tokenB.decimals ?? 0,
-          balance: y.toString(),
+          balance: position.positionData.totalYAmount,
         },
       ];
 
@@ -361,6 +356,8 @@ export class MeteoraLpService extends Service {
         },
         underlyingTokens,
         valueUsd: 0, // TODO: requires a price oracle
+        accruedFees: [],
+        rewards: [],
       };
     } catch (error) {
       console.error("[MeteoraLpService] Error getting LP position details:", error);
@@ -412,4 +409,12 @@ export class MeteoraLpService extends Service {
       return new BN(0);
     }
   }
+}
+
+function getRuntimeStringSetting(
+  runtime: IAgentRuntime | undefined,
+  key: string
+): string | undefined {
+  const value = runtime?.getSetting(key);
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

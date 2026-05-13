@@ -154,6 +154,62 @@ function ReactionStrip({
   );
 }
 
+function arePropsEqual(
+  prev: ChatMessageProps,
+  next: ChatMessageProps,
+): boolean {
+  // The transcript re-renders the full list on every streamed token. Without
+  // a per-row comparator React.memo's shallow check trips on the inline
+  // `message`/`replyTarget` references that are rebuilt on every parent
+  // render even when nothing about a given row changed.
+  if (prev.message === next.message) {
+    return (
+      prev.isGrouped === next.isGrouped &&
+      prev.agentName === next.agentName &&
+      prev.labels === next.labels &&
+      prev.onCopy === next.onCopy &&
+      prev.onDelete === next.onDelete &&
+      prev.onEdit === next.onEdit &&
+      prev.onSpeak === next.onSpeak &&
+      prev.replyTarget?.id === next.replyTarget?.id &&
+      prev.userMessagesOnRight === next.userMessagesOnRight &&
+      prev.children === next.children
+    );
+  }
+
+  const a = prev.message;
+  const b = next.message;
+  if (
+    a.id !== b.id ||
+    a.role !== b.role ||
+    a.text !== b.text ||
+    a.source !== b.source ||
+    a.interrupted !== b.interrupted ||
+    a.from !== b.from ||
+    a.fromUserName !== b.fromUserName ||
+    a.avatarUrl !== b.avatarUrl ||
+    a.replyToMessageId !== b.replyToMessageId ||
+    a.replyToSenderName !== b.replyToSenderName ||
+    a.replyToSenderUserName !== b.replyToSenderUserName ||
+    a.reactions !== b.reactions
+  ) {
+    return false;
+  }
+
+  return (
+    prev.isGrouped === next.isGrouped &&
+    prev.agentName === next.agentName &&
+    prev.labels === next.labels &&
+    prev.onCopy === next.onCopy &&
+    prev.onDelete === next.onDelete &&
+    prev.onEdit === next.onEdit &&
+    prev.onSpeak === next.onSpeak &&
+    prev.replyTarget?.id === next.replyTarget?.id &&
+    prev.userMessagesOnRight === next.userMessagesOnRight &&
+    prev.children === next.children
+  );
+}
+
 export const ChatMessage = memo(function ChatMessage({
   message,
   isGrouped = false,
@@ -539,4 +595,4 @@ export const ChatMessage = memo(function ChatMessage({
       </div>
     </article>
   );
-});
+}, arePropsEqual);

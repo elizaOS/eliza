@@ -370,6 +370,15 @@ def _check_id_references(
         for prefix, kind in _ID_PREFIX_TO_KIND.items():
             if value.startswith(prefix):
                 ids = valid_world_ids.get(kind, set())
+                if value in ids:
+                    return
+                # Avoid treating action verbs such as `list_active` or
+                # `list_transactions` as reminder-list ids. Snapshot ids are
+                # either real known ids (handled above) or digit-suffixed
+                # synthetic ids such as `event_00040`.
+                suffix = value[len(prefix):]
+                if not suffix.isdigit():
+                    return
                 if value not in ids:
                     issues.append(
                         ValidationIssue(

@@ -1,0 +1,82 @@
+[
+  {
+    "contact_id": "CT-901",
+    "name": "Ma Qiang",
+    "department": "IT Ops Team",
+    "title": "Ops Supervisor",
+    "email": "maqiang@company.com",
+    "phone": "13900901001",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for system operations, network management, email and VPN infrastructure"
+  },
+  {
+    "contact_id": "CT-902",
+    "name": "Li Hua",
+    "department": "Data Team",
+    "title": "Data Engineer",
+    "email": "lihua@company.com",
+    "phone": "13900901002",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for data warehouse, report systems, data quality"
+  },
+  {
+    "contact_id": "CT-903",
+    "name": "Zhang Wei",
+    "department": "Security Team",
+    "title": "Security Engineer",
+    "email": "zhangwei@company.com",
+    "phone": "13900901003",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for account permission management, security audits, compliance"
+  },
+  {
+    "contact_id": "CT-904",
+    "name": "Chen Ting",
+    "department": "Admin Dept",
+    "title": "Admin Specialist",
+    "email": "chenting@company.com",
+    "phone": "13900901004",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for office environment maintenance, office equipment procurement and replacement"
+  },
+  {
+    "contact_id": "CT-905",
+    "name": "Wang Ming",
+    "department": "Tech Dept",
+    "title": "Tech Director",
+    "email": "wangming@company.com",
+    "phone": "13900901005",
+    "location": "Shanghai HQ",
+    "notes": "Tech team lead, cross-department technical coordination"
+  },
+  {
+    "contact_id": "CT-906",
+    "name": "Zhou Ming",
+    "department": "R&D Dept",
+    "title": "Frontend Team Lead",
+    "email": "zhouming@company.com",
+    "phone": "13900901006",
+    "location": "Shanghai HQ",
+    "notes": "Frontend technology lead"
+  },
+  {
+    "contact_id": "CT-907",
+    "name": "Zhao Lei",
+    "department": "Sales Dept",
+    "title": "Account Manager",
+    "email": "zhaolei@company.com",
+    "phone": "13900901007",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for key account relationships"
+  },
+  {
+    "contact_id": "CT-908",
+    "name": "Liu Yang",
+    "department": "Finance Dept",
+    "title": "Finance Supervisor",
+    "email": "liuyang@company.com",
+    "phone": "13900901008",
+    "location": "Shanghai HQ",
+    "notes": "Responsible for accounting and financial reports"
+  }
+]

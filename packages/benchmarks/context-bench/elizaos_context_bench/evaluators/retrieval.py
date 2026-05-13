@@ -77,6 +77,8 @@ class RetrievalEvaluator:
         """
         norm_predicted = self.normalize_text(predicted)
         norm_expected = self.normalize_text(expected)
+        if not norm_predicted or not norm_expected:
+            return False
         return norm_expected in norm_predicted
 
     def evaluate_fuzzy_match(
@@ -311,6 +313,7 @@ class RetrievalEvaluator:
         contains = self.evaluate_contains(predicted, expected)
         fuzzy_match, fuzzy_score = self.evaluate_fuzzy_match(predicted, expected)
         semantic_similarity = self.evaluate_semantic_similarity(predicted, expected)
+        semantic_match = semantic_similarity >= self.semantic_threshold
 
         result: dict[str, bool | float] = {
             "exact_match": exact_match,
@@ -318,7 +321,11 @@ class RetrievalEvaluator:
             "fuzzy_match": fuzzy_match,
             "fuzzy_score": fuzzy_score,
             "semantic_similarity": semantic_similarity,
-            "retrieval_success": exact_match or contains or fuzzy_match,
+            "semantic_match": semantic_match,
+            "retrieval_success": exact_match
+            or contains
+            or fuzzy_match
+            or semantic_match,
         }
 
         if needle:

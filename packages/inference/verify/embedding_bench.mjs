@@ -4,8 +4,8 @@
  * harness.
  *
  * Per `packages/inference/AGENTS.md` §1 the embedding model is either the
- * text backbone with `--pooling last` (`0_6b`) or a dedicated
- * `embedding/eliza-1-embedding.gguf` (Qwen3-Embedding-0.6B) on the larger
+ * text backbone with `--pooling last` (`0_6b` / `1_7b`) or a dedicated
+ * `embedding/eliza-1-embedding.gguf` on the larger
  * tiers. This harness drives a `llama-server --embeddings --pooling last`
  * over a GGUF and measures:
  *   - cold-load time of the embedding region (spawn → /health),
@@ -93,7 +93,7 @@ function resolveModel(opts) {
   const modelsRoot = path.join(home, ".eliza", "local-inference", "models");
   const candidates = [];
   // A real dedicated embedding region, if any bundle ships it.
-  for (const tier of ["1_7b", "9b", "27b"]) {
+  for (const tier of ["0_6b", "1_7b", "4b", "9b", "27b"]) {
     const dir = path.join(modelsRoot, `eliza-1-${tier}.bundle`, "embedding");
     if (fs.existsSync(dir)) {
       for (const f of fs.readdirSync(dir)) {
@@ -101,8 +101,8 @@ function resolveModel(opts) {
       }
     }
   }
-  // Qwen3-Embedding-0.6B lineage stand-in (also the 0_6b text backbone base).
-  candidates.push(path.join("/tmp", "eliza1-eval-models", "Qwen3-0.6B-Q8_0.gguf"));
+  // Eliza-1 pooled-text stand-in (the 0_6b text backbone base).
+  candidates.push(path.join("/tmp", "eliza1-eval-models", "Qwen3.5-0.6B-Q8_0.gguf"));
   candidates.push(path.join(modelsRoot, "eliza-1-0_6b.bundle", "text", "eliza-1-0_6b-32k.gguf"));
   candidates.push(path.join(modelsRoot, "SmolLM2-360M-Instruct-Q4_K_M.gguf"));
   return firstExisting(...candidates);
@@ -233,7 +233,7 @@ async function main() {
       status: "skipped",
       reason: !bin
         ? "no llama-server binary found (build one: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu)"
-        : "no embedding GGUF found (point --model at an embedding/ GGUF or Qwen3-Embedding-0.6B / Qwen3-0.6B)",
+        : "no embedding GGUF found (point --model at an embedding/ GGUF or an Eliza-1 pooled-text backbone such as Qwen3.5-0.6B)",
       resolved: { bin, model },
     };
     fs.writeFileSync(reportPath, JSON.stringify(skipped, null, 2));
@@ -401,7 +401,7 @@ async function main() {
       note:
         "Server: llama-server --embeddings --pooling last over the GGUF. " +
         "`pairwise_ranking_pearson_vs_full` is the Pearson correlation between the corpus's pairwise-cosine matrix at the truncated width and at the full width — a cheap offline proxy for retrieval-ranking preservation when MTEB isn't available. " +
-        "On 0_6b the GGUF IS the text backbone (pooled-text mode); on 1_7b+ it should be the dedicated embedding/eliza-1-embedding.gguf (Qwen3-Embedding-0.6B).",
+        "On 0_6b/1_7b the GGUF may be the text backbone (pooled-text mode); on larger tiers it should be the dedicated embedding/eliza-1-embedding.gguf.",
     };
   } catch (err) {
     result = {

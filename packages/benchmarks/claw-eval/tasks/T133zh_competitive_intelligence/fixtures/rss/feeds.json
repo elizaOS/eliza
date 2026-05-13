@@ -1,0 +1,157 @@
+[
+  {
+    "article_id": "RSS-401",
+    "title": "竞品A发布4.0版本：新增AI助手功能",
+    "category": "竞品动态",
+    "content": "竞品A今日正式发布4.0版本，核心亮点是内置AI助手，可自动完成数据分析和报告生成。该版本还优化了移动端体验。",
+    "url": "https://news.example.com/competitor-a-v4",
+    "tags": [
+      "竞品A",
+      "版本发布",
+      "AI"
+    ],
+    "source": "行业新闻",
+    "published_at": "2026-03-24T09:00:00Z",
+    "summary": "竞品A今日正式发布4.0版本，核心亮点是内置AI助手，可自动完成数据分析和报告生成。该版本还优化了移动端体验。",
+    "word_count": 55
+  },
+  {
+    "article_id": "RSS-402",
+    "title": "竞品A 4.0用户测评：AI助手表现亮眼",
+    "category": "竞品动态",
+    "content": "第三方测评机构对竞品A 4.0进行了深度评测，AI助手在简单分析任务上准确率达85%，但复杂场景仍需人工干预。性能方面，页面加载速度提升30%。",
+    "url": "https://tech-review.example.com/comp-a-review",
+    "tags": [
+      "竞品A",
+      "评测",
+      "AI"
+    ],
+    "source": "科技评测",
+    "published_at": "2026-03-25T10:00:00Z",
+    "summary": "第三方测评机构对竞品A 4.0进行了深度评测，AI助手在简单分析任务上准确率达85%，但复杂场景仍需人工干预。性能方面，页面加载速度提升30%。",
+    "word_count": 72
+  },
+  {
+    "article_id": "RSS-403",
+    "title": "竞品A CEO专访：未来3年全面拥抱AI",
+    "category": "竞品动态",
+    "content": "竞品A CEO在专访中透露，公司未来3年将把研发预算的40%投入AI方向，计划覆盖从客服到运营的全流程AI化。",
+    "url": "https://news.example.com/comp-a-ceo",
+    "tags": [
+      "竞品A",
+      "战略",
+      "AI"
+    ],
+    "source": "行业新闻",
+    "published_at": "2026-03-25T14:00:00Z",
+    "summary": "竞品A CEO在专访中透露，公司未来3年将把研发预算的40%投入AI方向，计划覆盖从客服到运营的全流程AI化。",
+    "word_count": 55
+  },
+  {
+    "article_id": "RSS-404",
+    "title": "竞品B获得C轮融资5亿元",
+    "category": "竞品动态",
+    "content": "竞品B完成C轮5亿元融资，由红杉中国领投。融资将主要用于海外市场扩张和大数据平台建设。目前竞品B的企业客户数已超过3000家。",
+    "url": "https://funding.example.com/comp-b-series-c",
+    "tags": [
+      "竞品B",
+      "融资",
+      "投资"
+    ],
+    "source": "投融资",
+    "published_at": "2026-03-23T08:00:00Z",
+    "summary": "竞品B完成C轮5亿元融资，由红杉中国领投。融资将主要用于海外市场扩张和大数据平台建设。目前竞品B的企业客户数已超过3000家。",
+    "word_count": 63
+  },
+  {
+    "article_id": "RSS-405",
+    "title": "竞品B宣布进军东南亚市场",
+    "category": "竞品动态",
+    "content": "竞品B在融资后迅速行动，宣布在新加坡设立亚太总部，计划年底前覆盖5个东南亚国家。",
+    "url": "https://news.example.com/comp-b-sea",
+    "tags": [
+      "竞品B",
+      "海外",
+      "扩张"
+    ],
+    "source": "行业新闻",
+    "published_at": "2026-03-24T11:00:00Z",
+    "summary": "竞品B在融资后迅速行动，宣布在新加坡设立亚太总部，计划年底前覆盖5个东南亚国家。",
+    "word_count": 40
+  },
+  {
+    "article_id": "RSS-406",
+    "title": "全球SaaS市场规模突破3000亿美元",
+    "category": "行业趋势",
+    "content": "Gartner最新报告显示，2025年全球SaaS市场规模首次突破3000亿美元，同比增长18%。AI和垂直行业SaaS是最大增长引擎。",
+    "url": "https://news.example.com/saas-market",
+    "tags": [
+      "SaaS",
+      "市场",
+      "趋势"
+    ],
+    "source": "行业新闻",
+    "published_at": "2026-03-22T07:00:00Z",
+    "summary": "Gartner最新报告显示，2025年全球SaaS市场规模首次突破3000亿美元，同比增长18%。AI和垂直行业SaaS是最大增长引擎。",
+    "word_count": 68
+  },
+  {
+    "article_id": "RSS-407",
+    "title": "某明星基金清盘",
+    "category": "金融",
+    "content": "某知名量化对冲基金因策略失灵宣布清盘。",
+    "url": "https://funding.example.com/fund-close",
+    "tags": [
+      "基金",
+      "金融"
+    ],
+    "source": "投融资",
+    "published_at": "2026-03-23T15:00:00Z",
+    "summary": "某知名量化对冲基金因策略失灵宣布清盘。",
+    "word_count": 19
+  },
+  {
+    "article_id": "RSS-408",
+    "title": "芯片供应链恢复正常",
+    "category": "供应链",
+    "content": "全球芯片供应链基本恢复正常，交期缩短至6周以内。",
+    "url": "https://tech-review.example.com/chip-supply",
+    "tags": [
+      "芯片",
+      "供应链"
+    ],
+    "source": "科技评测",
+    "published_at": "2026-03-24T13:00:00Z",
+    "summary": "全球芯片供应链基本恢复正常，交期缩短至6周以内。",
+    "word_count": 24
+  },
+  {
+    "article_id": "RSS-409",
+    "title": "新能源汽车销量创新高",
+    "category": "汽车",
+    "content": "3月新能源汽车零售销量突破100万辆。",
+    "url": "https://news.example.com/ev-sales",
+    "tags": [
+      "汽车",
+      "新能源"
+    ],
+    "source": "行业新闻",
+    "published_at": "2026-03-25T08:00:00Z",
+    "summary": "3月新能源汽车零售销量突破100万辆。",
+    "word_count": 19
+  },
+  {
+    "article_id": "RSS-410",
+    "title": "体育赛事新闻",
+    "category": "体育",
+    "content": "2026年世界杯预选赛最新赛果。",
+    "url": "https://news.example.com/sports",
+    "tags": [
+      "体育"
+    ],
+    "source": "综合新闻",
+    "published_at": "2026-03-25T20:00:00Z",
+    "summary": "2026年世界杯预选赛最新赛果。",
+    "word_count": 16
+  }
+]

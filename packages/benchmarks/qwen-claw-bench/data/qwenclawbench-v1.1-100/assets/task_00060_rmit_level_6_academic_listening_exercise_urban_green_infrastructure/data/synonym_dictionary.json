@@ -1,0 +1,447 @@
+[
+  {
+    "word_a": "mitigate",
+    "word_b": "reduce",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "substantial",
+    "word_b": "significant",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "implement",
+    "word_b": "execute",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "infrastructure",
+    "word_b": "framework",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "enhance",
+    "word_b": "improve",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "deteriorate",
+    "word_b": "worsen",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "adjacent",
+    "word_b": "neighbouring",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "approximately",
+    "word_b": "roughly",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "fluctuate",
+    "word_b": "vary",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "accumulate",
+    "word_b": "build up",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "diminish",
+    "word_b": "decrease",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "expenditure",
+    "word_b": "spending",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "residential",
+    "word_b": "domestic",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "comprehensive",
+    "word_b": "thorough",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "demonstrate",
+    "word_b": "show",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "facilitate",
+    "word_b": "enable",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "predominant",
+    "word_b": "main",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "subsequent",
+    "word_b": "following",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "utilise",
+    "word_b": "use",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "adequate",
+    "word_b": "sufficient",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "alter",
+    "word_b": "change",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "attribute",
+    "word_b": "assign",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "commence",
+    "word_b": "begin",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "comprise",
+    "word_b": "consist of",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "consent",
+    "word_b": "agreement",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "constrain",
+    "word_b": "restrict",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "crucial",
+    "word_b": "essential",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "deduce",
+    "word_b": "infer",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "derive",
+    "word_b": "obtain",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "deviate",
+    "word_b": "diverge",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "diminish",
+    "word_b": "lessen",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "displace",
+    "word_b": "replace",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "emerge",
+    "word_b": "appear",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "encounter",
+    "word_b": "face",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "erode",
+    "word_b": "wear away",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "exceed",
+    "word_b": "surpass",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "exhibit",
+    "word_b": "display",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "extract",
+    "word_b": "remove",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "generate",
+    "word_b": "produce",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "hypothesis",
+    "word_b": "theory",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "incentive",
+    "word_b": "motivation",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "incorporate",
+    "word_b": "include",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "inevitable",
+    "word_b": "unavoidable",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "inhibit",
+    "word_b": "prevent",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "initiate",
+    "word_b": "start",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "integrate",
+    "word_b": "combine",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "magnitude",
+    "word_b": "extent",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "modify",
+    "word_b": "adjust",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "obtain",
+    "word_b": "acquire",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "persist",
+    "word_b": "continue",
+    "domain": "academic_general"
+  },
+  {
+    "word_a": "biodiversity",
+    "word_b": "ecological diversity",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "precipitation",
+    "word_b": "rainfall",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "vegetation",
+    "word_b": "plant cover",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "ecosystem",
+    "word_b": "ecological system",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "habitat",
+    "word_b": "natural environment",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "pollutant",
+    "word_b": "contaminant",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "sequestration",
+    "word_b": "capture",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "emission",
+    "word_b": "discharge",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "degradation",
+    "word_b": "deterioration",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "resilience",
+    "word_b": "recovery capacity",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "conservation",
+    "word_b": "preservation",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "runoff",
+    "word_b": "surface water flow",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "infiltration",
+    "word_b": "absorption",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "impervious",
+    "word_b": "non-porous",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "permeable",
+    "word_b": "porous",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "canopy",
+    "word_b": "tree cover",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "riparian",
+    "word_b": "riverbank",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "thermal",
+    "word_b": "heat-related",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "evapotranspiration",
+    "word_b": "moisture release",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "catchment",
+    "word_b": "drainage area",
+    "domain": "environmental_science"
+  },
+  {
+    "word_a": "urbanisation",
+    "word_b": "city expansion",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "zoning",
+    "word_b": "land-use regulation",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "retrofit",
+    "word_b": "upgrade",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "municipality",
+    "word_b": "local government",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "ordinance",
+    "word_b": "regulation",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "density",
+    "word_b": "concentration",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "corridor",
+    "word_b": "pathway",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "mandate",
+    "word_b": "require",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "fiscal",
+    "word_b": "financial",
+    "domain": "urban_planning"
+  },
+  {
+    "word_a": "viable",
+    "word_b": "feasible",
+    "domain": "economics"
+  },
+  {
+    "word_a": "return on investment",
+    "word_b": "financial yield",
+    "domain": "economics"
+  },
+  {
+    "word_a": "revenue",
+    "word_b": "income",
+    "domain": "economics"
+  },
+  {
+    "word_a": "allocate",
+    "word_b": "distribute",
+    "domain": "economics"
+  },
+  {
+    "word_a": "deficit",
+    "word_b": "shortfall",
+    "domain": "economics"
+  },
+  {
+    "word_a": "surplus",
+    "word_b": "excess",
+    "domain": "economics"
+  },
+  {
+    "word_a": "procurement",
+    "word_b": "purchasing",
+    "domain": "economics"
+  },
+  {
+    "word_a": "depreciation",
+    "word_b": "decline in value",
+    "domain": "economics"
+  },
+  {
+    "word_a": "subsidy",
+    "word_b": "financial support",
+    "domain": "economics"
+  },
+  {
+    "word_a": "tariff",
+    "word_b": "duty",
+    "domain": "economics"
+  }
+]

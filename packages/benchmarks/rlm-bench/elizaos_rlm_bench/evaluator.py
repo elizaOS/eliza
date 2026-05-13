@@ -36,6 +36,14 @@ def compute_exact_match(predicted: str, expected: str) -> bool:
 
 def compute_partial_match(predicted: str, expected: str) -> float:
     """Compute partial match score (for multi-value answers)."""
+    expected_atoms = _extract_expected_answer_atoms(expected)
+    if expected_atoms:
+        predicted_atoms = _extract_predicted_answer_atoms(predicted)
+        if not predicted_atoms:
+            return 0.0
+        matched = sum(1 for atom in expected_atoms if atom in predicted_atoms)
+        return matched / len(expected_atoms)
+
     pred_tokens = set(normalize_answer(predicted).split())
     exp_tokens = set(normalize_answer(expected).split())
 
@@ -44,6 +52,23 @@ def compute_partial_match(predicted: str, expected: str) -> float:
 
     intersection = pred_tokens & exp_tokens
     return len(intersection) / len(exp_tokens)
+
+
+def _extract_expected_answer_atoms(answer: str) -> set[str]:
+    """Extract generated code-like answer atoms from an expected answer."""
+    return {
+        token.upper()
+        for token in re.findall(r"\b[A-Z0-9]{6,}\b", answer)
+        if any(ch.isdigit() for ch in token) or token.upper() == token
+    }
+
+
+def _extract_predicted_answer_atoms(answer: str) -> set[str]:
+    """Extract candidate answer atoms from a model prediction."""
+    return {
+        token.upper()
+        for token in re.findall(r"\b[A-Za-z0-9]{6,}\b", answer)
+    }
 
 
 def compute_semantic_similarity(

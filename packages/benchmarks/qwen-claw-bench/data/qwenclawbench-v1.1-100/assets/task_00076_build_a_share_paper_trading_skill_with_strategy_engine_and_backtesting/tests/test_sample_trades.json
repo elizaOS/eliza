@@ -1,0 +1,97 @@
+[
+    {
+        "test_id": "trade_001",
+        "description": "Buy main board stock - standard commission",
+        "stock_code": "sz000858",
+        "board": "main_board",
+        "direction": "buy",
+        "price": 150.00,
+        "quantity": 1000,
+        "trade_amount": 150000.00,
+        "expected_costs": {
+            "commission": 37.50,
+            "commission_note": "max(150000 * 0.00025, 5) = max(37.50, 5) = 37.50",
+            "stamp_tax": 0.00,
+            "stamp_tax_note": "Buy side: no stamp tax",
+            "transfer_fee": 3.00,
+            "transfer_fee_note": "150000 * 0.00002 = 3.00",
+            "total_cost": 40.50
+        }
+    },
+    {
+        "test_id": "trade_002",
+        "description": "Sell main board stock - includes stamp tax",
+        "stock_code": "sh600519",
+        "board": "main_board",
+        "direction": "sell",
+        "price": 1750.00,
+        "quantity": 200,
+        "trade_amount": 350000.00,
+        "expected_costs": {
+            "commission": 87.50,
+            "commission_note": "max(350000 * 0.00025, 5) = max(87.50, 5) = 87.50",
+            "stamp_tax": 350.00,
+            "stamp_tax_note": "350000 * 0.001 = 350.00 (sell only)",
+            "transfer_fee": 7.00,
+            "transfer_fee_note": "350000 * 0.00002 = 7.00",
+            "total_cost": 444.50
+        }
+    },
+    {
+        "test_id": "trade_003",
+        "description": "Buy small amount - minimum commission applies",
+        "stock_code": "sz300750",
+        "board": "chinext",
+        "direction": "buy",
+        "price": 55.00,
+        "quantity": 100,
+        "trade_amount": 5500.00,
+        "expected_costs": {
+            "commission": 5.00,
+            "commission_note": "max(5500 * 0.00025, 5) = max(1.375, 5) = 5.00 (minimum applies)",
+            "stamp_tax": 0.00,
+            "stamp_tax_note": "Buy side: no stamp tax",
+            "transfer_fee": 0.11,
+            "transfer_fee_note": "5500 * 0.00002 = 0.11",
+            "total_cost": 5.11
+        }
+    },
+    {
+        "test_id": "trade_004",
+        "description": "Sell STAR Market stock",
+        "stock_code": "sh688001",
+        "board": "star_market",
+        "direction": "sell",
+        "price": 88.50,
+        "quantity": 500,
+        "trade_amount": 44250.00,
+        "expected_costs": {
+            "commission": 11.06,
+            "commission_note": "max(44250 * 0.00025, 5) = max(11.0625, 5) = 11.06 (rounded to 2dp)",
+            "stamp_tax": 44.25,
+            "stamp_tax_note": "44250 * 0.001 = 44.25 (sell only)",
+            "transfer_fee": 0.89,
+            "transfer_fee_note": "44250 * 0.00002 = 0.885 ≈ 0.89",
+            "total_cost": 56.20
+        }
+    },
+    {
+        "test_id": "trade_005",
+        "description": "Buy large position in main board stock",
+        "stock_code": "sz000333",
+        "board": "main_board",
+        "direction": "buy",
+        "price": 62.30,
+        "quantity": 5000,
+        "trade_amount": 311500.00,
+        "expected_costs": {
+            "commission": 77.88,
+            "commission_note": "max(311500 * 0.00025, 5) = max(77.875, 5) = 77.88",
+            "stamp_tax": 0.00,
+            "stamp_tax_note": "Buy side: no stamp tax",
+            "transfer_fee": 6.23,
+            "transfer_fee_note": "311500 * 0.00002 = 6.23",
+            "total_cost": 84.11
+        }
+    }
+]

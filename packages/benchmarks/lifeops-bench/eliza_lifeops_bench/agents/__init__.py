@@ -13,6 +13,7 @@ from typing import Any, Awaitable, Callable
 
 from ..types import MessageTurn
 from ._openai_compat import OpenAICompatAgent
+from .adapter_paths import ensure_benchmark_adapter_importable
 from .cerebras_direct import build_cerebras_direct_agent
 from .hermes import build_hermes_agent
 from .openclaw import OpenClawAgent, build_openclaw_agent
@@ -49,6 +50,7 @@ def build_eliza_agent(
     with bench-friendly defaults: the canonical medium-seed snapshot from
     ``data/snapshots/`` and the project-standard ``now_iso``.
     """
+    ensure_benchmark_adapter_importable("eliza")
     try:
         from eliza_adapter.lifeops_bench import build_lifeops_bench_agent_fn
     except ImportError as exc:  # pragma: no cover — import-only branch
@@ -75,4 +77,5 @@ __all__ = [
     "build_eliza_agent",
     "build_hermes_agent",
     "build_openclaw_agent",
+    "ensure_benchmark_adapter_importable",
 ]

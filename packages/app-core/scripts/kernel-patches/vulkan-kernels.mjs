@@ -94,10 +94,12 @@ export const VULKAN_MULTIBLOCK_KERNEL_FILES = [
 ];
 
 // Fused-attention compute shaders (QJL-K score + V-mix, online softmax, score
-// never materialised). One workgroup per (q_head); q_pos is a push constant.
+// never materialised). One workgroup per (q_head); q_pos plus causal
+// q_pos_base are push constants.
 // Verified standalone by `make -C packages/inference/verify vulkan-verify-fused`.
-// Staged into the fork; the runtime wires GGML_OP_FUSED_ATTN_QJL_TBQ (and the
-// Polar V-mix variant) graph dispatch onto these pipelines.
+// Staged into the fork. Runtime dispatch currently wires the TBQ3-V
+// GGML_OP_FUSED_ATTN_QJL_TBQ path; the Polar V-mix shader remains
+// standalone-only until a distinct graph op/API and CPU reference exist.
 export const VULKAN_FUSED_KERNEL_FILES = [
   "fused_attn_qjl_tbq.comp",
   "fused_attn_qjl_polar.comp",
@@ -309,18 +311,9 @@ function applyPatches(cacheDir, { dryRun }) {
   return results;
 }
 
-function ensureLineAfter(text, anchor, line, ctx, { dryRun = false } = {}) {
+function ensureLineAfter(text, anchor, line, ctx) {
   if (text.includes(line)) return { text, changed: false };
   if (!text.includes(anchor)) {
-    if (dryRun) {
-      // In dry-run nothing earlier in the chain actually wrote, so the
-      // staging patch's anchor isn't present yet — that's expected, not a
-      // failure. Report it as "would repair once the staging patch lands".
-      console.log(
-        `[vulkan-kernels] (dry-run) repair anchor not yet present in ${ctx} (added by the staging patch); would insert: ${line.trim()}`,
-      );
-      return { text, changed: true };
-    }
     throw new Error(
       `[vulkan-kernels] repair anchor not found in ${ctx}: ${anchor}`,
     );
@@ -343,9 +336,7 @@ function repairPolarPrehtShaderRegistration(cacheDir, { dryRun }) {
   const anchor = `    string_to_spv("eliza_polar",          "polar.comp",          {});`;
   const line = `    string_to_spv("eliza_polar_preht",    "polar_preht.comp",    {});`;
   const original = fs.readFileSync(targetPath, "utf8");
-  const repaired = ensureLineAfter(original, anchor, line, targetPath, {
-    dryRun,
-  });
+  const repaired = ensureLineAfter(original, anchor, line, targetPath);
   if (repaired.changed && !dryRun) {
     fs.writeFileSync(targetPath, repaired.text, "utf8");
   }
@@ -373,7 +364,6 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
       `    vk_pipeline pipeline_eliza_polar;`,
       `    vk_pipeline pipeline_eliza_polar_preht;`,
       targetPath,
-      { dryRun },
     );
     text = r.text;
     changed = changed || r.changed;
@@ -384,12 +374,40 @@ function repairPolarPrehtPipeline(cacheDir, { dryRun }) {
       `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar,          "eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
       `    ggml_vk_create_pipeline(device, device->pipeline_eliza_polar_preht,    "eliza_polar_preht",    eliza_polar_preht_len,    eliza_polar_preht_data,    "main", 3, 6 * sizeof(uint32_t), {1, 1, 1}, {}, 1);`,
       targetPath,
-      { dryRun },
     );
     text = r.text;
     changed = changed || r.changed;
   }
 
+  if (changed && !dryRun) {
+    fs.writeFileSync(targetPath, text, "utf8");
+  }
+  return {
+    target: targetPath,
+    changed: changed && !dryRun,
+    wouldChange: changed,
+  };
+}
+
+function repairFusedAttnPipelinePushRanges(cacheDir, { dryRun }) {
+  const targetPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-vulkan",
+    "ggml-vulkan.cpp",
+  );
+  let text = fs.readFileSync(targetPath, "utf8");
+  const original = text;
+  text = text.replace(
+    `"eliza_fused_attn_qjl_tbq",   eliza_fused_attn_qjl_tbq_len,   eliza_fused_attn_qjl_tbq_data,   "main", 4, 6 * sizeof(uint32_t),`,
+    `"eliza_fused_attn_qjl_tbq",   eliza_fused_attn_qjl_tbq_len,   eliza_fused_attn_qjl_tbq_data,   "main", 4, 8 * sizeof(uint32_t),`,
+  );
+  text = text.replace(
+    `"eliza_fused_attn_qjl_polar", eliza_fused_attn_qjl_polar_len, eliza_fused_attn_qjl_polar_data, "main", 4, 7 * sizeof(uint32_t),`,
+    `"eliza_fused_attn_qjl_polar", eliza_fused_attn_qjl_polar_len, eliza_fused_attn_qjl_polar_data, "main", 4, 9 * sizeof(uint32_t),`,
+  );
+  const changed = text !== original;
   if (changed && !dryRun) {
     fs.writeFileSync(targetPath, text, "utf8");
   }
@@ -449,6 +467,53 @@ function patchVulkanRuntimeDispatch(cacheDir, { dryRun }) {
     `"eliza_polar",          eliza_polar_len,          eliza_polar_data,          "main", 3, 6 * sizeof(uint32_t),`,
   );
 
+  // Keep older already-sentinelled cached forks repairable after the fused
+  // attention push ABI grew causal/q_pos_base fields.
+  patched = patched.replace(
+    `struct eliza_vk_fused_attn_push {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t q_pos;
+    uint32_t sm_scale_bits;
+    uint32_t kv_tile;
+};`,
+    `struct eliza_vk_fused_attn_push {
+    uint32_t n_heads;
+    uint32_t n_kv_heads;
+    uint32_t n_tokens;
+    uint32_t q_pos;
+    uint32_t sm_scale_bits;
+    uint32_t kv_tile;
+    uint32_t causal;
+    uint32_t q_pos_base;
+};`,
+  );
+  patched = patched.replace(
+    `    const uint32_t kv_tile    = (uint32_t) params[3];
+    const uint32_t n_tokens   = (uint32_t) pk->ne[1];`,
+    `    const uint32_t kv_tile    = (uint32_t) params[3];
+    const uint32_t causal     = (uint32_t) (params[4] != 0);
+    const uint32_t q_pos_base = (uint32_t) params[5];
+    const uint32_t n_tokens   = (uint32_t) pk->ne[1];`,
+  );
+  patched = patched.replace(
+    `    const uint32_t kv_tile    = 0u;
+    const uint32_t causal     = 0u;
+    const uint32_t q_pos_base = 0u;
+    const uint32_t n_tokens   = (uint32_t) pk->ne[1];`,
+    `    const uint32_t kv_tile    = (uint32_t) params[3];
+    const uint32_t causal     = (uint32_t) (params[4] != 0);
+    const uint32_t q_pos_base = (uint32_t) params[5];
+    const uint32_t n_tokens   = (uint32_t) pk->ne[1];`,
+  );
+  patched = patched.replace(
+    `            n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile,
+        };`,
+    `            n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile, causal, q_pos_base,
+        };`,
+  );
+
   if (!patched.includes(RUNTIME_SENTINEL)) {
     const contextAnchor = `    // for GGML_VK_PERF_LOGGER`;
     if (!patched.includes(contextAnchor)) {
@@ -505,6 +570,8 @@ struct eliza_vk_fused_attn_push {
     uint32_t q_pos;
     uint32_t sm_scale_bits;
     uint32_t kv_tile;
+    uint32_t causal;
+    uint32_t q_pos_base;
 };
 
 // Long-context / non-voice scoring amortises the per-dispatch launch tax by
@@ -712,7 +779,8 @@ static void ggml_vk_eliza_attn_score_polar(ggml_backend_vk_context * ctx, vk_con
 //   src[1] = packed_k   QJL1_256 [head_dim=128, n_kv, n_kv_heads, ne3]  (nb[1] == 34)
 //   src[2] = packed_v   TBQ3_0   [head_dim=128, n_kv, n_kv_heads, ne3]  (nb[1] == 56, 4 chunks/token)
 //   dst    = out        F32      [head_dim=128, n_heads, n_q_pos, ne3]
-//   op_params[0] = n_kv_heads, [1] = sm_scale (float bits), [2] = v_use_qjl (TBQ ignores it), [3] = kv_tile
+//   op_params[0] = n_kv_heads, [1] = sm_scale (float bits), [2] = v_use_qjl (TBQ ignores it),
+//   [3] = kv_tile, [4] = causal, [5] = q_pos_base
 // One workgroup per (q_head); q_pos is a push constant, so n_q_pos > 1 is a
 // loop of dispatches (decode = 1). Conservative shape (ne3 == 1) matching the
 // other eliza graph routes; the unfused score → softmax → V-mix path covers
@@ -738,6 +806,8 @@ static void ggml_vk_eliza_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_c
     const uint32_t n_kv_heads = (uint32_t) params[0];
     const uint32_t sm_bits    = (uint32_t) params[1];
     const uint32_t kv_tile    = (uint32_t) params[3];
+    const uint32_t causal     = (uint32_t) (params[4] != 0);
+    const uint32_t q_pos_base = (uint32_t) params[5];
     const uint32_t n_tokens   = (uint32_t) pk->ne[1];
     const int64_t  n_q_pos    = q->ne[2];
     GGML_ASSERT(n_kv_heads > 0 && (n_heads % n_kv_heads) == 0);
@@ -757,7 +827,7 @@ static void ggml_vk_eliza_fused_attn_qjl_tbq(ggml_backend_vk_context * ctx, vk_c
     ggml_pipeline_request_descriptor_sets(ctx, pipeline, (uint32_t) n_q_pos);
     for (int64_t p = 0; p < n_q_pos; ++p) {
         const eliza_vk_fused_attn_push pc = {
-            n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile,
+            n_heads, n_kv_heads, n_tokens, (uint32_t) p, sm_bits, kv_tile, causal, q_pos_base,
         };
         ggml_vk_dispatch_pipeline(ctx, subctx, pipeline, { q_buf, pk_buf, pv_buf, dst_buf }, pc, { n_heads, 1, 1 });
     }
@@ -905,6 +975,9 @@ export function patchVulkanKernels(
     dryRun,
   });
   const prehtPipeline = repairPolarPrehtPipeline(cacheDir, { dryRun });
+  const fusedAttnPipeline = repairFusedAttnPipelinePushRanges(cacheDir, {
+    dryRun,
+  });
   const runtimeDispatch = patchVulkanRuntimeDispatch(cacheDir, { dryRun });
   console.log(
     `[vulkan-kernels] ${dryRun ? "(dry-run) " : ""}target=${target ?? "unknown"} staged ${copied.length} standalone Vulkan shaders into vulkan-shaders/ ` +
@@ -924,6 +997,9 @@ export function patchVulkanKernels(
   console.log(
     `[vulkan-kernels] polar_preht pipeline repair: ${prehtPipeline.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${prehtPipeline.target})`,
   );
+  console.log(
+    `[vulkan-kernels] fused_attn push-range repair: ${fusedAttnPipeline.wouldChange ? (dryRun ? "would-patch" : "patched") : "already-present"} (${fusedAttnPipeline.target})`,
+  );
   // AGENTS.md §3 enforcement (no eliza-missing vulkan binary) is done at
   // build-llama-cpp-dflash.mjs post-build via the requiredKernels audit.
   console.log(
@@ -935,6 +1011,7 @@ export function patchVulkanKernels(
     patchResults,
     prehtRegistration,
     prehtPipeline,
+    fusedAttnPipeline,
     runtimeDispatch,
     runtimeReady: "source-patched-pending-smoke",
     requiredGraphSmoke:

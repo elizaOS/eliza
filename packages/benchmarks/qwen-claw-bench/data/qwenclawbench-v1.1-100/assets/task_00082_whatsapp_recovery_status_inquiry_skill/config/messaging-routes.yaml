@@ -1,0 +1,28 @@
+# Messaging Routes Configuration
+routes:
+  - name: "whatsapp-primary"
+    channel: whatsapp
+    enabled: true
+    priority: 1
+    contacts:
+      - phone: "+86188xxxxxxxx01"
+        label: "Admin - Zhang Wei"
+        role: "owner"
+      - phone: "+86138xxxxxxxx00"
+        label: "DevOps - Li Jun"
+        role: "team"
+
+  - name: "telegram-alerts"
+    channel: telegram
+    enabled: true
+    priority: 2
+    botToken: "${TELEGRAM_BOT_TOKEN}"
+    chatId: "-1001234567890"
+    label: "Alert Channel"
+
+  - name: "discord-dev"
+    channel: discord
+    enabled: false
+    priority: 3
+    guildId: "987654321098765432"
+    channelId: "123456789012345678"

@@ -1,0 +1,20 @@
+{
+  "symbol": "LAUSDT",
+  "direction": "LONG",
+  "leverage": 3,
+  "entry_price": 0.2439,
+  "current_price": 0.2415,
+  "pnl_percent": -3.1,
+  "pnl_usdt": -155.0,
+  "position_size_usdt": 5000,
+  "quantity": 20500.2,
+  "entry_time": "2024-11-18T09:32:00Z",
+  "last_updated": "2024-11-20T14:00:00Z",
+  "liquidation_price": 0.1680,
+  "margin_used": 1666.67,
+  "margin_type": "cross",
+  "cumulative_funding_paid": -105.80,
+  "funding_rate_8h_pct": -0.035,
+  "exchange": "Binance",
+  "status": "open"
+}

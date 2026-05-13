@@ -87,14 +87,14 @@ export const providersProvider: Provider = {
 		const formatProviders = (providers: typeof allProviders, title: string) =>
 			[
 				title,
-				`providers[${providers.length}]:`,
+				`providers: ${providers.length}`,
 				...(providers.length > 0
 					? providers.map(
 							(provider) =>
 								`- ${provider.name}: ${renderDescription(provider)}`,
 						)
 					: ["- none"]),
-				`provider_hints[${selectionHints.length}]:`,
+				`provider_hints: ${selectionHints.length}`,
 				...selectionHints.map((hint) => `- ${hint}`),
 			].join("\n");
 

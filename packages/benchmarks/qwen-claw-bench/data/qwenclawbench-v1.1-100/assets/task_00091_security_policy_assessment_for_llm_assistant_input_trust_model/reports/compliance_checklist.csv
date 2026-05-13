@@ -1,0 +1,26 @@
+control_id,control_name,category,status,last_audit_date,notes
+CTL-001,Input Channel Classification,Access Control,Implemented,2024-09-15,Binary trusted/untrusted classification in place per policy v2.3. All channels properly categorized.
+CTL-002,Account Takeover Prevention,Authentication,Implemented,2024-09-15,WhatsApp phone number verification active. Session management with 30-minute timeout enforced.
+CTL-003,Untrusted Content Execution Block,Access Control,Implemented,2024-09-15,Policy AR-002 blocks execution of commands from untrusted sources. Verified via Q4 audit log.
+CTL-004,Physical Access Control,Physical Security,Implemented,2024-09-15,USB device allowlist active. Auto-lock timeout configured. Physical presence required for local HID.
+CTL-005,Prompt Injection Detection,Threat Detection,Partial,2024-09-15,Basic pattern matching for known injection phrases. Does not cover all vectors. Improvement planned for Q1 2025.
+CTL-006,Cross-Channel Boundary Enforcement,Access Control,Implemented,2024-09-15,Policy AR-003 prevents trusted channels from executing untrusted content. Flagging mechanism active.
+CTL-007,Multi-step Injection Detection,Threat Detection,Implemented,2024-09-15,Conversation context analysis monitors for escalation patterns across message sequences.
+CTL-008,Audit Logging,Monitoring,Implemented,2024-09-15,"All commands logged with channel, action, and risk score. 365-day retention. Quarterly review process active."
+CTL-009,Rate Limiting,Availability,Implemented,2024-09-15,"10 commands per minute, 200 per hour. Burst detection at 15 commands triggers temporary block."
+CTL-010,PDF Content Sanitization,Input Validation,Partial,2024-09-15,Basic text extraction with metadata stripping. Invisible text layer detection added post-INC-2024-004. JavaScript disabling added post-INC-2024-007.
+CTL-011,Email Content Sanitization,Input Validation,Partial,2024-09-15,Email body parsed as plain text. Chain depth limiting added post-INC-2024-008. Header injection detection not yet implemented.
+CTL-012,Web Content Sanitization,Input Validation,Partial,2024-09-15,"HTML tag stripping active. Hidden element detection (display:none, visibility:hidden) added post-INC-2024-006."
+CTL-013,Session Management,Authentication,Implemented,2024-09-15,30-minute session timeout with activity-based renewal. Force logout on timeout. Max 1 concurrent session.
+CTL-014,USB Device Allowlisting,Physical Security,Implemented,2024-09-15,Only pre-approved USB HID devices accepted. New devices quarantined until manual approval.
+CTL-015,Bluetooth Input Security,Physical Security,Not_Implemented,2024-09-15,Bluetooth keyboard currently allowed with auto-accept for known devices. No PIN required. Identified as security gap.
+CTL-016,Voice Transcription Security,Input Validation,Partial,2024-09-15,Confidence threshold at 0.85. Low-confidence fallback to text input. No adversarial audio detection.
+CTL-017,Incident Response Procedure,Operations,Implemented,2024-09-15,Emergency lockdown procedure documented and tested. Notification via WhatsApp and email.
+CTL-018,Data Classification,Data Protection,Implemented,2024-09-15,Input sources classified as trusted/untrusted. Output data classification not yet implemented.
+CTL-019,Encryption in Transit,Data Protection,Implemented,2024-09-15,WhatsApp E2E encryption. HTTPS for webhook. Local HID does not require encryption (physical connection).
+CTL-020,Clipboard Content Validation,Input Validation,Partial,2024-11-10,Clipboard sanitization added post-INC-2024-012. Unicode normalization and hidden character stripping implemented.
+CTL-021,Word Document Sanitization,Input Validation,Not_Implemented,2024-09-15,Word document processing uses basic text extraction only. No macro detection or template injection prevention.
+CTL-022,Multi-Factor Authentication,Authentication,Not_Implemented,2024-09-15,No MFA for any channel. WhatsApp relies on phone number only. Local HID relies on physical presence only.
+CTL-023,Automated Threat Intelligence,Threat Detection,Not_Implemented,2024-09-15,No integration with threat intelligence feeds. Known malicious patterns are manually updated.
+CTL-024,User Security Awareness Training,Operations,Partial,2024-09-15,Basic documentation provided. No formal training program. User feedback indicates confusion about policy restrictions.
+CTL-025,Tiered Permission System,Access Control,Not_Implemented,2024-09-15,Proposal drafted (permission_tiers_proposal.yaml) but not finalized. Internal inconsistencies need resolution.

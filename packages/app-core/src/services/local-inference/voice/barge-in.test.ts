@@ -186,6 +186,32 @@ describe("BargeInController — VAD-driven barge-in", () => {
     }
   });
 
+  it("ignores stale ASR words after the interruption window resumes TTS", () => {
+    vi.useFakeTimers();
+    try {
+      const c = new BargeInController({ wordsGraceMs: 500 });
+      const vad = new FakeVad();
+      c.bindVad(vad);
+      c.setAgentSpeaking(true);
+      const signals: BargeInSignal[] = [];
+      c.onSignal((s) => signals.push(s));
+
+      vad.emit(speechActive(100));
+      vi.advanceTimersByTime(600);
+      expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
+
+      c.onWordsDetected({
+        wordCount: 2,
+        partialText: "late stale",
+        timestampMs: 800,
+      });
+      expect(signals.map((s) => s.type)).toEqual(["pause-tts", "resume-tts"]);
+      expect(c.currentCancelToken()).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("setAgentSpeaking(false) clears a pending word-confirm without resuming", () => {
     vi.useFakeTimers();
     try {

@@ -1,0 +1,144 @@
+name: Build libelizainference (iOS, FFI static)
+
+# Builds the iOS / iPadOS / simulator XCFramework wrapping llama.cpp +
+# the FFI streaming surface from `scripts/omnivoice-fuse/ffi.h`. The
+# resulting `.xcframework` is linked into the Eliza app bundle so the
+# in-process FFI streaming runner can dlopen it at runtime.
+#
+# Why an XCFramework: iOS does not allow loading arbitrary `.dylib` at
+# runtime from the app sandbox, and `child_process.spawn` is unavailable
+# (App Store review + sandbox restrictions). The FFI path is mandatory
+# on mobile (see `runtime-target.ts` decision rules) and the bun:ffi
+# loader on iOS opens the framework binary that ships inside the .ipa.
+#
+# This workflow reuses `packages/inference/llama.cpp/build-xcframework.sh`
+# as the source of truth for cmake flags so a manual local build matches
+# CI exactly.
+#
+# STATUS: SCAFFOLD. The runner has not been validated against the
+# Electrobun iOS shell's XCFramework consumption path. Top-level
+# `if: false` keeps this out of the default fan-out.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real_build:
+        description: "Bypass the if:false guard once the build is verified"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "llama-ffi-ios-*"
+
+concurrency:
+  group: build-llama-ffi-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.13"
+  # The XCFramework script targets iOS 16.4 / macOS 13.3 by default; do
+  # not lower without confirming the app's `Info.plist` deployment target.
+  IOS_MIN_OS_VERSION: "16.4"
+
+jobs:
+  build:
+    name: iOS XCFramework (Metal)
+    if: ${{ false }}
+    runs-on: macos-14
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Select Xcode
+        run: |
+          set -euo pipefail
+          # Use the latest available; the runner image's default is fine.
+          xcodebuild -version
+          sudo xcode-select --print-path
+
+      - name: Install build deps
+        run: |
+          set -euo pipefail
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          cmake --version
+
+      - name: Cache llama.cpp build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/inference/llama.cpp/build-ios-device
+            packages/inference/llama.cpp/build-ios-sim
+            packages/inference/llama.cpp/build-macos
+          key: llama-ffi-ios-${{ hashFiles('packages/inference/llama.cpp/build-xcframework.sh', 'packages/inference/llama.cpp/CMakeLists.txt') }}
+          restore-keys: |
+            llama-ffi-ios-
+
+      - name: Build llama.xcframework
+        run: |
+          set -euo pipefail
+          # The upstream script handles the device + simulator + macOS
+          # slice fan-out. CRITICAL: we do NOT modify the script in this
+          # workflow — the source of truth lives in the repo so a
+          # developer can reproduce locally.
+          cd packages/inference/llama.cpp
+          bash build-xcframework.sh
+
+      - name: Verify XCFramework
+        run: |
+          set -euo pipefail
+          XCF_DIR="packages/inference/llama.cpp/build-apple/llama.xcframework"
+          if [ ! -d "$XCF_DIR" ]; then
+            echo "expected XCFramework missing: $XCF_DIR"
+            find packages/inference/llama.cpp -maxdepth 3 -name "*.xcframework" -type d || true
+            exit 1
+          fi
+          ls -la "$XCF_DIR"
+
+      - name: Stage XCFramework
+        id: stage
+        run: |
+          set -euo pipefail
+          STAGE_DIR="artifacts/libelizainference/ios-arm64"
+          mkdir -p "$STAGE_DIR"
+          XCF_DIR="packages/inference/llama.cpp/build-apple/llama.xcframework"
+          cp -R "$XCF_DIR" "$STAGE_DIR/llama.xcframework"
+          {
+            echo "target=ios-arm64"
+            echo "backend=metal"
+            echo "framework=llama.xcframework"
+            echo "ref=${{ github.ref }}"
+            echo "sha=${{ github.sha }}"
+            echo "runner=macos-14"
+            echo "ios_min=${{ env.IOS_MIN_OS_VERSION }}"
+            echo "llama_sha=$(git -C packages/inference/llama.cpp rev-parse HEAD || echo n/a)"
+          } > "$STAGE_DIR/BUILD_INFO.txt"
+          echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload XCFramework artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libelizainference-ios-arm64
+          path: ${{ steps.stage.outputs.stage_dir }}/*
+          if-no-files-found: error
+          retention-days: 30

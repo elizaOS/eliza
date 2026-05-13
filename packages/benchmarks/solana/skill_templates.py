@@ -893,7 +893,7 @@ _TEMPLATE_DISPATCH: dict[str, object] = {
 
 def get_template_for_step(step: int, agent_pubkey: str) -> tuple[str, str]:
     """Get (name, typescript_code) for deterministic step, or ("", "") if out of range."""
-    if step >= len(DETERMINISTIC_TEMPLATES):
+    if step < 0 or step >= len(DETERMINISTIC_TEMPLATES):
         return ("", "")
     name = DETERMINISTIC_TEMPLATES[step][0]
     fn = _TEMPLATE_DISPATCH.get(name)

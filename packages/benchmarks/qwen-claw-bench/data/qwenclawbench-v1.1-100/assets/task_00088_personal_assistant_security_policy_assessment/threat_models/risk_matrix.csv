@@ -1,0 +1,13 @@
+threat_id,threat_name,inherent_risk_score,mitigation_effectiveness_pct,residual_risk_score,risk_owner,review_date
+THR-001,whatsapp_account_takeover,15,0.85,2.25,Security Operations,2024-07-10
+THR-002,sim_swap_attack,10,70,3.0,Security Operations,2024-07-10
+THR-003,rpi_physical_theft,8,60,3.2,Facilities & IT,2024-07-12
+THR-004,indirect_prompt_injection_via_pdf,16,80,3.2,Application Security,2024-07-08
+THR-005,social_engineering_chain,15,50,7.5,Security Awareness,2024-07-15
+THR-006,whatsapp_group_impersonation,9,90,0.9,Application Security,2024-07-15
+THR-007,usb_rubber_ducky_attack,10,75,2.5,Facilities & IT,2024-07-12
+THR-008,indirect_prompt_injection_via_webpage,16,80,3.2,Application Security,2024-07-08
+THR-009,email_phishing_with_crafted_document,12,85,1.8,Security Awareness,2024-07-10
+THR-010,whatsapp_web_session_hijacking,15,60,6.0,Security Operations,2024-07-10
+THR-011,supply_chain_compromise_whatsapp_api,5,40,3.0,Vendor Management,2024-08-01
+THR-012,audit_log_tampering,9,30,6.3,Security Operations,2024-07-20

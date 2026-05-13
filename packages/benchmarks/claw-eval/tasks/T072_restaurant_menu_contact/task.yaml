@@ -1,0 +1,133 @@
+task_id: T072_restaurant_menu_contact
+task_name: Restaurant Menu Contact Info Extraction
+version: "1.0"
+category: multimodal
+difficulty: medium
+tags: [general]
+
+services:
+  - name: ocr
+    command: python mock_services/ocr/server.py
+    port: 9116
+    health_check: http://localhost:9116/ocr/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9116/ocr/reset
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    hey my friend sent me a menu fixtures/media/menu.jpeg . looks good and i want to know the contact number to book.
+  language: en
+  attachments:
+    - fixtures/media/menu.jpeg
+
+tools:
+  - name: ocr_extract_text
+    description: Extract text from an image using OCR. Returns the recognized text content.
+    input_schema:
+      type: object
+      properties:
+        image_path:
+          type: string
+          description: Path to the image file to process
+      required: [image_path]
+
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: ocr_extract_text
+    url: http://localhost:9116/ocr/extract
+    method: POST
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+sandbox_files:
+  - fixtures/media/menu.jpeg
+  - fixtures/ocr/menu_ocr.txt
+
+environment:
+  timeout_seconds: 300
+  max_turns: 15
+
+scoring_components:
+  - name: phone_numbers
+    weight: 0.70
+    check:
+      type: keywords_present
+      keywords: ["2234 0080", "2234 0001", "2234 0010"]
+  - name: location_context
+    weight: 0.30
+    check:
+      type: keywords_present
+      keywords: ["Sheung Wan", "Wanchai", "Central"]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the accuracy and completeness of contact information extracted from the restaurant menu.
+
+  CONTACT INFORMATION (at least one of the 3 locations is required):
+
+  Location 1:
+  - Address: No. 23 Jervois St., Sheung Wan, Hong Kong (上環蘇杭街23號地下)
+  - Phone: +852 2234 0080
+
+  Location 2:
+  - Address: No. 68 Stone Nullah Ln., Wanchai, Hong Kong (香港灣仔石水渠街68號地下)
+  - Phone: +852 2234 0001
+
+  Location 3:
+  - Address: No. 18 On Lan Street, Central, Hong Kong (中環安蘭街18號地下)
+  - Phone: +852 2234 0010
+
+  SCORING:
+  - 0.90-1.00: all 3 phone numbers correct
+  - 0.60-0.89: 2 of 3 phone numbers correct
+  - 0.30-0.59: 1 of 3 phone numbers correct
+  - 0.00-0.29: no correct phone numbers
+
+reference_solution: |
+  The restaurant SAMSEN has 3 locations in Hong Kong:
+  1. Sheung Wan: +852 2234 0080 (No. 23 Jervois St.)
+  2. Wanchai: +852 2234 0001 (No. 68 Stone Nullah Ln.)
+  3. Central: +852 2234 0010 (No. 18 On Lan Street)
+
+primary_dimensions: [completion, communication]

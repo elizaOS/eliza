@@ -53,6 +53,7 @@ import {
   savePerAppConfig,
   subscribePerAppConfig,
 } from "../apps/per-app-config";
+import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
 import { useRegistryCatalog } from "../apps/useRegistryCatalog";
 
 interface AppDetailsViewProps {
@@ -145,16 +146,8 @@ function appProvenanceBadges(app: RegistryAppInfo): Array<{
   className: string;
   title?: string;
 }> {
-  const isThirdParty = app.thirdParty === true || app.origin === "third-party";
-  const isBuiltIn = app.builtIn === true || app.origin === "builtin";
-  const isFirstParty = app.firstParty === true || app.support === "first-party";
-  const isCommunity =
-    app.support === "community" || (isThirdParty && !isFirstParty);
-  const title = isThirdParty
-    ? "Community app registered through the plugin registry"
-    : isBuiltIn || isFirstParty
-      ? "First-party app generated from the elizaOS plugin registry"
-      : undefined;
+  const flags = getProvenanceFlags(app);
+  const title = getProvenanceTitle(flags, "app");
   const badges: Array<{
     key: string;
     label: string;
@@ -162,14 +155,14 @@ function appProvenanceBadges(app: RegistryAppInfo): Array<{
     title?: string;
   }> = [];
 
-  if (isThirdParty) {
+  if (flags.isThirdParty) {
     badges.push({
       key: "origin",
       label: "Third party",
       className: "border-border/60 text-muted",
       title,
     });
-  } else if (isBuiltIn) {
+  } else if (flags.isBuiltIn) {
     badges.push({
       key: "origin",
       label: "Built in",
@@ -178,14 +171,14 @@ function appProvenanceBadges(app: RegistryAppInfo): Array<{
     });
   }
 
-  if (isCommunity) {
+  if (flags.isCommunity) {
     badges.push({
       key: "support",
       label: "Community",
       className: "border-warn/45 text-warn",
       title,
     });
-  } else if (isFirstParty) {
+  } else if (flags.isFirstParty) {
     badges.push({
       key: "support",
       label: "First party",

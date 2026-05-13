@@ -202,7 +202,7 @@ describe("coding-containers route", () => {
     globalThis.fetch = (async () => {
       calls.push({});
       return new Response("{}");
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const route = await loadCodingContainersRoute();
     const res = await route.request(
@@ -224,7 +224,7 @@ describe("coding-containers route", () => {
     globalThis.fetch = (async () => {
       calls.push({});
       return new Response("{}");
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const route = await loadCodingContainersRoute();
     const res = await route.request("https://api.test/api/v1/coding-containers", {

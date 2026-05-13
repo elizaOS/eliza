@@ -1,0 +1,24 @@
+{
+  "schedules": [
+    {
+      "name": "morning_digest",
+      "cron": "30 7 * * *",
+      "timezone": "Asia/Shanghai",
+      "enabled": true,
+      "actions": ["fetch_news", "compile_digest", "send_feishu"],
+      "recipient": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa05"
+    },
+    {
+      "name": "evening_headlines",
+      "cron": "0 21 * * *",
+      "timezone": "Asia/Shanghai",
+      "enabled": false,
+      "actions": ["fetch_news", "save_draft"],
+      "notes": "Disabled — manual trigger preferred for evening"
+    }
+  ],
+  "retry_policy": {
+    "max_retries": 2,
+    "retry_delay_seconds": 60
+  }
+}

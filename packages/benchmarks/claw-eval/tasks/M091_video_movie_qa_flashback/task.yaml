@@ -1,0 +1,47 @@
+task_id: M091_video_movie_qa_flashback
+task_name: Movie Scene QA - Character Embarrassing History
+version: "1.0"
+category: video_search
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。请仔细观看这段电影片段。
+
+    金先生揭露了王多鱼尴尬的过去。请根据视频中出现的闪回片段，列举出所有在画面中具体展现的尴尬职业或处境。对每一个闪回场景，描述你在画面中看到了什么。
+    将答案保存到 /workspace/answer.txt。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/answer.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  观看闪回片段，识别4个尴尬场景（每个0.25分）：
+  1. 足球咬人：王多鱼穿黄色球衣、戴红白头带，趴在地上咬蓝衣球员的小腿
+  2. 踢女足：穿粉色球衣当守门员
+  3. 做日料人体餐盘：躺在桌子上做人体餐盘
+  4. 人体模特：裸体躺在床上当人体模特，学生在写生画画
+
+primary_dimensions:
+  - completion
+  - robustness

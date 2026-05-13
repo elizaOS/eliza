@@ -1,0 +1,24 @@
+# SPARQL Endpoint Configuration
+# Fuseki triplestore connection settings
+
+endpoint:
+  url: "http://localhost:3030/product-reviews/sparql"
+  timeout: 30000
+  max_results: 1000
+
+auth:
+  username: "admin"
+  password: "changeme"
+
+response:
+  format: "application/sparql-results+json"
+  charset: "UTF-8"
+
+datasets:
+  - name: "product-reviews"
+    graph: "urn:x-arq:DefaultGraph"
+    persistent: true
+
+logging:
+  level: "INFO"
+  file: "/var/log/fuseki/query.log"

@@ -11,6 +11,7 @@ export {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  ELIZA_1_HF_REPO,
   ELIZA_1_PLACEHOLDER_IDS,
   ELIZA_1_TIER_IDS,
   type Eliza1TierId,

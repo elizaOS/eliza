@@ -3,7 +3,6 @@ import { createGatewayProvider, type GatewayProvider } from "@ai-sdk/gateway";
 import { createOpenAI } from "@ai-sdk/openai";
 import {
   getGroqApiModelId,
-  getVastApiModelId,
   isGroqNativeModel,
   isVastNativeModel,
   OPENROUTER_DEFAULT_FREE_MODEL,
@@ -11,9 +10,10 @@ import {
 } from "@/lib/models";
 import { toOpenRouterModelId } from "./model-id-translation";
 import { getProviderKey } from "./provider-env";
+import { hasAnyVastProviderConfigured, resolveVastEndpointConfig } from "./vast-endpoints";
 
 let groqClient: ReturnType<typeof createOpenAI> | null = null;
-let vastClient: ReturnType<typeof createOpenAI> | null = null;
+let vastClients = new Map<string, ReturnType<typeof createOpenAI>>();
 let openAIClient: {
   apiKey: string;
   baseURL?: string;
@@ -39,21 +39,22 @@ function getGroqClient() {
   return groqClient;
 }
 
-function getVastClient() {
-  if (!vastClient) {
-    const apiKey = getProviderKey("VAST_API_KEY");
-    const baseUrl = getProviderKey("VAST_BASE_URL");
-    if (!apiKey || !baseUrl) {
-      throw new Error("VAST_API_KEY and VAST_BASE_URL environment variables are required");
-    }
-    const trimmed = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-    vastClient = createOpenAI({
-      apiKey,
-      baseURL: `${trimmed}/v1`,
-    });
+function getVastClient(model: string) {
+  const config = resolveVastEndpointConfig(model);
+  if (!config) {
+    throw new Error(`Vast endpoint is not configured for ${model}`);
   }
 
-  return vastClient;
+  const cacheKey = `${config.apiKey}|${config.baseUrl}`;
+  const cached = vastClients.get(cacheKey);
+  if (cached) return { client: cached, apiModelId: config.apiModelId };
+
+  const client = createOpenAI({
+    apiKey: config.apiKey,
+    baseURL: `${config.baseUrl}/v1`,
+  });
+  vastClients.set(cacheKey, client);
+  return { client, apiModelId: config.apiModelId };
 }
 
 function getOpenAIClient() {
@@ -181,7 +182,7 @@ export function hasLanguageModelProviderConfigured(model: string): boolean {
   }
 
   if (isVastNativeModel(model)) {
-    return Boolean(getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL"));
+    return resolveVastEndpointConfig(model) !== null;
   }
 
   if (getOpenRouterApiKey()) {
@@ -219,7 +220,8 @@ export function getLanguageModel(model: string) {
   }
 
   if (isVastNativeModel(model)) {
-    return getVastClient().languageModel(getVastApiModelId(model));
+    const { client, apiModelId } = getVastClient(model);
+    return client.languageModel(apiModelId);
   }
 
   if (getOpenRouterApiKey()) {
@@ -288,7 +290,7 @@ export function resolveAiProviderSource(
   }
 
   if (isVastNativeModel(model)) {
-    return getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL") ? "vast" : null;
+    return resolveVastEndpointConfig(model) ? "vast" : null;
   }
 
   if (getOpenRouterApiKey()) {
@@ -337,7 +339,7 @@ export function hasAnyAiProviderConfigured(): boolean {
       getProviderKey("OPENAI_API_KEY") ||
       getProviderKey("ANTHROPIC_API_KEY") ||
       getProviderKey("GROQ_API_KEY") ||
-      (getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL")),
+      hasAnyVastProviderConfigured(),
   );
 }
 
@@ -348,7 +350,7 @@ export function getAiProviderConfigurationStatus() {
     openai: Boolean(getProviderKey("OPENAI_API_KEY")),
     anthropic: Boolean(getProviderKey("ANTHROPIC_API_KEY")),
     groq: Boolean(getProviderKey("GROQ_API_KEY")),
-    vast: Boolean(getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL")),
+    vast: hasAnyVastProviderConfigured(),
   };
 }
 

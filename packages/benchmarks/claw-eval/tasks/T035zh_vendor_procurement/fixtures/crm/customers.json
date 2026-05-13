@@ -1,0 +1,54 @@
+[
+  {
+    "customer_id": "SUP-001",
+    "name": "华信达科技",
+    "contact_person": "陈总",
+    "email": "chen@huaxinda.com",
+    "phone": "13800010001",
+    "industry": "IT服务",
+    "tier": "vip",
+    "annual_revenue": 15000000,
+    "last_contact_date": "2026-02-15",
+    "status": "active",
+    "notes": "长期合作伙伴，VIP客户，但上批货DOA率10%，需关注质量整改进展。Dell和HP主力分销商，议价能力强。"
+  },
+  {
+    "customer_id": "SUP-002",
+    "name": "博通信息技术",
+    "contact_person": "王经理",
+    "email": "wang@broadinfo.com",
+    "phone": "13900020002",
+    "industry": "IT分销",
+    "tier": "standard",
+    "annual_revenue": 8000000,
+    "last_contact_date": "2026-01-10",
+    "status": "active",
+    "notes": "价格有竞争力，2个月前拒绝了我们的采购订单因支持能力不足。HP ProLiant主要渠道商。"
+  },
+  {
+    "customer_id": "SUP-003",
+    "name": "联想集团企业业务",
+    "contact_person": "李总",
+    "email": "li@lenovo-enterprise.com",
+    "phone": "13700030003",
+    "industry": "IT制造",
+    "tier": "standard",
+    "annual_revenue": 50000000,
+    "last_contact_date": "2026-02-20",
+    "status": "active",
+    "notes": "标准合作模式，价格固定无折扣。产品质量稳定，交付准时，但灵活性不足。"
+  },
+  {
+    "customer_id": "SUP-004",
+    "name": "新晨科技",
+    "contact_person": "张经理",
+    "email": "zhang@xinchen.com",
+    "phone": "13600040004",
+    "industry": "IT分销",
+    "tier": "standard",
+    "annual_revenue": 5000000,
+    "last_contact_date": "2026-02-25",
+    "status": "active",
+    "notes": "华为授权代理商，价格优势明显（比华为直销低约8%）。但受华为供应链影响，近期交付能力存疑。"
+  }
+]

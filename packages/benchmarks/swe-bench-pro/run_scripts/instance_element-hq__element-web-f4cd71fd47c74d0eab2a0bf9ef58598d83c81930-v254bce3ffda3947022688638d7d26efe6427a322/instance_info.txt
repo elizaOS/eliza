@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-f4cd71fd47c74d0eab2a0bf9ef58598d83c81930-v254bce3ffda3947022688638d7d26efe6427a322
+Repository: element-hq/element-web
+Base Commit: 889b0cebb2ad799bec5251156e9e23faa7366e03
+Test Files: ["test/components/views/spaces/QuickThemeSwitcher-test.tsx", "test/components/views/spaces/QuickThemeSwitcher-test.ts", "test/setupTests.js"]
+FAIL_TO_PASS: ["test/components/views/spaces/QuickThemeSwitcher-test.tsx | renders dropdown correctly when light theme is selected", "test/components/views/spaces/QuickThemeSwitcher-test.tsx | renders dropdown correctly when use system theme is truthy", "test/components/views/spaces/QuickThemeSwitcher-test.tsx | updates settings when match system is selected", "test/components/views/spaces/QuickThemeSwitcher-test.tsx | updates settings when a theme is selected", "test/components/views/spaces/QuickThemeSwitcher-test.tsx | rechecks theme when setting theme fails"]
+PASS_TO_PASS: []

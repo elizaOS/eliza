@@ -1,0 +1,4 @@
+requests>=2.31.0
+pyyaml>=6.0.1
+urllib3>=2.0.0
+certifi>=2023.7.22

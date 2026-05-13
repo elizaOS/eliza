@@ -122,7 +122,7 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
       svc = null;
     }
     if (server) {
-      await new Promise<void>((r) => server!.close(() => r()));
+      await new Promise<void>((r) => server?.close(() => r()));
       server = null;
     }
   });
@@ -131,7 +131,7 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
     server = http.createServer((req, res) => {
       if (req.url === "/v1/models") {
         res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ data: [{ id: "eliza-1-0_6b-mlx" }] }));
+        res.end(JSON.stringify({ data: [{ id: "eliza-1-0_8b-mlx" }] }));
         return;
       }
       if (req.url === "/v1/chat/completions" && req.method === "POST") {
@@ -139,7 +139,7 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
         req.on("data", (c) => (body += c));
         req.on("end", () => {
           const parsed = JSON.parse(body);
-          expect(parsed.model).toBe("eliza-1-0_6b-mlx");
+          expect(parsed.model).toBe("eliza-1-0_8b-mlx");
           expect(parsed.messages?.[0]?.content).toBe("hello");
           res.setHeader("content-type", "application/json");
           res.end(
@@ -153,8 +153,8 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
       res.statusCode = 404;
       res.end();
     });
-    await new Promise<void>((r) => server!.listen(0, "127.0.0.1", () => r()));
-    const port = (server!.address() as AddressInfo).port;
+    await new Promise<void>((r) => server?.listen(0, "127.0.0.1", () => r()));
+    const port = (server?.address() as AddressInfo).port;
 
     // Drive the adapter against the mock HTTP server directly (no spawn): the
     // class exposes the route/health logic, so we point baseUrl at the mock by
@@ -173,7 +173,7 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
     }
     const t = new TestMlx();
     svc = t;
-    t.attach(`http://127.0.0.1:${port}`, "eliza-1-0_6b-mlx");
+    t.attach(`http://127.0.0.1:${port}`, "eliza-1-0_8b-mlx");
     expect(t.hasLoadedModel()).toBe(true);
     const out = await t.generate({ prompt: "hello" } as never);
     expect(out).toBe("world");
@@ -192,8 +192,8 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
       res.statusCode = 404;
       res.end();
     });
-    await new Promise<void>((r) => server!.listen(0, "127.0.0.1", () => r()));
-    const port = (server!.address() as AddressInfo).port;
+    await new Promise<void>((r) => server?.listen(0, "127.0.0.1", () => r()));
+    const port = (server?.address() as AddressInfo).port;
     class TestMlx extends MlxLocalServer {
       attach(baseUrl: string) {
         // @ts-expect-error

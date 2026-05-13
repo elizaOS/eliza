@@ -6,7 +6,11 @@ import { useCallback, useEffect, useState } from "react";
 import Image from "../../runtime/image";
 import { useRouter, useSearchParams } from "../../runtime/navigation";
 import { BrandButton, BrandCard, CornerBrackets } from "../primitives";
-import { storeCurrentAppAuthorizeReturnTo } from "./authorize-return";
+import {
+  buildAppAuthorizeCancelRedirect,
+  buildAppAuthorizeCompletionRedirect,
+  storeCurrentAppAuthorizeReturnTo,
+} from "./authorize-return";
 
 interface AppInfo {
   id: string;
@@ -83,7 +87,9 @@ function AuthorizeAuthenticatedContent({
     async function validateApp() {
       try {
         const uri = new URL(redirectUri);
-        if (!uri.protocol.startsWith("http")) throw new Error("Invalid protocol");
+        if (uri.protocol !== "http:" && uri.protocol !== "https:") {
+          throw new Error("Invalid protocol");
+        }
       } catch {
         setError("Invalid redirect_uri format.");
         setStatus("error");
@@ -146,7 +152,7 @@ function AuthorizeAuthenticatedContent({
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ appId }),
+        body: JSON.stringify({ appId, redirectUri }),
       });
 
       if (!res.ok) {
@@ -157,10 +163,17 @@ function AuthorizeAuthenticatedContent({
         throw new Error(message);
       }
 
-      const url = new URL(redirectUri);
-      url.searchParams.set("token", token);
-      if (state) url.searchParams.set("state", state);
-      window.location.href = url.toString();
+      const data = (await res.json().catch(() => null)) as { code?: unknown } | null;
+      const code = typeof data?.code === "string" ? data.code : "";
+      if (!code) {
+        throw new Error("Authorization failed because no authorization code was returned.");
+      }
+
+      window.location.href = buildAppAuthorizeCompletionRedirect({
+        code,
+        redirectUri,
+        state,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to complete authorization.";
       setError(message);
@@ -173,11 +186,10 @@ function AuthorizeAuthenticatedContent({
       router.push("/");
       return;
     }
-    const url = new URL(redirectUri);
-    url.searchParams.set("error", "access_denied");
-    url.searchParams.set("error_description", "User denied authorization");
-    if (state) url.searchParams.set("state", state);
-    window.location.href = url.toString();
+    window.location.href = buildAppAuthorizeCancelRedirect({
+      redirectUri,
+      state,
+    });
   }, [redirectUri, state, router]);
 
   // Render.

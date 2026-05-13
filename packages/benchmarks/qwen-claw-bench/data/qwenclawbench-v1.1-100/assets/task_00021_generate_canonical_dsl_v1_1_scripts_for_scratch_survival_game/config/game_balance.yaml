@@ -1,0 +1,41 @@
+# Updated balance parameters v2.3 - approved by game design lead
+# Last reviewed: 2024-03-25 by @lead_designer
+# FINAL approved values after comprehensive playtest round 3
+# These values override any defaults in project metadata and design notes
+
+game_settings:
+  initial_lives: 5
+  initial_time: 30
+  initial_score: 0
+  
+  # Status strings (localized to English for international build)
+  status_ready: 'ready'
+  status_playing: 'playing'
+  status_gameover: 'gameover'
+  
+  # Pre-game countdown
+  wait_before_start: 2
+  countdown_display: true
+
+spawn_rates:
+  enemy_base_spawn: 0.5
+  apple_spawn: 1
+  
+  # Difficulty scaling
+  tier2:
+    score_threshold: 10
+    spawn_interval: 0.4
+  tier3:
+    score_threshold: 20
+    spawn_interval: 0.3
+    time_condition: '>5'
+
+player_settings:
+  move_speed: 10
+  invincibility_frames: 30
+  boundary_padding: 20
+
+scoring:
+  apple_points: 1
+  enemy_penalty_lives: 1
+  time_bonus_multiplier: 2

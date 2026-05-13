@@ -1,0 +1,10 @@
+{"type": "session_start", "session_id": "discord_8920444", "model": "deepseek-r1", "created_at": "2026-02-26T01:37:26.928420", "user_id": "system", "channel": "discord"}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-26T01:41:51.896921", "session_id": "discord_8920444", "seq": 1}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-26T01:44:36.422719", "session_id": "discord_8920444", "seq": 2}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-26T01:45:06.931592", "session_id": "discord_8920444", "seq": 3}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-26T01:46:49.089797", "session_id": "discord_8920444", "seq": 4}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-26T01:51:34.405795", "session_id": "discord_8920444", "seq": 5, "usage": {"prompt_tokens": 5642, "completion_tokens": 1267, "total_tokens": 2282}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-26T01:55:19.397284", "session_id": "discord_8920444", "seq": 6}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-26T01:56:27.059672", "session_id": "discord_8920444", "seq": 7}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-26T02:01:12.846209", "session_id": "discord_8920444", "seq": 8}
+{"type": "session_end", "session_id": "discord_8920444", "ended_at": "2026-02-26T02:01:22.846209", "total_messages": 8, "status": "completed"}

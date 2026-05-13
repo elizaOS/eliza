@@ -7,21 +7,8 @@ import {
   resetConversation,
   sendMessage,
 } from "./runtimeManager";
-import type { AppConfig, ChatMessage, ProviderMode } from "./types";
+import type { AppConfig } from "./types";
 import { DEFAULT_CONFIG } from "./types";
-
-export type ChatApi = {
-  getGreeting: (config?: AppConfig) => Promise<string>;
-  getHistory: (config?: AppConfig) => Promise<ChatMessage[]>;
-  reset: (config?: AppConfig) => Promise<void>;
-  sendMessage: (
-    config: AppConfig | undefined,
-    text: string,
-  ) => Promise<{
-    responseText: string;
-    effectiveMode: ProviderMode;
-  }>;
-};
 
 function getDataDir(): string {
   const dir = join(app.getPath("userData"), "eliza-localdb");

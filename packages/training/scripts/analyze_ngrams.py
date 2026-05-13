@@ -12,8 +12,8 @@ Two-phase, memory-bounded:
 
 Streams per record:
   - user_input:        currentMessage.content (truncated to 2000 chars)
-  - assistant_thought: TOON `thought` field of expectedResponse
-  - assistant_text:    TOON `text` field of expectedResponse
+  - assistant_thought: native JSON `thought` field of expectedResponse
+  - assistant_text:    native JSON `text` field of expectedResponse
 
 Outputs (data/synthesized/review/ngrams/):
   - user_input_ngrams.json
@@ -26,8 +26,8 @@ Outputs (data/synthesized/review/ngrams/):
 Notes
 -----
 * Read-only on data/final/*. Pure analysis.
-* No Bun / TOON-decoder. Thought/text are extracted via regex from the
-  `"thought": "..."` and `"text": "..."` TOON fields. Robust on the
+* No Bun / native JSON-decoder. Thought/text are extracted via regex from the
+  `"thought": "..."` and `"text": "..."` native JSON fields. Robust on the
   canonical corpus and ~50x faster than the Bun decoder for 1.5M lines.
 """
 

@@ -1,16 +1,169 @@
 {
   "$schema": "https://unpkg.com/knip@5/schema.json",
-  "ignore": [".claude/**", "apps/frontend/dist/**", "packages/sdk/dist/**", "test-results/**"],
-  "ignoreBinaries": ["stripe"],
+  "ignore": [
+    ".claude/**",
+    "**/dist/**",
+    "**/.next/**",
+    "**/node_modules/**",
+    "**/test-results/**",
+    "**/playwright-report/**",
+    "apps/frontend/dist-ssr/**",
+    "packages/sdk/dist/**",
+    "services/_smoke-mcp/dist/**"
+  ],
+  "ignoreBinaries": [
+    "stripe",
+    "biome",
+    "tsc",
+    "vite",
+    "vitest",
+    "next",
+    "pepr",
+    "bunx",
+    "tsx",
+    "rm"
+  ],
+  "ignoreDependencies": ["vitest", "vitest/config"],
   "workspaces": {
-    "@elizaos/cloud-api": {
+    ".": {
+      "entry": [
+        "packages/scripts/**/*.{ts,mjs}!",
+        "packages/tests/**/*.{ts,mjs}!",
+        "scripts/**/*.{ts,mjs}!",
+        "postcss.config.{js,mjs}!",
+        "tailwind.config.{ts,js}",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "packages/scripts/**/*.{ts,mjs}",
+        "packages/tests/**/*.{ts,mjs}",
+        "scripts/**/*.{ts,mjs}"
+      ]
+    },
+    "apps/api": {
       "entry": [
         "src/index.ts!",
         "src/_router.generated.ts!",
         "src/queue/stripe-event.ts!",
         "test/e2e/preload.ts!"
       ],
-      "ignore": ["_smoke-mcp/**"]
+      "project": ["src/**/*.{ts,tsx}", "test/**/*.{ts,mjs}"],
+      "ignore": ["src/stubs/**", "_smoke-mcp/**", "test/_*.mjs"]
+    },
+    "apps/frontend": {
+      "entry": [
+        "src/main.tsx!",
+        "src/entry-server.tsx!",
+        "index.html!",
+        "functions/**/*.ts!",
+        "scripts/**/*.{mjs,ts}",
+        "vite.config.ts",
+        "vitest.config.ts",
+        "vitest.setup.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "functions/**/*.ts", "scripts/**/*.{mjs,ts}"],
+      "ignore": ["dist/**", "dist-ssr/**", "src/shims/**"]
+    },
+    "services/agent-server": {
+      "entry": ["src/index.ts!", "__tests__/**/*.{ts,tsx}"],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts"]
+    },
+    "services/container-control-plane": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts"]
+    },
+    "services/gateway-discord": {
+      "entry": ["src/index.ts!", "tests/**/*.{ts,tsx}"],
+      "project": ["src/**/*.ts", "tests/**/*.ts"]
+    },
+    "services/gateway-webhook": {
+      "entry": ["src/index.ts!", "__tests__/**/*.{ts,tsx}"],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts"]
+    },
+    "services/operator": {
+      "entry": ["pepr.ts!", "capabilities/**/*.ts!"],
+      "project": ["pepr.ts", "capabilities/**/*.ts", "crds/**/*.ts"]
+    },
+    "services/rtmp-relay": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts"]
+    },
+    "services/_smoke-mcp": {
+      "entry": ["worker.ts!"],
+      "project": ["worker.ts"]
+    },
+    "examples/clone-ur-crush": {
+      "entry": [
+        "app/**/{page,layout,route,template,loading,error,not-found,default,head,opengraph-image,twitter-image,icon,apple-icon,sitemap,robots,manifest}.{ts,tsx}!",
+        "app/**/route.ts!",
+        "next.config.ts",
+        "tailwind.config.ts",
+        "postcss.config.js"
+      ],
+      "project": [
+        "app/**/*.{ts,tsx}",
+        "lib/**/*.{ts,tsx}",
+        "providers/**/*.{ts,tsx}",
+        "types/**/*.{ts,tsx}"
+      ]
+    },
+    "examples/edad": {
+      "entry": ["server.ts!"],
+      "project": ["server.ts"]
+    },
+    "packages/billing": {
+      "entry": ["src/index.ts!", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"],
+      "ignore": ["dist/**"]
+    },
+    "packages/db": {
+      "entry": [
+        "index.ts!",
+        "client.ts!",
+        "database-url.ts!",
+        "ensure-agent-sandbox-schema.ts!",
+        "execute-helpers.ts!",
+        "helpers.ts!",
+        "local-pg-query.ts!",
+        "worker-neon-http.ts!",
+        "repositories/**/*.ts!",
+        "schemas/**/*.ts!",
+        "utils/**/*.ts!",
+        "migrations/**/*.ts"
+      ],
+      "project": ["**/*.ts", "!node_modules/**"]
+    },
+    "packages/lib": {
+      "entry": ["index.ts!", "**/*.ts!"],
+      "project": ["**/*.ts", "!node_modules/**"],
+      "ignore": ["node_modules/**"]
+    },
+    "packages/sdk": {
+      "entry": [
+        "src/index.ts!",
+        "src/**/*.test.ts",
+        "src/live.e2e.test.ts",
+        "build.ts",
+        "scripts/**/*.{mjs,ts}",
+        "vitest.config.ts"
+      ],
+      "project": ["src/**/*.ts", "scripts/**/*.{mjs,ts}"],
+      "ignore": ["dist/**"]
+    },
+    "packages/types": {
+      "entry": [
+        "cloud-api.ts!",
+        "cloud-worker-env.ts!",
+        "stripe-queue-message.ts!",
+        "global.d.ts!",
+        "workspace-shims.d.ts!"
+      ],
+      "project": ["*.ts", "*.d.ts"]
+    },
+    "packages/ui": {
+      "entry": ["src/index.ts!", "src/**/*.{ts,tsx}!", "vite.config.ts", "vitest.config.ts"],
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignore": ["dist/**"]
     }
   }
 }

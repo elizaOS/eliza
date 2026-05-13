@@ -1,5 +1,4 @@
 import { Capacitor } from "@capacitor/core";
-import { Button } from "@elizaos/ui";
 import { ChevronRight, ListTodo, Settings } from "lucide-react";
 import type {
   CSSProperties,
@@ -28,6 +27,7 @@ import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
+import { Button } from "../ui/button";
 import { HEADER_BUTTON_STYLE } from "./ShellHeaderControls";
 
 const MOBILE_HEADER_MEDIA_QUERY = "(max-width: 819px)";

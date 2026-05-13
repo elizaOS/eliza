@@ -10,7 +10,11 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { messageRouterService } from "@/lib/services/message-router";
+import { messageRouterService, type SendMessageParams } from "@/lib/services/message-router";
+
+function invalidSendMessageParams(input: Record<string, unknown>): SendMessageParams {
+  return input as unknown as SendMessageParams;
+}
 
 describe.skipIf(!process.env.DATABASE_URL || process.env.SKIP_DB_DEPENDENT === "1")(
   "MessageRouterService",
@@ -178,14 +182,15 @@ describe.skipIf(!process.env.DATABASE_URL || process.env.SKIP_DB_DEPENDENT === "
 
     describe("sendMessage", () => {
       it("returns false for unknown provider", async () => {
-        const result = await messageRouterService.sendMessage({
-          to: "+15551234567",
-          from: "+15559876543",
-          body: "Test message",
-          // @ts-expect-error - Testing invalid provider
-          provider: "unknown",
-          organizationId: testOrgId,
-        });
+        const result = await messageRouterService.sendMessage(
+          invalidSendMessageParams({
+            to: "+15551234567",
+            from: "+15559876543",
+            body: "Test message",
+            provider: "unknown",
+            organizationId: testOrgId,
+          }),
+        );
 
         expect(result).toBe(false);
       });

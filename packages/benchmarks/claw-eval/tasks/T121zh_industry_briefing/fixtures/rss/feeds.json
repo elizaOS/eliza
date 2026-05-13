@@ -1,0 +1,195 @@
+[
+  {
+    "article_id": "RSS-101",
+    "title": "OpenAI发布GPT-5：多模态能力大幅提升",
+    "category": "AI",
+    "content": "OpenAI今日正式发布GPT-5模型，在多模态理解和推理能力方面有显著提升。新模型支持实时视频理解和跨语言对话。",
+    "url": "https://tech-news.example.com/gpt5-release",
+    "tags": [
+      "AI",
+      "大模型",
+      "OpenAI"
+    ],
+    "source": "科技快讯",
+    "published_at": "2026-03-24T08:00:00Z",
+    "summary": "OpenAI今日正式发布GPT-5模型，在多模态理解和推理能力方面有显著提升。新模型支持实时视频理解和跨语言对话。",
+    "word_count": 57
+  },
+  {
+    "article_id": "RSS-102",
+    "title": "特斯拉发布新款Model Y",
+    "category": "汽车",
+    "content": "特斯拉在春季发布会上推出了新款Model Y，续航提升20%，售价保持不变。",
+    "url": "https://tech-news.example.com/tesla-model-y",
+    "tags": [
+      "汽车",
+      "电动车",
+      "特斯拉"
+    ],
+    "source": "科技快讯",
+    "published_at": "2026-03-23T10:00:00Z",
+    "summary": "特斯拉在春季发布会上推出了新款Model Y，续航提升20%，售价保持不变。",
+    "word_count": 38
+  },
+  {
+    "article_id": "RSS-103",
+    "title": "Google推出Gemini 2.0企业版",
+    "category": "AI",
+    "content": "Google Gemini 2.0企业版正式上线，面向B端客户提供定制化大模型解决方案，支持私有化部署。",
+    "url": "https://tech-news.example.com/gemini-enterprise",
+    "tags": [
+      "AI",
+      "大模型",
+      "Google"
+    ],
+    "source": "科技快讯",
+    "published_at": "2026-03-24T14:00:00Z",
+    "summary": "Google Gemini 2.0企业版正式上线，面向B端客户提供定制化大模型解决方案，支持私有化部署。",
+    "word_count": 52
+  },
+  {
+    "article_id": "RSS-104",
+    "title": "苹果M4芯片跑分曝光",
+    "category": "芯片",
+    "content": "苹果M4芯片Geekbench跑分出炉，单核性能提升35%，内置AI加速引擎。",
+    "url": "https://tech-news.example.com/m4-benchmark",
+    "tags": [
+      "芯片",
+      "苹果"
+    ],
+    "source": "科技快讯",
+    "published_at": "2026-03-22T09:00:00Z",
+    "summary": "苹果M4芯片Geekbench跑分出炉，单核性能提升35%，内置AI加速引擎。",
+    "word_count": 39
+  },
+  {
+    "article_id": "RSS-201",
+    "title": "大模型落地制造业：三大标杆案例",
+    "category": "AI应用",
+    "content": "大模型在制造业的应用加速落地，本文介绍了汽车质检、供应链优化、智能排产三个典型案例。平均效率提升40%。",
+    "url": "https://industry-watch.example.com/llm-manufacturing",
+    "tags": [
+      "AI",
+      "大模型",
+      "制造业",
+      "应用"
+    ],
+    "source": "行业观察",
+    "published_at": "2026-03-25T07:00:00Z",
+    "summary": "大模型在制造业的应用加速落地，本文介绍了汽车质检、供应链优化、智能排产三个典型案例。平均效率提升40%。",
+    "word_count": 52
+  },
+  {
+    "article_id": "RSS-202",
+    "title": "AI Agent平台竞争格局分析",
+    "category": "AI",
+    "content": "2026年AI Agent平台进入混战阶段，AutoGPT、LangChain、CrewAI等开源方案与企业级产品各有优劣。分析各平台技术路线和市场策略。",
+    "url": "https://industry-watch.example.com/agent-competition",
+    "tags": [
+      "AI",
+      "Agent",
+      "大模型",
+      "平台"
+    ],
+    "source": "行业观察",
+    "published_at": "2026-03-24T11:00:00Z",
+    "summary": "2026年AI Agent平台进入混战阶段，AutoGPT、LangChain、CrewAI等开源方案与企业级产品各有优劣。分析各平台技术路线和市场策略。",
+    "word_count": 77
+  },
+  {
+    "article_id": "RSS-203",
+    "title": "Web3.0去中心化社交平台融资2亿美元",
+    "category": "区块链",
+    "content": "去中心化社交平台Lens Protocol完成2亿美元B轮融资，计划扩展亚太市场。",
+    "url": "https://industry-watch.example.com/web3-social",
+    "tags": [
+      "区块链",
+      "Web3",
+      "融资"
+    ],
+    "source": "行业观察",
+    "published_at": "2026-03-23T15:00:00Z",
+    "summary": "去中心化社交平台Lens Protocol完成2亿美元B轮融资，计划扩展亚太市场。",
+    "word_count": 41
+  },
+  {
+    "article_id": "RSS-204",
+    "title": "中国企业大模型投入超百亿",
+    "category": "AI",
+    "content": "据统计，2025年中国企业在大语言模型研发和部署上的总投入超过100亿人民币。百度、阿里、字节等头部企业占比60%以上。",
+    "url": "https://industry-watch.example.com/china-llm-investment",
+    "tags": [
+      "AI",
+      "大模型",
+      "投资",
+      "中国"
+    ],
+    "source": "行业观察",
+    "published_at": "2026-03-25T09:00:00Z",
+    "summary": "据统计，2025年中国企业在大语言模型研发和部署上的总投入超过100亿人民币。百度、阿里、字节等头部企业占比60%以上。",
+    "word_count": 60
+  },
+  {
+    "article_id": "RSS-301",
+    "title": "NVIDIA发布AI专用芯片H200",
+    "category": "AI芯片",
+    "content": "NVIDIA正式发布H200 GPU，专为大模型推理优化，单卡推理性能是H100的2倍，能耗降低30%。",
+    "url": "https://market-trends.example.com/nvidia-h200",
+    "tags": [
+      "AI",
+      "芯片",
+      "NVIDIA",
+      "GPU"
+    ],
+    "source": "市场动态",
+    "published_at": "2026-03-24T16:00:00Z",
+    "summary": "NVIDIA正式发布H200 GPU，专为大模型推理优化，单卡推理性能是H100的2倍，能耗降低30%。",
+    "word_count": 52
+  },
+  {
+    "article_id": "RSS-302",
+    "title": "房地产市场3月数据出炉",
+    "category": "房地产",
+    "content": "3月份一线城市房价环比微涨0.3%，二手房成交量有所回暖。",
+    "url": "https://market-trends.example.com/real-estate-march",
+    "tags": [
+      "房地产",
+      "数据"
+    ],
+    "source": "市场动态",
+    "published_at": "2026-03-25T10:00:00Z",
+    "summary": "3月份一线城市房价环比微涨0.3%，二手房成交量有所回暖。",
+    "word_count": 29
+  },
+  {
+    "article_id": "RSS-303",
+    "title": "消费电子出口同比增长15%",
+    "category": "消费电子",
+    "content": "2026年Q1消费电子出口同比增长15%，智能手机和TWS耳机为主要增长点。",
+    "url": "https://market-trends.example.com/electronics-export",
+    "tags": [
+      "消费电子",
+      "出口"
+    ],
+    "source": "市场动态",
+    "published_at": "2026-03-24T12:00:00Z",
+    "summary": "2026年Q1消费电子出口同比增长15%，智能手机和TWS耳机为主要增长点。",
+    "word_count": 38
+  },
+  {
+    "article_id": "RSS-304",
+    "title": "全球碳中和投资报告",
+    "category": "环保",
+    "content": "2026年全球碳中和相关投资预计达到1.5万亿美元，可再生能源和储能技术成为热点。",
+    "url": "https://market-trends.example.com/carbon-neutral",
+    "tags": [
+      "环保",
+      "碳中和",
+      "投资"
+    ],
+    "source": "市场动态",
+    "published_at": "2026-03-23T08:00:00Z",
+    "summary": "2026年全球碳中和相关投资预计达到1.5万亿美元，可再生能源和储能技术成为热点。",
+    "word_count": 41
+  }
+]

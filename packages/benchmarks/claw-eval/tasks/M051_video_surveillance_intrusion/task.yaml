@@ -1,0 +1,50 @@
+task_id: M051_video_surveillance_intrusion
+task_name: Surveillance Video Intrusion Clip Extraction
+version: "1.0"
+category: video_search
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    这是一段监控视频。我在调查一个校园枪击案件，请仔细观察视频，找出凶手进入教学楼的完整片段，将该片段截取出来保存为 /workspace/clip.mp4。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/clip.mp4
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  The surveillance video has an on-screen timestamp watermark (top-left corner).
+  The perpetrator enters the building during: 2023-03-27 10:10:51 – 2023-03-27 10:11:13.
+  Compute the corresponding file time offsets and extract the clip with ffmpeg,
+  saving it as /workspace/clip.mp4.
+
+  [Grader note] Ground-truth on-screen timestamps: 2023-03-27 10:10:51 to 2023-03-27 10:11:13.
+  Grading uses temporal IoU between the on-screen timestamps read from the extracted clip
+  and the ground-truth interval.
+
+primary_dimensions:
+  - completion
+  - robustness

@@ -16,6 +16,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { StubOmniVoiceBackend } from "./engine-bridge";
+import type { EotClassifier } from "./eot-classifier";
 import { InMemoryAudioSink } from "./ring-buffer";
 import { VoiceScheduler } from "./scheduler";
 import {
@@ -32,6 +33,9 @@ import type {
   VadEvent,
   VadEventListener,
   VoiceInputSource,
+  VoiceSegment,
+  VoiceSpeaker,
+  VoiceTurnMetadata,
 } from "./types";
 
 function makePreset(): SpeakerPreset {
@@ -71,6 +75,9 @@ class FakeTranscriber implements StreamingTranscriber {
   partial = "";
   finalText = "";
   finalSource: VoiceInputSource | undefined;
+  finalSpeaker: VoiceSpeaker | undefined;
+  finalSegments: VoiceSegment[] | undefined;
+  finalTurn: VoiceTurnMetadata | undefined;
   flushCalls = 0;
   feed(): void {}
   async flush(): Promise<TranscriptUpdate> {
@@ -79,6 +86,9 @@ class FakeTranscriber implements StreamingTranscriber {
       partial: this.finalText,
       isFinal: true,
       ...(this.finalSource ? { source: this.finalSource } : {}),
+      ...(this.finalSpeaker ? { speaker: this.finalSpeaker } : {}),
+      ...(this.finalSegments ? { segments: this.finalSegments } : {}),
+      ...(this.finalTurn ? { turn: this.finalTurn } : {}),
     };
   }
   on(listener: TranscriberEventListener): () => void {
@@ -145,11 +155,17 @@ interface Harness {
     speculativeAbort: number;
     speculativePromoted: VoiceTurnOutcome[];
     turnComplete: VoiceTurnOutcome[];
+    turnSuppressed: Array<{
+      transcript: string;
+      probability: number;
+    }>;
     errors: Error[];
   };
 }
 
-function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
+function makeHarness(
+  opts: { speculatePauseMs?: number; turnDetector?: EotClassifier } = {},
+): Harness {
   const vad = new FakeVad();
   const transcriber = new FakeTranscriber();
   const scheduler = makeScheduler();
@@ -161,6 +177,7 @@ function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
     speculativeAbort: 0,
     speculativePromoted: [],
     turnComplete: [],
+    turnSuppressed: [],
     errors: [],
   };
   const controller = new VoiceTurnController(
@@ -169,6 +186,7 @@ function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
       transcriber,
       scheduler,
       prewarm,
+      ...(opts.turnDetector ? { turnDetector: opts.turnDetector } : {}),
       generate: (request) => {
         generateCalls.push(request);
         return new Promise<VoiceTurnOutcome>((resolve, reject) => {
@@ -198,6 +216,11 @@ function makeHarness(opts: { speculatePauseMs?: number } = {}): Harness {
       },
       onSpeculativePromoted: (o) => events.speculativePromoted.push(o),
       onTurnComplete: (o) => events.turnComplete.push(o),
+      onTurnSuppressed: (transcript, signal) =>
+        events.turnSuppressed.push({
+          transcript,
+          probability: signal.endOfTurnProbability,
+        }),
       onError: (e) => events.errors.push(e),
     },
   );
@@ -247,6 +270,40 @@ describe("VoiceTurnController", () => {
       final: false,
     });
     expect(h.events.speculativeStart).toEqual(["turn on the lights"]);
+  });
+
+  it("attaches semantic turn signal to speculative generate requests", async () => {
+    const h = makeHarness({
+      speculatePauseMs: 300,
+      turnDetector: { score: async () => 0.95 },
+    });
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.setPartial("turn on the lights");
+    h.vad.emit(vadEvent({ type: "speech-pause", pauseDurationMs: 400 }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.generateCalls).toHaveLength(1);
+    expect(h.generateCalls[0].turnSignal).toMatchObject({
+      endOfTurnProbability: 0.95,
+      nextSpeaker: "agent",
+      agentShouldSpeak: true,
+    });
+  });
+
+  it("suppresses speculative generation when turn detector says user continues", async () => {
+    const h = makeHarness({
+      speculatePauseMs: 300,
+      turnDetector: { score: async () => 0.1 },
+    });
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.setPartial("can you check the");
+    h.vad.emit(vadEvent({ type: "speech-pause", pauseDurationMs: 400 }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.generateCalls).toHaveLength(0);
+    expect(h.events.turnSuppressed).toEqual([
+      { transcript: "can you check the", probability: 0.1 },
+    ]);
   });
 
   it("aborts the speculative generate when speech resumes (speech-active)", () => {
@@ -330,6 +387,21 @@ describe("VoiceTurnController", () => {
     });
   });
 
+  it("suppresses final generation when semantic turn detector says the next speaker is user", async () => {
+    const h = makeHarness({
+      turnDetector: { score: async () => 0.15 },
+    });
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.finalText = "can you look at the";
+    h.vad.emit(vadEvent({ type: "speech-end" }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.generateCalls).toHaveLength(0);
+    expect(h.events.turnSuppressed).toEqual([
+      { transcript: "can you look at the", probability: 0.15 },
+    ]);
+  });
+
   it("passes transcript source metadata into speculative and final generate requests", async () => {
     const h = makeHarness({ speculatePauseMs: 300 });
     const source: VoiceInputSource = {
@@ -356,6 +428,70 @@ describe("VoiceTurnController", () => {
       transcript: "who is speaking now",
       final: true,
       source,
+    });
+  });
+
+  it("passes speaker attribution and diarized segments into final generate requests", async () => {
+    const h = makeHarness();
+    const source: VoiceInputSource = {
+      kind: "local_mic",
+      deviceId: "default-input",
+      roomId: "room-1",
+    };
+    const speaker: VoiceSpeaker = {
+      id: "entity-owner",
+      label: "Owner",
+      displayName: "Owner",
+      source,
+      imprintClusterId: "cluster-owner",
+      imprintObservationId: "observation-owner-1",
+      entityId: "entity-owner",
+      confidence: 0.91,
+      isLocalUser: true,
+    };
+    const segments: VoiceSegment[] = [
+      {
+        id: "seg-1",
+        text: "this is the owner",
+        startMs: 120,
+        endMs: 1480,
+        speaker,
+        source,
+        confidence: 0.89,
+      },
+    ];
+    const turn: VoiceTurnMetadata = {
+      turnId: "turn-1",
+      source,
+      primarySpeaker: speaker,
+      segments,
+      startedAtMs: 120,
+      endedAtMs: 1480,
+      diarization: {
+        provider: "local",
+        model: "eliza-voice-imprint-v1",
+        confidence: 0.89,
+      },
+    };
+
+    h.controller.start();
+    h.vad.emit(vadEvent({ type: "speech-start" }));
+    h.transcriber.finalText = "this is the owner";
+    h.transcriber.finalSource = source;
+    h.transcriber.finalSpeaker = speaker;
+    h.transcriber.finalSegments = segments;
+    h.transcriber.finalTurn = turn;
+    h.vad.emit(vadEvent({ type: "speech-end" }));
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(h.generateCalls).toHaveLength(1);
+    expect(h.generateCalls[0]).toMatchObject({
+      transcript: "this is the owner",
+      final: true,
+      source,
+      speaker,
+      segments,
+      turn,
     });
   });
 
@@ -404,5 +540,36 @@ describe("VoiceTurnController", () => {
     h.vad.emit(vadEvent({ type: "speech-end" }));
     await new Promise((r) => setTimeout(r, 0));
     expect(h.generateCalls).toHaveLength(1);
+  });
+
+  it("C2: prewarmOnIdle fires the prewarm without blocking the caller", async () => {
+    // Hold the prewarm open so we can confirm prewarmOnIdle returned
+    // synchronously (i.e. did not await).
+    let releasePrewarm: () => void = () => {};
+    const pending = new Promise<void>((resolve) => {
+      releasePrewarm = resolve;
+    });
+    const h = makeHarness();
+    h.prewarm.mockImplementationOnce(async () => {
+      await pending;
+    });
+    const ret = h.controller.prewarmOnIdle();
+    expect(ret).toBeUndefined();
+    expect(h.prewarm).toHaveBeenCalledTimes(1);
+    expect(h.prewarm).toHaveBeenCalledWith("room-1");
+    // The prewarm is still in flight — the caller is not blocked on it.
+    releasePrewarm();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.events.errors).toEqual([]);
+  });
+
+  it("C2: prewarmOnIdle errors surface via onError, do not throw to the caller", async () => {
+    const h = makeHarness();
+    h.prewarm.mockRejectedValueOnce(new Error("idle prewarm failed"));
+    expect(() => h.controller.prewarmOnIdle()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.events.errors.map((e) => e.message)).toContain(
+      "idle prewarm failed",
+    );
   });
 });

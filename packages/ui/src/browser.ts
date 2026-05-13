@@ -11,7 +11,6 @@ export {
   requestRestart,
   setRestartHandler,
 } from "@elizaos/shared";
-export * from "@elizaos/ui";
 export { App } from "./App.tsx";
 export * from "./api/index.ts";
 export * from "./api/response.ts";

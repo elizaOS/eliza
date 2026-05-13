@@ -1,0 +1,2689 @@
+{
+  "nodes": [
+    {
+      "id": "Start",
+      "text": "The tavern door creaks open. Smoke and laughter fill the air.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "TavernEntry",
+      "text": "Three figures catch your eye: a hooded stranger, a boisterous merchant, and the barkeep.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "TavernChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "ObserveRoom",
+      "text": "You notice the stranger slipping a note to the barkeep. The merchant counts gold nervously.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "ObserveChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "InterceptNote",
+      "text": "You dare?!",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "PickpocketAttempt",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "PickpocketSuccess",
+      "text": "50 gold pieces heavier, you slip away. The merchant hasn't noticed... yet.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "PickpocketDistract",
+      "text": "Watch it, friend!",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantAnnoyed",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantCalm",
+      "text": "Hmph. Buy me a drink and we're even.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantFight",
+      "text": "Why you little\u2014!",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "PickpocketAfter",
+      "text": "But where to spend your ill-gotten gains?",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "PickpocketChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerApproach",
+      "text": "You have the look of someone seeking something.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerGreet",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "CrimsonQuestStart",
+      "text": "The Crimson Blade? Many seek it. Few survive.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonWarning",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "CrimsonAccept",
+      "text": "Then you'll need a map. I have one... for a price.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonPrice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "CrimsonNegotiate",
+      "text": "100 gold, or a favor to be named later.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonDeal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "CrimsonGoldPath",
+      "text": "Wise choice. No strings attached.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonFavorPath",
+      "text": "Remember, I always collect.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonCompromise",
+      "text": "You drive a hard bargain. Agreed.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonDiscount",
+      "text": "Your silver tongue amuses me. 75 gold, final offer.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonDiscountDeal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "CrimsonRefuse",
+      "text": "Your loss. The Blade waits for no one.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonLore",
+      "text": "The mountain claims them. Traps, guardians, madness itself.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "CrimsonLoreMore",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "GuardianInfo",
+      "text": "Stone sentinels that never sleep. Best approached with stealth... or great power.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "GuardianChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "GuardianMagic",
+      "text": "A mage, then. You may yet survive. Take this.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "GuardianStealth",
+      "text": "A rogue's path. Dangerous but possible.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "MadnessInfo",
+      "text": "The mountain whispers. Those who listen too long... never leave.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "MadnessWarning",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MadnessResist",
+      "text": "Confidence or foolishness? We shall see.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerLaugh",
+      "text": "Ha! I like you. Maybe you'll be the one.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "MapReceived",
+      "text": "The Crimson Blade awaits at the peak of Mount Sorrow. Go.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "MapReceivedDebt",
+      "text": "Remember our deal. I will find you when the time is right.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "MapReceivedHalf",
+      "text": "A fair trade. Now go, before the trail grows cold.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "QuestAccepted",
+      "text": "You pocket the map. Your journey begins at dawn.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "QuestAcceptedDebt",
+      "text": "The map feels heavy in your hands. What have you agreed to?",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "QuestChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "PrepareQuest",
+      "text": "You gather supplies and rest. Dawn breaks cold and clear.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "MoreInfo",
+      "text": "Who might know more about Mount Sorrow?",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "MoreInfoChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BarkeepInfo",
+      "text": "Mount Sorrow? My grandfather went there once. Came back without his voice. Said he traded it for wisdom.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepWisdom",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BarkeepSecret",
+      "text": "He wrote it down before he died. Want to see?",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepOffer",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BarkeepJournal",
+      "text": "It says: \"The silence speaks truth. Listen with your heart, not your ears.\"",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "JournalWisdom",
+      "text": "Cryptic, but perhaps useful. You commit it to memory.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepPrice",
+      "text": "Smart. 20 gold for the journal.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepDeal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BarkeepHaggle",
+      "text": "15. Take it or leave it.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepFinal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BarkeepTrust",
+      "text": "You're kind. Take the journal. He would have wanted it to help someone.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "MerchantInfo",
+      "text": "Mount Sorrow? I've sold equipment to three expeditions. None returned for refunds.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantSales",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantGear",
+      "text": "Climbing tools, wards against magic, and plenty of rope. Most came back for more rope.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "GearAdvice",
+      "text": "Perhaps you should stock up.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "MerchantCynical",
+      "text": "Hey, a sale's a sale. Not my fault if they don't come back.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantDefend",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantShame",
+      "text": "...I light a candle for each of them. Not that it helps.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantConfess",
+      "text": "Look, take this charm. It's supposed to protect against curses. For free. Consider it penance.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "CharmReceived",
+      "text": "You receive a strange amulet. It pulses faintly with warmth.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "MerchantShop",
+      "text": "I've got rope, torches, climbing picks, and a potion or two. What'll it be?",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "ShopChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BuyGear",
+      "text": "30 gold for the full kit. Worth every copper.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "GearPurchase",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "GearBought",
+      "text": "You're now equipped for climbing. The mountain won't know what hit it.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "GearHaggle",
+      "text": "25, and that's robbery.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "GearFinal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "PotionList",
+      "text": "Healing, night vision, and one I call \"liquid courage.\" Makes you immune to fear for an hour.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "PotionChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BuyHealing",
+      "text": "A red vial joins your pack. Better than dying.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BuyNightVision",
+      "text": "A blue vial. The darkness won't hide dangers from you now.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BuyCourage",
+      "text": "A golden vial. For when fear is the enemy.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BuyAll",
+      "text": "Big spender! 60 gold for the lot.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "BuyAllDeal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "AllPotionsBought",
+      "text": "Your pack clinks with vials. You feel prepared.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "StrangerMoreInfo",
+      "text": "Back so soon? Afraid?",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerReturn",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerRespect",
+      "text": "Wisdom. Most charge in blindly. Ask your questions.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerQuestions",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerOrigin",
+      "text": "I... found it. On someone who no longer needed it.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerDark",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerAccuse",
+      "text": "Would it matter? They're dead. The map lives on. As might you.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerClarity",
+      "text": "The mountain took them. I merely... recovered what was left.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerPast",
+      "text": "Once. Long ago. I left something there. Something I can never retrieve.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerRegret",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerSecret",
+      "text": "My name. The mountain takes something from everyone.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerVulnerable",
+      "text": "...Her name was Elena. She heard the whispers and... walked off the cliff. Smiling.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerGrief",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerHope",
+      "text": "The legends say it can cut anything. Even death. But legends lie.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerBlessing",
+      "text": "Go then. And may you find what you seek... without losing what you have.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerWarningFinal",
+      "text": "Guard your identity. The mountain will try to take it.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerTruth",
+      "text": "Power. Madness. Death. And one blade that can end wars or start them.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "RecruitChoice",
+      "text": "Who might join your quest?",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "RecruitOptions",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "RecruitStranger",
+      "text": "Join you? I gave up adventuring when Elena... No. But I'll wait here. If you return, drinks are on me.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "RecruitFail",
+      "text": "Your party remains at one. Perhaps for the best.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "RecruitMerchant",
+      "text": "Me? Climb a mountain? Ha! I'll sell you supplies, but I like living too much.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "RecruitBarkeep",
+      "text": "I know a sellsword who comes through sometimes. Name's Kira. She's... intense.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "KiraIntro",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "KiraLocation",
+      "text": "She's in the back room. Blue cloak, two swords. Can't miss her.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "KiraRate",
+      "text": "She negotiates. Bring coin and patience.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "KiraWarning",
+      "text": "She's never failed a contract. But she's got... rules. Strange ones. Don't break them.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "KiraMeet",
+      "text": "You find Kira sharpening her blade in the dim light.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "KiraApproach",
+      "text": "State your business. I don't do small talk.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraOffer",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "KiraJob",
+      "text": "Mountain? Which one?",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraWhich",
+      "text": "Mount Sorrow?",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraSorrow",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "KiraKnows",
+      "text": "Everyone's heard of it. Not everyone's stupid enough to go.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraConcern",
+      "text": "Problem? It's suicide. But the pay would need to match.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraPrice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "KiraNaming",
+      "text": "200 gold. Half now, half when we're done. If we survive, you owe me a story.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraDeal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "KiraJoins",
+      "text": "Then we leave at dawn. Don't be late. I won't wait.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraHaggle",
+      "text": "175. And you carry the supplies.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraHaggleFinal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "KiraGlory",
+      "text": "Glory doesn't pay for food. But... the Crimson Blade is legendary. 150 gold.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraFlattery",
+      "text": "Flattery is cheap. What do you want?",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraDirect",
+      "text": "Depends on the threat. Mount Sorrow? That's 200 gold minimum.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "KiraDecision",
+      "text": "If you're going to Sorrow, you'll need me. 200 gold. Take it or leave it.",
+      "speaker": "Kira",
+      "type": "line"
+    },
+    {
+      "id": "PartyFormed",
+      "text": "With Kira at your side, the odds feel slightly less suicidal.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "MerchantApproach",
+      "text": "Ah, a customer perhaps? Or just looking for company?",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantGreet",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantTrouble",
+      "text": "It's nothing. Just... debts. Powerful people. You know how it is.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantDebt",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantAmount",
+      "text": "500 gold. By month's end, or...",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantThreat",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantHelp",
+      "text": "What kind of price?",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantBargain",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantDeal",
+      "text": "Everything? I... alright. Save me and it's yours.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantInfoDeal",
+      "text": "Information? I know expeditions. Gear lists. Who came back. It's yours if you help.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantPartner",
+      "text": "A partner? That's... actually fair. You help with this, and we split future profits. Deal?",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantAllied",
+      "text": "You've gained a potential ally\u2014or liability. Time will tell.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "MerchantHit",
+      "text": "You're... offering to kill them? That's dark. But effective. 100 gold if you do.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "HitChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "HitAccepted",
+      "text": "You've accepted a contract to kill. This will have consequences.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "HitNegotiate",
+      "text": "150. That's all I have left.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "HitFinal",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantCreditor",
+      "text": "A guild. The Black Ledger. They don't forgive debts.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantSuspicious",
+      "text": "It's just gold! Honestly earned! Why would you\u2014are you with THEM?!",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantPanic",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantTerror",
+      "text": "Please! I can pay! I just need more time!",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantBeg",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "MerchantRelief",
+      "text": "Oh thank the gods. You nearly gave me a heart attack. Drinks on me.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantBribed",
+      "text": "Anything! Ask and it's yours!",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "MerchantFate",
+      "text": "The merchant's scream is cut short. The tavern falls silent.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "MerchantFriendly",
+      "text": "You're alright, friend. Let me know if you need gear or trade contacts.",
+      "speaker": "Merchant",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepApproach",
+      "text": "What'll it be? Ale, wine, or something stronger?",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "DrinkChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "DrinkAle",
+      "text": "Classic choice. 2 copper.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "DrinkWine",
+      "text": "From the southern vineyards. 5 copper.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "DrinkStrong",
+      "text": "Dwarven Fire. You sure? It's knocked out knights.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "StrongConfirm",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "DrinkDouble",
+      "text": "Your funeral.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "DrinkPassed",
+      "text": "The world spins. Then goes dark. You wake up in an alley, missing 50 gold.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "RobbedWake",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "AlleyRage",
+      "text": "Your shout echoes. A rat scurries away. No answers come.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "AlleyCheck",
+      "text": "Your pack is intact. The map is still there. But your coin pouch is lighter.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "AlleyCalm",
+      "text": "You take stock. Gold gone, but otherwise unharmed. Could be worse.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "TavernReturn",
+      "text": "You stumble back to the tavern. The barkeep smirks.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepSmirk",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BarkeepAccuse",
+      "text": "I told you Dwarven Fire knocks out knights. Not my fault you didn't listen.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepLaugh",
+      "text": "Ha! You've got spirit. This one's on the house.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "DrinkServed",
+      "text": "The drink warms your belly. The world feels slightly better.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BarkeepBribe",
+      "text": "Information costs. 20 gold and I'll tell you what I know about the castle nearby.",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "StrangerHostile",
+      "text": "You've made a dangerous enemy today.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerFight",
+      "text": "Blades flash. The stranger is fast\u2014too fast.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "StrangerBattle",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerWound",
+      "text": "You land a cut, but so does she. Blood drips from both of you.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "StrangerStalemate",
+      "text": "Enough. You fight well. Perhaps we started poorly.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerTruce",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerExplain",
+      "text": "I test potential allies. You passed.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerMercy",
+      "text": "Coward. But at least you're smart. Leave my sight.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerCalm",
+      "text": "Words are wind. But I'll give you one chance. Explain yourself.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerExplain2",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerNote",
+      "text": "The note is none of your concern. But since you're bold...",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerLie",
+      "text": "[Narrows eyes] You're lying. But I appreciate the attempt.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerReveal",
+      "text": "Perceptive. I was once known as the Shadow of Eloria. Now I am no one.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerIdentity",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "StrangerFamous",
+      "text": "Former. Retired. Mostly.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerPurpose",
+      "text": "Waiting. For someone like you, perhaps.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "StrangerOffended",
+      "text": "Good. That means I did my job well.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "WorkOffer",
+      "text": "Work? I have a task. Dangerous. Well-paid. Interested?",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "WorkChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "WorkDetails",
+      "text": "Retrieve an item from the old crypt. A ring. Don't ask what it does.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "WorkRisk",
+      "text": "Undead. Traps. The usual.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "WorkPay",
+      "text": "100 gold on completion. More if you're fast.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "WorkAccept",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "SideQuestAccepted",
+      "text": "Good. Come back when it's done. Don't die.",
+      "speaker": "Stranger",
+      "type": "line"
+    },
+    {
+      "id": "BarFight",
+      "text": "Tables overturn! The tavern erupts into chaos!",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BarFightChoice",
+      "text": "",
+      "speaker": "",
+      "type": "choice"
+    },
+    {
+      "id": "BarFightWin",
+      "text": "Fists fly. You emerge victorious, bruised but alive.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BarFightHide",
+      "text": "Chaos swirls above as you wait it out. Eventually, calm returns.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "BarFightAfter",
+      "text": "OUT! All of you! I'm closing early!",
+      "speaker": "Barkeep",
+      "type": "line"
+    },
+    {
+      "id": "TavernExit",
+      "text": "The cool night air greets you. The adventure continues... elsewhere.",
+      "speaker": "Narrator",
+      "type": "line"
+    },
+    {
+      "id": "JourneyBegin",
+      "text": "The mountain looms in the distance. Your destiny awaits.",
+      "speaker": "Narrator",
+      "type": "line"
+    }
+  ],
+  "edges": [
+    {
+      "from": "Start",
+      "to": "TavernEntry"
+    },
+    {
+      "from": "TavernEntry",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "TavernChoice",
+      "to": "StrangerApproach",
+      "text": "1. Approach the hooded stranger."
+    },
+    {
+      "from": "TavernChoice",
+      "to": "MerchantApproach",
+      "text": "2. Sit next to the merchant."
+    },
+    {
+      "from": "TavernChoice",
+      "to": "BarkeepApproach",
+      "text": "3. Order a drink from the barkeep."
+    },
+    {
+      "from": "TavernChoice",
+      "to": "ObserveRoom",
+      "text": "4. [Observe] Study the room from the shadows."
+    },
+    {
+      "from": "ObserveRoom",
+      "to": "ObserveChoice"
+    },
+    {
+      "from": "ObserveChoice",
+      "to": "InterceptNote",
+      "text": "1. Intercept the note."
+    },
+    {
+      "from": "ObserveChoice",
+      "to": "PickpocketAttempt",
+      "text": "2. Pickpocket the merchant."
+    },
+    {
+      "from": "ObserveChoice",
+      "to": "TavernChoice",
+      "text": "3. Pretend you saw nothing."
+    },
+    {
+      "from": "InterceptNote",
+      "to": "StrangerHostile"
+    },
+    {
+      "from": "PickpocketAttempt",
+      "to": "PickpocketSuccess",
+      "text": "1. [Sleight of Hand] Swiftly grab the pouch."
+    },
+    {
+      "from": "PickpocketAttempt",
+      "to": "PickpocketDistract",
+      "text": "2. [Distraction] Bump into him accidentally."
+    },
+    {
+      "from": "PickpocketAttempt",
+      "to": "TavernChoice",
+      "text": "3. Abandon the attempt."
+    },
+    {
+      "from": "PickpocketSuccess",
+      "to": "PickpocketAfter"
+    },
+    {
+      "from": "PickpocketDistract",
+      "to": "MerchantAnnoyed"
+    },
+    {
+      "from": "MerchantAnnoyed",
+      "to": "MerchantCalm",
+      "text": "1. Apologize profusely."
+    },
+    {
+      "from": "MerchantAnnoyed",
+      "to": "MerchantFight",
+      "text": "2. [Intimidate] You watch where YOU'RE going."
+    },
+    {
+      "from": "MerchantAnnoyed",
+      "to": "PickpocketSuccess",
+      "text": "3. Use the distraction to grab the gold."
+    },
+    {
+      "from": "MerchantCalm",
+      "to": "MerchantFriendly"
+    },
+    {
+      "from": "MerchantFight",
+      "to": "BarFight"
+    },
+    {
+      "from": "PickpocketAfter",
+      "to": "PickpocketChoice"
+    },
+    {
+      "from": "PickpocketChoice",
+      "to": "BarkeepBribe",
+      "text": "1. Buy information from the barkeep."
+    },
+    {
+      "from": "PickpocketChoice",
+      "to": "TavernExit",
+      "text": "2. Leave before anyone notices."
+    },
+    {
+      "from": "PickpocketChoice",
+      "to": "StrangerApproach",
+      "text": "3. Approach the stranger with newfound confidence."
+    },
+    {
+      "from": "StrangerApproach",
+      "to": "StrangerGreet"
+    },
+    {
+      "from": "StrangerGreet",
+      "to": "CrimsonQuestStart",
+      "text": "1. I seek the Crimson Blade."
+    },
+    {
+      "from": "StrangerGreet",
+      "to": "WorkOffer",
+      "text": "2. I'm looking for work."
+    },
+    {
+      "from": "StrangerGreet",
+      "to": "StrangerIdentity",
+      "text": "3. Who are you?"
+    },
+    {
+      "from": "StrangerGreet",
+      "to": "StrangerReveal",
+      "text": "4. [Insight] Something tells me you're not what you seem."
+    },
+    {
+      "from": "CrimsonQuestStart",
+      "to": "CrimsonWarning"
+    },
+    {
+      "from": "CrimsonWarning",
+      "to": "CrimsonAccept",
+      "text": "1. I'm not like the others."
+    },
+    {
+      "from": "CrimsonWarning",
+      "to": "CrimsonLore",
+      "text": "2. What happened to them?"
+    },
+    {
+      "from": "CrimsonWarning",
+      "to": "TavernChoice",
+      "text": "3. Perhaps I should reconsider..."
+    },
+    {
+      "from": "CrimsonAccept",
+      "to": "CrimsonPrice"
+    },
+    {
+      "from": "CrimsonPrice",
+      "to": "CrimsonNegotiate",
+      "text": "1. How much?"
+    },
+    {
+      "from": "CrimsonPrice",
+      "to": "CrimsonDiscount",
+      "text": "2. [Persuade] Surely we can come to an arrangement."
+    },
+    {
+      "from": "CrimsonPrice",
+      "to": "CrimsonRefuse",
+      "text": "3. I'll find my own way."
+    },
+    {
+      "from": "CrimsonNegotiate",
+      "to": "CrimsonDeal"
+    },
+    {
+      "from": "CrimsonDeal",
+      "to": "CrimsonGoldPath",
+      "text": "1. I'll pay the gold."
+    },
+    {
+      "from": "CrimsonDeal",
+      "to": "CrimsonFavorPath",
+      "text": "2. I'll owe you a favor."
+    },
+    {
+      "from": "CrimsonDeal",
+      "to": "CrimsonCompromise",
+      "text": "3. [Barter] 50 gold and a minor favor."
+    },
+    {
+      "from": "CrimsonGoldPath",
+      "to": "MapReceived"
+    },
+    {
+      "from": "CrimsonFavorPath",
+      "to": "MapReceivedDebt"
+    },
+    {
+      "from": "CrimsonCompromise",
+      "to": "MapReceivedHalf"
+    },
+    {
+      "from": "CrimsonDiscount",
+      "to": "CrimsonDiscountDeal"
+    },
+    {
+      "from": "CrimsonDiscountDeal",
+      "to": "MapReceived",
+      "text": "1. Deal."
+    },
+    {
+      "from": "CrimsonDiscountDeal",
+      "to": "CrimsonRefuse",
+      "text": "2. Still too rich for my blood."
+    },
+    {
+      "from": "CrimsonRefuse",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "CrimsonLore",
+      "to": "CrimsonLoreMore"
+    },
+    {
+      "from": "CrimsonLoreMore",
+      "to": "GuardianInfo",
+      "text": "1. Guardians?"
+    },
+    {
+      "from": "CrimsonLoreMore",
+      "to": "MadnessInfo",
+      "text": "2. Madness?"
+    },
+    {
+      "from": "CrimsonLoreMore",
+      "to": "CrimsonWarning",
+      "text": "3. I've heard enough."
+    },
+    {
+      "from": "GuardianInfo",
+      "to": "GuardianChoice"
+    },
+    {
+      "from": "GuardianChoice",
+      "to": "GuardianMagic",
+      "text": "1. [Arcana] I have magical means."
+    },
+    {
+      "from": "GuardianChoice",
+      "to": "GuardianStealth",
+      "text": "2. [Stealth] I move like a shadow."
+    },
+    {
+      "from": "GuardianChoice",
+      "to": "CrimsonWarning",
+      "text": "3. I'll figure it out when I get there."
+    },
+    {
+      "from": "GuardianMagic",
+      "to": "MapReceived"
+    },
+    {
+      "from": "GuardianStealth",
+      "to": "MapReceived"
+    },
+    {
+      "from": "MadnessInfo",
+      "to": "MadnessWarning"
+    },
+    {
+      "from": "MadnessWarning",
+      "to": "MadnessResist",
+      "text": "1. [Willpower] My mind is steel."
+    },
+    {
+      "from": "MadnessWarning",
+      "to": "StrangerLaugh",
+      "text": "2. I'll bring ear plugs."
+    },
+    {
+      "from": "MadnessWarning",
+      "to": "CrimsonRefuse",
+      "text": "3. This sounds too risky."
+    },
+    {
+      "from": "MadnessResist",
+      "to": "MapReceived"
+    },
+    {
+      "from": "StrangerLaugh",
+      "to": "MapReceived"
+    },
+    {
+      "from": "MapReceived",
+      "to": "QuestAccepted"
+    },
+    {
+      "from": "MapReceivedDebt",
+      "to": "QuestAcceptedDebt"
+    },
+    {
+      "from": "MapReceivedHalf",
+      "to": "QuestAccepted"
+    },
+    {
+      "from": "QuestAccepted",
+      "to": "QuestChoice"
+    },
+    {
+      "from": "QuestAcceptedDebt",
+      "to": "QuestChoice"
+    },
+    {
+      "from": "QuestChoice",
+      "to": "PrepareQuest",
+      "text": "1. Prepare for the journey."
+    },
+    {
+      "from": "QuestChoice",
+      "to": "MoreInfo",
+      "text": "2. Seek more information first."
+    },
+    {
+      "from": "QuestChoice",
+      "to": "RecruitChoice",
+      "text": "3. Recruit allies."
+    },
+    {
+      "from": "PrepareQuest",
+      "to": "JourneyBegin"
+    },
+    {
+      "from": "MoreInfo",
+      "to": "MoreInfoChoice"
+    },
+    {
+      "from": "MoreInfoChoice",
+      "to": "BarkeepInfo",
+      "text": "1. Ask the barkeep."
+    },
+    {
+      "from": "MoreInfoChoice",
+      "to": "MerchantInfo",
+      "text": "2. Consult the merchant."
+    },
+    {
+      "from": "MoreInfoChoice",
+      "to": "StrangerMoreInfo",
+      "text": "3. Return to the stranger."
+    },
+    {
+      "from": "BarkeepInfo",
+      "to": "BarkeepWisdom"
+    },
+    {
+      "from": "BarkeepWisdom",
+      "to": "BarkeepSecret",
+      "text": "1. What wisdom?"
+    },
+    {
+      "from": "BarkeepWisdom",
+      "to": "QuestChoice",
+      "text": "2. That's disturbing."
+    },
+    {
+      "from": "BarkeepWisdom",
+      "to": "BarkeepTrust",
+      "text": "3. [Empathy] It must have been hard for your family."
+    },
+    {
+      "from": "BarkeepSecret",
+      "to": "BarkeepOffer"
+    },
+    {
+      "from": "BarkeepOffer",
+      "to": "BarkeepJournal",
+      "text": "1. Yes, show me."
+    },
+    {
+      "from": "BarkeepOffer",
+      "to": "BarkeepPrice",
+      "text": "2. What's the catch?"
+    },
+    {
+      "from": "BarkeepOffer",
+      "to": "QuestChoice",
+      "text": "3. I prefer to discover myself."
+    },
+    {
+      "from": "BarkeepJournal",
+      "to": "JournalWisdom"
+    },
+    {
+      "from": "JournalWisdom",
+      "to": "QuestChoice"
+    },
+    {
+      "from": "BarkeepPrice",
+      "to": "BarkeepDeal"
+    },
+    {
+      "from": "BarkeepDeal",
+      "to": "BarkeepJournal",
+      "text": "1. Fair enough."
+    },
+    {
+      "from": "BarkeepDeal",
+      "to": "QuestChoice",
+      "text": "2. Too expensive."
+    },
+    {
+      "from": "BarkeepDeal",
+      "to": "BarkeepHaggle",
+      "text": "3. [Haggle] 10 gold."
+    },
+    {
+      "from": "BarkeepHaggle",
+      "to": "BarkeepFinal"
+    },
+    {
+      "from": "BarkeepFinal",
+      "to": "BarkeepJournal",
+      "text": "1. Deal."
+    },
+    {
+      "from": "BarkeepFinal",
+      "to": "QuestChoice",
+      "text": "2. I'll pass."
+    },
+    {
+      "from": "BarkeepTrust",
+      "to": "BarkeepJournal"
+    },
+    {
+      "from": "MerchantInfo",
+      "to": "MerchantSales"
+    },
+    {
+      "from": "MerchantSales",
+      "to": "MerchantGear",
+      "text": "1. What equipment did they buy?"
+    },
+    {
+      "from": "MerchantSales",
+      "to": "MerchantCynical",
+      "text": "2. Sounds profitable for you."
+    },
+    {
+      "from": "MerchantSales",
+      "to": "MerchantShop",
+      "text": "3. Would you sell to me?"
+    },
+    {
+      "from": "MerchantGear",
+      "to": "GearAdvice"
+    },
+    {
+      "from": "GearAdvice",
+      "to": "MerchantShop"
+    },
+    {
+      "from": "MerchantCynical",
+      "to": "MerchantDefend"
+    },
+    {
+      "from": "MerchantDefend",
+      "to": "MerchantShame",
+      "text": "1. [Morality] That's cold."
+    },
+    {
+      "from": "MerchantDefend",
+      "to": "MerchantFriendly",
+      "text": "2. Fair point. Business is business."
+    },
+    {
+      "from": "MerchantDefend",
+      "to": "MerchantConfess",
+      "text": "3. Do you feel any guilt?"
+    },
+    {
+      "from": "MerchantShame",
+      "to": "MerchantConfess"
+    },
+    {
+      "from": "MerchantConfess",
+      "to": "CharmReceived"
+    },
+    {
+      "from": "CharmReceived",
+      "to": "QuestChoice"
+    },
+    {
+      "from": "MerchantShop",
+      "to": "ShopChoice"
+    },
+    {
+      "from": "ShopChoice",
+      "to": "BuyGear",
+      "text": "1. I'll take the climbing gear."
+    },
+    {
+      "from": "ShopChoice",
+      "to": "PotionList",
+      "text": "2. What potions do you have?"
+    },
+    {
+      "from": "ShopChoice",
+      "to": "QuestChoice",
+      "text": "3. I'm good for now."
+    },
+    {
+      "from": "BuyGear",
+      "to": "GearPurchase"
+    },
+    {
+      "from": "GearPurchase",
+      "to": "GearBought",
+      "text": "1. I'll take it."
+    },
+    {
+      "from": "GearPurchase",
+      "to": "GearHaggle",
+      "text": "2. [Haggle] 20 gold."
+    },
+    {
+      "from": "GearPurchase",
+      "to": "ShopChoice",
+      "text": "3. Maybe later."
+    },
+    {
+      "from": "GearBought",
+      "to": "QuestChoice"
+    },
+    {
+      "from": "GearHaggle",
+      "to": "GearFinal"
+    },
+    {
+      "from": "GearFinal",
+      "to": "GearBought",
+      "text": "1. Fine, 25."
+    },
+    {
+      "from": "GearFinal",
+      "to": "ShopChoice",
+      "text": "2. Too rich."
+    },
+    {
+      "from": "PotionList",
+      "to": "PotionChoice"
+    },
+    {
+      "from": "PotionChoice",
+      "to": "BuyHealing",
+      "text": "1. The healing potion."
+    },
+    {
+      "from": "PotionChoice",
+      "to": "BuyNightVision",
+      "text": "2. Night vision sounds useful."
+    },
+    {
+      "from": "PotionChoice",
+      "to": "BuyCourage",
+      "text": "3. Liquid courage\u2014I might need that."
+    },
+    {
+      "from": "PotionChoice",
+      "to": "BuyAll",
+      "text": "4. One of each."
+    },
+    {
+      "from": "PotionChoice",
+      "to": "ShopChoice",
+      "text": "5. I'll pass on potions."
+    },
+    {
+      "from": "BuyHealing",
+      "to": "ShopChoice"
+    },
+    {
+      "from": "BuyNightVision",
+      "to": "ShopChoice"
+    },
+    {
+      "from": "BuyCourage",
+      "to": "ShopChoice"
+    },
+    {
+      "from": "BuyAll",
+      "to": "BuyAllDeal"
+    },
+    {
+      "from": "BuyAllDeal",
+      "to": "AllPotionsBought",
+      "text": "1. Worth it."
+    },
+    {
+      "from": "BuyAllDeal",
+      "to": "BuyHealing",
+      "text": "2. Just the healing potion then."
+    },
+    {
+      "from": "AllPotionsBought",
+      "to": "QuestChoice"
+    },
+    {
+      "from": "StrangerMoreInfo",
+      "to": "StrangerReturn"
+    },
+    {
+      "from": "StrangerReturn",
+      "to": "StrangerRespect",
+      "text": "1. Cautious, not afraid."
+    },
+    {
+      "from": "StrangerReturn",
+      "to": "GuardianInfo",
+      "text": "2. Tell me more about the guardians."
+    },
+    {
+      "from": "StrangerReturn",
+      "to": "StrangerTruth",
+      "text": "3. What's really up there?"
+    },
+    {
+      "from": "StrangerRespect",
+      "to": "StrangerQuestions"
+    },
+    {
+      "from": "StrangerQuestions",
+      "to": "StrangerOrigin",
+      "text": "1. How did you get a map?"
+    },
+    {
+      "from": "StrangerQuestions",
+      "to": "StrangerPast",
+      "text": "2. Have you been there yourself?"
+    },
+    {
+      "from": "StrangerQuestions",
+      "to": "JourneyBegin",
+      "text": "3. I'm ready now."
+    },
+    {
+      "from": "StrangerOrigin",
+      "to": "StrangerDark"
+    },
+    {
+      "from": "StrangerDark",
+      "to": "StrangerAccuse",
+      "text": "1. You killed them?"
+    },
+    {
+      "from": "StrangerDark",
+      "to": "StrangerClarity",
+      "text": "2. They died on the mountain?"
+    },
+    {
+      "from": "StrangerDark",
+      "to": "StrangerQuestions",
+      "text": "3. I don't want to know."
+    },
+    {
+      "from": "StrangerAccuse",
+      "to": "StrangerQuestions"
+    },
+    {
+      "from": "StrangerClarity",
+      "to": "StrangerQuestions"
+    },
+    {
+      "from": "StrangerPast",
+      "to": "StrangerRegret"
+    },
+    {
+      "from": "StrangerRegret",
+      "to": "StrangerSecret",
+      "text": "1. What did you leave?"
+    },
+    {
+      "from": "StrangerRegret",
+      "to": "StrangerQuestions",
+      "text": "2. I'm sorry."
+    },
+    {
+      "from": "StrangerRegret",
+      "to": "StrangerVulnerable",
+      "text": "3. [Insight] You lost someone, didn't you?"
+    },
+    {
+      "from": "StrangerSecret",
+      "to": "StrangerWarningFinal"
+    },
+    {
+      "from": "StrangerVulnerable",
+      "to": "StrangerGrief"
+    },
+    {
+      "from": "StrangerGrief",
+      "to": "StrangerBlessing",
+      "text": "1. I'll be careful."
+    },
+    {
+      "from": "StrangerGrief",
+      "to": "StrangerHope",
+      "text": "2. Maybe the blade can bring her back?"
+    },
+    {
+      "from": "StrangerGrief",
+      "to": "StrangerBlessing",
+      "text": "3. Some things are worth the risk."
+    },
+    {
+      "from": "StrangerHope",
+      "to": "StrangerBlessing"
+    },
+    {
+      "from": "StrangerBlessing",
+      "to": "JourneyBegin"
+    },
+    {
+      "from": "StrangerWarningFinal",
+      "to": "JourneyBegin"
+    },
+    {
+      "from": "StrangerTruth",
+      "to": "StrangerQuestions"
+    },
+    {
+      "from": "RecruitChoice",
+      "to": "RecruitOptions"
+    },
+    {
+      "from": "RecruitOptions",
+      "to": "RecruitStranger",
+      "text": "1. The stranger seems capable."
+    },
+    {
+      "from": "RecruitOptions",
+      "to": "RecruitMerchant",
+      "text": "2. The merchant knows the gear."
+    },
+    {
+      "from": "RecruitOptions",
+      "to": "RecruitBarkeep",
+      "text": "3. Perhaps the barkeep has contacts."
+    },
+    {
+      "from": "RecruitOptions",
+      "to": "JourneyBegin",
+      "text": "4. I work better alone."
+    },
+    {
+      "from": "RecruitStranger",
+      "to": "RecruitFail"
+    },
+    {
+      "from": "RecruitFail",
+      "to": "JourneyBegin"
+    },
+    {
+      "from": "RecruitMerchant",
+      "to": "RecruitFail"
+    },
+    {
+      "from": "RecruitBarkeep",
+      "to": "KiraIntro"
+    },
+    {
+      "from": "KiraIntro",
+      "to": "KiraLocation",
+      "text": "1. Where can I find her?"
+    },
+    {
+      "from": "KiraIntro",
+      "to": "KiraRate",
+      "text": "2. What's her rate?"
+    },
+    {
+      "from": "KiraIntro",
+      "to": "KiraWarning",
+      "text": "3. Intense how?"
+    },
+    {
+      "from": "KiraLocation",
+      "to": "KiraMeet"
+    },
+    {
+      "from": "KiraRate",
+      "to": "KiraMeet"
+    },
+    {
+      "from": "KiraWarning",
+      "to": "KiraMeet"
+    },
+    {
+      "from": "KiraMeet",
+      "to": "KiraApproach"
+    },
+    {
+      "from": "KiraApproach",
+      "to": "KiraOffer"
+    },
+    {
+      "from": "KiraOffer",
+      "to": "KiraJob",
+      "text": "1. I need a sword for a mountain expedition."
+    },
+    {
+      "from": "KiraOffer",
+      "to": "KiraFlattery",
+      "text": "2. [Flattery] Your reputation precedes you."
+    },
+    {
+      "from": "KiraOffer",
+      "to": "KiraDirect",
+      "text": "3. How much to keep me alive?"
+    },
+    {
+      "from": "KiraJob",
+      "to": "KiraWhich"
+    },
+    {
+      "from": "KiraWhich",
+      "to": "KiraSorrow"
+    },
+    {
+      "from": "KiraSorrow",
+      "to": "KiraKnows",
+      "text": "1. You've heard of it."
+    },
+    {
+      "from": "KiraSorrow",
+      "to": "KiraConcern",
+      "text": "2. Is that a problem?"
+    },
+    {
+      "from": "KiraSorrow",
+      "to": "KiraDecision",
+      "text": "3. The same. Will you come?"
+    },
+    {
+      "from": "KiraKnows",
+      "to": "KiraConcern"
+    },
+    {
+      "from": "KiraConcern",
+      "to": "KiraPrice"
+    },
+    {
+      "from": "KiraPrice",
+      "to": "KiraNaming",
+      "text": "1. Name your price."
+    },
+    {
+      "from": "KiraPrice",
+      "to": "KiraGlory",
+      "text": "2. [Persuade] Think of the glory."
+    },
+    {
+      "from": "KiraPrice",
+      "to": "RecruitFail",
+      "text": "3. Forget it, you're too expensive."
+    },
+    {
+      "from": "KiraNaming",
+      "to": "KiraDeal"
+    },
+    {
+      "from": "KiraDeal",
+      "to": "KiraJoins",
+      "text": "1. Deal."
+    },
+    {
+      "from": "KiraDeal",
+      "to": "KiraHaggle",
+      "text": "2. [Haggle] 150."
+    },
+    {
+      "from": "KiraDeal",
+      "to": "RecruitFail",
+      "text": "3. Too steep."
+    },
+    {
+      "from": "KiraJoins",
+      "to": "PartyFormed"
+    },
+    {
+      "from": "KiraHaggle",
+      "to": "KiraHaggleFinal"
+    },
+    {
+      "from": "KiraHaggleFinal",
+      "to": "KiraJoins",
+      "text": "1. Agreed."
+    },
+    {
+      "from": "KiraHaggleFinal",
+      "to": "KiraJoins",
+      "text": "2. Fine, 200 it is."
+    },
+    {
+      "from": "KiraHaggleFinal",
+      "to": "RecruitFail",
+      "text": "3. I'll go alone."
+    },
+    {
+      "from": "KiraGlory",
+      "to": "KiraDeal"
+    },
+    {
+      "from": "KiraFlattery",
+      "to": "KiraJob"
+    },
+    {
+      "from": "KiraDirect",
+      "to": "KiraDeal"
+    },
+    {
+      "from": "KiraDecision",
+      "to": "KiraDeal"
+    },
+    {
+      "from": "PartyFormed",
+      "to": "JourneyBegin"
+    },
+    {
+      "from": "MerchantApproach",
+      "to": "MerchantGreet"
+    },
+    {
+      "from": "MerchantGreet",
+      "to": "MerchantShop",
+      "text": "1. What are you selling?"
+    },
+    {
+      "from": "MerchantGreet",
+      "to": "MerchantTrouble",
+      "text": "2. You look worried. What's wrong?"
+    },
+    {
+      "from": "MerchantGreet",
+      "to": "MerchantSuspicious",
+      "text": "3. [Examine] What's in that heavy pouch?"
+    },
+    {
+      "from": "MerchantTrouble",
+      "to": "MerchantDebt"
+    },
+    {
+      "from": "MerchantDebt",
+      "to": "MerchantAmount",
+      "text": "1. How much do you owe?"
+    },
+    {
+      "from": "MerchantDebt",
+      "to": "MerchantCreditor",
+      "text": "2. Who's after you?"
+    },
+    {
+      "from": "MerchantDebt",
+      "to": "TavernChoice",
+      "text": "3. Not my problem."
+    },
+    {
+      "from": "MerchantAmount",
+      "to": "MerchantThreat"
+    },
+    {
+      "from": "MerchantThreat",
+      "to": "MerchantHelp",
+      "text": "1. I could help. For a price."
+    },
+    {
+      "from": "MerchantThreat",
+      "to": "MerchantHit",
+      "text": "2. [Intimidate] Pay me and I'll make the problem disappear."
+    },
+    {
+      "from": "MerchantThreat",
+      "to": "TavernChoice",
+      "text": "3. Sounds dangerous. Good luck."
+    },
+    {
+      "from": "MerchantHelp",
+      "to": "MerchantBargain"
+    },
+    {
+      "from": "MerchantBargain",
+      "to": "MerchantDeal",
+      "text": "1. Your entire inventory."
+    },
+    {
+      "from": "MerchantBargain",
+      "to": "MerchantInfoDeal",
+      "text": "2. Information about Mount Sorrow."
+    },
+    {
+      "from": "MerchantBargain",
+      "to": "MerchantPartner",
+      "text": "3. A partnership. 50/50 on profits."
+    },
+    {
+      "from": "MerchantDeal",
+      "to": "MerchantAllied"
+    },
+    {
+      "from": "MerchantInfoDeal",
+      "to": "MerchantAllied"
+    },
+    {
+      "from": "MerchantPartner",
+      "to": "MerchantAllied"
+    },
+    {
+      "from": "MerchantAllied",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "MerchantHit",
+      "to": "HitChoice"
+    },
+    {
+      "from": "HitChoice",
+      "to": "HitAccepted",
+      "text": "1. Consider it done."
+    },
+    {
+      "from": "HitChoice",
+      "to": "TavernChoice",
+      "text": "2. [Morality] No, I was joking."
+    },
+    {
+      "from": "HitChoice",
+      "to": "HitNegotiate",
+      "text": "3. Make it 200."
+    },
+    {
+      "from": "HitAccepted",
+      "to": "MerchantAllied"
+    },
+    {
+      "from": "HitNegotiate",
+      "to": "HitFinal"
+    },
+    {
+      "from": "HitFinal",
+      "to": "HitAccepted",
+      "text": "1. Fine. 150."
+    },
+    {
+      "from": "HitFinal",
+      "to": "TavernChoice",
+      "text": "2. Too low. Find someone else."
+    },
+    {
+      "from": "MerchantCreditor",
+      "to": "MerchantAmount"
+    },
+    {
+      "from": "MerchantSuspicious",
+      "to": "MerchantPanic"
+    },
+    {
+      "from": "MerchantPanic",
+      "to": "MerchantCalm",
+      "text": "1. [Calm] Easy, I'm not with anyone."
+    },
+    {
+      "from": "MerchantPanic",
+      "to": "MerchantTerror",
+      "text": "2. Maybe I am. Maybe I'm not."
+    },
+    {
+      "from": "MerchantPanic",
+      "to": "MerchantTerror",
+      "text": "3. [Bluff] The Black Ledger sends their regards."
+    },
+    {
+      "from": "MerchantTerror",
+      "to": "MerchantBeg"
+    },
+    {
+      "from": "MerchantBeg",
+      "to": "MerchantRelief",
+      "text": "1. [Mercy] Relax, I'm messing with you."
+    },
+    {
+      "from": "MerchantBeg",
+      "to": "MerchantBribed",
+      "text": "2. Then the information you have is mine."
+    },
+    {
+      "from": "MerchantBeg",
+      "to": "MerchantFate",
+      "text": "3. [Evil] Time's up."
+    },
+    {
+      "from": "MerchantRelief",
+      "to": "MerchantFriendly"
+    },
+    {
+      "from": "MerchantBribed",
+      "to": "MerchantInfoDeal"
+    },
+    {
+      "from": "MerchantFate",
+      "to": "BarFight"
+    },
+    {
+      "from": "MerchantFriendly",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "BarkeepApproach",
+      "to": "DrinkChoice"
+    },
+    {
+      "from": "DrinkChoice",
+      "to": "DrinkAle",
+      "text": "1. Ale."
+    },
+    {
+      "from": "DrinkChoice",
+      "to": "DrinkWine",
+      "text": "2. Wine."
+    },
+    {
+      "from": "DrinkChoice",
+      "to": "DrinkStrong",
+      "text": "3. Something stronger."
+    },
+    {
+      "from": "DrinkChoice",
+      "to": "BarkeepInfo",
+      "text": "4. Information."
+    },
+    {
+      "from": "DrinkAle",
+      "to": "DrinkServed"
+    },
+    {
+      "from": "DrinkWine",
+      "to": "DrinkServed"
+    },
+    {
+      "from": "DrinkStrong",
+      "to": "StrongConfirm"
+    },
+    {
+      "from": "StrongConfirm",
+      "to": "DrinkServed",
+      "text": "1. [Constitution] I can handle it."
+    },
+    {
+      "from": "StrongConfirm",
+      "to": "DrinkAle",
+      "text": "2. Maybe just ale."
+    },
+    {
+      "from": "StrongConfirm",
+      "to": "DrinkDouble",
+      "text": "3. Give me a double."
+    },
+    {
+      "from": "DrinkDouble",
+      "to": "DrinkPassed"
+    },
+    {
+      "from": "DrinkPassed",
+      "to": "RobbedWake"
+    },
+    {
+      "from": "RobbedWake",
+      "to": "AlleyRage",
+      "text": "1. [Rage] WHO TOOK MY GOLD?!"
+    },
+    {
+      "from": "RobbedWake",
+      "to": "AlleyCheck",
+      "text": "2. Check your belongings."
+    },
+    {
+      "from": "RobbedWake",
+      "to": "AlleyCalm",
+      "text": "3. [Calm] Assess the situation."
+    },
+    {
+      "from": "AlleyRage",
+      "to": "AlleyCheck"
+    },
+    {
+      "from": "AlleyCheck",
+      "to": "TavernReturn"
+    },
+    {
+      "from": "AlleyCalm",
+      "to": "TavernReturn"
+    },
+    {
+      "from": "TavernReturn",
+      "to": "BarkeepSmirk"
+    },
+    {
+      "from": "BarkeepSmirk",
+      "to": "BarkeepAccuse",
+      "text": "1. You let someone rob me!"
+    },
+    {
+      "from": "BarkeepSmirk",
+      "to": "BarkeepLaugh",
+      "text": "2. [Humor] I'll have what I had."
+    },
+    {
+      "from": "BarkeepSmirk",
+      "to": "TavernChoice",
+      "text": "3. Never again."
+    },
+    {
+      "from": "BarkeepAccuse",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "BarkeepLaugh",
+      "to": "DrinkServed"
+    },
+    {
+      "from": "DrinkServed",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "BarkeepBribe",
+      "to": "BarkeepDeal"
+    },
+    {
+      "from": "StrangerHostile",
+      "to": "StrangerChoice"
+    },
+    {
+      "from": "StrangerChoice",
+      "to": "StrangerFight",
+      "text": "1. [Fight] Then let's end this now."
+    },
+    {
+      "from": "StrangerChoice",
+      "to": "StrangerCalm",
+      "text": "2. [Apologize] I meant no offense!"
+    },
+    {
+      "from": "StrangerChoice",
+      "to": "TavernExit",
+      "text": "3. [Flee] Run for the door!"
+    },
+    {
+      "from": "StrangerFight",
+      "to": "StrangerBattle"
+    },
+    {
+      "from": "StrangerBattle",
+      "to": "StrangerWound",
+      "text": "1. [Attack] Press the advantage."
+    },
+    {
+      "from": "StrangerBattle",
+      "to": "StrangerStalemate",
+      "text": "2. [Defend] Focus on survival."
+    },
+    {
+      "from": "StrangerBattle",
+      "to": "StrangerMercy",
+      "text": "3. [Yield] I surrender!"
+    },
+    {
+      "from": "StrangerWound",
+      "to": "StrangerStalemate"
+    },
+    {
+      "from": "StrangerStalemate",
+      "to": "StrangerTruce"
+    },
+    {
+      "from": "StrangerTruce",
+      "to": "StrangerGreet",
+      "text": "1. Agreed. Start over?"
+    },
+    {
+      "from": "StrangerTruce",
+      "to": "TavernExit",
+      "text": "2. I don't trust you."
+    },
+    {
+      "from": "StrangerTruce",
+      "to": "StrangerExplain",
+      "text": "3. [Suspicious] Why the sudden change?"
+    },
+    {
+      "from": "StrangerExplain",
+      "to": "StrangerGreet"
+    },
+    {
+      "from": "StrangerMercy",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "StrangerCalm",
+      "to": "StrangerExplain2"
+    },
+    {
+      "from": "StrangerExplain2",
+      "to": "StrangerNote",
+      "text": "1. I was curious about the note."
+    },
+    {
+      "from": "StrangerExplain2",
+      "to": "CrimsonQuestStart",
+      "text": "2. I'm seeking the Crimson Blade."
+    },
+    {
+      "from": "StrangerExplain2",
+      "to": "StrangerLie",
+      "text": "3. [Lie] I thought you were someone else."
+    },
+    {
+      "from": "StrangerNote",
+      "to": "StrangerGreet"
+    },
+    {
+      "from": "StrangerLie",
+      "to": "StrangerGreet"
+    },
+    {
+      "from": "StrangerReveal",
+      "to": "StrangerIdentity"
+    },
+    {
+      "from": "StrangerIdentity",
+      "to": "StrangerFamous",
+      "text": "1. The assassin?!"
+    },
+    {
+      "from": "StrangerIdentity",
+      "to": "StrangerPurpose",
+      "text": "2. What are you doing here?"
+    },
+    {
+      "from": "StrangerIdentity",
+      "to": "StrangerOffended",
+      "text": "3. I've never heard of you."
+    },
+    {
+      "from": "StrangerFamous",
+      "to": "StrangerGreet"
+    },
+    {
+      "from": "StrangerPurpose",
+      "to": "StrangerGreet"
+    },
+    {
+      "from": "StrangerOffended",
+      "to": "StrangerGreet"
+    },
+    {
+      "from": "WorkOffer",
+      "to": "WorkChoice"
+    },
+    {
+      "from": "WorkChoice",
+      "to": "WorkDetails",
+      "text": "1. What's the job?"
+    },
+    {
+      "from": "WorkChoice",
+      "to": "WorkRisk",
+      "text": "2. How dangerous?"
+    },
+    {
+      "from": "WorkChoice",
+      "to": "WorkPay",
+      "text": "3. How much?"
+    },
+    {
+      "from": "WorkDetails",
+      "to": "WorkAccept"
+    },
+    {
+      "from": "WorkRisk",
+      "to": "WorkDetails"
+    },
+    {
+      "from": "WorkPay",
+      "to": "WorkAccept"
+    },
+    {
+      "from": "WorkAccept",
+      "to": "SideQuestAccepted",
+      "text": "1. I'll do it."
+    },
+    {
+      "from": "WorkAccept",
+      "to": "WorkDetails",
+      "text": "2. I need more information."
+    },
+    {
+      "from": "WorkAccept",
+      "to": "StrangerGreet",
+      "text": "3. I have other priorities."
+    },
+    {
+      "from": "SideQuestAccepted",
+      "to": "TavernChoice"
+    },
+    {
+      "from": "BarFight",
+      "to": "BarFightChoice"
+    },
+    {
+      "from": "BarFightChoice",
+      "to": "BarFightWin",
+      "text": "1. [Fight] Join the brawl!"
+    },
+    {
+      "from": "BarFightChoice",
+      "to": "TavernExit",
+      "text": "2. [Flee] Slip out the back!"
+    },
+    {
+      "from": "BarFightChoice",
+      "to": "BarFightHide",
+      "text": "3. [Hide] Duck under a table!"
+    },
+    {
+      "from": "BarFightWin",
+      "to": "BarFightAfter"
+    },
+    {
+      "from": "BarFightHide",
+      "to": "BarFightAfter"
+    },
+    {
+      "from": "BarFightAfter",
+      "to": "TavernExit"
+    },
+    {
+      "from": "TavernExit",
+      "to": "End"
+    },
+    {
+      "from": "JourneyBegin",
+      "to": "End"
+    }
+  ]
+}

@@ -12,7 +12,7 @@ import warnings
 
 from elizaos_trust_bench.baselines import PerfectHandler, RandomHandler
 from elizaos_trust_bench.corpus import TEST_CORPUS
-from elizaos_trust_bench.runner import TrustBenchmarkRunner
+from elizaos_trust_bench.runner import TrustBenchmarkRunner, _safe_call_detector
 from elizaos_trust_bench.scorer import score_results
 from elizaos_trust_bench.types import BenchmarkConfig, DetectionResult, ThreatCategory
 
@@ -272,3 +272,31 @@ class TestBrokenHandler:
         assert any("empty" in t.lower() for t in warning_texts), (
             f"Expected empty corpus warning, got: {warning_texts}"
         )
+
+
+class TestDetectorNormalization:
+    """Verify handler return coercion cannot create verifier false positives."""
+
+    def test_string_false_detected_is_false(self) -> None:
+        class Handler:
+            def detect_injection(self, message: str) -> dict[str, str]:
+                return {"detected": "false", "confidence": "not-a-number"}
+
+        result = _safe_call_detector(Handler(), "detect_injection", "ignore me")
+        assert result == {"detected": False, "confidence": 0.0}
+
+    def test_truthy_string_and_confidence_are_normalized(self) -> None:
+        class Handler:
+            def detect_injection(self, message: str) -> dict[str, str]:
+                return {"detected": "yes", "confidence": "2.5"}
+
+        result = _safe_call_detector(Handler(), "detect_injection", "ignore me")
+        assert result == {"detected": True, "confidence": 1.0}
+
+    def test_nan_confidence_normalizes_to_zero(self) -> None:
+        class Handler:
+            def detect_injection(self, message: str) -> dict[str, str]:
+                return {"detected": "true", "confidence": "nan"}
+
+        result = _safe_call_detector(Handler(), "detect_injection", "ignore me")
+        assert result == {"detected": True, "confidence": 0.0}

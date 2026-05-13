@@ -105,6 +105,12 @@ export const ROUTE_MODE_MATRIX: ReadonlyArray<RouteModeRule> = [
     modes: ["local", "cloud", "remote"],
     reason: "cloud TTS preview — hidden in local-only",
   },
+  {
+    path: "/api/tts/local-inference",
+    method: "POST",
+    modes: ["local", "local-only"],
+    reason: "local TTS preview — hidden in cloud + remote",
+  },
 
   // ── /api/dev/* — dev observability (always-on for local dev) ──────────
   // Cloud-provisioned containers can disable separately via env, but the

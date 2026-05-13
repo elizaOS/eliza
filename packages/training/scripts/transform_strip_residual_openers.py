@@ -74,16 +74,16 @@ def strip_opener_first_sentence(text: str, *, stats: dict) -> str:
 
 
 # Match BOTH quoted and unquoted text values
-TOON_TEXT_QUOTED = re.compile(
+NATIVE_JSON_TEXT_QUOTED = re.compile(
     r'(^|\n)(\s*text:\s*)("(?:[^"\\]|\\.)*")(\s*(?=\n|$))',
     re.DOTALL,
 )
-TOON_TEXT_UNQUOTED = re.compile(
+NATIVE_JSON_TEXT_UNQUOTED = re.compile(
     r'(^|\n)(\s*text:\s*)([^"\n][^\n]*)(?=\n|$)',
 )
 
 
-def strip_in_toon(toon: str, stats: dict) -> str:
+def strip_in_payload(payload: str, stats: dict) -> str:
     def _quoted(match: re.Match) -> str:
         prefix, key, quoted, suffix = match.groups()
         try:
@@ -104,9 +104,9 @@ def strip_in_toon(toon: str, stats: dict) -> str:
             return f'{prefix}{key}{json.dumps(new_value, ensure_ascii=False)}'
         return f"{prefix}{key}{new_value}"
 
-    new_toon = TOON_TEXT_QUOTED.sub(_quoted, toon)
-    new_toon = TOON_TEXT_UNQUOTED.sub(_unquoted, new_toon)
-    return new_toon
+    new_payload = NATIVE_JSON_TEXT_QUOTED.sub(_quoted, payload)
+    new_payload = NATIVE_JSON_TEXT_UNQUOTED.sub(_unquoted, new_payload)
+    return new_payload
 
 
 def transform_record(rec: dict, stats: dict) -> dict:
@@ -116,7 +116,7 @@ def transform_record(rec: dict, stats: dict) -> dict:
     er = rec.get("expectedResponse")
     if not isinstance(er, str) or not er:
         return rec
-    new_er = strip_in_toon(er, stats)
+    new_er = strip_in_payload(er, stats)
     if new_er != er:
         rec["expectedResponse"] = new_er
         stats["records_changed"] = stats.get("records_changed", 0) + 1

@@ -1,4 +1,37 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
+
+// One real bundled VRM (gzipped glTF) shipped under packages/app/dist/vrms/.
+// The preview server serves the SPA + the real `vrms/eliza-N.vrm.gz` files, but
+// the runtime boot-config it serves has no `vrmAssets`, so `getVrmUrl()` falls
+// back to `bundled-1.vrm.gz` which 404s — the gz-decode of a tiny 404 page then
+// throws "Invalid typed array length" inside three-vrm. We mock every
+// `vrms/*.vrm.gz` request with a real asset so the companion canvas loads a
+// model instead. Playwright bundles the test files, so `import.meta.url` points
+// at the bundle, not source — resolve relative to process.cwd() (= packages/app/)
+// where the suite always runs.
+let cachedVrmGz: Buffer | null | undefined;
+function bundledVrmGz(): Buffer | null {
+  if (cachedVrmGz !== undefined) return cachedVrmGz;
+  const candidates = [
+    resolve(process.cwd(), "dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "packages/app/dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "../app/dist/vrms/eliza-1.vrm.gz"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      try {
+        cachedVrmGz = readFileSync(c);
+        return cachedVrmGz;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  cachedVrmGz = null;
+  return cachedVrmGz;
+}
 
 const ROOT_TIMEOUT_MS = 20_000;
 const NAV_TIMEOUT_MS = 12_000;
@@ -7,6 +40,12 @@ const NAV_TIMEOUT_MS = 12_000;
 const READY_CHECK_TIMEOUT_MS = 15_000;
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const STORAGE_SEEDED_KEY = "eliza:ui-smoke-storage-seeded";
+const RENDER_TELEMETRY_EVENT = "eliza:render-telemetry";
+const RENDER_TELEMETRY_ERRORS_KEY = "__ELIZA_RENDER_TELEMETRY_ERRORS__";
+const RENDER_TELEMETRY_INSTALLED_KEY =
+  "__ELIZA_RENDER_TELEMETRY_WATCHER_INSTALLED__";
+
+const renderTelemetryGuardedPages = new WeakSet<Page>();
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -15,6 +54,13 @@ type ReadyCheck =
 type EvaluatedReadyCheck = {
   check: ReadyCheck;
   passed: boolean;
+};
+
+type RenderTelemetryIssue = {
+  name?: string;
+  renderCount?: number;
+  windowMs?: number;
+  severity?: string;
 };
 
 const DEFAULT_APP_STORAGE: Record<string, string> = {
@@ -47,6 +93,56 @@ export async function seedAppStorage(
   );
 }
 
+export async function installRenderTelemetryGuard(page: Page): Promise<void> {
+  if (renderTelemetryGuardedPages.has(page)) return;
+  renderTelemetryGuardedPages.add(page);
+
+  await page.addInitScript(
+    ({ eventName, errorsKey, installedKey }) => {
+      const win = window as Window &
+        Record<string, unknown> & {
+          [key: string]: unknown;
+        };
+      if (win[installedKey]) return;
+      win[installedKey] = true;
+      win[errorsKey] = [];
+      window.addEventListener(eventName, (event) => {
+        const detail = (event as CustomEvent<RenderTelemetryIssue>).detail;
+        if (detail?.severity !== "error") return;
+        const errors = win[errorsKey];
+        if (Array.isArray(errors)) {
+          errors.push(detail);
+        }
+      });
+    },
+    {
+      eventName: RENDER_TELEMETRY_EVENT,
+      errorsKey: RENDER_TELEMETRY_ERRORS_KEY,
+      installedKey: RENDER_TELEMETRY_INSTALLED_KEY,
+    },
+  );
+}
+
+export async function expectNoRenderTelemetryErrors(
+  page: Page,
+  label: string,
+): Promise<void> {
+  const errors = await page.evaluate<RenderTelemetryIssue[]>((errorsKey) => {
+    const value = (window as Window & Record<string, unknown>)[errorsKey];
+    return Array.isArray(value) ? (value as RenderTelemetryIssue[]) : [];
+  }, RENDER_TELEMETRY_ERRORS_KEY);
+  const summary = errors
+    .map(
+      (event) =>
+        `${event.name ?? "unknown"}:${event.renderCount ?? "?"} renders/${event.windowMs ?? "?"}ms`,
+    )
+    .join(", ");
+  expect(
+    errors,
+    `[playwright-ui-smoke] ${label}: render telemetry errors detected${summary ? ` (${summary})` : ""}`,
+  ).toHaveLength(0);
+}
+
 async function expectRootReady(page: Page): Promise<void> {
   await expect(page.locator("#root")).toBeVisible({ timeout: ROOT_TIMEOUT_MS });
 }
@@ -59,9 +155,11 @@ export async function openAppPath(
   page: Page,
   targetPath: string,
 ): Promise<void> {
+  await installRenderTelemetryGuard(page);
   await page.goto(targetPath, { waitUntil: "domcontentloaded" });
   await expectRootReady(page);
   await expectNoOnboardingRedirect(page);
+  await expectNoRenderTelemetryErrors(page, targetPath);
 }
 
 export async function readLocalStorage(
@@ -217,6 +315,42 @@ function emptyWalletTradingProfile(url: URL) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  // VRM assets (vrms/<slug>.vrm.gz + vrms/previews|backgrounds/<slug>.png) —
+  // the preview server doesn't carry the runtime boot-config's vrmAssets, so
+  // resolveAppAssetUrl(`vrms/...`) 404s. Serve a real bundled VRM (so the
+  // companion canvas renders a model) and a 1×1 PNG for the preview/background
+  // thumbnails (the canvas falls back if those are absent, but a 404 still
+  // shows as a console error). Match `**/vrms/**` to catch any sub-path.
+  const ONE_PX_PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await page.route("**/vrms/**", async (route) => {
+    const url = route.request().url();
+    if (/\.vrm(\.gz)?(\?|$)/i.test(url)) {
+      const body = bundledVrmGz();
+      if (!body) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+        body,
+      });
+      return;
+    }
+    if (/\.png(\?|$)/i.test(url)) {
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "image/png" },
+        body: ONE_PX_PNG,
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
       status: 200,

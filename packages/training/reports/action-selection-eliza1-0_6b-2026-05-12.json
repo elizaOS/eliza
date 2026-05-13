@@ -1,0 +1,27 @@
+{
+  "date": "2026-05-12",
+  "checkpoint": "checkpoints/eliza-1-0_6b-apollo-1778551769/final-gguf-q4_k_m/final-Q4_K_M.gguf",
+  "inference_backend": "~/.eliza/local-inference/bin/dflash/linux-x64-cuda/llama-server (non-fused CUDA build, -c 32768, -ngl 99, no-think chat template)",
+  "case_filter": "32-case curated subset covering all major action surfaces (full 76-case bench would have required ~4h budget)",
+  "selection_accuracy_pct": 15.6,
+  "selection_passed": 5,
+  "selection_total": 32,
+  "planner_accuracy_pct": 15.6,
+  "execution_accuracy_pct": 15.6,
+  "latency_ms_avg": 16470,
+  "latency_ms_p50": 3197,
+  "latency_ms_p95": 44984,
+  "llm_input_tokens": 180184,
+  "llm_output_tokens": 3467,
+  "failure_mode": "llm_chose_reply (27/32 cases \u2014 the 0_6b test-SFT defaults to REPLY for every tool-action prompt; only the 5 chat/negative cases pass, where REPLY is correct)",
+  "pass_by_tag": {
+    "chat (5/5)": 1.0,
+    "negative (5/5)": 1.0,
+    "all action surfaces (todos/cal/email/block/messaging/etc)": 0.0
+  },
+  "notes": [
+    "The test-SFT is an 8k-slice / 1-epoch SFT of Qwen3-0.6B on Eliza-1 conversational data \u2014 it was NOT trained on the planner/PLAN_ACTIONS tool-call surface",
+    "12 of the 32 cases also hit prompt-size overflow (>32k tokens) because the runtime composes large memory+actions catalogs into the planner prompt",
+    "Curated 32-case filter biased toward standard cases across all tags; 0.0% on every non-chat tag is consistent with the model never producing a tool_call"
+  ]
+}

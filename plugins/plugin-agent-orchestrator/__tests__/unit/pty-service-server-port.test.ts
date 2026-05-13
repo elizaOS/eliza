@@ -13,7 +13,7 @@ describe("resolveServerPort", () => {
     const runtime = makeRuntime({
       SERVER_PORT: "9999",
       ELIZA_API_PORT: "47831",
-      MILADY_API_PORT: "31337",
+      ELIZA_PORT: "31337",
     });
     expect(resolveServerPort(runtime)).toBe("9999");
   });
@@ -21,14 +21,21 @@ describe("resolveServerPort", () => {
   it("falls back to ELIZA_API_PORT when SERVER_PORT is not set", () => {
     const runtime = makeRuntime({
       ELIZA_API_PORT: "47831",
-      MILADY_API_PORT: "31337",
+      ELIZA_PORT: "31337",
     });
     expect(resolveServerPort(runtime)).toBe("47831");
   });
 
-  it("falls back to MILADY_API_PORT when only the legacy alias is set", () => {
+  it("falls back to ELIZA_API_PORT when only that is set", () => {
     const runtime = makeRuntime({
-      MILADY_API_PORT: "31337",
+      ELIZA_API_PORT: "31337",
+    });
+    expect(resolveServerPort(runtime)).toBe("31337");
+  });
+
+  it("falls back to ELIZA_PORT when SERVER_PORT and ELIZA_API_PORT are not set", () => {
+    const runtime = makeRuntime({
+      ELIZA_PORT: "31337",
     });
     expect(resolveServerPort(runtime)).toBe("31337");
   });

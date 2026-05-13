@@ -1,0 +1,14 @@
+[
+  {"task_id": "TODO-601", "title": "Alpha需求规格文档终稿", "description": "完成Q2三大核心功能的需求规格文档终稿", "status": "completed", "priority": "high", "due_date": "2026-03-21", "assignee": "王明", "tags": ["Alpha","需求"], "project": "Alpha"},
+  {"task_id": "TODO-602", "title": "Alpha接口设计文档", "description": "编写Alpha项目核心接口设计文档", "status": "completed", "priority": "high", "due_date": "2026-03-22", "assignee": "李华", "tags": ["Alpha","技术"], "project": "Alpha"},
+  {"task_id": "TODO-603", "title": "Alpha技术可行性报告", "description": "评估微服务架构技术可行性", "status": "in_progress", "priority": "high", "due_date": "2026-03-25", "assignee": "李华", "tags": ["Alpha","技术"], "project": "Alpha"},
+  {"task_id": "TODO-604", "title": "Alpha部署环境搭建", "description": "搭建Alpha项目微服务部署环境", "status": "completed", "priority": "medium", "due_date": "2026-03-24", "assignee": "马强", "tags": ["Alpha","运维"], "project": "Alpha"},
+  {"task_id": "TODO-605", "title": "Beta PRD文档初稿", "description": "完成Beta项目产品需求文档初稿", "status": "completed", "priority": "high", "due_date": "2026-03-21", "assignee": "赵蕾", "tags": ["Beta","产品"], "project": "Beta"},
+  {"task_id": "TODO-606", "title": "Beta后端数据库设计", "description": "设计Beta项目后端数据库表结构", "status": "in_progress", "priority": "high", "due_date": "2026-03-24", "assignee": "张伟", "tags": ["Beta","开发"], "project": "Beta"},
+  {"task_id": "TODO-607", "title": "Beta前端原型设计", "description": "完成Beta项目前端原型设计和交互稿", "status": "pending", "priority": "medium", "due_date": "2026-03-22", "assignee": "周明", "tags": ["Beta","前端"], "project": "Beta", "blocked_by": "等待第三方API文档"},
+  {"task_id": "TODO-608", "title": "Beta API接口开发", "description": "完成Beta项目核心API接口开发", "status": "pending", "priority": "high", "due_date": "2026-03-25", "assignee": "张伟", "tags": ["Beta","开发"], "project": "Beta"},
+  {"task_id": "TODO-609", "title": "Beta第三方API文档协调", "description": "协调第三方供应商提供API文档", "status": "in_progress", "priority": "high", "due_date": "2026-03-24", "assignee": "赵蕾", "tags": ["Beta","协调"], "project": "Beta"},
+  {"task_id": "TODO-610", "title": "Gamma验收标准文档", "description": "整理客户确认的验收标准文档", "status": "completed", "priority": "high", "due_date": "2026-03-21", "assignee": "王明", "tags": ["Gamma","文档"], "project": "Gamma"},
+  {"task_id": "TODO-611", "title": "Gamma交付计划更新", "description": "更新Gamma项目交付计划和排期", "status": "completed", "priority": "medium", "due_date": "2026-03-22", "assignee": "赵蕾", "tags": ["Gamma","计划"], "project": "Gamma"},
+  {"task_id": "TODO-612", "title": "Gamma最终交付物准备", "description": "准备Gamma项目最终交付物和文档", "status": "completed", "priority": "high", "due_date": "2026-03-26", "assignee": "王明", "tags": ["Gamma","交付"], "project": "Gamma"}
+]

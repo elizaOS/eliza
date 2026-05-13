@@ -1,0 +1,73 @@
+[
+  {
+    "integration_id": "INT-901",
+    "name": "SLA规则配置",
+    "status": "active",
+    "config": {
+      "critical": {
+        "response_time_minutes": 60,
+        "resolution_time_hours": 4,
+        "escalation_after_minutes": 30
+      },
+      "high": {
+        "response_time_minutes": 240,
+        "resolution_time_hours": 12,
+        "escalation_after_minutes": 120
+      },
+      "medium": {
+        "response_time_minutes": 480,
+        "resolution_time_hours": 24,
+        "escalation_after_minutes": 240
+      },
+      "low": {
+        "response_time_minutes": 1440,
+        "resolution_time_hours": 72,
+        "escalation_after_minutes": 720
+      }
+    },
+    "service": "sla_policy",
+    "last_verified": "2026-01-15",
+    "monthly_calls": 0,
+    "error_rate": 0.0
+  },
+  {
+    "integration_id": "INT-902",
+    "name": "邮件通知集成",
+    "status": "error",
+    "config": {
+      "host": "smtp.company.com",
+      "port": 587,
+      "auth": "oauth2"
+    },
+    "error_message": "OAuth token已过期，需要重新授权",
+    "service": "smtp",
+    "last_verified": "2026-03-20",
+    "monthly_calls": 0,
+    "error_rate": 0.0
+  },
+  {
+    "integration_id": "INT-903",
+    "name": "即时消息集成",
+    "status": "active",
+    "config": {
+      "url": "https://im.company.com/webhook/alerts",
+      "channel": "#ops-alerts"
+    },
+    "service": "webhook",
+    "last_verified": "2026-02-10",
+    "monthly_calls": 0,
+    "error_rate": 0.0
+  },
+  {
+    "integration_id": "INT-904",
+    "name": "值班表集成",
+    "status": "active",
+    "config": {
+      "endpoint": "https://oncall.company.com/api/v1/schedule"
+    },
+    "service": "api",
+    "last_verified": "2026-03-01",
+    "monthly_calls": 0,
+    "error_rate": 0.0
+  }
+]

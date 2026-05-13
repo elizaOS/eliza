@@ -25,7 +25,7 @@ class ModelRuntime(Protocol):
 
 
 class MINTAgent:
-    """Solve MINT tasks using a runtime when available, otherwise a local mock."""
+    """Solve MINT tasks using a runtime when available, otherwise local heuristics."""
 
     def __init__(
         self,
@@ -35,6 +35,7 @@ class MINTAgent:
         temperature: float = 0.0,
         trajectory_logger_service: object | None = None,
         trajectory_ids_sink: list[str] | None = None,
+        allow_ground_truth_mock: bool = False,
     ) -> None:
         self.runtime = runtime if isinstance(runtime, ModelRuntime) else None
         self.tool_executor = tool_executor or PythonExecutor()
@@ -42,6 +43,7 @@ class MINTAgent:
         self.temperature = max(0.0, min(1.0, temperature))
         self.trajectory_logger_service = trajectory_logger_service
         self.trajectory_ids_sink = trajectory_ids_sink
+        self.allow_ground_truth_mock = allow_ground_truth_mock
 
     def reset_session(self) -> None:
         """Reset per-task state. The local agent is stateless."""
@@ -184,9 +186,12 @@ class MINTAgent:
         if arithmetic is not None:
             return arithmetic
 
-        # Built-in smoke tasks need deterministic output without external keys.
-        # This branch keeps local runs finite; real scoring should use --provider eliza.
-        return task.ground_truth
+        if self.allow_ground_truth_mock:
+            # Built-in smoke tasks need deterministic output without external keys.
+            # Keep this explicit so live-looking runs cannot score from labels.
+            return task.ground_truth
+
+        return None
 
     def _answer_simple_arithmetic(self, prompt: str) -> str | None:
         match = re.search(r"(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)", prompt)

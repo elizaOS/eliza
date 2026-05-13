@@ -32,9 +32,8 @@ function clone(slot: PersonalitySlot): PersonalitySlot {
 /**
  * Structured store for personality slots (user + global) and named profiles.
  *
- * Skeleton-quality persistence: state is held in-memory and mirrored as
- * agent memories so it survives a runtime reload. A future Wave-3 followup
- * will move this to a dedicated table with proper indexes.
+ * Persistence is in-memory, mirrored as agent memories so state survives a
+ * runtime reload.
  */
 export class PersonalityStore extends Service {
 	static serviceType = PersonalityServiceType.PERSONALITY_STORE;
@@ -163,6 +162,20 @@ export class PersonalityStore extends Service {
 
 	getRecentAudit(limit = 25): PersonalityAuditEntry[] {
 		return this.audit.slice(-limit).reverse();
+	}
+
+	/**
+	 * Drop every in-memory personality slot and audit entry. Bundled profile
+	 * defaults are preserved (they are loaded from disk on initialize and
+	 * never mutated by slot operations).
+	 *
+	 * Used by the benchmark harness's `/api/benchmark/reset` route so that
+	 * personality state seeded by one scenario does not leak into the next
+	 * scenario sharing the same runtime process.
+	 */
+	clear(): void {
+		this.slots.clear();
+		this.audit.length = 0;
 	}
 
 	/**

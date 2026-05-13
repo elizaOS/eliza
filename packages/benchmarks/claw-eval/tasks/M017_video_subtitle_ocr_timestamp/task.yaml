@@ -1,0 +1,42 @@
+task_id: M017_video_subtitle_ocr_timestamp
+task_name: Video Subtitle OCR - Timestamp Extraction
+version: "1.0"
+category: video_ocr
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    I'm currently editing a video and need your help extracting the Chinese
+    subtitles from the first 30 seconds of this clip. Please identify the
+    precise appearance and disappearance times for each line, using seconds
+    as the unit and rounding to one decimal place (e.g., 1.5). Once you have
+    the data, please save it directly into a file named /workspace/subtitles.jsonl,
+    requiring each line to be an independent JSON object in the following format:
+    {"start": 0.0, "end": 0.7, "text": "内容"}.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.webm
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/subtitles.jsonl
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Extract frames at high frequency, OCR Chinese subtitles, detect appearance/
+  disappearance times, output as JSONL with start/end/text fields.
+primary_dimensions:
+  - completion
+  - robustness

@@ -2,7 +2,6 @@ import sharedConfig from "../tsup.plugin-packages.shared";
 
 export default {
   ...sharedConfig,
-  dts: true,
   external: [
     "@elizaos/cloud-routing",
     "@elizaos/core",

@@ -1,0 +1,48 @@
+[
+  {
+    "integration_id": "INT-201",
+    "name": "payment_gateway",
+    "display_name": "Payment Gateway",
+    "status": "active",
+    "error_rate": 0.3,
+    "notes": "Recovered to normal. During the outage (20:25-21:35) error rate reached 100% due to database connections being unavailable.",
+    "service": "payment",
+    "last_verified": "2026-03-01T08:00:00+08:00",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-202",
+    "name": "crm_sync",
+    "display_name": "CRM Data Sync",
+    "status": "degraded",
+    "error_rate": 100,
+    "notes": "Suspended, awaiting query optimization. The new SQL query introduced in last Friday's deployment did not undergo performance review, resulting in a full table scan. DBA needs to add proper indexes before it can be resumed.",
+    "service": "data_sync",
+    "last_verified": "2026-03-01T08:00:00+08:00",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-203",
+    "name": "order_service",
+    "display_name": "Order Service",
+    "status": "active",
+    "error_rate": 0.5,
+    "notes": "Recovered. During the outage failure rate was 95%+; approximately 200 orders have abnormal statuses pending verification.",
+    "service": "core_service",
+    "last_verified": "2026-03-01T08:00:00+08:00",
+    "monthly_calls": 0
+  },
+  {
+    "integration_id": "INT-204",
+    "name": "database_primary",
+    "display_name": "Primary Database",
+    "status": "active",
+    "connection_pool_size": 200,
+    "current_connections": 45,
+    "notes": "Recovered. Last night at peak reached 200/200. The crm_data_sync process was holding 300+ connections (exceeding the connection pool limit, crowding out other services' connections). Current connections: 45/200, running normally.",
+    "service": "postgresql",
+    "last_verified": "2026-03-01T08:00:00+08:00",
+    "monthly_calls": 0,
+    "error_rate": 0.0
+  }
+]

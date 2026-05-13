@@ -1,0 +1,80 @@
+2025-03-08 09:00:47.529 ERROR [RateLimiter] HTTP 429 Too Many Requests for req_39301: Rate limit exceeded. Retry-After: 19s. Current burst: 107 RPM (limit: 80 RPM)
+2025-03-08 09:07:50.495 ERROR [RequestHandler] TIMEOUT: Request req_20131 for question Q0186 exceeded per-question timeout of 120 seconds. Model response incomplete. Consider increasing timeout or reducing max_output_tokens.
+2025-03-08 09:07:53.231 ERROR [RequestHandler] Request req_92448 failed: HTTP 500 Internal Server Error
+2025-03-08 09:14:51.040 WARN  [RateLimiter] Approaching rate limit: 75 RPM
+2025-03-08 09:17:25.988 WARN  [BatchProcessor] Question Q0290 required retry (attempt 2/3)
+2025-03-08 09:24:26.113 WARN  [ConnectionPool] Connection pool utilization at 92%
+2025-03-08 09:30:33.798 ERROR [BatchProcessor] Question Q0898 failed after 3 attempts, marking as incomplete
+2025-03-08 09:35:53.728 INFO  [TokenCounter] Request req_79515: input_tokens=1360, output_tokens=420
+2025-03-08 09:46:16.666 ERROR [RequestHandler] TIMEOUT: Request req_79512 for question Q0407 exceeded per-question timeout of 120 seconds. Model response incomplete. Consider increasing timeout or reducing max_output_tokens.
+2025-03-08 09:52:04.388 WARN  [RequestHandler] Slow response detected for req_64500: 40.21s (threshold: 30s)
+2025-03-08 09:53:42.518 ERROR [TokenCounter] Output truncated at 4096 tokens for req_28387
+2025-03-08 09:55:38.720 WARN  [TokenCounter] Large output detected: 3752 tokens approaching limit
+2025-03-08 09:58:08.903 INFO  [TokenCounter] Request req_55792: input_tokens=616, output_tokens=2247
+2025-03-08 10:01:31.377 INFO  [TokenCounter] Request req_35061: input_tokens=304, output_tokens=2180
+2025-03-08 10:16:47.710 INFO  [BatchProcessor] Batch 54 completed: 9/10 questions processed successfully
+2025-03-08 10:18:12.551 INFO  [RequestHandler] Successfully processed request req_92080 in 17.20s
+2025-03-08 10:24:21.052 INFO  [ConnectionPool] Active connections: 10, idle: 5
+2025-03-08 10:29:42.028 INFO  [RequestHandler] Successfully processed request req_84797 in 18.71s
+2025-03-08 10:39:27.932 WARN  [RequestHandler] Slow response detected for req_56575: 34.93s (threshold: 30s)
+2025-03-08 11:06:17.525 ERROR [RequestHandler] Request req_78508 failed: HTTP 500 Internal Server Error
+2025-03-08 11:15:04.788 WARN  [TokenCounter] Large output detected: 3702 tokens approaching limit
+2025-03-08 11:15:19.499 INFO  [TokenCounter] Request req_63695: input_tokens=1310, output_tokens=1605
+2025-03-08 11:19:37.739 ERROR [RateLimiter] HTTP 429 Too Many Requests for req_88805: Rate limit exceeded. Retry-After: 18s. Current burst: 105 RPM (limit: 80 RPM)
+2025-03-08 11:20:07.154 WARN  [ConnectionPool] Connection pool utilization at 90%
+2025-03-08 11:22:21.168 WARN  [RequestHandler] Slow response detected for req_45846: 29.22s (threshold: 30s)
+2025-03-08 11:49:54.797 INFO  [BatchProcessor] Batch 16 completed: 9/10 questions processed successfully
+2025-03-08 11:51:18.030 WARN  [RateLimiter] Approaching rate limit: 78 RPM
+2025-03-08 11:51:35.692 ERROR [RateLimiter] HTTP 429 Too Many Requests for req_10275: Rate limit exceeded. Retry-After: 18s. Current burst: 100 RPM (limit: 80 RPM)
+2025-03-08 11:53:14.190 WARN  [RequestHandler] Slow response detected for req_15224: 37.77s (threshold: 30s)
+2025-03-08 12:00:35.410 WARN  [ConnectionPool] Connection pool utilization at 81%
+2025-03-08 12:04:43.152 INFO  [HealthCheck] API endpoint healthy, latency=0.116s
+2025-03-08 12:12:35.955 ERROR [TokenCounter] Output truncated at 4096 tokens for req_15917
+2025-03-08 12:18:40.567 ERROR [RequestHandler] Request req_65694 failed: ConnectionTimeout after 120 seconds
+2025-03-08 12:28:28.149 ERROR [RequestHandler] Request req_43714 failed: HTTP 500 Internal Server Error
+2025-03-08 12:40:21.315 ERROR [RateLimiter] HTTP 429 Too Many Requests for req_35857: Rate limit exceeded. Retry-After: 23s. Current burst: 109 RPM (limit: 80 RPM)
+2025-03-08 12:46:27.890 WARN  [BatchProcessor] Question Q0065 required retry (attempt 2/3)
+2025-03-08 12:59:22.184 INFO  [RequestHandler] Successfully processed request req_69127 in 4.37s
+2025-03-08 13:00:22.201 INFO  [RateLimiter] Current throughput: 78 RPM, within limits
+2025-03-08 13:03:10.085 INFO  [BatchProcessor] Batch 72 completed: 9/10 questions processed successfully
+2025-03-08 13:09:41.329 INFO  [TokenCounter] Request req_50909: input_tokens=1360, output_tokens=3339
+2025-03-08 13:13:26.849 WARN  [RequestHandler] Slow response detected for req_13965: 29.63s (threshold: 30s)
+2025-03-08 13:23:10.798 INFO  [HealthCheck] API endpoint healthy, latency=0.377s
+2025-03-08 13:27:17.331 WARN  [TokenCounter] Large output detected: 4069 tokens approaching limit
+2025-03-08 13:42:09.286 ERROR [TokenCounter] Output truncated at 4096 tokens for req_27459
+2025-03-08 13:45:21.661 ERROR [BatchProcessor] Question Q0024 failed after 3 attempts, marking as incomplete
+2025-03-08 13:54:42.401 WARN  [TokenCounter] Large output detected: 4045 tokens approaching limit
+2025-03-08 13:56:49.354 ERROR [BatchProcessor] Question Q0054 failed after 3 attempts, marking as incomplete
+2025-03-08 14:00:45.894 INFO  [HealthCheck] API endpoint healthy, latency=0.432s
+2025-03-08 14:02:11.134 INFO  [BatchProcessor] Batch 25 completed: 9/10 questions processed successfully
+2025-03-08 14:16:10.917 ERROR [RequestHandler] Request req_27091 failed: HTTP 500 Internal Server Error
+2025-03-08 14:25:16.558 INFO  [BatchProcessor] Batch 22 completed: 9/10 questions processed successfully
+2025-03-08 14:32:07.047 INFO  [RateLimiter] Current throughput: 59 RPM, within limits
+2025-03-08 14:34:42.309 INFO  [RateLimiter] Current throughput: 69 RPM, within limits
+2025-03-08 14:36:27.022 WARN  [RequestHandler] Slow response detected for req_77902: 41.09s (threshold: 30s)
+2025-03-08 14:36:45.632 INFO  [TokenCounter] Request req_40286: input_tokens=585, output_tokens=2871
+2025-03-08 14:38:10.013 INFO  [BatchProcessor] Batch 94 completed: 10/10 questions processed successfully
+2025-03-08 14:56:07.449 INFO  [HealthCheck] API endpoint healthy, latency=0.215s
+2025-03-08 15:08:43.867 INFO  [TokenCounter] Request req_87390: input_tokens=993, output_tokens=2939
+2025-03-08 15:09:00.358 WARN  [BatchProcessor] Question Q0609 required retry (attempt 2/3)
+2025-03-08 15:16:04.667 WARN  [RequestHandler] Slow response detected for req_10105: 33.31s (threshold: 30s)
+2025-03-08 15:26:48.833 ERROR [RequestHandler] TIMEOUT: Request req_71114 for question Q0833 exceeded per-question timeout of 120 seconds. Model response incomplete. Consider increasing timeout or reducing max_output_tokens.
+2025-03-08 15:28:10.373 WARN  [BatchProcessor] Question Q0851 required retry (attempt 2/3)
+2025-03-08 15:29:50.856 INFO  [TokenCounter] Request req_95913: input_tokens=1248, output_tokens=2581
+2025-03-08 15:30:01.842 INFO  [TokenCounter] Request req_41544: input_tokens=1249, output_tokens=1756
+2025-03-08 15:41:07.854 INFO  [HealthCheck] API endpoint healthy, latency=0.477s
+2025-03-08 15:53:29.290 INFO  [RateLimiter] Current throughput: 69 RPM, within limits
+2025-03-08 16:01:10.681 ERROR [RequestHandler] Request req_87058 failed: HTTP 500 Internal Server Error
+2025-03-08 16:03:05.686 INFO  [ConnectionPool] Active connections: 14, idle: 0
+2025-03-08 16:14:29.515 INFO  [TokenCounter] Request req_11573: input_tokens=290, output_tokens=2210
+2025-03-08 16:14:52.252 ERROR [RequestHandler] Request req_37172 failed: ConnectionTimeout after 120 seconds
+2025-03-08 16:20:21.668 ERROR [RequestHandler] Request req_23877 failed: HTTP 500 Internal Server Error
+2025-03-08 16:25:01.280 INFO  [HealthCheck] API endpoint healthy, latency=0.473s
+2025-03-08 16:34:00.018 ERROR [TokenCounter] Output truncated at 4096 tokens for req_24673
+2025-03-08 16:35:16.950 ERROR [TokenCounter] Output truncated at 4096 tokens for req_99827
+2025-03-08 16:39:10.186 ERROR [RateLimiter] HTTP 429 Too Many Requests for req_40171: Rate limit exceeded. Retry-After: 26s. Current burst: 106 RPM (limit: 80 RPM)
+2025-03-08 16:39:28.563 INFO  [RequestHandler] Successfully processed request req_34378 in 8.31s
+2025-03-08 16:40:36.422 INFO  [TokenCounter] Request req_56492: input_tokens=333, output_tokens=1747
+2025-03-08 16:51:50.825 ERROR [BatchProcessor] Question Q0652 failed after 3 attempts, marking as incomplete
+2025-03-08 16:56:01.784 WARN  [RequestHandler] Slow response detected for req_55483: 30.24s (threshold: 30s)
+2025-03-08 16:58:52.236 INFO  [RateLimiter] Current throughput: 64 RPM, within limits

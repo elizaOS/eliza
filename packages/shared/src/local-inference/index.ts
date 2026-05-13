@@ -13,7 +13,9 @@ export {
   buildHuggingFaceResolveUrl,
   buildHuggingFaceResolveUrlForPath,
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  ELIZA_1_HF_REPO,
   ELIZA_1_PLACEHOLDER_IDS,
+  ELIZA_1_RELEASE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
@@ -21,6 +23,15 @@ export {
   isDefaultEligibleId,
   MODEL_CATALOG,
 } from "./catalog.js";
+export {
+  GPU_PROFILE_IDS,
+  GPU_PROFILES,
+  type GpuProfile,
+  type GpuProfileId,
+  type KvCacheType,
+  matchGpuProfile,
+  reservedHeadroomGb,
+} from "./gpu-profiles.js";
 export {
   downloadsStagingDir,
   elizaModelsDir,
@@ -48,6 +59,9 @@ export {
   AGENT_MODEL_SLOTS,
   type AgentModelSlot,
   type CatalogModel,
+  type CatalogQuantizationId,
+  type CatalogQuantizationMatrix,
+  type CatalogQuantizationVariant,
   type DownloadEvent,
   type DownloadJob,
   type DownloadState,

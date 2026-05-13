@@ -1,0 +1,56 @@
+{
+  "gateway": {
+    "port": 18789,
+    "bind": "0.0.0.0"
+  },
+  "env": {
+    "MINIMAX_API_KEY": null
+  },
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "minimax/MiniMax-M2.5",
+        "fallbacks": [
+          "alibaba-cloud/qwen3-max-2026-01-23"
+        ]
+      },
+      "models": {
+        "minimax/MiniMax-M2.5": { "alias": "minimax" },
+        "alibaba-cloud/qwen3-max-2026-01-23": { "alias": "qwen" },
+        "openai/gpt-5.2": { "alias": "gpt" },
+        "anthropic/claude-opus-4-6": { "alias": "opus" }
+      }
+    }
+  },
+  "models": {
+    "mode": "merge",
+    "providers": {
+      "minimax": {
+        "baseUrl": "https://api.minimax.io/anthropic",
+        "apiKey": "${MINIMAX_API_KEY}",
+        "api": "anthropic-messages",
+        "models": [
+          {
+            "id": "MiniMax-M2.5",
+            "name": "MiniMax M2.5",
+            "reasoning": true,
+            "input": ["text"],
+            "cost": { "input": 0.3, "output": 1.2, "cacheRead": 0.03, "cacheWrite": 0.12 },
+            "contextWindow": 200000,
+            "maxTokens": 8192
+          }
+        ]
+      }
+    }
+  },
+  "plugins": {
+    "entries": {
+      "discord": {
+        "enabled": true,
+        "config": {
+          "botToken": "MTI5ODc2NTQzMjEwOTg3NjU0My5HdFl4QXcu.fake-discord-token-placeholder"
+        }
+      }
+    }
+  }
+}

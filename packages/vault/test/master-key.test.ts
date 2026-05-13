@@ -7,6 +7,7 @@ import {
   passphraseMasterKey,
   passphraseMasterKeyFromEnv,
 } from "../src/master-key.js";
+import { runtimePassphraseMasterKeyCaller } from "./vitest-assertion-shim.js";
 
 describe("passphraseMasterKey", () => {
   test("returns a 32-byte key for a valid passphrase", async () => {
@@ -83,8 +84,7 @@ describe("passphraseMasterKey", () => {
 
   test("rejects non-string passphrase", () => {
     expect(() =>
-      passphraseMasterKey({
-        // @ts-expect-error exercises runtime validation for invalid callers.
+      runtimePassphraseMasterKeyCaller(passphraseMasterKey)({
         passphrase: undefined,
         cost: 1024,
       }),

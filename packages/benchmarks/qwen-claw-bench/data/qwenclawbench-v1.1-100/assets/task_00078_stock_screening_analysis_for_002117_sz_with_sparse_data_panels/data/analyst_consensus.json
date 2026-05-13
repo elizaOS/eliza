@@ -1,0 +1,13 @@
+{
+  "stock_id": "002117.SZ",
+  "consensus_date": "06/15/2024",
+  "target_price_cny": 12.50,
+  "rating": "buy",
+  "num_analysts": 5,
+  "avg_score": 4.2,
+  "price_upside_pct": 31.6,
+  "earnings_revision_direction": "up",
+  "last_updated": "06/15/2024",
+  "source": "Wind Financial Terminal",
+  "notes": "Consensus based on 5 sell-side analysts covering DongGang Shares. Target price reflects 12-month forward estimate."
+}

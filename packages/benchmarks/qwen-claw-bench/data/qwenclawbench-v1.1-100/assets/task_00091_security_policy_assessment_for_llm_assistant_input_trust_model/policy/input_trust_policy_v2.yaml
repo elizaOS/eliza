@@ -1,0 +1,190 @@
+# Input Trust Policy v2.3
+# Effective Date: 2024-03-15
+# Last Reviewed: 2024-11-01
+# Owner: Security Operations Team
+# Status: ACTIVE - Production
+
+policy_version: "2.3"
+policy_name: "LLM Assistant Input Trust Classification Policy"
+effective_date: "2024-03-15"
+last_updated: "2024-11-01"
+supersedes: "v1.0-draft"
+
+description: >
+  This policy defines the trust classification for all input channels
+  to the LLM assistant deployed on the Raspberry Pi home automation
+  platform. It establishes which channels may issue executable commands
+  and which are restricted to data-only (read/summarize) operations.
+
+trusted_channels:
+  - channel_id: whatsapp_direct
+    display_name: "WhatsApp Direct Messages"
+    trust_level: full_execute
+    description: >
+      Messages received via the authenticated WhatsApp Business API
+      from the verified owner phone number. End-to-end encrypted.
+    authentication:
+      method: phone_number_verification
+      session_management: true
+      session_timeout_minutes: 30
+    allowed_operations:
+      - execute
+      - configure
+      - delete
+      - summarize
+      - translate
+      - search
+    notes: >
+      WhatsApp account compromise (e.g., SIM-swap) is an acknowledged
+      residual risk. See threat model for details.
+
+  - channel_id: rpi_local_hid
+    display_name: "Raspberry Pi Local HID (Keyboard/Mouse)"
+    trust_level: full_execute
+    description: >
+      Physical keyboard and mouse input connected directly to the
+      Raspberry Pi via USB. Requires physical presence.
+    authentication:
+      method: physical_presence
+      device_allowlist: true
+      vendor_id_check: true
+    allowed_operations:
+      - execute
+      - configure
+      - delete
+      - summarize
+      - translate
+      - search
+    notes: >
+      Only pre-approved USB HID devices are accepted. New devices
+      are blocked until manually approved. See raspberry_pi_hid_config.ini.
+
+untrusted_sources:
+  - source_id: email
+    display_name: "Email Content"
+    trust_level: data_only
+    description: >
+      Content from emails forwarded to or processed by the assistant.
+      Treated as untrusted due to high risk of prompt injection and
+      spoofed sender addresses.
+    allowed_operations:
+      - summarize
+      - translate
+    blocked_operations:
+      - execute
+      - configure
+      - delete
+    risk_factors:
+      - sender_spoofing
+      - embedded_prompt_injection
+      - forwarding_chain_manipulation
+
+  - source_id: pdf
+    display_name: "PDF Document Content"
+    trust_level: data_only
+    description: >
+      Content extracted from PDF files. High risk of indirect prompt
+      injection via hidden text, metadata, or invisible layers.
+    allowed_operations:
+      - summarize
+      - translate
+    blocked_operations:
+      - execute
+      - configure
+      - delete
+    risk_factors:
+      - hidden_text_injection
+      - metadata_manipulation
+      - javascript_execution
+      - invisible_text_layers
+
+  - source_id: webpage
+    display_name: "Web Page Content"
+    trust_level: data_only
+    description: >
+      Content scraped or fetched from web pages. Subject to prompt
+      injection via page content, comments, or hidden elements.
+    allowed_operations:
+      - summarize
+      - translate
+      - search
+    blocked_operations:
+      - execute
+      - configure
+      - delete
+    risk_factors:
+      - injected_page_content
+      - hidden_html_elements
+      - dynamic_content_manipulation
+
+  - source_id: word_doc
+    display_name: "Word Document Content"
+    trust_level: data_only
+    description: >
+      Content from Microsoft Word (.docx) files. Similar risks to
+      PDF with additional macro and template injection vectors.
+    allowed_operations:
+      - summarize
+      - translate
+    blocked_operations:
+      - execute
+      - configure
+      - delete
+    risk_factors:
+      - macro_injection
+      - template_injection
+      - hidden_text
+      - embedded_objects
+
+action_rules:
+  - rule_id: AR-001
+    name: "Trusted Channel Execute"
+    condition: "channel.trust_level == full_execute"
+    action: "allow_all_operations"
+    logging: true
+
+  - rule_id: AR-002
+    name: "Untrusted Source Read-Only"
+    condition: "source.trust_level == data_only"
+    action: "allow_read_operations_only"
+    logging: true
+    alert_on_execute_attempt: true
+
+  - rule_id: AR-003
+    name: "Cross-Channel Boundary"
+    condition: "trusted_channel requests execution of untrusted_source content"
+    action: "block_and_flag"
+    description: >
+      When a user on a trusted channel (e.g., WhatsApp) asks the
+      assistant to execute instructions found in an untrusted source
+      (e.g., 'run the commands in this PDF'), the request MUST be
+      blocked. The untrusted content does not inherit trust from
+      the requesting channel.
+    logging: true
+    alert: true
+
+  - rule_id: AR-004
+    name: "Clipboard Paste from Local Device"
+    condition: "input_method == clipboard_paste AND device == rpi_local"
+    action: "treat_as_trusted"
+    description: >
+      Clipboard paste operations from the local Raspberry Pi device
+      are treated as trusted input, equivalent to direct keyboard
+      typing. This is because clipboard paste requires physical
+      presence at the device.
+    trust_level: full_execute
+    logging: true
+
+  - rule_id: AR-005
+    name: "Unknown Channel Default"
+    condition: "channel NOT IN trusted_channels AND source NOT IN untrusted_sources"
+    action: "block_and_alert"
+    description: "Any unrecognized input channel is blocked by default."
+    logging: true
+    alert: true
+
+audit_settings:
+  log_all_commands: true
+  log_retention_days: 365
+  quarterly_review_required: true
+  next_review_date: "2025-01-15"

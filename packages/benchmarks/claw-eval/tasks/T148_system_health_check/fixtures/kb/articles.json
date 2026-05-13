@@ -1,0 +1,38 @@
+[
+  {
+    "article_id": "KB-1001",
+    "title": "SMTP Service Troubleshooting Guide",
+    "category": "Operations Documentation",
+    "tags": ["SMTP", "email", "troubleshooting", "authentication"],
+    "content": "## SMTP Service Troubleshooting Guide\n\n### Common Fault Symptoms\n- Email sending timeout\n- SMTP authentication failure\n- Connection refused\n\n### Troubleshooting Steps\n1. Check SMTP service status: telnet smtp.company.com 587\n2. Verify whether authentication credentials have expired\n3. Check firewall rules to ensure port 587 is allowed\n4. Review email service logs at /var/log/mail/error.log\n\n### Expired Authentication Handling\n- Log into the email management console and regenerate credentials\n- Update SMTP authentication information in system configuration\n- Restart the email sending service\n- Verify: send a test email to confirm recovery\n\n### Temporary Workaround\n- Switch to the backup SMTP server\n- Urgent notifications can be sent via instant messaging channels",
+    "last_updated": "2026-03-01",
+    "views": 1856
+  },
+  {
+    "article_id": "KB-1002",
+    "title": "Data Warehouse Sync Optimization Guide",
+    "category": "Technical Documentation",
+    "tags": ["ETL", "data warehouse", "sync", "optimization", "timeout"],
+    "content": "## Data Warehouse Sync Optimization Guide\n\n### Common Issues\n- Sync timeout (caused by data volume growth)\n- Partial sync failure\n- Excessive data latency\n\n### Optimization Recommendations\n1. Switch incremental sync to CDC (Change Data Capture) mode\n2. Adjust sync batch size to reduce per-batch data volume\n3. Optimize source database queries and add necessary indexes\n4. Increase ETL timeout threshold (recommended 3600s)\n5. Enable parallel sync for large tables\n\n### Emergency Measures for High Error Rates\n- Temporarily increase the sync window\n- Skip sync for non-critical tables\n- Manually trigger a full sync to repair data consistency\n\n### Monitoring Metrics\n- Sync latency < 30 minutes is normal\n- Error rate < 5% is healthy\n- Error rate > 20% requires immediate investigation",
+    "last_updated": "2026-02-15",
+    "views": 1234
+  },
+  {
+    "article_id": "KB-1003",
+    "title": "System Performance Tuning Manual",
+    "category": "Technical Documentation",
+    "tags": ["performance", "tuning", "login", "response time", "slow query"],
+    "content": "## System Performance Tuning Manual\n\n### Slow Login Troubleshooting\n1. Check authentication service response time\n2. Review database slow query logs\n3. Check Redis cache hit rate\n4. Investigate network latency issues\n\n### Slow Page Loading\n- Enable CDN acceleration\n- Enable Gzip compression\n- Check frontend resource loading waterfall chart\n\n### Database Optimization\n- Regularly analyze slow queries and add indexes\n- Configure connection pool parameters\n- Consider read-write separation\n\n### Caching Strategy\n- Session cache expiry recommended at 30 minutes\n- Use Redis cache for hot data\n- Avoid cache penetration and avalanche scenarios",
+    "last_updated": "2026-03-10",
+    "views": 2300
+  },
+  {
+    "article_id": "KB-1004",
+    "title": "Storage Expansion Operations Manual",
+    "category": "Operations Documentation",
+    "tags": ["storage", "expansion", "disk", "space"],
+    "content": "## Storage Expansion Operations Manual\n\n### Expansion Request Process\n1. Submit an expansion ticket specifying current usage and target capacity\n2. Operations team assesses resource availability\n3. Schedule a maintenance window for expansion\n4. After expansion, verify mount points and permissions\n\n### Self-Service (Cloud Storage)\n- Log into cloud console -> Storage Management\n- Select the storage volume -> Expand\n- Online expansion requires no downtime, takes effect in about 5 minutes\n\n### Notes\n- Ensure backup is complete before expansion\n- File system requires a resize operation\n- Recommend reserving 20% space as buffer",
+    "last_updated": "2026-02-28",
+    "views": 890
+  }
+]

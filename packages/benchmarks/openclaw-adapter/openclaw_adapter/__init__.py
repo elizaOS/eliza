@@ -26,11 +26,19 @@ __all__ = [
 from openclaw_adapter.bfcl import build_bfcl_agent_fn  # noqa: E402
 from openclaw_adapter.clawbench import build_clawbench_agent_fn  # noqa: E402
 from openclaw_adapter.lifeops_bench import build_lifeops_bench_agent_fn  # noqa: E402
+from openclaw_adapter.swe_bench import build_swe_bench_agent_fn  # noqa: E402
+from openclaw_adapter.terminal_bench import (  # noqa: E402
+    OpenClawTerminalAgent,
+    build_terminal_bench_agent_fn,
+)
 
 __all__.extend(
     [
         "build_bfcl_agent_fn",
         "build_clawbench_agent_fn",
         "build_lifeops_bench_agent_fn",
+        "build_swe_bench_agent_fn",
+        "build_terminal_bench_agent_fn",
+        "OpenClawTerminalAgent",
     ]
 )

@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   type Address,
@@ -7,8 +6,6 @@ import {
   createWalletClient,
   http,
   maxUint128,
-  type PublicClient,
-  type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import * as viemChains from "viem/chains";
@@ -34,6 +31,9 @@ import {
 
 const SUPPORTED_CHAIN_IDS = [1, 8453, 42161, 137, 10]; // Ethereum, Base, Arbitrum, Polygon, Optimism
 
+type EvmPublicClient = ReturnType<typeof createPublicClient>;
+type EvmWalletClient = ReturnType<typeof createWalletClient>;
+
 function getViemChain(chainId: number): Chain {
   const chainMap: Record<number, Chain> = {
     1: viemChains.mainnet,
@@ -54,8 +54,8 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
   public readonly capabilityDescription =
     "Provides Uniswap V3 liquidity pool management for EVM chains.";
 
-  private publicClients: Map<number, PublicClient> = new Map();
-  private walletClients: Map<number, WalletClient> = new Map();
+  private publicClients: Map<number, EvmPublicClient> = new Map();
+  private walletClients: Map<number, EvmWalletClient> = new Map();
   private rpcUrls: Map<number, string> = new Map();
 
   constructor(runtime?: IAgentRuntime) {
@@ -86,7 +86,7 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     }
   }
 
-  private getPublicClient(chainId: number): PublicClient {
+  private getPublicClient(chainId: number): EvmPublicClient {
     let client = this.publicClients.get(chainId);
     if (client) return client;
 
@@ -102,7 +102,10 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
     return client;
   }
 
-  private getWalletClient(chainId: number, privateKey: `0x${string}`): WalletClient {
+  private getWalletClient(
+    chainId: number,
+    privateKey: `0x${string}`,
+  ): EvmWalletClient {
     const cacheKey = chainId;
     let client = this.walletClients.get(cacheKey);
     if (client) return client;
@@ -270,11 +273,13 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
         poolAddress,
         tokenA: {
           address: token0 as Address,
+          mint: token0 as Address,
           symbol: symbol0 as string,
           decimals: Number(decimals0),
         },
         tokenB: {
           address: token1 as Address,
+          mint: token1 as Address,
           symbol: symbol1 as string,
           decimals: Number(decimals1),
         },
@@ -632,6 +637,8 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
             symbol: symbol1 as string,
           },
         ],
+        accruedFees: [],
+        rewards: [],
       };
     }
 
@@ -728,13 +735,17 @@ export class UniswapV3LpService extends Service implements IEvmLpService {
   ): Promise<void> {
     const publicClient = this.getPublicClient(chainId);
     const walletClient = this.getWalletClient(chainId, privateKey);
+    const ownerAddress = walletClient.account?.address;
+    if (!ownerAddress) {
+      throw new Error("Wallet account is required to approve token spending.");
+    }
 
     // Check current allowance
     const allowance = await publicClient.readContract({
       address: tokenAddress,
       abi: ERC20_ABI,
       functionName: "allowance",
-      args: [walletClient.account?.address, spenderAddress],
+      args: [ownerAddress, spenderAddress],
     });
 
     if ((allowance as bigint) >= amount) {

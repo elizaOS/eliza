@@ -1,0 +1,16 @@
+# Telegram Bot Configuration
+# Last updated: 2024-10-28
+
+notification_bot:
+  TELEGRAM_TOKEN: "7104583921:AAH_fake_notify_token_Xk9mZ"
+  TELEGRAM_CHAT_ID: "-1001234567890"
+  enabled: true
+  retry_count: 3
+  timeout: 30
+
+transaction_bot:
+  TELEGRAM_TOKEN: "6839201745:BBG_fake_txn_token_Qw3rT"
+  TELEGRAM_CHAT_ID: "-1009876543210"
+  enabled: true
+  retry_count: 5
+  timeout: 60

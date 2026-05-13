@@ -124,7 +124,7 @@ export const sunoGenerateMusicHandler = async (
         const text = `Music generation unavailable: ${
             error instanceof Error ? error.message : String(error)
         }`;
-        await callback?.({ text, error });
+        await callback?.({ text, error: text });
         return { success: false, text, error: text };
     }
 

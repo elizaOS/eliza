@@ -1,0 +1,48 @@
+task_id: M041_video_lvb_artwork_scene
+task_name: LVB Artwork Scene Identification and Frame Extraction
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.mp4
+
+    Please watch the video and complete the following task:
+
+    In the center of the screen is a drawing, depicting a person resting their hand on their forehead on a yellowish paper.
+    Identify another scene where this artwork appeared and extract a frame from that scene, save it as /workspace/artwork_frame.png.
+  language: en
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/artwork_frame.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  Find the scene where the drawing of a person resting their hand on their forehead (on yellowish paper)
+  appears together with another drawing, with a bookshelf visible in the background.
+  Extract a frame from that scene and save it as /workspace/artwork_frame.png.
+
+primary_dimensions:
+  - completion
+  - robustness

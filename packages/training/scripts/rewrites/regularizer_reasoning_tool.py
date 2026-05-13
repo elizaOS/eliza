@@ -1,10 +1,10 @@
 """Rewriter for regularizer-reasoning-tool.
 
 Original shape (mis-classified as `agent_trace`):
-    expectedResponse TOON:
+    expectedResponse native JSON:
         thought: <multi-paragraph 3rd-person CoT, sometimes with citations>
-        actions[1]: REPLY
-        providers[0]: (often empty)
+        tool_calls[0] REPLY
+        providers: [] (often empty)
         text: "<answer>...</answer>"  (the actual final answer in <answer> tags)
         simple: false
 
@@ -122,7 +122,7 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     thought_full = decoded.get("thought") or ""
     text_full = decoded.get("text") or ""
     if isinstance(text_full, list):
-        # Defensive: TOON can produce a list when the value contains a stray
+        # Defensive: native JSON can produce a list when the value contains a stray
         # bracket. Re-stringify so the regex pass works.
         text_full = "\n".join(str(x) for x in text_full)
 
@@ -133,7 +133,7 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     short = _short_thought(thought_full)
     new_payload = {"thought": short, "text": answer}
     try:
-        new_toon = encoder.encode(new_payload)
+        new_payload = encoder.encode(new_payload)
     except Exception:
         return None
 
@@ -142,6 +142,6 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     new_md["_rewriter"] = "regularizer_reasoning_tool"
 
     new_record = dict(record)
-    new_record["expectedResponse"] = new_toon
+    new_record["expectedResponse"] = new_payload
     new_record["metadata"] = new_md
     return new_record

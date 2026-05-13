@@ -4,6 +4,11 @@ import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { generateOrganizationSchema, generateWebApplicationSchema } from "@/lib/seo";
 import { LandingPage } from "../components/landing/landing-page-new";
 
+function buildBillingSuccessPath(sessionId: string, from: string): string {
+  const params = new URLSearchParams({ session_id: sessionId, from });
+  return `/dashboard/billing/success?${params.toString()}`;
+}
+
 /**
  * Landing Page.
  *
@@ -20,19 +25,18 @@ export default function Home() {
   const sessionId = searchParams.get("session_id");
   const from = searchParams.get("from") || "settings";
   const accessError = searchParams.get("error") || undefined;
+  const billingSuccessPath = sessionId ? buildBillingSuccessPath(sessionId, from) : null;
 
   useEffect(() => {
-    if (sessionId) {
-      navigate(`/dashboard/billing/success?session_id=${sessionId}&from=${from}`, {
+    if (billingSuccessPath) {
+      navigate(billingSuccessPath, {
         replace: true,
       });
     }
-  }, [sessionId, from, navigate]);
+  }, [billingSuccessPath, navigate]);
 
-  if (sessionId) {
-    return (
-      <Navigate to={`/dashboard/billing/success?session_id=${sessionId}&from=${from}`} replace />
-    );
+  if (billingSuccessPath) {
+    return <Navigate to={billingSuccessPath} replace />;
   }
 
   const organizationSchema = generateOrganizationSchema();

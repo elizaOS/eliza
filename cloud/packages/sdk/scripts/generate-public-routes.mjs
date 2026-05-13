@@ -196,7 +196,7 @@ export type PublicRouteCallOptions<TKey extends PublicRouteKey> =
       ? { pathParams?: never }
       : { pathParams: PublicRoutePathParams[TKey] });
 
-export interface ElizaCloudPublicRouteTransport {
+interface ElizaCloudPublicRouteTransport {
   request<TResponse>(
     method: HttpMethod,
     path: string,

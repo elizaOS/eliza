@@ -1,18 +1,12 @@
 import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  PageLayout,
-  PagePanel,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  TrajectorySidebarItem,
-} from "@elizaos/ui";
-import { Download, RefreshCw, Trash2, XCircle } from "lucide-react";
+  Braces,
+  Download,
+  FileJson,
+  RefreshCw,
+  Route,
+  Trash2,
+  XCircle,
+} from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -27,14 +21,28 @@ import type {
   TrajectoryListResult,
   TrajectoryRecord,
 } from "../../api/client-types-cloud";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state/useApp";
 import {
   formatTrajectoryDuration,
   formatTrajectoryTimestamp,
   formatTrajectoryTokenCount,
 } from "../../utils/trajectory-format";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import { TrajectorySidebarItem } from "../composites/trajectories/trajectory-sidebar-item";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
+import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
 import { TrajectoryDetailView } from "./TrajectoryDetailView";
 
 const STATUS_COLORS: Record<string, { bg: string; fg: string }> = {
@@ -51,6 +59,12 @@ const SOURCE_COLORS: Record<string, { bg: string; fg: string }> = {
   api: { bg: "rgba(156, 163, 175, 0.15)", fg: "rgb(156, 163, 175)" },
   orchestrator: { bg: "rgba(168, 85, 247, 0.15)", fg: "rgb(168, 85, 247)" },
 };
+
+const TRAJECTORY_EMPTY_FEATURES = [
+  { id: "json", label: "JSON", icon: FileJson, tone: "text-info" },
+  { id: "calls", label: "Calls", icon: Braces, tone: "text-accent" },
+  { id: "refresh", label: "Refresh", icon: RefreshCw, tone: "text-ok" },
+] as const;
 
 function formatTrajectorySourceLabel(trajectory: TrajectoryRecord): string {
   const parts = [trajectory.source];
@@ -551,9 +565,10 @@ export function TrajectoriesView({
           heading={t("trajectoriesview.LoadingTrajectories")}
         />
       ) : !loading && trajectories.length === 0 ? (
-        <PagePanel.Empty
-          variant="surface"
-          className="min-h-[14rem] rounded-[1.6rem]"
+        <PagePanel.FeatureEmpty
+          className="rounded-[1.6rem]"
+          features={TRAJECTORY_EMPTY_FEATURES}
+          icon={Route}
           title={
             hasActiveFilters
               ? t("trajectoriesview.NoTrajectoriesMatchingFilters")

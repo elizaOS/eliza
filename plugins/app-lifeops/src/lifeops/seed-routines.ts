@@ -1,19 +1,8 @@
 /**
  * Seed routine templates offered during first-run onboarding.
  *
- * **Wave-1 transitional alias:** the canonical source of truth for the 8
- * habit starters is `src/default-packs/habit-starters.ts` (W1-D). This file
- * preserves the legacy `RoutineSeedTemplate` shape (rooted in
- * `CreateLifeOpsDefinitionRequest`) so existing callers
- * (`service-mixin-definitions.ts`, `client-lifeops.ts`,
- * `service-mixin-reminders.ts`) compile.
- *
- * Wave-2 (W2-A migration) deletes this file entirely once those callers
- * move to the `ScheduledTaskRunner` API and read from
- * `default-packs/habit-starters.ts` directly.
- *
- * Do **not** add new templates here — author them in
- * `default-packs/habit-starters.ts` instead.
+ * Canonical source of truth for habit starters: `src/default-packs/habit-starters.ts`.
+ * Do not add new templates here — author them there instead.
  */
 
 import type { CreateLifeOpsDefinitionRequest } from "../contracts/index.js";
@@ -25,11 +14,8 @@ import {
 
 /**
  * Canonical title for the seeded stretch routine. Exported so the
- * reminder dispatch loop can apply stretch-specific gating (busy-day
- * skip, walk-out reset) without grep-matching string literals.
- *
- * Wave-2: replaced by `task.shouldFire.kind === "stretch.walk_out_reset"`
- * (see GAP §2.7 + IMPL §3.4 — title-string match goes away).
+ * reminder dispatch loop can apply stretch-specific gating without
+ * grep-matching string literals.
  */
 export const STRETCH_ROUTINE_TITLE = "Stretch";
 

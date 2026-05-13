@@ -30,12 +30,14 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 
 ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
-    "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json"
+    "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
 
+# The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
-    "0_6b",
-    "1_7b",
+    "0_8b",
+    "2b",
+    "4b",
     "9b",
     "27b",
     "27b-256k",
@@ -70,16 +72,11 @@ VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
 # `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
 # upstream BASE models — GGUF-converted via the elizaOS/llama.cpp fork and
 # fully Eliza-optimized (every quant/kernel trick in §3) — but NOT
-# fine-tuned. `base-v1-candidate` is the in-progress state of a base-v1
-# bundle before every release-blocking gate is green (real fork-built bytes,
-# every supported-backend kernel verify, every required platform-dispatch
-# report, the runnable-on-base evals) — NOT publishable. Fine-tuning lands in
-# v2 (`finetuned-v2`). `local-standin` is a non-publishable staging shape;
-# `upload-candidate`/`final` are the fine-tuned-v1 publish states retained
-# for forward-compat.
+# fine-tuned. Fine-tuning lands in v2 (`finetuned-v2`). `local-standin` is a
+# non-publishable staging shape; `upload-candidate`/`final` are the
+# fine-tuned-v1 publish states retained for forward-compat.
 ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
     "local-standin",
-    "base-v1-candidate",
     "base-v1",
     "finetuned-v2",
     "upload-candidate",
@@ -87,22 +84,11 @@ ELIZA_1_RELEASE_STATES: Final[tuple[str, ...]] = (
 )
 # Release states the publish orchestrator + platform-plan blocker check
 # treat as a satisfiable release shape (not a hard publish-blocker).
-# `base-v1-candidate` is NOT here: it is the explicit "base-v1 plan, gates
-# not yet green" state.
 ELIZA_1_PUBLISHABLE_RELEASE_STATES: Final[tuple[str, ...]] = (
     "base-v1",
     "upload-candidate",
     "final",
 )
-# Release-channel vocabulary recorded on a published manifest (`manifest.
-# releaseChannel`). `recommended` is the fine-tuned Eliza-1 (ships in v2) —
-# the device default. `base-v1` is the upstream-base + kernel-optimized
-# release: every quant/kernel trick applied, but the text weights are the
-# upstream base GGUFs (not the fine-tuned Eliza-1). A `base-v1`-channel
-# manifest MUST be `defaultEligible: False`. Mirrors `ELIZA_1_RELEASE_CHANNELS`
-# (`packages/app-core/.../manifest/schema.ts`).
-ELIZA_1_RELEASE_CHANNELS: Final[tuple[str, ...]] = ("recommended", "base-v1")
-ELIZA_1_DEFAULT_RELEASE_CHANNEL: Final[str] = "recommended"
 # Provenance slots that must each carry a `sourceModel` (upstream HF repo)
 # when `manifest.provenance` is present. Mirrors the bundle components: the
 # `base-v1` release is "this exact upstream repo, converted + optimized".
@@ -115,10 +101,30 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
     "vision",
     "drafter",
 )
+QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
+    "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "ggml-org/Qwen3-ASR-1.7B-GGUF",
+)
+QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
+    "Qwen/Qwen3-Embedding-0.6B-GGUF",
+    "Qwen/Qwen3-Embedding-4B-GGUF",
+    "Qwen/Qwen3-Embedding-8B-GGUF",
+)
+QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
+    "asr": QWEN3_ASR_GGUF_REPOS,
+    "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
+}
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
-    "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "4b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
     "9b": (
         "turboquant_q4",
         "qjl",
@@ -150,36 +156,64 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_6b": ("metal", "vulkan", "cpu"),
-    "1_7b": ("metal", "vulkan", "cpu"),
+    "0_8b": ("metal", "vulkan", "cpu"),
+    "2b": ("metal", "vulkan", "cpu"),
+    "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    # 1M context is only practical on very large unified/HBM memory
-    # (GH200-class). CUDA is the only backend whose v1.0.0-eliza binary
-    # covers the full runtime path at that window today; the others stay
-    # off the supported list for this variant until verified.
     "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    "0_6b": "Q4_K_M",
-    "1_7b": "Q4_K_M",
+    "0_8b": "Q4_K_M",
+    "2b": "Q4_K_M",
+    "4b": "Q4_K_M",
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
     "27b-1m": "Q8_0",
 }
 
+VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("kokoro",),
+    "2b": ("kokoro",),
+    "4b": ("kokoro",),
+    "9b": ("kokoro", "omnivoice"),
+    "27b": ("omnivoice",),
+    "27b-256k": ("omnivoice",),
+    "27b-1m": ("omnivoice",),
+}
 
-def required_voice_artifacts_for_tier(tier: str) -> tuple[str, str]:
-    """Return the frozen OmniVoice GGUF pair required for ``tier``."""
+KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
+    "kokoro/model_q4.onnx",
+    "kokoro/tokenizer.json",
+    "kokoro/voices/af_bella.bin",
+)
 
-    quant = VOICE_QUANT_BY_TIER[tier]
-    return (
-        f"omnivoice-base-{quant}.gguf",
-        f"omnivoice-tokenizer-{quant}.gguf",
-    )
+
+def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
+    """Return the frozen TTS artifacts required for ``tier``.
+
+    Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
+    release line keeps small/mobile tiers on Kokoro, overlaps 9B with both
+    Kokoro and OmniVoice, and uses OmniVoice only for the 27B long-context
+    tiers.
+    """
+
+    out: list[str] = []
+    backends = VOICE_BACKENDS_BY_TIER[tier]
+    if "kokoro" in backends:
+        out.extend(KOKORO_REQUIRED_ARTIFACTS)
+    if "omnivoice" in backends:
+        quant = VOICE_QUANT_BY_TIER[tier]
+        out.extend(
+            (
+                f"omnivoice-base-{quant}.gguf",
+                f"omnivoice-tokenizer-{quant}.gguf",
+            )
+        )
+    return tuple(out)
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
@@ -757,17 +791,6 @@ def validate_manifest(
     if not isinstance(manifest["defaultEligible"], bool):
         errors.append("defaultEligible: must be a boolean")
 
-    release_channel = manifest.get("releaseChannel")
-    if release_channel is not None:
-        if release_channel not in ELIZA_1_RELEASE_CHANNELS:
-            errors.append(
-                "releaseChannel: must be one of "
-                + ", ".join(ELIZA_1_RELEASE_CHANNELS)
-            )
-        elif release_channel == "base-v1" and manifest.get("defaultEligible") is not False:
-            # The upstream-base release is never a device default.
-            errors.append("releaseChannel=base-v1 requires defaultEligible: false")
-
     voice = manifest.get("voice")
     if voice is not None:
         if not _is_object(voice):
@@ -834,10 +857,17 @@ def validate_manifest(
                             f"provenance.sourceModels.{slot}: must be an object"
                         )
                         continue
-                    if not isinstance(source.get("repo"), str) or not source.get("repo"):
+                    repo = source.get("repo")
+                    if not isinstance(repo, str) or not repo:
                         errors.append(
                             f"provenance.sourceModels.{slot}.repo: required non-empty string"
                         )
+                    elif rs == "base-v1":
+                        repo_error = canonical_qwen_source_repo_error(slot, repo)
+                        if repo_error is not None:
+                            errors.append(
+                                f"provenance.sourceModels.{slot}.repo: {repo_error}"
+                            )
                     # `file` is optional (some sources are a whole repo dir);
                     # `convertedVia` records the converter path used.
                     for opt_field in ("file", "convertedVia", "note"):
@@ -899,12 +929,7 @@ def validate_manifest(
             )
 
     # ── §3/§6 contract: evals all pass ──────────────────────────────────
-    # The `base-v1` channel ships the upstream BASE text weights, so the
-    # held-out *text-quality* eval is N/A for that channel — it is recorded
-    # but not publish-blocking. Every OTHER eval (voice RTF, ASR WER, VAD,
-    # e2e loop, 30-turn, expressive) stays exactly as required.
-    is_base_v1_channel = release_channel == "base-v1"
-    if not evals["textEval"]["passed"] and not is_base_v1_channel:
+    if not evals["textEval"]["passed"]:
         readiness_errors.append("evals.textEval.passed: false")
     if not evals["voiceRtf"]["passed"]:
         readiness_errors.append("evals.voiceRtf.passed: false")
@@ -963,6 +988,35 @@ def validate_manifest(
         elif not gate["passed"]:
             readiness_errors.append("evals.expressive.passed: false")
 
+    # ── DFlash bench ────────────────────────────────────────────────────
+    # Staging manifests may record a missing/failing DFlash measurement, but
+    # a default-eligible bundle must prove speculative decoding was measured
+    # and passed. Keep this in lockstep with the TS runtime validator.
+    dflash_gate = evals.get("dflash")
+    if not _is_object(dflash_gate):
+        if manifest["defaultEligible"]:
+            errors.append("evals.dflash: required when defaultEligible=true")
+    else:
+        if dflash_gate["passed"] and (
+            dflash_gate["acceptanceRate"] is None
+            or dflash_gate["speedup"] is None
+        ):
+            errors.append(
+                "evals.dflash: passed=true but acceptanceRate/speedup is null"
+            )
+        if manifest["defaultEligible"]:
+            if not dflash_gate["passed"]:
+                readiness_errors.append(
+                    "evals.dflash.passed: false for defaultEligible manifest"
+                )
+            if (
+                dflash_gate["acceptanceRate"] is None
+                or dflash_gate["speedup"] is None
+            ):
+                errors.append(
+                    "evals.dflash: defaultEligible requires measured acceptanceRate and speedup"
+                )
+
     # ── base-v1 provenance coverage ─────────────────────────────────────
     # A `base-v1` manifest must record where every shipped component comes
     # from — that is the whole point of the release state ("these exact
@@ -992,6 +1046,24 @@ def validate_manifest(
         )
 
     return tuple(errors)
+
+
+def canonical_qwen_source_repo_error(slot: str, repo: str) -> str | None:
+    """Return an error for known Qwen ASR/embedding provenance misspellings.
+
+    Text tiers are Qwen3.5, but ASR and embedding are separate Qwen3
+    components with their own published GGUF repos. The release pipeline must
+    not invent matching Qwen3.5 or tier-mirrored ASR/embedding names.
+    """
+
+    allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
+    if allowed is None or repo in allowed:
+        return None
+    allowed_list = ", ".join(allowed)
+    return (
+        f"must be one of the published upstream GGUF repos [{allowed_list}], "
+        f"got {repo!r}"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1068,14 +1140,9 @@ def build_manifest(
     recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
     # Optional provenance block. Pass for a `base-v1` bundle:
     #   {"releaseState": "base-v1", "finetuned": False,
-    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-9B", "file": "..."},
+    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-4B", "file": "..."},
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
-    # Release channel recorded on the manifest. Defaults to `"recommended"`
-    # (the fine-tuned Eliza-1 — the device default). Pass `"base-v1"` for the
-    # upstream-base + kernel-optimized release; that channel REQUIRES
-    # `default_eligible=False`.
-    release_channel: str | None = None,
     bundle_id: str | None = None,
     require_publish_ready: bool = True,
 ) -> dict[str, Any]:
@@ -1197,8 +1264,6 @@ def build_manifest(
         "min": ram_budget_min_mb,
         "recommended": ram_budget_recommended_mb,
     }
-    if release_channel is not None and release_channel != ELIZA_1_DEFAULT_RELEASE_CHANNEL:
-        manifest["releaseChannel"] = release_channel
     manifest["defaultEligible"] = default_eligible
     if voice_capabilities is not None:
         manifest["voice"] = {

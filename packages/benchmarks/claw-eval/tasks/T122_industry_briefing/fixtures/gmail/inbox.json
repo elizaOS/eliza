@@ -1,0 +1,12 @@
+[
+  {
+    "message_id": "msg_751",
+    "from": "boss@company.com",
+    "to": "me@company.com",
+    "subject": "Please compile this week's AI industry briefing",
+    "date": "2026-03-25T08:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Please compile this week's AI and LLM industry developments, categorize by topic, and send to the team. Key focus areas: model releases, real-world applications, chip developments. Finish by Friday."
+  }
+]

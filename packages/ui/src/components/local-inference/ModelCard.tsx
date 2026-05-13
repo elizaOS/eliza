@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import type {
   ActiveModelState,
   CatalogModel,
@@ -6,6 +5,7 @@ import type {
   HardwareProbe,
   InstalledModel,
 } from "../../api/client-local-inference";
+import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import {
   computeFit,
@@ -31,6 +31,7 @@ interface ModelCardProps {
   onVerify?: (modelId: string) => void;
   /** When present, a "Redownload" button appears on installed models. */
   onRedownload?: (modelId: string) => void;
+  downloadDisabledReason?: string;
   busy: boolean;
 }
 
@@ -52,6 +53,7 @@ export function ModelCard({
   onUninstall,
   onVerify,
   onRedownload,
+  downloadDisabledReason,
   busy,
 }: ModelCardProps) {
   const fit = computeFit(model, hardware);
@@ -62,6 +64,7 @@ export function ModelCard({
   const failed = download?.state === "failed";
   const isActive = active.modelId === model.id && active.status !== "error";
   const activating = active.modelId === model.id && active.status === "loading";
+  const parameterLabel = model.parameterLabel ?? model.params;
 
   return (
     <div className="rounded-xl border border-border bg-card p-4 flex flex-col gap-3">
@@ -71,7 +74,7 @@ export function ModelCard({
             {displayModelName(model)}
           </div>
           <div className="text-xs text-muted-foreground truncate">
-            {model.params} · {model.quant} · {model.sizeGb.toFixed(1)} GB
+            {parameterLabel} · {model.quant} · {model.sizeGb.toFixed(1)} GB
           </div>
         </div>
         <span
@@ -106,9 +109,10 @@ export function ModelCard({
           <Button
             size="sm"
             onClick={() => onDownload(model.id)}
-            disabled={busy || fit === "wontfit"}
+            disabled={busy || fit === "wontfit" || !!downloadDisabledReason}
+            title={downloadDisabledReason}
           >
-            Download
+            {downloadDisabledReason ? "Download unavailable" : "Download"}
           </Button>
         )}
         {downloading && (

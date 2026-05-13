@@ -1,0 +1,119 @@
+# Social Media Profile Field Guidelines
+# Version: 2.0 (v2)
+# Date: 2023-06-20
+# Status: Active
+# Supersedes: v1.0 (2023-01-10)
+# Change Log: Updated field specifications based on platform requirements
+
+metadata:
+  document_id: FG-v2-2023
+  version: "2.0"
+  revision_date: "2023-06-20"
+  author: "Platform Integration Team"
+  status: active
+  changelog:
+    - version: "2.0"
+      date: "2023-06-20"
+      changes:
+        - "Updated gender field to use localized Chinese values"
+        - "Adjusted default age for institutional accounts"
+        - "Relaxed persona formatting constraints for readability"
+        - "Added platform-specific encoding notes"
+
+required_fields:
+  - bio
+  - persona
+  - age
+  - gender
+  - mbti
+  - country
+  - profession
+  - interested_topics
+
+field_specifications:
+  bio:
+    type: string
+    min_length: 80
+    max_length: 180
+    language: zh-CN
+    description: >
+      Account bio in Chinese, capturing entity identity and mission. Updated in v2
+      to reduce maximum length for better mobile display compatibility. Long bios
+      (>180 chars) will be truncated on the platform.
+
+  persona:
+    type: string
+    min_length: 1500
+    max_length: 2500
+    language: zh-CN
+    format: structured_text
+    allow_newlines: true
+    description: >
+      Comprehensive persona description in Chinese. For improved readability,
+      newline characters ARE permitted to separate logical sections within
+      the persona text. This was updated from v1 which required a single
+      paragraph - feedback indicated that structured text with line breaks
+      improves content quality and maintainability.
+    sections:
+      - org_basics
+      - account_positioning
+      - speaking_style
+      - content_characteristics
+      - stance_attitudes
+      - special_notes
+      - org_memory
+
+  age:
+    type: integer
+    value: 25
+    description: >
+      Standardized account age for institutional profiles. Set to 25 to
+      represent a youthful, dynamic organizational presence on social media.
+      Updated from 30 in v1 to better align with target audience demographics.
+
+  gender:
+    type: string
+    value: "其他"
+    language: zh-CN
+    description: >
+      Gender field for institutional accounts. Must use the Chinese localized
+      value '其他' (meaning 'other') for consistency with the platform's
+      Chinese-language interface. Updated from English 'other' in v1 to
+      maintain language consistency across all fields.
+
+  mbti:
+    type: string
+    pattern: "^[EI][SN][TF][JP]$"
+    description: "Valid 4-letter MBTI personality type code"
+
+  country:
+    type: string
+    language: zh-CN
+    description: "Country name in Chinese"
+
+  profession:
+    type: string
+    language: zh-CN
+    description: "Professional category in Chinese"
+
+  interested_topics:
+    type: array
+    item_type: string
+    min_items: 3
+    max_items: 10
+    language: zh-CN
+    description: "Array of interest topics in Chinese"
+
+content_policies:
+  language: zh-CN
+  all_fields_chinese: true
+  notes: >
+    As of v2, ALL text fields including gender should use Chinese values
+    for full localization consistency. The v1 exception for gender field
+    has been removed.
+
+output_format:
+  type: JSON
+  encoding: UTF-8
+  indent: 2
+  additional_properties: false

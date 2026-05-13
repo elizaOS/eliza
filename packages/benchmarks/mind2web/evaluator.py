@@ -88,7 +88,7 @@ class Mind2WebEvaluator:
             element_accuracy=element_accuracy,
             operation_accuracy=operation_accuracy,
             step_accuracy=step_accuracy,
-            steps_completed=len(predictions),
+            steps_completed=min(len(predictions), total_steps),
             total_steps=total_steps,
             step_results=step_results,
             latency_ms=latency_ms,
@@ -215,6 +215,9 @@ class Mind2WebEvaluator:
         # Exact match
         if pred_norm == gt_norm:
             return True
+
+        if not pred_norm:
+            return False
 
         # Substring match (predicted contains ground truth)
         if gt_norm in pred_norm or pred_norm in gt_norm:

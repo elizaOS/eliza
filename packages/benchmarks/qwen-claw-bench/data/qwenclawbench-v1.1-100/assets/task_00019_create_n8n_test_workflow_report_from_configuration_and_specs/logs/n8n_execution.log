@@ -1,0 +1,50 @@
+[2024-06-15T00:14:58.248Z] INFO  Execution 55550 | Workflow: API_Health_Monitor (wf_5826) | Node: Switch | Status: SUCCESS | Duration: 18095ms
+[2024-06-15T00:18:40.047Z] INFO  Execution 89635 | Workflow: Email_Notification_Flow (wf_8071) | Node: Switch | Status: SUCCESS | Duration: 29596ms
+[2024-06-15T00:30:56.693Z] ERROR Execution 86807 | Workflow: Email_Notification_Flow (wf_8071) | Node: Webhook | Status: ERROR | Duration: 30812ms | Execution cancelled: max timeout reached (3600s)
+[2024-06-15T00:49:42.702Z] ERROR Execution 96977 | Workflow: Log_Aggregator (wf_7117) | Node: IF | Status: ERROR | Duration: 30513ms | SMTP connection timeout: smtp.internal.corp.net:587
+[2024-06-15T00:56:16.929Z] INFO  Execution 52146 | Workflow: User_Onboarding_Automation (wf_2847) | Node: Webhook | Status: SUCCESS | Duration: 43081ms
+[2024-06-15T01:46:46.489Z] INFO  Execution 44601 | Workflow: Test_Workflow_SmtpValidation (wf_8603) | Node: Code | Status: SUCCESS | Duration: 40562ms
+[2024-06-15T02:47:49.058Z] INFO  Execution 19583 | Workflow: Daily_Report_Generator (wf_9463) | Node: Wait | Status: SUCCESS | Duration: 14426ms
+[2024-06-15T02:49:48.540Z] INFO  Execution 59232 | Workflow: Daily_Report_Generator (wf_9463) | Node: Cron Trigger | Status: SUCCESS | Duration: 14086ms
+[2024-06-15T03:05:00.828Z] INFO  Execution 95155 | Workflow: API_Health_Monitor (wf_5826) | Node: Cron Trigger | Status: SUCCESS | Duration: 31521ms
+[2024-06-15T04:31:59.347Z] ERROR Execution 87582 | Workflow: Email_Notification_Flow (wf_8071) | Node: Merge | Status: ERROR | Duration: 26702ms | Authentication failed: invalid credentials for postgres_db
+[2024-06-15T04:59:23.353Z] ERROR Execution 97694 | Workflow: User_Onboarding_Automation (wf_2847) | Node: Postgres | Status: ERROR | Duration: 23613ms | TypeError: Cannot read property 'json' of undefined
+[2024-06-15T05:23:24.301Z] ERROR Execution 57177 | Workflow: API_Health_Monitor (wf_5826) | Node: Code | Status: ERROR | Duration: 26307ms | Connection refused: ECONNREFUSED 10.0.3.45:5432
+[2024-06-15T06:05:32.375Z] ERROR Execution 11301 | Workflow: Daily_Report_Generator (wf_9463) | Node: Set Variables | Status: ERROR | Duration: 37642ms | Connection refused: ECONNREFUSED 10.0.3.45:5432
+[2024-06-15T06:10:47.501Z] INFO  Execution 22345 | Workflow: Backup_Verification (wf_7900) | Node: Set Variables | Status: SUCCESS | Duration: 33199ms
+[2024-06-15T06:17:36.795Z] INFO  Execution 64544 | Workflow: Invoice_Processing (wf_4421) | Node: IF | Status: SUCCESS | Duration: 43002ms
+[2024-06-15T06:47:52.435Z] INFO  Execution 47545 | Workflow: Data_Cleanup_Job (wf_1699) | Node: Postgres | Status: SUCCESS | Duration: 26521ms
+[2024-06-15T07:20:04.645Z] INFO  Execution 64232 | Workflow: Test_Workflow_SmtpValidation (wf_8603) | Node: Postgres | Status: SUCCESS | Duration: 39300ms
+[2024-06-15T08:51:48.733Z] INFO  Execution 38057 | Workflow: DB_Sync_Workflow (wf_1777) | Node: Function | Status: SUCCESS | Duration: 5009ms
+[2024-06-15T09:18:32.563Z] ERROR Execution 25143 | Workflow: DB_Sync_Workflow (wf_1777) | Node: Wait | Status: ERROR | Duration: 33230ms | TypeError: Cannot read property 'json' of undefined
+[2024-06-15T09:28:03.205Z] INFO  Execution 49290 | Workflow: Backup_Verification (wf_7900) | Node: Merge | Status: SUCCESS | Duration: 14335ms
+[2024-06-15T09:35:02.613Z] ERROR Execution 74373 | Workflow: Metrics_Collector (wf_8561) | Node: HTTP Request | Status: ERROR | Duration: 17784ms | TypeError: Cannot read property 'json' of undefined
+[2024-06-15T10:03:08.518Z] INFO  Execution 28994 | Workflow: Daily_Report_Generator (wf_9463) | Node: Switch | Status: SUCCESS | Duration: 34403ms
+[2024-06-15T10:41:13.138Z] INFO  Execution 55714 | Workflow: Backup_Verification (wf_7900) | Node: Manual Trigger | Status: SUCCESS | Duration: 40811ms
+[2024-06-15T11:05:12.394Z] INFO  Execution 63494 | Workflow: Log_Aggregator (wf_7117) | Node: Postgres | Status: SUCCESS | Duration: 1620ms
+[2024-06-15T11:28:44.637Z] ERROR Execution 43157 | Workflow: Daily_Report_Generator (wf_9463) | Node: Postgres | Status: ERROR | Duration: 21317ms | HTTP 503 Service Unavailable from https://api.partner.com/v2/data
+[2024-06-15T11:35:11.404Z] INFO  Execution 17327 | Workflow: Invoice_Processing (wf_4421) | Node: Postgres | Status: SUCCESS | Duration: 19451ms
+[2024-06-15T11:50:07.673Z] INFO  Execution 32511 | Workflow: DB_Sync_Workflow (wf_1777) | Node: Manual Trigger | Status: SUCCESS | Duration: 42026ms
+[2024-06-15T12:34:47.085Z] INFO  Execution 75494 | Workflow: DB_Sync_Workflow (wf_1777) | Node: Webhook | Status: SUCCESS | Duration: 21261ms
+[2024-06-15T13:01:09.860Z] INFO  Execution 72189 | Workflow: Metrics_Collector (wf_8561) | Node: Slack | Status: SUCCESS | Duration: 8994ms
+[2024-06-15T13:09:51.534Z] INFO  Execution 67399 | Workflow: API_Health_Monitor (wf_5826) | Node: Postgres | Status: SUCCESS | Duration: 26200ms
+[2024-06-15T13:14:22.648Z] INFO  Execution 79575 | Workflow: Log_Aggregator (wf_7117) | Node: IF | Status: SUCCESS | Duration: 36458ms
+[2024-06-15T13:15:55.160Z] INFO  Execution 49555 | Workflow: Metrics_Collector (wf_8561) | Node: Wait | Status: SUCCESS | Duration: 12761ms
+[2024-06-15T13:34:29.684Z] ERROR Execution 57752 | Workflow: Log_Aggregator (wf_7117) | Node: Manual Trigger | Status: ERROR | Duration: 16135ms | SMTP connection timeout: smtp.internal.corp.net:587
+[2024-06-15T13:59:01.503Z] INFO  Execution 18801 | Workflow: Backup_Verification (wf_7900) | Node: HTTP Request | Status: SUCCESS | Duration: 23761ms
+[2024-06-15T14:19:28.719Z] INFO  Execution 71516 | Workflow: Test_Workflow_SmtpValidation (wf_8603) | Node: HTTP Request | Status: SUCCESS | Duration: 19917ms
+[2024-06-15T15:18:47.256Z] INFO  Execution 32672 | Workflow: Metrics_Collector (wf_8561) | Node: IF | Status: SUCCESS | Duration: 23841ms
+[2024-06-15T15:33:26.037Z] ERROR Execution 88084 | Workflow: Data_Cleanup_Job (wf_1699) | Node: Postgres | Status: ERROR | Duration: 41273ms | SMTP connection timeout: smtp.internal.corp.net:587
+[2024-06-15T16:20:48.738Z] INFO  Execution 10809 | Workflow: Email_Notification_Flow (wf_8071) | Node: Slack | Status: SUCCESS | Duration: 19714ms
+[2024-06-15T18:12:15.694Z] ERROR Execution 68839 | Workflow: User_Onboarding_Automation (wf_2847) | Node: Code | Status: ERROR | Duration: 12083ms | Connection reset by peer: ECONNRESET
+[2024-06-15T18:44:38.775Z] INFO  Execution 40491 | Workflow: Data_Cleanup_Job (wf_1699) | Node: Merge | Status: SUCCESS | Duration: 567ms
+[2024-06-15T20:13:07.497Z] ERROR Execution 63915 | Workflow: Data_Cleanup_Job (wf_1699) | Node: Set Variables | Status: ERROR | Duration: 15948ms | Request timeout after 30000ms
+[2024-06-15T20:31:08.206Z] ERROR Execution 79949 | Workflow: DB_Sync_Workflow (wf_1777) | Node: Wait | Status: ERROR | Duration: 38493ms | HTTP 503 Service Unavailable from https://api.partner.com/v2/data
+[2024-06-15T20:48:22.420Z] INFO  Execution 66730 | Workflow: API_Health_Monitor (wf_5826) | Node: Code | Status: SUCCESS | Duration: 24054ms
+[2024-06-15T21:06:17.655Z] INFO  Execution 74151 | Workflow: Log_Aggregator (wf_7117) | Node: Merge | Status: SUCCESS | Duration: 34133ms
+[2024-06-15T21:07:02.284Z] INFO  Execution 13065 | Workflow: Data_Cleanup_Job (wf_1699) | Node: Manual Trigger | Status: SUCCESS | Duration: 10791ms
+[2024-06-15T21:07:26.331Z] ERROR Execution 27063 | Workflow: DB_Sync_Workflow (wf_1777) | Node: Switch | Status: ERROR | Duration: 17925ms | Rate limit exceeded: 429 Too Many Requests
+[2024-06-15T22:39:03.684Z] INFO  Execution 85027 | Workflow: Log_Aggregator (wf_7117) | Node: IF | Status: SUCCESS | Duration: 39843ms
+[2024-06-15T23:07:10.017Z] ERROR Execution 52174 | Workflow: Invoice_Processing (wf_4421) | Node: IF | Status: ERROR | Duration: 17841ms | Authentication failed: invalid credentials for postgres_db
+[2024-06-15T23:42:30.190Z] INFO  Execution 43989 | Workflow: Slack_Alert_Pipeline (wf_1714) | Node: Merge | Status: SUCCESS | Duration: 2391ms
+[2024-06-15T23:53:42.373Z] INFO  Execution 99238 | Workflow: Slack_Alert_Pipeline (wf_1714) | Node: HTTP Request | Status: SUCCESS | Duration: 11513ms

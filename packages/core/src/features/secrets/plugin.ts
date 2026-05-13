@@ -9,7 +9,6 @@
  * - Conversational onboarding flow (Discord, Telegram)
  */
 
-import { promoteSubactionsToActions } from "../../actions/promote-subactions.ts";
 import { logger } from "../../logger.ts";
 import type { Plugin } from "../../types/index.ts";
 import { secretsAction } from "./actions/manage-secret.ts";
@@ -86,13 +85,11 @@ export const secretsManagerPlugin: Plugin = {
 	services: [SecretsService, PluginActivatorService, OnboardingService],
 
 	// Actions for natural language secret management and onboarding.
-	// `SECRETS` is the single umbrella action; `promoteSubactionsToActions`
-	// surfaces each enum value of its `action` discriminator as a virtual
-	// top-level action (e.g. `SECRETS_GET`, `SECRETS_LIST`) so the planner
-	// can pick a specific operation directly while structured callers can
-	// still target the umbrella with `action=...`. `SECRETS_UPDATE_SETTINGS`
-	// stays separate — it's a settings mutation, not a secret operation.
-	actions: [...promoteSubactionsToActions(secretsAction), updateSettingsAction],
+	// The planner sees exactly two actions: `SECRETS` (the umbrella that
+	// dispatches to get|set|delete|list|check|mirror|request via the `action`
+	// discriminator) and `SECRETS_UPDATE_SETTINGS` (a settings mutation, not
+	// a secret operation). No virtual promoted subactions are registered.
+	actions: [secretsAction, updateSettingsAction],
 
 	// Providers for context injection
 	providers: [

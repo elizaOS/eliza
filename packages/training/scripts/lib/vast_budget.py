@@ -16,7 +16,7 @@ uptime_hours``.
 The module also exposes the pipeline name and GPU SKU so ``train_vast.sh
 status`` can render a single readable line:
 
-  pipeline=qwen3.5-9b-apollo gpu=B200x2 runtime=2:14:08 $/hr=$3.51 total=$7.83
+  pipeline=qwen3.5-4b-apollo gpu=RTX_PRO_6000_Sx1 runtime=2:14:08 $/hr=$1.07 total=$2.39
 
 Use::
 
@@ -60,7 +60,9 @@ EXIT_BACKEND_ERROR = 2
 
 
 def _state_dir() -> str:
-    return os.environ.get("ELIZA_STATE_DIR") or os.environ.get("MILADY_STATE_DIR") or os.path.join(os.path.expanduser("~"), ".eliza")
+    return os.environ.get("ELIZA_STATE_DIR") or os.environ.get(
+        "ELIZA_STATE_DIR"
+    ) or os.path.join(os.path.expanduser("~"), ".eliza")
 
 
 def budget_dir() -> str:

@@ -31,6 +31,11 @@ export {
 export { getDflashRuntimeStatus } from "./dflash-server";
 export { assessFit, probeHardware } from "./hardware";
 export {
+  InferenceTelemetry,
+  inferenceTelemetry,
+  type TelemetryTags,
+} from "./inference-telemetry";
+export {
   estimateQuantizedKvBytesPerToken,
   KV_SPILL_MIN_CONTEXT,
   type KvGeometry,
@@ -82,9 +87,25 @@ export {
   type RecommendationPlatformClass,
   type RecommendedModelSelection,
   recommendForFirstRun,
+  selectBestQuantizationVariant,
   selectRecommendedModelForSlot,
   selectRecommendedModels,
 } from "./recommendation";
+export {
+  type DispatchGenerateInput,
+  dispatchGenerate,
+  type HttpStreamingAdapter,
+  type InferenceStreamEvent,
+} from "./runtime-dispatcher";
+export {
+  type InferenceRuntimeMode,
+  type InferenceRuntimeModeInput,
+  inferencePlatformClass,
+  inferenceRuntimeMode,
+  isCapacitorNativeRuntime,
+  readRuntimeModeEnvOverride,
+  type SupportedHostPlatform,
+} from "./runtime-target";
 export { LocalInferenceService, localInferenceService } from "./service";
 export type {
   ActiveModelState,

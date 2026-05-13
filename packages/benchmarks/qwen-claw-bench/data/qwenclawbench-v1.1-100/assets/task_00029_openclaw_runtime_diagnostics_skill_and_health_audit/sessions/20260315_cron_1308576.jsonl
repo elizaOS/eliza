@@ -1,0 +1,7 @@
+{"type": "session_start", "session_id": "cron_1308576", "model": "gpt-4o-2025-01-10", "created_at": "2026-03-15T07:26:58.797659", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-03-15T07:30:59.187635", "session_id": "cron_1308576", "seq": 1}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-15T07:33:33.424826", "session_id": "cron_1308576", "seq": 2, "usage": {"prompt_tokens": 6689, "completion_tokens": 3519, "total_tokens": 10595}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-15T07:33:42.507554", "session_id": "cron_1308576", "seq": 3, "usage": {"prompt_tokens": 7772, "completion_tokens": 3485, "total_tokens": 6648}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-15T07:34:01.233366", "session_id": "cron_1308576", "seq": 4, "usage": {"prompt_tokens": 4502, "completion_tokens": 3738, "total_tokens": 4853}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-15T07:38:55.238486", "session_id": "cron_1308576", "seq": 5}
+{"type": "session_end", "session_id": "cron_1308576", "ended_at": "2026-03-15T07:39:05.238486", "total_messages": 5, "status": "timeout"}

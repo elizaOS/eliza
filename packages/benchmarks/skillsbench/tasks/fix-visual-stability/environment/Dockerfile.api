@@ -1,0 +1,12 @@
+FROM node:20-slim
+
+WORKDIR /api
+
+COPY api-server/package.json .
+RUN npm install
+
+COPY api-server/ .
+
+EXPOSE 4000
+
+CMD ["npm", "start"]

@@ -64,7 +64,7 @@ function parseArgs(argv) {
   const out = {
     target: "http://localhost:31337",
     config: null,
-    token: process.env.ELIZA_API_TOKEN ?? process.env.MILADY_API_TOKEN ?? null,
+    token: process.env.ELIZA_API_TOKEN ?? process.env.ELIZA_API_TOKEN ?? null,
     out: null,
     streaming: true,
     loadTimeoutMs: 120_000,
@@ -798,9 +798,21 @@ async function main() {
   });
 
   // Health probe before starting the matrix — fail fast if the target
-  // isn't actually a running agent.
+  // isn't actually a running agent. The route-shape stub advertises
+  // synthetic:true and is deliberately rejected so fake replies cannot be
+  // persisted as latency artifacts.
   try {
-    await client.json("GET", "/api/health", undefined, { timeoutMs: 10_000 });
+    const health = await client.json("GET", "/api/health", undefined, {
+      timeoutMs: 10_000,
+    });
+    if (
+      health?.synthetic === true ||
+      health?.server === "stub-agent-server"
+    ) {
+      throw new Error(
+        "target is the synthetic stub-agent-server; start a real elizaOS agent before profiling",
+      );
+    }
   } catch (err) {
     process.stderr.write(
       `[profile-inference] FATAL: health probe failed against ${args.target}: ${err.message}\n`,

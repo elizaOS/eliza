@@ -1,0 +1,38 @@
+# Keyword Research Tool API Log
+# Session started: 2024-11-15T09:23:14Z
+# Tool: KeywordInsight Pro v3.8.2
+# API Key: ****-****-****-7f2a
+# ----------------------------------------
+[2024-11-15 09:23:17.632] INFO  GET /v3/keywords/suggestions?seed=401k+withdrawal+calculator&market=US&lang=en -> 200 OK (123ms) [req-928811]
+[2024-11-15 09:23:28.483] INFO  GET /v3/keywords/volume?keywords=retirement+withdrawal+calculator&period=12m -> 200 OK (150ms) [req-287691]
+[2024-11-15 09:23:39.973] INFO  POST /v3/keywords/bulk-volume -> 200 OK (215ms) [req-804032]
+[2024-11-15 09:24:03.270] INFO  GET /v3/keywords/suggestions?seed=retirement+withdrawal+calculator&market=US&lang=en -> 200 OK (48ms) [req-482446]
+[2024-11-15 09:24:36.958] INFO  GET /v3/keywords/suggestions?seed=401k+withdrawal+calculator&market=US&lang=en -> 200 OK (48ms) [req-416001]
+[2024-11-15 09:25:06.923] INFO  GET /v3/account/quota -> 200 OK (208ms) [req-596937]
+[2024-11-15 09:25:47.879] INFO  GET /v3/keywords/trends?keyword=retirement+withdrawal+calculator&months=3 -> 200 OK (120ms) [req-284021]
+[2024-11-15 09:26:06.310] WARN  GET /v3/keywords/competition?keywords=retirement+withdrawal+calculator -> 429 Rate Limited (22ms)
+[2024-11-15 09:26:10.457] INFO  Retrying after rate limit... backoff=2s
+[2024-11-15 09:26:14.813] INFO  GET /v3/keywords/competition?keywords=retirement+withdrawal+calculator -> 200 OK (106ms) [retry]
+[2024-11-15 09:26:41.209] INFO  GET /v3/keywords/suggestions?seed=401k+withdrawal+calculator&market=US&lang=en -> 200 OK (342ms) [req-650203]
+[2024-11-15 09:27:22.308] INFO  GET /v3/keywords/competition?keywords=retirement+withdrawal+calculator -> 200 OK (187ms) [req-792703]
+[2024-11-15 09:28:37.338] INFO  GET /v3/keywords/competition?keywords=retirement+withdrawal+calculator -> 200 OK (284ms) [req-522723]
+[2024-11-15 09:29:25.893] INFO  GET /v3/keywords/difficulty?keywords=retirement+withdrawal+calculator -> 200 OK (131ms) [req-163037]
+[2024-11-15 09:30:52.536] WARN  POST /v3/keywords/bulk-volume -> 429 Rate Limited (24ms)
+[2024-11-15 09:30:57.284] INFO  Retrying after rate limit... backoff=2s
+[2024-11-15 09:31:01.849] INFO  POST /v3/keywords/bulk-volume -> 200 OK (158ms) [retry]
+[2024-11-15 09:32:14.656] INFO  GET /v3/keywords/suggestions?seed=401k+withdrawal+calculator&market=US&lang=en -> 200 OK (284ms) [req-291863]
+[2024-11-15 09:33:00.867] INFO  GET /v3/keywords/competition?keywords=retirement+withdrawal+calculator -> 200 OK (175ms) [req-200149]
+[2024-11-15 09:33:46.353] INFO  GET /v3/account/quota -> 200 OK (122ms) [req-425389]
+[2024-11-15 09:35:41.725] INFO  GET /v3/serp/analysis?keyword=retirement+withdrawal+calculator&market=US -> 200 OK (251ms) [req-169528]
+[2024-11-15 09:37:25.900] INFO  GET /v3/keywords/suggestions?seed=retirement+withdrawal+calculator&market=US&lang=en -> 200 OK (322ms) [req-590891]
+[2024-11-15 09:39:15.909] INFO  GET /v3/account/quota -> 200 OK (204ms) [req-300764]
+[2024-11-15 09:41:14.589] INFO  GET /v3/serp/analysis?keyword=retirement+withdrawal+calculator&market=US -> 200 OK (244ms) [req-996744]
+[2024-11-15 09:42:59.341] INFO  POST /v3/keywords/bulk-volume -> 200 OK (331ms) [req-632808]
+[2024-11-15 09:45:06.737] INFO  GET /v3/keywords/suggestions?seed=401k+withdrawal+calculator&market=US&lang=en -> 200 OK (311ms) [req-703282]
+[2024-11-15 09:47:23.266] INFO  GET /v3/keywords/trends?keyword=retirement+withdrawal+calculator&months=3 -> 200 OK (120ms) [req-334423]
+[2024-11-15 09:49:00.188] INFO  POST /v3/keywords/bulk-volume -> 200 OK (236ms) [req-762317]
+[2024-11-15 09:50:38.671] INFO  GET /v3/keywords/difficulty?keywords=retirement+withdrawal+calculator -> 200 OK (283ms) [req-722287]
+# ----------------------------------------
+# Session ended: 2024-11-15T09:50:38Z
+# Total requests: 25
+# Rate limit hits: 2

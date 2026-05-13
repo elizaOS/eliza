@@ -20,7 +20,7 @@
  *   (f) a cancel mid-`generate` (the producer's `AbortSignal`) stops the turn
  *       and doesn't wedge the loop
  *
- * The *real-output* run (a real `eliza-1-0_6b` duet, gated behind the catalog
+ * The *real-output* run (a real `eliza-1-0_8b` duet, gated behind the catalog
  * +-fused-build probe) lives in `voice-duet.e2e.test.ts`.
  */
 

@@ -1,0 +1,36 @@
+{
+  "promotions": [
+    {
+      "id": "PROMO-2025-Q1",
+      "name": "New Year Sale",
+      "start_date": "2025-01-01",
+      "end_date": "2025-01-15",
+      "discount_pct": 20,
+      "categories": ["Electronics", "Office"],
+      "status": "expired"
+    },
+    {
+      "id": "PROMO-2025-Q2",
+      "name": "Spring Clearance",
+      "start_date": "2025-03-20",
+      "end_date": "2025-04-05",
+      "discount_pct": 15,
+      "categories": ["Office"],
+      "status": "expired"
+    },
+    {
+      "id": "PROMO-2025-SUMMER",
+      "name": "Summer Flash Sale",
+      "start_date": "2025-07-01",
+      "end_date": "2025-07-07",
+      "discount_pct": 25,
+      "categories": ["Electronics"],
+      "status": "scheduled"
+    }
+  ],
+  "coupon_codes": {
+    "WELCOME10": {"discount_pct": 10, "single_use": true, "min_order": 50},
+    "LOYAL20": {"discount_pct": 20, "single_use": false, "min_order": 100, "tier_required": "gold"},
+    "FREESHIP": {"free_shipping": true, "single_use": false, "min_order": 30}
+  }
+}

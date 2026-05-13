@@ -42,6 +42,12 @@
       "@elizaos/plugin-computeruse/*": [
         "../../plugins/plugin-computeruse/src/*"
       ],
+      "@elizaos/plugin-coding-tools": [
+        "../../plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/plugin-coding-tools/*": [
+        "../../plugins/plugin-coding-tools/src/*"
+      ],
       "@elizaos/plugin-mcp": ["../../plugins/plugin-mcp/src/index.ts"],
       "@elizaos/plugin-mcp/*": ["../../plugins/plugin-mcp/src/*"],
       "@elizaos/plugin-discord-local": [

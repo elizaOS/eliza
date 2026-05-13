@@ -1,8 +1,8 @@
-// @ts-nocheck — Mixin pattern: each `withFoo()` returns a class that calls
-// methods belonging to sibling mixins (e.g. `this.logLifeOpsWarn`,
-// `this.pullWhatsAppRecent`). Type checking each mixin in isolation surfaces
-// phantom errors because the local TBase constraint can't see sibling mixin
-// methods. Real type safety is enforced at the composed LifeOpsService level.
+import fs from "node:fs";
+import path from "node:path";
+import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
+import { whatsappAuthExists } from "@elizaos/plugin-whatsapp";
+import type { Memory, Plugin } from "@elizaos/core";
 import type { LifeOpsWhatsAppConnectorStatus } from "@elizaos/shared";
 import {
   fetchWhatsAppMessagesWithRuntimeService,

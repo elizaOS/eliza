@@ -9,6 +9,7 @@ OxaPay, or x402 settlement.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import json
 import re
 from typing import Any, Mapping
 
@@ -30,6 +31,12 @@ CHECK_PAYMENT_COMMANDS = {
     "VERIFY_PAYMENT",
     "PAYMENT_STATUS",
 }
+
+PAYMENT_TEXT_INTENT_RE = re.compile(
+    r"\b(pay|paid|payment|charge|checkout|link|invoice|fee|cost|price)\b|"
+    r"\b(reading|session|spread|consultation)\s+for\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -87,7 +94,12 @@ def detect_payment_demand(turn: AgentTurn) -> PaymentDemand | None:
             amount = 1.0
         return PaymentDemand(
             amount_usd=amount,
-            action_name=str(action_payload.get("command") or action_payload.get("action") or "REQUEST_PAYMENT"),
+            action_name=str(
+                action_payload.get("command")
+                or action_payload.get("action")
+                or action_payload.get("name")
+                or "REQUEST_PAYMENT"
+            ),
             source="action",
             provider=_read_string(action_payload, "provider", "payment_provider") or "oxapay",
             app_id=_read_string(action_payload, "app_id", "appId") or "woobench-mock-app",
@@ -109,10 +121,12 @@ def detect_payment_demand(turn: AgentTurn) -> PaymentDemand | None:
 
 def detect_payment_check(turn: AgentTurn) -> str | None:
     """Return the normalized check command when the agent asks to verify payment."""
-    payload = _benchmark_payload(turn.params)
-    command = _normalized_command(payload)
-    if command in CHECK_PAYMENT_COMMANDS:
-        return command
+    payloads = _benchmark_payloads(turn.params)
+    payload = payloads[0] if payloads else {}
+    for candidate in payloads:
+        command = _normalized_command(candidate)
+        if command in CHECK_PAYMENT_COMMANDS:
+            return command
     for action in turn.actions:
         normalized = action.strip().upper()
         if normalized in CHECK_PAYMENT_COMMANDS or (
@@ -120,14 +134,21 @@ def detect_payment_check(turn: AgentTurn) -> str | None:
             and str(payload.get("op", "")).strip().lower() == "check"
         ):
             return normalized
+    text_payload = _payload_from_text(turn.text)
+    if text_payload is not None:
+        command = _normalized_command(text_payload)
+        if command in CHECK_PAYMENT_COMMANDS:
+            return command
     return None
 
 
 def _payment_action_payload(turn: AgentTurn) -> dict[str, Any] | None:
-    payload = _benchmark_payload(turn.params)
-    command = _normalized_command(payload)
-    if command in CREATE_PAYMENT_COMMANDS:
-        return payload
+    payloads = _benchmark_payloads(turn.params)
+    payload = payloads[0] if payloads else {}
+    for candidate in payloads:
+        command = _normalized_command(candidate)
+        if command in CREATE_PAYMENT_COMMANDS:
+            return candidate
 
     for action in turn.actions:
         normalized = action.strip().upper()
@@ -135,17 +156,33 @@ def _payment_action_payload(turn: AgentTurn) -> dict[str, Any] | None:
             return {"command": normalized, **payload}
         if normalized == "PAYMENT" and str(payload.get("op", "")).strip().lower() == "request":
             return {"command": "REQUEST_PAYMENT", **payload}
+    text_payload = _payload_from_text(turn.text)
+    if text_payload is not None and _normalized_command(text_payload) in CREATE_PAYMENT_COMMANDS:
+        return text_payload
     return None
 
 
 def _benchmark_payload(params: Mapping[str, Any]) -> dict[str, Any]:
+    payloads = _benchmark_payloads(params)
+    return payloads[0] if payloads else dict(params)
+
+
+def _benchmark_payloads(params: Mapping[str, Any]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    nested_many = params.get("BENCHMARK_ACTIONS")
+    if isinstance(nested_many, list):
+        for item in nested_many:
+            if isinstance(item, Mapping):
+                payloads.append(dict(item))
     nested = params.get("BENCHMARK_ACTION")
     if isinstance(nested, Mapping):
-        return dict(nested)
+        payloads.append(dict(nested))
     nested = params.get("PAYMENT")
     if isinstance(nested, Mapping):
-        return dict(nested)
-    return dict(params)
+        payloads.append(dict(nested))
+    if not payloads:
+        payloads.append(dict(params))
+    return payloads
 
 
 def _normalized_command(payload: Mapping[str, Any]) -> str:
@@ -154,6 +191,35 @@ def _normalized_command(payload: Mapping[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip().upper()
     return ""
+
+
+def _payload_from_text(text: str) -> dict[str, Any] | None:
+    stripped = (text or "").strip()
+    if not stripped:
+        return None
+    if "```json" in stripped:
+        stripped = stripped.split("```json", 1)[1].split("```", 1)[0].strip()
+    elif "```" in stripped:
+        stripped = stripped.split("```", 1)[1].split("```", 1)[0].strip()
+    tool_match = re.search(r"<tool_call>\s*(\{.*?\})\s*</tool_call>", stripped, re.DOTALL)
+    if tool_match:
+        stripped = tool_match.group(1).strip()
+    try:
+        raw = json.loads(stripped)
+    except Exception:
+        return None
+    if not isinstance(raw, Mapping):
+        return None
+    payload = {str(k).strip(): v for k, v in raw.items()}
+    arguments = payload.get("arguments")
+    if isinstance(arguments, str):
+        try:
+            arguments = json.loads(arguments)
+        except Exception:
+            arguments = None
+    if isinstance(arguments, Mapping):
+        payload.update({str(k).strip(): v for k, v in arguments.items()})
+    return payload
 
 
 def _read_string(payload: Mapping[str, Any], *keys: str) -> str | None:
@@ -178,17 +244,19 @@ def _read_money(payload: Mapping[str, Any], *keys: str) -> float | None:
 
 def _amount_from_text(text: str) -> float | None:
     for pattern in (
-        r"\$(\d+(?:\.\d{1,2})?)",
-        r"(\d+(?:\.\d{1,2})?)\s*(?:USDC|usdc|dollars?)",
+        r"\$(\d[\d,]*(?:\.\d{1,2})?)",
+        r"(\d[\d,]*(?:\.\d{1,2})?)\s*(?:USDC|usdc|dollars?)",
     ):
-        match = re.search(pattern, text)
-        if match:
+        for match in re.finditer(pattern, text):
+            window = text[max(0, match.start() - 80) : match.end() + 80]
+            if not PAYMENT_TEXT_INTENT_RE.search(window):
+                continue
             return _parse_money(match.group(1))
     return None
 
 
 def _parse_money(value: str) -> float | None:
-    cleaned = value.strip().replace("$", "")
+    cleaned = value.strip().replace("$", "").replace(",", "")
     try:
         parsed = float(cleaned)
     except ValueError:

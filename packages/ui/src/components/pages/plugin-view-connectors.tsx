@@ -1,14 +1,3 @@
-import {
-  Button,
-  PagePanel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  StatusBadge,
-  Switch,
-} from "@elizaos/ui";
 import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import {
@@ -18,6 +7,8 @@ import {
   type PluginInfo,
 } from "../../api";
 import { useApp } from "../../state";
+import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
+import { PagePanel } from "../composites/page-panel";
 import {
   ConnectorModeSelector,
   useConnectorMode,
@@ -27,6 +18,16 @@ import {
   hasConnectorSetupPanel,
 } from "../connectors/ConnectorSetupPanel";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { Button } from "../ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { StatusBadge } from "../ui/status-badge";
+import { Switch } from "../ui/switch";
 import {
   buildManagedDiscordSettingsReturnUrl,
   resolveManagedDiscordAgentChoice,
@@ -153,18 +154,8 @@ function connectorProvenanceBadges(plugin: PluginInfo): Array<{
   tone?: "warning" | "success";
   title?: string;
 }> {
-  const isThirdParty =
-    plugin.thirdParty === true || plugin.origin === "third-party";
-  const isBuiltIn = plugin.builtIn === true || plugin.origin === "builtin";
-  const isFirstParty =
-    plugin.firstParty === true || plugin.support === "first-party";
-  const isCommunity =
-    plugin.support === "community" || (isThirdParty && !isFirstParty);
-  const title = isThirdParty
-    ? "Community package registered through the plugin registry"
-    : isBuiltIn || isFirstParty
-      ? "First-party package generated from the elizaOS plugin registry"
-      : undefined;
+  const flags = getProvenanceFlags(plugin);
+  const title = getProvenanceTitle(flags, "package");
   const badges: Array<{
     key: string;
     label: string;
@@ -172,15 +163,15 @@ function connectorProvenanceBadges(plugin: PluginInfo): Array<{
     title?: string;
   }> = [];
 
-  if (isThirdParty) {
+  if (flags.isThirdParty) {
     badges.push({ key: "origin", label: "Third party", title });
-  } else if (isBuiltIn) {
+  } else if (flags.isBuiltIn) {
     badges.push({ key: "origin", label: "Built in", title });
   }
 
-  if (isCommunity) {
+  if (flags.isCommunity) {
     badges.push({ key: "support", label: "Community", tone: "warning", title });
-  } else if (isFirstParty) {
+  } else if (flags.isFirstParty) {
     badges.push({
       key: "support",
       label: "First party",

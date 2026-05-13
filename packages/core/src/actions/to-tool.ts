@@ -170,9 +170,13 @@ export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 };
 
 /**
- * Schema for HANDLE_RESPONSE in direct-message / API / VOICE_DM / SELF channels
+ * Schema for HANDLE_RESPONSE in direct-message / API / SELF channels
  * where the agent always responds — `shouldRespond` is implicit RESPOND so we
  * drop it from the schema to save tokens and avoid spurious IGNORE.
+ *
+ * Voice channels do not use this direct schema: VAD/STT/turn-detection signals
+ * may determine that the user is still speaking or that the agent should stay
+ * silent.
  */
 export const HANDLE_RESPONSE_DIRECT_SCHEMA: JSONSchema = {
 	type: "object",
@@ -216,8 +220,8 @@ const PLAN_ACTIONS_DESCRIPTION =
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /
- * API / VOICE_DM / SELF channels to drop the explicit RESPOND/IGNORE/STOP
- * flag (the agent always responds in those channels).
+ * API / SELF channels to drop the explicit RESPOND/IGNORE/STOP flag (the
+ * agent always responds in those channels). Keep it false for voice channels.
  */
 export function createHandleResponseTool(options?: {
 	directMessage?: boolean;

@@ -1,0 +1,240 @@
+task_id: T149zh_project_progress_report
+task_name: 并行项目进度汇报生成
+version: "1.0"
+category: workflow
+difficulty: hard
+tags: [general, multi_service]
+
+services:
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T149zh_project_progress_report/fixtures/calendar/events.json
+  - name: notes
+    command: python mock_services/notes/server.py
+    port: 9105
+    health_check: http://localhost:9105/notes/list
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9105/notes/reset
+    env:
+      NOTES_FIXTURES: tasks/T149zh_project_progress_report/fixtures/notes/meetings.json
+  - name: todo
+    command: python mock_services/todo/server.py
+    port: 9102
+    health_check: http://localhost:9102/todo/tasks
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9102/todo/reset
+    env:
+      TODO_FIXTURES: tasks/T149zh_project_progress_report/fixtures/todo/tasks.json
+  - name: contacts
+    command: python mock_services/contacts/server.py
+    port: 9103
+    health_check: http://localhost:9103/contacts/search
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9103/contacts/reset
+    env:
+      CONTACTS_FIXTURES: tasks/T149zh_project_progress_report/fixtures/contacts/contacts.json
+
+prompt:
+  text: |
+    请帮我为3个并行项目(Alpha/Beta/Gamma)生成进度汇报：
+    1. 查看每个项目的相关会议
+    2. 阅读会议纪要中的行动项
+    3. 对比待办事项的完成情况
+    4. 查找项目负责人联系方式
+    5. 输出每个项目的进度报告，标注风险项
+  language: zh
+
+tools:
+  - name: calendar_list_events
+    description: 查看日历事件
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+  - name: calendar_get_event
+    description: 获取事件详情
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: 事件ID
+      required: [event_id]
+  - name: notes_list
+    description: 列出会议纪要
+    input_schema:
+      type: object
+      properties:
+        tag:
+          type: string
+          description: 按标签筛选
+      required: []
+  - name: notes_get
+    description: 获取纪要详情
+    input_schema:
+      type: object
+      properties:
+        note_id:
+          type: string
+          description: 纪要ID
+      required: [note_id]
+  - name: todo_list_tasks
+    description: 查看待办事项列表
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "状态筛选(pending/completed/all)"
+          default: all
+      required: []
+  - name: todo_get_task
+    description: 获取待办详情
+    input_schema:
+      type: object
+      properties:
+        task_id:
+          type: string
+          description: 待办ID
+      required: [task_id]
+  - name: contacts_search
+    description: 搜索内部通讯录
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词
+        department:
+          type: string
+          description: 按部门筛选
+      required: [query]
+  - name: contacts_get
+    description: 获取联系人详情
+    input_schema:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          description: 联系人ID
+      required: [contact_id]
+
+tool_endpoints:
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+  - tool_name: notes_list
+    url: http://localhost:9105/notes/list
+    method: POST
+  - tool_name: notes_get
+    url: http://localhost:9105/notes/get
+    method: POST
+  - tool_name: todo_list_tasks
+    url: http://localhost:9102/todo/tasks
+    method: POST
+  - tool_name: todo_get_task
+    url: http://localhost:9102/todo/tasks/get
+    method: POST
+  - tool_name: contacts_search
+    url: http://localhost:9103/contacts/search
+    method: POST
+  - tool_name: contacts_get
+    url: http://localhost:9103/contacts/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-24"
+  timeout_seconds: 600
+  max_turns: 35
+
+scoring_components:
+  - name: progress_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "三个项目的进度数据是否准确：Alpha~75%按时推进、Beta~45%延迟有阻塞、Gamma~90%即将完成"
+  - name: risk_identification
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否识别Beta项目风险（blocked待办、逾期任务、第三方依赖），以及Gamma缺少3/24交付评审纪要"
+  - name: report_completeness
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "报告是否包含会议总结、行动项状态、待办完成率、负责人联系方式、风险标注"
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  评估助手为三个并行项目生成的进度汇报质量。
+
+  ## 三个项目的正确进度
+
+  ### Alpha项目（进度~75%，按时推进）
+  会议：evt_601(需求评审3/17) + evt_602(技术方案3/20)
+  纪要：NOTE-601(3个行动项: 2完成+1进行中) + NOTE-602(2个行动项: 1完成+1待开始)
+  待办(4个)：TODO-601 completed, TODO-602 completed, TODO-603 in_progress, TODO-604 completed → 3/4完成=75%
+  负责人：王明(项目经理), 李华(架构师), 马强(运维)
+  风险：技术可行性报告(TODO-603)截止3/25进行中，微服务拆分方案(NOTE-602行动项2)依赖其结论
+
+  ### Beta项目（进度~45%，延迟，高风险）
+  会议：evt_603(启动会3/18) + evt_604(进度检查3/22)
+  纪要：NOTE-603(3个行动项: 1完成+1进行中+1blocked) + NOTE-604(2个行动项: 都pending，1个high priority逾期)
+  待办(5个)：TODO-605 completed, TODO-606 in_progress, TODO-607 pending(blocked), TODO-608 pending, TODO-609 in_progress → 1/5完成=20%待办完成率
+  负责人：赵蕾(产品经理), 张伟(后端开发), 周明(前端开发)
+  关键风险：
+  - TODO-607 前端原型blocked（等第三方API文档）且已逾期(截止3/22)
+  - TODO-608 API接口开发pending(high priority)，依赖数据库设计未完
+  - 整体进度落后约1周（NOTE-604结论）
+  - 第三方API文档阻塞是核心瓶颈
+
+  ### Gamma项目（进度~90%+，即将完成）
+  会议：evt_605(客户对接3/19) + evt_606(交付评审3/24)
+  纪要：NOTE-605(2个行动项: 2完成) + evt_606无纪要！
+  待办(3个)：TODO-610 completed, TODO-611 completed, TODO-612 completed → 3/3完成=100%
+  负责人：王明(项目经理), 赵蕾(产品经理)
+  注意：3/24交付评审(evt_606)缺少会议纪要，需跟进补充
+
+  ## 评分标准
+  - 0.8-1.0: 三个项目进度全部准确，Beta风险识别到位，Gamma缺纪要指出，含负责人联系方式
+  - 0.5-0.7: 大部分进度正确，识别了主要风险
+  - 0.2-0.4: 进度不完整或风险遗漏严重
+  - 0.0-0.1: 未完成汇报
+
+reference_solution: |
+  1. calendar_list_events() → 获取8个会议
+  2. 按项目名分类：Alpha(evt_601,602), Beta(evt_603,604), Gamma(evt_605,606), 无关(evt_607,608)
+  3. notes_list() → 获取5个纪要
+  4. notes_get(NOTE-601~605) → 提取各项目行动项
+  5. 发现evt_606(Gamma交付评审)无对应纪要
+  6. todo_list_tasks(all) → 获取12个待办
+  7. 按项目分组对比行动项与待办状态
+  8. contacts_search("王明") → Alpha+Gamma负责人联系方式
+  9. contacts_search("赵蕾") → Beta+Gamma负责人联系方式
+  10. contacts_search("李华") → Alpha架构师联系方式
+  11. 输出三个项目的进度汇报：
+     - Alpha: ~75%，按时推进，技术方案待定
+     - Beta: ~45%，延迟，2个high待办blocked/overdue，风险高
+     - Gamma: ~90%+，即将完成，缺3/24交付评审纪要
+
+primary_dimensions: [completion, robustness, communication]

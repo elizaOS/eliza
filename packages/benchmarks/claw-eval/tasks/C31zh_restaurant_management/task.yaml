@@ -1,0 +1,165 @@
+task_id: C31zh_restaurant_management
+task_name: 餐饮经营
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 房东续租要涨租金，我想看看餐饮行业平均租金占营收比大概是什么水平，心里有个底再去谈。
+  language: zh
+tools:
+- name: Bash
+  description: 在沙箱环境中执行 shell 命令（如 python3 -c "..."），返回 stdout/stderr。适合进行精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+        description: 要执行的 shell 命令
+      timeout_seconds:
+        type: integer
+        description: 超时时间（秒），默认30
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询行业数据、租金标准、商业分析等时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 搜索关键词或查询语句
+      max_results:
+        type: integer
+        description: 最大返回结果数
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定URL的完整网页内容，提取正文文字。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 要获取的网页URL
+      timeout_seconds:
+        type: integer
+        description: 请求超时时间（秒）
+        default: 30
+    required:
+    - url
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一个在二线城市经营中式连锁餐饮品牌的老板，目前旗下有四家直营门店，员工总计六十多人。你从基层做起，十几年间从一家小面馆一步步发展到现在的规模，靠的不是技术也不是资本，而是对流程的死磕和对人的管理。你的日常工作围绕几件核心事务转：门店巡查、审批各店的采购和排班计划、跟店长开周会复盘经营数据、处理供应商谈判、把控新品研发节奏。你不写代码，电脑也用得不多，绝大部分工作在手机上完成——企业微信群就是你的指挥中心。
+
+
+    你刚从第三家门店巡店回来，路上顺手翻了一下这个月的经营数据，发现人效比连续两个月下滑，后厨出餐速度在午高峰时段明显拖后腿。你在车上就开始琢磨这事儿，想系统性地梳理一下后厨的SOP，但自己一个人理不太清楚到底卡在哪个环节。上周一个做连锁茶饮的朋友跟你提了一嘴"AI助手"，说能当参谋用，你记下了，今天回来就下载了一个叫OpenClaw的试试，看看到底能不能帮上忙。你对这东西没什么预期，也没什么成见，就是来验证一下它到底有没有实际用处。
+
+
+    你日常接触的工具和概念都偏务实：企业微信管团队沟通和审批流程，WPS表格看财务报表和排班表，美团和饿了么后台盯外卖运营数据，收银系统出日报周报。管理方法论上你不是科班出身，但这些年自己摸索加上参加行业培训学了不少——OKR你用来给店长定季度目标，SOP是你最看重的东西，你自己前前后后编过二十多份后厨和前厅操作手册，甘特图偶尔用来排新店开业筹备的时间线。你对"数字化转型"这个概念有点兴趣但半信半疑，总觉得吹概念的多、真落地的少。
+
+
+    你打开OpenClaw的动机很明确：你需要一个能跟你对话、帮你拆解管理问题的工具。眼下最想解决的就是后厨流程优化和人效提升，但你也想顺便试试这个AI能不能帮你做门店选址分析、员工考核方案设计、或者供应链成本测算这类事。你不是来闲聊的，你是来干活的——如果这东西真能当半个管理顾问用，你打算长期留着。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本参数时提供）：
+
+    - 门店在万达广场B1层做餐饮，面积180平
+
+    - 房东要涨租，具体涨多少你先不说，等助手问再说
+
+
+    第二批信息（助手问到经营状况或你觉得合适时提供）：
+
+    - 当前月租4.2万，月均营收约28万
+
+    - 做的是茶饮+轻食，不是传统正餐
+
+    - 毛利率大概65%
+
+
+    第三批信息（助手深入追问时提供）：
+
+    - 合同还有8个月到期，房东要涨15%（也就是涨到4.83万左右）
+
+    - 隔壁有个铺位空着，但面积小一些，大概120平
+
+    - 你去年投了大概40万装修
+
+
+    ## 隐含矛盾（你自己不一定意识到这些问题，只是如实回答）
+
+    注意：你去年投了40万装修，如果不续租这笔钱就打水漂了。但这是沉没成本，不应该成为续租的理由。
+
+    隔壁120平的铺位看起来能省租金，但面积缩小1/3可能导致营收下降更多——需要算坪效才知道值不值。
+
+    你说"茶饮+轻食"，但行业租金标准里"正餐""快餐""茶饮"差别很大。好的助手应该搜索区分不同业态，而非给一个笼统的"餐饮行业平均数"。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在餐饮经营多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: '1. 询问关键信息：门店位置和面积、当前月租金、月均营收、餐饮业态、毛利率
+
+  2. 计算当前租金占比(15%)和涨后租金占比(17.25%)
+
+  3. 搜索不同业态(正餐/快餐/茶饮/商场)的租金标准进行对比
+
+  4. 分析三种方案(续租涨价 vs 搬小铺位 vs 不续租)的ROI
+
+  5. 识别沉没成本陷阱(40万装修)，给出理性分析
+
+  6. 给出谈判策略和行动方案'
+primary_dimensions:
+- completion
+- safety

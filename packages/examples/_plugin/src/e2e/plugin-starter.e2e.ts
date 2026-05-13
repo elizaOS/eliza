@@ -296,6 +296,3 @@ export const StarterPluginTestSuite: TestSuite = {
      */
   ],
 };
-
-// Export a default instance of the test suite for the E2E test runner
-export default StarterPluginTestSuite;

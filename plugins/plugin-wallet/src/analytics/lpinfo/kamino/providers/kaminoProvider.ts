@@ -1,5 +1,10 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
-import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
+import type {
+  Entity,
+  IAgentRuntime,
+  Memory,
+  Provider,
+  State,
+} from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import type { KaminoService } from "../services/kaminoService";
 
@@ -18,6 +23,54 @@ type AccountLike = {
     keypairs?: Record<string, { publicKey?: unknown }>;
   }>;
 };
+
+type Metawallets = NonNullable<AccountLike["metawallets"]>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function isMetawallets(value: unknown): value is Metawallets {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (metawallet) =>
+        isRecord(metawallet) &&
+        (metawallet.keypairs === undefined || isRecord(metawallet.keypairs)),
+    )
+  );
+}
+
+async function getAccountFromMessage(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<unknown | null> {
+  const entity = await runtime.getEntityById(message.entityId);
+  if (!entity) {
+    return null;
+  }
+
+  return buildAccountLike(entity);
+}
+
+function buildAccountLike(entity: Entity): AccountLike {
+  const metadata = isRecord(entity.metadata) ? entity.metadata : {};
+  const account = isRecord(metadata.account) ? metadata.account : {};
+  const firstName = entity.names[0];
+
+  return {
+    ...metadata,
+    ...account,
+    id: entity.id,
+    username: account.username ?? metadata.username,
+    name: account.name ?? metadata.name ?? firstName,
+    metawallets: isMetawallets(account.metawallets)
+      ? account.metawallets
+      : isMetawallets(metadata.metawallets)
+        ? metadata.metawallets
+        : undefined,
+  };
+}
 
 function getSolanaWalletAddresses(account: unknown): string[] {
   const walletAddresses: string[] = [];
@@ -116,7 +169,7 @@ export const kaminoProvider: Provider = {
           console.log("No account found for user");
           return {
             data: {},
-            values: {} as Record<string, unknown>,
+            values: {},
             text: "No account found for this user.",
           };
         }
@@ -131,7 +184,7 @@ export const kaminoProvider: Provider = {
           console.log("Kamino service not available");
           return {
             data: {},
-            values: {} as Record<string, unknown>,
+            values: {},
             text: "Kamino service not available.",
           };
         }
@@ -182,7 +235,7 @@ export const kaminoProvider: Provider = {
 
     return {
       data,
-      values: {} as Record<string, unknown>,
+      values: {},
       text,
     };
   },
@@ -214,10 +267,8 @@ async function getUserKaminoPositions(
         // Get real positions from Kamino service
         const positions = await kaminoService.getUserPositions(walletAddress);
 
-        if (positions.error) {
+        if ("error" in positions) {
           positionsInfo += `   ❌ Error: ${positions.error}\n\n`;
-        } else if (positions.message) {
-          positionsInfo += `   ℹ️ ${positions.message}\n\n`;
         } else if (
           positions.lending.length === 0 &&
           positions.borrowing.length === 0
@@ -314,7 +365,7 @@ async function getAvailableKaminoReserves(
       reservesInfo += "💰 TOP LENDING OPPORTUNITIES:\n\n";
 
       for (const reserve of topLendingReserves) {
-        reservesInfo += `🔸 ${reserve.symbol || "Unknown"}\n`;
+        reservesInfo += `🔸 ${reserve.marketName || reserve.market || "Unknown"}\n`;
         reservesInfo += `   Supply APY: ${reserve.supplyApy?.toFixed(2) || "N/A"}%\n`;
         reservesInfo += `   Borrow APY: ${reserve.borrowApy?.toFixed(2) || "N/A"}%\n`;
         reservesInfo += `   Total Supply: $${reserve.totalSupply?.toLocaleString() || "N/A"}\n`;
@@ -363,14 +414,15 @@ async function getKaminoMarketOverview(
       marketInfo += "🏆 TOP MARKETS BY TVL:\n\n";
 
       const topMarkets = overview.markets
-        .sort((a, b) => (b.tvl || 0) - (a.tvl || 0))
+        .sort((a, b) => (b.lamports || 0) - (a.lamports || 0))
         .slice(0, 3);
 
       for (const market of topMarkets) {
-        marketInfo += `🔸 ${market.name || "Unknown Market"}\n`;
-        marketInfo += `   TVL: $${market.tvl?.toLocaleString() || "N/A"}\n`;
-        marketInfo += `   Borrowed: $${market.borrowed?.toLocaleString() || "N/A"}\n`;
-        marketInfo += `   Utilization: ${(market.utilization * 100)?.toFixed(2) || "N/A"}%\n\n`;
+        marketInfo += `🔸 ${market.marketName || "Unknown Market"}\n`;
+        marketInfo += `   Address: ${market.address}\n`;
+        marketInfo += `   Data Size: ${market.dataSize.toLocaleString()} bytes\n`;
+        marketInfo += `   Lamports: ${market.lamports.toLocaleString()}\n`;
+        marketInfo += `   Owner: ${market.owner}\n\n`;
       }
     }
   } catch (error) {

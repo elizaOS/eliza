@@ -34,7 +34,9 @@
       ],
       "@elizaos/app-companion": ["./src/index.ts"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
-      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/services/app-session-gate": [
+        "../../packages/agent/src/services/app-session-gate.d.ts"
+      ],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/capacitor-appblocker": [
         "../../packages/native-plugins/appblocker/src/index.ts"

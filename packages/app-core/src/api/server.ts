@@ -34,7 +34,12 @@ import {
 } from "@elizaos/agent";
 // Override the wallet export rejection function with the hardened version
 // that adds rate limiting, audit logging, and a forced confirmation delay.
-import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  logger,
+  ModelType,
+  resolveStateDir,
+} from "@elizaos/core";
 import { resolveLinkedAccountsInConfig } from "@elizaos/shared";
 import { forwardRemoteCloudMutation } from "../runtime/mode/remote-forwarder";
 import { applyRouteModeGuard } from "../runtime/mode/route-mode-guard";
@@ -47,6 +52,7 @@ import {
   type CompatRuntimeState,
   clearCompatRuntimeRestart,
   getConfiguredCompatAgentName,
+  readCompatJsonBody,
 } from "./compat-route-shared";
 import { sendJson as sendJsonResponse } from "./response";
 import { handleRuntimeModeRoute } from "./runtime-mode-routes";
@@ -152,6 +158,13 @@ const lazyEnsureTTS = () =>
   import("../runtime/ensure-text-to-speech-handler.js").then(
     (m) => m.ensureTextToSpeechHandler,
   );
+
+const LOCAL_TTS_PROVIDER_IDS = [
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+  "eliza-aosp-llama",
+] as const;
 
 import { clearCloudSecrets, getCloudSecret } from "@elizaos/plugin-elizacloud";
 import { getStartupEmbeddingAugmentation } from "../runtime/startup-overlay.js";
@@ -454,6 +467,136 @@ function patchCompatStatusResponse(
   }) as typeof res.end;
 }
 
+function sanitizeLocalInferenceSpeechText(input: string): string {
+  let text = input.normalize("NFKC");
+  text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi, " ");
+  text = text.replace(
+    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+    " ",
+  );
+  text = text.replace(/```[\s\S]*?```/g, " ");
+  text = text.replace(/`([^`]+)`/g, "$1");
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  text = text.replace(/<[^>\n]+>/g, " ");
+  text = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function normalizeAudioBytes(value: unknown): Uint8Array {
+  if (value instanceof Uint8Array) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  if (value instanceof ArrayBuffer) {
+    return new Uint8Array(value);
+  }
+  if (ArrayBuffer.isView(value)) {
+    return new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  }
+  throw new Error("TEXT_TO_SPEECH returned a non-binary payload");
+}
+
+function sniffAudioContentType(bytes: Uint8Array): string {
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 &&
+    bytes[1] === 0x49 &&
+    bytes[2] === 0x46 &&
+    bytes[3] === 0x46 &&
+    bytes[8] === 0x57 &&
+    bytes[9] === 0x41 &&
+    bytes[10] === 0x56 &&
+    bytes[11] === 0x45
+  ) {
+    return "audio/wav";
+  }
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0x49 &&
+    bytes[1] === 0x44 &&
+    bytes[2] === 0x33
+  ) {
+    return "audio/mpeg";
+  }
+  if (bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0) {
+    return "audio/mpeg";
+  }
+  return "application/octet-stream";
+}
+
+function isMissingTtsProviderError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /No handler found for delegate type: TEXT_TO_SPEECH/.test(error.message)
+  );
+}
+
+async function useLocalInferenceTts(
+  runtime: AgentRuntime,
+  text: string,
+): Promise<Uint8Array> {
+  let lastError: unknown;
+  for (const provider of LOCAL_TTS_PROVIDER_IDS) {
+    try {
+      return normalizeAudioBytes(
+        await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text }, provider),
+      );
+    } catch (err) {
+      lastError = err;
+      if (!isMissingTtsProviderError(err)) throw err;
+    }
+  }
+  if (lastError instanceof Error) throw lastError;
+  throw new Error("No local-inference TEXT_TO_SPEECH provider is registered");
+}
+
+async function _handleLocalInferenceTtsRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+): Promise<boolean> {
+  const body = await readCompatJsonBody(req, res);
+  if (!body || typeof body !== "object") return true;
+
+  const rawText = (body as Record<string, unknown>).text;
+  const text =
+    typeof rawText === "string"
+      ? sanitizeLocalInferenceSpeechText(rawText)
+      : "";
+  if (!text) {
+    sendJsonResponse(res, 400, { error: "Missing text" });
+    return true;
+  }
+
+  const runtime = state.current;
+  if (!runtime) {
+    sendJsonResponse(res, 503, {
+      error: "Local inference TEXT_TO_SPEECH is not available",
+    });
+    return true;
+  }
+
+  try {
+    const bytes = await useLocalInferenceTts(runtime, text);
+    if (bytes.length === 0) {
+      sendJsonResponse(res, 502, {
+        error: "Local inference TEXT_TO_SPEECH returned empty audio",
+      });
+      return true;
+    }
+    res.writeHead(200, {
+      "Content-Type": sniffAudioContentType(bytes),
+      "Cache-Control": "no-store",
+      "Content-Length": String(bytes.byteLength),
+    });
+    res.end(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
+  } catch (err) {
+    sendJsonResponse(res, 502, {
+      error: `Local inference TTS error: ${err instanceof Error ? err.message : String(err)}`,
+    });
+  }
+  return true;
+}
+
 async function _getTableColumnNames(
   runtime: AgentRuntime,
   tableName: string,
@@ -667,6 +810,11 @@ async function handleCompatRoute(
   if (method === "POST" && url.pathname === "/api/tts/cloud") {
     if (!(await ensureRouteAuthorized(req, res, state))) return true;
     return await _handleCloudTtsPreviewRoute(req, res);
+  }
+
+  if (method === "POST" && url.pathname === "/api/tts/local-inference") {
+    if (!(await ensureRouteAuthorized(req, res, state))) return true;
+    return await _handleLocalInferenceTtsRoute(req, res, state);
   }
 
   if (method === "POST" && url.pathname === "/api/tts/elevenlabs") {

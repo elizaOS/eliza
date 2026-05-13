@@ -1,0 +1,105 @@
+version: "3.8"
+
+services:
+  # === Currently Deployed Services ===
+
+  nginx-proxy:
+    image: nginx:1.25-alpine
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./configs/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./configs/nginx/sites-enabled:/etc/nginx/sites-enabled:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - nginx-logs:/var/log/nginx
+    networks:
+      - web
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - backend
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD_FILE: /run/secrets/pg_password
+      POSTGRES_DB: maindb
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    secrets:
+      - pg_password
+    networks:
+      - backend
+
+  portfolio_api:
+    build:
+      context: ../projects/portfolio_rebalancer
+      dockerfile: Dockerfile
+    container_name: portfolio-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://appuser:${PG_PASSWORD}@postgres:5432/maindb
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - web
+      - backend
+
+  market_scraper:
+    build:
+      context: ../projects/market_sentiment_scraper
+      dockerfile: Dockerfile
+    container_name: market-scraper
+    restart: unless-stopped
+    environment:
+      REDIS_URL: redis://redis:6379/1
+    depends_on:
+      - redis
+    networks:
+      - backend
+
+  # === NOT YET DEPLOYED ===
+  # daily_stock_analysis:
+  #   build:
+  #     context: ../projects/daily_stock_analysis
+  #     dockerfile: Dockerfile
+  #   container_name: daily-stock-analysis
+  #   restart: "no"
+  #   environment:
+  #     FEISHU_WEBHOOK_URL: ${FEISHU_WEBHOOK_URL}
+  #   volumes:
+  #     - stock-reports:/app/data/reports
+  #   networks:
+  #     - backend
+  #   # Triggered via cron on the host, not auto-restart
+
+volumes:
+  pg-data:
+  redis-data:
+  nginx-logs:
+  # stock-reports:
+
+secrets:
+  pg_password:
+    file: ./secrets/pg_password.txt
+
+networks:
+  web:
+    driver: bridge
+  backend:
+    driver: bridge

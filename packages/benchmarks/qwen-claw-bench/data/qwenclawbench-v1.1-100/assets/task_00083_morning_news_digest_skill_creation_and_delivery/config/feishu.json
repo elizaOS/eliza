@@ -1,0 +1,21 @@
+{
+  "app_id": "cli_a5f3e8b2d1c04a7e",
+  "app_secret": "FEISHU_APP_SECRET",
+  "bot_name": "NewsDigestBot",
+  "default_chat_id": "oc_7a3b9e1f5d2c48a6b0e3f7d9c1a5b8e2",
+  "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "tenant_key": "tenant_2f8a4b6c9d1e3f5a",
+  "api_base": "https://open.feishu.cn/open-apis",
+  "permissions": [
+    "im:message:send_as_bot",
+    "im:chat:readonly",
+    "docx:document:create",
+    "docx:document:write",
+    "drive:drive:readonly",
+    "wiki:wiki:readonly"
+  ],
+  "message_target": {
+    "user_open_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa05",
+    "preferred_format": "interactive_card"
+  }
+}

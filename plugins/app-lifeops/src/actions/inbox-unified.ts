@@ -96,12 +96,11 @@ export interface InboxUnifiedResult {
 }
 
 /**
- * Per-platform fetcher hook. Wave-2 wires each platform's adapter (Gmail
- * adapter, Slack adapter, etc.) under the matching key. Wave-1 leaves them
- * all empty so the unit tests can inject scenario data.
+ * Per-platform fetcher hook. Default fetchers are empty stubs so unit tests
+ * can inject scenario data.
  *
- * TODO Wave-2: wire to `getDefaultTriageService().adapters` once cross-
- * platform connectors expose a recent-messages read primitive.
+ * TODO: wire to `getDefaultTriageService().adapters` once cross-platform
+ * connectors expose a recent-messages read primitive.
  */
 export type InboxUnifiedFetcher = (args: {
   runtime: IAgentRuntime;

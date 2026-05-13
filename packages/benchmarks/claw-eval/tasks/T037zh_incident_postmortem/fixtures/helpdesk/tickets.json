@@ -1,0 +1,191 @@
+[
+  {
+    "ticket_id": "TK-1901",
+    "title": "API响应超时告警",
+    "reporter": "监控系统",
+    "created_at": "2026-02-28T20:15:00+08:00",
+    "priority": "high",
+    "status": "resolved",
+    "description": "多个API端点响应时间超过5秒，涉及 /api/orders、/api/payments、/api/users 等核心接口。告警阈值为3秒，当前P99延迟达到8.2秒。",
+    "tags": [
+      "monitoring",
+      "api",
+      "timeout"
+    ],
+    "assignee": "运维值班",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1902",
+    "title": "用户反馈页面加载缓慢",
+    "reporter": "客服部",
+    "created_at": "2026-02-28T20:18:00+08:00",
+    "priority": "medium",
+    "status": "resolved",
+    "description": "多名用户通过客服渠道反馈网站页面加载时间过长，无法正常下单。客服已收到约30条类似投诉。",
+    "tags": [
+      "user-report",
+      "performance"
+    ],
+    "assignee": "客服值班",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1903",
+    "title": "数据库连接池耗尽",
+    "reporter": "DBA告警",
+    "created_at": "2026-02-28T20:22:00+08:00",
+    "priority": "critical",
+    "status": "resolved",
+    "description": "PostgreSQL连接池使用率100%，所有新连接请求被拒绝。当前连接数200/200，等待队列已满。多个服务报告无法获取数据库连接。",
+    "tags": [
+      "database",
+      "connection-pool",
+      "critical"
+    ],
+    "assignee": "DBA小王",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1904",
+    "title": "支付服务503错误",
+    "reporter": "支付团队",
+    "created_at": "2026-02-28T20:25:00+08:00",
+    "priority": "critical",
+    "status": "resolved",
+    "description": "支付网关返回503，所有支付交易失败。错误信息：'Service Unavailable - unable to acquire database connection'。影响所有在线支付渠道。",
+    "tags": [
+      "payment",
+      "503",
+      "critical"
+    ],
+    "assignee": "支付团队值班",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1905",
+    "title": "订单提交失败率飙升",
+    "reporter": "电商平台",
+    "created_at": "2026-02-28T20:28:00+08:00",
+    "priority": "critical",
+    "status": "resolved",
+    "description": "订单提交接口失败率从0.1%飙升至95%以上，大量用户无法完成下单。错误日志显示数据库连接超时。",
+    "tags": [
+      "orders",
+      "failure-rate",
+      "critical"
+    ],
+    "assignee": "电商平台值班",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1906",
+    "title": "CDN缓存未命中率上升",
+    "reporter": "基础架构",
+    "created_at": "2026-02-28T20:35:00+08:00",
+    "priority": "low",
+    "status": "resolved",
+    "description": "CDN缓存命中率从95%降至60%。初步分析：由于后端API超时，CDN无法刷新缓存内容，导致命中率下降。这是次要症状，非根因。",
+    "tags": [
+      "cdn",
+      "cache",
+      "secondary"
+    ],
+    "assignee": "基础架构",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1907",
+    "title": "后台任务队列堆积",
+    "reporter": "运维",
+    "created_at": "2026-02-28T20:40:00+08:00",
+    "priority": "high",
+    "status": "resolved",
+    "description": "Celery任务队列堆积超过5万条，包括订单确认邮件、库存同步、数据分析等异步任务。原因：Worker进程因数据库连接不可用而阻塞。",
+    "tags": [
+      "queue",
+      "celery",
+      "backlog"
+    ],
+    "assignee": "运维值班",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1908",
+    "title": "CRM同步进程占用大量DB资源",
+    "reporter": "DBA小王",
+    "created_at": "2026-02-28T20:45:00+08:00",
+    "priority": "critical",
+    "status": "investigating",
+    "description": "发现crm_data_sync进程持有300+数据库连接，执行一个全表扫描的SQL查询。该查询是上周五部署中新加的。SQL语句：SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id WHERE sync_status = 'pending'，未使用索引，导致全表扫描。单次查询预计扫描1200万行记录。",
+    "tags": [
+      "database",
+      "crm",
+      "root-cause"
+    ],
+    "assignee": "DBA小王",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1909",
+    "title": "手动终止CRM同步进程",
+    "reporter": "DBA小王",
+    "created_at": "2026-02-28T21:30:00+08:00",
+    "priority": "critical",
+    "status": "done",
+    "description": "手动kill了crm_data_sync进程并暂停了对应定时任务，数据库连接开始恢复。连接池使用率在5分钟内从100%下降至25%。",
+    "tags": [
+      "database",
+      "crm",
+      "mitigation"
+    ],
+    "assignee": "DBA小王",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1910",
+    "title": "服务陆续恢复",
+    "reporter": "运维",
+    "created_at": "2026-02-28T21:35:00+08:00",
+    "priority": "high",
+    "status": "done",
+    "description": "支付服务和订单服务在5分钟内恢复正常。API响应时间回落至正常水平（P99 < 500ms）。Celery任务队列开始消化堆积。",
+    "tags": [
+      "recovery",
+      "services"
+    ],
+    "assignee": "运维值班",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1911",
+    "title": "部分用户订单数据不一致",
+    "reporter": "数据团队",
+    "created_at": "2026-02-28T21:45:00+08:00",
+    "priority": "medium",
+    "status": "open",
+    "description": "故障期间有约200笔订单状态异常，需要人工核对。部分订单支付成功但订单状态未更新，部分订单重复提交。已导出异常订单列表，等待人工处理。",
+    "tags": [
+      "data-consistency",
+      "orders",
+      "followup"
+    ],
+    "assignee": "数据团队",
+    "department": "技术部"
+  },
+  {
+    "ticket_id": "TK-1912",
+    "title": "监控告警恢复通知",
+    "reporter": "监控系统",
+    "created_at": "2026-02-28T21:50:00+08:00",
+    "priority": "low",
+    "status": "done",
+    "description": "所有监控指标已恢复正常。API响应时间、数据库连接池、支付成功率均已回到正常水平。告警已自动解除。",
+    "tags": [
+      "monitoring",
+      "recovery"
+    ],
+    "assignee": "运维值班",
+    "department": "技术部"
+  }
+]

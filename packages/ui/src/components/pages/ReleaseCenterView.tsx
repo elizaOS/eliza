@@ -1,4 +1,3 @@
-import { Button, Input } from "@elizaos/ui";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -29,6 +28,8 @@ import type {
   AppReleaseStatus,
   DesktopUpdaterSnapshot,
 } from "../release-center/types";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 export function ReleaseCenterView() {
   const { appUrl } = useBranding();

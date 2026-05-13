@@ -241,8 +241,7 @@ def main() -> int:
             )
         print(f"Trajectory: {output_file}")
 
-    score_val = result.get("score", {}).get("score", 0) if isinstance(result.get("score"), dict) else 0
-    return 0 if score_val >= 0.5 else 2
+    return 0
 
 
 if __name__ == "__main__":

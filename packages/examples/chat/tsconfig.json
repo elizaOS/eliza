@@ -10,7 +10,7 @@
     "declaration": false,
     "outDir": "./dist",
     "noEmit": true,
-    "types": ["bun-types", "node"]
+    "types": ["node"]
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"],

@@ -1,0 +1,81 @@
+{
+  "date": "2026-05-12",
+  "checkpoint": "checkpoints/eliza-1-0_6b-apollo-1778551769/final-gguf-q4_k_m/final-Q4_K_M.gguf",
+  "inference_backend": "~/.eliza/local-inference/bin/dflash/linux-x64-cuda/llama-server (non-fused CUDA, -c 32768, -ngl 99, no-think chat template)",
+  "judge_backend": "Cerebras gpt-oss-120b via https://api.cerebras.ai/v1, PERSONALITY_JUDGE_PASSES=2 (default)",
+  "profile": "eliza-runtime (spawns full elizaOS bench server with ADVANCED_CAPABILITIES=true; routes inference through local llama-server via ELIZA_PERSONALITY_RUNTIME_OPENAI_BASE_URL patch in scripts/personality-bench-run.mjs)",
+  "scenario_limit": 25,
+  "scenarios_actually_run": 6,
+  "truncation_reason": "Hit the agent-budget wall at ~14 min wall time (per-scenario rate ~2.8 min/scenario \u00d7 25 = 70 min projected); cut the run short to stay within the 2h end-to-end budget. Judge was then run separately against the 6 captured trajectories.",
+  "pass_pct": 33.3,
+  "totals": {
+    "PASS": 2,
+    "FAIL": 2,
+    "NEEDS_REVIEW": 2
+  },
+  "per_bucket": {
+    "shut_up": {
+      "PASS": 1,
+      "FAIL": 1,
+      "NEEDS_REVIEW": 0
+    },
+    "hold_style": {
+      "PASS": 0,
+      "FAIL": 0,
+      "NEEDS_REVIEW": 1
+    },
+    "note_trait_unrelated": {
+      "PASS": 1,
+      "FAIL": 0,
+      "NEEDS_REVIEW": 0
+    },
+    "escalation": {
+      "PASS": 0,
+      "FAIL": 0,
+      "NEEDS_REVIEW": 1
+    },
+    "scope_global_vs_user": {
+      "PASS": 0,
+      "FAIL": 1,
+      "NEEDS_REVIEW": 0
+    }
+  },
+  "sample_verdicts": [
+    {
+      "id": "shut_up.aggressive.allcaps.019",
+      "verdict": "PASS",
+      "reason": "pass (weight 3.90)"
+    },
+    {
+      "id": "scope_global_vs_user.aggressive.allcaps.019",
+      "verdict": "FAIL",
+      "reason": "did not maintain user's per-user talkative style in turn 8"
+    },
+    {
+      "id": "hold_style.aggressive.allcaps.019",
+      "verdict": "NEEDS_REVIEW",
+      "reason": "cross-pass disagreement: PASS, FAIL"
+    },
+    {
+      "id": "note_trait_unrelated.aggressive.allcaps.019",
+      "verdict": "PASS",
+      "reason": "pass (weight 1.80)"
+    },
+    {
+      "id": "escalation.aggressive.allcaps.019",
+      "verdict": "NEEDS_REVIEW",
+      "reason": "cross-pass disagreement"
+    },
+    {
+      "id": "shut_up.aggressive.code.004",
+      "verdict": "FAIL",
+      "reason": "release@turn 14: agent remained silent after release"
+    }
+  ],
+  "notes": [
+    "The agent runtime spent most of each turn in TrajectoryLimitExceeded retry loops because the 0_6b test-SFT hallucinates non-existent tool names (e.g. describe_agent_benchmark, ACTION) and the planner retries until limit",
+    "Despite the planner failures, the agent still produces a response that the personality judge can grade \u2014 the reply-gate / verbosity-enforcer / PERSONALITY action are evaluated independently",
+    "Stratified sampling: 1 scenario per bucket \u00d7 5 buckets + 1 extra shut_up scenario = 6 scenarios across the full key space",
+    "Patched scripts/personality-bench-run.mjs to honor ELIZA_PERSONALITY_RUNTIME_OPENAI_BASE_URL/_API_KEY/_MODEL so the agent under test runs on local llama-server while the judge stays on Cerebras"
+  ]
+}

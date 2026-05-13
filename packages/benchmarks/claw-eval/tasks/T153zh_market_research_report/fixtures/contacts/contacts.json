@@ -1,0 +1,38 @@
+[
+  {
+    "contact_id": "CON-1201",
+    "name": "张总",
+    "email": "zhangceo@company.com",
+    "phone": "13900001001",
+    "department": "管理层",
+    "title": "CEO",
+    "responsibilities": ["公司战略", "重大决策", "投资者关系"]
+  },
+  {
+    "contact_id": "CON-1202",
+    "name": "李总",
+    "email": "licto@company.com",
+    "phone": "13900001002",
+    "department": "管理层",
+    "title": "CTO",
+    "responsibilities": ["技术战略", "产品研发", "AI能力建设"]
+  },
+  {
+    "contact_id": "CON-1203",
+    "name": "王总",
+    "email": "wangcmo@company.com",
+    "phone": "13900001003",
+    "department": "管理层",
+    "title": "CMO",
+    "responsibilities": ["品牌策略", "市场推广", "行业研究"]
+  },
+  {
+    "contact_id": "CON-1204",
+    "name": "赵总",
+    "email": "zhaovp@company.com",
+    "phone": "13900001004",
+    "department": "管理层",
+    "title": "VP Sales",
+    "responsibilities": ["销售团队管理", "大客户战略", "渠道拓展"]
+  }
+]

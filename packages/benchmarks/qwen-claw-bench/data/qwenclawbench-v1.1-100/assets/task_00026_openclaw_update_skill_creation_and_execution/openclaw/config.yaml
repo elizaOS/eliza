@@ -1,0 +1,52 @@
+# OpenClaw Gateway Configuration
+# Last modified: 2025-12-10
+
+gateway:
+  bind: "0.0.0.0:3017"
+  remote:
+    url: "https://claw.example.com"
+  auth:
+    token: "oc_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+  workspace: "/home/user/workspace"
+
+model:
+  default: "claude-3.5-sonnet-20241022"
+  fallback: "gpt-4o"
+  thinking: "off"
+
+channels:
+  telegram:
+    enabled: true
+    token: "7891234567:AAF_fake_bot_token_placeholder_xyz"
+    allowedUsers:
+      - "198234567"
+  discord:
+    enabled: true
+    token: "MTIz.fake.discord-bot-token-placeholder"
+    guildId: "1098765432100000000"
+  whatsapp:
+    enabled: false
+
+plugins:
+  entries:
+    device-pair:
+      enabled: true
+      config:
+        publicUrl: "https://claw.example.com"
+    brave-search:
+      enabled: true
+      config:
+        apiKey: "BSA_fake_brave_key_placeholder"
+    elevenlabs:
+      enabled: false
+
+heartbeat:
+  enabled: true
+  intervalMinutes: 30
+  prompt: "Read HEARTBEAT.md if it exists (workspace context). Follow it strictly."
+
+logging:
+  level: "info"
+  file: "/var/log/openclaw/gateway.log"
+  maxSize: "50MB"
+  maxFiles: 5

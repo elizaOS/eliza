@@ -31,8 +31,8 @@
  */
 
 import { promises as fs } from "node:fs";
-import os from "node:os";
 import path from "node:path";
+import os from "node:os";
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
@@ -51,7 +51,7 @@ function resolveTrajectoryDir(): string {
   if (explicit && explicit.length > 0) return explicit;
   const stateDir =
     process.env.ELIZA_STATE_DIR ??
-    process.env.MILADY_STATE_DIR ??
+    process.env.ELIZA_STATE_DIR ??
     path.join(os.homedir(), ".eliza");
   return path.join(stateDir, "trajectories");
 }
@@ -137,9 +137,16 @@ async function checkPlannerRetryRecorded(
 
 export default scenario({
   id: "planner.invalid-json-retry",
-  title: "Planner recovers when model output is malformed on the first attempt",
+  title:
+    "Planner recovers when model output is malformed on the first attempt",
   domain: "lifeops.planner",
-  tags: ["lifeops", "planner", "retry", "trajectory-recorder", "robustness"],
+  tags: [
+    "lifeops",
+    "planner",
+    "retry",
+    "trajectory-recorder",
+    "robustness",
+  ],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -159,7 +166,8 @@ export default scenario({
       room: "main",
       // Multiple ambiguous slots; designed to be a hard JSON-structuring
       // request.
-      text: "Cancel my 11am tomorrow, push the 3pm to Friday at the same time, set a 90-minute focus block tomorrow between 2 and 5, and remind me 10 minutes before each. Also reply to anyone in the cancelled meeting saying I'll reschedule by EOW. If anything is ambiguous tell me what's missing instead of guessing.",
+      text:
+        "Cancel my 11am tomorrow, push the 3pm to Friday at the same time, set a 90-minute focus block tomorrow between 2 and 5, and remind me 10 minutes before each. Also reply to anyone in the cancelled meeting saying I'll reschedule by EOW. If anything is ambiguous tell me what's missing instead of guessing.",
       timeoutMs: 180_000,
     },
   ],

@@ -1,0 +1,54 @@
+[
+  {
+    "customer_id": "SUP-001",
+    "name": "Huaxinda Tech",
+    "contact_person": "Mr. Chen",
+    "email": "chen@huaxinda.com",
+    "phone": "13800010001",
+    "industry": "IT Services",
+    "tier": "vip",
+    "annual_revenue": 15000000,
+    "last_contact_date": "2026-02-15",
+    "status": "active",
+    "notes": "Long-term partner, VIP customer, but last batch had a 10% DOA rate — need to monitor quality corrective action progress. Primary Dell and HP distributor with strong bargaining power."
+  },
+  {
+    "customer_id": "SUP-002",
+    "name": "Botong IT",
+    "contact_person": "Manager Wang",
+    "email": "wang@broadinfo.com",
+    "phone": "13900020002",
+    "industry": "IT Distribution",
+    "tier": "standard",
+    "annual_revenue": 8000000,
+    "last_contact_date": "2026-01-10",
+    "status": "active",
+    "notes": "Competitive pricing, but rejected our purchase order 2 months ago due to insufficient support capacity. Primary HP ProLiant channel partner."
+  },
+  {
+    "customer_id": "SUP-003",
+    "name": "Lenovo Enterprise",
+    "contact_person": "Mr. Li",
+    "email": "li@lenovo-enterprise.com",
+    "phone": "13700030003",
+    "industry": "IT Manufacturing",
+    "tier": "standard",
+    "annual_revenue": 50000000,
+    "last_contact_date": "2026-02-20",
+    "status": "active",
+    "notes": "Standard partnership model, fixed pricing with no discounts. Product quality is stable and deliveries are on time, but lacks flexibility."
+  },
+  {
+    "customer_id": "SUP-004",
+    "name": "Xinchen Tech",
+    "contact_person": "Manager Zhang",
+    "email": "zhang@xinchen.com",
+    "phone": "13600040004",
+    "industry": "IT Distribution",
+    "tier": "standard",
+    "annual_revenue": 5000000,
+    "last_contact_date": "2026-02-25",
+    "status": "active",
+    "notes": "Authorized Huawei distributor with a notable price advantage (approximately 8% below Huawei direct sales). However, affected by Huawei supply chain issues, delivery capability is currently uncertain."
+  }
+]

@@ -1,0 +1,32 @@
+{
+  "search_memory": {
+    "triggers": ["之前", "上次", "记得", "历史", "对话", "讨论过"],
+    "description": "Queries that reference past conversations, stored memories, or previously discussed topics",
+    "priority_weight": 1.0,
+    "examples": [
+      "我们之前讨论过的方案",
+      "上次说的那个项目分析",
+      "你还记得我们的对话吗"
+    ]
+  },
+  "search_file": {
+    "triggers": ["文件", "图片", "视频", "文档", "表格", "项目文件", ".mp4", ".xlsx", ".docx"],
+    "description": "Queries about finding, referencing, or working with specific files",
+    "priority_weight": 0.9,
+    "examples": [
+      "帮我找一下那个视频文件",
+      "skill_matrix_v2.xlsx在哪里",
+      "打开项目文件project_v3.prproj"
+    ]
+  },
+  "general": {
+    "triggers": ["什么是", "如何", "帮我", "解释"],
+    "description": "General information queries, how-to questions, and explanation requests",
+    "priority_weight": 0.5,
+    "examples": [
+      "什么是关键帧动画",
+      "如何优化渲染设置",
+      "帮我解释一下色彩校正"
+    ]
+  }
+}

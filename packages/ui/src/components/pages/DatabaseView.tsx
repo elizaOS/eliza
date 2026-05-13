@@ -1,16 +1,11 @@
 import {
-  Button,
-  Input,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  SegmentedControl,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+  ChevronLeft,
+  ChevronRight,
+  Database as DatabaseIcon,
+  ServerOff,
+  Table2,
+  TerminalSquare,
+} from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -21,8 +16,18 @@ import {
   type TableInfo,
   type TableRowsResponse,
 } from "../../api";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { MetaPill } from "../composites/page-panel/page-panel-header";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { SegmentedControl } from "../ui/segmented-control";
 import {
   CellPopover,
   type DbView,
@@ -31,6 +36,12 @@ import {
   type SortDir,
 } from "./database-utils";
 import { SqlEditorPanel } from "./SqlEditorPanel";
+
+const DATABASE_UNAVAILABLE_FEATURES = [
+  { id: "tables", label: "Tables", icon: Table2, tone: "text-info" },
+  { id: "sql", label: "SQL", icon: TerminalSquare, tone: "text-accent" },
+  { id: "runtime", label: "Runtime", icon: DatabaseIcon, tone: "text-warning" },
+] as const;
 
 export function DatabaseView({
   leftNav,
@@ -461,13 +472,12 @@ export function DatabaseView({
                 </h1>
               </PagePanel>
 
-              <PagePanel.Empty
-                variant="surface"
-                className="mt-4 min-h-[18rem] rounded-3xl px-5 py-10"
+              <PagePanel.FeatureEmpty
+                className="mt-4 rounded-3xl"
+                features={DATABASE_UNAVAILABLE_FEATURES}
+                icon={ServerOff}
+                iconTone="border-danger/25 bg-danger/10 text-danger"
                 title={t("databaseview.DatabaseNotAvailab")}
-                description={
-                  statusLoadError || t("databaseview.TheDatabaseViewer")
-                }
               />
             </div>
           ) : view === "tables" ? (

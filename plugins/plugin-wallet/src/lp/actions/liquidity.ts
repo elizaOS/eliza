@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type {
   Action,
   ActionExample,
@@ -26,6 +25,24 @@ import { getChainConfig } from "../types.ts";
 
 const SOLANA_DEXES = new Set(["raydium", "orca", "meteora"]);
 const EVM_DEXES = new Set(["uniswap", "aerodrome", "pancakeswap"]);
+
+type PoolTokenWithAddress = PoolInfo["tokenA"] & { address?: string };
+type TransactionWithHash = { transactionId?: string; hash?: string };
+
+function tokenLabel(token: PoolInfo["tokenA"]): string | undefined {
+  const withAddress = token as PoolTokenWithAddress;
+  return token.symbol || token.mint || withAddress.address;
+}
+
+function transactionLabel(result: TransactionWithHash): string {
+  return result.transactionId || result.hash || "submitted";
+}
+
+function isLpPosition(
+  position: LpPositionDetails | null,
+): position is LpPositionDetails {
+  return position !== null;
+}
 
 function selectedContextMatches(
   state: State | undefined,
@@ -85,16 +102,8 @@ const formatPools = (pools: PoolInfo[]): string => {
 
   let response = "LP pools:\n";
   pools.slice(0, 10).forEach((pool, index) => {
-    const tokenA =
-      pool.tokenA?.symbol ||
-      pool.tokenA?.mint ||
-      pool.tokenA?.address ||
-      "tokenA";
-    const tokenB =
-      pool.tokenB?.symbol ||
-      pool.tokenB?.mint ||
-      pool.tokenB?.address ||
-      "tokenB";
+    const tokenA = tokenLabel(pool.tokenA) || "tokenA";
+    const tokenB = tokenLabel(pool.tokenB) || "tokenB";
     response +=
       `\n${index + 1}. ${pool.displayName || pool.id} on ${pool.dex}\n` +
       `   Pair: ${tokenA}/${tokenB}\n` +
@@ -242,7 +251,12 @@ function resolveChain(params: LpActionParams): {
   let chainId = params.chainId;
 
   const numericChain = chain && /^\d+$/.test(chain) ? Number(chain) : undefined;
-  const evmChain = getChainConfig(numericChain ?? chain);
+  const evmChain =
+    numericChain !== undefined
+      ? getChainConfig(numericChain)
+      : chain
+        ? getChainConfig(chain)
+        : undefined;
   if (evmChain) {
     chain = "evm";
     chainId = evmChain.chainId;
@@ -404,8 +418,9 @@ async function handlePreferences(
     newConfig.minGainThresholdPercent = params.minGainThresholdPercent;
     updates.push(`minGainThresholdPercent=${params.minGainThresholdPercent}`);
   }
-  if (params.maxSlippageBps !== undefined || params.slippageBps !== undefined) {
-    newConfig.maxSlippageBps = params.maxSlippageBps ?? params.slippageBps;
+  const maxSlippageBps = params.maxSlippageBps ?? params.slippageBps;
+  if (maxSlippageBps !== undefined) {
+    newConfig.maxSlippageBps = maxSlippageBps;
     updates.push(`maxSlippageBps=${newConfig.maxSlippageBps}`);
   }
   if (params.preferredDexes) {
@@ -482,7 +497,7 @@ async function handleLpOperation(
                 .catch(() => null),
             ),
           )
-        ).filter(Boolean);
+        ).filter(isLpPosition);
       }
       return {
         success: true,
@@ -528,7 +543,7 @@ async function handleLpOperation(
       return {
         success: result.success,
         text: result.success
-          ? `LP position opened on ${route.dex || "registered protocol"}. Transaction: ${result.transactionId || result.hash || "submitted"}`
+          ? `LP position opened on ${route.dex || "registered protocol"}. Transaction: ${transactionLabel(result)}`
           : `LP open failed: ${result.error || "unknown error"}`,
         data: result,
       };
@@ -552,7 +567,7 @@ async function handleLpOperation(
       return {
         success: result.success,
         text: result.success
-          ? `LP position closed on ${route.dex || "registered protocol"}. Transaction: ${result.transactionId || result.hash || "submitted"}`
+          ? `LP position closed on ${route.dex || "registered protocol"}. Transaction: ${transactionLabel(result)}`
           : `LP close failed: ${result.error || "unknown error"}`,
         data: result,
       };
@@ -577,7 +592,7 @@ async function handleLpOperation(
       return {
         success: result.success,
         text: result.success
-          ? `LP position repositioned on ${route.dex || "registered protocol"}. Transaction: ${result.transactionId || result.hash || "submitted"}`
+          ? `LP position repositioned on ${route.dex || "registered protocol"}. Transaction: ${transactionLabel(result)}`
           : `LP reposition failed: ${result.error || "unknown error"}`,
         data: result,
       };
@@ -656,7 +671,10 @@ export const liquidityAction: Action = {
       description:
         "Liquidity amount for open, close, or reposition operations.",
       required: false,
-      schema: { type: ["string", "number"] },
+      schema: {
+        type: "string",
+        anyOf: [{ type: "string" }, { type: "number" }],
+      },
     },
     {
       name: "range",
@@ -798,7 +816,7 @@ export const liquidityAction: Action = {
       };
     }
 
-    const userId = message.entityId || message.userId || "unknown-user";
+    const userId = message.entityId || "unknown-user";
 
     try {
       if (params.subaction === "onboard") {

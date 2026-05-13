@@ -1,0 +1,42 @@
+[
+  {
+    "message_id": "msg_601",
+    "from": "liwei@zhonghe-group.com",
+    "to": "support@company.com",
+    "subject": "紧急投诉：连续两个月账单金额翻倍",
+    "date": "2026-03-25T08:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "你好，我是中和集团的李伟。我们购买的标准版服务，合同约定月费12万元，但2月和3月的账单都显示24万元，整整翻了一倍。我已经向销售反映过但没有回应，如果这周不解决我们会考虑终止合同。请尽快处理。"
+  },
+  {
+    "message_id": "msg_602",
+    "from": "wangmin@qianfeng-tech.com",
+    "to": "support@company.com",
+    "subject": "关于退款申请的跟进",
+    "date": "2026-03-24T16:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "您好，我是前锋科技的王敏。上个月我们在使用过程中遇到了连续3天的服务中断（3月1日-3月3日），导致我们损失了约5万元的订单。当时客服承诺给予补偿，但至今没有收到退款。我们的客户ID是CUS-602，请帮忙跟进。"
+  },
+  {
+    "message_id": "msg_603",
+    "from": "zhanghua@sunlight-media.com",
+    "to": "support@company.com",
+    "subject": "功能降级通知不及时",
+    "date": "2026-03-25T10:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "你好，阳光传媒这边。我们的高级功能在3月15日被降级为基础版，但直到3月20日我们自己发现才知道，没有收到任何通知。希望了解原因并恢复功能。我们的客户ID是CUS-603。"
+  },
+  {
+    "message_id": "msg_604",
+    "from": "newsletter@industry-weekly.com",
+    "to": "support@company.com",
+    "subject": "SaaS行业周报 - 2026年第12期",
+    "date": "2026-03-25T07:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "本期热点：企业SaaS续约率下降5%..."
+  }
+]

@@ -1,0 +1,60 @@
+2024-09-15 09:12:01.334 [INFO ] ExerciseGenerator - Initialising exercise generation pipeline v3.2.1
+2024-09-15 09:12:01.412 [INFO ] ConfigLoader - Loading RMIT L6 standards from config/rmit_l6_standards.json
+2024-09-15 09:12:01.418 [INFO ] ConfigLoader - Standards loaded successfully: level=6, question_range=[10,12], word_range=[850,950]
+2024-09-15 09:12:01.502 [INFO ] SynonymLoader - Loading synonym dictionary from data/synonym_dictionary.json
+2024-09-15 09:12:01.589 [INFO ] SynonymLoader - Loaded 89 synonym pairs across 4 domains
+2024-09-15 09:12:01.601 [INFO ] StopWordLoader - Loading content word stoplist from data/content_word_stoplist.txt
+2024-09-15 09:12:01.615 [INFO ] StopWordLoader - Loaded 183 stop words for content word extraction
+2024-09-15 09:12:02.003 [INFO ] LectureParser - Reading source lecture from data/source_lecture_raw.txt
+2024-09-15 09:12:02.045 [INFO ] LectureParser - Source lecture parsed: 498 words, 6 paragraphs
+2024-09-15 09:12:02.112 [INFO ] LectureExpander - Beginning lecture expansion from 498 to target 850-950 words
+2024-09-15 09:12:04.778 [INFO ] LectureExpander - Expansion complete: draft word count = 847
+2024-09-15 09:12:04.780 [WARN ] WordCountValidator - Lecture word count 847 is below minimum threshold 850 (deficit: 3 words)
+2024-09-15 09:12:04.781 [INFO ] LectureExpander - Attempting micro-expansion pass to reach minimum word count
+2024-09-15 09:12:05.234 [INFO ] LectureExpander - Micro-expansion complete: revised word count = 863
+2024-09-15 09:12:05.240 [INFO ] WordCountValidator - Word count 863 within acceptable range [850, 950]. PASS
+2024-09-15 09:12:05.301 [INFO ] QuestionGenerator - Generating fill-in-the-blank questions from expanded lecture
+2024-09-15 09:12:06.892 [INFO ] QuestionGenerator - Generated 12 candidate questions
+2024-09-15 09:12:06.910 [INFO ] AnswerValidator - Validating answer word counts against limit: 'one or two words AND/OR a number'
+2024-09-15 09:12:06.915 [INFO ] AnswerValidator - Q1 answer 'ecological' — 1 word — PASS
+2024-09-15 09:12:06.916 [INFO ] AnswerValidator - Q2 answer '35%' — 1 number — PASS
+2024-09-15 09:12:06.917 [INFO ] AnswerValidator - Q3 answer 'impervious surfaces' — 2 words — PASS
+2024-09-15 09:12:06.918 [INFO ] AnswerValidator - Q4 answer 'evapotranspiration' — 1 word — PASS
+2024-09-15 09:12:06.919 [INFO ] AnswerValidator - Q5 answer '3.5' — 1 number — PASS
+2024-09-15 09:12:06.920 [INFO ] AnswerValidator - Q6 answer '$2.7 billion' — 2 words — PASS
+2024-09-15 09:12:06.921 [INFO ] AnswerValidator - Q7 answer '15-year' — 1 word (hyphenated) — PASS
+2024-09-15 09:12:06.922 [INFO ] AnswerValidator - Q8 answer 'biodiversity corridors' — 2 words — PASS
+2024-09-15 09:12:06.923 [INFO ] AnswerValidator - Q9 answer 'genetic exchange' — 2 words — PASS
+2024-09-15 09:12:06.924 [INFO ] AnswerValidator - Q10 answer 'zoning ordinances' — 2 words — PASS
+2024-09-15 09:12:06.925 [INFO ] AnswerValidator - Q11 answer 'tax incentives' — 2 words — PASS
+2024-09-15 09:12:06.926 [INFO ] AnswerValidator - Q12 answer 'fiscal constraints' — 2 words — PASS
+2024-09-15 09:12:07.100 [INFO ] T1Classifier - Classifying questions as T-1 or T-0
+2024-09-15 09:12:07.234 [INFO ] T1Classifier - Q1: repetition_rate=18.2%, synonym_pairs=2 → T-1
+2024-09-15 09:12:07.256 [INFO ] T1Classifier - Q2: repetition_rate=55.6%, synonym_pairs=0 → T-0
+2024-09-15 09:12:07.278 [INFO ] T1Classifier - Q3: repetition_rate=62.5%, synonym_pairs=0 → T-0
+2024-09-15 09:12:07.301 [INFO ] T1Classifier - Q4: repetition_rate=33.3%, synonym_pairs=1 → T-1
+2024-09-15 09:12:07.323 [INFO ] T1Classifier - Q5: repetition_rate=50.0%, synonym_pairs=0 → T-0
+2024-09-15 09:12:07.345 [INFO ] T1Classifier - Q6: repetition_rate=44.4%, synonym_pairs=0 → T-0
+2024-09-15 09:12:07.367 [INFO ] T1Classifier - Q7: repetition_rate=28.6%, synonym_pairs=1 → T-1
+2024-09-15 09:12:07.389 [INFO ] T1Classifier - Q8: repetition_rate=71.4%, synonym_pairs=0 → T-0
+2024-09-15 09:12:07.411 [INFO ] T1Classifier - Q9: repetition_rate=60.0%, synonym_pairs=0 → T-0
+2024-09-15 09:12:07.433 [INFO ] T1Classifier - Q10: repetition_rate=22.2%, synonym_pairs=2 → T-1
+2024-09-15 09:12:07.455 [INFO ] T1Classifier - Q11: repetition_rate=57.1%, synonym_pairs=0 → T-0
+2024-09-15 09:12:07.477 [INFO ] T1Classifier - Q12: repetition_rate=37.5%, synonym_pairs=1 → T-1
+2024-09-15 09:12:07.500 [INFO ] T1RatioValidator - T-1 count: 5 / 12 = 0.4167
+2024-09-15 09:12:07.501 [WARN ] T1RatioValidator - T-1 ratio 0.42 exceeds maximum 0.40. Consider reclassifying Q12 (borderline at 37.5% repetition rate)
+2024-09-15 09:12:07.510 [INFO ] T1Classifier - Reclassifying Q12 from T-1 to T-0 based on borderline repetition rate
+2024-09-15 09:12:07.515 [INFO ] T1RatioValidator - Revised T-1 count: 4 / 12 = 0.3333
+2024-09-15 09:12:07.516 [WARN ] T1RatioValidator - T-1 ratio 0.33 now below minimum 0.35. Manual review recommended.
+2024-09-15 09:12:07.600 [INFO ] TrapAnalyser - Generating per-question trap analysis
+2024-09-15 09:12:08.100 [INFO ] TrapAnalyser - Trap analysis complete for 12 questions
+2024-09-15 09:12:08.200 [INFO ] SynonymVerifier - Running synonym substitution verification for T-1 questions
+2024-09-15 09:12:08.450 [INFO ] SynonymVerifier - Q1: 2 synonym pairs verified, repetition_rate=18.2% — PASS
+2024-09-15 09:12:08.500 [INFO ] SynonymVerifier - Q4: 1 synonym pair verified, repetition_rate=33.3% — PASS
+2024-09-15 09:12:08.550 [INFO ] SynonymVerifier - Q7: 1 synonym pair verified, repetition_rate=28.6% — PASS
+2024-09-15 09:12:08.600 [INFO ] SynonymVerifier - Q10: 2 synonym pairs verified, repetition_rate=22.2% — PASS
+2024-09-15 09:12:08.700 [INFO ] OutputFormatter - Formatting exercise output as markdown
+2024-09-15 09:12:08.850 [INFO ] OutputFormatter - Output written to output/listening_exercise_draft.md
+2024-09-15 09:12:08.900 [WARN ] FinalValidator - Exercise requires manual review: T-1 ratio at 0.33 (below 0.35 minimum)
+2024-09-15 09:12:08.950 [INFO ] ExerciseGenerator - Pipeline complete. Status: REVIEW_REQUIRED
+2024-09-15 09:12:09.001 [INFO ] ExerciseGenerator - Total processing time: 7.667 seconds

@@ -39,8 +39,8 @@ def scan_action_preservation(lang: str, n: int = 200) -> dict:
 
     total = 0
     action_hits = 0
-    toon_action_lines = 0
-    broken_toon = 0
+    payload_action_lines = 0
+    broken_payload = 0
     with p.open() as f:
         for i, line in enumerate(f):
             if i >= n:
@@ -48,7 +48,7 @@ def scan_action_preservation(lang: str, n: int = 200) -> dict:
             try:
                 r = json.loads(line)
             except json.JSONDecodeError:
-                broken_toon += 1
+                broken_payload += 1
                 continue
             total += 1
             er = r.get("expectedResponse", "")
@@ -56,15 +56,15 @@ def scan_action_preservation(lang: str, n: int = 200) -> dict:
                 # Count untranslated action tokens
                 for tok in ACTION_NAMES:
                     action_hits += len(re.findall(rf"\b{tok}\b", er))
-                # Count well-formed TOON action lines
-                toon_action_lines += len(re.findall(
+                # Count well-formed native JSON action lines
+                payload_action_lines += len(re.findall(
                     r"^action\s*:\s*[A-Z][A-Z_]+\s*$", er, re.MULTILINE
                 ))
     return {
         "records": total,
         "action_token_occurrences": action_hits,
-        "well_formed_action_lines": toon_action_lines,
-        "broken_lines": broken_toon,
+        "well_formed_action_lines": payload_action_lines,
+        "broken_lines": broken_payload,
     }
 
 

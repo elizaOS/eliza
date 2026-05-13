@@ -7,7 +7,7 @@ filter that routes each synth trajectory to a `--output-keep` or
 
 Why this exists
 ---------------
-The reward function is correctness-aware: TOON format check + bucket-specific
+The reward function is correctness-aware: native JSON format check + bucket-specific
 content check (`should_respond`, `message_handler`, `reply`, `claude_distill`),
 length shaping, and optional Claude AI judge. During RL it scores rollouts.
 Here we run it offline against synth output (e.g. Together-synth or
@@ -24,7 +24,7 @@ Each input line is a synth trajectory record. Accepted variants:
          "messages": [
            {"role": "system", "content": "..."},
            {"role": "user", "content": "..."},
-           {"role": "model" | "assistant", "content": "<TOON response>"}
+           {"role": "model" | "assistant", "content": "<native JSON response>"}
          ],
          "task_id": "...",
          "task_type": "should_respond" | "message_handler" | "reply" | ...
@@ -33,7 +33,7 @@ Each input line is a synth trajectory record. Accepted variants:
   2. raw-eliza record (`format_for_training.py` ingest shape):
        {
          "currentMessage": {"content": "..."},
-         "expectedResponse": "<TOON response>",   # treated as both prompt and gt
+         "expectedResponse": "<native JSON response>",   # treated as both prompt and gt
          "metadata": {"task_type": "..."},
          ...
        }
@@ -41,7 +41,7 @@ Each input line is a synth trajectory record. Accepted variants:
 Either shape is fine. The filter pulls:
   - the user prompt (the human turn the model is responding to),
   - the model response (the trajectory's actual training target),
-  - the bucket / task_type (drives which `eliza_bench` scorer runs).
+  - the bucket / task_type (drives which `native_tool_call_bench` scorer runs).
 
 If the record carries an explicit ground truth (`expectedResponse`, or a
 sibling `ground_truth` block), it's passed through so the verifiable content
@@ -161,7 +161,7 @@ def _extract_ground_truth(record: dict[str, Any], task_type: str) -> dict[str, A
     """
     gt = record.get("ground_truth")
     if isinstance(gt, dict):
-        # Normalize to ensure task_type is set so eliza_bench.classify works.
+        # Normalize to ensure task_type is set so native_tool_call_bench.classify works.
         out = dict(gt)
         out.setdefault("task_type", task_type)
         return out

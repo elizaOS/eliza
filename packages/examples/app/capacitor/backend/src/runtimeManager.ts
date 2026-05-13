@@ -159,9 +159,7 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
   }
 }
 
-export async function getOrCreateRuntime(
-  config: AppConfig,
-): Promise<RuntimeBundle> {
+async function getOrCreateRuntime(config: AppConfig): Promise<RuntimeBundle> {
   const effectiveMode = getEffectiveMode(config);
 
   if (currentBundle && currentMode === effectiveMode) {
@@ -318,13 +316,4 @@ export async function sendMessage(
   }
 
   return { responseText, effectiveMode };
-}
-
-export async function __shutdownForTests(): Promise<void> {
-  if (currentBundle) {
-    await currentBundle.runtime.stop();
-  }
-  currentBundle = null;
-  currentMode = null;
-  initializing = null;
 }

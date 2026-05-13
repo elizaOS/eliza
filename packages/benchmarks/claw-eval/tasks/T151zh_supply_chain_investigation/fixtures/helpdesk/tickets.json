@@ -1,0 +1,67 @@
+[
+  {
+    "ticket_id": "TK-1101",
+    "title": "订单#A001发货延迟",
+    "description": "鼎新软件（CUS-1101）周经理反馈：订单#A001已下单一周，包含智能路由器X1和交换机S200，至今未发货，客户催促多次。请尽快处理。",
+    "customer_id": "CUS-1101",
+    "reporter": "周经理",
+    "department": "客户服务",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-22T10:00:00Z",
+    "tags": ["发货延迟", "订单"],
+    "category": "订单问题"
+  },
+  {
+    "ticket_id": "TK-1102",
+    "title": "订单#A002发货延迟",
+    "description": "瀚海电商（CUS-1102）林总反馈：订单#A002（交换机S200和防火墙F500）已超过承诺交付日期5天，影响其数据中心部署进度。",
+    "customer_id": "CUS-1102",
+    "reporter": "林总",
+    "department": "客户服务",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-23T09:30:00Z",
+    "tags": ["发货延迟", "订单"],
+    "category": "订单问题"
+  },
+  {
+    "ticket_id": "TK-1103",
+    "title": "订单#A003产品缺货",
+    "description": "万通物流（CUS-1103）赵总监紧急反馈：订单#A003包含智能路由器X1、防火墙F500和光纤模块，客服回复说缺货但无法给出预计到货时间。VIP客户要求给出明确答复。",
+    "customer_id": "CUS-1103",
+    "reporter": "赵总监",
+    "department": "客户服务",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-24T08:15:00Z",
+    "tags": ["缺货", "订单", "VIP", "紧急"],
+    "category": "订单问题"
+  },
+  {
+    "ticket_id": "TK-1104",
+    "title": "软件登录异常",
+    "description": "前锋科技（CUS-1104）张工反馈：管理后台登录时偶尔出现502错误，需要刷新2-3次才能进入。",
+    "customer_id": "CUS-1104",
+    "reporter": "张工",
+    "department": "技术支持",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-23T14:00:00Z",
+    "tags": ["登录", "系统故障"],
+    "category": "技术问题"
+  },
+  {
+    "ticket_id": "TK-1105",
+    "title": "发票信息修改",
+    "description": "鼎新软件（CUS-1101）财务部申请修改上月发票的开票信息，税号有误需要重新开具。",
+    "customer_id": "CUS-1101",
+    "reporter": "财务部",
+    "department": "财务",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-24T16:00:00Z",
+    "tags": ["发票", "修改"],
+    "category": "财务问题"
+  }
+]

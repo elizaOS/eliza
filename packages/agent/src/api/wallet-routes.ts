@@ -25,7 +25,7 @@ import {
   type WalletConfigUpdateRequest,
   type WalletRpcSelections,
 } from "@elizaos/shared";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import type { ElizaConfig } from "../config/config.ts";
 import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";

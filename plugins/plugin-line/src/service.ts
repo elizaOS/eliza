@@ -515,8 +515,6 @@ export class LineService extends Service implements ILineService {
     // Add quick replies to last message if provided
     if (options?.quickReplyItems && messages.length > 0) {
       const lastIdx = messages.length - 1;
-      // Cast to unknown first to avoid strict type checking with LINE SDK types
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (messages[lastIdx] as { quickReply?: unknown }).quickReply = {
         items: options.quickReplyItems,
       } as unknown;

@@ -1,7 +1,7 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, SearchCategoryRegistration } from "@elizaos/core";
 import { BirdeyeProvider } from "./birdeye";
 import { BIRDEYE_SERVICE_NAME } from "./constants";
+import type { TokenMarketSearchParams, TokenResult } from "./types/api/search";
 import type {
   TokenMarketDataResponse,
   TokenOverviewResponse,
@@ -186,7 +186,7 @@ type BirdeyeTokenAddressSearchResult = {
 
 type BirdeyeTokenSymbolSearchResult = {
   symbol: string;
-  tokens: unknown[];
+  tokens: TokenResult[];
 };
 
 type BirdeyeTokenSearchProvider = Pick<
@@ -247,6 +247,71 @@ function normalizeLimit(value: unknown): number {
   return Math.max(1, Math.min(25, limit));
 }
 
+function asTokenSearchChain(value: unknown): TokenMarketSearchParams["chain"] {
+  switch (value) {
+    case "all":
+    case "solana":
+    case "ethereum":
+    case "arbitrum":
+    case "avalanche":
+    case "bsc":
+    case "optimism":
+    case "polygon":
+    case "base":
+    case "zksync":
+    case "sui":
+    case "evm":
+      return value;
+    default:
+      return "all";
+  }
+}
+
+function asTokenSearchTarget(
+  value: unknown,
+): TokenMarketSearchParams["target"] {
+  return value === "market" || value === "all" ? value : "token";
+}
+
+function asTokenSearchSortBy(
+  value: unknown,
+): TokenMarketSearchParams["sort_by"] {
+  switch (value) {
+    case "fdv":
+    case "marketcap":
+    case "liquidity":
+    case "price":
+    case "price_change_24h_percent":
+    case "trade_24h":
+    case "trade_24h_change_percent":
+    case "buy_24h":
+    case "buy_24h_change_percent":
+    case "sell_24h":
+    case "sell_24h_change_percent":
+    case "unique_wallet_24h":
+    case "unique_view_24h_change_percent":
+    case "last_trade_unix_time":
+    case "volume_24h_usd":
+    case "volume_24h_change_percent":
+      return value;
+    default:
+      return "volume_24h_usd";
+  }
+}
+
+function asSortType(value: unknown): TokenMarketSearchParams["sort_type"] {
+  return value === "asc" ? "asc" : "desc";
+}
+
+function isTokenResult(token: unknown): token is TokenResult {
+  return (
+    typeof token === "object" &&
+    token !== null &&
+    "symbol" in token &&
+    "address" in token
+  );
+}
+
 function filterBool(
   filters: Record<string, unknown>,
   key: string,
@@ -296,12 +361,10 @@ async function searchTokensBySymbol(
   limit: number,
 ): Promise<BirdeyeTokenSymbolSearchResult[]> {
   const symbols = normalizeSymbolQuery(query);
-  const chain = typeof filters.chain === "string" ? filters.chain : "all";
-  const target = typeof filters.target === "string" ? filters.target : "token";
-  const sortBy =
-    typeof filters.sort_by === "string" ? filters.sort_by : "volume_24h_usd";
-  const sortType =
-    typeof filters.sort_type === "string" ? filters.sort_type : "desc";
+  const chain = asTokenSearchChain(filters.chain);
+  const target = asTokenSearchTarget(filters.target);
+  const sortBy = asTokenSearchSortBy(filters.sort_by);
+  const sortType = asSortType(filters.sort_type);
 
   const results = await Promise.all(
     symbols.map(async (symbol) => {
@@ -323,7 +386,9 @@ async function searchTokensBySymbol(
         .filter((item) => item.type === "token" && item.result)
         .flatMap((item) => item.result)
         .filter(
-          (token) => token?.symbol?.toLowerCase?.() === symbol.toLowerCase(),
+          (token): token is TokenResult =>
+            isTokenResult(token) &&
+            token.symbol?.toLowerCase?.() === symbol.toLowerCase(),
         )
         .slice(0, limit);
       return { symbol, tokens };

@@ -1,0 +1,88 @@
+{
+  // OpenClaw Gateway Configuration
+  // Last modified: 2025-01-15T09:32:00Z
+  // Maintainer: ops-team@example.com
+  "agents": {
+    "defaults": {
+      "workspace": "~/.openclaw/workspace",
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-6",
+        "fallbacks": ["openai/gpt-5-mini"]
+      },
+      "models": {
+        "anthropic/claude-sonnet-4-6": { "alias": "sonnet" },
+        "openai/gpt-5-mini": { "alias": "gpt-mini" },
+        "anthropic/claude-opus-4-6": { "alias": "opus" }
+      },
+      "imageModel": "openrouter/qwen/qwen-2.5-vl-72b-instruct:free",
+      "userTimezone": "Asia/Shanghai",
+      "timeFormat": "24",
+      "maxConcurrent": 3,
+      "contextTokens": 200000,
+      "timeoutSeconds": 600,
+      "heartbeat": {
+        "every": "30m",
+        "model": "openai/gpt-5-mini",
+        "session": "main"
+      },
+      "compaction": {
+        "enabled": true,
+        "maxTokens": 120000,
+        "targetTokens": 40000,
+        "model": "openai/gpt-5-mini"
+      },
+      "sandbox": {
+        "mode": "off"
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "default": true,
+        "name": "Production Agent",
+        "workspace": "~/.openclaw/workspace",
+        "model": "anthropic/claude-sonnet-4-6",
+        "identity": {
+          "name": "Jarvis",
+          "emoji": "🤖"
+        },
+        "tools": {
+          "allow": ["read", "write", "edit", "exec", "process", "web_search", "web_fetch", "browser", "cron", "message", "gateway", "sessions_spawn", "sessions_list", "sessions_history", "sessions_send", "session_status", "memory_search", "memory_get", "tts"],
+          "elevated": { "enabled": true }
+        }
+      },
+      {
+        "id": "research",
+        "name": "Research Agent",
+        "model": "openai/gpt-5-mini",
+        "identity": {
+          "name": "Scout",
+          "emoji": "🔍"
+        },
+        "tools": {
+          "allow": ["read", "web_search", "web_fetch", "browser"],
+          "deny": ["gateway", "cron"]
+        }
+      }
+    ]
+  },
+  "channels": {
+    "defaults": {
+      "groupPolicy": "allowlist",
+      "heartbeat": {
+        "showOk": false,
+        "showAlerts": true,
+        "useIndicator": true
+      }
+    }
+  },
+  "tools": {
+    "exec": {
+      "shell": "/bin/bash"
+    }
+  },
+  "gateway": {
+    "port": 18789,
+    "bind": "loopback"
+  }
+}

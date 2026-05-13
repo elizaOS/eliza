@@ -34,6 +34,7 @@ from eliza_lifeops_bench.lifeworld import EntityKind, LifeWorld
 from eliza_lifeops_bench.lifeworld.entities import (
     Calendar,
     Conversation,
+    EmailMessage,
     EmailThread,
     ReminderList,
 )
@@ -347,6 +348,83 @@ def test_runner_splits_agent_and_eval_cost_in_result() -> None:
     ), "total_cost_usd must equal agent + eval"
 
 
+def test_live_evaluator_prompts_include_world_snapshot_and_heartbeat() -> None:
+    evaluator, sim, judge = _make_evaluator(judge_says_yes=False)
+    scenario = Scenario(
+        id="live.test.prompt_snapshot",
+        name="prompt snapshot fixture",
+        domain=Domain.MAIL,
+        mode=ScenarioMode.LIVE,
+        persona=Persona(
+            id="p_test",
+            name="Test User",
+            traits=["test"],
+            background="test fixture",
+            communication_style="terse",
+        ),
+        instruction="Watch for new mail and summarize it.",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=2026,
+        max_turns=5,
+        success_criteria=["surface the latest inbox change"],
+    )
+    world = _empty_world()
+    world.add(
+        EntityKind.EMAIL,
+        EmailMessage(
+            id="email_prompt_snapshot",
+            thread_id="thread_prompt_snapshot",
+            folder="inbox",
+            from_email="compliance@example.test",
+            to_emails=["owner@example.test"],
+            cc_emails=[],
+            subject="URGENT: SOC2 audit evidence due today",
+            body_plain="Please upload the evidence by 5pm.",
+            sent_at="2026-05-10T11:50:00Z",
+            received_at="2026-05-10T11:51:00Z",
+            is_read=False,
+            is_starred=False,
+            labels=["urgent"],
+            attachments=[],
+        ),
+    )
+
+    async def run() -> None:
+        await evaluator.simulate_user_turn(scenario, [], world)
+        await evaluator.judge_satisfaction(scenario, [], world)
+
+    asyncio.run(run())
+
+    assert sim.last_call is not None
+    assert judge.last_call is not None
+    user_prompt = sim.last_call.messages[0]["content"]
+    judge_prompt = judge.last_call.messages[0]["content"]
+    assert "Live heartbeat: turn 1" in user_prompt
+    assert "Benchmark clock: 2026-05-10T12:00:00Z" in user_prompt
+    assert "URGENT: SOC2 audit evidence due today" in user_prompt
+    assert "Live heartbeat: turn 1" in judge_prompt
+    assert "Benchmark clock: 2026-05-10T12:00:00Z" in judge_prompt
+    assert "URGENT: SOC2 audit evidence due today" in judge_prompt
+
+
+def test_judge_parses_json_verdicts() -> None:
+    evaluator, sim, judge = _make_evaluator(judge_says_yes=False)
+    judge.fixed_content = '```json\n{"satisfied": true, "reason": "executor completed the task."}\n```'
+    scenario = ALL_LIVE_SCENARIOS[0]
+
+    async def run() -> tuple[bool, str]:
+        await evaluator.simulate_user_turn(scenario, [], _empty_world())
+        return await evaluator.judge_satisfaction(scenario, [], _empty_world())
+
+    satisfied, reason = asyncio.run(run())
+    assert satisfied is True
+    assert "executor completed the task" in reason
+    assert judge.last_call is not None
+    assert "satisfied" in judge.last_call.messages[0]["content"].lower()
+
+
 # ---------------------------------------------------------------------------
 # Disruption injection
 # ---------------------------------------------------------------------------
@@ -430,6 +508,72 @@ def test_disruption_mutates_world_between_named_turns() -> None:
         f"counts were {captured_email_counts}"
     )
     assert "email_disrupt_test" in _world.emails, "disruption payload not in world"
+
+
+def test_live_disruption_is_visible_to_the_simulated_user_prompt() -> None:
+    evaluator, sim, _judge = _make_evaluator(judge_says_yes=False)
+    _world = _empty_world()
+
+    def factory(seed: int, now_iso: str) -> LifeWorld:
+        return _world
+
+    scenario = Scenario(
+        id="live.test.disruption_prompt",
+        name="disruption prompt fixture",
+        domain=Domain.MAIL,
+        mode=ScenarioMode.LIVE,
+        persona=Persona(
+            id="p_test",
+            name="Test User",
+            traits=["test"],
+            background="test fixture",
+            communication_style="terse",
+        ),
+        instruction="Watch for urgent inbound mail.",
+        ground_truth_actions=[],
+        required_outputs=[],
+        first_question_fallback=None,
+        world_seed=2026,
+        max_turns=1,
+        success_criteria=["surface the urgent email"],
+        disruptions=[
+            Disruption(
+                at_turn=1,
+                kind="new_message",
+                payload={
+                    "message_id": "email_disrupt_test",
+                    "thread_id": "thread_disrupt_test",
+                    "from_email": "alert@example.test",
+                    "subject": "Disruption: urgent compliance update",
+                    "body": "fyi",
+                    "labels": ["urgent"],
+                },
+                note_for_user="[new urgent email]",
+            ),
+        ],
+    )
+
+    async def run() -> None:
+        runner = LifeOpsBenchRunner(
+            agent_fn=_agent_says_done,
+            world_factory=factory,
+            scenarios=[scenario],
+            concurrency=1,
+            seeds=1,
+            max_cost_usd=10.0,
+            per_scenario_timeout_s=5,
+            evaluator=evaluator,
+            live_judge_min_turn=99,
+        )
+        await runner.run_one(scenario, scenario.world_seed)
+
+    asyncio.run(run())
+
+    assert sim.last_call is not None
+    prompt = sim.last_call.messages[0]["content"]
+    assert "Live heartbeat: turn 2" in prompt
+    assert "Disruption: urgent compliance update" in prompt
+    assert "Benchmark clock: 2026-05-10T12:00:00Z" in prompt
 
 
 def test_three_live_scenarios_use_a_disruption() -> None:

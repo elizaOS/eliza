@@ -1,0 +1,49 @@
+Spell Check Report — Lecture Draft v2.1
+Tool: AcademicSpellCheck v4.0.3
+Date: 2024-09-14 16:45:22
+Input: data/source_lecture_draft_v2.txt
+Language: en-GB
+
+Line | Word               | Suggestion           | Status
+-----|--------------------|----------------------|---------
+  3  | stormwater         | storm water          | ignored
+  5  | bioretention       | bio-retention        | ignored
+  7  | permeable          | —                    | accepted
+ 12  | evapotranspiration | evapo-transpiration  | ignored
+ 14  | impervious         | —                    | accepted
+ 18  | urbanisation       | urbanization         | ignored (en-GB preferred)
+ 22  | neighbouring       | neighboring          | ignored (en-GB preferred)
+ 25  | programmes         | programs             | ignored (en-GB preferred)
+ 28  | photovoltaic       | photo-voltaic        | ignored
+ 31  | riparian           | —                    | accepted
+ 34  | microclimate       | micro-climate        | ignored
+ 36  | albedo             | —                    | accepted
+ 38  | aquifer            | —                    | accepted
+ 41  | catchment          | —                    | accepted
+ 44  | anthropogenic      | —                    | accepted
+ 47  | sequestration      | —                    | accepted
+ 50  | zooxanthellae      | —                    | accepted (domain term)
+ 52  | biofiltration      | bio-filtration       | ignored
+ 55  | percolation        | —                    | accepted
+ 58  | transpiration      | —                    | accepted
+ 61  | morbidity          | —                    | accepted
+ 63  | calefaction        | calcification        | corrected
+ 66  | infrastucture      | infrastructure       | corrected
+ 68  | sustainabilty      | sustainability       | corrected
+ 71  | enviromental       | environmental        | corrected
+ 73  | occurence          | occurrence           | corrected
+ 76  | accomodate         | accommodate          | corrected
+ 78  | seperate           | separate             | corrected
+ 81  | recieve            | receive              | corrected
+ 83  | neccessary         | necessary            | corrected
+ 85  | occurances         | occurrences          | corrected
+
+Summary:
+  Total words checked: 4,217
+  Flagged: 30
+  Accepted (correct): 11
+  Ignored (style preference): 10
+  Corrected (misspelling): 9
+  
+Note: Domain-specific terminology (stormwater, bioretention, evapotranspiration, etc.) 
+has been added to the custom dictionary for future runs.

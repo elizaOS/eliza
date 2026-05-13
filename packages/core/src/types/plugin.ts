@@ -64,15 +64,57 @@ export interface RouteResponse {
 	headersSent?: boolean;
 }
 
+/**
+ * Context passed to the return-shape route handler ({@link RouteHandler}).
+ *
+ * This is the canonical contract used by `dispatchRoute` for both HTTP and
+ * in-process (IPC) invocations. The legacy Express-shaped `handler` field on
+ * {@link Route} remains supported during the plugin-route migration; new
+ * plugin routes should prefer `routeHandler` returning a
+ * {@link RouteHandlerResult}.
+ */
+export interface RouteHandlerContext {
+	body: unknown;
+	params: Record<string, string>;
+	query: Record<string, string | string[]>;
+	headers: Record<string, string>;
+	method: string;
+	path: string;
+	runtime: IAgentRuntime;
+	/** true when invoked in-process via IPC; false when invoked over HTTP. */
+	inProcess: boolean;
+}
+
+/** Return-shape result produced by a {@link RouteHandler}. */
+export interface RouteHandlerResult {
+	status: number;
+	headers?: Record<string, string>;
+	/** JSON-serializable body; the adapter stringifies on the way out. */
+	body?: unknown;
+	/** Optional streaming body for SSE / long responses. */
+	stream?: AsyncIterable<Uint8Array | string>;
+}
+
+/** Canonical, return-shape route handler. */
+export type RouteHandler = (
+	ctx: RouteHandlerContext,
+) => Promise<RouteHandlerResult>;
+
+/** Express-shaped legacy route handler. */
+export type LegacyRouteHandler = (
+	req: RouteRequest,
+	res: RouteResponse,
+	runtime: IAgentRuntime,
+) => Promise<void>;
+
 interface BaseRoute {
 	type: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "STATIC";
 	path: string;
 	filePath?: string;
-	handler?: (
-		req: RouteRequest,
-		res: RouteResponse,
-		runtime: IAgentRuntime,
-	) => Promise<void>;
+	/** Legacy Express-shaped handler. Coexists with `routeHandler` during migration. */
+	handler?: LegacyRouteHandler;
+	/** Canonical return-shape handler used by `dispatchRoute`. */
+	routeHandler?: RouteHandler;
 	isMultipart?: boolean; // Indicates if the route expects multipart/form-data (file uploads)
 	/**
 	 * When true, the route path is used as-is without the plugin-name prefix.

@@ -33,8 +33,7 @@ function installFetchMock(byPath: Record<string, unknown>): FetchMock {
       status: 500,
     });
   });
-  // @ts-expect-error override global fetch in tests
-  globalThis.fetch = fn;
+  globalThis.fetch = fn as unknown as typeof fetch;
   return { fn, byPath: map };
 }
 
@@ -174,7 +173,11 @@ describe("perpetualMarketAction handler", () => {
   ) {
     const runtime = makeRuntime(service);
     const callback = vi.fn() as unknown as HandlerCallback;
-    const result = await perpetualMarketAction.handler?.(
+    const handler = perpetualMarketAction.handler;
+    if (!handler) {
+      throw new Error("perpetualMarketAction.handler is required");
+    }
+    const result = await handler(
       runtime,
       makeMessage(),
       makeState(["finance"]),

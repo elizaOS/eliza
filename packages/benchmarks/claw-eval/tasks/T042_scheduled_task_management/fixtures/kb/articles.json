@@ -1,0 +1,29 @@
+[
+  {
+    "article_id": "KB-501",
+    "title": "Scheduled Task Management Policy",
+    "category": "Operations",
+    "tags": ["scheduled tasks", "cron", "policy", "scheduling"],
+    "content": "# Scheduled Task Management Policy\n\n## 1. Scheduling Conflict Rules\nJobs targeting the same table or resource must not run in the same time window. If two jobs write to the same target (e.g., sync_target table), they must be offset by at least 10 minutes.\n\n## 2. Disabled Job Review\nAll disabled jobs should be reviewed monthly. Jobs disabled by mistake should be re-enabled promptly.\n\n## 3. Temporary Job Cleanup\nJobs tagged as 'temporary' should be evaluated for removal or conversion to permanent after 30 days from creation.\n\n## 4. Failure Handling\nJobs failing 3 consecutive times should trigger immediate ops team notification. Single failures require log review and troubleshooting guide consultation.\n\n## 5. Change Records\nAll job enable/disable/schedule changes must be documented.",
+    "last_updated": "2025-12-15",
+    "views": 234
+  },
+  {
+    "article_id": "KB-502",
+    "title": "Disk Space Troubleshooting Guide",
+    "category": "Troubleshooting",
+    "tags": ["disk", "space", "troubleshooting", "log cleanup"],
+    "content": "# Disk Space Troubleshooting Guide\n\n## Common Causes\n1. Log files not cleaned up: Check /var/log and /data/logs directories\n2. Temp file accumulation: Check /tmp and application cache directories\n3. Database logs too large: Check binlog and WAL files\n\n## Troubleshooting Steps\n1. Run `df -h` to check partition usage\n2. Run `du -sh /data/*` to locate large directories\n3. Check if the log cleanup job (log_cleanup) is running normally\n4. If log_cleanup is disabled, re-enable it immediately\n\n## Quick Recovery\n- If disk space issues are caused by logs, ensure the log_cleanup cron job is active\n- Manually clean logs older than 30 days: `find /var/log -mtime +30 -delete`\n\n## Note\nDisk space issues and log cleanup jobs are often directly related — always check their linkage.",
+    "last_updated": "2026-01-20",
+    "views": 189
+  },
+  {
+    "article_id": "KB-503",
+    "title": "Certificate Renewal Failure Handling",
+    "category": "Troubleshooting",
+    "tags": ["certificate", "SSL", "ACME", "renewal"],
+    "content": "# Certificate Renewal Failure Handling\n\n## ACME Rate Limit Issue\nLet's Encrypt imposes rate limits on certificate requests:\n- 50 certificates per registered domain per week\n- 5 duplicate certificates per week\n- 5 failed validations per hour\n\n## Resolution\n**This issue requires manual intervention** — automated tools cannot resolve rate limits.\n\n### Steps\n1. Contact the ops team (ops@company.com) with details\n2. Ops team evaluates whether to use an alternate CA or wait for limit reset\n3. Temporary solution: Use existing wildcard certificate for coverage\n4. During the wait period, monitor existing certificate expiry dates\n\n## Prevention\n- Avoid frequent renewal retries\n- Use staging environment for ACME flow testing\n- Set up alerts 30 days before certificate expiry",
+    "last_updated": "2026-02-10",
+    "views": 67
+  }
+]

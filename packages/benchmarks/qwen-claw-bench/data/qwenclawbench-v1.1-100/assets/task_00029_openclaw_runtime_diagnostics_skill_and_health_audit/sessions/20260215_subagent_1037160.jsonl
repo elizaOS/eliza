@@ -1,0 +1,9 @@
+{"type": "session_start", "session_id": "subagent_1037160", "model": "claude-sonnet-4-20250514", "created_at": "2026-02-15T23:34:02.289911", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-15T23:38:05.132146", "session_id": "subagent_1037160", "seq": 1}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-15T23:42:23.070963", "session_id": "subagent_1037160", "seq": 2}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-15T23:42:46.687016", "session_id": "subagent_1037160", "seq": 3}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-15T23:43:40.351717", "session_id": "subagent_1037160", "seq": 4}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-15T23:46:39.740559", "session_id": "subagent_1037160", "seq": 5, "usage": {"prompt_tokens": 7015, "completion_tokens": 3714, "total_tokens": 8394}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-15T23:50:08.097018", "session_id": "subagent_1037160", "seq": 6, "usage": {"prompt_tokens": 6272, "completion_tokens": 788, "total_tokens": 4934}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-15T23:51:26.140317", "session_id": "subagent_1037160", "seq": 7}
+{"type": "session_end", "session_id": "subagent_1037160", "ended_at": "2026-02-15T23:51:36.140317", "total_messages": 7, "status": "completed"}

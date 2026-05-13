@@ -18,8 +18,6 @@ from benchmarks.standard.trajectory_replay import (
     ReplayStage,
     ReplayTrajectory,
     TrajectoryReplayRunner,
-    _bucket_for_stage,
-    _extract_action_names_from_text,
     _extract_candidate_action_names,
     _extract_stage,
     _stage_score_from_components,
@@ -40,6 +38,7 @@ def _make_stage(
     model_type: str = "RESPONSE_HANDLER",
     actions: tuple[str, ...] = (),
     response_text: str = "ok",
+    tools: tuple[dict[str, Any], ...] = (),
 ) -> ReplayStage:
     return ReplayStage(
         stage_id=stage_id,
@@ -51,7 +50,7 @@ def _make_stage(
         ),
         baseline_response_text=response_text,
         baseline_tool_calls=tuple(BaselineToolCall(name=a, args={}) for a in actions),
-        tools=(),
+        tools=tools,
     )
 
 
@@ -87,10 +86,12 @@ class _ToolCallMockClient(MockClient):
         if len(tool_call_seqs) != len(responses):
             raise ValueError("tool_call_seqs must align with responses")
         self._seqs = tool_call_seqs
+        self.seen_tools: list[tuple[dict[str, Any], ...]] = []
 
     def generate(self, messages, config):  # type: ignore[override]
         idx = self._idx
         result = super().generate(messages, config)
+        self.seen_tools.append(tuple(dict(tool) for tool in config.tools))
         seq = self._seqs[idx % len(self._seqs)]
         tool_calls = [
             {
@@ -112,14 +113,9 @@ class _ToolCallMockClient(MockClient):
         )
 
 
-def _string_match_reward(
-    _prompt: str,
-    response: str,
-    ground_truth: dict[str, Any] | None,
-) -> float:
+def _string_match_score(expected: str, response: str) -> float:
     """Deterministic reward fn for tests — 1.0 on exact-string match, else 0.0."""
 
-    expected = (ground_truth or {}).get("expected", "")
     return 1.0 if response.strip() == str(expected).strip() else 0.0
 
 
@@ -240,26 +236,18 @@ def test_extract_candidate_action_names_top_level_fallback() -> None:
     assert _extract_candidate_action_names(raw) == ("BAZ",)
 
 
-def test_extract_action_names_from_text_handles_hermes_xml() -> None:
-    text = (
-        'pre <tool_call>{"name":"A","args":{}}</tool_call> mid '
-        '<tool_call>{"name":"B","args":{"x":1}}</tool_call> tail'
-    )
-    assert _extract_action_names_from_text(text) == ("A", "B")
-
-
-def test_extract_action_names_from_text_ignores_malformed() -> None:
-    text = "<tool_call>not json</tool_call> <tool_call>{}</tool_call>"
-    assert _extract_action_names_from_text(text) == ()
-
-
-def test_bucket_for_stage_maps_to_eliza_bench_buckets() -> None:
-    assert _bucket_for_stage(_make_stage(model_type="RESPONSE_HANDLER")) == "message_handler"
-    assert _bucket_for_stage(_make_stage(kind="messageHandler", model_type="")) == "message_handler"
-    assert _bucket_for_stage(_make_stage(kind="planner", model_type="")) == "message_handler"
-    assert _bucket_for_stage(_make_stage(kind="evaluation", model_type="")) == "reply"
-    # Anything unknown defaults to message_handler so the scorer at least runs.
-    assert _bucket_for_stage(_make_stage(kind="other", model_type="")) == "message_handler"
+def test_extract_candidate_action_names_prefers_harness_tool_calls() -> None:
+    raw = {
+        "harness": "hermes",
+        "actions": ["SEARCH"],
+        "params": {
+            "tool_calls": [
+                {"name": "SEARCH", "arguments": {"q": "x"}},
+                {"function": {"name": "OPEN"}},
+            ]
+        },
+    }
+    assert _extract_candidate_action_names(raw) == ("SEARCH", "OPEN")
 
 
 def test_stage_score_components_clamp_to_unit_interval() -> None:
@@ -349,7 +337,7 @@ def test_runner_scores_full_pass_when_candidate_matches(tmp_path: Path) -> None:
         baseline="baseline",
         reward_threshold=0.5,
         trajectories=[traj],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     result = runner.run(
         client=candidate,
@@ -367,6 +355,44 @@ def test_runner_scores_full_pass_when_candidate_matches(tmp_path: Path) -> None:
     assert result.metrics["n_stages"] == 1.0
 
 
+def test_runner_passes_recorded_tools_to_openai_client(tmp_path: Path) -> None:
+    """Trajectory replay must exercise native function calling, not text only."""
+
+    tool = {
+        "type": "function",
+        "function": {
+            "name": "lookup_order",
+            "description": "Look up an order.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    }
+    stage = _make_stage(
+        actions=("lookup_order",),
+        response_text="",
+        tools=(tool,),
+    )
+    traj = _make_trajectory(stages=(stage,))
+    candidate = _ToolCallMockClient(
+        responses=[""],
+        tool_call_seqs=[("lookup_order",)],
+    )
+    runner = TrajectoryReplayRunner(
+        traj_set=tmp_path,
+        baseline="baseline",
+        trajectories=[traj],
+        final_state_scorer=_string_match_score,
+    )
+    result = runner.run(
+        client=candidate,
+        model="cand",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
+    assert result.metrics["action_sequence_match_rate"] == pytest.approx(1.0)
+    assert candidate.seen_tools == [(tool,)]
+
+
 def test_runner_partial_credit_on_action_match_only(tmp_path: Path) -> None:
     stage = _make_stage(
         actions=("HANDLE_RESPONSE",),
@@ -382,7 +408,7 @@ def test_runner_partial_credit_on_action_match_only(tmp_path: Path) -> None:
         baseline="baseline",
         reward_threshold=0.5,
         trajectories=[traj],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     result = runner.run(
         client=candidate,
@@ -412,7 +438,7 @@ def test_runner_zero_when_nothing_matches(tmp_path: Path) -> None:
         baseline="baseline",
         reward_threshold=0.5,
         trajectories=[traj],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     result = runner.run(
         client=candidate,
@@ -448,7 +474,7 @@ def test_runner_set_match_mode_allows_reorder(tmp_path: Path) -> None:
         reward_threshold=0.5,
         exact_action_sequence=True,
         trajectories=[traj],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     strict = runner_strict.run(
         client=candidate,
@@ -470,7 +496,7 @@ def test_runner_set_match_mode_allows_reorder(tmp_path: Path) -> None:
         reward_threshold=0.5,
         exact_action_sequence=False,
         trajectories=[traj],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     loose = runner_loose.run(
         client=candidate2,
@@ -501,7 +527,7 @@ def test_runner_aggregates_failures(tmp_path: Path) -> None:
         baseline="baseline",
         reward_threshold=0.5,
         trajectories=[good, bad],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     result = runner.run(
         client=candidate,
@@ -521,7 +547,7 @@ def test_runner_raises_when_no_trajectories_loaded(tmp_path: Path) -> None:
         traj_set=tmp_path,
         baseline="baseline",
         trajectories=[],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     with pytest.raises(RuntimeError, match="zero trajectories"):
         runner.run(
@@ -544,7 +570,7 @@ def test_runner_records_per_stage_error_without_crashing(tmp_path: Path) -> None
         traj_set=tmp_path,
         baseline="baseline",
         trajectories=[traj],
-        reward_fn=_string_match_reward,
+        final_state_scorer=_string_match_score,
     )
     result = runner.run(
         client=_BoomClient(),  # type: ignore[arg-type]

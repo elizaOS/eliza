@@ -1,0 +1,69 @@
+{
+  "report_period": "Q2 2024",
+  "report_date": "2024-06-12",
+  "source": "MarketScope Intelligence",
+  "market": "Email Marketing & Marketing Automation SaaS",
+  "market_size_billions": 12.8,
+  "market_growth_rate_pct": 12.5,
+  "industry_trends": [
+    "Shift from self-serve to consultative sales in martech",
+    "Increasing average deal sizes in email marketing platforms",
+    "Consolidation among mid-market players",
+    "AI-driven personalization becoming table stakes",
+    "Privacy regulation (GDPR, state-level laws) driving first-party data strategies"
+  ],
+  "competitor_moves": [
+    {
+      "name": "MailReach",
+      "action": "Launched enterprise tier with dedicated account managers",
+      "date": "2024-04-15",
+      "significance": "high"
+    },
+    {
+      "name": "SendGrid Pro",
+      "action": "Extended free trial from 14 to 30 days",
+      "date": "2024-05-02",
+      "significance": "medium"
+    },
+    {
+      "name": "TargetImpact",
+      "action": "Expanded sales team by 20% in Q1",
+      "date": "2024-03-28",
+      "significance": "high"
+    },
+    {
+      "name": "CampaignForge",
+      "action": "Acquired data enrichment startup DataPulse for $18M",
+      "date": "2024-04-22",
+      "significance": "medium"
+    },
+    {
+      "name": "MailReach",
+      "action": "Hired new CRO from Salesforce",
+      "date": "2024-05-10",
+      "significance": "medium"
+    },
+    {
+      "name": "Drip+",
+      "action": "Announced partnership with Shopify for native integration",
+      "date": "2024-05-28",
+      "significance": "medium"
+    }
+  ],
+  "average_contract_value_trend": {
+    "q1_2023": 4200,
+    "q2_2023": 4500,
+    "q3_2023": 4800,
+    "q4_2023": 5100,
+    "q1_2024": 5600,
+    "q2_2024_est": 6100
+  },
+  "key_buyer_concerns": [
+    "Deliverability rates",
+    "Integration ecosystem",
+    "Customer support quality",
+    "Data privacy compliance",
+    "Total cost of ownership"
+  ],
+  "analyst_outlook": "The email marketing SaaS space is experiencing a notable shift toward higher-touch, consultative sales models. Vendors that previously relied on self-serve funnels are investing in sales teams and extending consultation offerings to capture larger deals. This trend is expected to continue through 2024 as average contract values rise and buyer expectations increase."
+}

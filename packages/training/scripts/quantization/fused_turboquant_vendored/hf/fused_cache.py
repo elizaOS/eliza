@@ -52,9 +52,8 @@ KNOWN_COMPATIBLE = {
     # auto-skipped by _is_full_attention_layer because they don't expose
     # q_proj/k_proj/v_proj.
     "Qwen3_5ForCausalLM",
+    "Qwen3_5ForConditionalGeneration",
     "Qwen3_5MoeForCausalLM",
-    "Qwen3_6ForCausalLM",
-    "Qwen3_6MoeForCausalLM",
     # Multimodal (text decoder patched, vision encoder skipped)
     "Qwen2VLForConditionalGeneration",
     "InternVLForConditionalGeneration",
@@ -352,7 +351,7 @@ def make_fused_attention_forward(
     bits = quantizer.bits
     scale = 1.0 / math.sqrt(head_dim)
 
-    # Qwen3.5 / Qwen3.6 use a gated attention variant: q_proj outputs
+    # Active Qwen3.5 models use a gated attention variant: q_proj outputs
     # ``2 * num_heads * head_dim``, chunked into ``(query, gate)`` along the
     # last dim, and the post-attention output is multiplied by
     # ``sigmoid(gate)`` before o_proj. Detect this once per layer so the

@@ -19,12 +19,10 @@ const ACTION_NAME = "CONNECTOR";
 /**
  * Connector kinds the action's verbose dispatcher table understands.
  *
- * The W2-B migration replaced the old hardcoded `VALID_CONNECTORS` enum with
- * `ConnectorRegistry`-driven validation. The values below are kept narrow so
- * the verbose-result dispatchers (with rich provider-specific verify probes)
- * keep their typed surface; any connector registered via `ConnectorRegistry`
- * but not present here resolves through the generic registry-backed
- * fallback dispatcher.
+ * These values are kept narrow so the verbose-result dispatchers (with rich
+ * provider-specific verify probes) keep their typed surface; any connector
+ * registered via `ConnectorRegistry` but not present here resolves through
+ * the generic registry-backed fallback dispatcher.
  */
 const VERBOSE_DISPATCHER_KINDS = [
   "google",
@@ -136,8 +134,8 @@ function listKnownConnectorKinds(runtime: IAgentRuntime): string[] {
     ? registry.list().map((contribution) => contribution.kind)
     : [];
   // Verbose dispatcher kinds are always valid (they cover diagnostic verbs
-  // like `health` and `browser_bridge` that aren't connector contributions
-  // in the W1-F sense — those still flow through this action).
+  // like `health` and `browser_bridge` that aren't connector contributions —
+  // those still flow through this action).
   return [...new Set([...VERBOSE_DISPATCHER_KINDS, ...fromRegistry])];
 }
 
@@ -1321,7 +1319,7 @@ async function dispatchBrowserBridge(
  * Verbose dispatchers cover the rich verify probes (gmail+calendar reads,
  * inbound DM checks, browser companion enumeration). Connectors registered
  * via `ConnectorRegistry` that lack a verbose dispatcher fall back to
- * {@link dispatchGenericRegistry} which exercises the W1-F contract verbs
+ * {@link dispatchGenericRegistry} which exercises the registry contract verbs
  * (`start`/`disconnect`/`verify`/`status`/`send`) directly.
  */
 const VERBOSE_DISPATCHERS: Record<VerboseConnectorKind, ConnectorDispatcher> = {

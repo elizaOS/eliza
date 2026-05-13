@@ -1,0 +1,33 @@
+docx-reader internal dev notes
+Last updated: 2024-06-10 by @rchen
+
+== Changelog ==
+
+v0.1.0 (2024-05-15): Initial implementation
+  - Basic .docx to stdout conversion using python-docx
+  - Single required argument: input file path
+  - Requires python-docx (see requirements.txt)
+
+v0.1.1 (2024-06-10): Added output path support
+  - Added optional second argument: output file path
+  - Usage: python convert_docx.py input.docx [output.txt]
+  - If output.txt is provided, content is written to that file instead of stdout
+
+== Usage Examples ==
+
+  # Print to stdout:
+  python convert_docx.py report.docx
+
+  # Write to file:
+  python convert_docx.py report.docx output.txt
+
+== Known Limitations ==
+
+  - Does not handle password-protected .docx files
+  - Headers and footers are not included in output
+  - Embedded images are skipped
+  - Assumes UTF-8 encoding; behavior with legacy encodings undefined
+
+== Installation ==
+
+  pip install -r requirements.txt

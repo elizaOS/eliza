@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 from eliza_loca.run_cerebras import build_command, build_env, main, parse_args
+from eliza_loca.harness_proxy import _chat_completion_payload
 from eliza_loca.trajectory_audit import audit_output_dir
 from eliza_loca.long_context import (
     CONTEXT_TIERS,
@@ -153,6 +155,26 @@ def test_filesystem_mcp_config_cd_into_allowed_directory(tmp_path) -> None:
     assert f"cd {tmp_path}" in args[1]
 
 
+def test_yaml_filesystem_config_uses_workspace_path_alias_for_cwd(tmp_path) -> None:
+    loader_path = (
+        Path(__file__).resolve().parents[1]
+        / "gem"
+        / "tools"
+        / "mcp_server"
+        / "config_loader.py"
+    )
+    spec = importlib.util.spec_from_file_location("loca_config_loader", loader_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    config = module.build_server_config("filesystem", {"workspace_path": str(tmp_path)})
+    filesystem = config["filesystem"]
+
+    assert filesystem["cwd"] == str(tmp_path.resolve())
+    assert str(tmp_path.resolve()) in filesystem["args"]
+
+
 def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     root = tmp_path / "run"
     task_dir = root / "tasks" / "DemoTask" / "state0"
@@ -181,7 +203,15 @@ def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     }
     (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
     (task_dir / "eval.json").write_text(
-        json.dumps({"status": "success", "accuracy": 1.0, "steps": 2, "feedback": ""}),
+        json.dumps(
+            {
+                "status": "success",
+                "accuracy": 1.0,
+                "steps": 2,
+                "feedback": "matched expected answer",
+                "expected_answer": "claim_done",
+            }
+        ),
         encoding="utf-8",
     )
     (task_dir / "token_stats.json").write_text(
@@ -204,6 +234,88 @@ def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     assert audit["context_events"]["summary"] == 1
     assert audit["token_totals"]["total_tokens"] == 120
     assert audit["previews"]
+    assert audit["review_records"][0]["model_input"]["content_preview"] == "done"
+    assert audit["review_records"][0]["model_output"]["content_preview"] == ""
+    assert audit["review_records"][0]["expected_answer"] == "claim_done"
+    assert audit["review_records"][0]["scoring_reason"] == "matched expected answer"
+    assert audit["review_records"][0]["compaction_events"]["summary_count"] == 1
+    assert audit["review_records"][0]["provider_usage"]["max_prompt_tokens"] == 100
+
+
+def test_trajectory_audit_accepts_flat_aggregate_list(tmp_path) -> None:
+    root = tmp_path / "run"
+    task_dir = root / "tasks" / "DemoTask" / "state0"
+    task_dir.mkdir(parents=True)
+    trajectory = {
+        "schema_version": "loca_traj_v1",
+        "conversation": {
+            "messages": [{"role": "user", "content": "done"}],
+            "full_messages_history": [{"role": "user", "content": "done"}],
+        },
+        "events": {"reset": [], "summary": [], "trim": [], "thinking_reset": []},
+        "metrics": {"accuracy": 1.0, "total_steps": 1, "completed": True},
+        "provider_payload": {
+            "usage_tracking": [
+                {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+            ]
+        },
+    }
+    (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
+    (task_dir / "eval.json").write_text(
+        json.dumps({"status": "success", "accuracy": 1.0, "steps": 1}),
+        encoding="utf-8",
+    )
+    (task_dir / "token_stats.json").write_text(
+        json.dumps({"usage_tracking": trajectory["provider_payload"]["usage_tracking"]}),
+        encoding="utf-8",
+    )
+    (root / "results.json").write_text(
+        json.dumps({"summary": {"avg_accuracy": 1.0}, "metadata": {"total_tasks": 1}}),
+        encoding="utf-8",
+    )
+    (root / "all_trajectories.json").write_text(
+        json.dumps([trajectory]),
+        encoding="utf-8",
+    )
+
+    audit = audit_output_dir(root)
+
+    assert audit["summary"]["issue_count"] == 0
+    assert audit["summary"]["aggregate_trajectory_count"] == 1
+    assert audit["summary"]["total_api_tokens"] == 15
+
+
+def test_loca_proxy_preserves_eliza_metadata_on_assistant_message() -> None:
+    response = SimpleNamespace(
+        text="",
+        params={
+            "tool_calls": [
+                {
+                    "id": "call_0",
+                    "type": "function",
+                    "function": {"name": "mail.search", "arguments": "{}"},
+                }
+            ],
+            "usage": {"prompt_tokens": 11, "completion_tokens": 3, "total_tokens": 14},
+            "eliza_metadata": {
+                "agent_label": "eliza",
+                "benchmark": "loca_bench",
+                "task_id": "task-1",
+                "trajectory_step": 1,
+                "trajectory_endpoint": "/api/benchmark/trajectory?benchmark=loca_bench&task_id=task-1",
+                "diagnostics_endpoint": "/api/benchmark/diagnostics?benchmark=loca_bench&task_id=task-1",
+                "tool_schema_count": 1,
+                "tool_names": ["mail.search"],
+            },
+        },
+    )
+
+    payload = _chat_completion_payload({"model": "gpt-oss-120b"}, response)
+
+    message = payload["choices"][0]["message"]
+    assert message["tool_calls"][0]["function"]["name"] == "mail.search"
+    assert message["metadata"]["agent_label"] == "eliza"
+    assert message["metadata"]["tool_names"] == ["mail.search"]
 
 
 def test_trajectory_audit_accepts_provider_error_without_usage(tmp_path) -> None:
@@ -250,6 +362,60 @@ def test_trajectory_audit_accepts_provider_error_without_usage(tmp_path) -> None
     audit = audit_output_dir(root)
 
     assert audit["summary"]["issue_count"] == 0
+
+
+def test_trajectory_audit_counts_and_validates_eliza_metadata(tmp_path) -> None:
+    root = tmp_path / "run"
+    task_dir = root / "tasks" / "DemoTask" / "state0"
+    task_dir.mkdir(parents=True)
+    metadata = {
+        "agent_label": "eliza",
+        "benchmark": "loca_bench",
+        "task_id": "task-1",
+        "trajectory_step": 1,
+        "trajectory_endpoint": "/api/benchmark/trajectory?benchmark=loca_bench&task_id=task-1",
+        "diagnostics_endpoint": "/api/benchmark/diagnostics?benchmark=loca_bench&task_id=task-1",
+        "tool_schema_count": 1,
+        "tool_names": ["mail.search"],
+    }
+    trajectory = {
+        "schema_version": "loca_traj_v1",
+        "conversation": {
+            "messages": [{"role": "assistant", "content": "", "metadata": metadata}],
+            "full_messages_history": [
+                {"role": "assistant", "content": "", "metadata": metadata}
+            ],
+        },
+        "events": {"reset": [], "summary": [], "trim": [], "thinking_reset": []},
+        "metrics": {"accuracy": 1.0, "total_steps": 1, "completed": True},
+        "provider_payload": {
+            "usage_tracking": [
+                {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15}
+            ]
+        },
+    }
+    (task_dir / "trajectory.json").write_text(json.dumps(trajectory), encoding="utf-8")
+    (task_dir / "eval.json").write_text(
+        json.dumps({"status": "success", "accuracy": 1.0, "steps": 1}),
+        encoding="utf-8",
+    )
+    (task_dir / "token_stats.json").write_text(
+        json.dumps({"usage_tracking": trajectory["provider_payload"]["usage_tracking"]}),
+        encoding="utf-8",
+    )
+    (root / "results.json").write_text(
+        json.dumps({"summary": {"avg_accuracy": 1.0}, "metadata": {"total_tasks": 1}}),
+        encoding="utf-8",
+    )
+    (root / "all_trajectories.json").write_text(
+        json.dumps({"DemoTask": {"state0": trajectory}}),
+        encoding="utf-8",
+    )
+
+    audit = audit_output_dir(root)
+
+    assert audit["summary"]["issue_count"] == 0
+    assert audit["context_events"]["eliza_metadata"] == 1
 
 
 def test_trajectory_audit_counts_summary_skip_events(tmp_path) -> None:
@@ -645,6 +811,26 @@ def test_long_context_tier_builds_128k_fixture_with_realistic_records() -> None:
     }
     assert any(record["should_preserve"] is False for record in records)
     assert any("LOCA_TOOL_OBSERVATION" in record["value"] for record in records)
+
+
+def test_long_context_tier_builds_256k_fixture_with_deep_needles() -> None:
+    trajectory = build_long_context_trajectory(
+        target_tokens=CONTEXT_TIERS["256k"],
+        tier="256k",
+        turns=256,
+        needle_count=16,
+    )
+    compacted = compact_with_summary_tail(trajectory, tail_messages=10)
+    audit = audit_long_context_trajectory(compacted)
+    needle_turns = [
+        item["turn"] for item in trajectory["metadata"]["long_context"]["needles"]
+    ]
+
+    assert audit["estimated_full_history_tokens"] >= 245_000
+    assert audit["failure_count"] == 0
+    assert min(needle_turns) < 32
+    assert max(needle_turns) > 224
+    assert audit["compression"]["current_to_full_ratio"] < 0.08
 
 
 def test_long_context_tail_preserves_assistant_tool_call_with_result() -> None:
