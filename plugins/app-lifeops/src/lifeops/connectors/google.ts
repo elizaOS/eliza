@@ -53,9 +53,8 @@ export function createGoogleConnectorContribution(
     ],
     modes: ["local"],
     describe: { label: "Google (Gmail + Calendar)" },
-    // Gmail outbound goes through the owner-send-policy approval queue per
-    // wave1-interfaces §8 / GAP §3.17. The flag is the registry-driven
-    // replacement for the legacy `OWNER_APPROVAL_REQUIRED` set.
+    // Gmail outbound goes through the owner-send-policy approval queue.
+    // `requiresApproval` is the registry-driven flag for this gate.
     requiresApproval: true,
     async start() {
       // No-op: connect is initiated through the dashboard OAuth UI; the
