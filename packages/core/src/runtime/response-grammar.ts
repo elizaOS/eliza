@@ -831,6 +831,241 @@ export function buildPlannerActionGrammar(
 }
 
 /**
+ * Single-call counterpart to `buildPlannerActionGrammar`: instead of pinning
+ * only the `action` field and leaving `parameters` as free-JSON, the strict
+ * variant produces a per-action *union* grammar where each branch encodes
+ * `{"action":"<NAME>","parameters":<params_NAME>,"thought":<thought>}` with a
+ * GBNF rule for `params_NAME` that constrains every property of that action's
+ * normalized schema. Branches are root-level alternatives, so the chosen
+ * action name and the parameter shape are co-determined by construction —
+ * something a single-pass loose grammar cannot guarantee.
+ *
+ * Tradeoff vs. the loose `buildPlannerActionGrammar`: grammar size grows with
+ * `actions × properties_per_action`, but the model only needs ONE call to
+ * produce a validated structure (no engine-level second pass, no
+ * coercion/reroll round in `validate-tool-args.ts`). Matches the intent of
+ * P2-4 in `packages/training/benchmarks/INFERENCE_OPTIMIZATION_PLAN.md`.
+ *
+ * The returned `responseSkeleton` is intentionally minimal — the grammar
+ * carries the entire structural contract, so the engine's prefill plan has
+ * nothing useful to inject statically. Cloud adapters still ignore the
+ * skeleton + grammar per the W3 contract; `tools` carries the equivalent
+ * unforced contract for them.
+ *
+ * Returns `null` when no actions are exposed.
+ */
+export function buildPlannerActionGrammarStrict(
+	actions: ReadonlyArray<
+		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
+	>,
+): PlannerActionGrammarResult | null {
+	const descriptors = actions
+		.map(actionToPlannerDescriptor)
+		.filter((d) => d.name.length > 0);
+	if (descriptors.length === 0) return null;
+	const names = Array.from(new Set(descriptors.map((d) => d.name))).sort();
+
+	const cacheKey = `planner-strict#${hashStringSet(names)}#${JSON.stringify(
+		descriptors
+			.slice()
+			.sort((a, b) => a.name.localeCompare(b.name))
+			.map((d) => [d.name, d.parametersSchema]),
+	)}`;
+	const cached = plannerStrictCache.get(cacheKey);
+	if (cached) return cached;
+
+	const actionSchemas: Record<string, JSONSchema> = {};
+	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
+
+	const builder = new GbnfBuilder();
+	builder.useShared("jsonstring");
+
+	const branchRuleNames: string[] = [];
+	const sortedDescriptors = descriptors
+		.slice()
+		.sort((a, b) => a.name.localeCompare(b.name));
+	for (const descriptor of sortedDescriptors) {
+		const sanitized = sanitizeGbnfRuleName(descriptor.name);
+		const paramsRuleName = `paramsofaction_${sanitized}`;
+		emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
+		const branchRuleName = `callofaction_${sanitized}`;
+		const branchBody = [
+			gbnfLiteral(`{"action":${JSON.stringify(descriptor.name)}`),
+			gbnfLiteral(',"parameters":'),
+			paramsRuleName,
+			gbnfLiteral(',"thought":'),
+			"jsonstring",
+			gbnfLiteral("}"),
+		].join(" ");
+		builder.rule(branchRuleName, branchBody);
+		branchRuleNames.push(branchRuleName);
+	}
+	builder.root([branchRuleNames.join(" | ")]);
+
+	// Minimal skeleton — the grammar carries the entire structural contract.
+	// The engine's prefill plan has nothing useful to inject statically because
+	// every branch starts with the same literal `{"action":"` but diverges on
+	// the first character of the chosen action name.
+	const responseSkeleton: ResponseSkeleton = {
+		spans: [{ kind: "free-json", key: "envelope" }],
+		id: cacheKey,
+	};
+
+	const result: PlannerActionGrammarResult = {
+		responseSkeleton,
+		grammar: builder.build(),
+		actionSchemas,
+	};
+	plannerStrictCache.set(cacheKey, result);
+	return result;
+}
+
+const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
+
+/**
+ * GBNF rule names must match `[a-zA-Z_][a-zA-Z0-9_-]*`. Action names in the
+ * registry are typically `UPPER_SNAKE_CASE` already, but sanitize defensively
+ * for plugin-supplied action names that might carry `:` / `.` / spaces.
+ */
+function sanitizeGbnfRuleName(name: string): string {
+	const cleaned = name.replace(/[^A-Za-z0-9_]/g, "_");
+	return /^[A-Za-z_]/.test(cleaned) ? cleaned : `_${cleaned}`;
+}
+
+/**
+ * Emit a per-action parameters GBNF rule. Walks the action's normalized JSON
+ * schema and translates each property into a constrained GBNF span: string
+ * enums pin the alternation, arrays-of-string-enum pin element-level, and
+ * the rest fall back to the matching shared JSON rule.
+ *
+ * Empty schemas produce `paramsofaction_NAME ::= "{}"` — the planner sends a
+ * literal `{}` for actions that take no parameters.
+ */
+function emitActionParamsRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+): void {
+	const properties =
+		(schema as { properties?: Record<string, JSONSchema> }).properties ?? {};
+	const requiredList =
+		((schema as { required?: unknown }).required as string[] | undefined) ?? [];
+	const required = new Set(requiredList);
+	const propertyNames = Object.keys(properties);
+	if (propertyNames.length === 0) {
+		builder.rule(ruleName, gbnfLiteral("{}"));
+		return;
+	}
+
+	const requiredKeys = propertyNames.filter((k) => required.has(k));
+	const optionalKeys = propertyNames.filter((k) => !required.has(k));
+
+	// Emit a rule per property so we can sequence required ones and offer
+	// optional ones in any order via alternation (GBNF can't express true
+	// unordered sets without combinatorial blowup; we enforce required
+	// presence + permit zero-or-more optionals in an alternation).
+	const propertyTokens: Record<string, string> = {};
+	for (const key of propertyNames) {
+		const propertyRuleName = `${ruleName}_p_${sanitizeGbnfRuleName(key)}`;
+		const valueExpr = propertyValueGbnf(builder, properties[key]);
+		builder.rule(
+			propertyRuleName,
+			[gbnfLiteral(`"${escapeJsonKey(key)}":`), valueExpr].join(" "),
+		);
+		propertyTokens[key] = propertyRuleName;
+	}
+
+	// Body: `{` <required-in-order, comma-separated> ( "," <optional-property> )* `}`
+	// Optionals are emitted as an alternation; each can appear at most once
+	// (enforced at the parser side — the grammar permits repetition for
+	// simplicity, and a downstream JSON parse rejects duplicate keys).
+	const parts: string[] = [gbnfLiteral("{")];
+	if (requiredKeys.length > 0) {
+		parts.push(propertyTokens[requiredKeys[0]]);
+		for (let i = 1; i < requiredKeys.length; i++) {
+			parts.push(gbnfLiteral(","));
+			parts.push(propertyTokens[requiredKeys[i]]);
+		}
+	}
+	if (optionalKeys.length > 0) {
+		const optionalAlt = optionalKeys.map((k) => propertyTokens[k]).join(" | ");
+		const leadingComma = requiredKeys.length > 0;
+		const optionalGroup = leadingComma
+			? `( ${gbnfLiteral(",")} ( ${optionalAlt} ) )*`
+			: `( ( ${optionalAlt} ) ( ${gbnfLiteral(",")} ( ${optionalAlt} ) )* )?`;
+		parts.push(optionalGroup);
+	}
+	parts.push(gbnfLiteral("}"));
+	builder.rule(ruleName, parts.join(" "));
+}
+
+/**
+ * Map a single property schema to a GBNF expression. Pulls in the matching
+ * shared JSON rules as a side effect on `builder`.
+ */
+function propertyValueGbnf(
+	builder: GbnfBuilder,
+	propSchema: JSONSchema,
+): string {
+	const type = (propSchema as { type?: unknown }).type;
+	if (type === "string") {
+		const enumValues = readStringEnumForGrammar(propSchema);
+		if (enumValues !== null) {
+			if (enumValues.length === 1) {
+				return gbnfJsonStringLiteral(enumValues[0]);
+			}
+			return `( ${enumValues
+				.map((v) => gbnfJsonStringLiteral(v))
+				.join(" | ")} )`;
+		}
+		builder.useShared("jsonstring");
+		return "jsonstring";
+	}
+	if (type === "number" || type === "integer") {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+	if (type === "boolean") {
+		builder.useShared("jsonbool");
+		return "jsonbool";
+	}
+	if (type === "array") {
+		const items = (propSchema as { items?: JSONSchema }).items;
+		if (items && (items as { type?: unknown }).type === "string") {
+			const enumValues = readStringEnumForGrammar(items);
+			if (enumValues !== null && enumValues.length > 0) {
+				builder.useShared("ws");
+				const elem = `( ${enumValues
+					.map((v) => gbnfJsonStringLiteral(v))
+					.join(" | ")} )`;
+				return `"[" ws ( ${elem} ( ws "," ws ${elem} )* )? ws "]"`;
+			}
+		}
+		builder.useShared("jsonarray");
+		return "jsonarray";
+	}
+	// object, null, or unspecified → permit any JSON value
+	builder.useShared("jsonvalue");
+	return "jsonvalue";
+}
+
+/** Reuse the conservative string-enum reader from buildPlannerParamsSkeleton. */
+function readStringEnumForGrammar(propSchema: JSONSchema): string[] | null {
+	const raw = (propSchema as { enum?: unknown }).enum;
+	if (!Array.isArray(raw) || raw.length === 0) return null;
+	const normalized: string[] = [];
+	for (const v of raw) {
+		if (typeof v !== "string") return null;
+		normalized.push(v);
+	}
+	return normalized;
+}
+
+function escapeJsonKey(key: string): string {
+	return key.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
  * Build a {@link ResponseSkeleton} for the *second* planner pass: the
  * `parameters` object of a specific chosen action. The engine uses this once it
  * has sampled the `action` value. `properties` whose value is a single-element

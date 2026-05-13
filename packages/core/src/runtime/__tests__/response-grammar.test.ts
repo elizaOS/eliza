@@ -3,6 +3,7 @@ import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
 import {
 	buildPlannerActionGrammar,
+	buildPlannerActionGrammarStrict,
 	buildPlannerParamsSkeleton,
 	buildResponseGrammar,
 	clearResponseGrammarCache,
@@ -462,6 +463,220 @@ describe("buildPlannerParamsSkeleton — second-pass per-action parameters", () 
 		);
 		const nSpan = sk.spans.find((s) => s.key === "n");
 		expect(nSpan).toEqual({ kind: "free-string", key: "n" });
+	});
+});
+
+describe("buildPlannerActionGrammarStrict — single-call per-action union grammar", () => {
+	it("returns null when no actions are exposed", () => {
+		expect(buildPlannerActionGrammarStrict([])).toBeNull();
+	});
+
+	it("emits one call branch per action at the grammar root", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("ALPHA"),
+			makeAction("BRAVO"),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Branches are root-level alternatives — both call rules referenced
+		// from the root.
+		expect(r.grammar).toMatch(
+			/^root ::= callofaction_ALPHA \| callofaction_BRAVO/m,
+		);
+		expect(r.grammar).toMatch(/^callofaction_ALPHA ::= /m);
+		expect(r.grammar).toMatch(/^callofaction_BRAVO ::= /m);
+		// Action name is pinned as a literal inside each call rule, NOT free.
+		expect(r.grammar).toContain('"{\\"action\\":\\"ALPHA\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"BRAVO\\""');
+	});
+
+	it("emits an empty `{}` params rule for actions with no parameters", () => {
+		const r = buildPlannerActionGrammarStrict([makeAction("EMPTY")]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(/^paramsofaction_EMPTY ::= "\{\}"$/m);
+	});
+
+	it("pins a multi-value string enum as a GBNF alternation in the params rule", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MSG", {
+				parameters: [
+					{
+						name: "kind",
+						description: "the kind",
+						required: true,
+						schema: {
+							type: "string",
+							enum: ["user", "channel", "thread"],
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// The property rule for `kind` should reference the three quoted enum values.
+		expect(r.grammar).toContain('"\\"user\\""');
+		expect(r.grammar).toContain('"\\"channel\\""');
+		expect(r.grammar).toContain('"\\"thread\\""');
+		// And NOT fall back to free jsonstring for this property's value.
+		expect(r.grammar).toMatch(
+			/paramsofaction_MSG_p_kind ::= "\\"kind\\":" \( "\\"user\\"" \| "\\"channel\\"" \| "\\"thread\\"" \)/,
+		);
+	});
+
+	it("pins an array-of-string-enum element by element", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("CHAR", {
+				parameters: [
+					{
+						name: "fields",
+						description: "saveable fields",
+						required: true,
+						schema: {
+							type: "array",
+							items: {
+								type: "string",
+								enum: ["name", "system", "bio"],
+							},
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toContain('"\\"name\\""');
+		expect(r.grammar).toContain('"\\"system\\""');
+		expect(r.grammar).toContain('"\\"bio\\""');
+		// Array structure: opening bracket, optional elements, closing bracket.
+		expect(r.grammar).toMatch(
+			/paramsofaction_CHAR_p_fields ::= "\\"fields\\":" "\[" ws/,
+		);
+	});
+
+	it("falls back to shared jsonstring for free-text string params", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("REPLY", {
+				parameters: [
+					{
+						name: "text",
+						description: "the text",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_REPLY_p_text ::= "\\"text\\":" jsonstring/,
+		);
+		expect(r.grammar).toMatch(/^jsonstring ::= /m);
+	});
+
+	it("falls back to jsonvalue for object/unknown property types", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("NESTED", {
+				parameters: [
+					{
+						name: "context",
+						description: "an object",
+						required: true,
+						schema: {
+							type: "object",
+							properties: { kind: { type: "string" } },
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_NESTED_p_context ::= "\\"context\\":" jsonvalue/,
+		);
+	});
+
+	it("emits required-then-optional structure in the params rule", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MIXED", {
+				parameters: [
+					{
+						name: "a",
+						description: "required",
+						required: true,
+						schema: { type: "string" },
+					},
+					{
+						name: "b",
+						description: "optional",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Required `a` precedes the optional-group; optional `b` is wrapped in
+		// `( "," ( ... ) )*` (zero-or-more, leading comma).
+		expect(r.grammar).toMatch(
+			/paramsofaction_MIXED ::= "\{" paramsofaction_MIXED_p_a \( "," \( paramsofaction_MIXED_p_b \) \)\* "\}"/,
+		);
+	});
+
+	it("returns a minimal skeleton (the grammar carries the structure)", () => {
+		const r = buildPlannerActionGrammarStrict([makeAction("ONE")]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.responseSkeleton.spans).toEqual([
+			{ kind: "free-json", key: "envelope" },
+		]);
+		expect(typeof r.responseSkeleton.id).toBe("string");
+	});
+
+	it("exposes the same normalized parameter schemas as the loose grammar", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("WITH_PARAMS", {
+				parameters: [
+					{
+						name: "url",
+						description: "",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.actionSchemas.WITH_PARAMS).toMatchObject({
+			type: "object",
+			required: ["url"],
+			properties: { url: { type: "string" } },
+		});
+	});
+
+	it("is cached across calls for the same action set", () => {
+		const a = buildPlannerActionGrammarStrict([
+			makeAction("A"),
+			makeAction("B"),
+		]);
+		const b = buildPlannerActionGrammarStrict([
+			makeAction("B"),
+			makeAction("A"),
+		]);
+		expect(b).toBe(a);
+	});
+
+	it("does not collide with the loose grammar cache", () => {
+		const loose = buildPlannerActionGrammar([makeAction("SAME")]);
+		const strict = buildPlannerActionGrammarStrict([makeAction("SAME")]);
+		expect(loose).not.toBe(strict);
+		if (loose && strict) {
+			expect(loose.grammar).not.toBe(strict.grammar);
+		}
+	});
+
+	it("sanitizes action names that contain GBNF-unsafe characters", () => {
+		// Plugin-supplied action names occasionally carry `:` or `.`.
+		const r = buildPlannerActionGrammarStrict([makeAction("plugin:foo.bar")]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toContain("callofaction_plugin_foo_bar");
+		expect(r.grammar).not.toContain("callofaction_plugin:foo.bar");
 	});
 });
 
