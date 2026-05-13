@@ -274,14 +274,11 @@ export class SubAgentRouter {
       createdAt: Date.now(),
     };
 
-    await this.runtime.createMemory(memory, "messages").catch((err) => {
-      this.log("warn", "createMemory for sub-agent post failed", {
-        sessionId,
-        event,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-
+    // messageService.handleMessage saves the memory itself ("Saving message
+    // to memory" inside SERVICE:MESSAGE). When that path is available, skip
+    // the explicit createMemory — otherwise we double-save with the same
+    // primary key and the second insert dies on a unique-constraint
+    // violation, killing the planner trip and dropping the sub-agent answer.
     if (this.runtime.messageService?.handleMessage) {
       await this.runtime.messageService
         .handleMessage(this.runtime, memory, undefined)
@@ -301,6 +298,13 @@ export class SubAgentRouter {
           event,
         },
       );
+      await this.runtime.createMemory(memory, "messages").catch((err) => {
+        this.log("warn", "createMemory for sub-agent post failed", {
+          sessionId,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
       const emit = this.runtime.emitEvent.bind(this.runtime) as (
         name: string,
         payload: { source: string; message: Memory; runtime: IAgentRuntime },
