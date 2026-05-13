@@ -3215,6 +3215,59 @@ export function extractPlanActionsCallFromText(text: unknown): {
  * objects, try to parse each, pick the last one that validates as a call
  * shape under the same contract as `extractPlanActionsCallFromText`.
  */
+/**
+ * Detect whether a free-form text blob contains an embedded parseable
+ * JSON object. The motivating case: gpt-oss-120b on Cerebras (and other
+ * native-tools-mode reasoning models) sometimes emit tool-call argument
+ * objects into the response handler's `replyText` field — which is meant
+ * to be user-facing prose. The leaked object looks like
+ * `{"path":"/tmp/foo","contents":"..."}` embedded in chain-of-thought
+ * prose, and the surrounding text is the model's reasoning rather than a
+ * direct reply to the user.
+ *
+ * Detection is structural: balance braces, attempt JSON.parse on each
+ * candidate, return true on the first parse success. Skips small primitive
+ * objects ({"foo":1}) only insofar as they still parse — the cost of a
+ * false positive (suppressing a legitimate code-block reply that contains
+ * inline JSON prose) is much lower than the cost of a false negative
+ * (shipping the model's reasoning + tool args to a user channel).
+ *
+ * The strict whole-string-JSON-only case is already handled upstream by
+ * `synthesizeSimpleReplyFromPlainText`'s malformed-output guard; this
+ * function catches the embedded-in-prose variant the upstream guard
+ * misses.
+ */
+function containsEmbeddedJsonObject(text: unknown): boolean {
+	if (typeof text !== "string" || text.length === 0) return false;
+	const withoutThink = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+	let depth = 0;
+	let start = -1;
+	for (let i = 0; i < withoutThink.length; i++) {
+		const ch = withoutThink[i];
+		if (ch === "{") {
+			if (depth === 0) start = i;
+			depth++;
+		} else if (ch === "}") {
+			depth--;
+			if (depth === 0 && start !== -1) {
+				const candidate = withoutThink.slice(start, i + 1);
+				try {
+					const parsed = JSON.parse(candidate);
+					if (parsed && typeof parsed === "object") return true;
+				} catch {
+					// keep scanning
+				}
+				start = -1;
+			}
+			if (depth < 0) {
+				depth = 0;
+				start = -1;
+			}
+		}
+	}
+	return false;
+}
+
 function extractEmbeddedCallShapeFromText(text: unknown): {
 	name: string;
 	params: Record<string, unknown>;
@@ -3327,7 +3380,24 @@ function messageHandlerFromFieldResult(
 	const prefiredToolCall =
 		extractPlanActionsCallFromText(rawReplyText) ??
 		extractEmbeddedCallShapeFromText(rawReplyText);
-	const replyText = prefiredToolCall ? "" : rawReplyText;
+	// Structured-content leak guard: when the response handler's replyText
+	// is supposed to be user-facing prose but actually contains an embedded
+	// parseable JSON object — typically the model emitting tool-call args
+	// (e.g. `{"path":"/tmp/foo","contents":"..."}`) into the prose field
+	// instead of invoking the function-call API — suppress the reply. This
+	// is structural detection (does an internal `{...}` parse as JSON?)
+	// rather than regex-on-content-for-routing: we are not deciding what
+	// the user wanted based on the prose, we are detecting that the model
+	// shoved structured output into a field meant for plain text and
+	// declining to ship the leak.
+	//
+	// Skip when `prefiredToolCall` already fired — that path suppresses
+	// the reply anyway, and `extractPlanActionsCallFromText` accepts
+	// whole-string JSON which would trip this guard.
+	const replyTextLeaksStructuredContent =
+		!prefiredToolCall && containsEmbeddedJsonObject(rawReplyText);
+	const replyText =
+		prefiredToolCall || replyTextLeaksStructuredContent ? "" : rawReplyText;
 	const augmentedCandidateActions =
 		prefiredToolCall && !candidateActions.includes(prefiredToolCall.name)
 			? [prefiredToolCall.name, ...candidateActions]
@@ -3513,6 +3583,17 @@ function synthesizeSimpleReplyFromPlainText(
 			}
 		})();
 	if (looksLikeIncompleteStructuredOutput) {
+		return null;
+	}
+
+	// Embedded structured-content guard: the call-shape extractors only
+	// match recognized call wrappers (`{action, params}` /
+	// `{task, agentType}`) — they intentionally fail closed on arbitrary
+	// tool-arg shapes like `{"path":"...","contents":"..."}`. But the model
+	// is just as likely to leak those into prose. Return null so the
+	// caller routes to its structured-failure reply path; the visible
+	// reasoning + leaked args never reach the user channel.
+	if (containsEmbeddedJsonObject(replyText)) {
 		return null;
 	}
 
