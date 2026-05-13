@@ -6,9 +6,8 @@ LifeOpsBench's simulated user / judge. We reuse the existing
 canonical Cerebras call site in the repo (retry policy, pricing,
 rate-limit handling are all centralized there).
 
-The judge is invoked at most once per open-ended sample; in CI / smoke
-mode we use a stub judge that returns a deterministic score so we never
-need a live API key.
+    The judge is invoked at most once per open-ended sample and requires a
+    real Cerebras call for scored benchmark output.
 """
 
 from __future__ import annotations
@@ -120,5 +119,5 @@ class StubJudge:
 
 def build_judge(*, mock: bool, model: str | None) -> Judge:
     if mock:
-        return StubJudge()
+        raise RuntimeError("Stub judge is disabled for benchmark runs")
     return CerebrasJudge(model=model)

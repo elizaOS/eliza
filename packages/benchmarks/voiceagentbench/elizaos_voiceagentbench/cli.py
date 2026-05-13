@@ -3,9 +3,9 @@
 Usage:
 
   python -m elizaos_voiceagentbench \\
-      --agent {mock,eliza,hermes,openclaw} \\
+      --agent {eliza,hermes,openclaw} \\
       --suite {single,parallel,sequential,multi-turn,safety,multilingual,all} \\
-      --limit 50 --seeds 1 --output ./results [--mock] [--no-judge]
+      --limit 50 --seeds 1 --output ./results
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from pathlib import Path
 from .adapters import (
     build_eliza_agent,
     build_hermes_agent,
-    build_mock_agent,
     build_openclaw_agent,
 )
 from .dataset import filter_suites, load_tasks
@@ -36,12 +35,10 @@ logger = logging.getLogger("elizaos_voiceagentbench")
 
 
 SUITE_CHOICES = [s.value for s in Suite] + ["all"]
-AGENT_CHOICES = ["mock", "eliza", "hermes", "openclaw"]
+AGENT_CHOICES = ["eliza", "hermes", "openclaw"]
 
 
 def _build_agent(name: str) -> AgentFn:
-    if name == "mock":
-        return build_mock_agent()
     if name == "eliza":
         return build_eliza_agent()
     if name == "hermes":
@@ -70,7 +67,7 @@ def _report_to_json(report: VoiceBenchmarkReport) -> dict[str, object]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="elizaos_voiceagentbench")
-    parser.add_argument("--agent", choices=AGENT_CHOICES, default="mock")
+    parser.add_argument("--agent", choices=AGENT_CHOICES, default="eliza")
     parser.add_argument(
         "--suite",
         choices=SUITE_CHOICES,
@@ -85,12 +82,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--mock",
         action="store_true",
-        help="Use bundled fixtures and passthrough STT. No network.",
+        help="Disabled: VoiceAgentBench only writes real benchmark results.",
     )
     parser.add_argument(
         "--no-judge",
         action="store_true",
-        help="Skip the LLM coherence judge (uses None for that axis).",
+        help="Disabled: real benchmark runs require the coherence judge.",
     )
     parser.add_argument(
         "--data-path",
@@ -107,6 +104,8 @@ def main(argv: list[str] | None = None) -> int:
         "--verbose", "-v", action="count", default=0
     )
     args = parser.parse_args(argv)
+    if args.mock or args.no_judge:
+        parser.error("--mock and --no-judge are disabled for benchmark runs")
 
     logging.basicConfig(
         level=logging.WARNING - 10 * min(args.verbose, 2),
@@ -116,7 +115,7 @@ def main(argv: list[str] | None = None) -> int:
     suites = _resolve_suites(args.suite)
     suite_filter = suites[0] if suites and len(suites) == 1 else None
     tasks = load_tasks(
-        mock=args.mock,
+        mock=False,
         data_path=args.data_path,
         suite_filter=suite_filter,
         limit=args.limit if args.limit > 0 else None,
@@ -129,21 +128,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     agent = _build_agent(args.agent)
-    stt = build_stt(mock=args.mock)
+    stt = build_stt(mock=False)
     judge: CoherenceJudge | None
-    if args.mock or args.no_judge:
-        judge = None
-        judge_model_name = "none"
-    else:
-        if not os.environ.get("CEREBRAS_API_KEY"):
-            logger.warning(
-                "CEREBRAS_API_KEY not set; coherence judging disabled"
-            )
-            judge = None
-            judge_model_name = "none"
-        else:
-            judge = CoherenceJudge(model=args.judge_model)
-            judge_model_name = args.judge_model
+    if not os.environ.get("CEREBRAS_API_KEY"):
+        logger.error("CEREBRAS_API_KEY is required for VoiceAgentBench")
+        return 2
+    judge = CoherenceJudge(model=args.judge_model)
+    judge_model_name = args.judge_model
 
     results = asyncio.run(
         run_tasks(

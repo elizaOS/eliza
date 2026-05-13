@@ -1461,7 +1461,7 @@ wheels = [
 
 [[package]]
 name = "huggingface-hub"
-version = "1.13.0"
+version = "1.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "filelock" },
@@ -1474,9 +1474,9 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/ff/ec7ed2eb43bd7ce8bb2233d109cc235c3e807ffe5e469dc09db261fac05e/huggingface_hub-1.13.0.tar.gz", hash = "sha256:f6df2dac5abe82ce2fe05873d10d5ff47bc677d616a2f521f4ee26db9415d9d0", size = 781788, upload-time = "2026-04-30T11:57:33.858Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/40/43109e943fd718b0ccd0cd61eb4f1c347df22bf81f5874c6f22adf44bcff/huggingface_hub-1.14.0.tar.gz", hash = "sha256:d6d2c9cd6be1d02ae9ec6672d5587d10a427f377db688e82528f426a041622c2", size = 782365, upload-time = "2026-05-06T14:14:34.278Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/db/4b1cdae9460ae1f3ca020cd767f013430ce23eb1d9c890ae3a0609b38d26/huggingface_hub-1.13.0-py3-none-any.whl", hash = "sha256:e942cb50d6a08dd5306688b1ac05bda157fd2fcc88b63dae405f7bd0d3234005", size = 660643, upload-time = "2026-04-30T11:57:31.802Z" },
+    { url = "https://files.pythonhosted.org/packages/89/a5/33b49ba7bea7c41bb37f74ec0f8beea0831e052330196633fe2c77516ea6/huggingface_hub-1.14.0-py3-none-any.whl", hash = "sha256:efe075535c62e130b30e836b138e13785f6f043d1f0539e0a39aa411a99e90b8", size = 661479, upload-time = "2026-05-06T14:14:32.030Z" },
 ]
 
 [[package]]
@@ -1958,7 +1958,7 @@ requires-dist = [
     { name = "fused-turboquant", marker = "extra == 'train'", specifier = ">=0.1.0" },
     { name = "gguf", marker = "extra == 'train'", specifier = ">=0.10.0" },
     { name = "httpx", specifier = ">=0.27.0" },
-    { name = "huggingface-hub", specifier = ">=0.27.0" },
+    { name = "huggingface-hub", specifier = ">=1.14.0" },
     { name = "hypothesis", specifier = ">=6.100.0" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "liger-kernel", marker = "extra == 'train'", specifier = ">=0.5.0" },

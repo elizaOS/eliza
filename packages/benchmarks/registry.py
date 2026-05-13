@@ -2236,18 +2236,24 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
         elif provider_name == "mock":
-            profile = "mock"
+            raise ValueError("voicebench: mock provider is not allowed")
         elif provider_name not in {"groq", "elevenlabs"}:
-            profile = "mock"
+            raise ValueError(
+                "voicebench: provider must be groq or elevenlabs for real runs"
+            )
         elif not os.getenv("VOICEBENCH_AUDIO_PATH") and not (
             Path("benchmarks/voicebench/shared/audio/default.wav").exists()
             or Path("agent-town/public/assets/background.mp3").exists()
         ):
-            profile = "mock"
+            raise ValueError(
+                "voicebench: real audio is required; set VOICEBENCH_AUDIO_PATH"
+            )
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs", "mock"}:
-            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq, elevenlabs, or mock)")
+        if profile not in {"groq", "elevenlabs"}:
+            raise ValueError(
+                f"voicebench: unsupported profile '{profile}' (expected groq or elevenlabs)"
+            )
         args.append(f"--profile={profile}")
         iterations = extra.get("iterations")
         if isinstance(iterations, int) and iterations > 0:

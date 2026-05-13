@@ -2,7 +2,6 @@
 
 Examples::
 
-    python -m elizaos_voicebench --suite openbookqa --limit 2 --mock
     python -m elizaos_voicebench --agent eliza --suite all --limit 20 \\
         --output ./results
 """
@@ -23,7 +22,7 @@ from .runner import resolve_suites, run
 from .types import SUITES
 
 
-_AGENT_CHOICES = ("eliza", "hermes", "openclaw", "echo")
+_AGENT_CHOICES = ("eliza", "hermes", "openclaw")
 _SUITE_CHOICES = ("all",) + SUITES
 _STT_CHOICES = ("groq",)
 
@@ -36,8 +35,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--agent",
         choices=_AGENT_CHOICES,
-        default="echo",
-        help="Backend agent under test (default: echo, used by smoke tests).",
+        default="eliza",
+        help="Backend agent under test (default: eliza).",
     )
     parser.add_argument(
         "--suite",
@@ -73,18 +72,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--mock",
         action="store_true",
-        help=(
-            "Run with bundled fixtures + stub judge (no HF download, "
-            "no Cerebras call). Implies --agent=echo if no agent is set."
-        ),
+        help="Disabled: VoiceBench-quality only writes real benchmark results.",
     )
     parser.add_argument(
         "--fixtures",
         action="store_true",
-        help=(
-            "Use bundled fixture rows without replacing the selected agent. "
-            "Useful for no-HF smoke runs against Eliza/Hermes/OpenClaw."
-        ),
+        help="Disabled for benchmark runs; use real VoiceBench rows and audio.",
     )
     parser.add_argument(
         "--log-level",
@@ -95,14 +88,18 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 async def _run_async(args: argparse.Namespace) -> int:
+    if args.mock or args.fixtures:
+        logging.error(
+            "--mock/--fixtures are disabled for VoiceBench-quality benchmark runs"
+        )
+        return 2
     suites = resolve_suites(args.suite)
-    use_fixtures = bool(args.mock or args.fixtures)
     adapter = build_adapter(
         agent=args.agent,
-        stt_provider=args.stt_provider if not use_fixtures else None,
-        mock=args.mock,
+        stt_provider=args.stt_provider,
+        mock=False,
     )
-    judge = build_judge(mock=args.mock, model=args.judge_model)
+    judge = build_judge(mock=False, model=args.judge_model)
 
     output_dir = Path(args.output).resolve()
     result = await run(
@@ -110,7 +107,7 @@ async def _run_async(args: argparse.Namespace) -> int:
         judge=judge,
         suites=suites,
         limit=args.limit,
-        mock=use_fixtures,
+        mock=False,
         output_dir=output_dir,
         agent_name=args.agent,
         stt_provider=args.stt_provider,

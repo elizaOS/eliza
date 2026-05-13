@@ -202,7 +202,7 @@ accepted drafts; lower values raise rollback waste.
 
 ## Known limits
 
-- **3090 has no FP8** — text-27b quality drops slightly without FP8
+- **3090 has no FP8** — 27B quality drops slightly without FP8
   attention; we keep Q8K KV for safety. Don't promise FP8 on `sm_86`.
 - **5090 sm_120 kernel coverage** — early Blackwell llama.cpp builds may
   not ship `qjl1_256` for sm_120. The runtime probes
