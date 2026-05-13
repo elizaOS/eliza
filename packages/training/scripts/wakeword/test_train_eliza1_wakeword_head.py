@@ -17,7 +17,7 @@ _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
-from scripts.wakeword import train_eliza1_wakeword_head as tw
+from scripts.wakeword import train_eliza1_wakeword_head as tw  # noqa: E402
 
 torch = pytest.importorskip("torch")
 

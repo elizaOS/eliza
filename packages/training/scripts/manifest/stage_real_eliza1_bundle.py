@@ -80,7 +80,7 @@ except ImportError:  # pragma: no cover - direct script execution path
     from eliza1_platform_plan import CONTEXTS_BY_TIER, TEXT_QUANT_BY_TIER, text_artifact_name
     import stage_eliza1_bundle_assets as assets_mod
 
-from benchmarks.eliza1_gates import apply_gates
+from benchmarks.eliza1_gates import apply_gates  # noqa: E402
 
 VISION_TIERS: Final[set[str]] = {"4b"}
 EMBEDDING_TIERS: Final[set[str]] = {"4b"}

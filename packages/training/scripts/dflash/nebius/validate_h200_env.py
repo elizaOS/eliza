@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-import sys
 
 
 def _check(label: str, fn) -> bool:
@@ -81,7 +80,7 @@ def check_nvidia_smi_vram() -> str:
         text=True,
     ).strip()
     # Each line: "NVIDIA H200 SXM5, 143771" (MiB)
-    lines = [l.strip() for l in out.splitlines() if l.strip()]
+    lines = [line.strip() for line in out.splitlines() if line.strip()]
     if not lines:
         raise RuntimeError("nvidia-smi returned no GPU rows")
     gpu_name, mem_str = lines[0].rsplit(",", 1)

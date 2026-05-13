@@ -45,14 +45,13 @@ import math
 import os
 import platform
 import shutil
-import statistics
 import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 # .../packages/training/scripts/eval/eliza1_eval_suite.py → packages/training
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
