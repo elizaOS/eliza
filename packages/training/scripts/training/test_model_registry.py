@@ -1,8 +1,8 @@
 """Smoke tests for model_registry. CPU-only.
 
-The registry holds the Eliza-1 size ladder. The canonical bases are published
-Qwen3.5 / Qwen3.6 checkpoints and are all trainable through the APOLLO path;
-local tiers run on one consumer GPU, while 9B/27B go through Vast/FSDP.
+The active Eliza-1 training ladder is Qwen3.5 0.8B/2B/4B. Larger tiers stay
+outside this registry until final weights/evals/licenses/platform evidence
+exist.
 """
 
 from __future__ import annotations
@@ -16,15 +16,11 @@ VERIFIED_KEYS = (
     "qwen3.5-0.8b",
     "qwen3.5-2b",
     "qwen3.5-4b",
-    "qwen3.5-9b",
-    "qwen3.6-27b",
 )
 VERIFIED_PUBLIC_NAMES = (
     "eliza-1-0_8b",
     "eliza-1-2b",
     "eliza-1-4b",
-    "eliza-1-9b",
-    "eliza-1-27b",
 )
 
 
@@ -58,14 +54,12 @@ def test_tier_assignments() -> None:
     assert get("qwen3.5-0.8b").tier == Tier.LOCAL
     assert get("qwen3.5-2b").tier == Tier.LOCAL
     assert get("qwen3.5-4b").tier == Tier.LOCAL
-    assert get("qwen3.5-9b").tier == Tier.WORKSTATION
-    assert get("qwen3.6-27b").tier == Tier.CLOUD
 
 
 def test_by_tier_partitions_the_ladder() -> None:
     assert len(by_tier(Tier.LOCAL)) == 3   # 0.8b, 2b, 4b
-    assert len(by_tier(Tier.WORKSTATION)) == 1  # 9b
-    assert len(by_tier(Tier.CLOUD)) == 1   # 27b
+    assert len(by_tier(Tier.WORKSTATION)) == 0
+    assert len(by_tier(Tier.CLOUD)) == 0
 
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
@@ -74,14 +68,12 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("eliza-1-0_8b").short_name == "qwen3.5-0.8b"
     assert get("eliza-1-2b").short_name == "qwen3.5-2b"
     assert get("eliza-1-4b").short_name == "qwen3.5-4b"
-    assert get("qwen3-4b").short_name == "qwen3.5-4b"
-    assert get("eliza-1-9b").short_name == "qwen3.5-9b"
-    assert get("eliza-1-27b").short_name == "qwen3.6-27b"
-
 
 def test_unknown_model_raises_keyerror() -> None:
     with pytest.raises(KeyError):
         get("not-a-real-model")
+    with pytest.raises(KeyError):
+        get("qwen3-4b")
 
 
 def test_inference_budgets_back_filled() -> None:
@@ -94,38 +86,18 @@ def test_inference_budgets_back_filled() -> None:
         assert e.infer_mem_gb_quantized < e.infer_mem_gb_bf16_fullkv
 
 
-def test_27b_fits_on_48gb_quantized() -> None:
-    assert get("qwen3.6-27b").infer_mem_gb_quantized < 48.0
-
-
-def test_27b_default_seq_len_leaves_real_headroom() -> None:
-    """Gap M35: 27B default seq_len at 147k left ~1% headroom on the 2× B6000
-    (192 GB) cluster and ~6% on 2× H200 — one activation spike OOMed the run.
-    Default must stay at or below 64k so the registry default is safe on every
-    documented 27B target. Override per run via `--max-seq-len`."""
-    e = get("qwen3.6-27b")
-    assert e.seq_len <= 65536, (
-        f"qwen3.6-27b seq_len={e.seq_len} > 64k — drift back toward the "
-        "unsafe 147k default; keep registry default conservative and bump "
-        "via `--max-seq-len` per run instead."
-    )
-
-
-def test_2b_and_9b_seq_len_defaults_unchanged_by_m35() -> None:
-    """M35 only lowered the 27B default. 2B and 9B defaults must stay where
-    they are — those tiers have plenty of headroom at the documented budgets."""
+def test_2b_seq_len_default_stays_local_safe() -> None:
+    """The 2B default should remain safe for a 16 GB local training target."""
     assert get("qwen3.5-2b").seq_len == 8192
-    assert get("qwen3.5-9b").seq_len == 16384
 
 
-def test_small_real_tiers_fit_a_consumer_gpu() -> None:
-    """0.8B/2B/4B are the "fine-tune on one consumer GPU" tier — full-param
-    APOLLO SFT, modest seq_len, single-GPU memory budgets."""
+def test_active_real_tiers_have_single_gpu_training_budgets() -> None:
+    """0.8B/2B fit 16 GB-class training; 4B needs a 48 GB-class train GPU."""
     for key in ("qwen3.5-0.8b", "qwen3.5-2b", "qwen3.5-4b"):
         e = get(key)
         assert e.tier == Tier.LOCAL
         assert e.seq_len <= 8192
-        assert e.train_mem_gb_budget <= 24.0
+        assert e.train_mem_gb_budget <= (34.0 if key == "qwen3.5-4b" else 16.0)
 
 
 def test_summary_table_includes_every_entry() -> None:

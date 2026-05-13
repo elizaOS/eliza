@@ -409,6 +409,9 @@ const optionalPluginStubs = {
   // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
   // find module '@elizaos/plugin-streaming'` on every chat turn.
   "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
+  // plugin-device-filesystem uses native fs APIs and is not available
+  // in the mobile bundle — stub it so the runtime skips it gracefully.
+  "@elizaos/plugin-device-filesystem": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
@@ -465,6 +468,35 @@ const stubResolverPlugin = {
       if (best === null) return undefined;
       return { path: stubAliases[best], namespace: "file" };
     });
+  },
+};
+
+const iosFsSandboxPlugin = {
+  name: "eliza-ios-fs-sandbox-proxy",
+  setup(build) {
+    if (TARGET !== "ios") return;
+    const fsProxy = path.join(agentRoot, "src", "cli", "mobile-fs-proxy.ts");
+    const fsPromisesProxy = path.join(
+      agentRoot,
+      "src",
+      "cli",
+      "mobile-fs-promises-proxy.ts",
+    );
+    const proxyFiles = new Set([
+      fsProxy,
+      fsPromisesProxy,
+      path.join(agentRoot, "src", "cli", "mobile-fs-shim.ts"),
+    ]);
+    build.onResolve(
+      { filter: /^(node:fs|fs|node:fs\/promises|fs\/promises)$/ },
+      (args) => {
+        if (proxyFiles.has(args.importer)) return undefined;
+        if (args.path === "node:fs/promises" || args.path === "fs/promises") {
+          return { path: fsPromisesProxy, namespace: "file" };
+        }
+        return { path: fsProxy, namespace: "file" };
+      },
+    );
   },
 };
 
@@ -982,6 +1014,7 @@ const buildResult = await Bun.build({
       : {}),
   },
   plugins: [
+    iosFsSandboxPlugin,
     coreTestingStripPlugin,
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,

@@ -17,7 +17,7 @@ Today this is:
 ```
 
 These IDs name the **target** text models — the bundles a user downloads
-from `elizaos/eliza-1-<tier>` on Hugging Face. Every other surface in
+from `elizaos/eliza-1` under `bundles/<tier>/` on Hugging Face. Every other surface in
 this repo (DFlash distill scripts, manifest plan, readiness doc, gates
 table) MUST refer to the same set.
 

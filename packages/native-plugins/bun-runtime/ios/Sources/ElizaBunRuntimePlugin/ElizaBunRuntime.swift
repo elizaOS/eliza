@@ -226,11 +226,38 @@ public final class ElizaBunRuntime {
         if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
             let host = FullBunEngineHost.shared
             do {
+                let paths = SandboxPaths()
+                let appSupportDir = paths.appSupport.path
+                let workspaceDir = paths.appSupport.appendingPathComponent("workspace").path
+                let pgliteDir = paths.appSupport.appendingPathComponent(".elizadb").path
+                let resolvedBundlePath = try resolveFullBunAgentBundlePath(override: bundlePath)
+                let assetDir = URL(fileURLWithPath: resolvedBundlePath).deletingLastPathComponent().path
+                let publicDir = URL(fileURLWithPath: assetDir).deletingLastPathComponent().path
+                try? FileManager.default.createDirectory(
+                    atPath: workspaceDir,
+                    withIntermediateDirectories: true
+                )
+                try? FileManager.default.createDirectory(
+                    atPath: pgliteDir,
+                    withIntermediateDirectories: true
+                )
+                var fullBunEnv = env
+                fullBunEnv["HOME"] = appSupportDir
+                fullBunEnv["ELIZA_HOME"] = appSupportDir
+                fullBunEnv["ELIZA_STATE_DIR"] = appSupportDir
+                fullBunEnv["ELIZA_IOS_APP_SUPPORT_DIR"] = appSupportDir
+                fullBunEnv["ELIZA_WORKSPACE_DIR"] = workspaceDir
+                fullBunEnv["MOBILE_WORKSPACE_ROOT"] = appSupportDir
+                fullBunEnv["PGLITE_DATA_DIR"] = pgliteDir
+                fullBunEnv["ELIZA_IOS_AGENT_BUNDLE"] = resolvedBundlePath
+                fullBunEnv["ELIZA_IOS_AGENT_ASSET_DIR"] = assetDir
+                fullBunEnv["ELIZA_IOS_AGENT_PUBLIC_DIR"] = publicDir
+                fullBunEnv["ELIZA_IOS_BRIDGE_TRANSPORT"] = "bun-host-ipc"
                 try host.start(
-                    bundlePath: try resolveFullBunAgentBundlePath(override: bundlePath),
+                    bundlePath: resolvedBundlePath,
                     argv: argv,
-                    env: env,
-                    appSupportDir: SandboxPaths().appSupport.path
+                    env: fullBunEnv,
+                    appSupportDir: appSupportDir
                 )
                 self.fullBunEngine = host
                 self.context = nil
@@ -320,14 +347,26 @@ public final class ElizaBunRuntime {
     }
 
     private func resolveFullBunAgentBundlePath(override: String?) throws -> String {
-        if let override = override, !override.isEmpty {
-            return override
-        }
         if let url = Bundle.main.url(
             forResource: "agent-bundle",
             withExtension: "js",
             subdirectory: "public/agent"
         ) {
+            #if DEBUG
+            if let override = override, !override.isEmpty {
+                let overrideURL = URL(fileURLWithPath: override).resolvingSymlinksInPath()
+                let bundleURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
+                if overrideURL.path == url.resolvingSymlinksInPath().path {
+                    return overrideURL.path
+                }
+                if overrideURL.path.hasPrefix(bundleURL.path + "/") {
+                    return overrideURL.path
+                }
+                throw makeError(
+                    "full Bun bundlePath override must stay inside the signed app bundle resources"
+                )
+            }
+            #endif
             return url.path
         }
         throw makeError(

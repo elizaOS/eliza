@@ -57,7 +57,7 @@ static uint16_t f32_to_f16(float v) {
 }
 
 int main(void) {
-    /* Shapes mirror Qwen3-0.6B per-layer attention: head_dim 128,
+    /* Shapes mirror the Eliza-1 0.8B/2B per-layer attention: head_dim 128,
      * n_heads 16, n_kv_heads 8, prefill of 32 tokens, kv-cache of 64. */
     const int head_dim    = 128;
     const int n_heads     = 16;

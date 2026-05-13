@@ -22,6 +22,10 @@ dependencies = [
   "tiktoken>=0.8.0",
   "argostranslate>=1.11.0",
   "httpx>=0.27.0",
+  # PolarQuant's Lloyd-Max centroid generation imports scipy.stats.norm
+  # directly; keep it in the base training environment so smoke tests and
+  # dry-run recipe generation do not depend on optional train extras.
+  "scipy>=1.17.0",
   # Property-based testing for the privacy filter contract. Lightweight
   # pure-Python dep; pinned only at the floor to match the rest of the
   # test stack (pytest>=8).

@@ -215,6 +215,9 @@ function engineGenerateArgsFromParams(
   stopSequences?: string[];
   cacheKey?: string;
   signal?: AbortSignal;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
   prefill?: string;
   responseSkeleton?: GenerateTextParams["responseSkeleton"];
   grammar?: string;
@@ -222,6 +225,40 @@ function engineGenerateArgsFromParams(
   onTextChunk?: (chunk: string) => void | Promise<void>;
   voiceOutput?: "user-visible" | "internal";
 } {
+  const renderContent = (content: unknown): string => {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => {
+          if (typeof part === "string") return part;
+          if (
+            part &&
+            typeof part === "object" &&
+            typeof (part as { text?: unknown }).text === "string"
+          ) {
+            return (part as { text: string }).text;
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+    return "";
+  };
+  const promptFromSegments =
+    params.promptSegments && params.promptSegments.length > 0
+      ? params.promptSegments.map((segment) => segment.content ?? "").join("")
+      : "";
+  const promptFromMessages =
+    !promptFromSegments && params.messages && params.messages.length > 0
+      ? params.messages
+          .map((message) => {
+            const content = renderContent(message.content);
+            return content ? `${message.role}:\n${content}` : "";
+          })
+          .filter(Boolean)
+          .join("\n\n")
+      : "";
   const streamStructured = params.streamStructured === true;
   // Surface per-token chunks to the caller. The runtime passes the agent
   // reply path's `onStreamChunk` here when it wants the LLM→TTS handoff —
@@ -234,10 +271,13 @@ function engineGenerateArgsFromParams(
       ? (chunk: string) => params.onStreamChunk?.(chunk)
       : undefined;
   return {
-    prompt: params.prompt ?? "",
+    prompt: params.prompt ?? (promptFromSegments || promptFromMessages),
     stopSequences: params.stopSequences,
     cacheKey,
     signal: params.signal,
+    maxTokens: params.maxTokens,
+    temperature: params.temperature,
+    topP: params.topP,
     prefill: params.prefill,
     responseSkeleton: params.responseSkeleton,
     grammar: params.grammar,
@@ -378,7 +418,7 @@ function makeEmbeddingHandler(): EmbeddingHandler {
  * path: the engine has no `embed()` on the `LocalInferenceLoader` service
  * surface (that's only the AOSP / device-bridge loaders), but when an
  * Eliza-1 bundle is active it serves embeddings through the bundle's
- * local embedding model — pooled text on `0_8b`, the dedicated
+ * local embedding model — pooled text on `0_8b` / `2b`, the dedicated
  * `embedding/` GGUF on larger tiers — via a lazily-started embedding
  * `llama-server` sidecar. Throws (→ runtime falls through to the
  * operator-configured provider) when no Eliza-1 bundle is loaded; no
@@ -419,6 +459,7 @@ function makeTextToSpeechHandler(): TextToSpeechHandler {
     // Do not filter singing, emotion tags, or lyrical phrasing here. The
     // local voice bundle advertises its expressive capability in the
     // manifest; runtime safety policy lives above this model adapter.
+    await localInferenceEngine.ensureActiveBundleVoiceReady();
     return localInferenceEngine.synthesizeSpeech(text);
   };
 }
@@ -777,7 +818,7 @@ export async function ensureLocalInferenceHandler(
   //   - The desktop/server `LocalInferenceEngine` path has no loader
   //     `embed()`, but when an Eliza-1 bundle is loaded it serves
   //     embeddings through the bundle's local embedding model (pooled text
-  //     on `0_8b`, the dedicated `embedding/` GGUF on larger tiers) via a
+  //     on `0_8b` / `2b`, the dedicated `embedding/` GGUF on larger tiers) via a
   //     lazily-started embedding `llama-server` sidecar.
   // In neither case do we register a handler that would serve a silent
   // zero-vector — both throw when there's nothing real to call, so the

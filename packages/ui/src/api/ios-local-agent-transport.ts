@@ -1,5 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 import { isMobileLocalAgentUrl } from "../onboarding/local-agent-token";
+import { IOS_LOCAL_AGENT_IPC_BASE } from "../onboarding/mobile-runtime-mode";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import {
   handleIosLocalAgentRequest,
@@ -53,7 +54,6 @@ interface FullBunRuntimeModule {
 
 const FULL_BUN_RUNTIME_CALL_TIMEOUT_MS = 120_000;
 const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
-
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
@@ -174,7 +174,7 @@ function isSafeLocalPath(path: string): boolean {
 }
 
 function requestPathFromUrl(url: string): string {
-  const parsed = new URL(url, "http://127.0.0.1:31337");
+  const parsed = new URL(url, IOS_LOCAL_AGENT_IPC_BASE);
   return `${parsed.pathname}${parsed.search}`;
 }
 
@@ -281,7 +281,7 @@ async function getFullBunRuntime(): Promise<{
             ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
             ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP: "1",
             ELIZA_HEADLESS: "1",
-            ELIZA_API_BIND: "127.0.0.1",
+            ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
             LOG_LEVEL: "error",
           },
         }),
@@ -461,7 +461,7 @@ export async function handleIosLocalAgentNativeRequest(
 
   startIosLocalAgentKernel();
   const response = await handleIosLocalAgentRequest(
-    new Request(`http://127.0.0.1:31337${path}`, {
+    new Request(`${IOS_LOCAL_AGENT_IPC_BASE}${path}`, {
       method,
       headers: options.headers,
       body:
@@ -501,7 +501,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
 
 function localAgentUrlForFetch(url: URL): string {
   if (isMobileLocalAgentUrl(url.toString())) return url.toString();
-  return `http://127.0.0.1:31337${url.pathname}${url.search}`;
+  return `${IOS_LOCAL_AGENT_IPC_BASE}${url.pathname}${url.search}`;
 }
 
 export function installIosLocalAgentFetchBridge(): void {
@@ -523,8 +523,8 @@ export function installIosLocalAgentFetchBridge(): void {
       url = new URL(
         rawUrl,
         typeof window !== "undefined"
-          ? (window.location?.href ?? "http://localhost")
-          : "http://localhost",
+          ? (window.location?.href ?? IOS_LOCAL_AGENT_IPC_BASE)
+          : IOS_LOCAL_AGENT_IPC_BASE,
       );
     } catch {
       return original(input, init);

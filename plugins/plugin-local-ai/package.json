@@ -55,6 +55,7 @@
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/plugin-local-inference": "2.0.0-beta.1",
     "@huggingface/transformers": "^4.0.0",
     "node-llama-cpp": "3.18.1",
     "stream-browserify": "^3.0.0",
@@ -99,7 +100,7 @@
         "type": "string",
         "description": "Filename of the large local AI model.",
         "required": false,
-        "default": "text/eliza-1-9b-64k.gguf",
+        "default": "text/eliza-1-4b-64k.gguf",
         "sensitive": false
       },
       "LOCAL_EMBEDDING_MODEL": {
@@ -114,6 +115,24 @@
         "description": "Number of dimensions the embedding model outputs.",
         "required": false,
         "default": 1024,
+        "sensitive": false
+      },
+      "LOCAL_AI_LEGACY_TTS_MODEL": {
+        "type": "string",
+        "description": "Optional legacy Transformers.js text-to-audio model id. Canonical Eliza-1 TTS is served by @elizaos/plugin-local-inference.",
+        "required": false,
+        "sensitive": false
+      },
+      "LOCAL_AI_ENABLE_LEGACY_WHISPER": {
+        "type": "string",
+        "description": "Opt-in flag for the legacy whisper-node transcription fallback when no local-inference backend is active.",
+        "required": false,
+        "sensitive": false
+      },
+      "LOCAL_AI_ENABLE_LEGACY_VISION": {
+        "type": "string",
+        "description": "Opt-in flag for the legacy Florence/Transformers.js image-description fallback when no Eliza-1 local-inference vision backend is active.",
+        "required": false,
         "sensitive": false
       },
       "CUDA_VISIBLE_DEVICES": {

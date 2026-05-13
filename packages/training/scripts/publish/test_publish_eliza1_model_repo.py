@@ -18,7 +18,12 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _write_bundle(root: Path, tier: str, *, voice_path: str = "tts/kokoro.gguf") -> Path:
+def _write_bundle(
+    root: Path,
+    tier: str,
+    *,
+    voice_path: str = "tts/omnivoice-base-Q4_K_M.gguf",
+) -> Path:
     bundle = root / f"eliza-1-{tier}.bundle"
     text = b"gguf text"
     voice = b"voice"
@@ -91,16 +96,47 @@ def test_plan_bundle_reports_manifest_sha_mismatch(tmp_path: Path):
     assert any("sha256 mismatch for dflash/drafter-2b.gguf" in e for e in plan.errors)
 
 
+def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "2b")
+    (bundle / "source" / "text").mkdir(parents=True)
+    (bundle / "source" / "text" / "raw-qwen.gguf").write_bytes(b"raw")
+    (bundle / "licenses").mkdir()
+    (bundle / "licenses" / "LICENSE.text").write_text("license", encoding="utf-8")
+    (bundle / "lineage.json").write_text("{}", encoding="utf-8")
+
+    manifest = P._load_json(bundle / "eliza-1.manifest.json")
+    rels = P._publishable_bundle_relpaths(bundle, manifest)
+    plan = P.plan_bundle(tmp_path, "2b")
+
+    assert "source/text/raw-qwen.gguf" not in rels
+    assert "licenses/LICENSE.text" in rels
+    assert "lineage.json" in rels
+    assert plan.file_count == len(rels)
+
+
+def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "2b")
+    (bundle / "source" / "text").mkdir(parents=True)
+    (bundle / "source" / "text" / "raw-qwen.gguf").write_bytes(b"raw")
+    plan = P.plan_bundle(tmp_path, "2b")
+
+    staging = P._mirror_for_large_folder_upload(plan, tmp_path / "stage")
+
+    assert (staging / "bundles" / "2b" / "eliza-1.manifest.json").is_file()
+    assert (staging / "bundles" / "2b" / "text" / "eliza-1-2b-32k.gguf").is_file()
+    assert not (staging / "bundles" / "2b" / "source" / "text" / "raw-qwen.gguf").exists()
+
+
 def test_voice_policy_can_warn_or_block(tmp_path: Path):
-    _write_bundle(tmp_path, "2b", voice_path="tts/omnivoice-base-Q4_K_M.gguf")
+    _write_bundle(tmp_path, "2b", voice_path="tts/kokoro.gguf")
 
     warning_plan = P.plan_bundle(tmp_path, "2b")
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
     assert warning_plan.uploadable is True
-    assert any("Kokoro" in w for w in warning_plan.warnings)
+    assert any("OmniVoice" in w for w in warning_plan.warnings)
     assert strict_plan.uploadable is False
-    assert any("Kokoro" in e for e in strict_plan.errors)
+    assert any("OmniVoice" in e for e in strict_plan.errors)
 
 
 def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):

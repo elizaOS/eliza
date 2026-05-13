@@ -756,7 +756,7 @@ If the user asks for exact words, output exactly those words and nothing else.
 User: {{userText}}
 {{agentName}}:
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
+Plain text only. No JSON, labels, fences, thinking, or markdown.
 `;
 
 export const MOBILE_DIRECT_REPLY_TEMPLATE = mobileDirectReplyTemplate;

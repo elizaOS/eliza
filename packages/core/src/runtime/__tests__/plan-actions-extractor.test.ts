@@ -44,35 +44,39 @@ describe("extractPlanActionsFromContent — PLAN_ACTIONS wrapper", () => {
 	});
 
 	it("accepts wrapper wrapped in markdown code fence", () => {
-		const text = "```json\nPLAN_ACTIONS({\"action\":\"REPLY\",\"parameters\":{\"text\":\"hi\"}})\n```";
+		const text =
+			'```json\nPLAN_ACTIONS({"action":"REPLY","parameters":{"text":"hi"}})\n```';
 		const result = extractPlanActionsFromContent(text);
 		expect(result?.action).toBe("REPLY");
 	});
 
 	it("accepts wrapper wrapped in plain code fence", () => {
-		const text = "```\nPLAN_ACTIONS({\"action\":\"LIFE\",\"parameters\":{}})\n```";
+		const text = '```\nPLAN_ACTIONS({"action":"LIFE","parameters":{}})\n```';
 		const result = extractPlanActionsFromContent(text);
 		expect(result?.action).toBe("LIFE");
 	});
 
 	it("accepts wrapper with whitespace-only surrounding text", () => {
-		const text = "  \n  PLAN_ACTIONS({\"action\":\"TODO\",\"parameters\":{}})  \n  ";
+		const text = '  \n  PLAN_ACTIONS({"action":"TODO","parameters":{}})  \n  ';
 		const result = extractPlanActionsFromContent(text);
 		expect(result?.action).toBe("TODO");
 	});
 
 	it("rejects when prose precedes the wrapper (strict mode)", () => {
-		const text = "I'll call this: PLAN_ACTIONS({\"action\":\"TASKS_SPAWN_AGENT\",\"parameters\":{}})";
+		const text =
+			'I\'ll call this: PLAN_ACTIONS({"action":"TASKS_SPAWN_AGENT","parameters":{}})';
 		expect(extractPlanActionsFromContent(text)).toBeNull();
 	});
 
 	it("rejects when prose follows the wrapper (strict mode)", () => {
-		const text = "PLAN_ACTIONS({\"action\":\"TASKS_SPAWN_AGENT\",\"parameters\":{}}) let me know if this works!";
+		const text =
+			'PLAN_ACTIONS({"action":"TASKS_SPAWN_AGENT","parameters":{}}) let me know if this works!';
 		expect(extractPlanActionsFromContent(text)).toBeNull();
 	});
 
 	it("accepts surrounding prose with strict=false", () => {
-		const text = "Here's my call: PLAN_ACTIONS({\"action\":\"TODO\",\"parameters\":{}})";
+		const text =
+			'Here\'s my call: PLAN_ACTIONS({"action":"TODO","parameters":{}})';
 		const result = extractPlanActionsFromContent(text, { strict: false });
 		expect(result?.action).toBe("TODO");
 	});
@@ -184,9 +188,7 @@ describe("extractPlanActionsFromContent — edge cases", () => {
 	});
 
 	it("returns null for unrelated JSON", () => {
-		expect(
-			extractPlanActionsFromContent('{"foo":"bar","baz":123}'),
-		).toBeNull();
+		expect(extractPlanActionsFromContent('{"foo":"bar","baz":123}')).toBeNull();
 	});
 
 	it("handles trailing comma tolerance: rejects — no JSON5", () => {

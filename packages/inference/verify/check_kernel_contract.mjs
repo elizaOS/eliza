@@ -51,6 +51,39 @@ function sortedUnique(values) {
   return Array.from(new Set(values)).sort();
 }
 
+function flattenRuntimeEvidenceKernels(evidence) {
+  const kernels = {};
+  if (!evidence || typeof evidence !== "object") return kernels;
+
+  if (evidence.kernels && typeof evidence.kernels === "object") {
+    Object.assign(kernels, evidence.kernels);
+  }
+
+  if (evidence.targets && typeof evidence.targets === "object") {
+    for (const [target, targetEvidence] of Object.entries(evidence.targets)) {
+      if (!targetEvidence?.kernels || typeof targetEvidence.kernels !== "object") {
+        continue;
+      }
+      for (const [id, kernelEvidence] of Object.entries(targetEvidence.kernels)) {
+        const normalized =
+          id === "fused_attn_qjl_tbq" || id === "fused_attn_qjl_polar"
+            ? "fusedAttn"
+            : id;
+        if (kernels[normalized]?.runtimeReady === true) continue;
+        kernels[normalized] = {
+          ...kernelEvidence,
+          ...(normalized === "fusedAttn" && !kernelEvidence.capabilityKey
+            ? { capabilityKey: "fused_attn" }
+            : {}),
+          target,
+        };
+      }
+    }
+  }
+
+  return kernels;
+}
+
 function findKernelEnum(node) {
   if (!node || typeof node !== "object") return null;
   if (
@@ -138,13 +171,9 @@ const allowedStatuses = new Set([
 ]);
 
 const metalEvidenceKernels =
-  metalDispatchEvidence && typeof metalDispatchEvidence === "object"
-    ? metalDispatchEvidence.kernels || {}
-    : {};
+  flattenRuntimeEvidenceKernels(metalDispatchEvidence);
 const vulkanEvidenceKernels =
-  vulkanDispatchEvidence && typeof vulkanDispatchEvidence === "object"
-    ? vulkanDispatchEvidence.kernels || {}
-    : {};
+  flattenRuntimeEvidenceKernels(vulkanDispatchEvidence);
 
 if (metalDispatchEvidence.backend !== "metal") {
   fail(`metal dispatch evidence backend must be "metal"`);
@@ -323,7 +352,7 @@ if (
   );
 }
 
-// 1_7b. Metal dispatch-ready capability bits must not be satisfied by shipped
+// 2b. Metal dispatch-ready capability bits must not be satisfied by shipped
 // symbols. The build script intentionally forces every non-runtime-ready Metal
 // kernel false until the evidence file records a numeric built-fork graph
 // dispatch smoke.

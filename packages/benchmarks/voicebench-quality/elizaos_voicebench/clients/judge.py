@@ -93,30 +93,6 @@ class CerebrasJudge:
         return (clamped - 1) / 4.0, rationale
 
 
-class StubJudge:
-    """Deterministic judge for smoke tests and CI.
-
-    Scores 1.0 when the candidate response exactly matches the reference
-    (case-insensitive, whitespace-trimmed) and 0.0 otherwise. This gives
-    a clear pass/fail signal in the smoke test without requiring an API
-    call.
-    """
-
-    model = "stub"
-
-    async def score(
-        self, *, prompt: str, reference: str, candidate: str
-    ) -> tuple[float, str]:
-        del prompt
-        a = (candidate or "").strip().casefold()
-        b = (reference or "").strip().casefold()
-        if not b:
-            # No reference to compare against — defer to non-empty candidate
-            # being "fine". Open-ended suites without a reference are rare.
-            return (1.0 if a else 0.0, "stub: no reference, scored on non-empty")
-        return (1.0 if a == b else 0.0, "stub: exact-match grader")
-
-
 def build_judge(*, mock: bool, model: str | None) -> Judge:
     if mock:
         raise RuntimeError("Stub judge is disabled for benchmark runs")

@@ -1320,7 +1320,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
           ? "speechSynthesis"
           : useTalkModeTts
             ? "talkmode-bridge"
-            : "no-synth-timer-only",
+            : "no-synth",
         segment: task.segment,
         append: task.append,
         textChars: text.trim().length,
@@ -1347,39 +1347,41 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
         activeTaskFinishRef.current = finish;
 
         if (!synth) {
-          if (getElectrobunRendererRpc()) {
-            ttsDebug("play:talkmode:dispatch", {
-              segment: task.segment,
-              append: task.append,
-              textChars: text.trim().length,
-              preview: ttsDebugTextPreview(text),
-              engine: "native-talkmode-bridge",
-              note: "No window.speechSynthesis — routing TTS to main-process talkmodeSpeak",
-            });
-            void invokeDesktopBridgeRequest<void>({
-              rpcMethod: "talkmodeSpeak",
-              ipcChannel: "talkmode:speak",
-              params: { text: text.trim() },
-            }).catch((err: unknown) => {
-              ttsDebug("play:talkmode:speak-failed", {
-                segment: task.segment,
-                preview: ttsDebugTextPreview(text),
-                err:
-                  err instanceof Error
-                    ? `${err.name}: ${err.message.slice(0, 200)}`
-                    : String(err).slice(0, 200),
-              });
-              console.warn("[useVoiceChat] Desktop speech bridge failed:", err);
-            });
-          } else {
+          if (!getElectrobunRendererRpc()) {
             ttsDebug("play:browser:no-synth", {
               segment: task.segment,
               textChars: text.trim().length,
               preview: ttsDebugTextPreview(text),
               engine: "none",
-              note: "No SpeechSynthesis — playback may be silent until Talk Mode or synth is available",
+              note: "No SpeechSynthesis or Talk Mode bridge; no playback emitted",
             });
+            finish();
+            return;
           }
+
+          ttsDebug("play:talkmode:dispatch", {
+            segment: task.segment,
+            append: task.append,
+            textChars: text.trim().length,
+            preview: ttsDebugTextPreview(text),
+            engine: "native-talkmode-bridge",
+            note: "No window.speechSynthesis — routing TTS to main-process talkmodeSpeak",
+          });
+          void invokeDesktopBridgeRequest<void>({
+            rpcMethod: "talkmodeSpeak",
+            ipcChannel: "talkmode:speak",
+            params: { text: text.trim() },
+          }).catch((err: unknown) => {
+            ttsDebug("play:talkmode:speak-failed", {
+              segment: task.segment,
+              preview: ttsDebugTextPreview(text),
+              err:
+                err instanceof Error
+                  ? `${err.name}: ${err.message.slice(0, 200)}`
+                  : String(err).slice(0, 200),
+            });
+            console.warn("[useVoiceChat] Desktop speech bridge failed:", err);
+          });
           emitPlaybackStart({
             text,
             segment: task.segment,

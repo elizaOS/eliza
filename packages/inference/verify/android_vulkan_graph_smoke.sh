@@ -209,6 +209,7 @@ echo "[android-vulkan-graph-smoke] compiling graph-dispatch harness for arm64-v8
   -o "$BUILD_DIR/vulkan_dispatch_smoke"
 
 LIBCXX_SHARED="$(find "$NDK" -path '*/libc++_shared.so' -type f | grep '/arm64-v8a/\|/aarch64-linux-android/' | head -n 1 || true)"
+LIBOMP_SHARED="$(find "$NDK" -path '*/libomp.so' -type f | grep '/aarch64/' | head -n 1 || true)"
 
 echo "[android-vulkan-graph-smoke] pushing harness and built fork libraries to ${REMOTE_DIR}"
 adb_cmd shell "rm -rf '${REMOTE_DIR}' && mkdir -p '${REMOTE_DIR}/lib'"
@@ -216,6 +217,9 @@ adb_cmd push "$BUILD_DIR/vulkan_dispatch_smoke" "${REMOTE_DIR}/vulkan_dispatch_s
 adb_cmd push "$BIN_DIR"/lib*.so "${REMOTE_DIR}/lib/" >/dev/null
 if [[ -n "$LIBCXX_SHARED" ]]; then
   adb_cmd push "$LIBCXX_SHARED" "${REMOTE_DIR}/lib/libc++_shared.so" >/dev/null
+fi
+if [[ -n "$LIBOMP_SHARED" ]]; then
+  adb_cmd push "$LIBOMP_SHARED" "${REMOTE_DIR}/lib/libomp.so" >/dev/null
 fi
 adb_cmd shell "chmod 755 '${REMOTE_DIR}/vulkan_dispatch_smoke'"
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildHuggingFaceResolveUrl,
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  ELIZA_1_RELEASE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
@@ -14,7 +15,7 @@ describe("local inference catalog", () => {
   it("ships exactly the visible Eliza-1 tiers", () => {
     const visible = MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog);
     expect(visible.map((m) => m.id).sort()).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
+      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
     );
   });
 
@@ -52,14 +53,22 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
+  it("marks ONLY the current Qwen3.5 Eliza-1 release tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
+      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
     );
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(id), `${id} not eligible`).toBe(
         true,
       );
+    }
+    for (const id of ELIZA_1_TIER_IDS) {
+      if ((ELIZA_1_RELEASE_TIER_IDS as readonly string[]).includes(id))
+        continue;
+      expect(
+        DEFAULT_ELIGIBLE_MODEL_IDS.has(id),
+        `${id} should not be eligible`,
+      ).toBe(false);
     }
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
       expect(model.id.startsWith("eliza-1-")).toBe(true);
@@ -106,7 +115,7 @@ describe("local inference catalog", () => {
   it("keeps the visible model hub focused on Eliza-1 only", () => {
     const visible = localInferenceService.getCatalog();
     expect(visible.map((model) => model.id).sort()).toEqual(
-      [...ELIZA_1_TIER_IDS].sort(),
+      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
     );
     expect(
       visible.filter((model) => DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id))
@@ -196,7 +205,7 @@ describe("local inference catalog", () => {
       "qjl_full",
       "polarquant",
     ];
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
         "llama-server",
@@ -234,16 +243,15 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("records 27b-1m text and vision source provenance", () => {
+  it("keeps future large placeholders hidden and out of upstream Qwen provenance", () => {
     const model = findCatalogModel("eliza-1-27b-1m");
+    expect(model?.hiddenFromCatalog).toBe(true);
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has("eliza-1-27b-1m")).toBe(false);
     expect(model?.sourceModel?.finetuned).toBe(false);
     const components = model?.sourceModel?.components;
-    expect(components?.text).toEqual({
-      repo: "Qwen/Qwen3.6-27B",
-    });
-    expect(components?.vision).toEqual({
-      repo: "Qwen/Qwen3.6-27B",
-    });
+    expect(components?.text?.repo).toBe("elizaos/eliza-1");
+    expect(components?.vision?.repo).toBe("elizaos/eliza-1");
+    expect(JSON.stringify(model)).not.toMatch(/Qwen\/Qwen3(?:\.6)?/);
   });
 
   it("does not leak implementation-family names in visible catalog copy", () => {

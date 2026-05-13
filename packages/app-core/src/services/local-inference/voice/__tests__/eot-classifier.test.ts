@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it, vi } from "vitest";
+import { MockCheckpointManager } from "../checkpoint-manager";
 import {
   EOT_COMMIT_SILENCE_MS,
   EOT_COMMIT_THRESHOLD,
@@ -19,7 +20,6 @@ import {
   HeuristicEotClassifier,
   RemoteEotClassifier,
 } from "../eot-classifier";
-import { MockCheckpointManager } from "../checkpoint-manager";
 import {
   type DrafterAbortReason,
   type DrafterHandle,
@@ -31,7 +31,11 @@ import {
 // Helpers
 // ---------------------------------------------------------------------------
 
-function makeDrafter(): { fn: StartDrafterFn; started: number; aborted: DrafterAbortReason[] } {
+function makeDrafter(): {
+  fn: StartDrafterFn;
+  started: number;
+  aborted: DrafterAbortReason[];
+} {
   let started = 0;
   const aborted: DrafterAbortReason[] = [];
   const fn: StartDrafterFn = () => {
@@ -42,7 +46,9 @@ function makeDrafter(): { fn: StartDrafterFn; started: number; aborted: DrafterA
   // Use a getter so started stays live.
   return {
     fn,
-    get started() { return started; },
+    get started() {
+      return started;
+    },
     aborted,
   };
 }
@@ -276,7 +282,9 @@ describe("VoiceStateMachine — EOT classifier integration", () => {
       });
     }
 
-    expect(machine.getEotHangoverExtensionMs()).toBe(2 * EOT_HANGOVER_EXTENSION_MS);
+    expect(machine.getEotHangoverExtensionMs()).toBe(
+      2 * EOT_HANGOVER_EXTENSION_MS,
+    );
   });
 
   it("speech-start resets the hangover extension", async () => {
@@ -293,7 +301,11 @@ describe("VoiceStateMachine — EOT classifier integration", () => {
     expect(machine.getEotHangoverExtensionMs()).toBe(EOT_HANGOVER_EXTENSION_MS);
 
     // New turn.
-    await machine.dispatch({ type: "speech-end", timestampMs: 900, finalTranscript: "going to the store" });
+    await machine.dispatch({
+      type: "speech-end",
+      timestampMs: 900,
+      finalTranscript: "going to the store",
+    });
     await machine.dispatch({ type: "speech-start", timestampMs: 1000 });
     expect(machine.getEotHangoverExtensionMs()).toBe(0);
   });

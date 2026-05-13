@@ -497,6 +497,71 @@ describe("ElizaClient direct Cloud auth on native", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("uses direct Cloud provisioning-agent status and chat endpoints on native", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(
+        new Error("native provisioning agent must not use fetch"),
+      );
+    capacitorMocks.request.mockImplementation(async ({ url, method, data }) => {
+      if (
+        url === "https://api.elizacloud.ai/api/v1/provisioning-agent" &&
+        method === "GET"
+      ) {
+        return {
+          status: 200,
+          data: {
+            success: true,
+            data: {
+              status: "running",
+              bridgeUrl: "https://agent.example.test",
+              agentId: "agent-1",
+            },
+          },
+        };
+      }
+      if (
+        url === "https://api.elizacloud.ai/api/v1/provisioning-agent/chat" &&
+        method === "POST"
+      ) {
+        expect(data).toEqual({ message: "hello", agentId: "agent-1" });
+        return {
+          status: 200,
+          data: {
+            success: true,
+            data: {
+              reply: "Ready when you are.",
+              containerStatus: "running",
+              bridgeUrl: "https://agent.example.test",
+            },
+          },
+        };
+      }
+      throw new Error(`Unexpected native Cloud request: ${method} ${url}`);
+    });
+
+    const client = new ElizaClient(undefined, "cloud-api-key");
+    const status = await client.getProvisioningAgentStatus("agent-1");
+    const chat = await client.sendProvisioningAgentMessage("hello", "agent-1");
+
+    expect(status.data).toEqual(
+      expect.objectContaining({
+        status: "running",
+        bridgeUrl: "https://agent.example.test",
+        agentId: "agent-1",
+      }),
+    );
+    expect(chat.data).toEqual(
+      expect.objectContaining({
+        reply: "Ready when you are.",
+        containerStatus: "running",
+        bridgeUrl: "https://agent.example.test",
+      }),
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expectNoLocalPersistOrStatusProbe();
+  });
+
   it("polls direct Cloud provision jobs on native", async () => {
     capacitorMocks.request.mockResolvedValue({
       status: 200,

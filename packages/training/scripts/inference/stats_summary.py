@@ -8,7 +8,7 @@ Usage from `training/`:
 
     python -m scripts.inference.stats_summary \\
         --in ~/.eliza/inference-stats.jsonl \\
-        --label adhoc-h200-eliza-1-9b \\
+        --label adhoc-h200-eliza-1-4b \\
         --last-minutes 30
 """
 

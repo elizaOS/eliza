@@ -304,6 +304,21 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-coding-tools") {
       return await import("@elizaos/plugin-coding-tools");
     }
+    if (packageName === "@elizaos/plugin-agent-skills") {
+      return await import("@elizaos/plugin-agent-skills");
+    }
+    if (packageName === "@elizaos/plugin-device-filesystem") {
+      return await import("@elizaos/plugin-device-filesystem");
+    }
+    if (packageName === "@elizaos/plugin-video") {
+      return await import("@elizaos/plugin-video");
+    }
+    if (packageName === "@elizaos/plugin-ollama") {
+      return await import("@elizaos/plugin-ollama");
+    }
+    if (packageName === "@elizaos/plugin-mlx") {
+      return await import("@elizaos/plugin-mlx");
+    }
     return await import(packageName);
   } catch {
     return null;
@@ -389,6 +404,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginAgentOrchestrator,
       pluginShell,
       pluginCodingTools,
+      pluginAgentSkills,
       pluginCommands,
       pluginVideo,
       pluginBackgroundRunner,
@@ -403,6 +419,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
       getOptionalPlugin("@elizaos/plugin-shell"),
       getOptionalPlugin("@elizaos/plugin-coding-tools"),
+      getOptionalPlugin("@elizaos/plugin-agent-skills"),
       getOptionalPlugin("@elizaos/plugin-commands"),
       getOptionalPlugin("@elizaos/plugin-video"),
       getOptionalPlugin("@elizaos/plugin-background-runner"),
@@ -425,6 +442,9 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
       ...(pluginCodingTools
         ? { "@elizaos/plugin-coding-tools": pluginCodingTools }
+        : {}),
+      ...(pluginAgentSkills
+        ? { "@elizaos/plugin-agent-skills": pluginAgentSkills }
         : {}),
       // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
       ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
@@ -3954,8 +3974,18 @@ export async function startEliza(
   // desktop app, the API server is always available for the GUI admin
   // surface.
   try {
-    const serverModule = "../api/server.ts";
-    const { startApiServer } = await import(/* @vite-ignore */ serverModule);
+    // Mobile bundles (Bun.build, single-file output) require a string literal
+    // in the import() call so the bundler can include the module statically.
+    // Desktop / Vite builds use the variable form to keep the module out of
+    // the build graph (the file is loaded from disk at runtime instead).
+    const { startApiServer } = await (process.env.ELIZA_PLATFORM ===
+      "android" || process.env.ELIZA_PLATFORM === "ios"
+      ? import("../api/server.ts")
+      : /* eslint-disable-next-line @typescript-eslint/no-implied-eval */
+        (() => {
+          const m = "../api/server.ts";
+          return import(/* @vite-ignore */ m);
+        })());
     const apiPort = resolveServerOnlyPort(process.env);
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,

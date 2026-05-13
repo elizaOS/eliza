@@ -762,7 +762,7 @@ export class LocalInferenceEngine {
     null;
   /**
    * Lazily-started embedding `llama-server` sidecar for the active bundle
-   * (over the text GGUF on `0_8b`, over the `embedding/` GGUF on larger
+   * (over the text GGUF on `0_8b` / `2b`, over the `embedding/` GGUF on larger
    * tiers). `null` until the first `embed()` call. Torn down on `unload()`.
    */
   private embeddingServer: EmbeddingServer | null = null;
@@ -1327,6 +1327,31 @@ export class LocalInferenceEngine {
   }
 
   /**
+   * Lazily start + arm voice for the active Eliza-1 bundle. Runtime model
+   * handlers use this when visible chat text needs local speech output; direct
+   * engine callers still use `startVoice()` / `armVoice()` explicitly when they
+   * need custom sinks or test backends.
+   */
+  async ensureActiveBundleVoiceReady(): Promise<EngineVoiceBridge> {
+    let bridge = this.voiceBridge;
+    if (!bridge) {
+      const bundle = this.activeEliza1Bundle;
+      if (!bundle) {
+        throw new VoiceStartupError(
+          "missing-bundle-root",
+          "[voice] Cannot start local voice: no active Eliza-1 bundle is loaded.",
+        );
+      }
+      bridge = this.startVoice({
+        bundleRoot: bundle.root,
+        useFfiBackend: true,
+      });
+    }
+    await bridge.arm();
+    return bridge;
+  }
+
+  /**
    * Assemble + run the full live voice loop on top of `startVoice()` /
    * `armVoice()`: mic → (`pipeMicToRingBuffer` + `VadDetector.pushFrame`)
    * per frame → `StreamingTranscriber.feed` (VAD-gated) → `VoiceTurnController`
@@ -1665,10 +1690,10 @@ export class LocalInferenceEngine {
 
   /**
    * Build the local-embedding route for an activated Eliza-1 bundle.
-   * On `0_8b` the embedding model is the text backbone with `--pooling
-   * last` (no separate GGUF); on `2b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
-   * dedicated 1024-dim Matryoshka `embedding/` region is used. See
-   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_8b` tier is
+   * On `0_8b` / `2b` the embedding model is the text backbone with
+   * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`/
+   * `27b-1m` a dedicated 1024-dim Matryoshka `embedding/` region is used.
+   * See AGENTS.md §1. Throws `VoiceStartupError` when a larger tier is
    * missing its dedicated region — no fallback to pooled text (which would
    * regress the dimension contract).
    */
@@ -1704,9 +1729,9 @@ export class LocalInferenceEngine {
   /**
    * Embed text via the active Eliza-1 bundle's local embedding model.
    *
-   * The first call lazily starts a dedicated embedding `llama-server`
-   * sidecar (over the text backbone GGUF on `0_8b`, over the dedicated
-   * `embedding/eliza-1-embedding.gguf` on `2b`+) launched with
+   * The first call lazily starts an embedding `llama-server` sidecar (over
+   * the text backbone GGUF on `0_8b` / `2b`, over the dedicated
+   * `embedding/eliza-1-embedding.gguf` on larger tiers) launched with
    * `--embeddings --pooling last`; subsequent calls reuse it. The result
    * is Matryoshka-truncated to `dim` (default 1024) and L2-normalized.
    *
@@ -1847,12 +1872,17 @@ export class LocalInferenceEngine {
                   .trim()
                   .toUpperCase()
                   .replace(/^[^A-Z]+/, "");
-                if (normalized.startsWith("IG") || normalized.startsWith("ST")) {
+                if (
+                  normalized.startsWith("IG") ||
+                  normalized.startsWith("ST")
+                ) {
                   shouldRespondAllowsVoice = false;
                   pendingStructuredReplyChunks.length = 0;
                 } else if (normalized.startsWith("RE")) {
                   shouldRespondAllowsVoice = true;
-                  for (const pending of pendingStructuredReplyChunks.splice(0)) {
+                  for (const pending of pendingStructuredReplyChunks.splice(
+                    0,
+                  )) {
                     pushStructuredVoiceChunk(pending);
                   }
                 }

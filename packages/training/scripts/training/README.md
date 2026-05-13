@@ -41,8 +41,8 @@ from it; if they disagree the registry wins.
 | `qwen3.5-0.8b`   | apollo_mini   | 128  | 128.0 | 1           | 8          | 4096    | local        |
 | `qwen3.5-2b`     | apollo_mini   | 256  | 128.0 | 1           | 16         | 8192    | local        |
 | `qwen3.5-4b`     | apollo_mini   | 256  | 128.0 | 1           | 16         | 4096    | local        |
-| `qwen3.5-9b`     | apollo        | 512  | 1.0   | 2           | 8          | 16384   | workstation  |
-| `qwen3.6-27b`    | apollo_mini   | 512  | 128.0 | 1           | 8          | 65536   | cloud (FSDP) |
+| `qwen3.5-4b`     | apollo        | 512  | 1.0   | 2           | 8          | 16384   | workstation  |
+| `qwen3.5-4b`    | apollo_mini   | 512  | 128.0 | 1           | 8          | 65536   | cloud (FSDP) |
 
 `--apollo-update-proj-gap 200` is a reasonable default at every size. The
 projector is re-randomized every 200 steps; lower it (50–100) for very short
@@ -55,17 +55,17 @@ to `scripts/train_local.py` (and the same flag is forwarded by
 `scripts/run_pipeline.py`) to override the registry default for one run:
 
 ```bash
-# Long-context 27B experiment — registry default is 64k, push to 128k
+# Long-context 4B experiment — registry default is 64k, push to 128k
 # after validating with memory_calc.py first.
 uv run --extra train python3 scripts/training/memory_calc.py \
-    --shape qwen3.6-27b
+    --shape qwen3.5-4b
 uv run --extra train python3 scripts/train_local.py \
-    --registry-key qwen3.6-27b \
+    --registry-key qwen3.5-4b \
     --max-seq-len 131072 \
     --full-finetune --epochs 1
 ```
 
-The 27B default was lowered from 147k to 64k (gap M35) because the 147k
+The 4B default was lowered from 147k to 64k (gap M35) because the 147k
 budget left only ~1% headroom on a 2× Blackwell 6000 cluster and ~6% on
 2× H200 — one activation spike OOMed the run. 64k is the conservative
 default; long-context runs are now an explicit per-run opt-in.
@@ -94,7 +94,7 @@ uv run --extra train python3 scripts/train_local.py \
     --run-name qwen35-2b-apollo-v1
 ```
 
-To run APOLLO-Mini (smallest optimizer state — used for the local-tier 2B and the cloud-tier 27B at long sequence lengths):
+To run APOLLO-Mini (smallest optimizer state — used for the local-tier 2B and the cloud-tier 4B at long sequence lengths):
 
 ```bash
 uv run --extra train python3 scripts/train_local.py \

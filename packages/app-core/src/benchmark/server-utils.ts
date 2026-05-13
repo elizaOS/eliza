@@ -583,7 +583,10 @@ export async function ensureBenchmarkSessionContext(
     const meta = (existingWorld.metadata ?? {}) as Record<string, unknown>;
     const ownership = meta.ownership as Record<string, unknown> | undefined;
     if (!ownership?.ownerId) {
-      meta.ownership = { ...(ownership ?? {}), ownerId: BENCHMARK_OWNER_ENTITY_ID };
+      meta.ownership = {
+        ...(ownership ?? {}),
+        ownerId: BENCHMARK_OWNER_ENTITY_ID,
+      };
       await runtime.updateWorld({
         ...existingWorld,
         metadata: meta,
@@ -746,11 +749,7 @@ export function isScopeSeedMode(value: unknown): value is ScopeSeedMode {
 export function parseRoleSeedPayload(
   raw: unknown,
 ): RoleSeedPayload | undefined {
-  if (
-    !raw ||
-    typeof raw !== "object" ||
-    Array.isArray(raw)
-  ) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
     return undefined;
   }
 
@@ -854,7 +853,7 @@ export function applyRoleSeedPayload(
   if (!isPersonalityStore(store)) {
     throw new Error(
       "[bench] PersonalityStore service unavailable — cannot apply role-seed directives. " +
-      "Register a PersonalityStore service in the runtime before bench reset.",
+        "Register a PersonalityStore service in the runtime before bench reset.",
     );
   }
 

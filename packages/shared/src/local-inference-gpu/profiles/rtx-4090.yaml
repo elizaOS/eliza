@@ -65,7 +65,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 110
     estimated_prefill_tps: 3500
-    notes: "9B at 128k — recommended default for voice latency on the 4090."
+    notes: "Hidden future recipe pending final Eliza-1 weights and release evidence."
   eliza-1-27b:
     # 27B Q4 (~16.8 GiB) fits at 24 GiB with KV at 32k — tight but feasible.
     # The catalog default is 128k context; we down-size here for the 4090.
@@ -103,5 +103,5 @@ verify_recipe:
     - polarquant
     - dflash
   unavailable_kernels: []
-  smoke_bundle: eliza-1-9b
+  smoke_bundle: eliza-1-4b
   tolerance_pct: 10

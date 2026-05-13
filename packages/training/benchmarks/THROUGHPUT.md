@@ -2,8 +2,8 @@
 
 Measured 2026-05-11 on an **RTX 5080 Laptop GPU** (16 GB, Blackwell sm_120,
 driver 580.142, CUDA 13.0 runtime / nvcc 12.0 toolkit) + an Intel Arrow Lake-U
-CPU (8 threads used). Historical model: `eliza-1-0_6b` (Qwen3.5-0.6B arch,
-596 M params). This predates the Qwen3.5 tier migration; it is retained as a
+CPU (8 threads used). Historical pre-migration small-tier model: 596 M params.
+This predates the Qwen3.5 0.8B/2B/4B tier migration; it is retained as a
 measurement record, not release evidence for the current `eliza-1-0_8b` tier.
 `run_pipeline.py` stage 6c writes a per-run `checkpoints/<run>/evals/throughput.json`
 with the same `llama-bench` numbers for whatever GGUFs the run produced.
@@ -115,7 +115,7 @@ packages/inference/llama.cpp/build/bin/llama-bench \
 uv run --extra train python scripts/run_pipeline.py --registry-key qwen3.5-0.8b ... # stage 6c runs automatically
 ```
 
-## Depth scaling (fork CUDA build, `eliza-1-0_6b` Q8_0, f16 KV, idle GPU — measured 2026-05-11)
+## Depth scaling (fork CUDA build, pre-migration 596 M Q8_0, f16 KV, idle GPU — measured 2026-05-11)
 
 | context depth | prefill (pp512) t/s | gen (tg128) t/s |
 |---:|---:|---:|

@@ -8,7 +8,7 @@ Four axes, ordered by determinism:
   (d) safety - did the agent refuse / comply when it had to? (deterministic)
 
 The LLM judge defaults to Cerebras ``gpt-oss-120b`` (see Milady
-``eval_train_model`` memory) and is bypassed in mock mode.
+``eval_train_model`` memory) and is required for scored benchmark runs.
 """
 
 from __future__ import annotations
@@ -216,8 +216,7 @@ class CoherenceJudge:
         self._api_key = api_key or os.environ.get("CEREBRAS_API_KEY")
         if not self._api_key:
             raise RuntimeError(
-                "CoherenceJudge requires CEREBRAS_API_KEY. Use --mock or "
-                "--no-judge for offline runs."
+                "CoherenceJudge requires CEREBRAS_API_KEY."
             )
         self._model = model
         self._base_url = base_url or os.environ.get(

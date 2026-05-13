@@ -16,45 +16,56 @@ const mocks = vi.hoisted(() => ({
   loggerWarn: vi.fn(),
 }));
 
-vi.mock("@elizaos/core", () => ({
-  logger: {
-    warn: mocks.loggerWarn,
-    info: vi.fn(),
-    debug: vi.fn(),
-    error: vi.fn(),
-  },
-  stringToUuid: (value: string) => value,
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: {
+      warn: mocks.loggerWarn,
+      info: vi.fn(),
+      debug: vi.fn(),
+      error: vi.fn(),
+    },
+    stringToUuid: (value: string) => value,
+  };
+});
 
 vi.mock("@elizaos/agent", () => ({
   loadElizaConfig: () => ({ meta: {}, agents: {} }),
 }));
 
-vi.mock("@elizaos/shared", () => ({
-  isLoopbackBindHost: (host: string) => {
-    const trimmed = host.trim().toLowerCase();
-    let hostname = trimmed;
-    try {
-      hostname = new URL(`http://${trimmed}`).hostname.replace(/^\[|\]$/g, "");
-    } catch {
-      hostname = trimmed.split(":")[0] ?? trimmed;
-    }
-    return (
-      hostname === "localhost" ||
-      hostname === "::1" ||
-      hostname === "0:0:0:0:0:0:0:1" ||
-      hostname.startsWith("127.")
-    );
-  },
-  normalizeOnboardingProviderId: (value: unknown) =>
-    typeof value === "string" ? value.trim().toLowerCase() : null,
-  resolveApiToken: (env: NodeJS.ProcessEnv) =>
-    env.ELIZA_API_TOKEN?.trim() || null,
-  resolveDeploymentTargetInConfig: () => ({}),
-  resolveServiceRoutingInConfig: () => ({}),
-}));
+vi.mock("@elizaos/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/shared")>();
+  return {
+    ...actual,
+    isLoopbackBindHost: (host: string) => {
+      const trimmed = host.trim().toLowerCase();
+      let hostname = trimmed;
+      try {
+        hostname = new URL(`http://${trimmed}`).hostname.replace(
+          /^\[|\]$/g,
+          "",
+        );
+      } catch {
+        hostname = trimmed.split(":")[0] ?? trimmed;
+      }
+      return (
+        hostname === "localhost" ||
+        hostname === "::1" ||
+        hostname === "0:0:0:0:0:0:0:1" ||
+        hostname.startsWith("127.")
+      );
+    },
+    normalizeOnboardingProviderId: (value: unknown) =>
+      typeof value === "string" ? value.trim().toLowerCase() : null,
+    resolveApiToken: (env: NodeJS.ProcessEnv) =>
+      env.ELIZA_API_TOKEN?.trim() || null,
+    resolveDeploymentTargetInConfig: () => ({}),
+    resolveServiceRoutingInConfig: () => ({}),
+  };
+});
 
-vi.mock("./auth", () => ({
+const authOverrides = {
   ensureRouteAuthorized: vi.fn(async () => true),
   getCompatApiToken: () => process.env.ELIZA_API_TOKEN?.trim() || null,
   getProvidedApiToken: (req: Pick<http.IncomingMessage, "headers">) => {
@@ -63,7 +74,23 @@ vi.mock("./auth", () => ({
     return value?.replace(/^Bearer\s+/i, "").trim() || null;
   },
   tokenMatches: (expected: string, provided: string) => expected === provided,
-}));
+};
+
+vi.mock("./auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth")>();
+  return {
+    ...actual,
+    ...authOverrides,
+  };
+});
+
+vi.mock("./auth.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth.ts")>();
+  return {
+    ...actual,
+    ...authOverrides,
+  };
+});
 
 interface MockAuthIdentity {
   id: string;

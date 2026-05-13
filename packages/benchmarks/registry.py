@@ -79,13 +79,18 @@ def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "overall_success_rate", ctx="realm:metrics"),
         ctx="realm:overall_success_rate",
     )
+    total_tasks = get_optional(metrics, "total_tasks") or 0
+    if total_tasks == 0:
+        raise ValueError(
+            "realm: result produced no evaluable tasks; refusing to publish a zero-task score"
+        )
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_success_rate": overall,
-            "total_tasks": get_optional(metrics, "total_tasks") or 0,
+            "total_tasks": total_tasks,
             "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
             "avg_plan_quality": get_optional(metrics, "avg_plan_quality") or 0,
             "avg_efficiency": get_optional(metrics, "avg_efficiency") or 0,
@@ -96,32 +101,53 @@ def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_mint_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="mint:root")
 
-    def get_rate(config_key: str) -> float | None:
+    def get_config(config_key: str) -> tuple[float, int, int] | None:
         cr_raw = get_optional(root, config_key)
         if cr_raw is None:
             return None
         cr = expect_dict(cr_raw, ctx=f"mint:{config_key}")
         metrics = expect_dict(get_required(cr, "metrics", ctx=f"mint:{config_key}"), ctx=f"mint:{config_key}.metrics")
-        return expect_float(
+        rate = expect_float(
             get_required(metrics, "overall_success_rate", ctx=f"mint:{config_key}.metrics"),
             ctx=f"mint:{config_key}.overall_success_rate",
         )
+        total_tasks = get_optional(metrics, "total_tasks") or 0
+        passed_tasks = get_optional(metrics, "passed_tasks") or 0
+        return (rate, int(total_tasks), int(passed_tasks))
 
-    full_rate = get_rate("full_results")
-    baseline_rate = get_rate("baseline_results")
+    configs = {
+        "baseline": get_config("baseline_results"),
+        "tools": get_config("tools_only_results"),
+        "feedback": get_config("feedback_only_results"),
+        "full": get_config("full_results"),
+    }
+    nonempty = {
+        name: config
+        for name, config in configs.items()
+        if config is not None and config[1] > 0
+    }
+    if not nonempty:
+        raise ValueError(
+            "mint: result produced no evaluable tasks; refusing to publish a zero-task score"
+        )
 
-    chosen = full_rate if full_rate is not None else baseline_rate
-    if chosen is None:
-        raise ValueError("mint: could not determine overall_success_rate (missing full_results and baseline_results)")
+    chosen_name, chosen_config = max(nonempty.items(), key=lambda item: item[1][0])
+    chosen_rate, chosen_total, chosen_passed = chosen_config
 
     return ScoreExtraction(
-        score=chosen,
+        score=chosen_rate,
         unit="ratio",
         higher_is_better=True,
         metrics={
-            "overall_success_rate": chosen,
-            "full_results_present": full_rate is not None,
-            "baseline_success_rate": baseline_rate if baseline_rate is not None else 0,
+            "overall_success_rate": chosen_rate,
+            "best_configuration": chosen_name,
+            "total_tasks": chosen_total,
+            "passed_tasks": chosen_passed,
+            "baseline_success_rate": configs["baseline"][0] if configs["baseline"] else 0,
+            "tools_success_rate": configs["tools"][0] if configs["tools"] else 0,
+            "feedback_success_rate": configs["feedback"][0] if configs["feedback"] else 0,
+            "full_success_rate": configs["full"][0] if configs["full"] else 0,
+            "full_results_present": configs["full"] is not None,
         },
     )
 
@@ -438,6 +464,24 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
     """
     root = expect_dict(data, ctx="rlm_bench:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="rlm_bench:root"), ctx="rlm_bench:metrics")
+    results = (
+        expect_list(root.get("results", []), ctx="rlm_bench:results")
+        if isinstance(root.get("results"), list)
+        else []
+    )
+    errored_results = [
+        item
+        for item in results
+        if isinstance(item, dict)
+        and isinstance(item.get("error"), str)
+        and bool(item.get("error"))
+    ]
+    if results and len(errored_results) == len(results):
+        sample_error = str(errored_results[0].get("error") or "").splitlines()[0][:240]
+        raise ValueError(
+            "rlm_bench: all tasks failed with runtime errors; refusing to publish "
+            f"as a scored model run (sample_error={sample_error!r})"
+        )
     overall_acc = expect_float(
         get_required(metrics, "overall_accuracy", ctx="rlm_bench:metrics"),
         ctx="rlm_bench:overall_accuracy",
@@ -464,6 +508,7 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
             "oolong_pairs_accuracy": get_optional(metrics, "oolong_pairs_accuracy") or 0,
             "total_cost_usd": get_optional(metrics, "total_cost_usd") or 0,
             "avg_iterations": get_optional(metrics, "avg_iterations") or 0,
+            "errored_tasks": len(errored_results),
         },
     )
 
@@ -698,7 +743,12 @@ def _score_from_woobench_json(data: JSONValue) -> ScoreExtraction:
             completed += 1
         revenue_obj = scenario.get("revenue")
         if isinstance(revenue_obj, dict):
-            amount = revenue_obj.get("total_paid") or revenue_obj.get("amount") or 0
+            amount = (
+                revenue_obj.get("amount_earned")
+                or revenue_obj.get("total_paid")
+                or revenue_obj.get("amount")
+                or 0
+            )
         else:
             amount = revenue_obj if isinstance(revenue_obj, (int, float)) else 0
         try:
@@ -716,6 +766,9 @@ def _score_from_woobench_json(data: JSONValue) -> ScoreExtraction:
         metrics={
             "overall_score": overall,
             "revenue_efficiency": get_optional(root, "revenue_efficiency") or 0,
+            "revenue_score": get_optional(root, "revenue_score") or 0,
+            "price_discipline_score": get_optional(root, "price_discipline_score") or 0,
+            "conversion_efficiency_score": get_optional(root, "conversion_efficiency_score") or 0,
             "resilience_score": get_optional(root, "resilience_score") or 0,
             "failed_scenarios": get_optional(root, "failed_scenarios") or 0,
             "total_revenue": float(total_revenue),
@@ -1164,8 +1217,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
         max_tasks = extra.get("max_tasks")
+        if categories is None and max_tasks == 1:
+            args.extend(["--categories", "sequential"])
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
+        max_steps = extra.get("max_steps")
+        if isinstance(max_steps, int) and max_steps > 0:
+            args.extend(["--max-steps", str(max_steps)])
+        timeout = extra.get("timeout")
+        if isinstance(timeout, int) and timeout > 0:
+            args.extend(["--timeout", str(timeout)])
         if model.model:
             # REALM treats --model as a reporting label only; the actual LLM is
             # picked by the in-process elizaOS Python runtime (default) or by the
@@ -1176,7 +1237,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.append("--mock")
         # Route the planning loop through the TS benchmark server when the
         # caller asks for the eliza agent or any LLM-backed provider.
-        agent = extra.get("agent")
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"hermes", "openclaw"}:
+            raise ValueError(f"realm: native {agent} harness adapter is not implemented")
         if agent == "eliza" or provider_name in {
             "eliza",
             "cerebras",
@@ -1204,8 +1267,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         # to the direct OpenAI-compatible runtime instead of silently using mock.
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         provider_name = (model.provider or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"} or provider_name == "eliza":
+        if agent == "eliza" or provider_name == "eliza":
             args.extend(["--provider", "eliza"])
+        elif agent in {"hermes", "openclaw"}:
+            raise ValueError(f"mint: native {agent} harness adapter is not implemented")
         elif provider_name in {"mock", ""}:
             args.extend(["--provider", "mock"])
         elif provider_name in {"openai", "groq", "openrouter", "cerebras"}:
@@ -1349,8 +1414,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if agent in {"eliza", "hermes", "openclaw"}:
             if model.model:
                 args.extend(["--model", model.model])
-            if agent == "eliza":
-                args.extend(["--model-provider", "eliza"])
         elif provider_name in bridge_providers:
             if model.model:
                 args.extend(["--model", model.model])
@@ -1374,8 +1437,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
-        if extra.get("dry_run") is True or extra.get("no_docker") is True:
+        if extra.get("dry_run") is True:
             args.append("--dry-run")
+        elif extra.get("no_docker") is True:
+            args.append("--local-sandbox")
         if extra.get("oracle") is True:
             args.append("--oracle")
         if extra.get("no_markdown") is True:
@@ -1886,7 +1951,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         no_oolong = extra.get("no_oolong")
         if no_oolong is True:
             args.append("--no-oolong")
-        _ = model
+        root_model = extra.get("root_model")
+        if not isinstance(root_model, str) or not root_model.strip():
+            root_model = model.model
+        subcall_model = extra.get("subcall_model")
+        if not isinstance(subcall_model, str) or not subcall_model.strip():
+            subcall_model = model.model or root_model
+        if isinstance(root_model, str) and root_model.strip():
+            args.extend(["--root-model", root_model.strip()])
+        if isinstance(subcall_model, str) and subcall_model.strip():
+            args.extend(["--subcall-model", subcall_model.strip()])
         return args
 
     def _rlm_bench_result(output_dir: Path) -> Path:

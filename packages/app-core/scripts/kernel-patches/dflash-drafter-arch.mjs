@@ -50,6 +50,12 @@ function patchTextFile(llamaCppRoot, rel, transform, touched) {
 }
 
 function patchCmake(source, rel) {
+  if (
+    source.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")') ||
+    source.includes("models/dflash_draft.cpp")
+  ) {
+    return source;
+  }
   return insertAfter(
     source,
     "            models/dream.cpp\n",
@@ -193,6 +199,12 @@ function patchModelHeader(source, rel) {
 }
 
 function patchModelsHeader(source, rel) {
+  if (
+    source.includes("struct llama_model_dflash_draft") &&
+    source.includes("struct llm_build_dflash_draft")
+  ) {
+    return source;
+  }
   let out = insertAfter(
     source,
     "struct llm_build_qwen3moe : public llm_graph_context {\n    llm_build_qwen3moe(const llama_model & model, const llm_graph_params & params);\n};\n",
@@ -221,6 +233,9 @@ struct llama_model_dflash_draft : public llama_model_base {
 }
 
 function patchModelCpp(source, rel) {
+  if (source.includes("return new llama_model_dflash_draft(params);")) {
+    return source;
+  }
   let out = source;
   if (out.includes("return new llama_model_qwen35(params);")) {
     out = insertBefore(

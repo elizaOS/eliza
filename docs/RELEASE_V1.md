@@ -24,14 +24,14 @@ gates), `packages/training/AGENTS.md`, `ELIZA_1_GGUF_READINESS.md`,
 
 | Component | v1 source (upstream repo) | Conversion | Optimization | Notes |
 |---|---|---|---|---|
-| Text 0.6B | `Qwen/Qwen3-0.6B-GGUF` (`Qwen3-0.6B-Q8_0.gguf`) | `convert_hf_to_gguf.py` from the elizaOS/llama.cpp fork | TurboQuant Q3 (`turbo3`/`turbo4`) KV + QJL K-cache (`block_qjl1_256`) + PolarQuant V-cache (`block_q4_polar`) + fused-attn + DFlash | `Qwen3.5-0.6B` not published yet; uses `Qwen3-0.6B` until it is |
-| Text 1.7B | `Qwen/Qwen3-1.7B-GGUF` (`Qwen3-1.7B-Q8_0.gguf`) | same | TurboQuant Q3/Q4 + QJL + Polar + fused-attn + DFlash | `Qwen3.5-1.7B` not published; uses `Qwen3-1.7B` |
+| Text 0.8B | `Qwen/Qwen3.5-0.8B` (convert from safetensors or the matching GGUF once published) | `convert_hf_to_gguf.py` from the elizaOS/llama.cpp fork | TurboQuant Q3 (`turbo3`/`turbo4`) KV + QJL K-cache (`block_qjl1_256`) + PolarQuant V-cache (`block_q4_polar`) + fused-attn + DFlash | Smallest active Eliza-1 text tier |
+| Text 2B | `Qwen/Qwen3.5-2B` (convert from safetensors or the matching GGUF once published) | same | TurboQuant Q3/Q4 + QJL + Polar + fused-attn + DFlash | Default mobile/desktop active tier |
 | Text 9B | `unsloth/Qwen3.5-9B-GGUF` (`Qwen3.5-9B-Q4_K_M.gguf` source ref; reconvert from HF safetensors for Eliza types) | same | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` (≥64k) + fused-attn + DFlash | mmproj vision component too |
 | Text 27B | `batiai/Qwen3.6-27B-GGUF` (`Qwen-Qwen3.6-27B-Q4_K_M.gguf` ref) | same | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` + fused-attn + DFlash | `27b-256k`, `27b-1m` are context variants of this tier |
-| Voice (TTS) | `Serveurperso/OmniVoice-GGUF` (`omnivoice-base-<quant>.gguf` + `omnivoice-tokenizer-<quant>.gguf`) | already GGUF | fused-omnivoice runtime; quant per `VOICE_QUANT_BY_TIER` (Q4_K_M on 0.6B/1.7B, Q8_0 on 9B+) | non-commercial CC-compatible licensing per inference/AGENTS.md §1 |
-| ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | already GGUF | tokenizer fused with the text backbone (zero re-tokenization) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` |
+| Voice (TTS) | `Serveurperso/OmniVoice-GGUF` (`omnivoice-base-<quant>.gguf` + `omnivoice-tokenizer-<quant>.gguf`) | already GGUF | fused-omnivoice runtime; quant per `VOICE_QUANT_BY_TIER` (Q4_K_M on 0.8B/2B, Q8_0 on 9B+) | non-commercial CC-compatible licensing per inference/AGENTS.md §1 |
+| ASR | Eliza-1 ASR GGUF staged under the bundle's `asr/` region | already GGUF | tokenizer fused with the text backbone (zero re-tokenization) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` |
 | VAD | Silero VAD v5.1.2 (MIT) | native GGML `vad/silero-vad-v5.1.2.ggml.bin` (the release path; legacy bundles may also carry the `vad/silero-vad-int8.onnx` ONNX fallback) | none (not a GGUF) | drives barge-in / silence gating |
-| Embedding | `Qwen/Qwen3-Embedding-0.6B-GGUF` (1.7B+ tiers) | already GGUF | none beyond fork conversion | 0.6B tier omits it (pools from the text backbone with `--pooling last`) |
+| Embedding | Eliza-1 dedicated embedding GGUF (2B+ tiers) | GGUF | none beyond fork conversion | 0.8B tier may omit it and pool from the text backbone with `--pooling last` |
 | Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) FROM each tier's base text model; published under `elizaos/eliza-1-<tier>` | `distill_dflash_drafter.py` → fork `convert_hf_to_gguf.py` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` |
 | Voice preset cache | placeholder from W13 until a real fused build emits one | n/a | n/a | `cache/voice-preset-default.bin` |
 
@@ -75,11 +75,11 @@ The build MUST fail if any required kernel patch is missing
 # Per-tier source weights into a bundle's source/ dir, with SHA-256 evidence.
 uv run python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier 9b   --bundle-dir ~/.eliza/local-inference/models/eliza-1-9b.bundle
 uv run python packages/training/scripts/manifest/stage_eliza1_bundle_assets.py  --tier 9b   --bundle-dir ~/.eliza/local-inference/models/eliza-1-9b.bundle --link-mode hardlink
-# ...repeat per tier: 0_6b, 1_7b, 9b, 27b, 27b-256k, 27b-1m
+# ...repeat per tier: 0_8b, 2b, 9b, 27b, 27b-256k, 27b-1m
 ```
 
-These stage TTS (`Serveurperso/OmniVoice-GGUF`), ASR (`ggml-org/Qwen3-ASR-*`),
-VAD (`onnx-community/silero-vad`), embedding (`Qwen/Qwen3-Embedding-0.6B-GGUF`),
+These stage TTS (`Serveurperso/OmniVoice-GGUF`), ASR (the Eliza-1 ASR GGUF),
+VAD (`onnx-community/silero-vad`), embedding (the Eliza-1 embedding GGUF),
 and the upstream text/vision GGUFs/safetensors into `source/`.
 
 ---
@@ -111,7 +111,7 @@ uv run python packages/training/scripts/quantization/gguf_eliza1_apply.py \
 
 Do this for every text variant per tier (`text/eliza-1-<tier>-<ctx>.gguf`),
 the vision mmproj on 9B+ (`vision/mmproj-<tier>.gguf`), and the embedding on
-1.7B+ (`embedding/...gguf`). TTS/ASR/VAD are already GGUF/ONNX — just stage
+2B+ (`embedding/...gguf`). TTS/ASR/VAD are already GGUF/ONNX — just stage
 the right quant (`omnivoice-base-<quant>.gguf` etc.).
 
 **Needs a GPU?** No — `convert_hf_to_gguf.py` and `gguf_eliza1_apply.py` are
@@ -172,22 +172,22 @@ accepts.
 ```bash
 # Synthetic smoke (no torch, no GPU): exercises pipeline + GGUF metadata write.
 uv run --extra train python packages/training/scripts/distill_dflash_drafter.py \
-  --tier 1_7b --synthetic-smoke --out-dir /tmp/dflash-smoke
+  --tier 2b --synthetic-smoke --out-dir /tmp/dflash-smoke
 
 # Real run (GPU): student = a smaller Qwen3 from the same family.
 uv run --extra train python packages/training/scripts/distill_dflash_drafter.py \
-  --tier 1_7b \
-  --target-checkpoint <hf-dir-of-the-base-1.7B> \
-  --target-gguf out/eliza-1-1_7b/text/eliza-1-1_7b-32k.gguf \
-  --student-base Qwen/Qwen3-0.6B \
+  --tier 2b \
+  --target-checkpoint <hf-dir-of-the-base-2B> \
+  --target-gguf out/eliza-1-2b/text/eliza-1-2b-32k.gguf \
+  --student-base Qwen/Qwen3.5-0.8B \
   --dataset data/distill/eliza1-distill.jsonl \
   --epochs 1 --batch-size 8 --grad-accum 4 \
-  --out-dir out/eliza-1-1_7b/dflash
+  --out-dir out/eliza-1-2b/dflash
 # → drafter-<tier>.gguf (general.architecture="dflash-draft", dflash_fc.weight /
 #   dflash_hidden_norm.weight tensors, dflash-draft.dflash.{block_size,
 #   mask_token_id,target_layer_ids,n_target_features} metadata, and
 #   dflash-draft.target_checkpoint_sha256 == sha256 of the text GGUF) plus
-#   drafter-<tier>.distill.json. Tiers: 0_6b, 1_7b, 9b, 27b, 27b-256k, 27b-1m.
+#   drafter-<tier>.distill.json. Tiers: 0_8b, 2b, 9b, 27b, 27b-256k, 27b-1m.
 ```
 
 If the GGUF conversion step needs a host you don't have, the recipe still
@@ -331,7 +331,7 @@ and every platform-dispatch report is green for the exact shipped bytes, and
 |---|---|
 | Fork converter (`convert_hf_to_gguf.py`), `gguf_eliza1_apply.py`, sidecar generation, bundle staging, checksums, platform-plan regen, manifest build, `distill_dflash_drafter.py --synthetic-smoke`, `--stamp-only` | CPU host (the fork is in-tree at `packages/inference/llama.cpp`; this environment can run these once the source weights are present) |
 | Fork build with kernel patches, `metal_verify` / `vulkan_verify` / `cuda_verify` / `rocm_verify`, platform-dispatch smokes | the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for the `27b-1m` tier) |
-| PolarQuant code generation, TurboQuant skip-layer calibration, DFlash distillation, text perplexity / RTF / WER / VAD / dflash / e2e / 30-turn evals | a GPU big enough for the tier (consumer GPU for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B) |
+| PolarQuant code generation, TurboQuant skip-layer calibration, DFlash distillation, text perplexity / RTF / WER / VAD / dflash / e2e / 30-turn evals | a GPU big enough for the tier (consumer GPU for 0.8B/2B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B) |
 
 This environment is CPU-only with no source weights staged yet, so the GPU/HW
 rows are wired (correct invocations above) but not executed here. Everything in

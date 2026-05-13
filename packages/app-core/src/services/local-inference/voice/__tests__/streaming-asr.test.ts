@@ -9,20 +9,20 @@
 
 import { describe, expect, it } from "vitest";
 import { MockCheckpointManager } from "../checkpoint-manager";
+import type {
+  ElizaInferenceContextHandle,
+  ElizaInferenceFfi,
+  ElizaInferenceRegion,
+} from "../ffi-bindings";
 import { LocalAgreementBuffer } from "../streaming-asr/streaming-pipeline-adapter";
 import { ASR_SAMPLE_RATE, FfiBatchTranscriber } from "../transcriber";
+import type { PcmFrame, TranscriberEvent } from "../types";
 import type {
   DrafterAbortReason,
   DrafterHandle,
   StartDrafterFn,
 } from "../voice-state-machine";
 import { VoiceStateMachine } from "../voice-state-machine";
-import type {
-  ElizaInferenceContextHandle,
-  ElizaInferenceFfi,
-  ElizaInferenceRegion,
-} from "../ffi-bindings";
-import type { PcmFrame, TranscriberEvent } from "../types";
 
 /* ======================================================================
  * Helpers
@@ -50,10 +50,14 @@ function makeBatchFfi(
     libraryAbiVersion: "1",
     create: (): ElizaInferenceContextHandle => 1n,
     destroy: () => {},
-    mmapAcquire: (_c: ElizaInferenceContextHandle, _r: ElizaInferenceRegion) =>
-      {},
-    mmapEvict: (_c: ElizaInferenceContextHandle, _r: ElizaInferenceRegion) =>
-      {},
+    mmapAcquire: (
+      _c: ElizaInferenceContextHandle,
+      _r: ElizaInferenceRegion,
+    ) => {},
+    mmapEvict: (
+      _c: ElizaInferenceContextHandle,
+      _r: ElizaInferenceRegion,
+    ) => {},
     ttsSynthesize: () => {
       throw new Error("not used");
     },
@@ -424,7 +428,9 @@ describe("FfiBatchTranscriber — flush() returns committed final on speech-end"
 
     // Feed ~1.5 s to force multiple decode passes.
     for (let i = 0; i < 3; i++) {
-      transcriber.feed(makePcmFrame(Math.round(0.5 * ASR_SAMPLE_RATE), i * 500));
+      transcriber.feed(
+        makePcmFrame(Math.round(0.5 * ASR_SAMPLE_RATE), i * 500),
+      );
     }
     const final = await transcriber.flush();
     expect(final.isFinal).toBe(true);

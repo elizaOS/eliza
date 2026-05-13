@@ -1,10 +1,10 @@
-"""Hybrid linear-attention + full-attention KV cache for Qwen3.5 / Qwen3.6.
+"""Hybrid linear-attention + full-attention KV cache for active Qwen3.5 models.
 
 Background
 ----------
 
-Qwen3.5 and Qwen3.6 (``Qwen3_5ForCausalLM`` / ``Qwen3_5ForConditionalGeneration``,
-likewise the ``-MoE`` text variants) interleave two attention types on a 4-layer
+Qwen3.5 (``Qwen3_5ForCausalLM`` / ``Qwen3_5ForConditionalGeneration``,
+likewise the ``-MoE`` text variants) interleaves two attention types on a 4-layer
 period:
 
     layer 0..2   : Gated DeltaNet (``linear_attention``)
@@ -220,7 +220,7 @@ def _resolve_text_config(model_or_config):
 
 
 class ElizaHybridCache(Cache):
-    """Hybrid cache for Qwen3.5 / Qwen3.6 style linear+full attention models.
+    """Hybrid cache for active Qwen3.5 style linear+full attention models.
 
     The cache holds one ``self.layers[i]`` per ``layer_types[i]``. Linear-
     attention slots get a ``LinearAttentionLayer`` (SSM + conv state).
@@ -302,7 +302,7 @@ class ElizaHybridCache(Cache):
         Imports the vendored fused_turboquant lazily so the module loads
         without it. The vendored copy under
         ``scripts/quantization/fused_turboquant_vendored/`` patches the
-        upstream ``make_fused_attention_forward`` to handle Qwen3.5/3.6
+        upstream ``make_fused_attention_forward`` to handle Qwen3.5
         gated attention (chunked q_proj + sigmoid(gate) post-multiply).
         """
         try:
@@ -334,16 +334,14 @@ class ElizaHybridCache(Cache):
             )
 
         # Soft-warn for gated attention on architectures we haven't tested.
-        # Qwen3.5 / Qwen3.6 are explicitly supported by the vendored patch;
+        # Qwen3.5 is explicitly supported by the vendored patch;
         # anything else with attn_output_gate=true falls back to the same
         # codepath but hasn't been smoke-tested by us.
         attn_output_gate = getattr(cfg, "attn_output_gate", False)
         arch_name = type(model).__name__
         _gated_known = (
             "Qwen3_5" in arch_name
-            or "Qwen3_6" in arch_name
             or arch_name.startswith("Qwen3_5")
-            or arch_name.startswith("Qwen3_6")
         )
         if attn_output_gate and not _gated_known:
             log.warning(

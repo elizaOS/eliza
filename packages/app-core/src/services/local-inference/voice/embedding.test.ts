@@ -1,8 +1,8 @@
 /**
  * Local-embedding route resolution + Matryoshka truncation (`embedding.ts`):
- *   - `0_8b` → pooled-text source on the text backbone with `--pooling last`
+ *   - `0_8b` / `2b` → pooled-text source on the text backbone with `--pooling last`
  *     (no separate GGUF)
- *   - `2b` / `9b` / `27b` / `27b-256k` / `27b-1m` → dedicated `embedding/`
+ *   - `4b` / `9b` / `27b` / `27b-256k` / `27b-1m` → dedicated `embedding/`
  *     region; hard-fails when that region is missing (AGENTS.md §1 — do NOT
  *     collapse to pooled text on the larger tiers; that breaks the 1024-dim
  *     Matryoshka contract)
@@ -48,33 +48,29 @@ describe("resolveLocalEmbeddingSource", () => {
     }
   });
 
-  it("2b: uses a dedicated embedding/ region", () => {
+  it("2b: reuses the text backbone with --pooling last (no duplicate GGUF)", () => {
     const bundleRoot = tmpBundle();
-    const embPath = path.join(
-      bundleRoot,
-      EMBEDDING_DIR_REL_PATH,
-      "qwen3.5-embedding-0.6b.gguf",
-    );
-    mkdirSync(path.dirname(embPath), { recursive: true });
-    writeFileSync(embPath, "gguf");
+    const textPath = path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf");
+    mkdirSync(path.dirname(textPath), { recursive: true });
+    writeFileSync(textPath, "gguf");
     const src = resolveLocalEmbeddingSource({
       bundleRoot,
       tierId: "eliza-1-2b",
-      textModelPath: "/unused.gguf",
+      textModelPath: textPath,
     });
-    expect(src.kind).toBe("dedicated-region");
-    if (src.kind === "dedicated-region") {
-      expect(src.embeddingModelPath).toBe(embPath);
-      expect(src.dimensions).toBe(1024);
+    expect(src.kind).toBe("pooled-text");
+    if (src.kind === "pooled-text") {
+      expect(src.textModelPath).toBe(textPath);
+      expect(src.poolingType).toBe("last");
     }
   });
 
-  it("hard-fails when a non-0_8b tier is missing its embedding/ region", () => {
+  it("hard-fails when the 4b tier is missing its embedding/ region", () => {
     const bundleRoot = tmpBundle();
     expect(() =>
       resolveLocalEmbeddingSource({
         bundleRoot,
-        tierId: "eliza-1-9b",
+        tierId: "eliza-1-4b",
         textModelPath: "/unused.gguf",
       }),
     ).toThrow(VoiceStartupError);
@@ -105,7 +101,7 @@ describe("buildLocalEmbeddingRoute", () => {
     writeFileSync(embPath, "gguf");
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-27b",
+      tierId: "eliza-1-4b",
       textModelPath: "/unused.gguf",
     });
     expect(route.dimensions).toBe(1024);

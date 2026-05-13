@@ -100,6 +100,7 @@ export interface PromotionNativeBackendResultLike {
     fewShotExamples?: PromotionFewShotExample[];
   };
   dataset: OptimizationExample[];
+  holdoutSet?: OptimizationExample[];
   scorer: PromptScorer;
 }
 
@@ -136,15 +137,23 @@ export async function gatedPersistNativeResult(
       : null;
   const incumbentPrompt = incumbentResolved?.prompt ?? input.baselinePrompt;
   const incumbentSource = incumbentResolved ? "current" : "baseline";
+  const gateDataset =
+    input.result.holdoutSet && input.result.holdoutSet.length > 0
+      ? input.result.holdoutSet
+      : input.result.dataset;
+  const gateSource =
+    input.result.holdoutSet && input.result.holdoutSet.length > 0
+      ? `holdout(n=${input.result.holdoutSet.length})`
+      : `full-dataset(n=${input.result.dataset.length}) [no holdout available]`;
 
   const decision = await evaluatePromotion({
     incumbentPrompt,
     candidatePrompt: input.result.result.optimizedPrompt,
-    dataset: input.result.dataset,
+    dataset: gateDataset,
     scorer: input.result.scorer,
   });
   notes.push(
-    `promotion-gate ${decision.promote ? "PROMOTE" : "REJECT"} incumbent_source=${incumbentSource} ${decision.reason}`,
+    `promotion-gate ${decision.promote ? "PROMOTE" : "REJECT"} incumbent_source=${incumbentSource} gate_dataset=${gateSource} ${decision.reason}`,
   );
 
   const generatedAt = new Date().toISOString();

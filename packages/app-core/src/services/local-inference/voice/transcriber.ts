@@ -241,9 +241,7 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
     const source = update.source ?? this.metadata.source;
     const speaker = update.speaker ?? this.metadata.speaker;
     const segments =
-      update.segments ??
-      update.turn?.segments ??
-      this.metadata.turn?.segments;
+      update.segments ?? update.turn?.segments ?? this.metadata.turn?.segments;
     const turn =
       update.turn || this.metadata.turn
         ? {

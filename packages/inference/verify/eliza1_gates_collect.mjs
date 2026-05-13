@@ -24,7 +24,7 @@
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
- *     [--tier 0_6b|1_7b|4b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
+ *     [--tier 0_8b|2b|4b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
  */
 
 import fs from "node:fs";
@@ -56,7 +56,7 @@ function timestamp() {
 
 function parseArgs(argv) {
   const args = {
-    tier: "1_7b",
+    tier: "2b",
     gates: DEFAULT_GATES,
     report: null,
     json: false,
@@ -989,7 +989,7 @@ async function main() {
       status: visionStatus,
       blocking: visionStatus === "fail",
       measured: visionSmoke?.data?.status ?? null,
-      threshold: ["0_6b", "0_6b", "1_7b", "1_7b"].includes(args.tier) ? "not-applicable" : "pass",
+      threshold: ["0_8b", "2b"].includes(args.tier) ? "not-applicable" : "pass",
       reason:
         visionSmoke?.data?.reason ??
         (visionStatus === "needs-data" ? "no vision smoke evidence for this tier" : "vision smoke passed"),

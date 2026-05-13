@@ -262,12 +262,7 @@ class ServerConfigLoader:
                 continue  # Skip aliases, they'll be resolved when processing the target param
 
             # Get parameter value (check aliases too)
-            param_value = params.get(param_name)
-            if param_value is None and "aliases" in param_spec:
-                for alias in param_spec["aliases"]:
-                    if alias in params:
-                        param_value = params[alias]
-                        break
+            param_value = self._get_param_value(config, params, param_name)
 
             # Use default if value not provided
             if param_value is None:
@@ -314,12 +309,7 @@ class ServerConfigLoader:
                 continue
 
             # Get parameter value (check aliases too)
-            param_value = params.get(param_name)
-            if param_value is None and "aliases" in param_spec:
-                for alias in param_spec["aliases"]:
-                    if alias in params:
-                        param_value = params[alias]
-                        break
+            param_value = self._get_param_value(config, params, param_name)
 
             # Use default if value not provided
             if param_value is None:
@@ -387,7 +377,7 @@ class ServerConfigLoader:
         # Determine which parameter contains the workspace path
         cwd_param = workspace.get("cwd_param")
         if cwd_param:
-            cwd_value = params.get(cwd_param)
+            cwd_value = self._get_param_value(config, params, cwd_param)
             if cwd_value:
                 cwd_value = self._replace_placeholders(cwd_value, params)
                 cwd_path = Path(cwd_value).resolve()
@@ -397,6 +387,35 @@ class ServerConfigLoader:
                     cwd_path.mkdir(parents=True, exist_ok=True)
 
                 return str(cwd_path)
+
+        return None
+
+    def _get_param_value(
+        self,
+        config: Dict[str, Any],
+        params: Dict[str, Any],
+        param_name: str,
+    ) -> Any:
+        """Return a parameter value, honoring declarative aliases.
+
+        YAML server configs commonly use one canonical parameter for CLI args
+        and workspace behavior while task configs use an alias. Keep both paths
+        consistent so cwd resolution and CLI argument construction point at the
+        same directory.
+        """
+
+        if param_name in params:
+            return params[param_name]
+
+        param_config = config.get("parameters", {})
+        param_spec = param_config.get(param_name, {})
+        for alias in param_spec.get("aliases", []) or []:
+            if alias in params:
+                return params[alias]
+
+        for alias_name, alias_spec in param_config.items():
+            if alias_spec.get("alias_for") == param_name and alias_name in params:
+                return params[alias_name]
 
         return None
 

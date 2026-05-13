@@ -96,7 +96,9 @@ export type BuildDeterministicFn = () => Promise<ContextPartial>;
  * Factory function that builds the message-dependent context part. Called with
  * the actual user message text.
  */
-export type BuildMessageDependentFn = (userMessage: string) => Promise<ContextPartial>;
+export type BuildMessageDependentFn = (
+  userMessage: string,
+) => Promise<ContextPartial>;
 
 // ---------------------------------------------------------------------------
 // Implementation

@@ -3580,7 +3580,7 @@ def claude_distill(records: Iterator[dict], *, slug: str, license: str,
 
     We preserve the assistant content **verbatim** in `expectedResponse`
     without re-encoding so the student model learns the exact `<think>`
-    surface that Qwen3.6 / Qwopus and our generation pipeline both expect.
+    surface that the active Qwen3.5/Qwopus generation pipeline expects.
 
     The `messages` array is rendered into `memoryEntries` + `currentMessage`
     + `expectedResponse` so `tokenizer.apply_chat_template(...)` produces

@@ -43,8 +43,10 @@ const DEFAULT_LOAD_TIMEOUT_MS = 180_000;
 const SERVICE_ENABLED = process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 const KNOWN_EMBEDDING_DIMENSIONS: Record<string, number> = {
-	"eliza-1-lite-0_6b": 1024,
-	"eliza-1-mobile-1_7b": 2048,
+	"eliza-1-embedding": 1024,
+	"eliza-1-0_8b": 1024,
+	"eliza-1-2b": 1536,
+	"eliza-1-4b": 2560,
 };
 
 const ELIZA_1_LOAD_METADATA: Record<
@@ -53,11 +55,13 @@ const ELIZA_1_LOAD_METADATA: Record<
 		contextSize: number;
 	}
 > = {
-	"eliza-1-lite-0_6b": { contextSize: 32768 },
-	"eliza-1-mobile-1_7b": { contextSize: 32768 },
-	"eliza-1-desktop-9b": { contextSize: 65536 },
-	"eliza-1-pro-27b": { contextSize: 131072 },
-	"eliza-1-server-h200": { contextSize: 262144 },
+	"eliza-1-0_8b": { contextSize: 32768 },
+	"eliza-1-2b": { contextSize: 32768 },
+	"eliza-1-4b": { contextSize: 65536 },
+	"eliza-1-9b": { contextSize: 65536 },
+	"eliza-1-27b": { contextSize: 131072 },
+	"eliza-1-27b-256k": { contextSize: 262144 },
+	"eliza-1-27b-1m": { contextSize: 1048576 },
 };
 
 type GenerateTextHandler = (
@@ -780,22 +784,22 @@ const RECOMMENDED_MODELS: Record<
 	RecommendedModel
 > = {
 	TEXT_SMALL: {
-		id: "eliza-1-lite-0_6b",
-		hfRepo: "elizaos/eliza-1-lite-0_6b",
-		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
-		localFile: "eliza-1-lite-0_6b-32k.gguf",
+		id: "eliza-1-0_8b",
+		hfRepo: "elizaos/eliza-1",
+		ggufFile: "bundles/0_8b/text/eliza-1-0_8b-32k.gguf",
+		localFile: "eliza-1-0_8b-32k.gguf",
 	},
 	TEXT_LARGE: {
-		id: "eliza-1-mobile-1_7b",
-		hfRepo: "elizaos/eliza-1-mobile-1_7b",
-		ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
-		localFile: "eliza-1-mobile-1_7b-32k.gguf",
+		id: "eliza-1-2b",
+		hfRepo: "elizaos/eliza-1",
+		ggufFile: "bundles/2b/text/eliza-1-2b-32k.gguf",
+		localFile: "eliza-1-2b-32k.gguf",
 	},
 	TEXT_EMBEDDING: {
-		id: "eliza-1-lite-0_6b",
-		hfRepo: "elizaos/eliza-1-lite-0_6b",
-		ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
-		localFile: "eliza-1-lite-0_6b-32k.gguf",
+		id: "eliza-1-embedding",
+		hfRepo: "elizaos/eliza-1",
+		ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
+		localFile: "eliza-1-embedding.gguf",
 	},
 };
 

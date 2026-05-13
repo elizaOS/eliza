@@ -4,7 +4,7 @@
  *   - the constructor hard-fails when the GGUF doesn't exist (no silent
  *     placeholder server — Commandment 8)
  *   - `embeddingServerForRoute` picks the text backbone GGUF for the
- *     `0_8b` pooled-text route and the `embedding/` GGUF for the
+ *     `0_8b` / `2b` pooled-text route and the `embedding/` GGUF for the
  *     dedicated-region route, and forwards the route's `--embeddings
  *     --pooling last` flags
  *   - `embed([])` short-circuits to `[]` without starting a process
@@ -102,31 +102,27 @@ describe("embeddingServerForRoute", () => {
     expect(srv.isRunning()).toBe(false);
   });
 
-  it("2b dedicated-region route → sidecar over the embedding/ GGUF", () => {
+  it("2b pooled-text route → sidecar over the text backbone GGUF", () => {
     const bundleRoot = tmpBundle();
-    writeGguf(
-      path.join(
-        bundleRoot,
-        EMBEDDING_DIR_REL_PATH,
-        "qwen3.5-embedding-0.6b.gguf",
-      ),
+    const textPath = writeGguf(
+      path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf"),
     );
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
       tierId: "eliza-1-2b",
-      textModelPath: "/unused.gguf",
+      textModelPath: textPath,
     });
     const srv = embeddingServerForRoute(route);
     expect(srv).toBeInstanceOf(EmbeddingServer);
     expect(srv.isRunning()).toBe(false);
   });
 
-  it("dedicated-region route with a missing embedding/ GGUF never reaches the sidecar (route build hard-fails first)", () => {
+  it("4b dedicated-region route with a missing embedding/ GGUF never reaches the sidecar (route build hard-fails first)", () => {
     const bundleRoot = tmpBundle();
     expect(() =>
       buildLocalEmbeddingRoute({
         bundleRoot,
-        tierId: "eliza-1-9b",
+        tierId: "eliza-1-4b",
         textModelPath: "/unused.gguf",
       }),
     ).toThrow(VoiceStartupError);

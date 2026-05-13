@@ -20,10 +20,7 @@ function runtimeWithTtsHandler(enabled: boolean) {
 function runtimeWithEdgeTtsOnly() {
   return {
     models: new Map([
-      [
-        ModelType.TEXT_TO_SPEECH,
-        [{ provider: "edge-tts", handler: vi.fn() }],
-      ],
+      [ModelType.TEXT_TO_SPEECH, [{ provider: "edge-tts", handler: vi.fn() }]],
     ]),
   };
 }

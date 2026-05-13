@@ -7,13 +7,14 @@ For each task, the runner walks the user turns one at a time:
      and ``audio_input`` (raw bytes) so direct-audio adapters can opt
      into the bytes path.
   2. Drive the agent in a tool-call loop: assistant turn -> dispatch any
-     tool calls via the stub executor -> append synthetic tool responses
-     -> back to the assistant until it returns a text-only turn or the
-     per-turn cap is hit.
+     tool calls via the benchmark executor -> append deterministic tool
+     result envelopes -> back to the assistant until it returns a
+     text-only turn or the per-turn cap is hit.
   3. Move to the next user turn; repeat.
 
-Tool execution is stubbed - the benchmark scores the *selection* and
-*parameter extraction*, not the runtime semantics of the tool.
+Tool execution is intentionally reduced to deterministic result envelopes:
+the benchmark scores the *selection* and *parameter extraction*, not the
+runtime semantics of the tool.
 """
 
 from __future__ import annotations
@@ -197,7 +198,7 @@ def _extract_tool_calls(turn: MessageTurn) -> list[dict[str, Any]]:
     return out
 
 
-def _stub_tool_response(call: dict[str, Any]) -> dict[str, Any]:
+def _benchmark_tool_response(call: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": True,
         "tool": call.get("name"),
@@ -255,7 +256,7 @@ async def run_task(
                 if calls:
                     all_tool_calls.extend(calls)
                     for call in calls:
-                        result = _stub_tool_response(call)
+                        result = _benchmark_tool_response(call)
                         history.append(
                             MessageTurn(
                                 role="tool",

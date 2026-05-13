@@ -18,7 +18,7 @@
   },
   "dflash": {
     "enabled": true,
-    "drafter_tier": "1_7b",
+    "drafter_tier": "2b",
     "speculative_window": 8
   },
   "ctx_size_tokens": 131072,

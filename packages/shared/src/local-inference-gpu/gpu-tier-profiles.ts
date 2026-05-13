@@ -89,12 +89,12 @@ const RTX_3090: GpuProfile = {
   },
   dflash: {
     enabled: true,
-    drafter_tier: "0_6b",
+    drafter_tier: "0_8b",
     speculative_window: 5,
   },
   ctx_size_tokens: 32768,
   notes:
-    "24 GB GDDR6X. Comfortably fits 7B Q4_K_M with context. Use 3B Q8 for highest quality in 24 GB. DFlash enabled with 0.6B drafter.",
+    "24 GB GDDR6X. Comfortably fits 7B Q4_K_M with context. Use 3B Q8 for highest quality in 24 GB. DFlash enabled with 0.8B drafter.",
 };
 
 const RTX_4090: GpuProfile = {
@@ -117,7 +117,7 @@ const RTX_4090: GpuProfile = {
   },
   dflash: {
     enabled: true,
-    drafter_tier: "0_6b",
+    drafter_tier: "0_8b",
     speculative_window: 6,
   },
   ctx_size_tokens: 65536,
@@ -145,7 +145,7 @@ const RTX_5090: GpuProfile = {
   },
   dflash: {
     enabled: true,
-    drafter_tier: "1_7b",
+    drafter_tier: "2b",
     speculative_window: 8,
   },
   ctx_size_tokens: 131072,

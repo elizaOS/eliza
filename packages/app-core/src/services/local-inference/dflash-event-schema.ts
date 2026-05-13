@@ -326,10 +326,7 @@ export const dflashBatchEventSchema = z.object({
   accept_count: z.number().int().nonnegative(),
   reject_range: z
     .union([
-      z.tuple([
-        z.number().int().nonnegative(),
-        z.number().int().nonnegative(),
-      ]),
+      z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative()]),
       z.null(),
     ])
     .optional()

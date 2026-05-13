@@ -50,10 +50,10 @@ describe("runDflashDoctor — tokenizer parity check", () => {
   });
 
   it("every default-eligible Eliza-1 tier declares runtime.dflash", async () => {
-    const { ELIZA_1_TIER_IDS, MODEL_CATALOG, isDefaultEligibleId } =
+    const { ELIZA_1_RELEASE_TIER_IDS, MODEL_CATALOG, isDefaultEligibleId } =
       await import("./catalog");
 
-    for (const id of ELIZA_1_TIER_IDS) {
+    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
       const model = MODEL_CATALOG.find((m) => m.id === id);
       expect(model, `${id} missing from catalog`).toBeDefined();
       expect(isDefaultEligibleId(id), `${id} should be default-eligible`).toBe(

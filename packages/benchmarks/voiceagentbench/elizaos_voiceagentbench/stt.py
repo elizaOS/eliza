@@ -2,8 +2,7 @@
 
 The cascaded baseline transcribes a query's ``audio_bytes`` to text via
 Groq Whisper before forwarding to the agent's text path. Real benchmark
-runs require audio bytes and credentials; transcript passthrough is
-reserved for tests outside the CLI benchmark path.
+runs require audio bytes and credentials.
 
 Direct-audio adapters (future work) bypass this shim entirely.
 """
@@ -23,17 +22,6 @@ class STTBackend(Protocol):
         ...
 
 
-class TranscriptPassthroughSTT:
-    """Returns ``query.transcript`` unchanged.
-
-    Used in mock mode and when audio bytes are absent. Deterministic,
-    requires no credentials.
-    """
-
-    def transcribe(self, query: AudioQuery) -> str:
-        return query.transcript
-
-
 class GroqWhisperSTT:
     """Groq Whisper backend.
 
@@ -50,8 +38,7 @@ class GroqWhisperSTT:
         self._api_key = api_key or os.environ.get("GROQ_API_KEY")
         if not self._api_key:
             raise RuntimeError(
-                "GroqWhisperSTT requires GROQ_API_KEY (env or arg). Use "
-                "TranscriptPassthroughSTT for mock / fixture runs."
+                "GroqWhisperSTT requires GROQ_API_KEY (env or arg)."
             )
         self._model = os.environ.get("GROQ_TRANSCRIPTION_MODEL") or model
         self._client = None
@@ -85,5 +72,5 @@ class GroqWhisperSTT:
 def build_stt(*, mock: bool) -> STTBackend:
     """Pick an STT backend based on run mode."""
     if mock:
-        return TranscriptPassthroughSTT()
+        raise RuntimeError("Transcript passthrough STT is disabled for benchmark runs")
     return GroqWhisperSTT()

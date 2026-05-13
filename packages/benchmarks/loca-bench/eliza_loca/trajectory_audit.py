@@ -173,6 +173,10 @@ def audit_output_dir(
                     "source": "per_task",
                 }
             )
+    summary_total_api_tokens = results_summary.get("total_api_tokens")
+    if not summary_total_api_tokens and token_totals["total_tokens"]:
+        summary_total_api_tokens = token_totals["total_tokens"]
+
     audit = {
         "output_dir": str(root),
         "summary": {
@@ -183,7 +187,7 @@ def audit_output_dir(
             "avg_accuracy": results_summary.get("avg_accuracy"),
             "avg_steps": results_summary.get("avg_steps"),
             "avg_tool_calls": results_summary.get("avg_tool_calls"),
-            "total_api_tokens": results_summary.get("total_api_tokens"),
+            "total_api_tokens": summary_total_api_tokens,
             "max_prompt_tokens": max_prompt_tokens,
             "max_total_tokens": max_total_tokens,
             "avg_message_count": _mean(message_counts),

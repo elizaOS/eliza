@@ -16,16 +16,16 @@ describe("PostConversationRequestSchema", () => {
       title: "Hello",
       includeGreeting: true,
       lang: "en",
-      metadata: { scope: "user", taskId: "t1" },
+      metadata: { scope: "general", taskId: "t1" },
     });
     expect(parsed.title).toBe("Hello");
-    expect(parsed.metadata?.scope).toBe("user");
+    expect(parsed.metadata?.scope).toBe("general");
   });
 
   it("rejects unknown metadata field", () => {
     expect(() =>
       PostConversationRequestSchema.parse({
-        metadata: { scope: "user", custom: 1 },
+        metadata: { scope: "general", custom: 1 },
       }),
     ).toThrow();
   });

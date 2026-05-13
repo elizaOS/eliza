@@ -30,17 +30,13 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 
 ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
-    "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json"
+    "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
 
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "0_8b",
     "2b",
     "4b",
-    "9b",
-    "27b",
-    "27b-256k",
-    "27b-1m",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -124,58 +120,18 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
-    "9b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
-    "27b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
-    "27b-256k": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
-    "27b-1m": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
 }
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("metal", "vulkan", "cpu"),
     "2b": ("metal", "vulkan", "cpu"),
     "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    # 1M context is only practical on very large unified/HBM memory
-    # (GH200-class). CUDA is the only backend whose v1.0.0-eliza binary
-    # covers the full runtime path at that window today; the others stay
-    # off the supported list for this variant until verified.
-    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
-    "9b": "Q8_0",
-    "27b": "Q8_0",
-    "27b-256k": "Q8_0",
-    "27b-1m": "Q8_0",
 }
 
 
@@ -1113,7 +1069,7 @@ def build_manifest(
     recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
     # Optional provenance block. Pass for a `base-v1` bundle:
     #   {"releaseState": "base-v1", "finetuned": False,
-    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-9B", "file": "..."},
+    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-4B", "file": "..."},
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
     bundle_id: str | None = None,

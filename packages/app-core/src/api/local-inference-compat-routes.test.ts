@@ -7,53 +7,59 @@ import type { CompatRuntimeState } from "./compat-route-shared";
 
 const setActiveMock = vi.fn();
 
-vi.mock("@elizaos/core", () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
-  stringToUuid: (value: string) => value,
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+    ModelType: {
+      TEXT_LARGE: "TEXT_LARGE",
+      TEXT_SMALL: "TEXT_SMALL",
+      TEXT_EMBEDDING: "TEXT_EMBEDDING",
+      TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
+      TRANSCRIPTION: "TRANSCRIPTION",
+    },
+    ResponseSkeletonStreamExtractor: class {
+      done = false;
+      push(chunk: string) {
+        return chunk;
+      }
+      flush() {
+        this.done = true;
+        return "";
+      }
+      reset() {
+        this.done = false;
+      }
+    },
+    stringToUuid: (value: string) => value,
+  };
+});
 
 vi.mock("@elizaos/agent", () => ({
   loadElizaConfig: () => ({ meta: {}, agents: {} }),
 }));
 
-vi.mock("@elizaos/shared", () => ({
-  AGENT_MODEL_SLOTS: ["primary", "small", "embedding"],
-  DEFAULT_ROUTING_POLICY: "auto",
-  downloadsStagingDir: () => "/tmp/eliza-local-inference/downloads",
-  elizaModelsDir: () => "/tmp/eliza-local-inference/models",
-  isWithinElizaRoot: () => true,
-  isLoopbackBindHost: () => true,
-  localInferenceRoot: () => "/tmp/eliza-local-inference",
-  normalizeOnboardingProviderId: (value: unknown) =>
-    typeof value === "string" ? value.trim().toLowerCase() : null,
-  registryPath: () => "/tmp/eliza-local-inference/registry.json",
-  resolveApiToken: () => null,
-  resolveDeploymentTargetInConfig: () => ({}),
-  resolveServiceRoutingInConfig: () => ({}),
-  readRoutingPreferences: vi.fn(async () => ({})),
-  setPolicy: vi.fn(),
-  setPreferredProvider: vi.fn(),
-  writeRoutingPreferences: vi.fn(),
-  __registryPathForTests: () => "/tmp/eliza-local-inference/registry.json",
-  hashFile: vi.fn(async () => "sha256"),
-  verifyInstalledModel: vi.fn(async () => ({
-    ok: true,
-    checkedAt: new Date(0).toISOString(),
-  })),
-}));
+vi.mock("./auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth")>();
+  return {
+    ...actual,
+    ensureRouteAuthorized: vi.fn(async () => true),
+    ensureCompatSensitiveRouteAuthorized: () => true,
+    getCompatApiToken: () => null,
+    getProvidedApiToken: () => null,
+    tokenMatches: () => true,
+  };
+});
 
-vi.mock("./auth", () => ({
-  ensureRouteAuthorized: vi.fn(async () => true),
-  ensureCompatSensitiveRouteAuthorized: () => true,
-  getCompatApiToken: () => null,
-  getProvidedApiToken: () => null,
-  tokenMatches: () => true,
-}));
-
-vi.mock("./auth/sessions", () => ({
-  findActiveSession: vi.fn(async () => null),
-  parseSessionCookie: vi.fn(() => null),
-}));
+vi.mock("./auth/sessions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth/sessions")>();
+  return {
+    ...actual,
+    findActiveSession: vi.fn(async () => null),
+    parseSessionCookie: vi.fn(() => null),
+  };
+});
 
 vi.mock("./server-onboarding-helpers", () => ({
   isCloudProvisioned: () => false,
@@ -181,7 +187,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts the legacy { modelId } body shape (no overrides)", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "eliza-1-mobile-2b",
+      modelId: "eliza-1-2b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -191,7 +197,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "eliza-1-mobile-2b" },
+        body: { modelId: "eliza-1-2b" },
       }),
       res.res,
       STATE,
@@ -199,16 +205,12 @@ describe("POST /api/local-inference/active", () => {
 
     expect(handled).toBe(true);
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(
-      null,
-      "eliza-1-mobile-2b",
-      undefined,
-    );
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", undefined);
   });
 
   it("forwards a parsed overrides block to setActive", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "eliza-1-mobile-2b",
+      modelId: "eliza-1-2b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -219,7 +221,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-mobile-2b",
+          modelId: "eliza-1-2b",
           overrides: {
             contextSize: 131072,
             cacheTypeK: "f16",
@@ -234,7 +236,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-mobile-2b", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", {
       contextSize: 131072,
       cacheTypeK: "f16",
       cacheTypeV: "q8_0",
@@ -250,7 +252,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-mobile-2b",
+          modelId: "eliza-1-2b",
           overrides: { cacheTypeK: "tbq4_0" },
         },
       }),
@@ -273,7 +275,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-mobile-2b",
+          modelId: "eliza-1-2b",
           overrides: { contextSize: 100 },
         },
       }),
@@ -293,7 +295,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-mobile-2b",
+          modelId: "eliza-1-2b",
           overrides: { kvOffload: "magic" },
         },
       }),
@@ -307,7 +309,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts kvOffload object form { gpuLayers: N }", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "eliza-1-mobile-2b",
+      modelId: "eliza-1-2b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -318,7 +320,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-mobile-2b",
+          modelId: "eliza-1-2b",
           overrides: { kvOffload: { gpuLayers: 16 } },
         },
       }),
@@ -327,7 +329,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-mobile-2b", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", {
       kvOffload: { gpuLayers: 16 },
     });
   });
@@ -338,7 +340,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "eliza-1-mobile-2b", overrides: "nope" },
+        body: { modelId: "eliza-1-2b", overrides: "nope" },
       }),
       res.res,
       STATE,

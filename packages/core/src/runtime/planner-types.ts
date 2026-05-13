@@ -77,6 +77,7 @@ export interface PlannerRuntime {
 export interface PlannerToolResult {
 	success: boolean;
 	text?: string;
+	userFacingText?: string;
 	data?: Record<string, unknown>;
 	error?: unknown;
 	continueChain?: boolean;

@@ -34,16 +34,14 @@ compatibility host. When the framework is present, the React app routes
 local-agent requests through
 Capacitor `ElizaBunRuntime.call("http_request")`, the native C ABI, and the
 agent bundle's `ios-bridge --stdio` command. The WebView does not open a TCP
-connection to the backend. Until the Bun fork emits that framework and passes
-simulator boot, the foreground local-agent URL can still be routed through the
-in-process ITTP compatibility kernel. The kernel exposes
+connection to the backend. Full-Bun iOS builds route foreground local-agent
+requests through `bun-host-ipc`; compatibility builds can still route the
+foreground local-agent URL through the in-process ITTP kernel. The kernel exposes
 `GET /api/local-agent/capabilities` so the app can show the truth about what is
-local today: foreground chat/model-management routes are ITTP,
-native `Agent.request` / `Agent.chat` can bridge into that WebView kernel while
-the app is foregrounded, plugin/app managers are not mounted, and the
-`ScheduledTask` service is unavailable in background runner JSContexts.
-Background wakes in this mode are recorded as an explicit
-`ios_ittp_route_kernel_unavailable_in_background_jscontext` skip instead of
+local today. Background runner JSContexts do not own the foreground native
+runtime bridge, so local iOS wakes are recorded as explicit
+`ios_bun_host_ipc_unavailable_in_background_jscontext` or
+`ios_ittp_route_kernel_unavailable_in_background_jscontext` skips instead of
 probing a fake TCP endpoint.
 
 The AOSP / ElizaOS Android build is a separate privileged system target. It can
@@ -294,8 +292,9 @@ Agent lifecycle management.
 
 - **Cross-platform:** Uses IPC to the main-process AgentManager on Electrobun.
   Android/Web use HTTP calls to the API server or bundled loopback agent. iOS
-  uses HTTP for remote/cloud endpoints; local dev/sideload mode reports local
-  lifecycle status while app requests route through the in-process ITTP kernel.
+  uses HTTP for remote/cloud endpoints; full-Bun local mode routes requests
+  through Capacitor/native `bun-host-ipc`, with the in-process ITTP kernel kept
+  as the foreground compatibility path.
 - **Lifecycle:** Start, stop, and query agent status (`not_started`, `starting`, `running`, `stopped`, `error`).
 - **Chat:** Send text messages and receive agent responses.
 

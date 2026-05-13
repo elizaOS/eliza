@@ -1,9 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { DflashStreamEvent, DflashVerifyStreamEvent } from "./dflash-event-schema";
+import type {
+  DflashStreamEvent,
+  DflashVerifyStreamEvent,
+} from "./dflash-event-schema";
 import {
   DflashMetricsCollector,
-  type DflashTurnSummary,
   DflashTurnHistory,
+  type DflashTurnSummary,
 } from "./dflash-metrics-collector";
 
 /**
@@ -322,7 +325,12 @@ describe("DflashMetricsCollector — dflash-verify totals", () => {
   it("returns zero totals when no verify events recorded", () => {
     const collector = new DflashMetricsCollector();
     // Record a non-verify event — should not affect verify totals.
-    collector.record({ kind: "accept", drafted: [1, 2], accepted: [1, 2], ts: 0 });
+    collector.record({
+      kind: "accept",
+      drafted: [1, 2],
+      accepted: [1, 2],
+      ts: 0,
+    });
     const totals = collector.getDraftAcceptRejectTotals();
     expect(totals.drafted).toBe(0);
     expect(totals.accepted).toBe(0);
@@ -332,7 +340,12 @@ describe("DflashMetricsCollector — dflash-verify totals", () => {
   it("coexists with legacy accept/reject events without interfering", () => {
     const collector = new DflashMetricsCollector();
     // Legacy accept event
-    collector.record({ kind: "accept", drafted: [1, 2, 3], accepted: [1, 2, 3], ts: 0 });
+    collector.record({
+      kind: "accept",
+      drafted: [1, 2, 3],
+      accepted: [1, 2, 3],
+      ts: 0,
+    });
     // Native verify event
     collector.record(makeVerifyEvent(4, 2, 2, 7));
     // Legacy finalize still counts the legacy events

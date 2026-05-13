@@ -130,9 +130,9 @@ const refCloneWavPath =
 const refCloneAsrPath =
   "packages/inference/reports/local-e2e/2026-05-12/asr-ffi-smoke-tts-refclone-meeting-steps32-20260512.json";
 const currentStepSweepPath =
-  "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_6b-current-20260512.json";
+  "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_8b-current-20260512.json";
 const postTierStepSweepPath =
-  "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_6b-post-tier-migration-20260512.json";
+  "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_8b-post-tier-migration-20260512.json";
 const currentReferenceWavPath =
   "packages/inference/reports/local-e2e/2026-05-12/audio/chunk4_capital-steps6.wav";
 
@@ -152,7 +152,7 @@ const referenceWav = existsSync(rel(currentReferenceWavPath))
 
 const report = {
   generatedAt: new Date().toISOString(),
-  bundle: "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_6b.bundle",
+  bundle: "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle",
   runtime:
     "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
   defaultStreamingTtsRoundTrip: {
@@ -167,7 +167,7 @@ const report = {
         ? "pass"
         : "fail",
     conclusion:
-      "The native instruct surface is wired, but this 0.6B local bundle did not preserve lexical content under the tested style prompt at either 6 or 32 MaskGIT steps.",
+      "The native instruct surface is wired, but the local bundle did not preserve lexical content under the tested style prompt at either 6 or 32 MaskGIT steps.",
     voiceDesignVocabulary:
       "Local omnivoice voice-design accepts gender, age, pitch, accent, and whisper. It does not expose discrete emotion labels in the fused VoiceDesign table.",
     sixStep: {

@@ -113,7 +113,7 @@ _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
 
 # Each entry's upstream is the *v1 source repo* recorded in
 # ELIZA_1_RELEASE_ASSET_STATUS.md ("v1 source repos per tier /
-# component"). Small text tiers use the public Qwen3.5 0.8B / 2B / 4B line.
+# component"). Text tiers use the public Qwen3.5 0.8B / 2B / 4B line.
 # ASR and embedding are deliberate upstream exceptions: they remain published
 # Qwen3-ASR / Qwen3-Embedding artifacts rather than being rewritten as Qwen3.5.
 ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
@@ -122,11 +122,11 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="text backbone",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B / Qwen/Qwen3.5-9B / Qwen/Qwen3.6-27B (lineage recorded per tier in the manifest)",
+        upstream_repo="Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B (lineage recorded per tier in the manifest)",
         upstream_url="https://huggingface.co/Qwen/Qwen3.5-2B",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "The text weights in this bundle are derived from the Qwen3.5/3.6 family "
+            "The text weights in this bundle are derived from the Qwen3.5 family "
             "(GGUF-converted via the elizaOS/llama.cpp fork and Eliza-quantized), "
             "rebranded \"Eliza-1\" in user-facing strings per the project's "
             "branding policy. The upstream lineage and Apache-2.0 terms are "
@@ -191,7 +191,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="DFlash speculative-decode drafter",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="elizaos/eliza-1-<tier> (distilled from the text backbone)",
+        upstream_repo="elizaos/eliza-1/bundles/<tier> (distilled from the text backbone)",
         upstream_url="https://huggingface.co/elizaos",
         copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
         note=(
@@ -218,23 +218,23 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "no separate embedding/ artifact, and this file is absent on 0_8b. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("2b", "4b", "9b", "27b", "27b-256k", "27b-1m"),
+        tiers=("2b", "4b"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.vision",
         component="vision (mmproj projector)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="unsloth/Qwen3.5-9B-GGUF / batiai/Qwen3.6-27B-GGUF (mmproj-*.gguf)",
-        upstream_url="https://huggingface.co/unsloth/Qwen3.5-9B-GGUF",
+        upstream_repo="unsloth/Qwen3.5-4B-GGUF (mmproj-F16.gguf)",
+        upstream_url="https://huggingface.co/unsloth/Qwen3.5-4B-GGUF",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
-            "The vision projector (mmproj) is part of the Qwen3 multimodal "
-            "lineage; present only on the mmproj-capable tiers (9b / 27b / "
-            "27b-256k) where it is not inlined into the text GGUF. Declared "
+            "The vision projector (mmproj) is part of the Qwen3.5 multimodal "
+            "lineage; present only on the mmproj-capable 4B tier where it is "
+            "not inlined into the text GGUF. Declared "
             "upstream license: Apache-2.0."
         ),
-        tiers=("9b", "27b", "27b-256k"),
+        tiers=("4b",),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.wakeword",
@@ -264,7 +264,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="Eliza-1 bundle (umbrella)",
         spdx="CC-BY-NC-SA-4.0",
         text_file=_CC_BY_NC_SA,
-        upstream_repo="elizaos/eliza-1-<tier>",
+        upstream_repo="elizaos/eliza-1/bundles/<tier>",
         upstream_url="https://huggingface.co/elizaos",
         copyright_holder="elizaOS / Eliza Labs and the upstream component authors (see per-component LICENSE.* files)",
         note=(
@@ -336,7 +336,7 @@ def license_manifest_sidecar(
     """
 
     return {
-        "$schema": "https://elizalabs.ai/schemas/eliza-1.license-manifest.v1.json",
+        "$schema": "https://elizaos.ai/schemas/eliza-1.license-manifest.v1.json",
         "schemaVersion": 1,
         "note": (
             "Per-component license map for this Eliza-1 bundle. The bundle as a "

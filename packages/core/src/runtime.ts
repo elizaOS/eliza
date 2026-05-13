@@ -7341,7 +7341,7 @@ ${section_end}`;
 			return;
 		}
 
-		await this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
+		void this.emitEvent(EventType.EMBEDDING_GENERATION_REQUESTED, {
 			runtime: this,
 			memory,
 			priority,
@@ -7349,6 +7349,16 @@ ${section_end}`;
 			retryCount: 0,
 			maxRetries: 3,
 			runId: this.getCurrentRunId(),
+		}).catch((error) => {
+			this.logger.warn(
+				{
+					src: "runtime",
+					error: error instanceof Error ? error.message : String(error),
+					memoryId: memory.id,
+					priority,
+				},
+				"Embedding generation request failed",
+			);
 		});
 	}
 	async getMemories(params: {

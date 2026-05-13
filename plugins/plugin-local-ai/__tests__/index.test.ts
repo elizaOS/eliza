@@ -1,5 +1,8 @@
+import { ModelType } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { configSchema } from "../environment.js";
 import { localAiPlugin } from "../index.js";
+import { MODEL_SPECS } from "../types.js";
 
 describe("Local AI Plugin", () => {
   describe("Plugin metadata", () => {
@@ -61,6 +64,93 @@ describe("Local AI Plugin", () => {
     it("should have TEXT_TO_SPEECH model handler", () => {
       expect(localAiPlugin.models?.TEXT_TO_SPEECH).toBeDefined();
       expect(typeof localAiPlugin.models?.TEXT_TO_SPEECH).toBe("function");
+    });
+  });
+
+  describe("Eliza-1 defaults", () => {
+    it("uses canonical 0_8b, 2b, and 4b local defaults", () => {
+      const parsed = configSchema.parse({});
+
+      expect(parsed.LOCAL_SMALL_MODEL).toBe("text/eliza-1-2b-32k.gguf");
+      expect(parsed.LOCAL_LARGE_MODEL).toBe("text/eliza-1-4b-64k.gguf");
+      expect(parsed.LOCAL_EMBEDDING_MODEL).toBe("text/eliza-1-0_8b-32k.gguf");
+      expect(MODEL_SPECS.small.name).toBe("text/eliza-1-2b-32k.gguf");
+      expect(MODEL_SPECS.medium.name).toBe("text/eliza-1-4b-64k.gguf");
+      expect(MODEL_SPECS.embedding.name).toBe("text/eliza-1-0_8b-32k.gguf");
+    });
+
+    it("does not default local TTS to a Transformers.js model", () => {
+      expect(MODEL_SPECS.tts.default.repo).toBe("elizaos/eliza-1");
+      expect(MODEL_SPECS.tts.default.name).toBe("tts/omnivoice-small.gguf");
+      expect("modelId" in MODEL_SPECS.tts.default).toBe(false);
+      expect("defaultSpeakerEmbeddingUrl" in MODEL_SPECS.tts.default).toBe(false);
+    });
+  });
+
+  describe("local-inference compatibility routing", () => {
+    it("routes plain text generation to an active unified local-inference backend", async () => {
+      const runtime = {
+        getService: () => ({
+          generate: async ({ prompt }: { prompt: string }) => `unified:${prompt}`,
+        }),
+      };
+
+      const result = await localAiPlugin.models?.[ModelType.TEXT_SMALL]?.(runtime as never, {
+        prompt: "hello",
+      });
+
+      expect(result).toBe("unified:hello");
+    });
+
+    it("routes TTS to an active unified local-inference backend", async () => {
+      const audio = new Uint8Array([1, 2, 3]);
+      const runtime = {
+        getService: () => ({
+          synthesizeSpeech: async () => audio,
+        }),
+      };
+
+      const result = await localAiPlugin.models?.[ModelType.TEXT_TO_SPEECH]?.(
+        runtime as never,
+        "hello"
+      );
+
+      expect(result).toEqual(audio);
+    });
+
+    it("routes image description to an active unified local-inference backend", async () => {
+      const runtime = {
+        getService: () => ({
+          describeImage: async () => ({
+            title: "A device",
+            description: "A device running Eliza-1.",
+          }),
+        }),
+      };
+
+      const result = await localAiPlugin.models?.[ModelType.IMAGE_DESCRIPTION]?.(runtime as never, {
+        imageUrl: "data:image/png;base64,AAAA",
+      });
+
+      expect(result).toEqual({
+        title: "A device",
+        description: "A device running Eliza-1.",
+      });
+    });
+
+    it("blocks the legacy Florence vision path unless explicitly opted in", async () => {
+      const previous = process.env.LOCAL_AI_ENABLE_LEGACY_VISION;
+      delete process.env.LOCAL_AI_ENABLE_LEGACY_VISION;
+      try {
+        await expect(
+          localAiPlugin.models?.[ModelType.IMAGE_DESCRIPTION]?.({} as never, {
+            imageUrl: "data:image/png;base64,AAAA",
+          })
+        ).rejects.toThrow(/legacy Florence/);
+      } finally {
+        if (previous === undefined) delete process.env.LOCAL_AI_ENABLE_LEGACY_VISION;
+        else process.env.LOCAL_AI_ENABLE_LEGACY_VISION = previous;
+      }
     });
   });
 

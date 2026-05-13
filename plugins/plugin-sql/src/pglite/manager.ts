@@ -247,18 +247,26 @@ export class PGliteClientManager implements IDatabaseClientManager<PGlite> {
     // already exited. The standard `process.kill(pid, 0)` heuristic
     // produces false positives here because the recorded PID matches the
     // current iOS app PID.
-    if (process.env.ELIZA_IOS_LOCAL_BACKEND === "1") {
+    // Mobile embedded modes (iOS and Android) are single-tenant: each app
+    // launch spawns a fresh Bun process, so any leftover postmaster.pid is
+    // always stale.  The process.kill(pid, 0) heuristic below can produce
+    // false positives on both platforms (iOS: same-process PID; Android:
+    // EPERM instead of ESRCH for cross-UID pids), so clear unconditionally.
+    if (
+      process.env.ELIZA_IOS_LOCAL_BACKEND === "1" ||
+      process.env.ELIZA_ANDROID_LOCAL_BACKEND === "1"
+    ) {
       try {
         unlinkSync(pidPath);
         logger.info(
           { src: "plugin:sql", dataDir, pidPath },
-          "iOS embedded mode: removed leftover PGlite postmaster.pid"
+          "Mobile embedded mode: removed leftover PGlite postmaster.pid"
         );
         return "cleared-stale";
       } catch (err) {
         logger.warn(
           { src: "plugin:sql", dataDir, error: this.getErrorText(err) },
-          "iOS embedded mode: failed to remove postmaster.pid"
+          "Mobile embedded mode: failed to remove postmaster.pid"
         );
         return "check-failed";
       }

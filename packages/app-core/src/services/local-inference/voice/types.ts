@@ -316,7 +316,7 @@ export interface PhraseChunkerConfig {
   /**
    * Maximum milliseconds a phrase may sit in the chunker before the
    * scheduler force-flushes it even without punctuation / phoneme / cap
-   * boundaries. Default 200 ms. Set to 0 to disable.
+   * boundaries. Default 700 ms. Set to 0 to disable.
    */
   maxAccumulationMs?: number;
 }

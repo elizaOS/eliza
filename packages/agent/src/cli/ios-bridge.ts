@@ -1,28 +1,28 @@
 import { Buffer } from "node:buffer";
 import crypto from "node:crypto";
+import type { IncomingMessage, ServerResponse } from "node:http";
+import path from "node:path";
+import process from "node:process";
+import { Readable } from "node:stream";
+import {
+  ChannelType,
+  composePrompt,
+  createMessageMemory,
+  type GenerateTextParams,
+  type IAgentRuntime,
+  ModelType,
+  mobileDirectReplyTemplate,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
+import { dispatchRoute } from "../api/dispatch-route.ts";
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
-} from "node:fs";
-import type { IncomingMessage, ServerResponse } from "node:http";
-import path from "node:path";
-import process from "node:process";
-import { Readable } from "node:stream";
-
-import {
-  ChannelType,
-  createMessageMemory,
-  type GenerateTextParams,
-  type IAgentRuntime,
-  ModelType,
-  stringToUuid,
-  type UUID,
-} from "@elizaos/core";
-
-import { dispatchRoute } from "../api/dispatch-route.ts";
+} from "./mobile-fs-proxy.ts";
 import { installMobileFsShim } from "./mobile-fs-shim.ts";
 
 interface BridgeRequest {
@@ -55,13 +55,19 @@ interface HostResultFrame {
   error?: string;
 }
 
+interface BridgeStatusResult {
+  ready: boolean;
+  engine: "bun";
+  transport: "bun-host-ipc";
+  bridgeVersion: "bun-ios:3";
+  phase?: "starting" | "error";
+  error?: string;
+}
+
 interface BridgeReadyFrame {
   type: "ready";
   ok: boolean;
-  result?: {
-    ready: true;
-    apiPort: number;
-  };
+  result?: BridgeStatusResult;
   error?: string;
 }
 
@@ -85,7 +91,6 @@ interface IosBridgeBackend {
    */
   runtime: IAgentRuntime;
   conversations: Map<string, IosConversation>;
-  fallbackPort: number;
   close: () => Promise<void>;
 }
 
@@ -102,6 +107,9 @@ interface IosConversation {
   createdAt: string;
   updatedAt: string;
   metadata?: Record<string, unknown>;
+  lastUserText?: string;
+  lastAssistantText?: string;
+  lastAgentName?: string;
 }
 
 interface BufferedHttpResponse {
@@ -163,6 +171,8 @@ type RuntimeWithModelRegistration = IAgentRuntime & {
 const IOS_NATIVE_LLAMA_PROVIDER = "capacitor-llama";
 const IOS_NATIVE_LLAMA_DEVICE_ID = "ios-native-llama";
 const IOS_NATIVE_LLAMA_PRIORITY = 0;
+const IOS_NATIVE_NO_THINK_SYSTEM =
+  "Answer with final user-visible content only. Do not include private reasoning, analysis tags, or <think> blocks.";
 const TEXT_GENERATION_MODEL_TYPES = [
   ModelType.TEXT_NANO,
   ModelType.TEXT_SMALL,
@@ -220,7 +230,93 @@ function normalizeMethod(value: unknown): string {
   return method;
 }
 
+function argvValue(argv: string[], flag: string): string | null {
+  const index = argv.indexOf(flag);
+  if (index < 0) return null;
+  const value = argv[index + 1];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function setProcessEnv(
+  key: string,
+  value: string | null | undefined,
+  overwrite = true,
+): void {
+  if (!key || typeof value !== "string" || value.length === 0) return;
+  if (!overwrite && process.env[key]) return;
+  try {
+    process.env[key] = value;
+  } catch {
+    // Some embedded runtimes expose process.env through a host object. If it is
+    // readonly, later fallbacks still use argv-derived values directly.
+  }
+}
+
+interface HydratedIosArgvEnv {
+  appSupportDir: string | null;
+  bundlePath: string | null;
+}
+
+function hydrateIosEnvFromArgv(
+  argv: string[] = process.argv,
+): HydratedIosArgvEnv {
+  const rawEnv = argvValue(argv, "--eliza-ios-env-json");
+  if (rawEnv) {
+    try {
+      const parsed = JSON.parse(rawEnv);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        for (const [key, value] of Object.entries(parsed)) {
+          if (typeof value === "string") setProcessEnv(key, value, true);
+        }
+      }
+    } catch (error) {
+      console.error(
+        "[ios-bridge] failed to parse argv env envelope:",
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
+  const appSupportDir =
+    argvValue(argv, "--eliza-ios-app-support-dir") ||
+    process.env.ELIZA_IOS_APP_SUPPORT_DIR ||
+    process.env.ELIZA_HOME ||
+    null;
+  const bundlePath =
+    argvValue(argv, "--eliza-ios-agent-bundle") ||
+    process.env.ELIZA_IOS_AGENT_BUNDLE ||
+    null;
+
+  if (appSupportDir) {
+    setProcessEnv("HOME", appSupportDir, true);
+    setProcessEnv("ELIZA_HOME", appSupportDir, true);
+    setProcessEnv("ELIZA_STATE_DIR", appSupportDir, true);
+    setProcessEnv("ELIZA_IOS_APP_SUPPORT_DIR", appSupportDir, true);
+    setProcessEnv("MOBILE_WORKSPACE_ROOT", appSupportDir, true);
+    setProcessEnv(
+      "ELIZA_WORKSPACE_DIR",
+      path.join(appSupportDir, "workspace"),
+      true,
+    );
+    setProcessEnv(
+      "PGLITE_DATA_DIR",
+      path.join(appSupportDir, ".elizadb"),
+      true,
+    );
+  }
+
+  if (bundlePath) {
+    setProcessEnv("ELIZA_IOS_AGENT_BUNDLE", bundlePath, true);
+    const assetDir = path.dirname(bundlePath);
+    setProcessEnv("ELIZA_IOS_AGENT_ASSET_DIR", assetDir, true);
+    setProcessEnv("ELIZA_IOS_AGENT_PUBLIC_DIR", path.dirname(assetDir), true);
+  }
+
+  return { appSupportDir, bundlePath };
+}
+
 async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
+  const argvEnv = hydrateIosEnvFromArgv();
   // ── Mobile filesystem sandbox ────────────────────────────────────────────
   // Install the fs shim as the very first action — before any runtime code
   // runs — so that PGlite, trajectory logs, skill files, and all other agent
@@ -233,6 +329,10 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   // simulator / dev builds where the native host hasn't set it yet.
   const mobileWorkspaceRoot =
     process.env.MOBILE_WORKSPACE_ROOT ||
+    argvEnv.appSupportDir ||
+    process.env.ELIZA_WORKSPACE_DIR ||
+    process.env.ELIZA_STATE_DIR ||
+    process.env.ELIZA_HOME ||
     (process.env.HOME
       ? `${process.env.HOME}/Library/Application Support/Eliza/workspace`
       : "/tmp/eliza-workspace");
@@ -249,7 +349,8 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   process.env.ELIZA_DISABLE_DIRECT_RUN =
     process.env.ELIZA_DISABLE_DIRECT_RUN || "1";
   process.env.ELIZA_HEADLESS = process.env.ELIZA_HEADLESS || "1";
-  process.env.ELIZA_API_BIND = process.env.ELIZA_API_BIND || "127.0.0.1";
+  process.env.ELIZA_IOS_BRIDGE_TRANSPORT =
+    process.env.ELIZA_IOS_BRIDGE_TRANSPORT || "bun-host-ipc";
   process.env.ELIZA_VAULT_BACKEND = process.env.ELIZA_VAULT_BACKEND || "file";
   process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER =
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER || "1";
@@ -265,7 +366,6 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
   return {
     runtime,
     conversations: new Map(),
-    fallbackPort: 0,
     close: async () => {
       await unloadNativeLlamaModel().catch(() => undefined);
     },
@@ -367,6 +467,21 @@ function statusTextForCode(status: number): string {
   if (status === 504) return "Gateway Timeout";
   if (status === 500) return "Internal Server Error";
   return "";
+}
+
+function bridgeStatus(
+  values: Partial<
+    Omit<BridgeStatusResult, "engine" | "transport" | "bridgeVersion">
+  > = {},
+): BridgeStatusResult {
+  return {
+    ready: values.ready ?? true,
+    engine: "bun",
+    transport: "bun-host-ipc",
+    bridgeVersion: "bun-ios:3",
+    ...(values.phase ? { phase: values.phase } : {}),
+    ...(values.error ? { error: values.error } : {}),
+  };
 }
 
 function timeoutResponse(
@@ -687,6 +802,91 @@ function parseRequestBody(
     : {};
 }
 
+function sanitizeIosLocalSimpleReply(text: string): string {
+  const withoutReasoning = stripReasoningBlocks(text);
+  if (!withoutReasoning) return "";
+  const withoutRole = withoutReasoning
+    .replace(/^assistant\s*:\s*/i, "")
+    .replace(/^eliza\s*:\s*/i, "")
+    .trim();
+  const firstLine = withoutRole.split(/\r?\n/).find((line) => line.trim());
+  return (firstLine ?? withoutRole).trim();
+}
+
+function extractExactWordsReplyRequest(userText: string): string | null {
+  const exactWords = /\bexact words?\s*:\s*["']?(.+?)["']?\s*$/i.exec(userText);
+  if (exactWords?.[1]?.trim()) return exactWords[1].trim();
+  const replyWith = /\breply\s+(?:briefly\s+)?with\s*["']([^"']+)["']/i.exec(
+    userText,
+  );
+  return replyWith?.[1]?.trim() ? replyWith[1].trim() : null;
+}
+
+function isSimpleConversationInput(input: Record<string, unknown>): boolean {
+  if (input.conversationMode === "simple") return true;
+  const metadata = input.metadata;
+  return Boolean(
+    metadata &&
+      typeof metadata === "object" &&
+      !Array.isArray(metadata) &&
+      (metadata as Record<string, unknown>).conversationMode === "simple",
+  );
+}
+
+async function generateIosLocalSimpleReply(
+  backend: IosBridgeBackend,
+  userText: string,
+): Promise<Record<string, unknown> | null> {
+  const messageText = userText.trim();
+  if (!messageText) return null;
+  const exactReply = extractExactWordsReplyRequest(messageText);
+  const agentName = runtimeAgentName(backend.runtime);
+  if (exactReply) {
+    return {
+      text: exactReply,
+      reply: exactReply,
+      agentName,
+      responseContent: {
+        text: exactReply,
+        simple: true,
+        actions: ["REPLY"],
+      },
+      responseMessages: [],
+    };
+  }
+  const runtime = backend.runtime as IAgentRuntime & {
+    character?: { system?: unknown };
+  };
+  const system =
+    typeof runtime.character?.system === "string" &&
+    runtime.character.system.trim().length > 0
+      ? runtime.character.system.trim()
+      : `You are ${agentName}. Reply briefly and directly.`;
+  const prompt = composePrompt({
+    state: { system, userText: messageText, agentName },
+    template: mobileDirectReplyTemplate,
+  });
+  const raw = await runtime.useModel(ModelType.TEXT_SMALL, {
+    prompt,
+    maxTokens: 64,
+    temperature: 0.3,
+    stopSequences: ["<|im_end|>", "<|endoftext|>"],
+  });
+  const text = sanitizeIosLocalSimpleReply(String(raw ?? ""));
+  if (!text) return null;
+  return {
+    text,
+    reply: text,
+    agentName,
+    responseContent: {
+      text,
+      simple: true,
+      actions: ["REPLY"],
+    },
+    responseMessages: [],
+  };
+}
+
 function createIosConversation(
   backend: IosBridgeBackend,
   input: Record<string, unknown> = {},
@@ -976,6 +1176,43 @@ function nativeLlamaContextSize(): number {
   );
 }
 
+function isMetalLoadError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /metal/i.test(message) ||
+    /MTLLibraryErrorDomain/.test(message) ||
+    /ggml_metal/i.test(message)
+  );
+}
+
+async function shouldUseNativeLlamaGpu(): Promise<boolean> {
+  const explicit = process.env.ELIZA_IOS_LLAMA_USE_GPU;
+  if (explicit === "1" || explicit?.toLowerCase() === "true") return true;
+  if (explicit === "0" || explicit?.toLowerCase() === "false") return false;
+
+  const hardware = await nativeHardwareInfo();
+  return hardware.metal_supported === true && hardware.is_simulator !== true;
+}
+
+async function loadNativeLlamaModel(
+  model: InstalledModelEntry,
+  useGpu: boolean,
+): Promise<Record<string, unknown>> {
+  const result = await callIosHost(
+    "llama_load_model",
+    {
+      path: model.path,
+      modelId: model.id,
+      context_size: nativeLlamaContextSize(),
+      use_gpu: useGpu,
+    },
+    10 * 60_000,
+  );
+  return result && typeof result === "object" && !Array.isArray(result)
+    ? (result as Record<string, unknown>)
+    : {};
+}
+
 async function ensureNativeModelLoaded(
   slot: string,
 ): Promise<NativeLlamaState> {
@@ -1003,20 +1240,15 @@ async function ensureNativeModelLoaded(
   nativeLlamaState.loadedAt = null;
   delete nativeLlamaState.error;
   try {
-    const result = await callIosHost(
-      "llama_load_model",
-      {
-        path: model.path,
-        modelId: model.id,
-        context_size: nativeLlamaContextSize(),
-        use_gpu: process.env.ELIZA_IOS_LLAMA_USE_GPU !== "0",
-      },
-      10 * 60_000,
-    );
-    const record =
-      result && typeof result === "object" && !Array.isArray(result)
-        ? (result as Record<string, unknown>)
-        : {};
+    let requestedGpu = await shouldUseNativeLlamaGpu();
+    let record: Record<string, unknown>;
+    try {
+      record = await loadNativeLlamaModel(model, requestedGpu);
+    } catch (error) {
+      if (!requestedGpu || !isMetalLoadError(error)) throw error;
+      requestedGpu = false;
+      record = await loadNativeLlamaModel(model, false);
+    }
     const contextId =
       positiveInteger(record.context_id) ?? positiveInteger(record.contextId);
     if (contextId == null) {
@@ -1053,16 +1285,16 @@ async function unloadNativeLlamaModel(): Promise<void> {
 
 function flattenChatParamsForPrompt(params: GenerateTextParams): string {
   if (typeof params.prompt === "string" && params.prompt.length > 0) {
-    return params.prompt;
+    return renderChatMlPrompt(IOS_NATIVE_NO_THINK_SYSTEM, [
+      { role: "user", content: params.prompt },
+    ]);
   }
-  const blocks: string[] = [];
+  const systemBlocks = [IOS_NATIVE_NO_THINK_SYSTEM];
+  if (typeof params.system === "string" && params.system) {
+    systemBlocks.push(params.system);
+  }
+  const chatMessages: Array<{ role: string; content: string }> = [];
   const messages = params.messages ?? [];
-  const hasSystemMessage = messages.some(
-    (message) => message.role === "system",
-  );
-  if (!hasSystemMessage && typeof params.system === "string" && params.system) {
-    blocks.push(`system:\n${params.system}`);
-  }
   for (const message of messages) {
     const role =
       message.role === "system" ||
@@ -1071,7 +1303,10 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
         ? message.role
         : "user";
     if (typeof message.content === "string") {
-      if (message.content) blocks.push(`${role}:\n${message.content}`);
+      if (message.content) {
+        if (role === "system") systemBlocks.push(message.content);
+        else chatMessages.push({ role, content: message.content });
+      }
       continue;
     }
     if (Array.isArray(message.content)) {
@@ -1083,11 +1318,54 @@ function flattenChatParamsForPrompt(params: GenerateTextParams): string {
         )
         .filter(Boolean)
         .join("\n");
-      if (text) blocks.push(`${role}:\n${text}`);
+      if (text) {
+        if (role === "system") systemBlocks.push(text);
+        else chatMessages.push({ role, content: text });
+      }
     }
   }
-  blocks.push("assistant:");
-  return blocks.join("\n\n");
+  return renderChatMlPrompt(systemBlocks.join("\n\n"), chatMessages);
+}
+
+function renderChatMlPrompt(
+  system: string,
+  messages: Array<{ role: string; content: string }>,
+): string {
+  const blocks = [`<|im_start|>system\n${system.trim()}\n<|im_end|>`];
+  for (const message of messages) {
+    const role =
+      message.role === "assistant" || message.role === "tool"
+        ? message.role
+        : "user";
+    const content = message.content.trim();
+    if (content) blocks.push(`<|im_start|>${role}\n${content}\n<|im_end|>`);
+  }
+  blocks.push("<|im_start|>assistant\n<think>\n\n</think>\n\n");
+  return blocks.join("\n");
+}
+
+function stripReasoningBlocks(raw: string): string {
+  return raw
+    .replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/^[\s\S]*?<\/think>/i, "")
+    .replace(/<think\b[^>]*>[\s\S]*$/gi, "")
+    .replace(/\/?\bno_think\b/gi, "")
+    .trim();
+}
+
+function isStructuredGenerationSlot(slot: string): boolean {
+  return (
+    slot === ModelType.RESPONSE_HANDLER ||
+    slot === ModelType.ACTION_PLANNER ||
+    slot === ModelType.TEXT_COMPLETION
+  );
+}
+
+function mergeStopSequences(values: unknown): string[] {
+  const requested = Array.isArray(values)
+    ? values.filter((value): value is string => typeof value === "string")
+    : [];
+  return Array.from(new Set([...requested, "<|im_end|>", "<|endoftext|>"]));
 }
 
 function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
@@ -1099,19 +1377,26 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
       );
     }
     const prompt = flattenChatParamsForPrompt(params);
+    const structuredSlot = isStructuredGenerationSlot(slot);
+    const requestedMaxTokens = positiveInteger(params.maxTokens) ?? 256;
+    const maxTokens = Math.min(requestedMaxTokens, structuredSlot ? 256 : 128);
     const result = await callIosHost(
       "llama_generate",
       {
         context_id: state.contextId,
         prompt,
-        max_tokens: positiveInteger(params.maxTokens) ?? 256,
+        max_tokens: maxTokens,
         temperature:
-          typeof params.temperature === "number" ? params.temperature : 0.7,
+          typeof params.temperature === "number"
+            ? params.temperature
+            : structuredSlot
+              ? 0.2
+              : 0.4,
         top_p: typeof params.topP === "number" ? params.topP : 0.95,
         top_k: positiveInteger(params.topK) ?? 40,
-        stop: params.stopSequences ?? [],
+        stop: mergeStopSequences(params.stopSequences),
       },
-      Math.max(120_000, (positiveInteger(params.maxTokens) ?? 256) * 2_000),
+      Math.max(120_000, maxTokens * 2_000),
     );
     const record =
       result && typeof result === "object" && !Array.isArray(result)
@@ -1119,10 +1404,11 @@ function makeIosNativeGenerateHandler(slot: string): GenerateTextHandler {
         : {};
     const text =
       typeof record.text === "string" ? record.text : String(result ?? "");
-    if (params.onStreamChunk && text) {
-      await params.onStreamChunk(text, crypto.randomUUID(), text);
+    const cleanedText = stripReasoningBlocks(text);
+    if (params.onStreamChunk && cleanedText) {
+      await params.onStreamChunk(cleanedText, crypto.randomUUID(), cleanedText);
     }
-    return text;
+    return cleanedText;
   };
 }
 
@@ -1340,6 +1626,9 @@ async function handleNativeIosLocalInferenceRoute(
   if (method === "GET" && pathname === "/api/local-inference/hardware") {
     return jsonResponse(200, (await nativeHubSnapshot(null)).hardware);
   }
+  if (method === "GET" && pathname === "/api/local-inference/installed") {
+    return jsonResponse(200, { models: readInstalledModels() });
+  }
   if (method === "GET" && pathname === "/api/local-inference/routing") {
     return jsonResponse(200, routingPreferencesSnapshot());
   }
@@ -1460,6 +1749,8 @@ async function handleDirectConversationMessage(
     !Array.isArray(input.metadata)
       ? (input.metadata as Record<string, unknown>)
       : undefined;
+  const conversationMode =
+    typeof input.conversationMode === "string" ? input.conversationMode : null;
   const message = createMessageMemory({
     id: crypto.randomUUID() as UUID,
     entityId: userId,
@@ -1468,6 +1759,7 @@ async function handleDirectConversationMessage(
       text: prompt,
       source: "ios-local",
       channelType,
+      ...(conversationMode ? { conversationMode } : {}),
       ...(metadata ? { metadata: metadata as never } : {}),
     },
   });
@@ -1476,6 +1768,24 @@ async function handleDirectConversationMessage(
     await runtime.createMemory?.(message, "messages");
   } catch {
     // Best effort. Some adapters persist inside messageService.
+  }
+
+  if (isSimpleConversationInput(input)) {
+    const simpleResult = await generateIosLocalSimpleReply(backend, prompt);
+    if (simpleResult) {
+      conversation.updatedAt = new Date().toISOString();
+      conversation.lastUserText = prompt.trim();
+      conversation.lastAssistantText =
+        typeof simpleResult.text === "string" ? simpleResult.text : "";
+      conversation.lastAgentName =
+        typeof simpleResult.agentName === "string"
+          ? simpleResult.agentName
+          : runtimeAgentName(backend.runtime);
+      return {
+        ...simpleResult,
+        conversationId: conversation.id,
+      };
+    }
   }
 
   if (!runtime.messageService?.handleMessage) {
@@ -1500,13 +1810,88 @@ async function handleDirectConversationMessage(
     );
   }
 
-  const text = chunks.join("").trim();
+  const text = stripReasoningBlocks(chunks.join("")).trim();
+  const agentName = runtimeAgentName(backend.runtime);
   conversation.updatedAt = new Date().toISOString();
+  conversation.lastUserText = prompt.trim();
+  conversation.lastAssistantText = text;
+  conversation.lastAgentName = agentName;
   return {
     text,
     reply: text,
-    agentName: runtimeAgentName(backend.runtime),
+    agentName,
     conversationId: conversation.id,
+  };
+}
+
+function cachedConversationMessageResult(
+  conversation: IosConversation,
+  input: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const prompt =
+    typeof input.text === "string"
+      ? input.text
+      : typeof input.message === "string"
+        ? input.message
+        : typeof input.prompt === "string"
+          ? input.prompt
+          : "";
+  if (
+    !conversation.lastAssistantText ||
+    !conversation.lastUserText ||
+    conversation.lastUserText !== prompt.trim()
+  ) {
+    return null;
+  }
+  return {
+    text: conversation.lastAssistantText,
+    reply: conversation.lastAssistantText,
+    agentName: conversation.lastAgentName ?? "Eliza",
+    conversationId: conversation.id,
+    cached: true,
+  };
+}
+
+function sseEvent(payload: Record<string, unknown>): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function bufferedConversationStreamResponse(
+  result: Record<string, unknown>,
+): BufferedHttpResponse {
+  const text = typeof result.text === "string" ? result.text : "";
+  const agentName =
+    typeof result.agentName === "string" && result.agentName.trim()
+      ? result.agentName
+      : "Eliza";
+  const body = [
+    ...(text ? [sseEvent({ type: "token", text, fullText: text })] : []),
+    sseEvent({
+      type: "done",
+      fullText: text,
+      agentName,
+      completed: true,
+      ...(typeof result.failureKind === "string"
+        ? { failureKind: result.failureKind }
+        : {}),
+      ...(result.localInference &&
+      typeof result.localInference === "object" &&
+      !Array.isArray(result.localInference)
+        ? { localInference: result.localInference }
+        : {}),
+    }),
+  ].join("");
+  return {
+    status: 200,
+    statusText: statusTextForCode(200),
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+    },
+    body,
+    bodyBase64: Buffer.from(body, "utf8").toString("base64"),
+    bodyEncoding: "utf-8",
   };
 }
 
@@ -1567,8 +1952,23 @@ async function handleDirectCoreRoute(
   const messageMatch = pathname.match(
     /^\/api\/conversations\/([^/]+)\/messages$/,
   );
+  const messageStreamMatch = pathname.match(
+    /^\/api\/conversations\/([^/]+)\/messages\/stream$/,
+  );
   if (method === "GET" && messageMatch) {
     return jsonResponse(200, { messages: [] });
+  }
+  if (method === "POST" && messageStreamMatch) {
+    const conversationId = decodeURIComponent(messageStreamMatch[1] ?? "");
+    const conversation = backend.conversations.get(conversationId);
+    if (!conversation) {
+      return jsonResponse(404, { error: "Conversation not found" });
+    }
+    const body = parseRequestBody(payload);
+    const result =
+      cachedConversationMessageResult(conversation, body) ??
+      (await handleDirectConversationMessage(backend, conversation, body));
+    return bufferedConversationStreamResponse(result);
   }
   if (method === "POST" && messageMatch) {
     const conversationId = decodeURIComponent(messageMatch[1] ?? "");
@@ -1644,27 +2044,27 @@ async function dispatchBridgeRequest(
   switch (method) {
     case "status":
       if (host.backend) {
-        return { ready: true, apiPort: host.backend.fallbackPort };
+        return bridgeStatus();
       }
       if (host.bootError) {
-        return {
+        return bridgeStatus({
           ready: false,
           phase: "error",
           error:
             host.bootError instanceof Error
               ? host.bootError.message
               : String(host.bootError),
-        };
+        });
       }
       if (payload.timeoutMs !== undefined) {
-        const backend = await awaitIosBridgeBackend(
+        await awaitIosBridgeBackend(
           host,
           bridgeTimeoutMs(payload.timeoutMs),
           "status",
         );
-        return { ready: true, apiPort: backend.fallbackPort };
+        return bridgeStatus();
       }
-      return { ready: false, phase: "starting", apiPort: 0 };
+      return bridgeStatus({ ready: false, phase: "starting" });
     case "http_request":
     case "http_fetch": {
       const backendForFetch = await awaitIosBridgeBackend(
@@ -1744,18 +2144,30 @@ function reserveStdoutForBridgeProtocol(): () => void {
   tryAssign(process.stdout, "write", stdoutWriteToStderr, () => {
     process.stdout.write = originalStdoutWrite;
   });
-  tryAssign(console, "log", ((...args: unknown[]) =>
-    console.error(...args)) as typeof console.log, () => {
-    console.log = originalConsoleLog;
-  });
-  tryAssign(console, "info", ((...args: unknown[]) =>
-    console.error(...args)) as typeof console.info, () => {
-    console.info = originalConsoleInfo;
-  });
-  tryAssign(console, "debug", ((...args: unknown[]) =>
-    console.error(...args)) as typeof console.debug, () => {
-    console.debug = originalConsoleDebug;
-  });
+  tryAssign(
+    console,
+    "log",
+    ((...args: unknown[]) => console.error(...args)) as typeof console.log,
+    () => {
+      console.log = originalConsoleLog;
+    },
+  );
+  tryAssign(
+    console,
+    "info",
+    ((...args: unknown[]) => console.error(...args)) as typeof console.info,
+    () => {
+      console.info = originalConsoleInfo;
+    },
+  );
+  tryAssign(
+    console,
+    "debug",
+    ((...args: unknown[]) => console.error(...args)) as typeof console.debug,
+    () => {
+      console.debug = originalConsoleDebug;
+    },
+  );
 
   return () => {
     for (let i = assignments.length - 1; i >= 0; i -= 1) {
@@ -1798,7 +2210,7 @@ export async function runIosBridgeCli(
   writeProtocolLine({
     type: "ready",
     ok: true,
-    result: { ready: true, apiPort: 0 },
+    result: bridgeStatus({ ready: true }),
   });
 
   const shutdown = async () => {

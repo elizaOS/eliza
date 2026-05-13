@@ -118,7 +118,14 @@ export class InferenceTelemetry {
    * Returns `{ count: 0, ... }` when the metric has never been recorded.
    */
   summary(name: string): HistogramSummary {
-    return this.rings.get(name)?.summary() ?? { count: 0, p50: null, p95: null, mean: null };
+    return (
+      this.rings.get(name)?.summary() ?? {
+        count: 0,
+        p50: null,
+        p95: null,
+        mean: null,
+      }
+    );
   }
 
   /** Names of all metrics that have received at least one sample. */

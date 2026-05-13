@@ -40,6 +40,7 @@ import { autoDownloadRecommendedLocalModelInBackground } from "../../onboarding/
 import {
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
+  IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_LOCAL_AGENT_LABEL,
   MOBILE_LOCAL_AGENT_SERVER_ID,
@@ -107,7 +108,7 @@ async function startMobileLocalAgent(): Promise<void> {
       capacitorWithPlugins.Plugins?.Agent ??
       Capacitor.registerPlugin<NativeAgentPlugin>("Agent");
     await registeredAgent.start?.({
-      apiBase: MOBILE_LOCAL_AGENT_API_BASE,
+      apiBase: isIOS ? IOS_LOCAL_AGENT_IPC_BASE : MOBILE_LOCAL_AGENT_API_BASE,
       mode: "local",
     });
   } catch (err) {
@@ -740,14 +741,15 @@ export function RuntimeGate() {
 
   const finishAsLocal = React.useCallback(() => {
     setError(null);
-    const localApiBase =
-      isAndroid || isIOS
+    const localApiBase = isIOS
+      ? IOS_LOCAL_AGENT_IPC_BASE
+      : isAndroid
         ? MOBILE_LOCAL_AGENT_API_BASE
         : resolveLocalAgentApiBase();
     if (isAndroid || isIOS) {
-      // Mobile local mode always pins the loopback-shaped base URL. Android
-      // serves it from the foreground service; iOS intercepts the same URL
-      // through the in-process ITTP transport before any TCP request is made.
+      // Mobile local mode pins a stable local-agent identity. Android serves
+      // the loopback URL from the foreground service; iOS uses a custom
+      // in-app scheme resolved by the Capacitor/native IPC bridge.
       // Persisting it as a `remote` active server keeps the existing startup
       // restore branch working while `local` mobile runtime mode records the
       // user-visible distinction.

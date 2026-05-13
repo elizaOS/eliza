@@ -39,20 +39,12 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q3_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
-    "9b": "Q4_K_M",
-    "27b": "Q4_K_M",
-    "27b-256k": "Q4_K_M",
-    "27b-1m": "Q4_K_M",
 }
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("32k",),
     "2b": ("32k", "64k"),
     "4b": ("64k", "128k"),
-    "9b": ("64k", "128k"),
-    "27b": ("128k", "256k"),
-    "27b-256k": ("256k",),
-    "27b-1m": ("1m",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -116,39 +108,6 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "linux-x64-cpu",
         "windows-x64-cpu",
     ),
-    "9b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cuda",
-        "linux-x64-rocm",
-        "windows-x64-cuda",
-        "windows-x64-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-    ),
-    "27b": (
-        "darwin-arm64-metal",
-        "linux-x64-vulkan",
-        "linux-x64-cuda",
-        "linux-x64-rocm",
-        "windows-x64-cuda",
-        "windows-x64-vulkan",
-        "linux-x64-cpu",
-    ),
-    "27b-256k": (
-        "darwin-arm64-metal",
-        "linux-aarch64-cuda",
-        "linux-x64-cuda",
-        "linux-x64-rocm",
-        "linux-x64-vulkan",
-        "linux-x64-cpu",
-    ),
-    # 1M context is GH200-class only — Grace-Hopper aarch64+CUDA is the
-    # only platform with the memory to hold the KV cache at that window.
-    "27b-1m": ("linux-aarch64-cuda",),
 }
 
 
@@ -171,13 +130,6 @@ class TierGgufPlan:
 
 
 def text_artifact_name(tier: str, ctx: str) -> str:
-    # The dedicated long-context tiers (27b-256k, 27b-1m) carry the context
-    # in the tier id itself, so the file is `eliza-1-<tier>.gguf` rather than
-    # `eliza-1-<tier>-<ctx>.gguf` (which would double up the context token).
-    if tier == "27b-256k" and ctx == "256k":
-        return "text/eliza-1-27b-256k.gguf"
-    if tier == "27b-1m" and ctx == "1m":
-        return "text/eliza-1-27b-1m.gguf"
     return f"text/eliza-1-{tier}-{ctx}.gguf"
 
 
@@ -464,8 +416,8 @@ def render_readiness(
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
-        "- Canonical small text tiers are Qwen3.5 0.8B (`0_8b`) and "
-        "Qwen3.5 2B (`2b`). ASR and embedding are real Qwen3 upstream "
+        "- Canonical small/mid text tiers are Qwen3.5 0.8B (`0_8b`), "
+        "Qwen3.5 2B (`2b`), and Qwen3.5 4B (`4b`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR 0.6B / 1.7B GGUF repos "
         "and Qwen3-Embedding 0.6B / 4B / 8B GGUF repos; do not invent "
         "Qwen3.5-ASR, Qwen3.5-Embedding, Qwen3-ASR-0.8B/2B, or "
@@ -518,8 +470,14 @@ def render_readiness(
             lines.extend(f"- `{rel}`" for rel in tier_plan.optional_files)
             lines.append("")
 
-        tier_missing = list(missing.get(tier, ())) if missing else []
-        if tier_missing:
+        tier_missing = list(missing.get(tier, ())) if missing is not None else []
+        if missing is None:
+            lines.append(
+                "Missing files/evidence: not evaluated in plan-only mode. "
+                "Re-run with `--bundle-root <path>` to check local payloads."
+            )
+            lines.append("")
+        elif tier_missing:
             lines.append("Missing files/evidence:")
             lines.extend(f"- `{rel}`" for rel in tier_missing)
             lines.append("")

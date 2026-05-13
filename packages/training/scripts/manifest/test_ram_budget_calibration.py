@@ -38,7 +38,6 @@ def test_default_ram_budget_is_consistent_across_staging_entry_points() -> None:
     base = dict(orch.DEFAULT_RAM_BUDGET_MB)
     local = dict(stage_local.DEFAULT_RAM_BUDGET_MB)
     real = dict(stage_real.DEFAULT_RAM_BUDGET_MB)
-    # `stage_real` carries the extra `27b-1m` tier; otherwise they match.
     for tier, budget in base.items():
         assert local[tier] == budget, (tier, local[tier], budget)
         assert real[tier] == budget, (tier, real[tier], budget)

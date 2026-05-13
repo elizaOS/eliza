@@ -79,13 +79,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--residual-length", type=int, default=128)
     ap.add_argument("--base-seed", type=int, default=42)
     ap.add_argument("--norm-threshold", type=float, default=5.0)
-    # Long-context / trellis path. Per packages/training/AGENTS.md §3 the
-    # largest variant of a tier (e.g. `eliza-1-27b-1m`) routes the K-cache
-    # through Trellis-Coded Quantization (`turbo3_tcq`) instead of plain
-    # `turbo3`/`turbo4`. The weights are still unchanged on disk — this only
-    # flips which KV cache type the runtime is told to use, recorded in the
-    # sidecar so the manifest builder + downloader pick `turbo3_tcq` for the
-    # variant.
+    # Long-context / trellis path. Per packages/training/AGENTS.md §3,
+    # experiments that intentionally target extended context can route the
+    # K-cache through Trellis-Coded Quantization (`turbo3_tcq`) instead of
+    # plain `turbo3`/`turbo4`. The weights are still unchanged on disk — this
+    # only flips which KV cache type the runtime is told to use, recorded in
+    # the sidecar so the manifest builder + downloader pick `turbo3_tcq`.
     ap.add_argument(
         "--trellis",
         action="store_true",

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-12T23:57:36.130Z",
+  "generatedAt": "2026-05-13T02:01:28.738Z",
   "bundle": "agent-bundle.js",
   "bunTarget": "bun",
   "platform": "ios",
@@ -85,7 +85,8 @@
     "@elizaos/plugin-browser",
     "@elizaos/plugin-whatsapp",
     "@elizaos/plugin-signal",
-    "@elizaos/plugin-streaming"
+    "@elizaos/plugin-streaming",
+    "@elizaos/plugin-device-filesystem"
   ],
   "notes": [
     "All listed plugins are bundled via static imports in",

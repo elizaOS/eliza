@@ -44,10 +44,8 @@ const PERTURBATIONS: ReadonlyArray<string> = [
   "You are an evaluation auditor. Reject ambiguous evidence.",
 ];
 
-function extractJson(text: string): LlmJudgePayload | null {
-  const match = text.match(/\{[\s\S]*?\}/);
-  if (!match) return null;
-  const parsed = safeJsonParse(match[0]);
+export function extractJson(text: string): LlmJudgePayload | null {
+  const parsed = tolerantJsonParse(text);
   if (!parsed) return null;
   const verdictRaw = String(parsed.verdict ?? "").toUpperCase();
   const reason = String(parsed.reason ?? "").trim();
@@ -63,7 +61,23 @@ function extractJson(text: string): LlmJudgePayload | null {
   return null;
 }
 
-function safeJsonParse(raw: string): Record<string, unknown> | null {
+export function tolerantJsonParse(raw: string): Record<string, unknown> | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const direct = parseJsonObject(trimmed);
+  if (direct) return direct;
+
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  if (fenced?.[1]) {
+    const parsed = parseJsonObject(fenced[1].trim());
+    if (parsed) return parsed;
+  }
+
+  const candidate = extractFirstJsonObject(trimmed);
+  return candidate ? parseJsonObject(candidate) : null;
+}
+
+function parseJsonObject(raw: string): Record<string, unknown> | null {
   try {
     const parsed: unknown = JSON.parse(raw);
     if (
@@ -77,6 +91,40 @@ function safeJsonParse(raw: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+function extractFirstJsonObject(raw: string): string | null {
+  const start = raw.indexOf("{");
+  if (start < 0) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escaped = inString;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") {
+      depth++;
+      continue;
+    }
+    if (ch === "}") {
+      depth--;
+      if (depth === 0) return raw.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 function buildUserMessage(question: LlmJudgeQuestion): string {

@@ -366,7 +366,7 @@ function buildStaticFramework(tmpDir, slice, target) {
 <dict>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
   <key>CFBundleExecutable</key><string>LlamaCpp</string>
-  <key>CFBundleIdentifier</key><string>ai.elizalabs.LlamaCpp</string>
+  <key>CFBundleIdentifier</key><string>ai.elizaos.LlamaCpp</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundleName</key><string>LlamaCpp</string>
   <key>CFBundlePackageType</key><string>FMWK</string>

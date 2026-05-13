@@ -4,10 +4,9 @@ name: Local Inference Bench
 # agnostic — it just talks HTTP to whatever agent is reachable at
 # --target — so we run it in two layers:
 #
-#   1. PR + nightly: stub harness validation. Boots
-#      `scripts/benchmark/stub-agent-server.mjs` on a free port and runs
-#      the matrix against it. Cheap, deterministic, catches harness
-#      regressions before nightly.
+#   1. PR + nightly: harness route smoke. Boots
+#      `scripts/benchmark/stub-agent-server.mjs` on a free port and checks
+#      only `/api/health`; it does not write benchmark artifacts.
 #   2. Nightly only: real agent profile. Boots `bun run dev`, points the
 #      harness at the dev server, writes the report under
 #      `reports/porting/<YYYY-MM-DD>/profile.{json,md}`, uploads the

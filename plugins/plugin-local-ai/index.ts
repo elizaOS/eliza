@@ -7,6 +7,7 @@ import type {
   EventPayload,
   GenerateTextParams,
   ImageDescriptionParams,
+  ImageDescriptionResult,
   JSONSchema,
   ModelTypeName,
   TextEmbeddingParams,
@@ -18,6 +19,10 @@ import type {
   TranscriptionParams,
 } from "@elizaos/core";
 import { EventType, type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
+import {
+  createLocalInferenceModelHandlers,
+  isLocalInferenceUnavailableError,
+} from "@elizaos/plugin-local-inference";
 import {
   getLlama,
   type Llama,
@@ -67,6 +72,15 @@ type LocalGenerateTextParams = GenerateTextParams & {
  * response before extraction / validation).
  */
 type LocalGenerationOutput = LocalGenerationResult | TextStreamResult;
+
+type LocalInferenceRouteResult<T> =
+  | {
+      handled: true;
+      value: T;
+    }
+  | {
+      handled: false;
+    };
 
 function isStreamResult(value: LocalGenerationOutput): value is TextStreamResult {
   return (
@@ -279,6 +293,55 @@ function wantsNativeShape(params: GenerateTextParams): boolean {
     return true;
   }
   return false;
+}
+
+function shouldFallbackFromLocalInference(error: unknown): boolean {
+  return (
+    isLocalInferenceUnavailableError(error) &&
+    ("reason" in error
+      ? error.reason === "backend_unavailable" || error.reason === "capability_unavailable"
+      : true)
+  );
+}
+
+function legacyWhisperEnabled(): boolean {
+  const value = process.env.LOCAL_AI_ENABLE_LEGACY_WHISPER?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function legacyVisionEnabled(): boolean {
+  const value = process.env.LOCAL_AI_ENABLE_LEGACY_VISION?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+async function tryLocalInferenceModel<T>(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  params: unknown
+): Promise<LocalInferenceRouteResult<T>> {
+  const handler =
+    localInferenceModelHandlers[modelType as keyof typeof localInferenceModelHandlers];
+  if (typeof handler !== "function") {
+    return { handled: false };
+  }
+
+  try {
+    const value = await handler(runtime, params as never);
+    return { handled: true, value: value as T };
+  } catch (error) {
+    if (shouldFallbackFromLocalInference(error)) {
+      logger.debug(
+        {
+          modelType,
+          reason:
+            isLocalInferenceUnavailableError(error) && "reason" in error ? error.reason : "unknown",
+        },
+        "[plugin-local-ai] Unified local-inference route unavailable; falling back to legacy compatibility path."
+      );
+      return { handled: false };
+    }
+    throw error;
+  }
 }
 
 function buildNativeResult(result: LocalGenerationResult): LocalNativeTextModelResult {
@@ -1048,6 +1111,7 @@ function finalizeTextResult(
   return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
 }
 
+const localInferenceModelHandlers = createLocalInferenceModelHandlers();
 const localAIManager = LocalAIManager.getInstance();
 
 export const localAiPlugin: Plugin = {
@@ -1117,6 +1181,11 @@ export const localAiPlugin: Plugin = {
   },
   models: {
     [ModelType.TEXT_SMALL]: async (runtime: IAgentRuntime, params: GenerateTextParams) => {
+      if (!wantsNativeShape(params)) {
+        const routed = await tryLocalInferenceModel<string>(runtime, ModelType.TEXT_SMALL, params);
+        if (routed.handled) return routed.value;
+      }
+
       await localAIManager.initializeEnvironment();
       const result = await localAIManager.generateText({
         ...params,
@@ -1126,6 +1195,11 @@ export const localAiPlugin: Plugin = {
     },
 
     [ModelType.TEXT_LARGE]: async (runtime: IAgentRuntime, params: GenerateTextParams) => {
+      if (!wantsNativeShape(params)) {
+        const routed = await tryLocalInferenceModel<string>(runtime, ModelType.TEXT_LARGE, params);
+        if (routed.handled) return routed.value;
+      }
+
       await localAIManager.initializeEnvironment();
       const result = await localAIManager.generateText({
         ...params,
@@ -1143,6 +1217,13 @@ export const localAiPlugin: Plugin = {
         logger.debug("Null or empty text input for embedding, returning zero vector");
         return new Array(1024).fill(0);
       }
+
+      const routed = await tryLocalInferenceModel<number[]>(
+        runtime,
+        ModelType.TEXT_EMBEDDING,
+        params
+      );
+      if (routed.handled) return routed.value;
 
       const embedding = await localAIManager.generateEmbedding(text);
       emitModelUsed(
@@ -1174,9 +1255,22 @@ export const localAiPlugin: Plugin = {
     },
 
     [ModelType.IMAGE_DESCRIPTION]: async (
-      _runtime: IAgentRuntime,
+      runtime: IAgentRuntime,
       params: ImageDescriptionParams | string
     ) => {
+      const routed = await tryLocalInferenceModel<ImageDescriptionResult>(
+        runtime,
+        ModelType.IMAGE_DESCRIPTION,
+        params
+      );
+      if (routed.handled) return routed.value;
+
+      if (!legacyVisionEnabled()) {
+        throw new Error(
+          "plugin-local-ai image description is a legacy Florence/Transformers.js compatibility path. Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local vision, or set LOCAL_AI_ENABLE_LEGACY_VISION=1 to opt in to the legacy path."
+        );
+      }
+
       const imageUrl = extractImageUrl(params);
       logger.info("Processing image from URL:", imageUrl);
 
@@ -1191,9 +1285,18 @@ export const localAiPlugin: Plugin = {
     },
 
     [ModelType.TRANSCRIPTION]: async (
-      _runtime: IAgentRuntime,
+      runtime: IAgentRuntime,
       params: TranscriptionParams | Buffer | string
     ) => {
+      const routed = await tryLocalInferenceModel<string>(runtime, ModelType.TRANSCRIPTION, params);
+      if (routed.handled) return routed.value;
+
+      if (!legacyWhisperEnabled()) {
+        throw new Error(
+          "plugin-local-ai transcription is a legacy Whisper compatibility path. Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local ASR, or set LOCAL_AI_ENABLE_LEGACY_WHISPER=1 to opt in to the legacy path."
+        );
+      }
+
       const audioBuffer = extractTranscriptionBuffer(params);
       logger.info({ bufferSize: audioBuffer.length }, "Processing audio transcription:");
 
@@ -1201,9 +1304,16 @@ export const localAiPlugin: Plugin = {
     },
 
     [ModelType.TEXT_TO_SPEECH]: async (
-      _runtime: IAgentRuntime,
+      runtime: IAgentRuntime,
       params: TextToSpeechParams | string
     ) => {
+      const routed = await tryLocalInferenceModel<Uint8Array>(
+        runtime,
+        ModelType.TEXT_TO_SPEECH,
+        params
+      );
+      if (routed.handled) return routed.value;
+
       const text = extractSpeechText(params);
       return await readableToBuffer(await localAIManager.generateSpeech(text));
     },

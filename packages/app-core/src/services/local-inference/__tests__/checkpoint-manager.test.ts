@@ -11,12 +11,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CheckpointFetch } from "../dflash-checkpoint-client";
 import {
   CTX_CHECKPOINTS_ENV_VAR,
   GatedCheckpointManager,
   readCtxCheckpointsEnvFlag,
 } from "../checkpoint-manager";
+import type { CheckpointFetch } from "../dflash-checkpoint-client";
 
 interface Recorded {
   url: string;

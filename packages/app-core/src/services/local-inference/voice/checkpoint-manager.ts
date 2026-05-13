@@ -345,7 +345,11 @@ export class MockCheckpointManager implements CheckpointManagerLike {
 const SLOT_ID_STRING_RE = /^[A-Za-z0-9._:-]+$/;
 
 function assertSlotIdString(slotId: string): void {
-  if (typeof slotId !== "string" || slotId.length === 0 || slotId.length > 128) {
+  if (
+    typeof slotId !== "string" ||
+    slotId.length === 0 ||
+    slotId.length > 128
+  ) {
     throw new TypeError(
       `[checkpoint-manager] invalid slotId: ${JSON.stringify(slotId)} (1-128 chars required)`,
     );

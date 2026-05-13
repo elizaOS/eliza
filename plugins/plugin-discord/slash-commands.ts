@@ -61,7 +61,7 @@ const FALLBACK_KNOWN_MODELS = [
 	"claude-opus-4-7",
 	"claude-3.5-haiku",
 	"openai/gpt-oss-120b",
-	"eliza-1-9b",
+	"eliza-1-4b",
 	"gemini-2.5-pro",
 	"gemini-2.5-flash",
 	"mistral-large",

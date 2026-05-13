@@ -83,6 +83,39 @@ function shouldForceLocalInference(
   return policy === "manual" && preferredProvider === "eliza-local-inference";
 }
 
+function getRuntimeModelCandidates(
+  runtime: IAgentRuntime,
+  modelType: string,
+): HandlerRegistration[] {
+  const models = (runtime as { models?: unknown }).models;
+  if (!(models instanceof Map)) return [];
+  const registrations = models.get(modelType);
+  if (!Array.isArray(registrations)) return [];
+  return registrations
+    .filter(
+      (
+        entry,
+      ): entry is {
+        provider: string;
+        priority?: number;
+        handler: HandlerRegistration["handler"];
+      } =>
+        entry &&
+        typeof entry === "object" &&
+        typeof (entry as { provider?: unknown }).provider === "string" &&
+        (entry as { provider: string }).provider !== ROUTER_PROVIDER &&
+        typeof (entry as { handler?: unknown }).handler === "function",
+    )
+    .map((entry) => ({
+      modelType,
+      provider: entry.provider,
+      priority: typeof entry.priority === "number" ? entry.priority : 0,
+      registeredAt: "runtime-introspection",
+      handler: entry.handler,
+    }))
+    .sort((a, b) => b.priority - a.priority);
+}
+
 export function filterUnavailableLocalInferenceCandidates(
   candidates: HandlerRegistration[],
   localInferenceAvailable: boolean,
@@ -134,11 +167,17 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
     // policies, honor the documented fallback behaviour: if the selected
     // provider throws, try the next eligible provider instead of surfacing a
     // local/model-specific failure while cloud providers are available.
+    const registeredCandidates = handlerRegistry.getForTypeExcluding(
+      modelType,
+      ROUTER_PROVIDER,
+    );
     const candidates = await filterUnavailableLocalInference(
       slot,
       policy,
       preferred,
-      handlerRegistry.getForTypeExcluding(modelType, ROUTER_PROVIDER),
+      registeredCandidates.length > 0
+        ? registeredCandidates
+        : getRuntimeModelCandidates(runtime, modelType),
     );
     const failedProviders = new Set<string>();
     let lastError: unknown = null;

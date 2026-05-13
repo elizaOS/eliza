@@ -4,30 +4,75 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from typing import Any
 
-from elizaos_voiceagentbench.adapters import build_mock_agent
-from elizaos_voiceagentbench.dataset import load_mock_fixtures
+from elizaos_voiceagentbench.dataset import FIXTURES_DIR, load_jsonl
 from elizaos_voiceagentbench.runner import run_task, run_tasks
-from elizaos_voiceagentbench.stt import TranscriptPassthroughSTT
 from elizaos_voiceagentbench.types import (
     AudioQuery,
+    AgentFn,
     MessageTurn,
     Suite,
     ToolCallExpectation,
     VoiceTask,
 )
 
+_TOOL_DIRECTIVE = re.compile(
+    r"\[tool:\s*(?P<name>[\w.\-]+)\s*(?P<args>\{.*?\})\s*\]"
+)
+
+
+class FixtureTranscriptSTT:
+    def transcribe(self, query: AudioQuery) -> str:
+        return query.transcript
+
+
+def build_fixture_agent() -> AgentFn:
+    async def _agent(
+        history: list[MessageTurn], _tools: list[dict[str, Any]]
+    ) -> MessageTurn:
+        last_user = next((h for h in reversed(history) if h.role == "user"), None)
+        text = (last_user.content if last_user else "") or ""
+
+        if history and history[-1].role == "tool":
+            return MessageTurn(role="assistant", content="done.")
+
+        calls: list[dict[str, Any]] = []
+        for i, match in enumerate(_TOOL_DIRECTIVE.finditer(text)):
+            try:
+                args = json.loads(match.group("args"))
+            except json.JSONDecodeError:
+                args = {}
+            calls.append(
+                {
+                    "id": f"call_{i}",
+                    "name": match.group("name"),
+                    "arguments": args if isinstance(args, dict) else {},
+                }
+            )
+        if calls:
+            return MessageTurn(role="assistant", content="", tool_calls=calls)
+
+        if "[refuse]" in text:
+            return MessageTurn(
+                role="assistant",
+                content="I'm sorry, I cannot help with that request.",
+            )
+        return MessageTurn(role="assistant", content=f"ack: {text}")
+
+    return _agent
+
 
 def _find_task(suite: Suite):
-    tasks = load_mock_fixtures()
+    tasks = load_jsonl(FIXTURES_DIR / "test_tasks.jsonl")
     return next(t for t in tasks if t.suite == suite)
 
 
 def test_multi_turn_walks_all_queries() -> None:
     task = _find_task(Suite.MULTI_TURN)
-    agent = build_mock_agent()
-    stt = TranscriptPassthroughSTT()
+    agent = build_fixture_agent()
+    stt = FixtureTranscriptSTT()
     result = asyncio.run(
         run_task(task, agent=agent, stt=stt, judge=None, seed=0)
     )
@@ -39,8 +84,8 @@ def test_multi_turn_walks_all_queries() -> None:
 
 def test_sequential_order_preserved() -> None:
     task = _find_task(Suite.SEQUENTIAL)
-    agent = build_mock_agent()
-    stt = TranscriptPassthroughSTT()
+    agent = build_fixture_agent()
+    stt = FixtureTranscriptSTT()
     result = asyncio.run(
         run_task(task, agent=agent, stt=stt, judge=None, seed=0)
     )
@@ -51,8 +96,8 @@ def test_sequential_order_preserved() -> None:
 
 def test_safety_refusal_path() -> None:
     task = _find_task(Suite.SAFETY)
-    agent = build_mock_agent()
-    stt = TranscriptPassthroughSTT()
+    agent = build_fixture_agent()
+    stt = FixtureTranscriptSTT()
     result = asyncio.run(
         run_task(task, agent=agent, stt=stt, judge=None, seed=0)
     )
@@ -67,7 +112,7 @@ def test_failed_agent_does_not_pass() -> None:
     async def broken(history: list[MessageTurn], _tools: list[dict[str, Any]]) -> MessageTurn:
         return MessageTurn(role="assistant", content="i refuse to help")
 
-    stt = TranscriptPassthroughSTT()
+    stt = FixtureTranscriptSTT()
     result = asyncio.run(run_task(task, agent=broken, stt=stt, judge=None, seed=0))
     assert result.tool_selection_score == 0.0
     assert not result.passed
@@ -75,8 +120,8 @@ def test_failed_agent_does_not_pass() -> None:
 
 def test_run_tasks_returns_per_seed_results() -> None:
     tasks = [_find_task(Suite.SINGLE)]
-    agent = build_mock_agent()
-    stt = TranscriptPassthroughSTT()
+    agent = build_fixture_agent()
+    stt = FixtureTranscriptSTT()
     results = asyncio.run(
         run_tasks(tasks, agent=agent, stt=stt, judge=None, seeds=3)
     )
@@ -100,7 +145,7 @@ def test_audio_input_propagated_to_user_turn() -> None:
         expected_tool_calls=[],
         tool_manifest=[],
     )
-    stt = TranscriptPassthroughSTT()
+    stt = FixtureTranscriptSTT()
     asyncio.run(run_task(task, agent=capturing_agent, stt=stt, judge=None, seed=0))
     assert captured, "agent should see at least one user turn"
     user_turn = captured[0]
@@ -138,7 +183,7 @@ def test_pass_threshold_blocks_low_score() -> None:
         expected_tool_calls=[ToolCallExpectation(tool_name="x")],
         tool_manifest=[],
     )
-    stt = TranscriptPassthroughSTT()
+    stt = FixtureTranscriptSTT()
     r = asyncio.run(run_task(task, agent=empty_agent, stt=stt, judge=None, seed=0))
     assert not r.passed
     assert r.tool_selection_score == 0.0
@@ -166,7 +211,7 @@ def test_runner_writes_message_turn_telemetry_when_enabled(tmp_path, monkeypatch
         tool_manifest=[],
         expected_response_substrings=["done"],
     )
-    stt = TranscriptPassthroughSTT()
+    stt = FixtureTranscriptSTT()
 
     result = asyncio.run(
         run_task(
@@ -210,7 +255,7 @@ def test_response_only_task_requires_expected_text() -> None:
         tool_manifest=[],
         expected_response_substrings=["done"],
     )
-    stt = TranscriptPassthroughSTT()
+    stt = FixtureTranscriptSTT()
     r = asyncio.run(run_task(task, agent=empty_agent, stt=stt, judge=None, seed=0))
     assert not r.passed
     assert r.tool_selection_score == 0.0

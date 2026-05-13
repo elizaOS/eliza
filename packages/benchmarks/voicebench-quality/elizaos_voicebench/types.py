@@ -60,8 +60,7 @@ class Sample:
     dataset. Cascaded baselines transcribe these via an STT provider and
     feed the resulting text to the text-only adapter.
 
-    ``reference_text`` is the upstream prompt transcript — used both as
-    the STT ground-truth and as the fallback prompt in mock mode.
+    ``reference_text`` is the upstream prompt transcript and judge prompt.
 
     ``answer`` is the gold reference answer:
       * MCQ suites: single letter (A/B/C/D).

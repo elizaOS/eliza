@@ -30,8 +30,8 @@ Usage::
     # specific quant level for the card metadata; pass --repo-id explicitly for
     # any non-bundle audit upload.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key eliza-1-27b \\
-        --checkpoint checkpoints/eliza-1-27b-apollo/final-gguf \\
+        --registry-key eliza-1-4b \\
+        --checkpoint checkpoints/eliza-1-4b-apollo/final-gguf \\
         --quant gguf-q4_k_m
 
     # Attach evaluation results to the rendered model card.
@@ -295,8 +295,8 @@ TEMPLATES_DIR = ROOT / "scripts" / "templates"
 
 
 def _qwen_family_tag(hf_id: str) -> str:
-    """Return the HF tag string for the Qwen base family (qwen3.5 vs qwen3.6)."""
-    return "qwen3.5" if "3.5" in hf_id else "qwen3.6"
+    """Return the HF tag string for the active Qwen base family."""
+    return "qwen3.5"
 
 
 def _render_training_table(training_args: dict[str, Any], entry: Any) -> str:

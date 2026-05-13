@@ -354,6 +354,7 @@ def _write_telemetry(
         "cache_read_input_tokens": tokens["cache_read_input_tokens"],
         "cache_creation_input_tokens": tokens["cache_creation_input_tokens"],
         "actions": list(response.actions) if response is not None else [],
+        "params": _jsonable(response.params) if response is not None else {},
         "response_text": response.text if response is not None else "",
         "error_if_any": error,
     }

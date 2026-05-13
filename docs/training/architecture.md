@@ -22,10 +22,12 @@ this file, this file is the intended source of truth.
 
 - Entry point: `packages/training/scripts/optimize_for_eliza1.py` (full recipe
   in [`optimization-pipeline.md`](optimization-pipeline.md)).
-- Base model: a Qwen3 causal-LM. The **smallest target is `eliza-1-0_6b`,
-  derived from `Qwen/Qwen3-0.6B`** (older docs called this `eliza-1-lite-0_6b`
-  / `eliza-1-lite-0_6b`; the canonical slug is `eliza-1-0_6b`). Larger tiers
-  (`eliza-1-2b`, `eliza-1-9b`, `eliza-1-27b`) are planned, not published.
+- Base model: a Qwen3.5 causal-LM for the active small tiers. The **smallest
+  target is `eliza-1-0_8b`, derived from `Qwen/Qwen3.5-0.8B`**; the default
+  mobile/desktop tier is `eliza-1-2b`, derived from `Qwen/Qwen3.5-2B`. The
+  retired pre-Qwen3.5 small-tier line must not be reintroduced as active Eliza-1
+  defaults. Larger tiers (`eliza-1-9b`, `eliza-1-27b`) are planned, not
+  published.
 - It composes the four non-upstream GGML types — `Q4_POLAR` (weights),
   `QJL1_256` (K-cache), `TBQ3_0`/`TBQ4_0` (V-cache) — and the DFlash
   spec-decode CLI surface, all of which require the

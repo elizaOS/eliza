@@ -44,13 +44,13 @@ describe("local inference recommendations", () => {
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-2b");
-    // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
-    // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is 27b-256k -> 27b -> 9b -> 2b, picks 27b.
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
+    // Current default/recommended tiers are restricted to the Qwen3.5
+    // 0.8B/2B/4B release train; larger historical hardware placeholders are
+    // hidden until final weights and evidence exist.
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
   });
 
-  it("picks the 27B 256k tier on a >=96 GB-effective workstation", () => {
+  it("still caps auto-recommendation at 4B on a >=96 GB-effective workstation", () => {
     const probe = hardware({
       totalRamGb: 128,
       freeRamGb: 96,
@@ -64,8 +64,7 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
 
-    // effective = max(128, 64) = 128 ≥ 27b-256k minRam (96).
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
   });
 
   it("uses the mobile platform ladder and prefers the 2B tier when it fits", () => {
@@ -143,8 +142,8 @@ describe("local inference recommendations", () => {
   });
 
   it("chooses a smaller fitting fallback from the same platform ladder", () => {
-    // linux-gpu host with enough effective memory for 9b
-    // (effective = max(VRAM, RAM*0.5) = max(16, 16) = 16, 9B minRam 12).
+    // linux-gpu host with enough effective memory for hidden placeholders still
+    // falls back only to current default-eligible release tiers.
     const probe = hardware({
       totalRamGb: 32,
       freeRamGb: 24,
@@ -160,7 +159,7 @@ describe("local inference recommendations", () => {
       "TEXT_LARGE",
     );
 
-    expect(fallback?.id).toBe("eliza-1-9b");
+    expect(fallback?.id).toBe("eliza-1-4b");
   });
 
   it("does not recommend Eliza-1 tiers when the probed binary lacks required kernels", () => {

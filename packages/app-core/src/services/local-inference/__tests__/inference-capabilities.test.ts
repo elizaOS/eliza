@@ -15,9 +15,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   type CapabilityProbes,
-  type ThermalState,
   defaultsForNoBinding,
   probeCapabilities,
+  type ThermalState,
 } from "../inference-capabilities";
 
 function probeFromBits(bits: {

@@ -82,19 +82,15 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 from benchmarks.eliza1_gates import apply_gates
 
-VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k", "27b-1m"}
-EMBEDDING_TIERS: Final[set[str]] = {"2b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
+VISION_TIERS: Final[set[str]] = {"4b"}
+EMBEDDING_TIERS: Final[set[str]] = {"2b", "4b"}
 EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
 EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (1800, 2400),
-    "2b": (3500, 5000),
+    "0_8b": (2500, 3700),
+    "2b": (4000, 5500),
     "4b": (6000, 8000),
-    "9b": (7000, 9500),
-    "27b": (24000, 32000),
-    "27b-256k": (48000, 64000),
-    "27b-1m": (96000, 128000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "singing")
 CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
@@ -225,8 +221,8 @@ def _publish_blocking_reasons(*, tier: str, text_substituted: bool, drafter_stam
     reasons: list[str] = []
     if text_substituted:
         reasons.append(
-            f"text backbone for {tier} is the closest publicly-available Qwen3 base (Qwen3.5/3.6 not "
-            "publicly resolvable); the substitution is recorded in the manifest lineage block"
+            f"text backbone for {tier} is a substituted upstream GGUF artifact; "
+            "the exact source repository, file, and revision are recorded in the manifest lineage block"
         )
     if drafter_stamp_only:
         reasons.append(

@@ -281,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help=(
             "Upstream HF repo the base weights come from (e.g. "
-            "unsloth/Qwen3.5-9B-GGUF). Recorded in the provenance JSON for "
+            "Qwen/Qwen3.5-4B). Recorded in the provenance JSON for "
             "--release-state base-v1. Defaults to the source_model field in "
             "the polarquant/qjl sidecar."
         ),

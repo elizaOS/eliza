@@ -53,8 +53,8 @@ import {
 } from "./dflash-checkpoint-client";
 import {
   type CheckpointHandle,
-  CheckpointManager as RestCheckpointManager,
   type CheckpointManagerLike,
+  CheckpointManager as RestCheckpointManager,
 } from "./voice/checkpoint-manager";
 
 export type {
@@ -182,7 +182,8 @@ export class GatedCheckpointManager {
     if (opts.resolveSlotId !== undefined) {
       this.resolveSlotId = opts.resolveSlotId;
     }
-    this.namedHandleTtlMs = opts.namedHandleTtlMs ?? DEFAULT_NAMED_HANDLE_TTL_MS;
+    this.namedHandleTtlMs =
+      opts.namedHandleTtlMs ?? DEFAULT_NAMED_HANDLE_TTL_MS;
     this.now = opts.now ?? Date.now;
   }
 
@@ -270,10 +271,7 @@ export class GatedCheckpointManager {
    * into the name so multiple slots don't collide
    * (`pre-speculative-T123`, not `pre-speculative`).
    */
-  async save(
-    slotId: number,
-    name: string,
-  ): Promise<CheckpointHandle | null> {
+  async save(slotId: number, name: string): Promise<CheckpointHandle | null> {
     this.evictExpired();
     if (!this.isEnabled()) {
       logger.debug(
@@ -331,7 +329,10 @@ export class GatedCheckpointManager {
    * cancels in-flight decode on the slot — semantically "drop everything
    * speculative".
    */
-  async erase(slotId: number, handleOrName: CheckpointHandle | string): Promise<void> {
+  async erase(
+    slotId: number,
+    handleOrName: CheckpointHandle | string,
+  ): Promise<void> {
     if (!this.isEnabled()) {
       if (typeof handleOrName === "string") {
         this.named.delete(handleOrName);
@@ -406,7 +407,9 @@ export class GatedCheckpointManager {
 
   // --- internals -------------------------------------------------------
 
-  private resolveHandle(handleOrName: CheckpointHandle | string): CheckpointHandle | null {
+  private resolveHandle(
+    handleOrName: CheckpointHandle | string,
+  ): CheckpointHandle | null {
     if (typeof handleOrName !== "string") return handleOrName;
     return this.named.get(handleOrName)?.handle ?? null;
   }

@@ -102,7 +102,57 @@
         "platforms/**/build/**",
         "platforms/**/artifacts/**"
       ],
-      "ignoreDependencies": ["node:sqlite"]
+      "ignoreDependencies": [
+        "@capacitor/barcode-scanner",
+        "@capacitor/haptics",
+        "@capacitor/keyboard",
+        "@capacitor/push-notifications",
+        "@elizaos/app-lifeops",
+        "@elizaos/app-shopify",
+        "@elizaos/app-vincent",
+        "@elizaos/plugin-bootstrap",
+        "@elizaos/plugin-browser",
+        "@elizaos/plugin-discord",
+        "@elizaos/plugin-local-embedding",
+        "@elizaos/plugin-telegram",
+        "@elizaos/plugin-wallet",
+        "@elizaos/plugin-wechat",
+        "@elizaos/plugin-workflow",
+        "@types/ws",
+        "discord.js",
+        "figlet",
+        "node:sqlite",
+        "node:undici",
+        "nodemailer",
+        "puppeteer-core",
+        "tailwindcss",
+        "undici",
+        "ws"
+      ]
+    },
+    "packages/agent": {
+      "entry": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.{mjs,ts,cjs}",
+        "test/**/*.{ts,tsx}",
+        "vitest.config.ts"
+      ],
+      "project": [
+        "src/**/*.{ts,tsx}",
+        "scripts/**/*.{mjs,ts,cjs}",
+        "test/**/*.{ts,tsx}",
+        "*.ts"
+      ],
+      "ignore": [
+        "dist/**",
+        "dist-mobile*/**"
+      ],
+      "ignoreDependencies": [
+        "node:sqlite",
+        "ws",
+        "@types/ws",
+        "x402-fetch"
+      ]
     },
     "packages/core": {
       "entry": ["src/**/*.ts", "!src/**/*.d.ts", "build.ts"],

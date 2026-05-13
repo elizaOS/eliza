@@ -69,6 +69,8 @@ const packagesRoot = path.resolve(appCoreRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
+const IOS_DEFAULT_DEPLOYMENT_TARGET = "15.0";
+const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 
 // AOSP system APK staging path. Brand-aware: forks declare their vendor
 // dir + APK name in `app.config.ts > aosp:`. When that block is present
@@ -673,6 +675,11 @@ async function buildWeb(platform) {
       ? {
           ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
           VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
+        }
+      : {}),
+    ...(platform === "ios-local" && isFullIosBunEngineRequested(process.env)
+      ? {
+          VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
         }
       : {}),
   };
@@ -2095,10 +2102,13 @@ function isTruthyEnv(value) {
 }
 
 function isFullIosBunEngineRequested(env = process.env) {
-  return (
-    isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE) ||
-    isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE)
-  );
+  return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
+}
+
+function resolveIosDeploymentTarget(env = process.env) {
+  return isFullIosBunEngineRequested(env)
+    ? IOS_FULL_BUN_DEPLOYMENT_TARGET
+    : IOS_DEFAULT_DEPLOYMENT_TARGET;
 }
 
 function isIosSimulatorBuildTarget(buildTarget) {
@@ -2183,6 +2193,12 @@ function generatePodfile() {
       "[mobile-build] iOS Podfile: requiring full Bun engine pod (ELIZA_IOS_FULL_BUN_ENGINE / ELIZA_IOS_FULL_BUN_ENGINE set)",
     );
   }
+  const deploymentTarget = resolveIosDeploymentTarget();
+  if (includeFullBunEngine) {
+    console.log(
+      `[mobile-build] iOS full Bun deployment target: ${deploymentTarget}`,
+    );
+  }
 
   const lines = [
     `  pod 'Capacitor', :path => node_package_path('@capacitor/ios')`,
@@ -2216,7 +2232,7 @@ capacitor_ios_path = node_package_path('@capacitor/ios')
 
 require_relative File.join(capacitor_ios_path, 'scripts/pods_helpers')
 
-platform :ios, '15.0'
+platform :ios, '${deploymentTarget}'
 use_frameworks!
 
 install! 'cocoapods', :disable_input_output_paths => true
@@ -4367,6 +4383,7 @@ async function buildIos({ local = false } = {}) {
       buildTarget.destination,
       "-sdk",
       buildTarget.sdk,
+      `IPHONEOS_DEPLOYMENT_TARGET=${resolveIosDeploymentTarget()}`,
       `CODE_SIGNING_ALLOWED=${process.env.ELIZA_IOS_CODE_SIGNING_ALLOWED ?? "NO"}`,
       ...(isIosSimulatorBuildTarget(buildTarget)
         ? ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "EXCLUDED_ARCHS=x86_64"]

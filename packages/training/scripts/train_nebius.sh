@@ -7,14 +7,17 @@
 # =============================================================================
 #
 # Provision a Nebius H200 instance, sync the training tree, and run a
-# full-parameter SFT with APOLLO on a Qwen3.5/3.6 model that's too big to
+# full-parameter SFT with APOLLO on a Qwen model that's too big to
 # train on the local 16GB GPU.
 #
-# eliza-1 cloud-tier targets (model_registry.py):
-#   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b   (single H200 SXM, ~80 GB peak)
-#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b  (2× H200 SXM, FSDP, 144k context)
-# The 2× H200 default below sizes for the 27B; switch NEBIUS_VM_PRESET to
-# gpu-h200x1 when training the 9B to halve the bill.
+# Active eliza-1 targets (model_registry.py):
+#   REGISTRY_KEY=qwen3.5-0.8b → eliza-1-0_8b
+#   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b
+#   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b
+#
+# Nebius is deprecated and kept only as an emergency fallback. The active
+# 4B tier fits comfortably on a single H200; larger hidden placeholders are
+# not part of the current release line.
 #
 # Override via REGISTRY_KEY env var. The model registry drives
 # micro_batch / grad_accum / seq_len.
@@ -27,7 +30,7 @@
 #   NEBIUS_PROJECT_ID
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3.6-27b
+#   REGISTRY_KEY               # default: qwen3.5-4b
 #   RUN_NAME                   # default: <registry-key>-apollo
 #   NEBIUS_VM_PRESET           # default: gpu-h200x1
 #   NEBIUS_VM_REGION           # default: eu-north1
@@ -51,26 +54,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
 : "${NEBIUS_VM_NAME:=eliza-train-h200}"
-: "${NEBIUS_VM_PRESET:=gpu-h200x2}"
+: "${NEBIUS_VM_PRESET:=gpu-h200x1}"
 : "${NEBIUS_VM_REGION:=eu-north1}"
 : "${NEBIUS_VM_DISK_GB:=2048}"
 : "${NEBIUS_SSH_USER:=ubuntu}"
 
 REMOTE_TRAIN_DIR="/opt/training"
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-4b}"
 RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo}"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,fused_turboquant,qjl}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
-# Qwen3.6-27B at 144k context training needs 2× H200 SXM with FSDP. Single
-# H200 OOMs even at seq_len=8k (~92% util before activations). Two H200s
-# gives 124-130 GB per-GPU at 144k, a comfortable 44-46% utilization with
-# room for larger micro-batches. For longer training contexts (>262k) go
-# to H200-4x.
-#
-# Qwen3.5-9B fits a single H200 SXM (peak ~80 GB at seq_len=16k); set
-# NEBIUS_VM_PRESET=gpu-h200x1 + FSDP_WORLD_SIZE=1 for that run.
-NEBIUS_VM_PRESET="${NEBIUS_VM_PRESET:-gpu-h200x2}"
-FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-2}"
+# Active Qwen3.5 0.8B/2B/4B targets use a single H200 fallback worker.
+NEBIUS_VM_PRESET="${NEBIUS_VM_PRESET:-gpu-h200x1}"
+FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-1}"
 
 cmd="${1:-help}"
 

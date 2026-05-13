@@ -9,11 +9,11 @@
 //   advertises), not the lower-level llama.cpp kernel handles in `../types.ts`
 //   (`turbo3` / `turbo4` / `turbo3_tcq` / `qjl_full` / `dflash`). The two
 //   layers map but are not the same enum.
-// - The schema URL `https://elizalabs.ai/schemas/eliza-1.manifest.v1.json` is
+// - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
 // - Shared-vocabulary invariant: every speculative-decoding GGUF in an
 //   Eliza-1 bundle — the text/vision model and the DFlash drafter — is
-//   Qwen3.5/Qwen3.6-lineage and shares the same Qwen3.5 BPE vocabulary
+//   Qwen3.5-lineage and shares the same Qwen3.5 BPE vocabulary
 //   (248 320 tokens) and the same merges table. This is what makes
 //   (a) DFlash speculative decoding correct (spec decoding only works if token
 //   ids match), and (b) the drafter GGUFs ship without
@@ -31,7 +31,7 @@ import { z } from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
-  "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
+  "https://elizaos.ai/schemas/eliza-1.manifest.v1.json" as const;
 
 // The shared Qwen3.5 BPE vocabulary every text/drafter component in an
 // Eliza-1 bundle uses. Exported so runtime code can assert it (a GGUF whose
@@ -205,7 +205,7 @@ export const Eliza1FilesSchema = z.object({
   dflash: z.array(Eliza1FileEntrySchema).min(1),
   cache: z.array(Eliza1FileEntrySchema).min(1),
   // Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-lite tiers) and
+  // embedding model (dedicated embedding GGUF on non-lite tiers) and
   // a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
   // optional in the schema — the 0_8b tier intentionally omits the
   // dedicated embedding (pools from text backbone) and a tier may

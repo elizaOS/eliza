@@ -3,7 +3,9 @@ import path from "node:path";
 import { PassThrough, Readable } from "node:stream";
 import { logger } from "@elizaos/core";
 import { pipeline, type TextToAudioPipeline } from "@huggingface/transformers";
-import { MODEL_SPECS } from "../types";
+
+const LEGACY_TTS_MODEL_ENV = "LOCAL_AI_LEGACY_TTS_MODEL";
+const LEGACY_TTS_SPEAKER_EMBEDDING_ENV = "LOCAL_AI_LEGACY_TTS_SPEAKER_EMBEDDING_URL";
 
 interface TextToAudioOutput {
   audio: Float32Array;
@@ -75,7 +77,7 @@ export class TTSManager {
   private constructor(cacheDir: string) {
     this.cacheDir = path.join(cacheDir, "tts");
     this.ensureCacheDirectory();
-    logger.debug("TTSManager using Transformers.js initialized");
+    logger.debug("TTSManager legacy Transformers.js compatibility initialized");
   }
 
   public static getInstance(cacheDir: string): TTSManager {
@@ -103,16 +105,27 @@ export class TTSManager {
 
     this.initializingPromise = (async () => {
       try {
-        logger.info("Initializing TTS with Transformers.js backend...");
+        logger.info("Initializing legacy TTS with Transformers.js backend...");
 
-        const ttsModelSpec = MODEL_SPECS.tts.default;
-        if (!ttsModelSpec) {
-          throw new Error("Default TTS model specification not found in MODEL_SPECS.");
+        const modelName = process.env[LEGACY_TTS_MODEL_ENV]?.trim();
+        if (!modelName) {
+          throw new Error(
+            [
+              "plugin-local-ai no longer provides a default Transformers.js TTS model.",
+              "Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local TTS.",
+              `For legacy compatibility only, set ${LEGACY_TTS_MODEL_ENV} to a Transformers.js text-to-audio model id.`,
+            ].join(" ")
+          );
         }
-        const modelName = ttsModelSpec.modelId;
-        const speakerEmbeddingUrl = ttsModelSpec.defaultSpeakerEmbeddingUrl;
+        const speakerEmbeddingUrl = process.env[LEGACY_TTS_SPEAKER_EMBEDDING_ENV]?.trim();
 
-        logger.info(`Loading TTS pipeline for model: ${modelName}`);
+        logger.warn(
+          {
+            modelName,
+          },
+          "Using legacy plugin-local-ai Transformers.js TTS path; prefer @elizaos/plugin-local-inference for Eliza-1 voice."
+        );
+        logger.info(`Loading legacy TTS pipeline for model: ${modelName}`);
         this.synthesizer = await pipeline("text-to-audio", modelName);
         logger.success(`TTS pipeline loaded successfully for model: ${modelName}`);
 

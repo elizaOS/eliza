@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -154,6 +155,26 @@ def test_filesystem_mcp_config_cd_into_allowed_directory(tmp_path) -> None:
     assert f"cd {tmp_path}" in args[1]
 
 
+def test_yaml_filesystem_config_uses_workspace_path_alias_for_cwd(tmp_path) -> None:
+    loader_path = (
+        Path(__file__).resolve().parents[1]
+        / "gem"
+        / "tools"
+        / "mcp_server"
+        / "config_loader.py"
+    )
+    spec = importlib.util.spec_from_file_location("loca_config_loader", loader_path)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    config = module.build_server_config("filesystem", {"workspace_path": str(tmp_path)})
+    filesystem = config["filesystem"]
+
+    assert filesystem["cwd"] == str(tmp_path.resolve())
+    assert str(tmp_path.resolve()) in filesystem["args"]
+
+
 def test_trajectory_audit_accepts_complete_synthetic_run(tmp_path) -> None:
     root = tmp_path / "run"
     task_dir = root / "tasks" / "DemoTask" / "state0"
@@ -261,6 +282,7 @@ def test_trajectory_audit_accepts_flat_aggregate_list(tmp_path) -> None:
 
     assert audit["summary"]["issue_count"] == 0
     assert audit["summary"]["aggregate_trajectory_count"] == 1
+    assert audit["summary"]["total_api_tokens"] == 15
 
 
 def test_loca_proxy_preserves_eliza_metadata_on_assistant_message() -> None:

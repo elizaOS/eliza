@@ -252,6 +252,118 @@ def test_rebuild_latest_publishes_estimated_token_rows_with_warning(
     assert set(index["latest"]) == {"action-calling::eliza"}
 
 
+def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["framework", "personality_bench", "social_alpha", "solana"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="framework",
+        agent="eliza",
+        run_id="run_framework",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={"scenario_count": 12},
+        token_metrics={
+            "total_tokens": None,
+            "llm_call_count": 12,
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "telemetry_missing": True,
+        },
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "framework": _adapter("framework", agent_compatibility=("eliza",)),
+            "personality_bench": _adapter("personality_bench", agent_compatibility=("eliza",)),
+            "social_alpha": _adapter("social_alpha"),
+            "solana": _adapter("solana"),
+        },
+    )
+
+    payload = json.loads(
+        (tmp_path / "latest" / "framework__eliza.json").read_text(encoding="utf-8")
+    )
+    assert "publication_warnings" not in payload
+
+    _seed_run(
+        conn,
+        benchmark_id="personality_bench",
+        agent="eliza",
+        run_id="run_personality",
+        started_at="2026-05-12T00:01:00+00:00",
+        metrics={"total": 87, "agreementRate": 1.0},
+        token_metrics={
+            "total_tokens": None,
+            "llm_call_count": None,
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "telemetry_missing": True,
+        },
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "framework": _adapter("framework", agent_compatibility=("eliza",)),
+            "personality_bench": _adapter("personality_bench", agent_compatibility=("eliza",)),
+        },
+    )
+
+    payload = json.loads(
+        (tmp_path / "latest" / "personality_bench__eliza.json").read_text(encoding="utf-8")
+    )
+    assert "publication_warnings" not in payload
+
+    for benchmark_id in ("social_alpha", "solana"):
+        _seed_run(
+            conn,
+            benchmark_id=benchmark_id,
+            agent="eliza",
+            run_id=f"run_{benchmark_id}",
+            started_at="2026-05-12T00:02:00+00:00",
+            metrics={"trajectory_summary": {"turns": 0}},
+            token_metrics={
+                "total_tokens": None,
+                "llm_call_count": None,
+                "prompt_tokens": None,
+                "completion_tokens": None,
+                "telemetry_missing": True,
+            },
+        )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "framework": _adapter("framework", agent_compatibility=("eliza",)),
+            "personality_bench": _adapter("personality_bench", agent_compatibility=("eliza",)),
+            "social_alpha": _adapter("social_alpha"),
+            "solana": _adapter("solana"),
+        },
+    )
+
+    for benchmark_id in ("social_alpha", "solana"):
+        payload = json.loads(
+            (tmp_path / "latest" / f"{benchmark_id}__eliza.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert "publication_warnings" not in payload
+
+
 def test_rebuild_latest_indexes_cross_harness_comparison_signature(
     tmp_path: Path,
 ) -> None:
@@ -382,6 +494,52 @@ def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:
     )
     assert payload["run_id"] == "run_complete"
     assert payload["status"] == "succeeded"
+
+
+def test_rebuild_latest_keeps_success_when_newer_failed_row_exists(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="succeeded",
+        score=0.95,
+    )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_failed",
+        started_at="2026-05-12T00:10:00+00:00",
+        status="failed",
+        score=None,
+        metrics={"reason": "orchestrator_interrupted"},
+        token_metrics={},
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    latest_payload = json.loads(
+        (tmp_path / "latest" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    quarantine_payload = json.loads(
+        (tmp_path / "quarantine" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    assert latest_payload["run_id"] == "run_success"
+    assert latest_payload["status"] == "succeeded"
+    assert quarantine_payload["run_id"] == "run_failed"
+    assert quarantine_payload["quarantine_reason"] == "unsucceeded_run"
 
 
 def test_rebuild_latest_skips_stale_compatibility_incompatible_rows(

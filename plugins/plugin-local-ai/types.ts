@@ -53,7 +53,7 @@ export interface ModelSpecs {
   vision: VisionModelSpec;
   visionvl: VisionModelSpec;
   tts: {
-    default: TransformersJsTTSModelSpec;
+    default: TTSModelSpec;
   };
 }
 
@@ -70,9 +70,9 @@ export const MODEL_SPECS: ModelSpecs = {
     },
   },
   medium: {
-    name: "text/eliza-1-9b-64k.gguf",
+    name: "text/eliza-1-4b-64k.gguf",
     repo: "elizaos/eliza-1",
-    size: "9B",
+    size: "4B",
     quantization: "fused GGUF",
     contextSize: 65536,
     tokenizer: {
@@ -130,10 +130,20 @@ export const MODEL_SPECS: ModelSpecs = {
   },
   tts: {
     default: {
-      modelId: "Xenova/speecht5_tts",
-      defaultSampleRate: 16000,
-      defaultSpeakerEmbeddingUrl:
-        "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin",
+      name: "tts/omnivoice-small.gguf",
+      repo: "elizaos/eliza-1",
+      size: "bundle component",
+      quantization: "fused GGUF",
+      speakers: ["default"],
+      languages: ["en"],
+      features: ["streaming", "barge-in", "dflash"],
+      maxInputLength: 4096,
+      sampleRate: 24000,
+      contextSize: 4096,
+      tokenizer: {
+        name: "tts/omnivoice-tokenizer-small.gguf",
+        type: "omnivoice",
+      },
     },
   },
 };

@@ -308,10 +308,7 @@ export class VoiceRunMetrics {
         0,
         Math.floor(metrics.dflashAccepted ?? 0),
       );
-      this.dflashDrafted += Math.max(
-        0,
-        Math.floor(metrics.dflashDrafted ?? 0),
-      );
+      this.dflashDrafted += Math.max(0, Math.floor(metrics.dflashDrafted ?? 0));
     } else if (
       Number.isFinite(metrics.dflashAcceptRate) &&
       (metrics.dflashAcceptRate ?? -1) >= 0 &&

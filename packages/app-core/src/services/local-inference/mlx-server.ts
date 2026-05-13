@@ -207,10 +207,10 @@ interface MlxServerStatus {
  * through `args.onTextChunk` like the llama-server path.
  */
 export class MlxLocalServer {
-  private child: ChildProcess | null = null;
-  private baseUrl: string | null = null;
-  private modelDir: string | null = null;
-  private servedModelName: string | null = null;
+  protected child: ChildProcess | null = null;
+  protected baseUrl: string | null = null;
+  protected modelDir: string | null = null;
+  protected servedModelName: string | null = null;
 
   status(): MlxServerStatus {
     return {

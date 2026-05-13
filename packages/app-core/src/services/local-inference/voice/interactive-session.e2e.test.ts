@@ -26,11 +26,11 @@
  *       (f) barge-in: speech PCM while the agent is "speaking" → `pause-tts`;
  *           a blip → `resume-tts`; ASR-confirmed words → `hard-stop`
  *       (g) the latency tracer records voice-loop checkpoints
- *   - **Real-output** — the same path against the real `eliza-1-9b` bundle
- *     + fused TTS, gated behind `it.skipIf(!realBackendPresent)`. Skips when
- *     the bundle / fused build / required kernels aren't present (i.e. almost
- *     everywhere except a macOS-Metal box with the bundle staged). Don't fake
- *     a "real" run.
+ *   - **Real-output** — the same path against the real `eliza-1-2b` bundle
+ *     + fused TTS, gated behind `ELIZA_REAL_VOICE_E2E=1` and
+ *     `it.skipIf(!realBackendPresent)`. Skips unless explicitly requested on
+ *     a box with the bundle / fused build / required kernels. Don't fake a
+ *     "real" run.
  *
  * Vitest e2e convention (`*.e2e.test.ts`) — see `engine.e2e.test.ts` /
  * `engine.voice-turn.test.ts`.
@@ -66,6 +66,7 @@ import {
 import { writeVoicePresetFile } from "./voice-preset-format";
 
 const SAMPLE_RATE = 24_000;
+const runRealVoiceE2e = process.env.ELIZA_REAL_VOICE_E2E === "1";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -208,7 +209,7 @@ afterEach(async () => {
 // Is a real model + fused TTS + required kernels present? Conservative gate:
 // the catalog's required kernels are advertised by the installed llama-server
 // AND it is a fused build. Almost never true in CI — that's the point.
-const realBundleId = "eliza-1-9b";
+const realBundleId = "eliza-1-2b";
 let realBackendPresent = false;
 try {
   const { findCatalogModel } = await import("@elizaos/shared");
@@ -539,8 +540,8 @@ describe("interactive voice path — wiring (stub backends)", () => {
 
 // ── Real-output — gated ────────────────────────────────────────────────────
 
-describe.skipIf(!realBackendPresent)(
-  "interactive voice path — real eliza-1-9b + fused TTS",
+describe.skipIf(!runRealVoiceE2e || !realBackendPresent)(
+  "interactive voice path — real eliza-1-2b + fused TTS",
   () => {
     it("runs one synthetic-speech turn end to end and produces real audio", async () => {
       // Only reachable on a box with the bundle + fused build + required
@@ -554,7 +555,7 @@ describe.skipIf(!realBackendPresent)(
       const target = installed.find((m) => m.id === realBundleId);
       expect(target).toBeTruthy();
       if (!target?.bundleRoot)
-        throw new Error("real eliza-1-9b bundle has no bundleRoot");
+        throw new Error("real eliza-1-2b bundle has no bundleRoot");
       const targetBundleRoot = target.bundleRoot;
       await eng.load(target.path);
       eng.startVoice({ bundleRoot: targetBundleRoot, useFfiBackend: true });

@@ -1911,6 +1911,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pyyaml" },
+    { name = "scipy" },
     { name = "tiktoken" },
 ]
 
@@ -1971,6 +1972,7 @@ requires-dist = [
     { name = "pybind11", marker = "extra == 'train'", specifier = ">=2.12.0" },
     { name = "pytest", marker = "extra == 'train'", specifier = ">=8.0.0" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "scipy", specifier = ">=1.17.0" },
     { name = "tiktoken", specifier = ">=0.8.0" },
     { name = "torch", marker = "extra == 'train'", specifier = ">=2.5.0,<2.12" },
     { name = "transformers", marker = "extra == 'serve'", specifier = ">=4.46.0" },
