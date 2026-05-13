@@ -1610,22 +1610,11 @@ function targetCompatibility(target, ctx) {
   if (backend === "vulkan" && !ctx.glslc) {
     return { ok: false, reason: "no glslc (Vulkan shader compiler)" };
   }
-<<<<<<< HEAD
   if (backend === "sycl" && !(has("icpx") && has("icx"))) {
     return {
       ok: false,
       reason:
         "no icx/icpx (Intel oneAPI Base Toolkit) — source /opt/intel/oneapi/setvars.sh first",
-=======
-  if (
-    backend === "openvino" &&
-    !(process.env.OpenVINO_DIR || process.env.INTEL_OPENVINO_DIR)
-  ) {
-    return {
-      ok: false,
-      reason:
-        "no OpenVINO_DIR / INTEL_OPENVINO_DIR — source /opt/intel/openvino_<ver>/setupvars.sh first",
->>>>>>> pr-7634
     };
   }
   if (backend === "metal" && process.platform !== "darwin") {
