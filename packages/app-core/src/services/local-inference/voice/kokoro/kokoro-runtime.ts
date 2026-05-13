@@ -229,7 +229,10 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
       ? new ort.Tensor("int32", new Int32Array([1]), [1])
       : new ort.Tensor("float32", new Float32Array([1.0]), [1]);
     const feeds: Record<string, OrtTensor> = {
-      [tokensInputName]: new ort.Tensor("int64", inputIds, [1, inputIds.length]),
+      [tokensInputName]: new ort.Tensor("int64", inputIds, [
+        1,
+        inputIds.length,
+      ]),
       style: new ort.Tensor("float32", style, [1, style.length]),
       speed: speedTensor,
     };

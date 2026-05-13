@@ -15,8 +15,8 @@
  */
 
 import { existsSync } from "node:fs";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 
 import type { WhisperDecoder } from "./transcriber";
 
@@ -35,7 +35,9 @@ export interface OpenVinoWhisperRuntime {
   deviceChain: string;
 }
 
-function firstExisting(candidates: ReadonlyArray<string | null | undefined>): string | null {
+function firstExisting(
+  candidates: ReadonlyArray<string | null | undefined>,
+): string | null {
   for (const c of candidates) {
     if (c && existsSync(c)) return c;
   }
@@ -47,8 +49,23 @@ function resolveOpenVinoPython(): string | null {
   const env = process.env.ELIZA_OPENVINO_PYTHON?.trim();
   if (env) return existsSync(env) ? env : null;
   return firstExisting([
-    path.join(os.homedir(), ".local", "voice-bench", "ov_venv", "bin", "python"),
-    path.join(os.homedir(), ".eliza", "local-inference", "openvino", "venv", "bin", "python"),
+    path.join(
+      os.homedir(),
+      ".local",
+      "voice-bench",
+      "ov_venv",
+      "bin",
+      "python",
+    ),
+    path.join(
+      os.homedir(),
+      ".eliza",
+      "local-inference",
+      "openvino",
+      "venv",
+      "bin",
+      "python",
+    ),
   ]);
 }
 
@@ -58,8 +75,22 @@ function resolveWorkerScript(): string | null {
   if (env) return existsSync(env) ? env : null;
   const here = path.dirname(new URL(import.meta.url).pathname);
   return firstExisting([
-    path.resolve(here, "..", "..", "..", "..", "scripts", "openvino-whisper-asr-worker.py"),
-    path.join(os.homedir(), ".eliza", "local-inference", "openvino", "whisper-worker.py"),
+    path.resolve(
+      here,
+      "..",
+      "..",
+      "..",
+      "..",
+      "scripts",
+      "openvino-whisper-asr-worker.py",
+    ),
+    path.join(
+      os.homedir(),
+      ".eliza",
+      "local-inference",
+      "openvino",
+      "whisper-worker.py",
+    ),
   ]);
 }
 
@@ -69,7 +100,13 @@ function resolveModelDir(): string | null {
   if (env) return existsSync(env) ? env : null;
   return firstExisting([
     path.join(os.homedir(), ".local", "voice-bench", "whisper-base.en-int8-ov"),
-    path.join(os.homedir(), ".eliza", "local-inference", "openvino", "whisper-base.en-int8-ov"),
+    path.join(
+      os.homedir(),
+      ".eliza",
+      "local-inference",
+      "openvino",
+      "whisper-base.en-int8-ov",
+    ),
   ]);
 }
 
@@ -125,9 +162,10 @@ function bunOrThrow(): BunNamespace {
  * The decoder serializes requests on a Promise chain so the caller can
  * issue concurrent decodes without interleaving on the pipe.
  */
-export function makeOpenVinoWhisperDecoder(
-  runtime: OpenVinoWhisperRuntime,
-): { decoder: WhisperDecoder; dispose: () => void } {
+export function makeOpenVinoWhisperDecoder(runtime: OpenVinoWhisperRuntime): {
+  decoder: WhisperDecoder;
+  dispose: () => void;
+} {
   const bun = bunOrThrow();
   const proc = bun.spawn([runtime.pythonBin, runtime.workerScript], {
     stdin: "pipe",
@@ -147,7 +185,9 @@ export function makeOpenVinoWhisperDecoder(
     while (stdoutBuf.length < n) {
       const next = await reader.read();
       if (next.done) {
-        throw new Error("[asr] OpenVINO whisper worker stdout closed unexpectedly");
+        throw new Error(
+          "[asr] OpenVINO whisper worker stdout closed unexpectedly",
+        );
       }
       const merged = new Uint8Array(stdoutBuf.length + next.value.length);
       merged.set(stdoutBuf, 0);
@@ -195,7 +235,8 @@ export function makeOpenVinoWhisperDecoder(
     }
     if (dead) {
       return Promise.reject(
-        deadReason ?? new Error("[asr] OpenVINO whisper worker is no longer running"),
+        deadReason ??
+          new Error("[asr] OpenVINO whisper worker is no longer running"),
       );
     }
     const prev = chain;
@@ -206,7 +247,11 @@ export function makeOpenVinoWhisperDecoder(
       }
       const header = new Uint8Array(4);
       new DataView(header.buffer).setUint32(0, pcm16k.length, true);
-      const audioBytes = new Uint8Array(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
+      const audioBytes = new Uint8Array(
+        pcm16k.buffer,
+        pcm16k.byteOffset,
+        pcm16k.byteLength,
+      );
       await proc.stdin.write(header);
       if (audioBytes.length > 0) {
         await proc.stdin.write(audioBytes);

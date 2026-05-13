@@ -12,21 +12,46 @@ import { KokoroModelMissingError, type KokoroVoicePack } from "../types";
 function makeStubOrt(args: {
   inputNames?: ReadonlyArray<string>;
   waveform?: Float32Array;
-  captured?: { feeds: Record<string, { type: string; dims: ReadonlyArray<number>; data: Float32Array | Int32Array | BigInt64Array; }> | null };
+  captured?: {
+    feeds: Record<
+      string,
+      {
+        type: string;
+        dims: ReadonlyArray<number>;
+        data: Float32Array | Int32Array | BigInt64Array;
+      }
+    > | null;
+  };
 }): { ort: unknown; captured: typeof args.captured } {
   const captured = args.captured ?? { feeds: null };
   const waveform = args.waveform ?? new Float32Array([0.1, -0.1, 0.2, -0.2]);
   const session = {
     inputNames: args.inputNames,
-    async run(feeds: Record<string, { type: string; dims: ReadonlyArray<number>; data: Float32Array | Int32Array | BigInt64Array }>) {
+    async run(
+      feeds: Record<
+        string,
+        {
+          type: string;
+          dims: ReadonlyArray<number>;
+          data: Float32Array | Int32Array | BigInt64Array;
+        }
+      >,
+    ) {
       captured.feeds = feeds;
-      return { waveform: { type: "float32", data: waveform, dims: [waveform.length] } };
+      return {
+        waveform: { type: "float32", data: waveform, dims: [waveform.length] },
+      };
     },
     async release() {},
   };
   const ort = {
     InferenceSession: { create: async () => session },
-    Tensor: function (this: { type: string; data: unknown; dims: ReadonlyArray<number> }, type: string, data: unknown, dims: ReadonlyArray<number>) {
+    Tensor: function (
+      this: { type: string; data: unknown; dims: ReadonlyArray<number> },
+      type: string,
+      data: unknown,
+      dims: ReadonlyArray<number>,
+    ) {
       this.type = type;
       this.data = data;
       this.dims = dims;
@@ -39,8 +64,16 @@ function makeStubOrt(args: {
   return { ort, captured };
 }
 
-function stageBundle(dim: number, voiceBytes: Float32Array): {
-  layout: { root: string; modelFile: string; voicesDir: string; sampleRate: number };
+function stageBundle(
+  dim: number,
+  voiceBytes: Float32Array,
+): {
+  layout: {
+    root: string;
+    modelFile: string;
+    voicesDir: string;
+    sampleRate: number;
+  };
   voice: KokoroVoicePack;
   cleanup: () => void;
 } {
@@ -52,26 +85,43 @@ function stageBundle(dim: number, voiceBytes: Float32Array): {
   writeFileSync(path.join(root, modelFile), Buffer.alloc(4));
   writeFileSync(
     path.join(voicesDir, "af_test.bin"),
-    Buffer.from(voiceBytes.buffer, voiceBytes.byteOffset, voiceBytes.byteLength),
+    Buffer.from(
+      voiceBytes.buffer,
+      voiceBytes.byteOffset,
+      voiceBytes.byteLength,
+    ),
   );
   return {
     layout: { root, modelFile, voicesDir, sampleRate: 24000 },
-    voice: { id: "af_test", displayName: "Test", lang: "a", file: "af_test.bin", dim, tags: ["test"] },
+    voice: {
+      id: "af_test",
+      displayName: "Test",
+      lang: "a",
+      file: "af_test.bin",
+      dim,
+      tags: ["test"],
+    },
     cleanup: () => rmSync(root, { recursive: true, force: true }),
   };
 }
 
 describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
   let cleanups: Array<() => void>;
-  beforeEach(() => { cleanups = []; });
-  afterEach(() => { for (const c of cleanups) c(); });
+  beforeEach(() => {
+    cleanups = [];
+  });
+  afterEach(() => {
+    for (const c of cleanups) c();
+  });
 
   it("loads the legacy single-style format (exactly voice.dim fp32)", async () => {
     const dim = 4;
     const single = new Float32Array([1, 2, 3, 4]);
     const fx = stageBundle(dim, single);
     cleanups.push(fx.cleanup);
-    const { ort, captured } = makeStubOrt({ inputNames: ["input_ids", "style", "speed"] });
+    const { ort, captured } = makeStubOrt({
+      inputNames: ["input_ids", "style", "speed"],
+    });
     const runtime = new KokoroOnnxRuntime({
       layout: fx.layout,
       expectedSha256: null,
@@ -99,7 +149,9 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
     }
     const fx = stageBundle(dim, full);
     cleanups.push(fx.cleanup);
-    const { ort, captured } = makeStubOrt({ inputNames: ["input_ids", "style", "speed"] });
+    const { ort, captured } = makeStubOrt({
+      inputNames: ["input_ids", "style", "speed"],
+    });
     const runtime = new KokoroOnnxRuntime({
       layout: fx.layout,
       expectedSha256: null,
@@ -113,7 +165,9 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
       onChunk: () => false,
     });
     const styleFeed = captured!.feeds!.style;
-    expect(Array.from(styleFeed.data as Float32Array)).toEqual([300, 301, 302, 303]);
+    expect(Array.from(styleFeed.data as Float32Array)).toEqual([
+      300, 301, 302, 303,
+    ]);
     expect(styleFeed.dims).toEqual([1, 4]);
   });
 
@@ -126,7 +180,9 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
     }
     const fx = stageBundle(dim, full);
     cleanups.push(fx.cleanup);
-    const { ort, captured } = makeStubOrt({ inputNames: ["input_ids", "style", "speed"] });
+    const { ort, captured } = makeStubOrt({
+      inputNames: ["input_ids", "style", "speed"],
+    });
     const runtime = new KokoroOnnxRuntime({
       layout: fx.layout,
       expectedSha256: null,
@@ -134,13 +190,18 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
     });
     // 20 phoneme tokens, table has 3 positions → pick position 2 (last).
     await runtime.synthesize({
-      phonemes: { ids: Int32Array.from(new Array(20).fill(7)), phonemes: "x".repeat(20) },
+      phonemes: {
+        ids: Int32Array.from(new Array(20).fill(7)),
+        phonemes: "x".repeat(20),
+      },
       voice: fx.voice,
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
     const styleFeed = captured!.feeds!.style;
-    expect(Array.from(styleFeed.data as Float32Array)).toEqual([200, 201, 202, 203]);
+    expect(Array.from(styleFeed.data as Float32Array)).toEqual([
+      200, 201, 202, 203,
+    ]);
   });
 
   it("rejects a voice .bin whose length is not a positive multiple of voice.dim", async () => {
@@ -148,7 +209,9 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
     const malformed = new Float32Array([1, 2, 3]); // 3 fp32 (not a multiple of 4)
     const fx = stageBundle(dim, malformed);
     cleanups.push(fx.cleanup);
-    const { ort } = makeStubOrt({ inputNames: ["input_ids", "style", "speed"] });
+    const { ort } = makeStubOrt({
+      inputNames: ["input_ids", "style", "speed"],
+    });
     const runtime = new KokoroOnnxRuntime({
       layout: fx.layout,
       expectedSha256: null,
@@ -167,13 +230,19 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
 
 describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
   let cleanups: Array<() => void>;
-  beforeEach(() => { cleanups = []; });
-  afterEach(() => { for (const c of cleanups) c(); });
+  beforeEach(() => {
+    cleanups = [];
+  });
+  afterEach(() => {
+    for (const c of cleanups) c();
+  });
 
   it("feeds `input_ids` when the session advertises it (newer export)", async () => {
     const fx = stageBundle(4, new Float32Array([1, 1, 1, 1]));
     cleanups.push(fx.cleanup);
-    const { ort, captured } = makeStubOrt({ inputNames: ["input_ids", "style", "speed"] });
+    const { ort, captured } = makeStubOrt({
+      inputNames: ["input_ids", "style", "speed"],
+    });
     const runtime = new KokoroOnnxRuntime({
       layout: fx.layout,
       expectedSha256: null,
@@ -192,7 +261,9 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
   it("feeds `tokens` when the session lacks `input_ids` (older kokoro-onnx export)", async () => {
     const fx = stageBundle(4, new Float32Array([1, 1, 1, 1]));
     cleanups.push(fx.cleanup);
-    const { ort, captured } = makeStubOrt({ inputNames: ["tokens", "style", "speed"] });
+    const { ort, captured } = makeStubOrt({
+      inputNames: ["tokens", "style", "speed"],
+    });
     const runtime = new KokoroOnnxRuntime({
       layout: fx.layout,
       expectedSha256: null,
