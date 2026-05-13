@@ -5,6 +5,14 @@ import { defineConfig } from "vitest/config";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 
+// Alias all @elizaos/plugin-* packages that agent/src imports to their source
+// so vitest can resolve them without a pre-built dist.
+function pluginAlias(name: string, srcPath?: string) {
+  const src =
+    srcPath ?? path.join(repoRoot, `plugins/${name}/src/index.ts`);
+  return [name, src] as [string, string];
+}
+
 export default defineConfig({
   root: here,
   resolve: {
@@ -12,22 +20,27 @@ export default defineConfig({
       "@elizaos/core": path.join(repoRoot, "packages/core/src/index.ts"),
       "@elizaos/agent": path.join(repoRoot, "packages/agent/src/index.ts"),
       "@elizaos/shared": path.join(repoRoot, "packages/shared/src/index.ts"),
-      "@elizaos/plugin-signal": path.join(
-        repoRoot,
-        "plugins/plugin-signal/src/index.ts",
-      ),
-      "@elizaos/plugin-whatsapp": path.join(
-        repoRoot,
-        "plugins/plugin-whatsapp/src/index.ts",
-      ),
-      "@elizaos/plugin-computeruse": path.join(
-        repoRoot,
-        "plugins/plugin-computeruse/src/index.ts",
-      ),
-      "@elizaos/plugin-workflow": path.join(
-        repoRoot,
-        "plugins/plugin-workflow/src/index.ts",
-      ),
+      ...Object.fromEntries([
+        pluginAlias("plugin-signal"),
+        pluginAlias("plugin-whatsapp"),
+        pluginAlias("plugin-computeruse"),
+        pluginAlias("plugin-workflow"),
+        pluginAlias("plugin-x402"),
+        pluginAlias(
+          "plugin-discord",
+          path.join(repoRoot, "plugins/plugin-discord/index.ts"),
+        ),
+        pluginAlias("plugin-aosp-local-inference"),
+        pluginAlias("plugin-browser"),
+        pluginAlias("plugin-capacitor-bridge"),
+        pluginAlias("plugin-coding-tools"),
+        pluginAlias("plugin-elizacloud"),
+        pluginAlias("plugin-imessage"),
+        pluginAlias("plugin-local-inference"),
+        pluginAlias("plugin-mcp"),
+        pluginAlias("plugin-sql"),
+        pluginAlias("plugin-streaming"),
+      ]),
     },
   },
   test: {
