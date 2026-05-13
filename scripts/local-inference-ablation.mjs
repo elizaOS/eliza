@@ -37,8 +37,8 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "qjl_tcq_forced",
-    label: "target only, forced QJL/TCQ turbo3_tcq",
-    args: ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"],
+    label: "target only, QJL K + TBQ3 V",
+    args: ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"],
   },
   {
     name: "dflash_only",
@@ -65,19 +65,19 @@ const DEFAULT_VARIANTS = [
   },
   {
     name: "all_dflash_qjl_tcq",
-    label: "DFlash + forced QJL/TCQ turbo3_tcq",
+    label: "DFlash + QJL K + TBQ3 V",
     needsDrafter: true,
     args: [
       "--spec-type",
       "dflash",
       "--cache-type-k",
-      "tbq3_tcq",
+      "qjl1_256",
       "--cache-type-v",
-      "tbq3_tcq",
+      "tbq3_0",
       "--cache-type-k-draft",
-      "tbq3_tcq",
+      "qjl1_256",
       "--cache-type-v-draft",
-      "tbq3_tcq",
+      "tbq3_0",
     ],
   },
 ];
