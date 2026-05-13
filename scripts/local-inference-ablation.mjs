@@ -117,6 +117,79 @@ function defaultBinary(backend) {
   );
 }
 
+const KERNEL_BY_CACHE_TYPE = new Map([
+  ["turbo3", "turbo3"],
+  ["tbq3_0", "turbo3"],
+  ["turbo4", "turbo4"],
+  ["tbq4_0", "turbo4"],
+  ["turbo3_tcq", "turbo3_tcq"],
+  ["tbq3_tcq", "turbo3_tcq"],
+  ["qjl", "qjl_full"],
+  ["qjl_full", "qjl_full"],
+  ["qjl1_256", "qjl_full"],
+  ["polar", "polarquant"],
+  ["polarquant", "polarquant"],
+  ["q4_polar", "polarquant"],
+]);
+
+function normalizeKernelArg(value) {
+  return String(value).trim().toLowerCase().replaceAll("-", "_");
+}
+
+function kernelForCacheType(value) {
+  return KERNEL_BY_CACHE_TYPE.get(normalizeKernelArg(value)) ?? null;
+}
+
+function optionValue(argv, index) {
+  const arg = argv[index];
+  const eq = arg.indexOf("=");
+  if (eq !== -1) return { value: arg.slice(eq + 1), consumed: 0 };
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) return { value: null, consumed: 0 };
+  return { value, consumed: 1 };
+}
+
+function variantRequiredKernels(variant) {
+  const required = new Set();
+  const argv = variant.args ?? [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--spec-type" || arg.startsWith("--spec-type=")) {
+      const parsed = optionValue(argv, i);
+      if (parsed.value && normalizeKernelArg(parsed.value) === "dflash") {
+        required.add("dflash");
+      }
+      i += parsed.consumed;
+      continue;
+    }
+    if (arg.startsWith("--cache-type")) {
+      const parsed = optionValue(argv, i);
+      if (parsed.value) {
+        const kernel = kernelForCacheType(parsed.value);
+        if (kernel) required.add(kernel);
+      }
+      i += parsed.consumed;
+    }
+  }
+  return [...required];
+}
+
+function loadCapabilities(binary) {
+  const filePath = path.join(path.dirname(binary), "CAPABILITIES.json");
+  if (!fs.existsSync(filePath)) return null;
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const kernels = parsed?.kernels;
+  if (!kernels || typeof kernels !== "object" || Array.isArray(kernels)) {
+    throw new Error(`invalid CAPABILITIES.json kernels map: ${filePath}`);
+  }
+  return { path: filePath, kernels };
+}
+
+function missingVariantKernels(variant, capabilities) {
+  const required = variantRequiredKernels(variant);
+  return required.filter((kernel) => capabilities.kernels[kernel] !== true);
+}
+
 function defaultModelPath(name) {
   return path.join(stateDir(), "local-inference", "models", name);
 }
@@ -248,12 +321,22 @@ function loadVariants(args) {
   }
   const targetExists = fs.existsSync(args.model);
   const drafterExists = fs.existsSync(args.drafter);
+  const capabilities = loadCapabilities(args.binary);
   return variants.map((variant) => {
     if (!targetExists) {
       return { ...variant, skipReason: `model missing: ${args.model}` };
     }
     if (variant.needsDrafter && !drafterExists) {
       return { ...variant, skipReason: `drafter missing: ${args.drafter}` };
+    }
+    if (capabilities) {
+      const missing = missingVariantKernels(variant, capabilities);
+      if (missing.length > 0) {
+        return {
+          ...variant,
+          skipReason: `kernel(s) not advertised by ${capabilities.path}: ${missing.join(", ")}`,
+        };
+      }
     }
     return variant;
   });

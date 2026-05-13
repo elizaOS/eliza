@@ -2562,10 +2562,17 @@ function writeCapabilities({
       : backend === "vulkan"
         ? vulkanRuntimeDispatchStatus(shippedKernels)
         : null;
+  const allowSmokeIncompleteBuild =
+    process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1";
+  const allowReducedKernelBuild =
+    process.env.ELIZA_DFLASH_ALLOW_REDUCED_KERNELS === "1";
   const allowUnverifiedVulkanBuild =
     backend === "vulkan" &&
-    (process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1" ||
-      process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1");
+    process.env.ELIZA_DFLASH_ALLOW_UNVERIFIED_VULKAN_BUILD === "1";
+  const incompleteKernelAllowance =
+    allowSmokeIncompleteBuild ||
+    allowReducedKernelBuild ||
+    allowUnverifiedVulkanBuild;
   const capabilities = {
     target,
     platform,
@@ -2578,7 +2585,9 @@ function writeCapabilities({
     kernels,
     publishable: missing.length === 0,
     missingRequiredKernels: missing,
-    smokeOnlyIncompleteAllowed:
+    smokeOnlyIncompleteAllowed: missing.length > 0 && allowSmokeIncompleteBuild,
+    reducedOptimizationLocalMode: missing.length > 0 && allowReducedKernelBuild,
+    unverifiedVulkanRuntimeAllowed:
       missing.length > 0 && allowUnverifiedVulkanBuild,
     shippedKernels,
     runtimeDispatch,
@@ -2590,10 +2599,15 @@ function writeCapabilities({
     `${JSON.stringify(capabilities, null, 2)}\n`,
   );
   if (missing.length > 0) {
-    if (allowUnverifiedVulkanBuild) {
+    if (incompleteKernelAllowance) {
+      const allowance = allowReducedKernelBuild
+        ? "reduced-optimization local build"
+        : allowSmokeIncompleteBuild
+          ? "smoke-only incomplete kernel build"
+          : "unverified Vulkan runtime build";
       console.warn(
-        `[dflash-build] target=${target} built with unverified Vulkan runtime kernels: ${missing.join(", ")}. ` +
-          `This is allowed only for the graph-dispatch smoke bootstrap; CAPABILITIES.json is diagnostic, publishable=false, and must not be published until vulkan-runtime-dispatch-evidence.json is generated and the target is rebuilt without the unverified-build env override.`,
+        `[dflash-build] target=${target} built as ${allowance}: ${missing.join(", ")}. ` +
+          `CAPABILITIES.json is diagnostic, publishable=false, and this artifact must not be published until the missing kernel dispatch evidence is present and the target is rebuilt without the incomplete-build override.`,
       );
       return capabilities;
     }
