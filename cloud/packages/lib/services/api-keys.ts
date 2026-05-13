@@ -44,9 +44,9 @@ const API_KEY_NEGATIVE_SENTINEL = { __none: true } as const;
 const API_KEY_NEGATIVE_TTL_SECONDS = 60;
 
 function isNegativeApiKeySentinel(value: unknown): boolean {
-  return (
-    typeof value === "object" && value !== null && (value as { __none?: unknown }).__none === true
-  );
+  if (!value || typeof value !== "object") return false;
+  const marker = Object.getOwnPropertyDescriptor(value, "__none");
+  return marker !== undefined && Object.is(marker.value, API_KEY_NEGATIVE_SENTINEL.__none);
 }
 
 /**
