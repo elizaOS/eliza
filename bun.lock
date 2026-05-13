@@ -367,6 +367,15 @@
         "vitest": "^4.0.18",
       },
     },
+    "packages/benchmarks/eliza-1": {
+      "name": "@elizaos/bench-eliza-1",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "^25.0.3",
+        "typescript": "^6.0.3",
+        "vitest": "4.1.5",
+      },
+    },
     "packages/benchmarks/interrupt-bench": {
       "name": "@elizaos/interrupt-bench",
       "version": "0.1.0",
@@ -4240,6 +4249,8 @@
     "@elizaos/app-wifi": ["@elizaos/app-wifi@workspace:plugins/app-wifi"],
 
     "@elizaos/aws-examples": ["@elizaos/aws-examples@workspace:packages/examples/aws"],
+
+    "@elizaos/bench-eliza-1": ["@elizaos/bench-eliza-1@workspace:packages/benchmarks/eliza-1"],
 
     "@elizaos/browser-bridge-extension": ["@elizaos/browser-bridge-extension@workspace:packages/browser-bridge"],
 
