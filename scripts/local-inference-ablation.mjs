@@ -196,6 +196,7 @@ function defaultModelPath(name) {
 
 function parseArgs(argv) {
   const backend = detectBackend();
+  const defaultGpuLayers = backend === "cpu" ? 0 : 99;
   const args = {
     backend,
     binary: defaultBinary(backend),
@@ -210,8 +211,8 @@ function parseArgs(argv) {
     draftMax: 16,
     batchSize: 256,
     ubatchSize: 64,
-    gpuLayers: 99,
-    draftGpuLayers: 99,
+    gpuLayers: defaultGpuLayers,
+    draftGpuLayers: defaultGpuLayers,
     timeoutMs: 180_000,
     startTimeoutMs: 120_000,
     prompt: DEFAULT_PROMPT,
