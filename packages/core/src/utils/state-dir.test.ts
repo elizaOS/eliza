@@ -73,9 +73,9 @@ describe("resolveStateDir", () => {
 			),
 		).toBe("/tmp/bar");
 		// When neither canonical nor alias is set the default applies.
-		expect(
-			resolveStateDir({ ELIZA_STATE_DIR: "   " }, fakeHomedir),
-		).toBe(join(FAKE_HOME, ".eliza"));
+		expect(resolveStateDir({ ELIZA_STATE_DIR: "   " }, fakeHomedir)).toBe(
+			join(FAKE_HOME, ".eliza"),
+		);
 	});
 
 	it("expands a leading ~ in env overrides via the real homedir", () => {

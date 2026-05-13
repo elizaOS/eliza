@@ -25,6 +25,10 @@ export default defineConfig({
         find: "@elizaos/shared",
         replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
       },
+      {
+        find: "@elizaos/plugin-signal",
+        replacement: path.join(repoRoot, "plugins/plugin-signal/src/index.ts"),
+      },
     ],
   },
   test: {
