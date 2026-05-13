@@ -24,6 +24,8 @@ WORKDIR /src
 
 # Copy only the manifests Bun needs to resolve the production dependency graph.
 COPY package.json bun.lock ./
+# Root-level patches (e.g. @capacitor/barcode-scanner) referenced by package.json patchedDependencies.
+COPY patches ./patches
 COPY packages/app-core/patches ./packages/app-core/patches
 COPY packages/core/package.json ./packages/core/package.json
 COPY packages/agent/package.json ./packages/agent/package.json
@@ -42,10 +44,15 @@ ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 # Materialize the standalone cloud-agent template at the Docker deploy
 # boundary. Source manifests stay workspace-local; the image install uses the
 # local package versions as exact npm dependencies.
-RUN node <<'EOF'
+# Note: bun's node shim does not support reading scripts from stdin (heredoc),
+# so we write to a temp file and execute with bun instead of `node <<'EOF'`.
+RUN <<'SCRIPT'
+set -e
+cat > /tmp/prune-workspace.mjs << 'JS'
 const fs = require("fs");
 
 const KEEP = [
+  "packages/core",
   "packages/agent",
   "packages/app-core",
   "packages/shared",
@@ -53,6 +60,8 @@ const KEEP = [
   "packages/app-core/platforms/electrobun",
   "packages/app-core/deploy/cloud-agent-template",
   "packages/workflows",
+  "plugins/plugin-sql",
+  "plugins/plugin-elizacloud",
   "plugins/plugin-workflow",
   "packages/app",
 ];
@@ -117,7 +126,7 @@ function materializeWorkspaceDeps(path, dependencyNames, versions) {
     const spec = pkg.dependencies?.[name];
     if (typeof spec !== "string" || !spec.startsWith("workspace:")) continue;
     const version = versions.get(name);
-    if (!version) throw new Error(`No local package version found for ${name}`);
+    if (!version) throw new Error("No local package version found for " + name);
     pkg.dependencies[name] = version;
     changed = true;
   }
@@ -131,10 +140,11 @@ function prune(path) {
     const deps = pkg[section];
     if (!deps) continue;
     for (const [name, spec] of Object.entries(deps)) {
-      const isWorkspace =
-        typeof spec === "string" && spec.startsWith("workspace:");
+      const isLocal =
+        typeof spec === "string" &&
+        (spec.startsWith("workspace:") || spec.startsWith("file:"));
       const isStripName = STRIP_NAMES.test(name);
-      if ((isWorkspace && !ALLOW.has(name)) || isStripName) {
+      if ((isLocal && !ALLOW.has(name)) || isStripName) {
         delete deps[name];
       }
     }
@@ -162,7 +172,10 @@ writeJson("package.json", root);
   "packages/app-core/deploy/cloud-agent-template/package.json",
 ].forEach(prune);
 if (fs.existsSync("bun.lock")) fs.unlinkSync("bun.lock");
-EOF
+JS
+bun /tmp/prune-workspace.mjs
+rm /tmp/prune-workspace.mjs
+SCRIPT
 # Drop --frozen-lockfile: bun.lock has been removed above so bun regenerates
 # fresh against the pruned workspace set.
 RUN bun install --ignore-scripts --no-progress
@@ -174,6 +187,7 @@ RUN npm install --prefix /opt/tsx --ignore-scripts --no-save tsx@4.21.0 \
 FROM node:${NODE_VERSION}-slim AS prep
 WORKDIR /src
 ARG VERSION_CLEAN
+ARG APP_ENTRYPOINT=""
 # Re-declare so it's in scope for this build stage.
 ARG VITE_ASSET_BASE_URL=""
 ENV VITE_ASSET_BASE_URL=${VITE_ASSET_BASE_URL}
@@ -185,7 +199,7 @@ COPY packages/app-core ./packages/app-core
 COPY packages/shared ./packages/shared
 COPY packages/workflows ./packages/workflows
 COPY plugins/plugin-workflow ./plugins/plugin-workflow
-COPY ${APP_ENTRYPOINT} package.json plugins.json ./
+COPY package.json plugins.json ./
 COPY packages/app-core/scripts/docker-entrypoint.sh ./scripts/docker-entrypoint.sh
 
 RUN set -eux; \
@@ -204,7 +218,8 @@ RUN set -eux; \
   done; \
   cp -a packages/app/dist /runtime/packages/app/dist; \
   cp -a packages/app-core/scripts/docker-entrypoint.sh /runtime/scripts/docker-entrypoint.sh; \
-  cp -a "${APP_ENTRYPOINT}" package.json plugins.json /runtime/; \
+  cp -a package.json plugins.json /runtime/; \
+  if [ -n "${APP_ENTRYPOINT}" ]; then cp -a "${APP_ENTRYPOINT}" /runtime/; fi; \
   sed -i 's/const stats = service.getCatalogStats();/const stats = typeof service.getCatalogStats === "function" ? service.getCatalogStats() : { loaded: 0, total: 0, storageType: "unknown" };/g' /runtime/node_modules/@elizaos/plugin-agent-skills/dist/index.js 2>/dev/null || true; \
   if [ -n "${VERSION_CLEAN}" ]; then \
     node -e "const fs=require('fs'); const v=process.argv[1]; const p='/runtime/node_modules/@elizaos/agent/package.json'; try { const pkg=JSON.parse(fs.readFileSync(p,'utf8')); pkg.version=v; fs.writeFileSync(p, JSON.stringify(pkg, null, 2)); console.log('Patched autonomous to', v); } catch (err) { console.log('skip:', err.message); }" "${VERSION_CLEAN}"; \

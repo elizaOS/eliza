@@ -64,13 +64,18 @@ describe("resolveStateDir", () => {
 		expect(resolveStateDir({}, fakeHomedir)).toBe(join(FAKE_HOME, ".eliza"));
 	});
 
-	it("treats whitespace-only env values as unset", () => {
+	it("treats whitespace-only env values as unset, falling through to aliases", () => {
+		// ELIZA_STATE_DIR is whitespace-only (treated as unset) → alias consulted.
 		expect(
 			resolveStateDir(
 				{ ELIZA_STATE_DIR: "   ", MILADY_STATE_DIR: "/tmp/bar" },
 				fakeHomedir,
 			),
-		).toBe(join(FAKE_HOME, ".eliza"));
+		).toBe("/tmp/bar");
+		// When neither canonical nor alias is set the default applies.
+		expect(resolveStateDir({ ELIZA_STATE_DIR: "   " }, fakeHomedir)).toBe(
+			join(FAKE_HOME, ".eliza"),
+		);
 	});
 
 	it("expands a leading ~ in env overrides via the real homedir", () => {
