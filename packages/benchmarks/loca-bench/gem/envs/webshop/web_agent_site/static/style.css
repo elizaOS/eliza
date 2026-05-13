@@ -174,7 +174,7 @@ body {
 .radio-toolbar label {
   display: inline-block;
   background-color: rgb(245, 241, 241);
-  padding: 10px 10px;
+  padding: 10px;
   font-size: 14px;
   border: 1px solid #444;
   border-radius: 4px;
