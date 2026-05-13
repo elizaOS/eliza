@@ -1363,9 +1363,37 @@ export class PTYService {
       },
     };
 
-    // Buffer output for Bun worker path (no logs() method available)
+    // Buffer output into `sessionOutputBuffers`.
+    //
+    // Bun worker path: native PTYManager isn't usable directly (we're
+    // bridged through a Node worker), so `setupOutputBuffer` subscribes
+    // to the worker's output stream into our local buffer.
+    //
+    // Native PTYManager path: `manager.logs()` exposes the same data via
+    // an async iterator, BUT the fast-path task-completion handler in
+    // pty-init.ts reads `ctx.sessionOutputBuffers` directly — it can't
+    // pull from `manager.logs()` after the session has stopped (the
+    // logs iterator closes on exit). For opencode-run mode this caused
+    // the captured response to be 0 chars even though the sub-agent
+    // produced real output. Always wire an output->buffer subscription
+    // for both paths so the buffer is consistently populated by the
+    // time fast-path capture runs.
     if (this.usingBunWorker) {
       setupOutputBuffer(ctx, session.id);
+    } else {
+      const buffer: string[] = [];
+      this.sessionOutputBuffers.set(session.id, buffer);
+      const maxLines = this.serviceConfig.maxLogLines ?? 1000;
+      const ptySession = (this.manager as PTYManager).getSession(session.id);
+      if (ptySession) {
+        ptySession.on("output", (data: string) => {
+          const lines = data.split("\n");
+          buffer.push(...lines);
+          while (buffer.length > maxLines) {
+            buffer.shift();
+          }
+        });
+      }
     }
 
     // Debug capture: open a capture session and wire stdout feed.
