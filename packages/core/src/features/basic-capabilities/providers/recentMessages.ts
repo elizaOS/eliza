@@ -236,13 +236,22 @@ export const recentMessagesProvider: Provider = {
 				(msg) => msg.content && msg.content.type === "action_result",
 			);
 
+			// Hard cap on rendered history regardless of how many memories the
+			// DB returned. The `limit` parameter passed to `runtime.getMemories`
+			// is meant to bound this — but in practice some adapter paths and
+			// compaction-window combinations return the entire room's history.
+			// That dropped a single HANDLE_RESPONSE call to 220K+ characters of
+			// formatted history, ~55K tokens, plus duplicates from
+			// `appendPriorDialogueEvents` and `PLATFORM_CHAT_CONTEXT`. Slice to
+			// the runtime-configured conversation length (or the lookback
+			// ceiling) so the formatted text block is always bounded.
 			const dialogueMessages = dedupeConsecutiveDialogueMessages(
 				recentMessagesData.filter(
 					(msg) =>
 						!(msg.content && msg.content.type === "action_result") &&
 						!isInternalBridgeMessage(msg),
 				),
-			);
+			).slice(-conversationLength);
 
 			// Room entity lookups only include current participants. Historical room
 			// context can still contain messages from senders who left the room or
