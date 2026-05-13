@@ -47,7 +47,7 @@
     "build:web": "bun --bun vite build"
   },
   "dependencies": {
-    "@capacitor/android": "8.3.1",
+    "@capacitor/android": "8.3.4",
     "@capacitor/app": "8.1.0",
     "@capacitor/barcode-scanner": "3.0.2",
     "@capacitor-community/background-runner": "npm:@capacitor/background-runner@^3.0.0",
