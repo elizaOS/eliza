@@ -605,7 +605,7 @@ jobs:
 
       - name: Open catalog-update PR
         if: ${{ env.PUBLISH_SKIPPED != '1' && env.DIFF_PATH != '' }}
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: ci/eliza-1-catalog-${{ github.run_id }}
