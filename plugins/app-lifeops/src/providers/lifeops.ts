@@ -44,10 +44,10 @@ function formatCount(label: string, count: number): string {
 }
 
 /**
- * Inspect every registered W1-F connector and surface degraded / disconnected
+ * Inspect every registered connector and surface degraded / disconnected
  * connectors so the morning brief and planner context highlight them. The
- * status itself comes from `ConnectorContribution.status()`; this helper
- * just maps that into one-line strings the planner can quote verbatim.
+ * status comes from `ConnectorContribution.status()`; this helper maps it
+ * into one-line strings the planner can quote verbatim.
  */
 async function summarizeConnectorDegradation(
   runtime: IAgentRuntime,

@@ -1,11 +1,9 @@
 /**
  * `SCHEDULED_TASKS` umbrella action.
  *
- * Wave-3 W3-C: collapses the standalone follow-up + reminder verbs into one
- * user-visible umbrella that wraps `ScheduledTaskRunner`. The runner is the
- * single execution surface for `reminder | checkin | followup | approval |
- * recap | watcher | output | custom` ScheduledTasks (frozen contract per
- * `IMPLEMENTATION_PLAN.md` §1).
+ * Wraps `ScheduledTaskRunner` — the single execution surface for
+ * `reminder | checkin | followup | approval | recap | watcher | output | custom`
+ * `ScheduledTask`s (frozen contract per `IMPLEMENTATION_PLAN.md` §1).
  *
  * Subactions:
  *   - `list`      — read tasks (optional kind / status / subject filters)
@@ -606,9 +604,7 @@ export const scheduledTaskAction: Action & {
     "TASK_COMPLETE",
     "TASK_ACKNOWLEDGE",
     "TASK_DISMISS",
-    // W3-C drift D-2: collapse the 7 transitional ENTITY follow-up operations
-    // onto SCHEDULED_TASKS. ENTITY keeps the same simile names registered for one
-    // release; the canonical execution surface is here.
+    // ENTITY simile names; canonical execution surface is SCHEDULED_TASKS.
     "ADD_FOLLOW_UP",
     "COMPLETE_FOLLOW_UP",
     "FOLLOW_UP_LIST",

@@ -3013,10 +3013,9 @@ export async function handleLifeOpsRoutes(
     });
   }
 
-  // Wave-2 W2-A removed `GET /api/lifeops/seed-templates` and
-  // `POST /api/lifeops/seed`. Routine seeding is handled via the
-  // FIRST_RUN customize path (see `src/lifeops/first-run/service.ts`)
-  // and the migrator at `src/lifeops/seed-routine-migration/migrator.ts`.
+  // Routine seeding is handled via the FIRST_RUN customize path
+  // (see `src/lifeops/first-run/service.ts`) and the migrator at
+  // `src/lifeops/seed-routine-migration/migrator.ts`.
 
   if (method === "GET" && pathname === "/api/lifeops/definitions") {
     return runRoute(ctx, async (service) => {

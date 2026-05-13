@@ -1,10 +1,7 @@
 /**
  * `OWNER_DOCUMENTS` umbrella action — Docs And Portals domain.
  *
- * PRD: `prd-lifeops-executive-assistant.md` §Docs And Portals.
- *
- * Wave-1 scaffold. Real persistence + browser routing lands in Wave-2; this
- * file gives Wave-2 scenarios a stable surface to assert against. The six
+ * PRD: `prd-lifeops-executive-assistant.md` §Docs And Portals. The six
  * PRD-named actions are exposed as similes on a single umbrella that
  * dispatches on `subaction`:
  *
@@ -16,10 +13,8 @@
  *   - `close_request`      ← `OWNER_DOCUMENTS_CLOSE_REQUEST`
  *
  * Each subaction composes existing services (`SCHEDULED_TASK` runner for
- * deadline tracking, `ApprovalQueue` for owner-gated dispatch) rather than
- * inventing storage. The DocumentRequest record itself is held in an
- * in-memory map keyed by runtime — Wave-2 will migrate to a `documents`
- * repository alongside ScheduledTask.
+ * deadline tracking, `ApprovalQueue` for owner-gated dispatch). The
+ * `DocumentRequest` record is held in an in-memory map keyed by runtime.
  *
  * Approval gating:
  *   - `request_signature` and `upload_asset` enqueue an `ApprovalRequest`
@@ -122,8 +117,7 @@ interface DocActionParameters {
 
 /**
  * In-memory DocumentRequest store. Keyed by `runtime.agentId` so multiple
- * runtimes in one test process don't bleed into each other. Wave-2 replaces
- * this with a `documents` table on `LifeOpsRepository`.
+ * runtimes in one test process don't bleed into each other.
  */
 const DOCUMENT_STORE = new Map<string, Map<string, DocumentRequest>>();
 
@@ -334,7 +328,7 @@ async function handleRequestSignature(
 
   // Schedule the deadline watcher up front so a SCHEDULED_TASK exists even
   // before the owner approves. The watcher metadata carries the documentId
-  // so the Wave-2 escalator can branch on document state.
+  // so escalators can branch on document state.
   const scheduledTaskId = await scheduleDeadlineTask(scope, doc);
 
   const saved = saveDocument(scope.runtime, {
@@ -514,9 +508,8 @@ async function handleUploadAsset(
     ...(scheduledTaskId ? { scheduledTaskId } : {}),
   });
 
-  // TODO Wave-2: route through BROWSER.navigate + BROWSER.upload once the
-  // approval flips to `approved`. For now the approval queue entry is the
-  // executable contract the Wave-2 scenarios assert against.
+  // TODO: route through BROWSER.navigate + BROWSER.upload once approval
+  // flips to `approved`.
   logger.info(
     `[OWNER_DOCUMENTS] upload_asset id=${saved.id} portal=${portalUrl} asset=${assetKind} approval=${approvalRequest.id}`,
   );
@@ -840,8 +833,7 @@ export const ownerDocumentsAction: Action & {
   },
 };
 
-// Test-only export: lets the unit test reset between cases. Production code
-// must not depend on this — Wave-2 swaps the in-memory map for a repository.
+// Test-only export: lets the unit test reset the in-memory store between cases.
 export function __resetDocumentStoreForTests(): void {
   DOCUMENT_STORE.clear();
 }
