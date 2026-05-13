@@ -226,7 +226,7 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
     const useLegacyInputs = !inputNames.includes("input_ids");
     const tokensInputName = useLegacyInputs ? "tokens" : "input_ids";
     const speedTensor = useLegacyInputs
-      ? new ort.Tensor("float32", new Float32Array([1.0]), [1])
+      ? new ort.Tensor("int32", new Int32Array([1]), [1])
       : new ort.Tensor("float32", new Float32Array([1.0]), [1]);
     const feeds: Record<string, OrtTensor> = {
       [tokensInputName]: new ort.Tensor("int64", inputIds, [1, inputIds.length]),

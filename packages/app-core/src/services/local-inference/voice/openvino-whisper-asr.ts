@@ -159,8 +159,33 @@ export function makeOpenVinoWhisperDecoder(
     return new Uint8Array(head);
   }
 
-  let chain: Promise<string> = Promise.resolve("");
+  // Chain serialization: each decode awaits the previous decode's pipe I/O
+  // (stdin write + stdout read) so we never interleave on the worker. Critical
+  // detail: `chain` itself MUST always resolve. If we did `chain = chain.then(work)`
+  // and `work` rejected, every subsequent `chain.then(...)` would skip the
+  // callback and propagate the rejection — silently breaking the rest of the
+  // session. We keep the chain-state promise distinct from the caller's
+  // promise so a single failure does not poison the queue.
+  let chain: Promise<void> = Promise.resolve();
   let disposed = false;
+  let dead = false;
+  let deadReason: Error | null = null;
+
+  // If the worker exits (openvino_genai missing, no viable device, model
+  // corrupt, OOM kill...), mark the decoder dead so subsequent calls fail
+  // immediately with a clear error rather than blocking forever on readN.
+  proc.exited
+    .then((code) => {
+      if (!disposed) {
+        dead = true;
+        deadReason = new Error(
+          `[asr] OpenVINO whisper worker exited unexpectedly (code=${code})`,
+        );
+      }
+    })
+    .catch(() => {
+      /* ignore */
+    });
 
   const decoder: WhisperDecoder = (pcm16k: Float32Array): Promise<string> => {
     if (disposed) {
@@ -168,7 +193,17 @@ export function makeOpenVinoWhisperDecoder(
         new Error("[asr] OpenVINO whisper decoder has been disposed"),
       );
     }
-    chain = chain.then(async () => {
+    if (dead) {
+      return Promise.reject(
+        deadReason ?? new Error("[asr] OpenVINO whisper worker is no longer running"),
+      );
+    }
+    const prev = chain;
+    const work = (async (): Promise<string> => {
+      await prev;
+      if (dead) {
+        throw deadReason ?? new Error("[asr] OpenVINO whisper worker died");
+      }
       const header = new Uint8Array(4);
       new DataView(header.buffer).setUint32(0, pcm16k.length, true);
       const audioBytes = new Uint8Array(pcm16k.buffer, pcm16k.byteOffset, pcm16k.byteLength);
@@ -185,8 +220,14 @@ export function makeOpenVinoWhisperDecoder(
       if (nBytes === 0) return "";
       const payload = await readN(nBytes);
       return new TextDecoder("utf-8").decode(payload);
-    });
-    return chain;
+    })();
+    // `chain` must never reject — swallow the error here (the caller still
+    // sees it via `work`). This keeps the queue traversable after failures.
+    chain = work.then(
+      () => undefined,
+      () => undefined,
+    );
+    return work;
   };
 
   function dispose() {

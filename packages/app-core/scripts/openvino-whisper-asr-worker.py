@@ -16,6 +16,8 @@ import sys
 import time
 from typing import Optional
 
+import numpy as np
+
 
 def log(msg: str) -> None:
     print(f"[ov-whisper] {msg}", file=sys.stderr, flush=True)
@@ -87,8 +89,6 @@ def main() -> int:
         if payload is None:
             log("stdin closed mid-payload")
             return 1
-
-        import numpy as np
 
         pcm = np.frombuffer(payload, dtype="<f4")
         if pcm.size != n_samples:

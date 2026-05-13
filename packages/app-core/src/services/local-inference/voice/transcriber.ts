@@ -1135,14 +1135,26 @@ export function createStreamingTranscriber(
     const runtime = resolveOpenVinoWhisperRuntime();
     if (!runtime) return null;
     const { decoder, dispose } = makeOpenVinoWhisperDecoder(runtime);
-    return new WhisperCppStreamingTranscriber({
-      ...opts.whisper,
-      vad: opts.vad,
-      metadata: opts.whisper?.metadata ?? opts.metadata,
-      source: opts.whisper?.source ?? opts.source,
-      decoder,
-      onDispose: dispose,
-    });
+    // If the WhisperCppStreamingTranscriber constructor throws (bad whisper
+    // opts, etc.), `dispose` is never wired to anything — the Python worker
+    // would leak. Guard explicitly so we always tear it down on failure.
+    try {
+      return new WhisperCppStreamingTranscriber({
+        ...opts.whisper,
+        vad: opts.vad,
+        metadata: opts.whisper?.metadata ?? opts.metadata,
+        source: opts.whisper?.source ?? opts.source,
+        decoder,
+        onDispose: dispose,
+      });
+    } catch (err) {
+      try {
+        dispose();
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    }
   };
 
   if (prefer === "fused") {

@@ -151,8 +151,21 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda",
   "linux-x64-rocm",
   "linux-x64-vulkan",
-  // Intel oneAPI / Level Zero target for Linux x64 hosts. Intended for
-  // Arc / Xe / Core Ultra iGPU smoke hosts where CUDA/ROCm are unavailable.
+  // Intel oneAPI / SYCL on Linux x64. Targets Intel discrete and
+  // integrated GPUs (Arc, Xe, Lunar Lake / Meteor Lake / Panther Lake
+  // iGPUs) through upstream ggml-sycl. Requires Intel oneAPI Base
+  // Toolkit (icx/icpx + oneMKL) on the build host; `source
+  // /opt/intel/oneapi/setvars.sh` before invoking this script. Optional
+  // `ELIZA_DFLASH_SYCL_TARGET=NVIDIA` / `AMD` overrides the default
+  // `INTEL` cross-architecture target (DPC++ can compile SYCL → PTX or
+  // ROCm via the same toolchain — useful for benchmarking against
+  // CUDA/HIP backends). Custom W4-B kernels (turbo3 / turbo4 /
+  // turbo3_tcq / qjl / polarquant / dflash) do NOT have a SYCL backend
+  // in this fork today (CUDA / Vulkan / Metal / CPU only), so the SYCL
+  // target falls back to upstream-equivalent perf. The kernel-patches
+  // dispatch in this script's `patch*Kernels` hooks correctly no-ops
+  // for `backend === "sycl"` (the per-backend branches around line
+  // 1490 only match cuda/vulkan/metal).
   "linux-x64-sycl",
   // Intel OpenVINO target for Linux x64 hosts. Requires OpenVINO runtime
   // development files and OpenVINO_DIR or INTEL_OPENVINO_DIR.
@@ -1170,6 +1183,11 @@ function cmakeFlagsForTarget(target, ctx) {
   //     existing `backend === "cpu" && arch === "x64"` / `arm64` blocks
   //     in the `platform === "windows"` section (and a new linux-cpu
   //     block here if a non-native pin is ever needed).
+  //   * SYCL-AGENT TODO: extra flags for `linux-x64-sycl` go in the
+  //     `backend === "sycl"` branch below. Future Eliza-kernel SYCL
+  //     backends (turbo3 / qjl / polarquant) will plug into the same
+  //     branch alongside an entry in patchAllKernels() at the bottom
+  //     of this file.
   // ──────────────────────────────────────────────────────────────────
   const { platform, arch, backend, isSimulator } = parseTarget(target);
   const flags = ["-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"];
@@ -1233,12 +1251,32 @@ function cmakeFlagsForTarget(target, ctx) {
     // after this list and win on a CMake conflict.
     flags.push(hipArchListFlag());
   } else if (backend === "sycl") {
+    // Intel oneAPI / SYCL backend. Builds plain ggml-sycl from the
+    // upstream tree (no Eliza kernel patches — those branches in
+    // patch*Kernels() only match cuda/vulkan/metal). Operator must
+    // `source /opt/intel/oneapi/setvars.sh` so icx/icpx + MKLROOT are
+    // on PATH before this script runs.
     flags[flags.indexOf("-DGGML_SYCL=OFF")] = "-DGGML_SYCL=ON";
+    // Use Intel's DPC++ compiler. CMake honors CC/CXX, but setting the
+    // compiler vars explicitly catches the common case where setvars.sh
+    // was not sourced (CMake would silently fall back to gcc, which
+    // can't compile SYCL TUs and emits a confusing pragma error 100+
+    // lines deep into a translation unit). FP16 default-on via XMX
+    // matrix engines on Xe2 / Xe-LPG iGPUs and Arc discrete; operators
+    // hitting SYCL_VALIDATION_ERROR on FP16 ops can set
+    // `ELIZA_DFLASH_SYCL_NO_F16=1` to disable.
     flags.push(
       "-DCMAKE_C_COMPILER=icx",
       "-DCMAKE_CXX_COMPILER=icpx",
       `-DGGML_SYCL_F16=${envFlag("ELIZA_DFLASH_SYCL_NO_F16") ? "OFF" : "ON"}`,
     );
+    // SYCL target architecture. DPC++ can compile SYCL → Intel GPU
+    // (default), → NVIDIA PTX (codeplay/oneAPI-for-CUDA plugin), or
+    // → AMD HIP (codeplay/oneAPI-for-HIP plugin). The vast majority
+    // of users hitting this target want INTEL; expose the override
+    // env knob in case someone benchmarks against the same source tree.
+    // Validate against the known set so a typo (`GARBAGE`) fails fast
+    // rather than ~5 minutes deep into CMake with a confusing error.
     const syclTarget = (
       process.env.ELIZA_DFLASH_SYCL_TARGET?.trim() || "INTEL"
     ).toUpperCase();
@@ -1530,6 +1568,13 @@ function targetCompatibility(target, ctx) {
   }
   if (backend === "vulkan" && !ctx.glslc) {
     return { ok: false, reason: "no glslc (Vulkan shader compiler)" };
+  }
+  if (backend === "sycl" && !(has("icpx") && has("icx"))) {
+    return {
+      ok: false,
+      reason:
+        "no icx/icpx (Intel oneAPI Base Toolkit) — source /opt/intel/oneapi/setvars.sh first",
+    };
   }
   if (backend === "metal" && process.platform !== "darwin") {
     return { ok: false, reason: "metal requires macOS" };
