@@ -4,6 +4,37 @@ import { MockPipelineDriver } from "../mock-driver.ts";
 import { MetricsCollector } from "../metrics.ts";
 import { runBench } from "../runner.ts";
 import { evaluateGates, aggregate, DEFAULT_GATES } from "../gates.ts";
+import type { BenchMetrics, BenchRun, PipelineDriver } from "../types.ts";
+
+async function collectUnitRun(args: {
+  driver: PipelineDriver;
+  bundleId: string;
+  scenarios?: string[];
+}): Promise<BenchRun> {
+  const selected = buildScenarios().filter((s) =>
+    args.scenarios ? args.scenarios.includes(s.scenario.id) : true,
+  );
+  const fixtures: BenchMetrics[] = [];
+  for (const build of selected) {
+    const collector = new MetricsCollector({ fixtureId: build.scenario.id });
+    const result = await args.driver.run({
+      audio: build.audio,
+      injection: build.scenario.injection,
+      probe: collector.record,
+    });
+    fixtures.push(collector.finalize(result));
+  }
+  return {
+    runId: `unit-${args.bundleId}`,
+    timestamp: new Date(0).toISOString(),
+    gitSha: "unit",
+    bundleId: args.bundleId,
+    backend: args.driver.backend,
+    deviceLabel: "unit",
+    fixtures,
+    aggregates: aggregate(fixtures),
+  };
+}
 
 describe("scenarios", () => {
   it("emits the canonical scenario set", () => {
@@ -48,9 +79,18 @@ describe("scenarios", () => {
   }
 });
 
-describe("runBench (mock driver)", () => {
-  it("produces a BenchRun for every scenario with finite aggregates", async () => {
-    const run = await runBench({
+describe("runBench real-driver guard", () => {
+  it("rejects mock drivers before writing benchmark output", async () => {
+    await expect(
+      runBench({
+        driver: new MockPipelineDriver(),
+        bundleId: "test-bundle",
+      }),
+    ).rejects.toThrow(/mock\/fake\/stub drivers are not permitted/);
+  });
+
+  it("unit helper still exercises aggregation without benchmark output", async () => {
+    const run = await collectUnitRun({
       driver: new MockPipelineDriver(),
       bundleId: "test-bundle",
     });
@@ -63,8 +103,8 @@ describe("runBench (mock driver)", () => {
     expect(run.backend).toBe("mock");
   });
 
-  it("accepts a scenario filter", async () => {
-    const run = await runBench({
+  it("unit helper accepts a scenario filter", async () => {
+    const run = await collectUnitRun({
       driver: new MockPipelineDriver(),
       bundleId: "test-bundle",
       scenarios: ["short-turn", "barge-in"],
@@ -121,11 +161,11 @@ describe("gates", () => {
   });
 
   it("passes against a permissive baseline", async () => {
-    const run = await runBench({
+    const run = await collectUnitRun({
       driver: new MockPipelineDriver(),
       bundleId: "current",
     });
-    const baseline = await runBench({
+    const baseline = await collectUnitRun({
       driver: new MockPipelineDriver(),
       bundleId: "baseline",
     });
@@ -136,7 +176,7 @@ describe("gates", () => {
   });
 
   it("fails when current TTFA exceeds the fail threshold", async () => {
-    const baseline = await runBench({
+    const baseline = await collectUnitRun({
       driver: new MockPipelineDriver(),
       bundleId: "baseline",
     });
@@ -144,7 +184,7 @@ describe("gates", () => {
     // Mock driver defaults to firstAcceptMs=35, ttsFirstPcmMs=12, so doubling
     // pushes the slow run well over the +50% fail threshold while keeping
     // the test fast.
-    const slow = await runBench({
+    const slow = await collectUnitRun({
       driver: new MockPipelineDriver({ firstAcceptMs: 150, ttsFirstPcmMs: 80 }),
       bundleId: "slow",
     });
@@ -158,7 +198,7 @@ describe("gates", () => {
   });
 
   it("flags rollback waste above the absolute ceiling", async () => {
-    const run = await runBench({
+    const run = await collectUnitRun({
       driver: new MockPipelineDriver({
         draftTokensTotal: 100,
         draftTokensWasted: 50,

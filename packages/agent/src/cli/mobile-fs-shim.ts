@@ -64,6 +64,7 @@
 
 import * as nodeFs from "node:fs";
 import * as nodeFsPromises from "node:fs/promises";
+import { createRequire } from "node:module";
 import * as nodePath from "node:path";
 
 // ---------------------------------------------------------------------------
@@ -251,6 +252,46 @@ function installRequireGuard(): void {
 // ---------------------------------------------------------------------------
 
 type AnyFn = (...args: unknown[]) => unknown;
+type MutableModule = Record<string, unknown>;
+
+const mobileRequire = createRequire(import.meta.url);
+
+function optionalRequireObject(id: string): MutableModule | null {
+  try {
+    const value = mobileRequire(id);
+    return value && typeof value === "object"
+      ? (value as MutableModule)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function objectTargets(...values: unknown[]): MutableModule[] {
+  const out: MutableModule[] = [];
+  const seen = new WeakSet<object>();
+  for (const value of values) {
+    if (!value || typeof value !== "object") continue;
+    const object = value as MutableModule;
+    if (seen.has(object)) continue;
+    seen.add(object);
+    out.push(object);
+  }
+  return out;
+}
+
+function setIfMutable(
+  target: MutableModule,
+  key: string,
+  value: unknown,
+): boolean {
+  try {
+    target[key] = value;
+    return target[key] === value;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Wrap a sync or callback-style fs function whose first argument is a `path`
@@ -358,7 +399,19 @@ function wrapFsWriteGuard<T extends AnyFn>(original: T): T {
  * in the bundle references the same object.
  */
 function patchFsModule(): void {
-  const mutableNodeFs = nodeFs as Record<string, unknown>;
+  const fsTargets = objectTargets(
+    optionalRequireObject("node:fs"),
+    optionalRequireObject("fs"),
+    nodeFs,
+    (nodeFs as MutableModule).default,
+  );
+  const promiseTargets = objectTargets(
+    optionalRequireObject("node:fs/promises"),
+    optionalRequireObject("fs/promises"),
+    nodeFsPromises,
+    (nodeFsPromises as MutableModule).default,
+    ...fsTargets.map((target) => target.promises),
+  );
 
   // ── Synchronous API ──────────────────────────────────────────────────────
 
@@ -388,95 +441,95 @@ function patchFsModule(): void {
     "appendFileSync",
   ];
 
-  for (const name of syncOnePath) {
-    const key = String(name);
-    const orig = mutableNodeFs[key];
-    if (typeof orig === "function") {
-      mutableNodeFs[key] = wrapFsPath(orig as AnyFn);
+  for (const target of fsTargets) {
+    for (const name of syncOnePath) {
+      const key = String(name);
+      const orig = target[key];
+      if (typeof orig === "function") {
+        setIfMutable(target, key, wrapFsPath(orig as AnyFn));
+      }
     }
-  }
 
-  // writeFileSync and appendFileSync carry an extra write guard.
-  if (typeof nodeFs.writeFileSync === "function") {
-    const wrapped = wrapFsWriteGuard(nodeFs.writeFileSync as AnyFn);
-    mutableNodeFs.writeFileSync = wrapFsPath(wrapped);
-  }
-
-  // Two-path sync operations.
-  const syncTwoPaths: Array<keyof typeof nodeFs> = [
-    "copyFileSync",
-    "renameSync",
-    "linkSync",
-    "symlinkSync",
-  ];
-  for (const name of syncTwoPaths) {
-    const key = String(name);
-    const orig = mutableNodeFs[key];
-    if (typeof orig === "function") {
-      mutableNodeFs[key] = wrapFsTwoPaths(orig as AnyFn);
+    // writeFileSync carries an extra write guard.
+    if (typeof target.writeFileSync === "function") {
+      const wrapped = wrapFsWriteGuard(target.writeFileSync as AnyFn);
+      setIfMutable(target, "writeFileSync", wrapFsPath(wrapped));
     }
-  }
 
-  // ── Callback (async) API ─────────────────────────────────────────────────
-  // Callback-style functions: `(path, ...opts, callback)`.
-  // We sandox the first positional path arg; the callback remains at its
-  // natural position.  For write operations we also apply the write guard.
-
-  const callbackOnePath: Array<keyof typeof nodeFs> = [
-    "access",
-    "chmod",
-    "chown",
-    "lchmod",
-    "lchown",
-    "lstat",
-    "mkdir",
-    "mkdtemp",
-    "readdir",
-    "readFile",
-    "readlink",
-    "realpath",
-    "rmdir",
-    "rm",
-    "stat",
-    "truncate",
-    "unlink",
-    "utimes",
-    "lutimes",
-    "open",
-    "opendir",
-    "appendFile",
-  ];
-
-  for (const name of callbackOnePath) {
-    const key = String(name);
-    const orig = mutableNodeFs[key];
-    if (typeof orig === "function") {
-      mutableNodeFs[key] = wrapFsPath(orig as AnyFn);
+    // Two-path sync operations.
+    const syncTwoPaths: Array<keyof typeof nodeFs> = [
+      "copyFileSync",
+      "renameSync",
+      "linkSync",
+      "symlinkSync",
+    ];
+    for (const name of syncTwoPaths) {
+      const key = String(name);
+      const orig = target[key];
+      if (typeof orig === "function") {
+        setIfMutable(target, key, wrapFsTwoPaths(orig as AnyFn));
+      }
     }
-  }
 
-  if (typeof nodeFs.writeFile === "function") {
-    const wrapped = wrapFsWriteGuard(nodeFs.writeFile as AnyFn);
-    mutableNodeFs.writeFile = wrapFsPath(wrapped);
-  }
+    // ── Callback (async) API ───────────────────────────────────────────────
+    // Callback-style functions: `(path, ...opts, callback)`.
+    // We sandbox the first positional path arg; the callback remains at its
+    // natural position. For write operations we also apply the write guard.
 
-  const callbackTwoPaths: Array<keyof typeof nodeFs> = [
-    "copyFile",
-    "rename",
-    "link",
-    "symlink",
-  ];
-  for (const name of callbackTwoPaths) {
-    const key = String(name);
-    const orig = mutableNodeFs[key];
-    if (typeof orig === "function") {
-      mutableNodeFs[key] = wrapFsTwoPaths(orig as AnyFn);
+    const callbackOnePath: Array<keyof typeof nodeFs> = [
+      "access",
+      "chmod",
+      "chown",
+      "lchmod",
+      "lchown",
+      "lstat",
+      "mkdir",
+      "mkdtemp",
+      "readdir",
+      "readFile",
+      "readlink",
+      "realpath",
+      "rmdir",
+      "rm",
+      "stat",
+      "truncate",
+      "unlink",
+      "utimes",
+      "lutimes",
+      "open",
+      "opendir",
+      "appendFile",
+    ];
+
+    for (const name of callbackOnePath) {
+      const key = String(name);
+      const orig = target[key];
+      if (typeof orig === "function") {
+        setIfMutable(target, key, wrapFsPath(orig as AnyFn));
+      }
+    }
+
+    if (typeof target.writeFile === "function") {
+      const wrapped = wrapFsWriteGuard(target.writeFile as AnyFn);
+      setIfMutable(target, "writeFile", wrapFsPath(wrapped));
+    }
+
+    const callbackTwoPaths: Array<keyof typeof nodeFs> = [
+      "copyFile",
+      "rename",
+      "link",
+      "symlink",
+    ];
+    for (const name of callbackTwoPaths) {
+      const key = String(name);
+      const orig = target[key];
+      if (typeof orig === "function") {
+        setIfMutable(target, key, wrapFsTwoPaths(orig as AnyFn));
+      }
     }
   }
 
   // ── fs.promises (promise-based API) ─────────────────────────────────────
-
-  const promises = nodeFsPromises as Record<string, unknown>;
 
   const promisesOnePath = [
     "access",
@@ -502,36 +555,24 @@ function patchFsModule(): void {
     "opendir",
     "appendFile",
   ];
-  for (const name of promisesOnePath) {
-    const orig = promises[name];
-    if (typeof orig === "function") {
-      promises[name] = wrapFsPath(orig as AnyFn);
+  for (const promises of promiseTargets) {
+    for (const name of promisesOnePath) {
+      const orig = promises[name];
+      if (typeof orig === "function") {
+        setIfMutable(promises, name, wrapFsPath(orig as AnyFn));
+      }
     }
-  }
 
-  if (typeof promises.writeFile === "function") {
-    const wrapped = wrapFsWriteGuard(promises.writeFile as AnyFn);
-    promises.writeFile = wrapFsPath(wrapped);
-  }
-
-  const promisesTwoPaths = ["copyFile", "rename", "link", "symlink"];
-  for (const name of promisesTwoPaths) {
-    const orig = promises[name];
-    if (typeof orig === "function") {
-      promises[name] = wrapFsTwoPaths(orig as AnyFn);
+    if (typeof promises.writeFile === "function") {
+      const wrapped = wrapFsWriteGuard(promises.writeFile as AnyFn);
+      setIfMutable(promises, "writeFile", wrapFsPath(wrapped));
     }
-  }
 
-  // Mirror patched promises back onto `nodeFs.promises` (same object
-  // reference in modern Node/Bun, but guard for older builds).
-  if (
-    nodeFs.promises &&
-    typeof nodeFs.promises === "object" &&
-    nodeFs.promises !== nodeFsPromises
-  ) {
-    for (const key of promisesOnePath.concat(["writeFile"], promisesTwoPaths)) {
-      if (key in promises) {
-        (nodeFs.promises as Record<string, unknown>)[key] = promises[key];
+    const promisesTwoPaths = ["copyFile", "rename", "link", "symlink"];
+    for (const name of promisesTwoPaths) {
+      const orig = promises[name];
+      if (typeof orig === "function") {
+        setIfMutable(promises, name, wrapFsTwoPaths(orig as AnyFn));
       }
     }
   }
