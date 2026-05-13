@@ -293,6 +293,13 @@ export class VoiceStateMachine {
    */
   private prefillPromise: Promise<PrefillOptimisticResult> | null = null;
   private readonly prefillConfig: VoiceStateMachineOptions["prefillConfig"];
+  /**
+   * Most recently observed EOT probability from the Tier-3 classifier.
+   * Used as the `eotProb` argument to `prefillOptimistic` when PAUSE_TENTATIVE
+   * is entered. Starts at 0.5 (uncertain). Updated on each `partial-transcript`
+   * event when an EOT classifier is wired.
+   */
+  private latestEotProb = 0.5;
 
   constructor(opts: VoiceStateMachineOptions) {
     this.slotId = opts.slotId;
@@ -403,6 +410,8 @@ export class VoiceStateMachine {
     }
     this.pauseTimestampMs = null;
     this.eotHangoverExtensionMs = 0;
+    this.latestEotProb = 0.5;
+    this.prefillPromise = null;
     this.setState("LISTENING");
   }
 
@@ -437,14 +446,10 @@ export class VoiceStateMachine {
     // C7 — fire optimistic prefill in the background (fire-and-forget).
     // The drafter and the prefill run concurrently; if the prefill finishes
     // before SPEECH_END the verifier can start from the prefilled KV state.
-    this.firePrefill(partialTranscript, eotProb, turnId);
+    this.firePrefill(partialTranscript, this.latestEotProb, turnId);
 
     this.startSpeculativeDrafter(partialTranscript, turnId);
   }
-
-  // Store the eotProb for the prefill call. We need it in handleSpeechPause
-  // but the method signature doesn't carry it — store transiently.
-  private _lastEotProb = 0.5;
 
   private async handleSpeechActive(timestampMs: number): Promise<void> {
     if (this.state !== "PAUSE_TENTATIVE") return;
@@ -462,6 +467,10 @@ export class VoiceStateMachine {
     }
     // Within the rollback window — abort the drafter and discard C1.
     this.abortActiveDraft("resumed");
+    // C7 — drop the in-flight prefill (SPEECH_ACTIVE_REBOUND). The prefill
+    // checkpoint will be cleaned up by the server's slot-reuse eviction
+    // (no explicit discard REST call available in the stub path).
+    this.prefillPromise = null;
     if (this.enabled && this.checkpoint) {
       const handle = this.checkpoint;
       this.checkpoint = null;
@@ -475,7 +484,7 @@ export class VoiceStateMachine {
     this.setState("LISTENING");
   }
 
-  private handleSpeechEnd(finalTranscript: string): void {
+  private async handleSpeechEnd(finalTranscript: string): Promise<void> {
     if (this.state !== "PAUSE_TENTATIVE") {
       // `speech-end` without a prior `speech-pause` — happens when the
       // user finishes a single short utterance with no mid-clause pause.
@@ -490,8 +499,24 @@ export class VoiceStateMachine {
     // barge-in can restore. The drafter stays alive — its output is what
     // the verifier and TTS will stream from.
     this.pauseTimestampMs = null;
+
+    // C7 — if the prefill is still in-flight, await it (non-blocking for
+    // the user — the drafter has already started; we just want the handle
+    // so the verifier can start from the prefilled KV state).
+    let prefillResult: PrefillOptimisticResult | undefined;
+    const inflight = this.prefillPromise;
+    this.prefillPromise = null;
+    if (inflight) {
+      try {
+        prefillResult = await inflight;
+      } catch {
+        // Prefill failed — the verifier runs a regular (non-prefilled) pass.
+        prefillResult = undefined;
+      }
+    }
+
     this.setState("SPEAKING");
-    this.events.onCommit?.(this.getTurnId(), finalTranscript);
+    this.events.onCommit?.(this.getTurnId(), finalTranscript, prefillResult);
   }
 
   private async handleBargeIn(): Promise<void> {
@@ -544,6 +569,7 @@ export class VoiceStateMachine {
     if (!validStates.includes(this.currentState())) return;
 
     const pDone = await this.checkEot(text);
+    this.latestEotProb = pDone;
     this.events.onEotScore?.(this.getTurnId(), text, pDone);
 
     // Re-check state after async classifier — it may have changed.
@@ -585,6 +611,47 @@ export class VoiceStateMachine {
   }
 
   // --- internal helpers ----------------------------------------------
+
+  /**
+   * C7 — fire the optimistic prefill in the background and store the
+   * promise so `handleSpeechEnd` can await it. The machine never awaits
+   * here — it stays in PAUSE_TENTATIVE whether or not the prefill has
+   * finished. On `SPEECH_ACTIVE_REBOUND` the promise is discarded; on
+   * `SPEECH_END` it is awaited (or its cached result used) and passed
+   * through `onCommit(prefillResult)`.
+   */
+  private firePrefill(
+    partialText: string,
+    eotProb: number,
+    turnId: string,
+  ): void {
+    if (!this.prefillConfig) return;
+    const { baseUrl, checkpointOptions, getContext } = this.prefillConfig;
+    const context = getContext?.() ?? undefined;
+    const promise = prefillOptimistic(
+      {
+        baseUrl,
+        slotId: this.slotId,
+        partialText,
+        eotProb,
+        ...(context !== undefined ? { context } : {}),
+      },
+      {
+        checkpointManager: this.mgr,
+        ...checkpointOptions,
+      },
+    );
+    this.prefillPromise = promise;
+    // Surface the result (or error) via `onPrefill` without blocking the machine.
+    promise.then(
+      (result) => {
+        this.events.onPrefill?.(turnId, result, null);
+      },
+      (error) => {
+        this.events.onPrefill?.(turnId, null, error);
+      },
+    );
+  }
 
   private startSpeculativeDrafter(partial: string, turnId: string): void {
     const controller = new AbortController();
