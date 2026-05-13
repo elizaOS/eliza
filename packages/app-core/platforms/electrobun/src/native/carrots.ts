@@ -21,6 +21,7 @@ import type {
 	InstalledCarrotSnapshot,
 	JsonValue,
 	WorkerInitMessage,
+	WorkerResponseMessage,
 } from "@elizaos/electrobun-carrots";
 import {
 	buildCarrotRuntimeContext,
@@ -216,12 +217,24 @@ function actionLogPayload(message: HostActionMessage): string | null {
 		: text;
 }
 
+interface PendingInvoke {
+	callerId: string;
+	callerHandle: CarrotWorkerHandle;
+	targetId: string;
+	originalRequestId: number;
+	timeout: ReturnType<typeof setTimeout>;
+}
+
+const INVOKE_TIMEOUT_MS = 30_000;
+
 export class CarrotManager {
 	private readonly storeRoot: string;
 	private readonly workerRunner: CarrotWorkerRunner;
 	private readonly now: () => number;
 	private events: CarrotManagerEvents;
 	private readonly workers = new Map<string, CarrotWorkerRecord>();
+	private readonly pendingInvokes = new Map<number, PendingInvoke>();
+	private nextInvokeId = 1;
 
 	constructor(options: CarrotManagerOptions = {}) {
 		this.storeRoot = options.storeRoot ?? resolveCarrotStoreRoot();
@@ -423,6 +436,7 @@ export class CarrotManager {
 			this.emitWorkerChanged(status);
 			return status;
 		}
+		this.rejectPendingInvokesForWorker(id);
 		record.handle?.terminate();
 		if (record.window) {
 			try {
@@ -533,6 +547,11 @@ export class CarrotManager {
 			return;
 		}
 
+		if (message.type === "response") {
+			this.handleWorkerResponse(id, handle, message);
+			return;
+		}
+
 		if (message.type !== "action") return;
 		if (!record.context) return;
 
@@ -580,6 +599,24 @@ export class CarrotManager {
 		handle: CarrotWorkerHandle,
 		request: HostRequestMessage,
 	): void {
+		// invoke-carrot needs async routing through the target worker, so the
+		// dispatcher returns a sentinel and the response is posted later by
+		// `handleWorkerResponse` when the target replies. All other methods
+		// resolve synchronously and post the response inline.
+		if (request.method === "invoke-carrot") {
+			try {
+				this.startInvokeCarrot(callerId, handle, request);
+			} catch (error) {
+				this.postHostResponse(handle, {
+					type: "host-response",
+					requestId: request.requestId,
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+			return;
+		}
+
 		void this.dispatchHostRequest(callerId, request.method, request.params)
 			.then((payload) => {
 				this.postHostResponse(handle, {
@@ -597,6 +634,114 @@ export class CarrotManager {
 					error: error instanceof Error ? error.message : String(error),
 				});
 			});
+	}
+
+	/**
+	 * Route an `invoke-carrot` host-request from carrot A to carrot B. Sends
+	 * a fresh `type:"request"` to B's worker, registers the caller's pending
+	 * promise keyed by an internal correlation id, and lets
+	 * `handleWorkerResponse` resolve it when B replies with `type:"response"`.
+	 * Times out after INVOKE_TIMEOUT_MS if B never answers.
+	 */
+	private startInvokeCarrot(
+		callerId: string,
+		callerHandle: CarrotWorkerHandle,
+		request: HostRequestMessage,
+	): void {
+		if (!isRecord(request.params)) {
+			throw new Error("invoke-carrot: missing params object.");
+		}
+		const targetId = request.params.carrotId;
+		const method = request.params.method;
+		if (typeof targetId !== "string" || targetId.length === 0) {
+			throw new Error("invoke-carrot: invalid carrotId.");
+		}
+		if (typeof method !== "string" || method.length === 0) {
+			throw new Error("invoke-carrot: invalid method.");
+		}
+		const target = this.workers.get(targetId);
+		if (!target?.handle || target.status.state !== "running") {
+			throw new Error(`invoke-carrot: target ${targetId} is not running.`);
+		}
+		const targetHandle = target.handle;
+
+		const invokeId = ++this.nextInvokeId;
+		const timeout = setTimeout(() => {
+			const pending = this.pendingInvokes.get(invokeId);
+			if (!pending) return;
+			this.pendingInvokes.delete(invokeId);
+			this.postHostResponse(pending.callerHandle, {
+				type: "host-response",
+				requestId: pending.originalRequestId,
+				success: false,
+				error: `invoke-carrot: target ${targetId} did not respond within ${INVOKE_TIMEOUT_MS}ms`,
+			});
+		}, INVOKE_TIMEOUT_MS);
+
+		this.pendingInvokes.set(invokeId, {
+			callerId,
+			callerHandle,
+			targetId,
+			originalRequestId: request.requestId,
+			timeout,
+		});
+
+		const requestParams = request.params.params;
+		const windowId = request.params.windowId;
+		const targetRequest: CarrotWorkerMessage = {
+			type: "request",
+			requestId: invokeId,
+			method,
+			...(requestParams === undefined ? {} : { params: requestParams as JsonValue }),
+			...(typeof windowId === "string" ? { windowId } : {}),
+		};
+		targetHandle.postMessage(targetRequest);
+	}
+
+	private handleWorkerResponse(
+		id: string,
+		handle: CarrotWorkerHandle,
+		response: WorkerResponseMessage,
+	): void {
+		const record = this.workers.get(id);
+		if (record?.handle !== handle) return;
+		const pending = this.pendingInvokes.get(response.requestId);
+		if (!pending) return;
+		this.pendingInvokes.delete(response.requestId);
+		clearTimeout(pending.timeout);
+		this.postHostResponse(pending.callerHandle, {
+			type: "host-response",
+			requestId: pending.originalRequestId,
+			success: response.success,
+			...(response.success
+				? response.payload === undefined
+					? {}
+					: { payload: response.payload }
+				: { error: response.error ?? "invoke-carrot: target returned failure" }),
+		});
+	}
+
+	/**
+	 * When a worker stops or errors, fail any pending invokes touching it:
+	 * - target stopped → notify caller with a failure response
+	 * - caller stopped → drop the entry (no one to respond to)
+	 */
+	private rejectPendingInvokesForWorker(id: string): void {
+		for (const [invokeId, pending] of this.pendingInvokes) {
+			if (pending.targetId === id) {
+				this.pendingInvokes.delete(invokeId);
+				clearTimeout(pending.timeout);
+				this.postHostResponse(pending.callerHandle, {
+					type: "host-response",
+					requestId: pending.originalRequestId,
+					success: false,
+					error: `invoke-carrot: target ${id} stopped before responding`,
+				});
+			} else if (pending.callerId === id) {
+				this.pendingInvokes.delete(invokeId);
+				clearTimeout(pending.timeout);
+			}
+		}
 	}
 
 	private postHostResponse(
@@ -647,6 +792,12 @@ export class CarrotManager {
 				}
 				return { token: record.context.authToken };
 			}
+			case "invoke-carrot":
+				// Routed asynchronously by `handleHostRequest` via
+				// `startInvokeCarrot` / `handleWorkerResponse`. Reaching this
+				// case indicates a programming error (sync dispatch was used
+				// instead of the async path).
+				throw new Error("invoke-carrot must be routed through startInvokeCarrot");
 			case "set-auth-token": {
 				const record = this.workers.get(callerId);
 				if (!record?.context) {
@@ -676,6 +827,7 @@ export class CarrotManager {
 	): void {
 		const record = this.workers.get(id);
 		if (record?.handle !== handle) return;
+		this.rejectPendingInvokesForWorker(id);
 		record.status.state = "error";
 		record.status.error = error.message;
 		record.status.stoppedAt = this.now();
