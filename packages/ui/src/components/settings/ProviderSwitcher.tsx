@@ -1,4 +1,5 @@
 import { useCallback, useMemo } from "react";
+import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import {
   getDirectAccountProviderForOnboardingProvider,
   isSubscriptionProviderSelectionId,
@@ -63,6 +64,12 @@ function getSubscriptionProviderDescription(
 export function ProviderSwitcher(props: ProviderSwitcherProps = {}) {
   const app = useApp();
   const t = app.t;
+  // Resolve the device+mode default voice/ASR pair eagerly here so the
+  // surrounding settings shell has it warm in the runtime-mode cache by
+  // the time the user reaches the Voice section. We do not write the
+  // defaults here — VoiceConfigView reads them when the user hasn't
+  // explicitly picked a TTS/ASR provider.
+  useDefaultProviderPresets();
   const elizaCloudConnected =
     props.elizaCloudConnected ?? Boolean(app.elizaCloudConnected);
   const plugins = Array.isArray(props.plugins)
