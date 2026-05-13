@@ -207,6 +207,7 @@ describe("auth pairing pair-code route", () => {
   const originalCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED;
 
   beforeAll(async () => {
+    vi.resetModules();
     const routeModule = await import("./auth-pairing-routes");
     handleAuthPairingCompatRoutes = routeModule.handleAuthPairingCompatRoutes;
     resetAuthPairingStateForTests = routeModule._resetAuthPairingStateForTests;

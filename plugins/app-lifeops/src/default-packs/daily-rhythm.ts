@@ -5,18 +5,12 @@
  * answered). Three records:
  *
  *   1. `gm` — gentle morning ping at the wake anchor. `priority: "low"`,
- *      `kind: "reminder"`, no escalation ladder (per wave1-interfaces.md §3.4
- *      `priority_low_default`).
+ *      `kind: "reminder"`, no escalation ladder (`priority_low_default`).
  *   2. `gn` — bedtime ping at the bedtime anchor. `priority: "low"`.
  *   3. `daily-checkin` — `kind: "checkin"`, `priority: "medium"`, runs the
  *      morning-checkin assembly (delegated to `CheckinService.runMorningCheckin`
- *      via the morning-brief pack — see parity test). On no-reply the
- *      `pipeline.onSkip` fires a follow-up ping at +30 min, then `expired`.
- *
- * Closes GAP §2.4 (gm/gn starter + daily check-in).
- *
- * Stub status: see `contract-stubs.ts` — `ScheduledTask` types are local until
- * W1-A's `src/lifeops/scheduled-task/types.ts` lands.
+ *      via the morning-brief pack). On no-reply the `pipeline.onSkip` fires a
+ *      follow-up ping at +30 min, then `expired`.
  */
 
 import type { ScheduledTaskSeed } from "./contract-stubs.js";
@@ -120,8 +114,7 @@ const checkinRecord: ScheduledTaskSeed = {
     includeOwnerFacts: ["preferredName", "morningWindow", "timezone"],
     includeRecentTaskStates: { kind: "checkin", lookbackHours: 48 },
   },
-  // 30 minutes after wake.confirmed. Wave-2 may move this onto a separate
-  // anchor; for Wave-1 we ride the same wake anchor with an offset.
+  // 30 minutes after wake.confirmed.
   trigger: {
     kind: "relative_to_anchor",
     anchorKey: "wake.confirmed",

@@ -2,12 +2,8 @@
  * Default pack: `inbox-triage-starter`.
  *
  * Opt-in starter. If a Gmail-capable connector is registered (capability
- * `google.gmail.read` per W1-F's namespacing), schedules a daily 9am triage
- * `ScheduledTask`. Otherwise the pack is offered at customize time but its
- * record is NOT seeded.
- *
- * Stub status: see `contract-stubs.ts` — `ConnectorRegistry` is declared
- * locally until W1-F ships the real registry.
+ * `google.gmail.read`), schedules a daily 9am triage `ScheduledTask`.
+ * Otherwise the pack is offered at customize time but its record is NOT seeded.
  */
 
 import type {

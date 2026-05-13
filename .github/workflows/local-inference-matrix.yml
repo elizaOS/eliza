@@ -204,12 +204,12 @@ jobs:
 
       - name: Install Hugging Face CLI
         run: |
-          python3 -m pip install --user --upgrade "huggingface_hub[cli]"
-          if ! command -v huggingface-cli >/dev/null 2>&1; then
+          python3 -m pip install --user --upgrade "huggingface_hub[hf_transfer]"
+          if ! command -v hf >/dev/null 2>&1; then
             export PATH="$HOME/.local/bin:$PATH"
             echo "$HOME/.local/bin" >> "$GITHUB_PATH"
           fi
-          huggingface-cli --help >/dev/null
+          hf --help >/dev/null
 
       - name: Cache buun-llama-cpp checkout + build
         uses: actions/cache@v5
@@ -250,7 +250,7 @@ jobs:
             ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"
             exit 0
           fi
-          huggingface-cli download "${SMOKE_MODEL_REPO}" "${SMOKE_MODEL_FILE}" \
+          hf download "${SMOKE_MODEL_REPO}" "${SMOKE_MODEL_FILE}" \
             --local-dir "$MODEL_DIR" \
             --local-dir-use-symlinks False
           ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"

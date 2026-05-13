@@ -24,9 +24,9 @@
  *   - `prompt_slop`         AI-generated leftover markers (`TODO`, `FIXME`,
  *                           `XXX`, `HACK`).
  *
- * Wave 3 / W3-B promotes the runner to CI-fail; this module exposes the same
- * rule set at runtime so any code path that registers a pack — including
- * third-party plugin contributions — can opt in via `lintPack` / `lintPacks`.
+ * This module exposes the same rule set at runtime so any code path that
+ * registers a pack — including third-party plugin contributions — can opt in
+ * via `lintPack` / `lintPacks`.
  */
 
 import type { ScheduledTaskSeed } from "./contract-stubs.js";

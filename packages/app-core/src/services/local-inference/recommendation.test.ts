@@ -407,16 +407,18 @@ describe("canBundleBeDefaultOnDevice", () => {
     expect(r).toMatchObject({ canBeDefault: false, reason: "no-manifest" });
   });
 
-  it("refuses when the manifest is not defaultEligible", () => {
+  it("accepts a contract-valid candidate bundle (defaultEligible:false)", () => {
+    // Per the 2026-05-12 directive: a `base-v1-candidate` bundle that the
+    // device can install + run is allowed to fill the default slot. The
+    // recommender prefers a strict release (defaultEligible:true) when
+    // both are installed, but a candidate-only install should not strand
+    // the user on an installed-but-unused bundle.
     const m = fixtureManifest();
     m.defaultEligible = false;
     const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
       manifestLoader: () => m,
     });
-    expect(r).toMatchObject({
-      canBeDefault: false,
-      reason: "not-default-eligible",
-    });
+    expect(r).toMatchObject({ canBeDefault: true });
   });
 
   it("refuses when device RAM is below the manifest floor", () => {
@@ -449,7 +451,12 @@ describe("canBundleBeDefaultOnDevice", () => {
     });
   });
 
-  it("refuses when a required eval gate did not pass", () => {
+  it("refuses when a required eval gate did not pass (contract-invalid)", () => {
+    // textEval.passed=false against a strict (`defaultEligible:true`)
+    // fixture trips `collectContractErrors`, which kicks `canSetAsDefault`
+    // back as not-default-eligible. The disambiguation reason is the generic
+    // `not-default-eligible` — covers any eval / kernel / lineage rule
+    // rejected by the validator.
     const m = fixtureManifest();
     m.evals.textEval = { score: 0.2, passed: false };
     const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {

@@ -10,12 +10,6 @@
  * the `CheckinService.runMorningCheckin().summaryText` for the same inputs.
  * `test/default-pack-morning-brief.parity.test.ts` asserts this.
  *
- * Stub anchor resolution per IMPL §3.1 risk-and-tradeoff: `wake.confirmed`
- * resolves to `ownerFact.morningWindow.start` until plugin-health (W1-B)
- * ships the real anchor.
- *
- * Stub status: see `contract-stubs.ts` — `ScheduledTask` types are local
- * until W1-A's `src/lifeops/scheduled-task/types.ts` lands.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

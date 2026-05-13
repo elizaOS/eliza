@@ -1,7 +1,5 @@
 /**
- * Wave-1 REST surface for `ScheduledTask` (W1-A).
- *
- * Source of truth: `docs/audit/wave1-interfaces.md` §1.6 + IMPL §3.1.
+ * REST surface for `ScheduledTask`.
  *
  *   GET    /api/lifeops/scheduled-tasks                              list
  *   POST   /api/lifeops/scheduled-tasks                              schedule
