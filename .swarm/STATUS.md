@@ -160,3 +160,66 @@ Then the user must still teardown the VM via nebius CLI after re-auth.
 - Re-run cuda-fused on additional sm classes (sm_89 Ada / sm_90 H100 / sm_100 datacenter Blackwell) to confirm no arch regression in `CMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80;100;120a`.
 - `llama-bench` is not in the fused-target list — adding it would unblock `runtime_graph_smoke.sh --gen-check` against the fused install. Non-blocking; the cuda-verify-fused parity + e2e_loop_bench publish-gate pass cover the substance.
 
+
+# H200-MONITOR-4 status — UPDATE 2026-05-13 03:36 UTC
+
+## v4 RUN TERMINATED at step ~1241 due to driver's built-in 6h watchdog
+
+### What happened
+- 2026-05-13T03:33:34Z (6h after `run_remote` started polling): the driver hit `scripts/train_nebius.sh` line 439 cap: `if [ "$i" -gt 360 ]; then echo "ERROR: still running after 6h — bailing"; return 1; fi`. 
+- `run_remote` returned 1 → bash's `set -euo pipefail` aborted the `full` flow → `fetch` was SKIPPED → EXIT trap ran only `teardown`.
+- The EXIT trap's `teardown` function (line 544) called `instance_id_by_name` → `nebius compute v1 instance list` → expired-auth hang → I had to kill the driver process (3652060) manually at 03:35:51Z.
+- **Final remote step: 1003** (per remote `run_eliza-1-0_8b-apollo-fullcorpus-h200-1778619044.log`).
+- Note: the local launch.log showed step 1241 in the local tail — that's because my Ctrl-C-via-tmux send-keys at 03:34:48Z killed the python training between the 1003 eval finish and the next eval/save. Eval at step 1000 finished: **eval_loss=1.145 at epoch 0.104**.
+
+### Artifacts on remote VM (89.169.122.196 still up)
+- `/opt/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-500/` (3.4 GB, eval done)
+- `/opt/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-1000/` (eval done, eval_loss=1.145)
+- No checkpoint-1500 (only got to step 1241ish before my Ctrl-C; would have needed step 1500).
+- README.md, environment.json present.
+
+### Manual rsync fetch in progress
+- PID 4024662: `rsync -avhz ubuntu@89.169.122.196:/opt/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/` → local.
+- Network speed thrashing 300-1500 KB/s. At ~500 KB/s sustained, the two 3.4GB checkpoints = ~7 GB total → **~4h fetch time worst case**.
+- Log: `/tmp/q35-0_8b-v4-manual-fetch.log`
+
+### CRITICAL: VM is up and billing, nebius CLI auth still broken
+- VM `eliza-train-h200-0_8b-v4` (instance + boot disk) is still active. GPU idle (0%) since 03:34:48Z, but VM compute is billing at ~$3-4/h.
+- Driver's EXIT trap teardown hung indefinitely on expired-token `nebius compute v1 instance list`.
+- My fallback watcher (`/tmp/nebius-finish-q35-0_8b-v4b.sh`) cannot teardown either (same auth issue).
+- **USER ACTION REQUIRED**: complete nebius OAuth federation (browser at PID 3643529 from 13:42Z, expired URL — likely needs `nebius iam get-access-token` triggered fresh). Then run:
+  ```
+  export NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec
+  cd /home/shaw/milady/eliza/packages/training
+  NEBIUS_VM_NAME=eliza-train-h200-0_8b-v4 bash scripts/train_nebius.sh teardown
+  ```
+
+### State of training quality at the artifact step
+- ~1000 steps done out of 9615 (10.4% of 1 epoch).
+- eval_loss 1.145 — meaningful but very early. Gate's format_ok ≥ 0.70 threshold cannot be evaluated without the SFT pipeline running its eval gate (`run_pipeline.py` post-train eval). Since we hit the driver's 6h cap before SFT completed and triggered the eval gate, **no gate_report.json was produced**.
+- This is a **Case 2 outcome** per the agent brief (partial checkpoint, no gate_report).
+
+### Decision: relaunch as v5 with `--max-steps` is NOT yet possible
+- Reasons:
+  - Need nebius auth restored before any new VM can be provisioned.
+  - `train_local.py` has no `--max-steps` flag (only `--epochs` / `--max-samples`); patching `train_nebius.sh` to plumb max-steps requires source edits to `scripts/run_pipeline.py` too.
+  - Bigger structural problem: the driver hit 6h not 12h. The `train_nebius.sh` 6h cap is hardcoded at line 439. A successful 1500-step run within the cap needs either: shorter eval (saw 50min eval at step 500), smaller test set, or per-step rate above ~6 it/s.
+- Recommended v5 plan documented separately in v5 below.
+
+## Cleanup state
+- Driver (3652060): killed at 03:35:51Z
+- Watcher v4 (3652514): self-terminated at 22:28:02Z (false positive)
+- Watcher v4b (3768788): killed at 03:36:11Z (would fail teardown)
+- Manual rsync (4024662): in progress
+- v4 launch.log: still on disk at `/tmp/q35-0_8b-v4-launch.log` for forensics
+- VM `eliza-train-h200-0_8b-v4`: **STILL UP, NEEDS USER MANUAL TEARDOWN**
+
+## v5 plan (post user re-auth)
+1. Patch `train_nebius.sh` line 439 to honor an `ELIZA_REMOTE_RUN_TIMEOUT_H` env var (default 12 to match watcher).
+2. Patch `scripts/run_pipeline.py` (or `train_local.py`) to honor `MAX_STEPS` env (the trainer.Trainer supports `max_steps` kwarg).
+3. Reduce eval frequency: change `save_steps` from 500 → 1500 (so single mid-run eval doesn't burn 50 min). OR keep save_steps=500 but reduce test set size.
+4. Relaunch v5 with `MAX_STEPS=1500 ELIZA_REMOTE_RUN_TIMEOUT_H=12 NEBIUS_VM_NAME=eliza-train-h200-0_8b-v5 bash scripts/train_nebius.sh full --registry-key qwen3.5-0.8b ...`
+5. Create proper v5 watcher with SSH-based liveness (use `/tmp/nebius-finish-q35-0_8b-v4b.sh` as template).
+
+I am DONE for this agent run — handing off to next H200-MONITOR or to user for nebius re-auth.
+
