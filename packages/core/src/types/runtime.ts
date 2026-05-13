@@ -86,6 +86,18 @@ export type MessageTargetKind =
 	| "phone"
 	| (string & {});
 
+export const CANONICAL_MESSAGE_TARGET_KINDS = [
+	"room",
+	"channel",
+	"thread",
+	"user",
+	"contact",
+	"group",
+	"server",
+	"email",
+	"phone",
+] as const;
+
 export type MessageConnectorCapability =
 	| "send_message"
 	| "read_messages"

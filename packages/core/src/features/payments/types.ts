@@ -27,6 +27,17 @@ export type PaymentContextKind =
 	| "verified_payer"
 	| "specific_payer";
 
+export const PAYMENT_CONTEXT_KINDS: readonly PaymentContextKind[] = [
+	"any_payer",
+	"verified_payer",
+	"specific_payer",
+] as const;
+
+export const PAYMENT_CONTEXT_SCOPES = [
+	"owner",
+	"owner_or_linked_identity",
+] as const;
+
 export interface PaymentContext {
 	kind: PaymentContextKind;
 	scope?: "owner" | "owner_or_linked_identity";
