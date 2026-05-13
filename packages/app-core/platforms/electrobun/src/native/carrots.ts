@@ -1,3 +1,8 @@
+/**
+ * Electrobun carrot host runtime — manages install, start, stop, and
+ * lifecycle for `mode: "background"` and `mode: "window"` carrots, plus
+ * the host-side dispatcher for `bridge.requestHost(...)` host actions.
+ */
 import * as fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
