@@ -50,14 +50,14 @@ import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import { localInferenceRoot } from "../paths";
-import {
-  makeOpenVinoWhisperDecoder,
-  resolveOpenVinoWhisperRuntime,
-} from "./openvino-whisper-asr";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
 } from "./ffi-bindings";
+import {
+  makeOpenVinoWhisperDecoder,
+  resolveOpenVinoWhisperRuntime,
+} from "./openvino-whisper-asr";
 import type {
   PcmFrame,
   StreamingTranscriber,
