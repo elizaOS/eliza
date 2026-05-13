@@ -290,7 +290,7 @@ jobs:
 
       - name: Upload ablation artifact
         if: ${{ always() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: local-inference-ablation-${{ matrix.target }}
           path: artifacts/local-inference-ablation/*.json
