@@ -3208,10 +3208,8 @@ function validateIosFullBunEngineXcframework(
   xcframework,
   { buildTarget = null } = {},
 ) {
-  const { binary, frameworkDir, libraryIdentifier } = resolveIosBunEngineLibrary(
-    xcframework,
-    { buildTarget },
-  );
+  const { binary, frameworkDir, libraryIdentifier } =
+    resolveIosBunEngineLibrary(xcframework, { buildTarget });
   const frameworkInfoPlist = path.join(frameworkDir, "Info.plist");
   if (!fs.existsSync(frameworkInfoPlist)) {
     throw new Error(

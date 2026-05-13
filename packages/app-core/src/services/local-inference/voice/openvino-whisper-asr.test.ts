@@ -7,7 +7,15 @@
  * end runtime with a real WAV file.
  */
 
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 
 // Shared mock state. `vi.hoisted` runs before any `import` so this object
 // is reachable from both the `vi.mock` factory below and from each test's
@@ -41,9 +49,9 @@ vi.mock("./openvino-whisper-asr", () => ({
 // Use dynamic imports after vi.resetModules() so that transcriber.ts is loaded
 // fresh with the mock applied, regardless of test-file execution order when
 // isolate:false shares the module cache across files.
-let createStreamingTranscriber: (typeof import("./transcriber"))["createStreamingTranscriber"];
-let AsrUnavailableError: (typeof import("./transcriber"))["AsrUnavailableError"];
-let WhisperCppStreamingTranscriber: (typeof import("./transcriber"))["WhisperCppStreamingTranscriber"];
+let createStreamingTranscriber: typeof import("./transcriber")["createStreamingTranscriber"];
+let AsrUnavailableError: typeof import("./transcriber")["AsrUnavailableError"];
+let WhisperCppStreamingTranscriber: typeof import("./transcriber")["WhisperCppStreamingTranscriber"];
 
 beforeAll(async () => {
   vi.resetModules();

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-local-embedding",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Deprecated compatibility shim for the unified Eliza-1 local inference provider.",
   "type": "module",
   "main": "dist/index.js",
@@ -33,8 +33,8 @@
     "typecheck": "tsc --noEmit --noCheck"
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
-    "@elizaos/plugin-local-inference": "2.0.0-beta.1"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

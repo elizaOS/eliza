@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-zai",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -56,7 +56,7 @@
   "sideEffects": false,
   "dependencies": {
     "@ai-sdk/openai-compatible": "^1.0.0",
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "ai": "^6.0.23"
   },
   "devDependencies": {
@@ -163,6 +163,6 @@
     }
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-beta.1"
+    "@elizaos/core": "workspace:*"
   }
 }

@@ -10,19 +10,16 @@ import type {
   CodingAgentSession,
   Conversation,
   ConversationMessage,
-  ConversationMode,
   ImageAttachment,
   StreamEventEnvelope,
 } from "../api";
 import type { AutonomyEventStore, AutonomyRunHealthMap } from "./autonomy";
 import {
   loadChatAvatarVisible,
-  loadChatMode,
   loadChatVoiceMuted,
   loadCompanionMessageCutoffTs,
   saveActiveConversationId,
   saveChatAvatarVisible,
-  saveChatMode,
   saveChatVoiceMuted,
   saveCompanionMessageCutoffTs,
 } from "./persistence";
@@ -37,7 +34,6 @@ export interface ChatState {
   chatLastUsage: ChatTurnUsage | null;
   chatAvatarVisible: boolean;
   chatAgentVoiceMuted: boolean;
-  chatMode: ConversationMode;
   chatAvatarSpeaking: boolean;
   conversations: Conversation[];
   activeConversationId: string | null;
@@ -59,7 +55,6 @@ function createInitialChatState(): ChatState {
     chatLastUsage: null,
     chatAvatarVisible: loadChatAvatarVisible(),
     chatAgentVoiceMuted: loadChatVoiceMuted(),
-    chatMode: loadChatMode(),
     chatAvatarSpeaking: false,
     conversations: [],
     activeConversationId: null,
@@ -84,7 +79,6 @@ type ChatAction =
   | { type: "SET_LAST_USAGE"; value: ChatTurnUsage | null }
   | { type: "SET_AVATAR_VISIBLE"; value: boolean }
   | { type: "SET_VOICE_MUTED"; value: boolean }
-  | { type: "SET_CHAT_MODE"; value: ConversationMode }
   | { type: "SET_AVATAR_SPEAKING"; value: boolean }
   | { type: "SET_CONVERSATIONS"; value: Conversation[] }
   | { type: "SET_ACTIVE_CONVERSATION_ID"; value: string | null }
@@ -117,8 +111,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, chatAvatarVisible: action.value };
     case "SET_VOICE_MUTED":
       return { ...state, chatAgentVoiceMuted: action.value };
-    case "SET_CHAT_MODE":
-      return { ...state, chatMode: action.value };
     case "SET_AVATAR_SPEAKING":
       return { ...state, chatAvatarSpeaking: action.value };
     case "SET_CONVERSATIONS":
@@ -191,7 +183,6 @@ export interface ChatStateHook {
   setChatLastUsage: (v: ChatTurnUsage | null) => void;
   setChatAvatarVisible: (v: boolean) => void;
   setChatAgentVoiceMuted: (v: boolean) => void;
-  setChatMode: (v: ConversationMode) => void;
   setChatAvatarSpeaking: (v: boolean) => void;
   setConversations: React.Dispatch<React.SetStateAction<Conversation[]>>;
   setActiveConversationId: (v: string | null) => void;
@@ -291,11 +282,6 @@ export function useChatState(): ChatStateHook {
   const setChatAgentVoiceMuted = useCallback((v: boolean) => {
     saveChatVoiceMuted(v);
     dispatch({ type: "SET_VOICE_MUTED", value: v });
-  }, []);
-
-  const setChatMode = useCallback((v: ConversationMode) => {
-    saveChatMode(v);
-    dispatch({ type: "SET_CHAT_MODE", value: v });
   }, []);
 
   const setChatAvatarSpeaking = useCallback(
@@ -411,7 +397,6 @@ export function useChatState(): ChatStateHook {
     setChatLastUsage,
     setChatAvatarVisible,
     setChatAgentVoiceMuted,
-    setChatMode,
     setChatAvatarSpeaking,
     setConversations,
     setActiveConversationId,

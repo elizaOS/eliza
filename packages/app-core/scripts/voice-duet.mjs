@@ -296,7 +296,6 @@ function printPrereqs(report, model) {
 async function bootAgentRuntime({ roomId, character, modelId }) {
   const { AgentRuntime } = await import("@elizaos/core");
   let sqlPlugin;
-  let bootstrapPlugin;
   try {
     sqlPlugin =
       (await import("@elizaos/plugin-sql")).default ??
@@ -306,19 +305,10 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
       `@elizaos/plugin-sql not available: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  try {
-    bootstrapPlugin =
-      (await import("@elizaos/plugin-bootstrap")).default ??
-      (await import("@elizaos/plugin-bootstrap")).bootstrapPlugin;
-  } catch (err) {
-    throw new Error(
-      `@elizaos/plugin-bootstrap not available: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
   process.env.PGLITE_DATA_DIR = process.env.PGLITE_DATA_DIR || "memory://";
   const runtime = new AgentRuntime({
     character,
-    plugins: [sqlPlugin, bootstrapPlugin].filter(Boolean),
+    plugins: [sqlPlugin],
   });
   await runtime.initialize();
   const { ensureLocalInferenceHandler, prewarmResponseHandler } = await import(
@@ -338,7 +328,7 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
   const generate = async (request, onChunk) => {
     if (!runtime.messageService?.handleMessage) {
       throw new Error(
-        "[voice-duet] runtime.messageService.handleMessage unavailable (plugin-bootstrap not loaded?)",
+        "[voice-duet] runtime.messageService.handleMessage unavailable after initialize()",
       );
     }
     const entityId = `${roomId}-peer`;

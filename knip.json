@@ -114,7 +114,6 @@
         "@elizaos/app-lifeops",
         "@elizaos/app-shopify",
         "@elizaos/app-vincent",
-        "@elizaos/plugin-bootstrap",
         "@elizaos/plugin-browser",
         "@elizaos/plugin-discord",
         "@elizaos/plugin-local-embedding",

@@ -156,10 +156,6 @@ export function Header({
   }, [loadDropStatus]);
 
   useEffect(() => {
-    setState("chatMode", "power");
-  }, [setState]);
-
-  useEffect(() => {
     if (typeof document === "undefined") {
       return;
     }

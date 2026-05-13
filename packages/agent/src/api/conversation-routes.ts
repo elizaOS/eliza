@@ -1154,7 +1154,6 @@ export async function handleConversationRoutes(
       prompt,
       channelType,
       images,
-      conversationMode,
       preferredLanguage,
       source,
       metadata: chatMetadata,
@@ -1187,7 +1186,6 @@ export async function handleConversationRoutes(
       agentId: runtime.agentId,
       roomId: conv.roomId,
       channelType,
-      conversationMode,
       messageSource: source,
       metadata: chatMetadata,
     });
@@ -1437,7 +1435,6 @@ export async function handleConversationRoutes(
       prompt,
       channelType,
       images,
-      conversationMode,
       preferredLanguage,
       source,
       metadata: restMetadata,
@@ -1468,7 +1465,6 @@ export async function handleConversationRoutes(
       agentId: runtime.agentId,
       roomId: conv.roomId,
       channelType,
-      conversationMode,
       messageSource: source,
       metadata: restMetadata,
     });

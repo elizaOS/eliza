@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-signal",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Signal messaging integration plugin for ElizaOS agents",
   "type": "module",
   "main": "dist/index.js",
@@ -60,7 +60,7 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "qrcode": "^1.5.4",
     "zod": "^4.4.3"
   },
@@ -71,7 +71,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
     "@elizaos/signal-native": "*"
   },
   "peerDependenciesMeta": {

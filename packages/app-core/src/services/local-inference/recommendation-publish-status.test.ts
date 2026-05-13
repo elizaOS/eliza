@@ -1,6 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-
 import type { CatalogModel } from "@elizaos/shared";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { eliza1TierPublishStatus, MODEL_CATALOG } from "./catalog";
 import { recommendForFirstRun } from "./recommendation";
@@ -24,7 +23,10 @@ afterEach(() => {
   }
 });
 
-function clone(entry: CatalogModel, overrides: Partial<CatalogModel>): CatalogModel {
+function clone(
+  entry: CatalogModel,
+  overrides: Partial<CatalogModel>,
+): CatalogModel {
   return { ...entry, ...overrides };
 }
 
@@ -73,7 +75,9 @@ describe("recommendForFirstRun publish-status fallback (issue #7629)", () => {
     // Synthetic catalog: 2b is the preferred tier but its bundle isn't on
     // HF yet. Recommender should walk to the next eligible published tier.
     const catalog = MODEL_CATALOG.map((entry) =>
-      entry.id === "eliza-1-2b" ? clone(entry, { publishStatus: "pending" }) : entry,
+      entry.id === "eliza-1-2b"
+        ? clone(entry, { publishStatus: "pending" })
+        : entry,
     );
     const picked = recommendForFirstRun(catalog);
     expect(picked).not.toBeNull();
@@ -85,7 +89,9 @@ describe("recommendForFirstRun publish-status fallback (issue #7629)", () => {
     // Mark 0_8b, 2b, and 4b as pending; expect 9b (next published chat tier).
     const pending = new Set(["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"]);
     const catalog = MODEL_CATALOG.map((entry) =>
-      pending.has(entry.id) ? clone(entry, { publishStatus: "pending" }) : entry,
+      pending.has(entry.id)
+        ? clone(entry, { publishStatus: "pending" })
+        : entry,
     );
     const picked = recommendForFirstRun(catalog);
     expect(picked?.id).toBe("eliza-1-9b");
@@ -136,7 +142,9 @@ describe("recommendForFirstRun publish-status fallback (issue #7629)", () => {
     // they sort earlier alphabetically they must never be the first-run
     // pick — they aren't a usable chat target.
     const catalog = MODEL_CATALOG.map((entry) =>
-      entry.id === "eliza-1-2b" ? clone(entry, { publishStatus: "pending" }) : entry,
+      entry.id === "eliza-1-2b"
+        ? clone(entry, { publishStatus: "pending" })
+        : entry,
     );
     const picked = recommendForFirstRun(catalog);
     expect(picked?.runtimeRole).not.toBe("dflash-drafter");

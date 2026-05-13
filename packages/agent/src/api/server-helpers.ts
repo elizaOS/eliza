@@ -549,7 +549,6 @@ export function buildUserMessages(params: {
   agentId: UUID;
   roomId: UUID;
   channelType: ChannelType;
-  conversationMode?: "simple" | "power";
   messageSource?: string;
   metadata?: Record<string, unknown>;
 }): { userMessage: MessageMemory; messageToStore: MessageMemory } {
@@ -560,7 +559,6 @@ export function buildUserMessages(params: {
     agentId,
     roomId,
     channelType,
-    conversationMode,
     messageSource,
     metadata,
   } = params;
@@ -576,7 +574,6 @@ export function buildUserMessages(params: {
       text: prompt,
       source,
       channelType,
-      ...(conversationMode ? { conversationMode } : {}),
       ...(attachments?.length ? { attachments } : {}),
       ...(metadata ? { metadata } : {}),
     } as Content & { text: string },
@@ -591,7 +588,6 @@ export function buildUserMessages(params: {
           text: prompt,
           source,
           channelType,
-          ...(conversationMode ? { conversationMode } : {}),
           attachments: compactAttachments,
           ...(metadata ? { metadata } : {}),
         } as Content & { text: string },

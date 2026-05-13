@@ -2191,7 +2191,9 @@ function sourceContainsCpuTbqKernels(root) {
   if (sources.some((source) => !fs.existsSync(source))) {
     return { turbo3: false, turbo4: false, turbo3_tcq: false };
   }
-  const source = sources.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+  const source = sources
+    .map((file) => fs.readFileSync(file, "utf8"))
+    .join("\n");
   return {
     turbo3:
       source.includes("GGML_TYPE_TBQ3_0") &&

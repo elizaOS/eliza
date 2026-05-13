@@ -1103,12 +1103,11 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
  * surfaces that as a prereq failure, not a crash.
  */
 async function bootStandaloneRuntime({ roomId }) {
-  // The runtime needs plugin-sql (storage) + plugin-bootstrap (message
-  // service) + the local-inference model handler. Fail loudly if a piece
-  // is missing rather than half-booting.
+  // The runtime needs plugin-sql (storage) + the local-inference model handler.
+  // Core wires DefaultMessageService during initialize(). Fail loudly if a
+  // piece is missing rather than half-booting.
   const { AgentRuntime, ModelType } = await import("@elizaos/core");
   let sqlPlugin;
-  let bootstrapPlugin;
   try {
     sqlPlugin =
       (await import("@elizaos/plugin-sql")).default ??
@@ -1116,15 +1115,6 @@ async function bootStandaloneRuntime({ roomId }) {
   } catch (err) {
     throw new Error(
       `@elizaos/plugin-sql not available: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-  try {
-    bootstrapPlugin =
-      (await import("@elizaos/plugin-bootstrap")).default ??
-      (await import("@elizaos/plugin-bootstrap")).bootstrapPlugin;
-  } catch (err) {
-    throw new Error(
-      `@elizaos/plugin-bootstrap not available: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
@@ -1142,7 +1132,7 @@ async function bootStandaloneRuntime({ roomId }) {
       plugins: [],
       settings: { secrets: {} },
     },
-    plugins: [sqlPlugin, bootstrapPlugin].filter(Boolean),
+    plugins: [sqlPlugin],
   });
   await runtime.initialize();
 
@@ -1173,7 +1163,7 @@ async function bootStandaloneRuntime({ roomId }) {
   const generate = async (request, onChunk) => {
     if (!runtime.messageService?.handleMessage) {
       throw new Error(
-        "[voice] runtime.messageService.handleMessage is unavailable (plugin-bootstrap not loaded?)",
+        "[voice] runtime.messageService.handleMessage is unavailable after initialize()",
       );
     }
     const entityId = `${roomId}-user`;
@@ -1186,8 +1176,7 @@ async function bootStandaloneRuntime({ roomId }) {
         ...(request.turnSignal
           ? {
               voiceTurnSignal: {
-                endOfTurnProbability:
-                  request.turnSignal.endOfTurnProbability,
+                endOfTurnProbability: request.turnSignal.endOfTurnProbability,
                 nextSpeaker: request.turnSignal.nextSpeaker,
                 agentShouldSpeak: request.turnSignal.agentShouldSpeak,
                 source: request.turnSignal.source,
