@@ -33,7 +33,7 @@
 //   files at parent-of-bundle on the device.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -620,7 +620,8 @@ function findEthersCommonJsIndex() {
     }
   }
 
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  const found = candidates.find((candidate) => existsSync(candidate));
+  return found ? realpathSync(found) : null;
 }
 
 const ethersCommonJsIndex = findEthersCommonJsIndex();

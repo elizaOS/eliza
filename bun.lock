@@ -465,6 +465,7 @@
         "@ai-sdk/provider": "^3.0.10",
         "@ai-sdk/provider-utils": "^4.0.7",
         "@anthropic-ai/sdk": "^0.92.0",
+        "@bufbuild/protobuf": "^2.11.0",
         "@elizaos/prompts": "2.0.0-beta.1",
         "@noble/ciphers": "2.2.0",
         "@noble/hashes": "2.2.0",
@@ -1804,6 +1805,7 @@
         "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
         "tailwind-merge": "^3.0.0",
+        "ws": "^8.19.0",
       },
       "devDependencies": {
         "@capacitor/core": "8.3.1",
@@ -1816,9 +1818,11 @@
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
         "@types/three": "^0.184.0",
+        "@types/ws": "^8.18.1",
         "jsdom": "^29.0.0",
         "storybook": "^10.3.5",
         "typescript": "^6.0.3",
+        "vite": "^8.0.8",
         "vitest": "^4.0.18",
       },
       "optionalDependencies": {
@@ -4071,6 +4075,8 @@
     "@brighter/storage": ["@brighter/storage@1.6.3", "", { "dependencies": { "iconv-lite": "^0.6.3", "mime-types": "^2.1.35" } }, "sha512-7tWxE9lMFsqe3KCK0iPbhGcBocbvJ3Qw9NWj2tMbTcW0uzfMhfa1wyqbwoYhB6v/dgZWu4KYjNgq/00F5DFrsQ=="],
 
     "@brighter/storage-adapter-local": ["@brighter/storage-adapter-local@1.6.3", "", { "dependencies": { "@brighter/storage": "*" } }, "sha512-Joni0obGA3o54xtKdZDWM530TkOcSIaiYYy46AWKKBSubP6UeG+4DSBG1gsj7DGiBUYWjQbp/pRQQKOswaDfaQ=="],
+
+    "@bufbuild/protobuf": ["@bufbuild/protobuf@2.12.0", "", {}, "sha512-B/XlCaFIP8LOwzo+bz5uFzATYokcwCKQcghqnlfwSmM5eX/qTkvDBnDPs+gXtX/RyjxJ4DRikECcPJbyALA8FA=="],
 
     "@bytecodealliance/preview2-shim": ["@bytecodealliance/preview2-shim@0.17.6", "", {}, "sha512-n3cM88gTen5980UOBAD6xDcNNL3ocTK8keab21bpx1ONdA+ARj7uD1qoFxOWCyKlkpSi195FH+GeAut7Oc6zZw=="],
 

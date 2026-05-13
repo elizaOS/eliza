@@ -49,7 +49,6 @@ import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
   repairStructuredOutput,
-  resolveGrammarForParams,
   resolveGuidedDecodeForParams,
   type StructuredGenerateParams,
   StructuredOutputRepairStream,

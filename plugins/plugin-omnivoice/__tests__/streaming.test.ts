@@ -240,11 +240,17 @@ describe("plugin-omnivoice streaming synthesis", () => {
     //    same byte content.
     expect(seen).toHaveLength(expectedChunks.length);
     for (let i = 0; i < expectedChunks.length; i += 1) {
-      const want = expectedChunks[i]!;
-      const got = seen[i]!;
+      const want = expectedChunks[i];
+      const got = seen[i];
+      if (!want || !got) throw new Error(`missing chunk ${i}`);
       expect(got.length).toBe(want.length);
       for (let j = 0; j < want.length; j += 1) {
-        expect(got[j]).toBeCloseTo(want[j]!, 6);
+        const gotSample = got[j];
+        const wantSample = want[j];
+        if (gotSample === undefined || wantSample === undefined) {
+          throw new Error(`missing sample ${i}:${j}`);
+        }
+        expect(gotSample).toBeCloseTo(wantSample, 6);
       }
     }
 

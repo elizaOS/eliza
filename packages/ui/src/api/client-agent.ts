@@ -1724,30 +1724,54 @@ function normalizeConnectorPurposeList(
     );
 }
 
+function recordFromUnknown(raw: unknown): Record<string, unknown> {
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {};
+}
+
+function nonEmptyString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function connectorAccountLabel(record: Record<string, unknown>): string {
+  return (
+    nonEmptyString(record.label) ??
+    nonEmptyString(record.displayHandle) ??
+    nonEmptyString(record.handle) ??
+    nonEmptyString(record.externalId) ??
+    String(record.id ?? "unknown")
+  );
+}
+
+function connectorAccountHandle(
+  record: Record<string, unknown>,
+): string | null {
+  return typeof record.handle === "string"
+    ? record.handle
+    : typeof record.displayHandle === "string"
+      ? record.displayHandle
+      : null;
+}
+
+function connectorAccountMetadata(
+  record: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  return record.metadata && typeof record.metadata === "object"
+    ? (record.metadata as Record<string, unknown>)
+    : undefined;
+}
+
 function normalizeConnectorAccountRecord(
   provider: string,
   connectorId: string,
   raw: unknown,
 ): ConnectorAccountRecord {
-  const record =
-    raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
+  const record = recordFromUnknown(raw);
   const role =
     normalizeConnectorAccountRole(record.role) ??
     normalizeConnectorAccountRole(record.purpose) ??
     "OWNER";
-  const purpose = normalizeConnectorPurposeList(record.purpose);
-  const label =
-    typeof record.label === "string" && record.label.trim()
-      ? record.label
-      : typeof record.displayHandle === "string" && record.displayHandle.trim()
-        ? record.displayHandle
-        : typeof record.handle === "string" && record.handle.trim()
-          ? record.handle
-          : typeof record.externalId === "string" && record.externalId.trim()
-            ? record.externalId
-            : String(record.id ?? "unknown");
   return {
     ...(record as Partial<ConnectorAccountRecord>),
     id: String(record.id ?? ""),
@@ -1756,24 +1780,16 @@ function normalizeConnectorAccountRecord(
         ? record.provider
         : provider,
     connectorId,
-    label,
-    handle:
-      typeof record.handle === "string"
-        ? record.handle
-        : typeof record.displayHandle === "string"
-          ? record.displayHandle
-          : null,
+    label: connectorAccountLabel(record),
+    handle: connectorAccountHandle(record),
     externalId:
       typeof record.externalId === "string" ? record.externalId : null,
     status: normalizeConnectorStatus(record.status),
     role,
-    purpose,
+    purpose: normalizeConnectorPurposeList(record.purpose),
     isDefault: record.isDefault === true,
     enabled: record.enabled !== false,
-    metadata:
-      record.metadata && typeof record.metadata === "object"
-        ? (record.metadata as Record<string, unknown>)
-        : undefined,
+    metadata: connectorAccountMetadata(record),
   };
 }
 
@@ -1816,24 +1832,13 @@ function normalizeConnectorAccountActionResult(
   connectorId: string,
   raw: unknown,
 ): ConnectorAccountActionResult {
-  const record =
-    raw && typeof raw === "object" && !Array.isArray(raw)
-      ? (raw as Record<string, unknown>)
-      : {};
+  const record = recordFromUnknown(raw);
   const account =
     record.account ?? (typeof record.id === "string" ? record : null);
-  const flow =
-    record.flow &&
-    typeof record.flow === "object" &&
-    !Array.isArray(record.flow)
-      ? (record.flow as Record<string, unknown>)
-      : null;
+  const flow = recordFromUnknown(record.flow);
   return {
     ...(record as Partial<ConnectorAccountActionResult>),
-    ok:
-      typeof record.ok === "boolean"
-        ? record.ok
-        : record.deleted === true || (!("error" in record) && account !== null),
+    ok: normalizeConnectorActionOk(record, account),
     account: account
       ? normalizeConnectorAccountRecord(provider, connectorId, account)
       : undefined,
@@ -1846,21 +1851,40 @@ function normalizeConnectorAccountActionResult(
       typeof record.defaultAccountId === "string"
         ? record.defaultAccountId
         : null,
-    flow: flow ?? undefined,
-    authUrl:
-      typeof record.authUrl === "string"
-        ? record.authUrl
-        : typeof flow?.authUrl === "string"
-          ? flow.authUrl
-          : undefined,
-    status:
-      typeof record.status === "string"
-        ? normalizeConnectorStatus(record.status)
-        : typeof flow?.status === "string"
-          ? normalizeConnectorStatus(flow.status)
-          : undefined,
+    flow: Object.keys(flow).length > 0 ? flow : undefined,
+    authUrl: connectorActionAuthUrl(record, flow),
+    status: connectorActionStatus(record, flow),
     error: typeof record.error === "string" ? record.error : undefined,
   };
+}
+
+function normalizeConnectorActionOk(
+  record: Record<string, unknown>,
+  account: unknown,
+): boolean {
+  return typeof record.ok === "boolean"
+    ? record.ok
+    : record.deleted === true || (!("error" in record) && account !== null);
+}
+
+function connectorActionAuthUrl(
+  record: Record<string, unknown>,
+  flow: Record<string, unknown>,
+): string | undefined {
+  if (typeof record.authUrl === "string") return record.authUrl;
+  return typeof flow.authUrl === "string" ? flow.authUrl : undefined;
+}
+
+function connectorActionStatus(
+  record: Record<string, unknown>,
+  flow: Record<string, unknown>,
+): ConnectorAccountStatus | undefined {
+  if (typeof record.status === "string") {
+    return normalizeConnectorStatus(record.status);
+  }
+  return typeof flow.status === "string"
+    ? normalizeConnectorStatus(flow.status)
+    : undefined;
 }
 
 function connectorAccountAuditPath(
@@ -2319,6 +2343,75 @@ function buildSecurityAuditParams(
   return params;
 }
 
+async function throwSecurityAuditResponseError(res: Response): Promise<never> {
+  const body = (await res
+    .json()
+    .catch(() => ({ error: res.statusText }))) as Record<string, string> | null;
+  const err = new Error(body?.error ?? `HTTP ${res.status}`);
+  (err as Error & { status?: number }).status = res.status;
+  throw err;
+}
+
+function findSseEventBreak(
+  chunkBuffer: string,
+): { index: number; length: number } | null {
+  const lfBreak = chunkBuffer.indexOf("\n\n");
+  const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
+  if (lfBreak === -1 && crlfBreak === -1) return null;
+  if (lfBreak === -1) return { index: crlfBreak, length: 4 };
+  if (crlfBreak === -1) return { index: lfBreak, length: 2 };
+  return lfBreak < crlfBreak
+    ? { index: lfBreak, length: 2 }
+    : { index: crlfBreak, length: 4 };
+}
+
+function parseSecurityAuditPayload(
+  payload: string,
+  onEvent: (event: SecurityAuditStreamEvent) => void,
+): void {
+  if (!payload) return;
+  try {
+    const parsed = JSON.parse(payload) as SecurityAuditStreamEvent;
+    if (parsed.type === "snapshot" || parsed.type === "entry") {
+      onEvent(parsed);
+    }
+  } catch {}
+}
+
+function consumeSecurityAuditEvent(
+  rawEvent: string,
+  onEvent: (event: SecurityAuditStreamEvent) => void,
+): void {
+  for (const line of rawEvent.split(/\r?\n/)) {
+    if (!line.startsWith("data:")) continue;
+    parseSecurityAuditPayload(line.slice(5).trim(), onEvent);
+  }
+}
+
+async function readSecurityAuditStream(
+  body: ReadableStream<Uint8Array>,
+  onEvent: (event: SecurityAuditStreamEvent) => void,
+): Promise<void> {
+  const decoder = new TextDecoder();
+  const reader = body.getReader();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let eventBreak = findSseEventBreak(buffer);
+    while (eventBreak) {
+      const rawEvent = buffer.slice(0, eventBreak.index);
+      buffer = buffer.slice(eventBreak.index + eventBreak.length);
+      consumeSecurityAuditEvent(rawEvent, onEvent);
+      eventBreak = findSseEventBreak(buffer);
+    }
+  }
+
+  if (buffer.trim()) consumeSecurityAuditEvent(buffer, onEvent);
+}
+
 ElizaClient.prototype.getSecurityAudit = async function (
   this: ElizaClient,
   filter?,
@@ -2352,73 +2445,14 @@ ElizaClient.prototype.streamSecurityAudit = async function (
   );
 
   if (!res.ok) {
-    const body = (await res
-      .json()
-      .catch(() => ({ error: res.statusText }))) as Record<
-      string,
-      string
-    > | null;
-    const err = new Error(body?.error ?? `HTTP ${res.status}`);
-    (err as Error & { status?: number }).status = res.status;
-    throw err;
+    await throwSecurityAuditResponseError(res);
   }
 
   if (!res.body) {
     throw new Error("Streaming not supported by this browser");
   }
 
-  const parsePayload = (payload: string) => {
-    if (!payload) return;
-    try {
-      const parsed = JSON.parse(payload) as SecurityAuditStreamEvent;
-      if (parsed.type === "snapshot" || parsed.type === "entry") {
-        onEvent(parsed);
-      }
-    } catch {
-      // Ignore malformed payloads to keep stream consumption resilient.
-    }
-  };
-
-  const decoder = new TextDecoder();
-  const reader = res.body.getReader();
-  let buffer = "";
-
-  const findSseEventBreak = (
-    chunkBuffer: string,
-  ): { index: number; length: number } | null => {
-    const lfBreak = chunkBuffer.indexOf("\n\n");
-    const crlfBreak = chunkBuffer.indexOf("\r\n\r\n");
-    if (lfBreak === -1 && crlfBreak === -1) return null;
-    if (lfBreak === -1) return { index: crlfBreak, length: 4 };
-    if (crlfBreak === -1) return { index: lfBreak, length: 2 };
-    return lfBreak < crlfBreak
-      ? { index: lfBreak, length: 2 }
-      : { index: crlfBreak, length: 4 };
-  };
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    let eventBreak = findSseEventBreak(buffer);
-    while (eventBreak) {
-      const rawEvent = buffer.slice(0, eventBreak.index);
-      buffer = buffer.slice(eventBreak.index + eventBreak.length);
-      for (const line of rawEvent.split(/\r?\n/)) {
-        if (!line.startsWith("data:")) continue;
-        parsePayload(line.slice(5).trim());
-      }
-      eventBreak = findSseEventBreak(buffer);
-    }
-  }
-
-  if (buffer.trim()) {
-    for (const line of buffer.split(/\r?\n/)) {
-      if (!line.startsWith("data:")) continue;
-      parsePayload(line.slice(5).trim());
-    }
-  }
+  await readSecurityAuditStream(res.body, onEvent);
 };
 
 ElizaClient.prototype.getAgentEvents = async function (
@@ -2623,56 +2657,94 @@ ElizaClient.prototype.listCharacterHistory = async function (
   return this.fetch(`/api/character/history${qs ? `?${qs}` : ""}`);
 };
 
-ElizaClient.prototype.listExperiences = async function (
-  this: ElizaClient,
-  options,
-) {
-  const params = new URLSearchParams();
-  const appendMulti = (key: string, value?: string | string[]) => {
-    if (Array.isArray(value)) {
-      value
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .forEach((item) => {
-          params.append(key, item);
-        });
-      return;
-    }
-    if (typeof value === "string" && value.trim()) {
-      params.append(key, value.trim());
-    }
-  };
+function appendMultiQueryParam(
+  params: URLSearchParams,
+  key: string,
+  value?: string | string[],
+): void {
+  if (Array.isArray(value)) {
+    value
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .forEach((item) => {
+        params.append(key, item);
+      });
+    return;
+  }
+  if (typeof value === "string" && value.trim()) {
+    params.append(key, value.trim());
+  }
+}
 
-  if (typeof options?.limit === "number") {
-    params.set("limit", String(options.limit));
-  }
-  if (typeof options?.offset === "number") {
-    params.set("offset", String(options.offset));
-  }
-  if (typeof options?.q === "string" && options.q.trim()) {
-    params.set("q", options.q.trim());
-  }
-  if (typeof options?.query === "string" && options.query.trim()) {
-    params.set("query", options.query.trim());
-  }
-  if (typeof options?.minConfidence === "number") {
-    params.set("minConfidence", String(options.minConfidence));
-  }
-  if (typeof options?.minImportance === "number") {
-    params.set("minImportance", String(options.minImportance));
-  }
-  if (typeof options?.includeRelated === "boolean") {
-    params.set("includeRelated", String(options.includeRelated));
-  }
-  appendMulti("type", options?.type);
-  appendMulti("outcome", options?.outcome);
-  appendMulti("domain", options?.domain);
+function appendTrimmedQueryParam(
+  params: URLSearchParams,
+  key: string,
+  value?: string,
+): void {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  if (trimmed) params.set(key, trimmed);
+}
+
+function appendNumberQueryParam(
+  params: URLSearchParams,
+  key: string,
+  value?: number,
+): void {
+  if (typeof value === "number") params.set(key, String(value));
+}
+
+function appendBooleanQueryParam(
+  params: URLSearchParams,
+  key: string,
+  value?: boolean,
+): void {
+  if (typeof value === "boolean") params.set(key, String(value));
+}
+
+function appendExperienceScalarParams(
+  params: URLSearchParams,
+  options: ExperienceListQuery | undefined,
+  includeOffset: boolean,
+): void {
+  appendNumberQueryParam(params, "limit", options?.limit);
+  if (includeOffset) appendNumberQueryParam(params, "offset", options?.offset);
+  appendTrimmedQueryParam(params, "q", options?.q);
+  appendTrimmedQueryParam(params, "query", options?.query);
+  appendNumberQueryParam(params, "minConfidence", options?.minConfidence);
+  appendNumberQueryParam(params, "minImportance", options?.minImportance);
+  appendBooleanQueryParam(params, "includeRelated", options?.includeRelated);
+}
+
+function appendExperienceCollectionParams(
+  params: URLSearchParams,
+  options: ExperienceListQuery | undefined,
+): void {
+  appendMultiQueryParam(params, "type", options?.type);
+  appendMultiQueryParam(params, "outcome", options?.outcome);
+  appendMultiQueryParam(params, "domain", options?.domain);
   options?.tags
     ?.map((tag) => tag.trim())
     .filter(Boolean)
     .forEach((tag) => {
       params.append("tag", tag);
     });
+}
+
+function buildExperienceQueryParams(
+  options: ExperienceListQuery | undefined,
+  includeOffset: boolean,
+): URLSearchParams {
+  const params = new URLSearchParams();
+  appendExperienceScalarParams(params, options, includeOffset);
+  appendExperienceCollectionParams(params, options);
+  return params;
+}
+
+ElizaClient.prototype.listExperiences = async function (
+  this: ElizaClient,
+  options,
+) {
+  const params = buildExperienceQueryParams(options, true);
   const qs = params.toString();
   const response = await this.fetch<{
     data: ExperienceRecord[];
@@ -2688,50 +2760,7 @@ ElizaClient.prototype.getExperienceGraph = async function (
   this: ElizaClient,
   options,
 ) {
-  const params = new URLSearchParams();
-  const appendMulti = (key: string, value?: string | string[]) => {
-    if (Array.isArray(value)) {
-      value
-        .map((item) => item.trim())
-        .filter(Boolean)
-        .forEach((item) => {
-          params.append(key, item);
-        });
-      return;
-    }
-    if (typeof value === "string" && value.trim()) {
-      params.append(key, value.trim());
-    }
-  };
-
-  if (typeof options?.limit === "number") {
-    params.set("limit", String(options.limit));
-  }
-  if (typeof options?.q === "string" && options.q.trim()) {
-    params.set("q", options.q.trim());
-  }
-  if (typeof options?.query === "string" && options.query.trim()) {
-    params.set("query", options.query.trim());
-  }
-  if (typeof options?.minConfidence === "number") {
-    params.set("minConfidence", String(options.minConfidence));
-  }
-  if (typeof options?.minImportance === "number") {
-    params.set("minImportance", String(options.minImportance));
-  }
-  if (typeof options?.includeRelated === "boolean") {
-    params.set("includeRelated", String(options.includeRelated));
-  }
-  appendMulti("type", options?.type);
-  appendMulti("outcome", options?.outcome);
-  appendMulti("domain", options?.domain);
-  options?.tags
-    ?.map((tag) => tag.trim())
-    .filter(Boolean)
-    .forEach((tag) => {
-      params.append("tag", tag);
-    });
-
+  const params = buildExperienceQueryParams(options, false);
   const qs = params.toString();
   const response = await this.fetch<{ data: ExperienceGraphResponse }>(
     `/api/character/experiences/graph${qs ? `?${qs}` : ""}`,

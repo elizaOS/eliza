@@ -221,6 +221,58 @@ function readUnauthorizedBody(
 	};
 }
 
+function readAuthIdentity(
+	body: Record<string, unknown>,
+): AuthMeSnapshot["identity"] {
+	if (!body.identity || typeof body.identity !== "object") return undefined;
+	const id = body.identity as Record<string, unknown>;
+	if (typeof id.id !== "string") return undefined;
+	return {
+		id: id.id,
+		displayName: typeof id.displayName === "string" ? id.displayName : id.id,
+		kind: typeof id.kind === "string" ? id.kind : "machine",
+	};
+}
+
+function readAuthSession(
+	body: Record<string, unknown>,
+): AuthMeSnapshot["session"] {
+	if (!body.session || typeof body.session !== "object") return undefined;
+	const session = body.session as Record<string, unknown>;
+	return {
+		id: typeof session.id === "string" ? session.id : "",
+		kind: typeof session.kind === "string" ? session.kind : "machine",
+		expiresAt:
+			typeof session.expiresAt === "number" &&
+			Number.isFinite(session.expiresAt)
+				? session.expiresAt
+				: null,
+	};
+}
+
+function readAuthAccess(
+	body: Record<string, unknown>,
+): AuthMeSnapshot["access"] {
+	if (!body.access || typeof body.access !== "object") return undefined;
+	const access = body.access as Record<string, unknown>;
+	return {
+		mode: typeof access.mode === "string" ? access.mode : "remote",
+		passwordConfigured: access.passwordConfigured === true,
+		ownerConfigured: access.ownerConfigured === true,
+	};
+}
+
+function readAuthorizedBody(body: Record<string, unknown>): AuthMeSnapshot {
+	const snap: AuthMeSnapshot = {};
+	const identity = readAuthIdentity(body);
+	const session = readAuthSession(body);
+	const access = readAuthAccess(body);
+	if (identity) snap.identity = identity;
+	if (session) snap.session = session;
+	if (access) snap.access = access;
+	return snap;
+}
+
 export const readAuthMeViaHttp: AuthMeReader = async (port) => {
 	const raw = await fetchJsonRaw(port, "/api/auth/me");
 	if (!raw?.body || typeof raw.body !== "object") return null;
@@ -233,38 +285,7 @@ export const readAuthMeViaHttp: AuthMeReader = async (port) => {
 	}
 
 	if (raw.status >= 200 && raw.status < 300) {
-		const snap: AuthMeSnapshot = {};
-		if (body.identity && typeof body.identity === "object") {
-			const id = body.identity as Record<string, unknown>;
-			if (typeof id.id === "string") {
-				snap.identity = {
-					id: id.id,
-					displayName:
-						typeof id.displayName === "string" ? id.displayName : id.id,
-					kind: typeof id.kind === "string" ? id.kind : "machine",
-				};
-			}
-		}
-		if (body.session && typeof body.session === "object") {
-			const s = body.session as Record<string, unknown>;
-			snap.session = {
-				id: typeof s.id === "string" ? s.id : "",
-				kind: typeof s.kind === "string" ? s.kind : "machine",
-				expiresAt:
-					typeof s.expiresAt === "number" && Number.isFinite(s.expiresAt)
-						? s.expiresAt
-						: null,
-			};
-		}
-		if (body.access && typeof body.access === "object") {
-			const a = body.access as Record<string, unknown>;
-			snap.access = {
-				mode: typeof a.mode === "string" ? a.mode : "remote",
-				passwordConfigured: a.passwordConfigured === true,
-				ownerConfigured: a.ownerConfigured === true,
-			};
-		}
-		return snap;
+		return readAuthorizedBody(body);
 	}
 
 	return null;

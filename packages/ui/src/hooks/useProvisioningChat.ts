@@ -49,8 +49,6 @@ export function useProvisioningChat(
 
   const isContainerReady = containerStatus === "running" && bridgeUrl !== null;
 
-  // Poll provisioning agent status every 5 seconds.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: cloudApiBase triggers client re-creation
   React.useEffect(() => {
     if (isContainerReady) return;
     if (containerStatus === "error") return;
@@ -118,16 +116,26 @@ export function useProvisioningChat(
       setIsLoading(true);
 
       try {
-        const chatUrl = new URL("/api/v1/provisioning-agent/chat", cloudApiBase);
+        const chatUrl = new URL(
+          "/api/v1/provisioning-agent/chat",
+          cloudApiBase,
+        );
         const resp = await fetch(chatUrl.toString(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: content.trim(), agentId: agentId ?? undefined }),
+          body: JSON.stringify({
+            message: content.trim(),
+            agentId: agentId ?? undefined,
+          }),
         });
         if (resp.ok) {
           const json = (await resp.json()) as {
             success?: boolean;
-            data?: { reply?: string; containerStatus?: string; bridgeUrl?: string };
+            data?: {
+              reply?: string;
+              containerStatus?: string;
+              bridgeUrl?: string;
+            };
           };
           if (json.success && json.data) {
             if (json.data.containerStatus) {
@@ -159,7 +167,7 @@ export function useProvisioningChat(
         setIsLoading(false);
       }
     },
-    [agentId, isLoading],
+    [agentId, cloudApiBase, isLoading],
   );
 
   return {

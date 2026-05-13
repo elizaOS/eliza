@@ -67,11 +67,19 @@ function parseStartup(value: unknown): Record<string, unknown> | undefined {
 	return value;
 }
 
-function parseAgentStatusSnapshot(body: unknown): AgentStatusSnapshot | null {
-	if (!isRecord(body)) return null;
-	if (!isAgentStatusState(body.state)) return null;
-	if (typeof body.agentName !== "string") return null;
-
+function parseAgentStatusOptionalParts(
+	body: Record<string, unknown>,
+): Pick<
+	AgentStatusSnapshot,
+	| "cloud"
+	| "model"
+	| "pendingRestart"
+	| "pendingRestartReasons"
+	| "port"
+	| "startedAt"
+	| "startup"
+	| "uptime"
+> | null {
 	const pendingRestartReasons = parseStringList(body.pendingRestartReasons);
 	if (
 		body.pendingRestartReasons !== undefined &&
@@ -79,31 +87,53 @@ function parseAgentStatusSnapshot(body: unknown): AgentStatusSnapshot | null {
 	) {
 		return null;
 	}
-
 	const cloud = parseCloudStatus(body.cloud);
 	if (body.cloud !== undefined && cloud === undefined) return null;
-
 	const startup = parseStartup(body.startup);
 	if (body.startup !== undefined && startup === undefined) return null;
 
+	const parsed: Pick<
+		AgentStatusSnapshot,
+		| "cloud"
+		| "model"
+		| "pendingRestart"
+		| "pendingRestartReasons"
+		| "port"
+		| "startedAt"
+		| "startup"
+		| "uptime"
+	> = {};
 	const model = optionalString(body.model);
 	const uptime = optionalNumber(body.uptime);
 	const startedAt = optionalNumber(body.startedAt);
 	const port = optionalNumber(body.port);
+	if (model !== undefined) parsed.model = model;
+	if (uptime !== undefined) parsed.uptime = uptime;
+	if (startedAt !== undefined) parsed.startedAt = startedAt;
+	if (port !== undefined) parsed.port = port;
+	if (typeof body.pendingRestart === "boolean") {
+		parsed.pendingRestart = body.pendingRestart;
+	}
+	if (pendingRestartReasons !== undefined) {
+		parsed.pendingRestartReasons = pendingRestartReasons;
+	}
+	if (startup !== undefined) parsed.startup = startup;
+	if (cloud !== undefined) parsed.cloud = cloud;
+	return parsed;
+}
+
+function parseAgentStatusSnapshot(body: unknown): AgentStatusSnapshot | null {
+	if (!isRecord(body)) return null;
+	if (!isAgentStatusState(body.state)) return null;
+	if (typeof body.agentName !== "string") return null;
+
+	const optionalParts = parseAgentStatusOptionalParts(body);
+	if (optionalParts === null) return null;
 
 	return {
 		state: body.state,
 		agentName: body.agentName,
-		...(model === undefined ? {} : { model }),
-		...(uptime === undefined ? {} : { uptime }),
-		...(startedAt === undefined ? {} : { startedAt }),
-		...(port === undefined ? {} : { port }),
-		...(typeof body.pendingRestart === "boolean"
-			? { pendingRestart: body.pendingRestart }
-			: {}),
-		...(pendingRestartReasons === undefined ? {} : { pendingRestartReasons }),
-		...(startup === undefined ? {} : { startup }),
-		...(cloud === undefined ? {} : { cloud }),
+		...optionalParts,
 	};
 }
 
