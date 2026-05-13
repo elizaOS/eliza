@@ -126,8 +126,7 @@ export function useRenderGuard(name: string): void {
       return;
     }
 
-    const severity: RenderTelemetrySeverity =
-      ts.length >= ERROR_THRESHOLD ? "error" : "info";
+    const severity: RenderTelemetrySeverity = ts.length >= ERROR_THRESHOLD ? "error" : "info";
     if (lastSeverity.current === severity) return;
     if (lastSeverity.current === "error") return;
 

@@ -63,10 +63,8 @@ describe("searchHuggingFaceGguf", () => {
       ["2B", "small"],
       ["2B", "small"],
     ]);
-    expect(results.map((result) => result.parameterLabel ?? result.params)).toEqual([
-      "0.8B",
-      "2B",
-      "1.7B",
-    ]);
+    expect(
+      results.map((result) => result.parameterLabel ?? result.params),
+    ).toEqual(["0.8B", "2B", "1.7B"]);
   });
 });
