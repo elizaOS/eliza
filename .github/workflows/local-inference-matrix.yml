@@ -232,6 +232,8 @@ jobs:
       - name: Build llama-cpp fork (${{ matrix.backend }})
         env:
           ELIZA_DFLASH_BACKEND: ${{ matrix.backend }}
+          ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE: >-
+            ${{ matrix.backend == 'cpu' && '1' || matrix.build_only && '1' || '0' }}
         run: |
           node packages/app-core/scripts/build-llama-cpp-dflash.mjs --backend ${{ matrix.backend }}
 
