@@ -7,28 +7,40 @@ stops being legible past two levels of structure.
 
 GPU targets, mirroring the launcher's ``VAST_GPU_TARGET`` env var:
 
-  Single-GPU targets (cheapest fit for active 0.8B / 2B / 4B SFT):
+  Single-GPU targets (cheapest fit for 2B / 9B SFT):
   * ``blackwell6000-1x`` — 1 × RTX PRO 6000 Blackwell (96 GB). Default
-    pick for qwen3.5-0.8b / qwen3.5-2b / qwen3.5-4b. ~$1.07/hr at write time.
+    pick for qwen3.5-2b (15.5 GB budget, ~84% headroom) and qwen3.5-9b
+    (80 GB budget, ~16% headroom). ~$1.07/hr at write time.
   * ``h100-1x`` — 1 × H100 SXM (80 GB). Faster bf16 throughput than
-    Blackwell at higher $/hr; pick for time-pressured 4B work.
-  * ``h200-1x`` — 1 × H200 SXM (141 GB). Best 1× target when active 4B
-    training needs extra memory headroom or faster bf16.
+    Blackwell at higher $/hr; pick for time-pressured 9B work where you're
+    OK trading $ for wall clock (9B fits at 80 GB only with grad-ckpt +
+    activation packing — verify with memory_calc before committing).
+  * ``h200-1x`` — 1 × H200 SXM (141 GB). Best 1× target for 9B (huge
+    headroom) or for 27B at very modest seq_len (≤8k); 27B at the
+    registry's 64k default does NOT fit on a single H200.
 
-  Multi-GPU targets (optional active-line sweeps / future placeholders):
+  Multi-GPU targets (required for 27B SFT):
   * ``blackwell6000-2x`` — 2 × RTX PRO 6000 Blackwell (96 GB each = 192 GB
-    total). Useful for active 4B long-context sweeps.
+    total). Safe for 27B at the registry's seq_len=65536 default (190 GB
+    budget vs 192 GB capacity). Long-context experiments
+    (``--max-seq-len`` > 65k) still need ``b200-2x``.
   * ``b200-2x`` — 2 × NVIDIA B200 (≈183 GB each, ≈366 GB total).
-    Expensive but fast fallback for throughput sweeps.
+    Preferred cloud target for qwen3.6-27b at the default 64k seq_len
+    (190 GB budget on 366 GB capacity = 48% util with comfortable
+    headroom for activation spikes). Required for ``--max-seq-len`` >
+    65k or 122B-A10B work.
   * ``h100-2x`` — 2 × H100 SXM (80 GB each = 160 GB). Insufficient for
-    large hidden placeholders, ample for active 4B.
+    qwen3.6-27b at the registry's 190 GB budget; usable for 9B if
+    blackwell6000-1x and h200-1x are unavailable.
 
   GRPO multi-GPU targets (verl splits actor train + rollout across the
   device pool — see ``scripts/train_grpo_verl.sh``):
   * ``h200-2x`` — 2 × H200 SXM (141 GB each = 282 GB). GRPO default for
-    active 2B/4B (1 train + 1 rollout) until real timing evidence lands.
-  * ``h200-4x`` — 4 × H200 SXM (564 GB total). Future/research rollout pool.
-  * ``h200-8x`` — 8 × H200 SXM (1128 GB total). Future/research rollout pool.
+    qwen3.5-2b (1 train + 1 rollout). ~24h wall.
+  * ``h200-4x`` — 4 × H200 SXM (564 GB total). GRPO default for
+    qwen3.5-9b (1 train + 3 rollout shards). ~24-48h wall.
+  * ``h200-8x`` — 8 × H200 SXM (1128 GB total). GRPO default for
+    qwen3.6-27b (4 train + 4 rollout). ~48h wall.
   * ``b200-4x`` / ``b200-8x`` — B200 fallbacks when the H200 pool is
     empty. ~1.5-2× the $/hr but ~2× the throughput.
 
@@ -83,27 +95,34 @@ from typing import Any
 #     comes back null on Blackwell offers, and ``duration`` filtering
 #     erases all hits. We re-validate cuda + duration in the response.
 TARGETS: dict[str, dict[str, Any]] = {
-    # ─── single-GPU targets (active 0.8B / 2B / 4B) ───
+    # ─── single-GPU targets (2B / 9B) ───
     "blackwell6000-1x": {
         "gpu_names": ["RTX_PRO_6000_S", "RTX_PRO_6000_WS"],
         "num_gpus": 1,
         "min_per_gpu_ram_gb": 90,
-        "description": "1× RTX PRO 6000 Blackwell (96 GB) — active 0.8B/2B/4B SFT default",
+        "description": "1× RTX PRO 6000 Blackwell (96 GB) — 2B/9B SFT default",
     },
     "h100-1x": {
         "gpu_names": ["H100_SXM", "H100_NVL"],
         "num_gpus": 1,
         "min_per_gpu_ram_gb": 75,
-        "description": "1× H100 SXM/NVL (80 GB) — active 4B SFT, faster than Blackwell",
+        "description": "1× H100 SXM/NVL (80 GB) — 9B SFT, faster than Blackwell",
     },
     "h200-1x": {
         "gpu_names": ["H200_SXM", "H200"],
         "num_gpus": 1,
         # H200 is 141 GB HBM3e per GPU; gpu_ram>=130 robust to ECC reserve.
         "min_per_gpu_ram_gb": 130,
-        "description": "1× H200 SXM (141 GB) — active 4B SFT with extra headroom",
+        "description": "1× H200 SXM (141 GB) — 9B SFT or 27B at low seq_len",
     },
-    # ─── multi-GPU targets (optional active-line sweeps / future placeholders) ───
+    "b200-1x": {
+        "gpu_names": ["B200"],
+        "num_gpus": 1,
+        # B200 = 180 GB HBM3e per GPU; gpu_ram>=170 robust to ECC reserve.
+        "min_per_gpu_ram_gb": 170,
+        "description": "1× NVIDIA B200 (≈183 GB) — qwen3.5-27b SFT default (130 GB budget @ seq=32k fits with headroom)",
+    },
+    # ─── multi-GPU targets (27B+) ───
     "blackwell6000-2x": {
         # Both Server (S) and Workstation (WS) editions are 96 GB GDDR7
         # Blackwell — same VRAM, similar bf16 perf. The CLI takes a single
@@ -119,7 +138,7 @@ TARGETS: dict[str, dict[str, Any]] = {
         # B200 has 180 GB HBM3e per GPU. The catalog reports ~183 GB after
         # ECC reservation; gpu_ram>=170 (GB query units) is robust.
         "min_per_gpu_ram_gb": 170,
-        "description": "2× NVIDIA B200 (≈183 GB each = ≈366 GB total) — fast active-line sweeps",
+        "description": "2× NVIDIA B200 (≈183 GB each = ≈366 GB total) — 27B SFT default",
     },
     "h100-2x": {
         # H100 SXM and H100 NVL both ship 80 GB; SXM has higher NVLink
@@ -135,7 +154,9 @@ TARGETS: dict[str, dict[str, Any]] = {
     # GRPO needs separate train + rollout GPUs (verl splits actor / rollout
     # across the available device pool via `n_gpus_per_node`). Per
     # RL_STRATEGY.md hardware budgets:
-    #   active 2B/4B → 2× H200 (1 train + 1 rollout) until timing evidence lands
+    #   qwen3.5-2b  → 2× H200 (1 train + 1 rollout)
+    #   qwen3.5-9b  → 4× H200 (1 train + 3 rollout shards)
+    #   qwen3.6-27b → 8× H200 (4 train + 4 rollout)
     # The B200 variants are 1.5-2× pricier but ~2× faster and serve as the
     # fallback when the H200 pool is empty.
     "h200-2x": {
@@ -148,25 +169,25 @@ TARGETS: dict[str, dict[str, Any]] = {
         "gpu_names": ["H200_SXM", "H200"],
         "num_gpus": 4,
         "min_per_gpu_ram_gb": 130,
-        "description": "4× H200 SXM (141 GB each = 564 GB total) — future/research GRPO pool",
+        "description": "4× H200 SXM (141 GB each = 564 GB total) — GRPO 9B default",
     },
     "h200-8x": {
         "gpu_names": ["H200_SXM", "H200"],
         "num_gpus": 8,
         "min_per_gpu_ram_gb": 130,
-        "description": "8× H200 SXM (141 GB each = 1128 GB total) — future/research GRPO pool",
+        "description": "8× H200 SXM (141 GB each = 1128 GB total) — GRPO 27B default",
     },
     "b200-4x": {
         "gpu_names": ["B200"],
         "num_gpus": 4,
         "min_per_gpu_ram_gb": 170,
-        "description": "4× NVIDIA B200 (≈183 GB each = ≈732 GB total) — future/research GRPO fallback",
+        "description": "4× NVIDIA B200 (≈183 GB each = ≈732 GB total) — GRPO 9B fallback",
     },
     "b200-8x": {
         "gpu_names": ["B200"],
         "num_gpus": 8,
         "min_per_gpu_ram_gb": 170,
-        "description": "8× NVIDIA B200 (≈183 GB each = ≈1464 GB total) — future/research GRPO fallback",
+        "description": "8× NVIDIA B200 (≈183 GB each = ≈1464 GB total) — GRPO 27B fallback",
     },
 }
 

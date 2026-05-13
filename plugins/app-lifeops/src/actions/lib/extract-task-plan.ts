@@ -12,11 +12,7 @@
  */
 
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import {
-  ModelType,
-  runWithTrajectoryContext,
-} from "@elizaos/core";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
+import { ModelType, runWithTrajectoryContext } from "@elizaos/core";
 import {
   LIFEOPS_REMINDER_INTENSITIES,
   type LifeOpsReminderIntensity,
@@ -24,6 +20,7 @@ import {
 import { resolveContextWindow } from "../../lifeops/defaults.js";
 import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
 import { normalizeExplicitTimeZoneToken } from "../../lifeops/time/timezone.js";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { recentConversationTexts } from "./recent-context.js";
 
 // ── Types ─────────────────────────────────────────────

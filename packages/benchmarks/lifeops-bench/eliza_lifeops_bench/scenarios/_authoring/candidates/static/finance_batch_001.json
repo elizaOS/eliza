@@ -15,9 +15,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "category"
-    ],
+    "required_outputs": ["category"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -40,9 +38,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Netflix"
-    ],
+    "required_outputs": ["Netflix"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -66,9 +62,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Spotify"
-    ],
+    "required_outputs": ["Spotify"],
     "first_question_fallback": {
       "canned_answer": "Yes, cancel it now.",
       "applies_when": "agent asks for explicit confirmation before canceling"
@@ -97,9 +91,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "account_02"
-    ],
+    "required_outputs": ["account_02"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -121,9 +113,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "account_01"
-    ],
+    "required_outputs": ["account_01"],
     "first_question_fallback": {
       "canned_answer": "Yes, go ahead and delete that source.",
       "applies_when": "agent asks for confirmation before removing a source"
@@ -149,9 +139,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Example Store"
-    ],
+    "required_outputs": ["Example Store"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 6,
@@ -173,9 +161,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "recurring"
-    ],
+    "required_outputs": ["recurring"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -197,9 +183,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "subscription"
-    ],
+    "required_outputs": ["subscription"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -223,9 +207,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "iCloud"
-    ],
+    "required_outputs": ["iCloud"],
     "first_question_fallback": {
       "canned_answer": "Yes, cancel it now.",
       "applies_when": "agent asks for explicit confirmation before canceling"
@@ -251,9 +233,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "YouTube"
-    ],
+    "required_outputs": ["YouTube"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -279,9 +259,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "account_00"
-    ],
+    "required_outputs": ["account_00"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -303,9 +281,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "account_01"
-    ],
+    "required_outputs": ["account_01"],
     "first_question_fallback": {
       "canned_answer": "Yes, go ahead and delete that source.",
       "applies_when": "agent asks for confirmation before removing a source"
@@ -330,9 +306,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "category"
-    ],
+    "required_outputs": ["category"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -354,9 +328,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "subscription"
-    ],
+    "required_outputs": ["subscription"],
     "first_question_fallback": {
       "canned_answer": "All accounts, active subscriptions.",
       "applies_when": "agent asks which account or about pending charges"
@@ -382,9 +354,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Disney"
-    ],
+    "required_outputs": ["Disney"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,

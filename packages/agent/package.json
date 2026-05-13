@@ -115,7 +115,7 @@
     "@elizaos/plugin-local-embedding": "2.0.0-beta.1",
     "@elizaos/plugin-local-inference": "2.0.0-beta.1",
     "@elizaos/plugin-mcp": "2.0.0-beta.1",
-    "@elizaos/plugin-mlx": "2.0.0-beta.1",
+    "@elizaos/plugin-mlx": "file:../../plugins/plugin-mlx",
     "@elizaos/plugin-ollama": "2.0.0-beta.1",
     "@elizaos/plugin-shell": "2.0.0-beta.1",
     "@elizaos/plugin-signal": "2.0.0-beta.1",

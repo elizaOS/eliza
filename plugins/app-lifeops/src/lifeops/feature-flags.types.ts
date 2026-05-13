@@ -301,8 +301,7 @@ export class FeatureNotEnabledError extends Error {
     const builtinCostsMoney = isLifeOpsFeatureKey(featureKey)
       ? BASE_FEATURE_DEFAULTS[featureKey].costsMoney
       : null;
-    const cloudOptIn =
-      builtinCostsMoney ?? args?.costsMoney ?? false;
+    const cloudOptIn = builtinCostsMoney ?? args?.costsMoney ?? false;
     const cloudLinked = args?.cloudLinked === true;
     const text =
       args?.message ??

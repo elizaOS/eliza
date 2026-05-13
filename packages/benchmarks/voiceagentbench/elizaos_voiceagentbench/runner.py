@@ -7,24 +7,21 @@ For each task, the runner walks the user turns one at a time:
      and ``audio_input`` (raw bytes) so direct-audio adapters can opt
      into the bytes path.
   2. Drive the agent in a tool-call loop: assistant turn -> dispatch any
-     tool calls via the benchmark executor -> append deterministic tool
-     result envelopes -> back to the assistant until it returns a
-     text-only turn or the per-turn cap is hit.
+     tool calls via the stub executor -> append synthetic tool responses
+     -> back to the assistant until it returns a text-only turn or the
+     per-turn cap is hit.
   3. Move to the next user turn; repeat.
 
-Tool execution is intentionally reduced to deterministic result envelopes:
-the benchmark scores the *selection* and *parameter extraction*, not the
-runtime semantics of the tool.
+Tool execution is stubbed - the benchmark scores the *selection* and
+*parameter extraction*, not the runtime semantics of the tool.
 """
 
 from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from collections.abc import Awaitable, Callable
-from pathlib import Path
 from typing import Any
 
 from .evaluator import (
@@ -42,125 +39,6 @@ from .types import (
 logger = logging.getLogger(__name__)
 
 MAX_TOOL_DISPATCHES_PER_USER_TURN = 8
-
-
-def _resolve_telemetry_path() -> Path | None:
-    explicit = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
-    if explicit:
-        return Path(explicit)
-    run_dir = os.environ.get("BENCHMARK_RUN_DIR", "").strip()
-    if run_dir:
-        return Path(run_dir) / "telemetry.jsonl"
-    return None
-
-
-def _number_or_none(value: Any) -> float | int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return value
-    return None
-
-
-def _int_or_none(value: Any) -> int | None:
-    number = _number_or_none(value)
-    return int(number) if number is not None else None
-
-
-def _float_or_none(value: Any) -> float | None:
-    number = _number_or_none(value)
-    return float(number) if number is not None else None
-
-
-def _write_turn_telemetry(
-    *,
-    task: VoiceTask,
-    seed: int,
-    user_turn_index: int,
-    dispatch_index: int,
-    prompt_text: str,
-    assistant: MessageTurn,
-    calls: list[dict[str, Any]],
-) -> None:
-    """Write one assistant-turn telemetry row for orchestrator accounting.
-
-    Hermes writes its own adapter telemetry JSONL, but the Eliza/OpenClaw
-    VoiceAgentBench paths reuse LifeOps-style in-process agents that attach
-    token/cost fields to ``MessageTurn`` and do not write the JSONL envelope.
-    This bridge keeps that telemetry first-class without inventing estimated
-    token fallbacks.
-    """
-
-    telemetry_path = _resolve_telemetry_path()
-    if telemetry_path is None:
-        return
-
-    input_tokens = _int_or_none(getattr(assistant, "input_tokens", None))
-    output_tokens = _int_or_none(getattr(assistant, "output_tokens", None))
-    total_tokens = (
-        input_tokens + output_tokens
-        if input_tokens is not None and output_tokens is not None
-        else None
-    )
-    cache_read = _int_or_none(getattr(assistant, "cache_read_input_tokens", None))
-    cache_creation = _int_or_none(
-        getattr(assistant, "cache_creation_input_tokens", None)
-    )
-    latency_ms = _float_or_none(getattr(assistant, "latency_ms", None))
-    cost_usd = _float_or_none(getattr(assistant, "cost_usd", None))
-
-    # Do not emit placeholder rows. Missing usage must remain visible to the
-    # publication gate instead of becoming a fake zero-token call.
-    if (
-        input_tokens is None
-        and output_tokens is None
-        and latency_ms is None
-        and cost_usd is None
-    ):
-        return
-
-    usage: dict[str, Any] = {}
-    if input_tokens is not None:
-        usage["promptTokens"] = input_tokens
-        usage["prompt_tokens"] = input_tokens
-    if output_tokens is not None:
-        usage["completionTokens"] = output_tokens
-        usage["completion_tokens"] = output_tokens
-    if total_tokens is not None:
-        usage["totalTokens"] = total_tokens
-        usage["total_tokens"] = total_tokens
-    if cache_read is not None:
-        usage["cachedTokens"] = cache_read
-        usage["cache_read_input_tokens"] = cache_read
-    if cache_creation is not None:
-        usage["cacheCreationInputTokens"] = cache_creation
-        usage["cache_creation_input_tokens"] = cache_creation
-    if latency_ms is not None:
-        usage["latency_ms"] = latency_ms
-    if cost_usd is not None:
-        usage["cost_usd"] = cost_usd
-
-    row = {
-        "benchmark": "voiceagentbench",
-        "source": "voiceagentbench_runner",
-        "task_id": task.task_id,
-        "suite": task.suite.value,
-        "seed": seed,
-        "user_turn_index": user_turn_index,
-        "dispatch_index": dispatch_index,
-        "prompt_text": prompt_text,
-        "response_text": assistant.content or "",
-        "tool_calls": calls,
-        "usage": usage,
-        "latency_ms": latency_ms,
-        "cost_usd": cost_usd,
-    }
-    try:
-        telemetry_path.parent.mkdir(parents=True, exist_ok=True)
-        with telemetry_path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(row, ensure_ascii=True, sort_keys=True) + "\n")
-    except OSError as exc:
-        logger.debug("failed to write VoiceAgentBench telemetry: %s", exc)
 
 
 def _extract_tool_calls(turn: MessageTurn) -> list[dict[str, Any]]:
@@ -198,7 +76,7 @@ def _extract_tool_calls(turn: MessageTurn) -> list[dict[str, Any]]:
     return out
 
 
-def _benchmark_tool_response(call: dict[str, Any]) -> dict[str, Any]:
+def _stub_tool_response(call: dict[str, Any]) -> dict[str, Any]:
     return {
         "ok": True,
         "tool": call.get("name"),
@@ -214,7 +92,6 @@ async def run_task(
     judge: CoherenceJudge | None,
     seed: int,
     pass_threshold: float = 0.5,
-    emit_telemetry: bool = False,
 ) -> VoiceTaskResult:
     """Run one task end-to-end and return its result."""
     history: list[MessageTurn] = []
@@ -226,7 +103,7 @@ async def run_task(
     error: str | None = None
 
     try:
-        for user_turn_index, query in enumerate(task.queries):
+        for query in task.queries:
             transcript = stt.transcribe(query)
             transcripts.append(transcript)
             history.append(
@@ -239,24 +116,13 @@ async def run_task(
 
             dispatches = 0
             while dispatches < MAX_TOOL_DISPATCHES_PER_USER_TURN:
-                dispatch_index = dispatches
                 assistant = await agent(history, task.tool_manifest)
                 history.append(assistant)
                 calls = _extract_tool_calls(assistant)
-                if emit_telemetry:
-                    _write_turn_telemetry(
-                        task=task,
-                        seed=seed,
-                        user_turn_index=user_turn_index,
-                        dispatch_index=dispatch_index,
-                        prompt_text=transcript,
-                        assistant=assistant,
-                        calls=calls,
-                    )
                 if calls:
                     all_tool_calls.extend(calls)
                     for call in calls:
-                        result = _benchmark_tool_response(call)
+                        result = _stub_tool_response(call)
                         history.append(
                             MessageTurn(
                                 role="tool",
@@ -316,7 +182,6 @@ async def run_tasks(
     judge: CoherenceJudge | None,
     seeds: int = 1,
     on_result: Callable[[VoiceTaskResult], Awaitable[None]] | None = None,
-    emit_telemetry: bool = False,
 ) -> list[VoiceTaskResult]:
     """Run every task ``seeds`` times sequentially."""
     if seeds < 1:
@@ -325,12 +190,7 @@ async def run_tasks(
     for seed in range(seeds):
         for task in tasks:
             result = await run_task(
-                task,
-                agent=agent,
-                stt=stt,
-                judge=judge,
-                seed=seed,
-                emit_telemetry=emit_telemetry,
+                task, agent=agent, stt=stt, judge=judge, seed=seed
             )
             results.append(result)
             if on_result is not None:

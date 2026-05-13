@@ -458,7 +458,9 @@ export async function ensureModel(
   }
 
   const log = getLogger();
-  fs.mkdirSync(path.resolve(modelsDir), { recursive: true });
+  // modelPath may be namespaced (text/eliza-1.gguf); create the file's
+  // parent dir, not just modelsDir, or createWriteStream throws ENOENT.
+  fs.mkdirSync(path.dirname(path.resolve(modelPath)), { recursive: true });
 
   const url = `https://huggingface.co/${safeRepo}/resolve/main/${safeFilename}`;
   log.info(

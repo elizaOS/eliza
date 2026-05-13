@@ -22,12 +22,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { updateLifeOpsMeetingPreferences } from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
-import { updateLifeOpsMeetingPreferences } from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
 
 const PACIFIC_TZ = "America/Los_Angeles";
 // 2025-11-03 23:55 PT = 2025-11-04 07:55Z (post-DST, PST is UTC-8)
@@ -80,8 +80,7 @@ function checkStreakCreditedToPacificDay(
 
 export default scenario({
   id: "habit.streak.midnight-tz",
-  title:
-    "Habit streak credits the user's TZ day, not the server's UTC day",
+  title: "Habit streak credits the user's TZ day, not the server's UTC day",
   domain: "lifeops.habits",
   tags: ["lifeops", "habits", "streak", "timezone", "robustness"],
   isolation: "per-scenario",

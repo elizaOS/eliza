@@ -1,4 +1,37 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
+
+// One real bundled VRM (gzipped glTF) shipped under packages/app/dist/vrms/.
+// The preview server serves the SPA + the real `vrms/eliza-N.vrm.gz` files, but
+// the runtime boot-config it serves has no `vrmAssets`, so `getVrmUrl()` falls
+// back to `bundled-1.vrm.gz` which 404s — the gz-decode of a tiny 404 page then
+// throws "Invalid typed array length" inside three-vrm. We mock every
+// `vrms/*.vrm.gz` request with a real asset so the companion canvas loads a
+// model instead. Playwright bundles the test files, so `import.meta.url` points
+// at the bundle, not source — resolve relative to process.cwd() (= packages/app/)
+// where the suite always runs.
+let cachedVrmGz: Buffer | null | undefined;
+function bundledVrmGz(): Buffer | null {
+  if (cachedVrmGz !== undefined) return cachedVrmGz;
+  const candidates = [
+    resolve(process.cwd(), "dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "packages/app/dist/vrms/eliza-1.vrm.gz"),
+    resolve(process.cwd(), "../app/dist/vrms/eliza-1.vrm.gz"),
+  ];
+  for (const c of candidates) {
+    if (existsSync(c)) {
+      try {
+        cachedVrmGz = readFileSync(c);
+        return cachedVrmGz;
+      } catch {
+        /* try next */
+      }
+    }
+  }
+  cachedVrmGz = null;
+  return cachedVrmGz;
+}
 
 const ROOT_TIMEOUT_MS = 20_000;
 const NAV_TIMEOUT_MS = 12_000;
@@ -94,15 +127,6 @@ export async function expectNoRenderTelemetryErrors(
   page: Page,
   label: string,
 ): Promise<void> {
-  await page.evaluate(
-    () =>
-      new Promise<void>((resolve) => {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => resolve());
-        });
-      }),
-  );
-  await page.waitForTimeout(50);
   const errors = await page.evaluate<RenderTelemetryIssue[]>((errorsKey) => {
     const value = (window as Window & Record<string, unknown>)[errorsKey];
     return Array.isArray(value) ? (value as RenderTelemetryIssue[]) : [];
@@ -291,7 +315,41 @@ function emptyWalletTradingProfile(url: URL) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
-  await installRenderTelemetryGuard(page);
+  // VRM assets (vrms/<slug>.vrm.gz + vrms/previews|backgrounds/<slug>.png) —
+  // the preview server doesn't carry the runtime boot-config's vrmAssets, so
+  // resolveAppAssetUrl(`vrms/...`) 404s. Serve a real bundled VRM (so the
+  // companion canvas renders a model) and a 1×1 PNG for the preview/background
+  // thumbnails (the canvas falls back if those are absent, but a 404 still
+  // shows as a console error). Match `**/vrms/**` to catch any sub-path.
+  const ONE_PX_PNG = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+  await page.route("**/vrms/**", async (route) => {
+    const url = route.request().url();
+    if (/\.vrm(\.gz)?(\?|$)/i.test(url)) {
+      const body = bundledVrmGz();
+      if (!body) {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "application/octet-stream" },
+        body,
+      });
+      return;
+    }
+    if (/\.png(\?|$)/i.test(url)) {
+      await route.fulfill({
+        status: 200,
+        headers: { "content-type": "image/png" },
+        body: ONE_PX_PNG,
+      });
+      return;
+    }
+    await route.fallback();
+  });
 
   await page.route("**/api/health", async (route) => {
     await route.fulfill({
@@ -403,74 +461,6 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         enabled: false,
         cloudVoiceProxyAvailable: false,
         hasApiKey: false,
-      }),
-    });
-  });
-
-  await page.route("**/api/wallet/addresses", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ evmAddress: null, solanaAddress: null }),
-    });
-  });
-
-  await page.route("**/api/wallet/balances", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ evm: null, solana: null }),
-    });
-  });
-
-  await page.route("**/api/wallet/nfts", async (route) => {
-    if (route.request().method() !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ evm: [], solana: null }),
-    });
-  });
-
-  await page.route("**/api/wallet/config", async (route) => {
-    const method = route.request().method();
-    if (method === "PUT") {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ok: true }),
-      });
-      return;
-    }
-    if (method !== "GET") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        selectedRpcProviders: {
-          evm: "eliza-cloud",
-          bsc: "eliza-cloud",
-          solana: "eliza-cloud",
-        },
-        evmAddress: null,
-        solanaAddress: null,
-        cloudManagedAccess: false,
-        evmChains: [],
-        wallets: [],
       }),
     });
   });

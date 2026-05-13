@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import sys
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -46,6 +47,11 @@ class BucketResult:
     field_match: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     field_total: dict[str, int] = field(default_factory=lambda: defaultdict(int))
     failures: list[dict[str, Any]] = field(default_factory=list)
+    # Throughput accounting — wallclock seconds spent inside model.generate()
+    # for this bucket, plus the prompt / generated token counts seen.
+    gen_seconds: float = 0.0
+    prompt_tokens: int = 0
+    gen_tokens: int = 0
 
     def record(
         self,
@@ -55,11 +61,17 @@ class BucketResult:
         parse_error: bool,
         fields: dict[str, bool],
         failed: dict[str, Any] | None,
+        gen_dt: float = 0.0,
+        n_prompt_tokens: int = 0,
+        n_gen_tokens: int = 0,
     ) -> None:
         self.n += 1
         self.structure_ok += int(ok_structure)
         self.content_ok += int(ok_content)
         self.parse_errors += int(parse_error)
+        self.gen_seconds += gen_dt
+        self.prompt_tokens += n_prompt_tokens
+        self.gen_tokens += n_gen_tokens
         for key, ok in fields.items():
             self.field_total[key] += 1
             self.field_match[key] += int(ok)
@@ -69,6 +81,8 @@ class BucketResult:
     def to_dict(self) -> dict[str, Any]:
         def pct(num: int, denom: int) -> float:
             return round(100.0 * num / denom, 2) if denom else 0.0
+        def rate(num: int, denom: float) -> float:
+            return round(num / denom, 2) if denom > 0 else 0.0
 
         return {
             "bucket": self.name,
@@ -78,6 +92,12 @@ class BucketResult:
             "content_ok": self.content_ok,
             "content_pct": pct(self.content_ok, self.n),
             "parse_errors": self.parse_errors,
+            # prompt_tps / gen_tps share the same denominator (the wallclock
+            # spent inside model.generate(): prefill + decode); model.generate
+            # does not separate the two phases, so these are throughput proxies.
+            "prompt_tps": rate(self.prompt_tokens, self.gen_seconds),
+            "gen_tps": rate(self.gen_tokens, self.gen_seconds),
+            "gen_seconds": round(self.gen_seconds, 2),
             "field_match_pct": {
                 key: pct(self.field_match[key], total)
                 for key, total in self.field_total.items()
@@ -330,19 +350,26 @@ def score_json(
     return True, fields["top_level_keys"], False, fields
 
 
-def generate(model: Any, tokenizer: Any, prompt: str, *, max_new_tokens: int) -> str:
+def generate(
+    model: Any, tokenizer: Any, prompt: str, *, max_new_tokens: int,
+) -> tuple[str, int, int, float]:
+    """Returns (decoded_text, n_prompt_tokens, n_gen_tokens, generate_seconds)."""
     import torch
 
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+    prompt_len = int(inputs["input_ids"].shape[-1])
     with torch.no_grad():
+        t0 = time.perf_counter()
         output = model.generate(
             **inputs,
             max_new_tokens=max_new_tokens,
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )
-    generated = output[0][inputs["input_ids"].shape[-1]:]
-    return tokenizer.decode(generated, skip_special_tokens=False)
+        dt = time.perf_counter() - t0
+    generated = output[0][prompt_len:]
+    return (tokenizer.decode(generated, skip_special_tokens=False),
+            prompt_len, int(generated.shape[0]), dt)
 
 
 def main() -> int:
@@ -387,7 +414,7 @@ def main() -> int:
             prompt, _formatted = render_prompt(record, tokenizer)
             if not prompt:
                 continue
-            predicted = generate(
+            predicted, n_prompt_tok, n_gen_tok, gen_dt = generate(
                 model,
                 tokenizer,
                 prompt,
@@ -409,6 +436,9 @@ def main() -> int:
                 ok_content=ok_content,
                 parse_error=parse_error,
                 fields=fields,
+                gen_dt=gen_dt,
+                n_prompt_tokens=n_prompt_tok,
+                n_gen_tokens=n_gen_tok,
                 failed=None
                 if ok_content
                 else {
@@ -421,9 +451,17 @@ def main() -> int:
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    total_gen_seconds = sum(r.gen_seconds for r in results.values())
+    total_prompt_tokens = sum(r.prompt_tokens for r in results.values())
+    total_gen_tokens = sum(r.gen_tokens for r in results.values())
     summary = {
         "model": args.model,
         "test_file": args.test_file,
+        # prompt_tps / gen_tps are over the generate()-only wallclock
+        # (prefill+decode, not separated by model.generate).
+        "prompt_tps": round(total_prompt_tokens / max(total_gen_seconds, 1e-6), 2),
+        "gen_tps": round(total_gen_tokens / max(total_gen_seconds, 1e-6), 2),
+        "gen_seconds": round(total_gen_seconds, 2),
         "buckets": {key: result.to_dict() for key, result in results.items()},
     }
     (out_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")

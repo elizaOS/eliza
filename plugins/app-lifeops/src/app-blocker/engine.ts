@@ -1,14 +1,14 @@
-import {
-  type AppBlockerPermissionResult,
-  type AppBlockerPluginLike,
-  type AppBlockerStatus,
-  type BlockAppsOptions,
-  type BlockAppsResult,
-  type InstalledApp,
-  type SelectAppsResult,
-  type UnblockAppsResult,
-} from "./types.js";
 import { Capacitor } from "@capacitor/core";
+import type {
+  AppBlockerPermissionResult,
+  AppBlockerPluginLike,
+  AppBlockerStatus,
+  BlockAppsOptions,
+  BlockAppsResult,
+  InstalledApp,
+  SelectAppsResult,
+  UnblockAppsResult,
+} from "./types.js";
 
 const STATUS_CACHE_TTL_MS = 5_000;
 let statusCache: { expiresAt: number; value: AppBlockerStatus } | null = null;

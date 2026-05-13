@@ -39,6 +39,7 @@ class EntityKind(str, Enum):
     HEALTH_METRIC = "health_metric"
     LOCATION_POINT = "location_point"
     SCHEDULED_TASK = "scheduled_task"
+    WORKOUT = "workout"
 
 
 Relationship = Literal["family", "friend", "work", "acquaintance"]
@@ -190,6 +191,7 @@ class ReminderList:
     id: str
     name: str
     source: ReminderSource = "apple-reminders"
+    last_reviewed_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -254,6 +256,23 @@ class LocationPoint:
     recorded_at: str
 
 
+WorkoutSource = Literal["apple-health", "fitbit", "oura", "manual", "garmin", "strava"]
+
+
+@dataclass(frozen=True)
+class WorkoutRecord:
+    """A single workout session logged by the user."""
+
+    id: str
+    activity_type: str
+    duration_minutes: int
+    calories: int | None = None
+    source: WorkoutSource = "manual"
+    recorded_at: str = ""
+    distance_km: float | None = None
+    notes: str = ""
+
+
 # Map enum -> dataclass — used by LifeWorld.add for type validation and
 # by the JSON codec to reconstruct typed entities from plain dicts.
 ENTITY_CLASS_FOR_KIND: dict[EntityKind, type] = {
@@ -273,4 +292,5 @@ ENTITY_CLASS_FOR_KIND: dict[EntityKind, type] = {
     EntityKind.HEALTH_METRIC: HealthMetric,
     EntityKind.LOCATION_POINT: LocationPoint,
     EntityKind.SCHEDULED_TASK: ScheduledTask,
+    EntityKind.WORKOUT: WorkoutRecord,
 }

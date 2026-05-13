@@ -7,7 +7,8 @@ import {
 
 export default scenario({
   id: "followup.relationship-congratulations-from-brief",
-  title: "Trigger a congratulations follow-up from a news item in the morning brief",
+  title:
+    "Trigger a congratulations follow-up from a news item in the morning brief",
   domain: "lifeops.followup",
   tags: ["lifeops", "followup", "relationships", "brief"],
   description:

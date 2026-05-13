@@ -13,16 +13,16 @@
 
 import {
   appLifeOpsPlugin,
+  detectHealthBackend,
+  detectPasswordManagerBackend,
+  detectRemoteDesktopBackend,
+  getAppBlockerStatus,
   getSelfControlStatus,
+  LifeOpsRepository,
   LifeOpsService,
+  readCalendlyCredentialsFromEnv,
+  readTwilioCredentialsFromEnv,
 } from "@elizaos/app-lifeops";
-import { readCalendlyCredentialsFromEnv } from "@elizaos/app-lifeops";
-import { detectHealthBackend } from "@elizaos/app-lifeops";
-import { detectPasswordManagerBackend } from "@elizaos/app-lifeops";
-import { detectRemoteDesktopBackend } from "@elizaos/app-lifeops";
-import { LifeOpsRepository } from "@elizaos/app-lifeops";
-import { readTwilioCredentialsFromEnv } from "@elizaos/app-lifeops";
-import { getAppBlockerStatus } from "@elizaos/app-lifeops";
 import {
   type AgentRuntime,
   logger,
@@ -1002,10 +1002,7 @@ describe("Action Invocation E2E", () => {
           await h.send(
             "Cancel my Google Play subscription and handle the cancellation workflow for me.",
           );
-          expectAnySelectedAction(h, [
-            "SUBSCRIPTIONS",
-            "COMPUTER_USE",
-          ]);
+          expectAnySelectedAction(h, ["SUBSCRIPTIONS", "COMPUTER_USE"]);
         });
       },
       DEFAULT_TEST_TIMEOUT_MS,

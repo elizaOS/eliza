@@ -45,9 +45,7 @@ export default scenario({
       type: "custom",
       name: "agent-suggests-gradual-shift",
       predicate: (ctx) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const sensible =
           reply.includes("gradual") ||

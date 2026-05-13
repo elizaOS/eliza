@@ -25,11 +25,7 @@
  * the whole point of the pattern. The BROWSER action stays one action.
  */
 
-import {
-  type IAgentRuntime,
-  logger,
-  Service,
-} from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import {
   BROWSER_BRIDGE_ROUTE_SERVICE_TYPE,
   type BrowserBridgeRouteService,
@@ -65,7 +61,9 @@ export interface BrowserTarget {
    */
   available(): Promise<boolean>;
   /** Run the command. Throw on unsupported subactions. */
-  execute(command: BrowserWorkspaceCommand): Promise<BrowserWorkspaceCommandResult>;
+  execute(
+    command: BrowserWorkspaceCommand,
+  ): Promise<BrowserWorkspaceCommandResult>;
 }
 
 export class BrowserService extends Service {

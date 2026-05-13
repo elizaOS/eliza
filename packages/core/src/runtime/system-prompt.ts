@@ -45,15 +45,18 @@ export function buildCanonicalSystemPrompt(args: {
 	userRole?: RoleGateRole | string | null;
 }): string {
 	const character = args.character;
-	const rawSystem =
-		typeof character?.system === "string" ? character.system.trim() : "";
-	const rawBio = renderSystemPromptBio(character?.bio);
 	const name =
 		typeof character?.name === "string" && character.name.trim()
 			? character.name.trim()
 			: "the agent";
-	const system = substituteNamePlaceholders(rawSystem, name);
-	const bio = substituteNamePlaceholders(rawBio, name);
+	const system = substituteNamePlaceholders(
+		typeof character?.system === "string" ? character.system.trim() : "",
+		name,
+	);
+	const bio = substituteNamePlaceholders(
+		renderSystemPromptBio(character?.bio),
+		name,
+	);
 	const role = normalizeSystemPromptRole(args.userRole);
 	return [
 		system,

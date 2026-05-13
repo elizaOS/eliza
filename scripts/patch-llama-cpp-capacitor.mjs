@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -71,9 +71,15 @@ function applyHashBridge(pkgRoot) {
     if (after !== before) writeFileSync(file, after, "utf8");
   };
 
-  const swiftPath = join(pkgRoot, "ios", "Sources", "LlamaCppPlugin", "LlamaCpp.swift");
+  const swiftPath = join(
+    pkgRoot,
+    "ios",
+    "Sources",
+    "LlamaCppPlugin",
+    "LlamaCpp.swift",
+  );
   patchFile(swiftPath, (text) => {
-    let patched = text.includes("import CryptoKit")
+    const patched = text.includes("import CryptoKit")
       ? text
       : replaceOnce(
           text,
@@ -131,9 +137,15 @@ function applyHashBridge(pkgRoot) {
     );
   });
 
-  const pluginSwiftPath = join(pkgRoot, "ios", "Sources", "LlamaCppPlugin", "LlamaCppPlugin.swift");
+  const pluginSwiftPath = join(
+    pkgRoot,
+    "ios",
+    "Sources",
+    "LlamaCppPlugin",
+    "LlamaCppPlugin.swift",
+  );
   patchFile(pluginSwiftPath, (text) => {
-    let patched = text.includes('CAPPluginMethod(name: "hashFile"')
+    const patched = text.includes('CAPPluginMethod(name: "hashFile"')
       ? text
       : replaceOnce(
           text,
@@ -176,7 +188,7 @@ function applyHashBridge(pkgRoot) {
   );
 
   patchFile(join(pkgRoot, "dist", "plugin.cjs.js"), (text) => {
-    let patched = text.includes("async function hashFile")
+    const patched = text.includes("async function hashFile")
       ? text
       : replaceOnce(
           text,
@@ -195,7 +207,7 @@ function applyHashBridge(pkgRoot) {
   });
 
   patchFile(join(pkgRoot, "dist", "plugin.js"), (text) => {
-    let patched = text.includes("async function hashFile")
+    const patched = text.includes("async function hashFile")
       ? text
       : replaceOnce(
           text,
@@ -252,15 +264,17 @@ function main() {
     if (status === "legacy-without-hash") {
       applyHashBridge(pkgRoot);
       applied++;
-      console.log(`[patch-llama-cpp-capacitor] Added hash bridge to ${pkgRoot}`);
+      console.log(
+        `[patch-llama-cpp-capacitor] Added hash bridge to ${pkgRoot}`,
+      );
       continue;
     }
 
-    const r = spawnSync(
-      "patch",
-      ["--batch", "-p1"],
-      { cwd: pkgRoot, encoding: "utf8", input: readFileSync(patchFile) },
-    );
+    const r = spawnSync("patch", ["--batch", "-p1"], {
+      cwd: pkgRoot,
+      encoding: "utf8",
+      input: readFileSync(patchFile),
+    });
     if (r.status !== 0) {
       console.error(r.stdout ?? "");
       console.error(r.stderr ?? "");

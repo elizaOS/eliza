@@ -93,13 +93,9 @@ for (const pkg of packages) {
 }
 
 if (failures.length > 0) {
-  console.error(
-    `\n[${scriptName}] ${failures.length} package(s) failed:`,
-  );
+  console.error(`\n[${scriptName}] ${failures.length} package(s) failed:`);
   for (const failure of failures) {
-    console.error(
-      `  - ${failure.pkg} (${failure.dir}) exit=${failure.code}`,
-    );
+    console.error(`  - ${failure.pkg} (${failure.dir}) exit=${failure.code}`);
   }
   // Hard-fail only when ALL packages failed.
   if (failures.length === packages.length) {

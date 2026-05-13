@@ -1,6 +1,6 @@
-"""Build the eliza-1-0_8b full-corpus SFT splits.
+"""Build the eliza-1-0_6b full-corpus SFT splits.
 
-Concatenates the benchmark-aligned `datasets/eliza1-sft-0_8b/{train,val,test}.jsonl`
+Concatenates the benchmark-aligned `datasets/eliza1-sft-0_6b/{train,val,test}.jsonl`
 splits AHEAD of the broad mixed `data/final/{train,val,test}.jsonl` corpus,
 running every row through `format_for_training.format_record` so only
 train_local-compatible records land in the output. The benchmark-aligned rows go
@@ -33,7 +33,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from format_for_training import format_record  # noqa: E402
 
-SRC_BENCH = ROOT / "datasets" / "eliza1-sft-0_8b"
+SRC_BENCH = ROOT / "datasets" / "eliza1-sft-0_6b"
 SRC_FINAL = ROOT / "data" / "final"
 OUT_DIR = ROOT / "data" / "final-eliza1-fullcorpus"
 

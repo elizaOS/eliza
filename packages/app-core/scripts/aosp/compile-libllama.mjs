@@ -170,6 +170,13 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { resolveRepoRootFromImportMeta } from "../lib/repo-root.mjs";
+import {
+  appendCmakeGraft,
+  fusedCmakeBuildTargets,
+  fusedExtraCmakeFlags,
+} from "../omnivoice-fuse/cmake-graft.mjs";
+import { prepareOmnivoiceFusion } from "../omnivoice-fuse/prepare.mjs";
+import { verifyFusedSymbols } from "../omnivoice-fuse/verify-symbols.mjs";
 import { main as compileShimMain } from "./compile-shim.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -199,10 +206,9 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // flow is now replaced by a single canonical fork — the patches are
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
-export const LLAMA_CPP_TAG = "v1.0.0-eliza";
-export const LLAMA_CPP_COMMIT = "08032d57e15574f2a7ca19fc3f29510c8673d590";
-export const LLAMA_CPP_REMOTE =
-  "https://github.com/elizaOS/llama.cpp.git";
+export const LLAMA_CPP_TAG = "v1.2.0-eliza";
+export const LLAMA_CPP_COMMIT = "a61c93aa";
+export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 
 // The in-repo submodule checkout of the fork (packages/inference/llama.cpp).
@@ -239,6 +245,54 @@ export const ABI_TARGETS = [
   },
 ];
 
+// `*-fused` android targets that match dflash's target list one-for-one.
+// Membership in this set is the only way the fused (omnivoice-grafted) build
+// path activates from this script — there is no env-var shortcut and no
+// implicit upgrade from a non-fused `--abi` invocation. Mirrors the dflash
+// build script's FUSED_TARGETS check at scripts/build-llama-cpp-dflash.mjs.
+export const FUSED_ANDROID_TARGETS = Object.freeze([
+  "android-arm64-cpu-fused",
+  "android-arm64-vulkan-fused",
+  "android-x86_64-cpu-fused",
+  "android-x86_64-vulkan-fused",
+]);
+
+/**
+ * Parse one of the `android-<arch>-<backend>[-fused]` target strings used by
+ * the dflash build script into the pieces this script needs (the Android ABI
+ * + the fused/backend flags). Throws on unsupported triples — there is no
+ * implicit translation; the operator either asks for one of the known
+ * triples or gets a hard error.
+ *
+ * Exported for tests.
+ */
+export function parseAndroidTarget(target) {
+  if (typeof target !== "string" || target.length === 0) {
+    throw new Error(`[compile-libllama] target must be a non-empty string`);
+  }
+  const fused = target.endsWith("-fused");
+  const base = fused ? target.slice(0, -"-fused".length) : target;
+  const match = /^android-(arm64|x86_64)-(cpu|vulkan)$/.exec(base);
+  if (!match) {
+    throw new Error(
+      `[compile-libllama] unsupported --target ${target}. ` +
+        `Supported: ${[
+          "android-arm64-cpu",
+          "android-arm64-vulkan",
+          "android-arm64-cpu-fused",
+          "android-arm64-vulkan-fused",
+          "android-x86_64-cpu",
+          "android-x86_64-vulkan",
+          "android-x86_64-cpu-fused",
+          "android-x86_64-vulkan-fused",
+        ].join(", ")}`,
+    );
+  }
+  const [, arch, backend] = match;
+  const androidAbi = arch === "x86_64" ? "x86_64" : "arm64-v8a";
+  return { target, arch, backend, fused, androidAbi };
+}
+
 export function parseArgs(argv) {
   const args = {
     androidAssetsDir: path.join(
@@ -259,10 +313,16 @@ export function parseArgs(argv) {
       `llama-cpp-${LLAMA_CPP_TAG}`,
     ),
     abis: ABI_TARGETS.map((t) => t.androidAbi),
+    // Optional explicit --target=android-<arch>-<backend>[-fused] triples
+    // (see parseAndroidTarget). When present, this list takes precedence
+    // over --abi (which is the legacy bulk-build entry point that produces
+    // both libllama.so for cpu+vulkan, no fusion).
+    targets: [],
     skipIfPresent: false,
     jobs: Math.max(1, Math.min(os.cpus().length, 8)),
     srcDir: null,
     cacheDirExplicit: false,
+    dryRun: false,
   };
 
   const readFlagValue = (flag, index) => {
@@ -295,6 +355,13 @@ export function parseArgs(argv) {
       }
       args.abis = [value];
       i += 1;
+    } else if (arg === "--target") {
+      const value = readFlagValue(arg, i);
+      // Validates the triple and records it. Resolved further below.
+      args.targets.push(parseAndroidTarget(value));
+      i += 1;
+    } else if (arg === "--dry-run") {
+      args.dryRun = true;
     } else if (arg === "--jobs" || arg === "-j") {
       const value = Number.parseInt(readFlagValue(arg, i), 10);
       if (!Number.isFinite(value) || value <= 0) {
@@ -308,7 +375,16 @@ export function parseArgs(argv) {
       console.log(
         "Usage: node eliza/packages/app-core/scripts/aosp/compile-libllama.mjs " +
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
-          "[--abi <arm64-v8a|x86_64>] [--jobs <N>] [--skip-if-present]\n" +
+          "[--abi <arm64-v8a|x86_64>] [--target <android-<arch>-<backend>[-fused]>] " +
+          "[--jobs <N>] [--skip-if-present] [--dry-run]\n" +
+          "  --target <TRIPLE>  Build a single target. Triples match the dflash build\n" +
+          "                    script: android-{arm64,x86_64}-{cpu,vulkan}[-fused].\n" +
+          "                    -fused enables the omnivoice graft (same as dflash's\n" +
+          "                    *-fused desktop targets) — one binary serving text +\n" +
+          "                    POST /v1/audio/speech.\n" +
+          "  --dry-run         Print the cmake invocation + graft steps + expected\n" +
+          "                    output layout WITHOUT running cmake/ndk. Honored for\n" +
+          "                    every --target.\n" +
           "  --src-dir <PATH>  Use an existing llama.cpp checkout instead of the\n" +
           "                    in-repo submodule / a fresh clone. The directory's HEAD\n" +
           "                    is used as-is; the pinned LLAMA_CPP_TAG/COMMIT is ignored.\n" +
@@ -561,7 +637,6 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
     `.musl-execinfo-patched.${LLAMA_CPP_COMMIT}`,
   );
   if (fs.existsSync(sentinel)) {
-    patchAospMuslStartupEnvReads({ srcDir, log });
     return;
   }
 
@@ -577,7 +652,6 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
     log(
       `[compile-libllama] ggml/src/ggml.c already gates <execinfo.h> on __GLIBC__; no patch needed.`,
     );
-    patchAospMuslStartupEnvReads({ srcDir, log });
     return;
   }
 
@@ -622,221 +696,6 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
   log(
     `[compile-libllama] Patched ggml/src/ggml.c to gate <execinfo.h> on __GLIBC__ (musl compatibility).`,
   );
-  patchAospMuslStartupEnvReads({ srcDir, log });
-}
-
-export function patchAospMuslStartupEnvReads({ srcDir, log = console.log }) {
-  patchGgmlCppBacktraceInitForAospMusl({ srcDir, log });
-  patchCommonTtyColorEnvForAospMusl({ srcDir, log });
-  patchGgmlBackendPathEnvForAospMusl({ srcDir, log });
-  patchCommonArgEnvForAospMusl({ srcDir, log });
-}
-
-/**
- * Disable ggml's optional C++ terminate-backtrace static initializer for the
- * AOSP musl build. On Pixel 6a Android 16, the server executable crashes in
- * musl's getenv("GGML_NO_BACKTRACE") while dependency constructors are still
- * running under direct loader invocation (`ld-musl-aarch64.so.1.real
- * ./llama-server --version`). The same libllama/libggml stack works when
- * dlopen()ed after process start, so this is startup-constructor timing, not a
- * quant/kernel failure. The initializer only installs a prettier terminate
- * handler; disabling it for ELIZA_AOSP_MUSL keeps inference behavior intact.
- */
-export function patchGgmlCppBacktraceInitForAospMusl({
-  srcDir,
-  log = console.log,
-}) {
-  const target = path.join(srcDir, "ggml", "src", "ggml.cpp");
-  if (!fs.existsSync(target)) {
-    throw new Error(
-      `[compile-libllama] Cannot patch ggml.cpp: file not found at ${target}. ` +
-        `Has the llama.cpp source layout changed in a newer pin?`,
-    );
-  }
-  const sentinel = path.join(
-    srcDir,
-    `.musl-ggml-cpp-backtrace-init-patched.${LLAMA_CPP_COMMIT}`,
-  );
-  if (fs.existsSync(sentinel)) return;
-
-  const original = fs.readFileSync(target, "utf8");
-  if (
-    original.includes("ELIZA_AOSP_MUSL") &&
-    original.includes("ggml_uncaught_exception_init")
-  ) {
-    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-    return;
-  }
-
-  const preImage =
-    "static bool ggml_uncaught_exception_init = []{\n" +
-    "    const char * GGML_NO_BACKTRACE = getenv(\"GGML_NO_BACKTRACE\");\n" +
-    "    if (GGML_NO_BACKTRACE) {\n" +
-    "        return false;\n" +
-    "    }\n" +
-    "    const auto prev{std::get_terminate()};\n" +
-    "    GGML_ASSERT(prev != ggml_uncaught_exception);\n" +
-    "    previous_terminate_handler = prev;\n" +
-    "    std::set_terminate(ggml_uncaught_exception);\n" +
-    "    return true;\n" +
-    "}();\n";
-  if (!original.includes(preImage)) {
-    throw new Error(
-      `[compile-libllama] Could not locate expected ggml.cpp backtrace ` +
-        `initializer in ${target}; update patchGgmlCppBacktraceInitForAospMusl() ` +
-        `before bumping LLAMA_CPP_COMMIT.`,
-    );
-  }
-
-  const postImage =
-    "#if defined(ELIZA_AOSP_MUSL)\n" +
-    "static bool ggml_uncaught_exception_init = false;\n" +
-    "#else\n" +
-    preImage +
-    "#endif\n";
-  fs.writeFileSync(target, original.replace(preImage, postImage), "utf8");
-  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-  log(
-    `[compile-libllama] Patched ggml/src/ggml.cpp to disable the optional ` +
-      `terminate-backtrace initializer for the AOSP musl server build.`,
-  );
-}
-
-export function patchCommonTtyColorEnvForAospMusl({
-  srcDir,
-  log = console.log,
-}) {
-  const target = path.join(srcDir, "common", "common.cpp");
-  if (!fs.existsSync(target)) {
-    throw new Error(`[compile-libllama] Cannot patch common.cpp at ${target}.`);
-  }
-  const sentinel = path.join(
-    srcDir,
-    `.musl-common-tty-env-patched.${LLAMA_CPP_COMMIT}`,
-  );
-  if (fs.existsSync(sentinel)) return;
-
-  const original = fs.readFileSync(target, "utf8");
-  if (
-    original.includes("ELIZA_AOSP_MUSL") &&
-    original.includes("tty_can_use_colors")
-  ) {
-    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-    return;
-  }
-  const preImage = "bool tty_can_use_colors() {\n";
-  const postImage =
-    "bool tty_can_use_colors() {\n" +
-    "#if defined(ELIZA_AOSP_MUSL)\n" +
-    "    return false;\n" +
-    "#endif\n";
-  if (!original.includes(preImage)) {
-    throw new Error(
-      `[compile-libllama] Could not locate tty_can_use_colors() in ${target}.`,
-    );
-  }
-  fs.writeFileSync(target, original.replace(preImage, postImage), "utf8");
-  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-  log(
-    `[compile-libllama] Patched common/common.cpp to skip NO_COLOR/TERM ` +
-      `startup env reads for the AOSP musl server build.`,
-  );
-}
-
-export function patchGgmlBackendPathEnvForAospMusl({
-  srcDir,
-  log = console.log,
-}) {
-  const target = path.join(srcDir, "ggml", "src", "ggml-backend-reg.cpp");
-  if (!fs.existsSync(target)) {
-    throw new Error(
-      `[compile-libllama] Cannot patch ggml-backend-reg.cpp at ${target}.`,
-    );
-  }
-  const sentinel = path.join(
-    srcDir,
-    `.musl-backend-path-env-patched.${LLAMA_CPP_COMMIT}`,
-  );
-  if (fs.existsSync(sentinel)) return;
-
-  const original = fs.readFileSync(target, "utf8");
-  if (
-    original.includes("ELIZA_AOSP_MUSL") &&
-    original.includes("GGML_BACKEND_PATH")
-  ) {
-    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-    return;
-  }
-  const preImage =
-    "    // check the environment variable GGML_BACKEND_PATH to load an out-of-tree backend\n" +
-    "    const char * backend_path = std::getenv(\"GGML_BACKEND_PATH\");\n" +
-    "    if (backend_path) {\n" +
-    "        ggml_backend_load(backend_path);\n" +
-    "    }\n";
-  const postImage =
-    "#if !defined(ELIZA_AOSP_MUSL)\n" +
-    preImage +
-    "#endif\n";
-  if (!original.includes(preImage)) {
-    throw new Error(
-      `[compile-libllama] Could not locate GGML_BACKEND_PATH block in ${target}.`,
-    );
-  }
-  fs.writeFileSync(target, original.replace(preImage, postImage), "utf8");
-  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-  log(
-    `[compile-libllama] Patched ggml-backend-reg.cpp to skip external backend ` +
-      `startup env reads for the AOSP musl server build.`,
-  );
-}
-
-export function patchCommonArgEnvForAospMusl({ srcDir, log = console.log }) {
-  const target = path.join(srcDir, "common", "arg.cpp");
-  if (!fs.existsSync(target)) {
-    throw new Error(`[compile-libllama] Cannot patch common/arg.cpp at ${target}.`);
-  }
-  const sentinel = path.join(
-    srcDir,
-    `.musl-common-arg-env-patched.${LLAMA_CPP_COMMIT}`,
-  );
-  if (fs.existsSync(sentinel)) return;
-
-  const original = fs.readFileSync(target, "utf8");
-  if (
-    original.includes("ELIZA_AOSP_MUSL") &&
-    original.includes("common_arg::get_value_from_env")
-  ) {
-    fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-    return;
-  }
-  const getPre = "bool common_arg::get_value_from_env(std::string & output) const {\n";
-  const getPost =
-    getPre +
-    "#if defined(ELIZA_AOSP_MUSL)\n" +
-    "    (void) output;\n" +
-    "    return false;\n" +
-    "#endif\n";
-  const hasPre = "bool common_arg::has_value_from_env() const {\n";
-  const hasPost =
-    hasPre +
-    "#if defined(ELIZA_AOSP_MUSL)\n" +
-    "    return false;\n" +
-    "#endif\n";
-  if (!original.includes(getPre) || !original.includes(hasPre)) {
-    throw new Error(
-      `[compile-libllama] Could not locate common_arg env helpers in ${target}.`,
-    );
-  }
-  fs.writeFileSync(
-    target,
-    original.replace(getPre, getPost).replace(hasPre, hasPost),
-    "utf8",
-  );
-  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
-  log(
-    `[compile-libllama] Patched common/arg.cpp to skip LLAMA_ARG_* startup ` +
-      `env reads for the AOSP musl server build.`,
-  );
 }
 
 /**
@@ -868,8 +727,6 @@ export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
   fs.mkdirSync(driverDir, { recursive: true });
   const ccPath = path.join(driverDir, "zig-cc");
   const cxxPath = path.join(driverDir, "zig-cxx");
-  const arPath = path.join(driverDir, "zig-ar");
-  const ranlibPath = path.join(driverDir, "zig-ranlib");
   // Quote zigBin so a path with spaces still works. The driver runs under
   // /bin/sh which is POSIX-portable across Linux, macOS, Alpine.
   const ccBody =
@@ -882,80 +739,11 @@ export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
     "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
     "# Do not edit — regenerated on every build.\n" +
     `exec "${zigBin}" c++ --target=${target.zigTarget} "$@"\n`;
-  const arBody =
-    "#!/bin/sh\n" +
-    "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
-    "# Do not edit — regenerated on every build.\n" +
-    `exec "${zigBin}" ar "$@"\n`;
-  const ranlibBody =
-    "#!/bin/sh\n" +
-    "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
-    "# Do not edit — regenerated on every build.\n" +
-    `exec "${zigBin}" ranlib "$@"\n`;
   fs.writeFileSync(ccPath, ccBody, "utf8");
   fs.writeFileSync(cxxPath, cxxBody, "utf8");
-  fs.writeFileSync(arPath, arBody, "utf8");
-  fs.writeFileSync(ranlibPath, ranlibBody, "utf8");
   fs.chmodSync(ccPath, 0o755);
   fs.chmodSync(cxxPath, 0o755);
-  fs.chmodSync(arPath, 0o755);
-  fs.chmodSync(ranlibPath, 0o755);
-  return { ccPath, cxxPath, arPath, ranlibPath };
-}
-
-function resetStaleCmakeToolchainIfNeeded({ buildDir, arPath, ranlibPath, log }) {
-  const cmakeFilesDir = path.join(buildDir, "CMakeFiles");
-  const cacheFile = path.join(buildDir, "CMakeCache.txt");
-  if (fs.existsSync(cacheFile)) {
-    const cache = fs.readFileSync(cacheFile, "utf8");
-    if (
-      cache.includes("LLAMA_OPENSSL:BOOL=ON") ||
-      cache.includes("OPENSSL_SSL_LIBRARY:FILEPATH=") ||
-      cache.includes("OPENSSL_CRYPTO_LIBRARY:FILEPATH=")
-    ) {
-      log(
-        `[compile-libllama] Clearing stale CMake cache in ${buildDir} ` +
-          `(host OpenSSL was discovered for a musl cross-build).`,
-      );
-      fs.rmSync(buildDir, { recursive: true, force: true });
-      fs.mkdirSync(buildDir, { recursive: true });
-      return;
-    }
-  }
-  if (!fs.existsSync(cmakeFilesDir)) return;
-
-  const staleNeedles = [
-    'set(CMAKE_AR "/usr/bin/ar")',
-    'set(CMAKE_RANLIB "/usr/bin/ranlib")',
-  ];
-  const expectedNeedles = [
-    `set(CMAKE_AR "${arPath}")`,
-    `set(CMAKE_RANLIB "${ranlibPath}")`,
-  ];
-
-  for (const entry of fs.readdirSync(cmakeFilesDir, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const compilerFiles = [
-      path.join(cmakeFilesDir, entry.name, "CMakeCCompiler.cmake"),
-      path.join(cmakeFilesDir, entry.name, "CMakeCXXCompiler.cmake"),
-    ];
-    for (const compilerFile of compilerFiles) {
-      if (!fs.existsSync(compilerFile)) continue;
-      const contents = fs.readFileSync(compilerFile, "utf8");
-      if (
-        staleNeedles.some((needle) => contents.includes(needle)) ||
-        !expectedNeedles.every((needle) => contents.includes(needle))
-      ) {
-        log(
-          `[compile-libllama] Clearing stale CMake toolchain cache in ${buildDir} ` +
-            `(archive tool was not the Zig cross archiver).`,
-        );
-        fs.rmSync(buildDir, { recursive: true, force: true });
-        fs.mkdirSync(buildDir, { recursive: true });
-        return;
-      }
-    }
-  }
+  return { ccPath, cxxPath };
 }
 
 /**
@@ -985,6 +773,12 @@ export function buildLibllamaForAbi({
   zigBin = "zig",
   log = console.log,
   spawn = run,
+  // Optional pass-through hooks used by the explicit-triple path
+  // (`mainTargets`) to layer in the fused omnivoice flags + targets without
+  // forking this helper. The non-fused bulk --abi path defaults both to
+  // empty so its behavior stays byte-for-byte identical.
+  extraCmakeFlags = [],
+  extraBuildTargets = [],
 }) {
   const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
   if (!target) {
@@ -996,12 +790,7 @@ export function buildLibllamaForAbi({
   // Per-ABI driver scripts that wrap `zig cc --target=<triple>` so cmake's
   // single-binary compiler probe works. See ensureZigDrivers() for why
   // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own.
-  const { ccPath, cxxPath, arPath, ranlibPath } = ensureZigDrivers({
-    cacheDir,
-    abi,
-    zigBin,
-  });
-  resetStaleCmakeToolchainIfNeeded({ buildDir, arPath, ranlibPath, log });
+  const { ccPath, cxxPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
 
   log(
     `[compile-libllama] Configuring llama.cpp for ${abi} (${target.zigTarget}) in ${buildDir}`,
@@ -1025,26 +814,11 @@ export function buildLibllamaForAbi({
       // throughput win.
       "-DLLAMA_BUILD_SERVER=ON",
       "-DLLAMA_CURL=OFF",
-      // The Android/AOSP server is loopback-only and must not link against
-      // host Homebrew/macOS OpenSSL archives during the Linux-musl cross-build.
-      "-DLLAMA_OPENSSL=OFF",
-      "-DCMAKE_DISABLE_FIND_PACKAGE_OpenSSL=TRUE",
       `-DCMAKE_C_COMPILER=${ccPath}`,
       `-DCMAKE_CXX_COMPILER=${cxxPath}`,
-      `-DCMAKE_AR=${arPath}`,
-      `-DCMAKE_RANLIB=${ranlibPath}`,
-      `-DCMAKE_C_COMPILER_AR=${arPath}`,
-      `-DCMAKE_CXX_COMPILER_AR=${arPath}`,
-      `-DCMAKE_C_COMPILER_RANLIB=${ranlibPath}`,
-      `-DCMAKE_CXX_COMPILER_RANLIB=${ranlibPath}`,
       // No launcher — the driver scripts do all the wrapping themselves.
       "-DCMAKE_C_COMPILER_LAUNCHER=",
       "-DCMAKE_CXX_COMPILER_LAUNCHER=",
-      // Compile-time marker for the source patch above. This only changes the
-      // Android musl build; host Metal/CUDA/Vulkan builds keep the upstream
-      // terminate-backtrace initializer.
-      "-DCMAKE_C_FLAGS=-DELIZA_AOSP_MUSL=1",
-      "-DCMAKE_CXX_FLAGS=-DELIZA_AOSP_MUSL=1",
       "-DCMAKE_SYSTEM_NAME=Linux",
       `-DCMAKE_SYSTEM_PROCESSOR=${target.cmakeProcessor}`,
       // Disable host-arch-specific ISA so the resulting .so loads on any
@@ -1061,13 +835,6 @@ export function buildLibllamaForAbi({
       "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
       "-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE",
       "-DCMAKE_INSTALL_RPATH=",
-      // CMake 3.27+ can ask clang-compatible linkers to emit Makefile link
-      // dependency files via `-Xlinker --dependency-file=...`. Zig 0.16.0's
-      // musl cross linker segfaults on that option for shared objects, while
-      // the exact same link succeeds without the depfile. Disable linker-side
-      // depfiles for this cross-build; object depfiles still cover source
-      // rebuilds and target-level dependencies still order the ggml family.
-      "-DCMAKE_LINK_DEPENDS_USE_LINKER=FALSE",
       // `extraCmakeFlags` carries the omnivoice fused-build flags
       // (-DELIZA_FUSE_OMNIVOICE=ON, etc.) when the explicit-triple
       // path asked for a fused build. Empty for the non-fused bulk
@@ -1084,6 +851,23 @@ export function buildLibllamaForAbi({
     {},
   );
 
+  // Build any extra cmake targets the caller asked for — for fused builds
+  // this is omnivoice-core + libelizainference + llama-omnivoice-server +
+  // the bench/completion drivers (see fusedCmakeBuildTargets()). We filter
+  // out `llama` + `llama-server` upstream (the dedicated build steps below
+  // already handle those), so the extra-target invocation only adds NEW
+  // CMake target names. The non-fused path passes an empty list.
+  for (const extraTarget of extraBuildTargets) {
+    log(
+      `[compile-libllama] Building extra cmake target ${extraTarget} for ${abi}`,
+    );
+    spawn(
+      "cmake",
+      ["--build", buildDir, "--target", extraTarget, "-j", String(jobs)],
+      {},
+    );
+  }
+
   // llama-server target. Built in a second --target invocation so a future
   // operator can disable it via a flag without touching the libllama target.
   // The target name is `llama-server` on the apothic fork (verified against
@@ -1096,15 +880,15 @@ export function buildLibllamaForAbi({
     {},
   );
 
-  // libllama.so, the ggml shared-library family, and server support libs are
-  // transitive build products of the `llama` / `llama-server` targets.
-  // b4500's NEEDED chain (verified via `readelf -d`):
+  // libllama.so and the ggml shared-library family are all transitive build
+  // products of the `llama` target. b4500's NEEDED chain (verified via
+  // `readelf -d`):
   //   libllama.so -> libggml.so, libggml-cpu.so, libggml-base.so, libc.so
   //   libggml.so   -> libggml-cpu.so, libggml-base.so, libc.so
-  // The current server also NEEDED-links libmtmd.so.0. Co-copy the
-  // unversioned support libs we find under the build tree so the SONAME
-  // aliases below can satisfy all runtime dynamic-linker edges from the
-  // per-ABI asset dir (LD_LIBRARY_PATH set by ElizaAgentService.java).
+  // We co-copy every libggml*.so we find under the build tree alongside
+  // libllama.so so the dynamic linker resolves the whole graph from the
+  // per-ABI asset dir at runtime (LD_LIBRARY_PATH set by
+  // ElizaAgentService.java).
   const builtLlama = locateBuiltLib(buildDir, "libllama.so");
   if (!builtLlama) {
     throw new Error(
@@ -1119,12 +903,11 @@ export function buildLibllamaForAbi({
         `them the runtime dlopen will fail. Check that BUILD_SHARED_LIBS=ON took effect.`,
     );
   }
-  const builtServerSupportLibs = locateBuiltSupportLibs(buildDir, ["libmtmd"]);
 
   fs.mkdirSync(abiAssetDir, { recursive: true });
   const llamaOut = path.join(abiAssetDir, "libllama.so");
   fs.copyFileSync(builtLlama, llamaOut);
-  const supportOuts = [...builtGgmlLibs, ...builtServerSupportLibs].map((src) => {
+  const ggmlOuts = builtGgmlLibs.map((src) => {
     const dst = path.join(abiAssetDir, path.basename(src));
     fs.copyFileSync(src, dst);
     return dst;
@@ -1142,7 +925,7 @@ export function buildLibllamaForAbi({
   // identical). APK build dedupes identical files automatically; even
   // without dedup this is well under the per-ABI .so budget.
   const sonameAliases = [];
-  for (const out of [llamaOut, ...supportOuts]) {
+  for (const out of [llamaOut, ...ggmlOuts]) {
     const soname = readSoname(out);
     if (soname && soname !== path.basename(out)) {
       const aliasPath = path.join(abiAssetDir, soname);
@@ -1217,7 +1000,7 @@ export function buildLibllamaForAbi({
     );
   }
 
-  const stripTargets = [...supportOuts, llamaOut, ...sonameAliases];
+  const stripTargets = [...ggmlOuts, llamaOut, ...sonameAliases];
   if (llamaServerOut) stripTargets.push(llamaServerOut);
   if (fusedLibOut) stripTargets.push(fusedLibOut);
   if (fusedServerOut) stripTargets.push(fusedServerOut);
@@ -1243,7 +1026,7 @@ export function buildLibllamaForAbi({
   if (fusedServerOut) fs.chmodSync(fusedServerOut, 0o755);
   return {
     llama: llamaOut,
-    ggml: supportOuts,
+    ggml: ggmlOuts,
     llamaServer: llamaServerOut,
     elizainference: fusedLibOut,
     omnivoiceServer: fusedServerOut,
@@ -1385,10 +1168,6 @@ export function buildShimForAbi({
  * to ship the SONAME chain into the APK.
  */
 function locateBuiltGgmlLibs(buildDir) {
-  return locateBuiltSupportLibs(buildDir, ["libggml"]);
-}
-
-function locateBuiltSupportLibs(buildDir, prefixes) {
   const found = new Set();
   const stack = [buildDir];
   while (stack.length > 0) {
@@ -1416,7 +1195,7 @@ function locateBuiltSupportLibs(buildDir, prefixes) {
         // want the unversioned entry the dynamic linker resolves at
         // NEEDED-time.
         (entry.isFile() || entry.isSymbolicLink()) &&
-        prefixes.some((prefix) => entry.name.startsWith(prefix)) &&
+        entry.name.startsWith("libggml") &&
         entry.name.endsWith(".so")
       ) {
         found.add(path.join(dir, entry.name));
@@ -1636,12 +1415,142 @@ function stripBinary({ filePath, zigBin, log }) {
   return false;
 }
 
+/**
+ * Run the omnivoice-fuse graft against the resolved llama.cpp source tree.
+ * Pre-cmake step for `*-fused` targets — mirrors what the dflash build path
+ * does in `buildTarget()` for the same `*-fused` targets (linux-x64-cpu-fused
+ * et al.). Returns the prepare metadata so the caller can record it.
+ *
+ * Idempotent: `appendCmakeGraft` checks the sentinel and skips on re-runs;
+ * `prepareOmnivoiceFusion` blows the graft subdir away and re-stages from the
+ * omnivoice.cpp clone.
+ */
+export function applyOmnivoiceGraft({
+  srcDir,
+  omnivoiceCacheRoot,
+  log = console.log,
+}) {
+  const omnivoiceInfo = prepareOmnivoiceFusion({
+    cacheRoot: omnivoiceCacheRoot,
+    llamaCppRoot: srcDir,
+  });
+  const grafted = appendCmakeGraft({ llamaCppRoot: srcDir });
+  log(
+    `[compile-libllama] omnivoice-fuse: pin=${omnivoiceInfo.commit} ` +
+      `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
+      `sources=${omnivoiceInfo.sourceCount} ` +
+      `cmakeGraftAppended=${grafted}`,
+  );
+  return omnivoiceInfo;
+}
+
+/**
+ * Print the dry-run plan for one `android-<arch>-<backend>[-fused]` target:
+ * the cmake invocation, the post-cmake build target list, the graft steps
+ * (for fused targets), the expected output file layout, and the post-build
+ * verify step (for fused targets). Mirrors the structure of the dflash build
+ * script's --dry-run output so the two paths read the same.
+ *
+ * Exported for tests so the dry-run rendering can be asserted without going
+ * through the CLI entry point.
+ */
+export function describeAndroidTargetDryRun({
+  target,
+  srcDir,
+  cacheDir,
+  abiAssetDir,
+  jobs,
+  log = console.log,
+}) {
+  const parsed = parseAndroidTarget(target.target ?? target);
+  const abiTarget = ABI_TARGETS.find((t) => t.androidAbi === parsed.androidAbi);
+  if (!abiTarget) {
+    throw new Error(
+      `[compile-libllama] No ABI mapping for ${parsed.androidAbi}`,
+    );
+  }
+  const buildDir = path.join(srcDir, `build-${parsed.androidAbi}`);
+  const ccPath = path.join(cacheDir, "zig-driver", parsed.androidAbi, "zig-cc");
+  const cxxPath = path.join(
+    cacheDir,
+    "zig-driver",
+    parsed.androidAbi,
+    "zig-cxx",
+  );
+  log(`[compile-libllama] (dry-run) target=${parsed.target}`);
+  log(`  zig-target=${abiTarget.zigTarget} android-abi=${parsed.androidAbi}`);
+  log(`  src=${srcDir}`);
+  log(`  build=${buildDir}`);
+  log(`  install=${abiAssetDir}`);
+  if (parsed.fused) {
+    log(`  graft:`);
+    log(`    prepareOmnivoiceFusion llamaCppRoot=${srcDir}`);
+    log(`    appendCmakeGraft -> ${path.join(srcDir, "CMakeLists.txt")}`);
+  }
+  const cmakeFlags = [
+    "-S",
+    srcDir,
+    "-B",
+    buildDir,
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DBUILD_SHARED_LIBS=ON",
+    "-DLLAMA_BUILD_EXAMPLES=OFF",
+    "-DLLAMA_BUILD_TESTS=OFF",
+    "-DLLAMA_BUILD_SERVER=ON",
+    "-DLLAMA_CURL=OFF",
+    `-DCMAKE_C_COMPILER=${ccPath}`,
+    `-DCMAKE_CXX_COMPILER=${cxxPath}`,
+    "-DCMAKE_C_COMPILER_LAUNCHER=",
+    "-DCMAKE_CXX_COMPILER_LAUNCHER=",
+    "-DCMAKE_SYSTEM_NAME=Linux",
+    `-DCMAKE_SYSTEM_PROCESSOR=${abiTarget.cmakeProcessor}`,
+    "-DGGML_NATIVE=OFF",
+    "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
+    "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
+    "-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE",
+    "-DCMAKE_INSTALL_RPATH=",
+  ];
+  if (parsed.fused) {
+    cmakeFlags.push(...fusedExtraCmakeFlags());
+  }
+  log(`  cmake ${cmakeFlags.join(" ")}`);
+  const buildTargets = parsed.fused
+    ? fusedCmakeBuildTargets()
+    : ["llama", "llama-server"];
+  log(
+    `  cmake --build ${buildDir} --target ${buildTargets.join(" ")} -j ${jobs}`,
+  );
+  log(`  expected output layout under ${abiAssetDir}:`);
+  log(`    libllama.so libggml*.so llama-server libeliza-llama-shim.so`);
+  if (parsed.fused) {
+    log(
+      `    libelizainference.so llama-omnivoice-server (omnivoice-fuse artifacts)`,
+    );
+    log(
+      `  verifyFusedSymbols outDir=${abiAssetDir} target=${parsed.target} (post-build)`,
+    );
+  }
+}
+
 export async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
 
-  // Probe toolchain first so we fail loudly before doing any work.
-  const zigVersion = probeZig();
-  console.log(`[compile-libllama] Found zig ${zigVersion}`);
+  // If --target was passed, the caller is asking for the dflash-style
+  // explicit-triple build path. --abi still drives the legacy bulk-build
+  // (cpu only, no fusion) entry point so existing callers keep working.
+  if (args.targets.length > 0) {
+    return mainTargets(args);
+  }
+
+  // Probe toolchain first so we fail loudly before doing any work. Skip in
+  // dry-run mode — operators on a box without zig still want to inspect what
+  // the build WOULD do.
+  if (!args.dryRun) {
+    const zigVersion = probeZig();
+    console.log(`[compile-libllama] Found zig ${zigVersion}`);
+  } else {
+    console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
+  }
 
   let allPresent = true;
   for (const abi of args.abis) {
@@ -1667,6 +1576,27 @@ export async function main(argv = process.argv.slice(2)) {
     console.log(
       "[compile-libllama] All requested libllama.so files already present; --skip-if-present honoured.",
     );
+    return;
+  }
+  if (args.dryRun) {
+    console.log(
+      "[compile-libllama] (dry-run) bulk --abi mode requested; emit dry-run for each ABI as a non-fused android-<arch>-cpu target",
+    );
+    const srcDirForDry =
+      args.srcDir ??
+      (llamaCppSubmodulePresent() ? LLAMA_CPP_SUBMODULE_DIR : args.cacheDir);
+    for (const abi of args.abis) {
+      const arch = abi === "x86_64" ? "x86_64" : "arm64";
+      const target = `android-${arch}-cpu`;
+      const abiAssetDir = path.join(args.androidAssetsDir, abi);
+      describeAndroidTargetDryRun({
+        target,
+        srcDir: srcDirForDry,
+        cacheDir: args.cacheDir,
+        abiAssetDir,
+        jobs: args.jobs,
+      });
+    }
     return;
   }
 
@@ -1758,6 +1688,179 @@ export async function main(argv = process.argv.slice(2)) {
   console.log(
     `[compile-libllama] Built libllama.so + libeliza-llama-shim.so + llama-server for ` +
       `${args.abis.join(", ")} (${srcDescription}).`,
+  );
+}
+
+/**
+ * Explicit-triple entry point: runs the build for one or more
+ * `android-<arch>-<backend>[-fused]` targets. Mirrors the dflash build
+ * script's `--target` semantics one-for-one so an operator running the
+ * desktop fused build and the mobile fused build invokes the two scripts
+ * with the same target string.
+ *
+ * Build flow per target:
+ *   1. Resolve the llama.cpp source tree (--src-dir / in-repo submodule /
+ *      standalone clone — same logic as the bulk --abi path).
+ *   2. For `*-fused`: run the omnivoice graft (prepare + appendCmakeGraft).
+ *   3. Run `buildLibllamaForAbi()` (which also configures + links the
+ *      llama-server target — required for fused so omnivoice-core links
+ *      into the same binary).
+ *   4. For `*-fused`: run `verifyFusedSymbols()` against the install dir,
+ *      asserting libelizainference.so carries `llama_*` + `ov_*` +
+ *      `eliza_inference_*` exports.
+ *   5. Compile the bun:ffi struct-by-value shim (`buildShimForAbi`).
+ *
+ * Dry-run prints what each step WOULD do without touching the filesystem
+ * or running cmake / the NDK.
+ */
+export async function mainTargets(args) {
+  // Resolve the source dir up front so dry-run can report a real path.
+  let srcDir;
+  let srcDescription;
+  if (args.srcDir) {
+    if (
+      !args.dryRun &&
+      !fs.existsSync(path.join(args.srcDir, "CMakeLists.txt"))
+    ) {
+      throw new Error(
+        `[compile-libllama] --src-dir ${args.srcDir} does not contain a CMakeLists.txt; ` +
+          `expected a llama.cpp checkout.`,
+      );
+    }
+    srcDir = args.srcDir;
+    const isSubmodule =
+      path.resolve(srcDir) === path.resolve(LLAMA_CPP_SUBMODULE_DIR);
+    srcDescription = isSubmodule
+      ? `submodule packages/inference/llama.cpp`
+      : `external src-dir ${srcDir}`;
+  } else if (args.dryRun) {
+    // In a dry run with no --src-dir and no submodule, just describe the
+    // intended cache path; we never clone in dry-run.
+    srcDir = args.cacheDir;
+    srcDescription = `cache ${args.cacheDir} (would clone ${LLAMA_CPP_TAG})`;
+  } else {
+    srcDir = ensureLlamaCppCheckout({
+      cacheDir: args.cacheDir,
+      log: console.log,
+      spawn: run,
+    });
+    srcDescription = `llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
+  }
+
+  // omnivoice.cpp clone lives at <cacheRoot>/omnivoice.cpp; we use the parent
+  // of the llama.cpp cache dir so both clones live under one cache root, the
+  // same shape the dflash build path uses (cacheRoot=path.dirname(args.cacheDir)).
+  const omnivoiceCacheRoot = path.dirname(args.cacheDir);
+
+  if (!args.dryRun) {
+    const zigVersion = probeZig();
+    console.log(`[compile-libllama] Found zig ${zigVersion}`);
+  } else {
+    console.log(`[compile-libllama] (dry-run) skipping zig toolchain probe`);
+  }
+
+  for (const parsed of args.targets) {
+    const abiAssetDir = path.join(args.androidAssetsDir, parsed.androidAbi);
+    if (args.dryRun) {
+      describeAndroidTargetDryRun({
+        target: parsed.target,
+        srcDir,
+        cacheDir: args.cacheDir,
+        abiAssetDir,
+        jobs: args.jobs,
+      });
+      if (parsed.fused) {
+        console.log(
+          `  fused-graft cacheRoot=${omnivoiceCacheRoot} (omnivoice.cpp clone)`,
+        );
+      }
+      continue;
+    }
+
+    // Pre-cmake: run the omnivoice graft for fused targets. Same call
+    // sequence as the dflash linux-x64-cpu-fused path; the graft is
+    // toolchain-agnostic (CMake snippet + source layout).
+    let omnivoiceInfo = null;
+    if (parsed.fused) {
+      omnivoiceInfo = applyOmnivoiceGraft({
+        srcDir,
+        omnivoiceCacheRoot,
+        log: console.log,
+      });
+    }
+
+    // The existing per-ABI build helper handles the cmake configure +
+    // build + per-ABI install for libllama + ggml + llama-server. We
+    // reuse it as-is; the fused cmake flags + extra targets are applied
+    // below via a thin override hook so the non-fused path stays
+    // byte-for-byte identical.
+    buildLibllamaForAbi({
+      srcDir,
+      cacheDir: args.cacheDir,
+      abi: parsed.androidAbi,
+      abiAssetDir,
+      jobs: args.jobs,
+      log: console.log,
+      spawn: run,
+      // The fused path needs `-DELIZA_FUSE_OMNIVOICE=ON` on the configure
+      // line and the omnivoice-core + libelizainference + fused
+      // llama-server targets on the build line. Pass-through hooks let
+      // the caller layer those in without forking the helper.
+      extraCmakeFlags: parsed.fused ? fusedExtraCmakeFlags() : [],
+      extraBuildTargets: parsed.fused
+        ? fusedCmakeBuildTargets().filter(
+            (t) => t !== "llama" && t !== "llama-server",
+          )
+        : [],
+    });
+
+    buildShimForAbi({
+      cacheDir: args.cacheDir,
+      abi: parsed.androidAbi,
+      abiAssetDir,
+      llamaIncludeDir: path.join(srcDir, "include"),
+      log: console.log,
+      spawn: run,
+    });
+
+    // Post-build: for fused targets prove libelizainference.so exports both
+    // `llama_*` and `ov_*` (and the eliza_inference ABI surface). Hard error
+    // on a half-fused artifact — same contract as the dflash build path.
+    if (parsed.fused) {
+      const verification = verifyFusedSymbols({
+        outDir: abiAssetDir,
+        target: parsed.target,
+      });
+      console.log(
+        `[compile-libllama] omnivoice-fuse symbol-verify: ` +
+          `library=${verification.library} ` +
+          `llama=${verification.llamaSymbolCount} ` +
+          `omnivoice=${verification.omnivoiceSymbolCount} ` +
+          `abi=${verification.abiSymbolCount}`,
+      );
+      if (omnivoiceInfo) {
+        console.log(
+          `[compile-libllama] omnivoice pin=${omnivoiceInfo.commit} sources=${omnivoiceInfo.sourceCount}`,
+        );
+      }
+    }
+  }
+
+  if (args.dryRun) {
+    console.log(
+      `[compile-libllama] (dry-run) plan complete: ${args.targets.length} target(s) (${srcDescription}).`,
+    );
+    return;
+  }
+
+  // SIGSYS-handler shim only needed when an x86_64 ABI was built (matches
+  // the bulk --abi path's behavior — see the comment in main()).
+  if (args.targets.some((t) => t.androidAbi === "x86_64")) {
+    await compileShimMain(["--skip-if-present"]);
+  }
+
+  console.log(
+    `[compile-libllama] Built ${args.targets.map((t) => t.target).join(", ")} (${srcDescription}).`,
   );
 }
 

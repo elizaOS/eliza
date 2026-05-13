@@ -4,9 +4,9 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  __testing,
   APPLE_CALENDAR_GRANT_ID,
   APPLE_CALENDAR_PROVIDER,
-  __testing,
   createNativeAppleCalendarEvent,
   getNativeAppleCalendarFeed,
   listNativeAppleCalendars,

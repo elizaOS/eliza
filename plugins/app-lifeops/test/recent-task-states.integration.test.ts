@@ -3,7 +3,6 @@
  * returns a streak / notable summary the W1-D quiet-user-watcher consumes.
  */
 
-import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   appendScheduledTaskLogEntry,

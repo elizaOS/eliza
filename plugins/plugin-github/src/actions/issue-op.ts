@@ -21,11 +21,11 @@ import {
   describeSelection,
   isConfirmed,
   optionalStringArray,
-  resolveAccountSelection,
   type ResolvedClient,
   requireNumber,
   requireString,
   requireStringArray,
+  resolveAccountSelection,
   splitRepo,
 } from "../action-helpers.js";
 import {
@@ -417,7 +417,12 @@ export const issueOpAction: Action = {
     }
 
     if (!isConfirmed(options)) {
-      const preview = buildPreview(op, repo, describeSelection(selection), options);
+      const preview = buildPreview(
+        op,
+        repo,
+        describeSelection(selection),
+        options,
+      );
       await callback?.({ text: preview });
       return { success: false, requiresConfirmation: true, preview };
     }

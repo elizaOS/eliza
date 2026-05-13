@@ -29,9 +29,7 @@ describe("readEnvKvCacheType", () => {
     const warn = vi.fn();
     expect(readEnvKvCacheType("MISSING", {}, warn)).toBeUndefined();
     expect(readEnvKvCacheType("BLANK", { BLANK: "" }, warn)).toBeUndefined();
-    expect(
-      readEnvKvCacheType("WHITE", { WHITE: "   " }, warn),
-    ).toBeUndefined();
+    expect(readEnvKvCacheType("WHITE", { WHITE: "   " }, warn)).toBeUndefined();
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -99,7 +97,9 @@ describe("resolveKvCacheType", () => {
       ELIZA_LLAMA_CACHE_TYPE_K: "garbage",
       ELIZA_LLAMA_CACHE_TYPE_V: "alsogarbage",
     };
-    expect(resolveKvCacheType(ELIZA_1_MODEL, undefined, env, warn)).toBeUndefined();
+    expect(
+      resolveKvCacheType(ELIZA_1_MODEL, undefined, env, warn),
+    ).toBeUndefined();
     expect(warn).toHaveBeenCalledTimes(2);
   });
 

@@ -141,8 +141,8 @@ function runAggregator(runDir, extraArgs = []) {
   const runDir = buildSyntheticRun(tmpRoot);
   const res = runAggregator(runDir, ["--pre-release"]);
   if (res.status !== 0) {
-    console.error("[test] aggregator stdout:\n" + res.stdout);
-    console.error("[test] aggregator stderr:\n" + res.stderr);
+    console.error(`[test] aggregator stdout:\n${res.stdout}`);
+    console.error(`[test] aggregator stderr:\n${res.stderr}`);
     failures.push(`aggregator (pre-release) exited with status ${res.status}`);
   }
   const reportJsonPath = path.join(runDir, "report.json");
@@ -186,9 +186,11 @@ function runAggregator(runDir, extraArgs = []) {
   const runDir = buildSyntheticRun(tmpRoot);
   const res = runAggregator(runDir);
   if (res.status !== 0) {
-    console.error("[test] aggregator stdout:\n" + res.stdout);
-    console.error("[test] aggregator stderr:\n" + res.stderr);
-    failures.push(`aggregator (no pre-release) exited with status ${res.status}`);
+    console.error(`[test] aggregator stdout:\n${res.stdout}`);
+    console.error(`[test] aggregator stderr:\n${res.stderr}`);
+    failures.push(
+      `aggregator (no pre-release) exited with status ${res.status}`,
+    );
   }
   const reportJsonPath = path.join(runDir, "report.json");
   if (fs.existsSync(reportJsonPath)) {

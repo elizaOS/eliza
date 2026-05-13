@@ -136,14 +136,29 @@ RAM-constrained or repetition-heavy cases. EAGLE3 is the documented
 future upgrade path — re-evaluate after the drafter pipeline ships with
 measured acceptance numbers in `dflash/target-meta.json`.
 
-(Measured acceptance numbers: pending real Eliza-1 weights. On this
-machine, the DFlash runtime smoke against the local stand-in `qwen3.5-4b`
-target + repaired drafter runs end-to-end —
-`packages/inference/verify/dflash_drafter_runtime_smoke.mjs` reports
-`generation_attempt_completed` on `linux-x64-cpu` — but the stand-in
-drafter is not a KD'd Eliza-1 drafter so its acceptance rate is not
-representative. The eval harness writes the real numbers into the
-bundle's `target-meta.json` at publish time.)
+(Measured acceptance numbers: pending real KD'd Eliza-1 weights. The
+staged drafters for the locally-stageable tiers — `drafter-0_6b.gguf`,
+`drafter-1_7b.gguf` in the `eliza-1-0_6b`/`eliza-1-1_7b` bundles — are the
+upstream `Qwen/Qwen3-0.6B` GGUF, the documented substitute the staging
+scripts use until the distilled drafters exist (same convention the text
+backbones use for the not-yet-public Qwen3.5/3.6 bases). They are
+plain-AR shape (`token_embd.weight` + `blk.*.attn_*`, no `dflash_fc`/
+`dflash_hidden_norm`), carry the shared 151,936-token Qwen2 vocab with the
+`tokenizer.ggml.merges` repair intact, and are checkpoint-stamped
+(`dflash-draft.target_checkpoint_sha256` matches the tier's text GGUF
+sha256; `target-meta.json` `drafter.matchesTargetCheckpoint: true`). They
+are **not** KD'd, so their acceptance is not representative.
+`packages/inference/verify/dflash_drafter_runtime_smoke.mjs --bench`
+against the `linux-x64-cpu` fork build runs the draft loop end-to-end:
+0_6b drafts 23 / accepts 19 (82.6%, 2.09× tok/s), 1_7b accepts 47.1%
+(1.41×) — high/skewed because the drafter is the same/adjacent base as the
+target. After the v1 backbone conversion (or the v2 fine-tune) the drafter
+MUST be re-distilled + re-stamped against the new text GGUF
+(`distill_dflash_drafter.py --tier <t> --target-checkpoint … --target-gguf
+… --student-base Qwen/Qwen3-{0.6B|1.7B} --dataset … --out-dir …`; full run
+needs a GPU). `--synthetic-smoke` and `--stamp-only` run offline. The eval
+harness writes the real acceptance window into the bundle's
+`target-meta.json` at publish time.)
 
 ## DFlash↔TTS Rollback Coupling — Interface (DFlash side)
 

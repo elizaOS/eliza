@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Interactive end-to-end voice harness for Eliza-1 (catalog first-run default).
+ * Interactive end-to-end voice harness for Eliza-1 (`eliza-1-1_7b`).
  *
  * Send a voice message, get a voice response back — the full optimized
  * voice-assistant loop the W1–W13 swarm landed, run interactively:
@@ -16,7 +16,7 @@
  * with DFlash speculative decoding, KV-prefix prewarm, streaming LLM→TTS,
  * barge-in (pause/resume/hard-stop), and force-stop on a keypress.
  *
- * **No faking.** If the real Eliza-1 bundle, the DFlash `llama-server`
+ * **No faking.** If the real `eliza-1-1_7b` bundle, the DFlash `llama-server`
  * binary, the fused `libelizainference` (or whisper.cpp), a mic, or the
  * Silero VAD model is missing, this prints the exact missing-prereq
  * checklist + the fix command and exits non-zero. It never emits
@@ -64,7 +64,6 @@ function parseArgs(argv) {
     wav: null,
     noAudio: false,
     noDflash: false,
-    modelId: null,
     room: "voice-interactive",
     help: false,
   };
@@ -75,7 +74,6 @@ function parseArgs(argv) {
       out.platformReport = true;
     else if (a === "--no-audio") out.noAudio = true;
     else if (a === "--no-dflash") out.noDflash = true;
-    else if (a === "--model" || a === "--model-id") out.modelId = argv[++i] ?? "";
     else if (a === "--say") out.say = argv[++i] ?? "";
     else if (a === "--wav") out.wav = argv[++i] ?? "";
     else if (a === "--room") out.room = argv[++i] ?? out.room;
@@ -99,7 +97,6 @@ const USAGE = `Usage: bun run voice:interactive [-- <options>]
   --wav <path>         feed a WAV file through the same path once (non-mic smoke)
   --no-audio           don't play to speakers; write out-<ts>.wav instead
   --no-dflash          set ELIZA_DFLASH_DISABLE=1 (sanity compare; warns loudly)
-  --model <id>         Eliza-1 catalog id (default: FIRST_RUN_DEFAULT_MODEL_ID)
   --room <id>          conversation/room id (default: voice-interactive)
   -h, --help           this help
 `;
@@ -129,31 +126,6 @@ function tag(t, color, msg) {
   log(`${c(color, `[${t}]`)} ${msg}`);
 }
 
-function intFromEnv(name, fallback) {
-  const raw = process.env[name];
-  if (raw == null || raw.trim() === "") return fallback;
-  const value = Number.parseInt(raw, 10);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
-function resampleLinearFloat32(input, fromRate, toRate) {
-  if (fromRate === toRate) return input;
-  if (fromRate <= 0 || toRate <= 0) {
-    throw new Error(`invalid sample rate conversion ${fromRate} -> ${toRate}`);
-  }
-  const outLength = Math.max(1, Math.round((input.length * toRate) / fromRate));
-  const output = new Float32Array(outLength);
-  const ratio = fromRate / toRate;
-  for (let i = 0; i < outLength; i += 1) {
-    const x = i * ratio;
-    const lo = Math.floor(x);
-    const hi = Math.min(input.length - 1, lo + 1);
-    const frac = x - lo;
-    output[i] = input[lo] * (1 - frac) + input[hi] * frac;
-  }
-  return output;
-}
-
 // ---------------------------------------------------------------------------
 // Active optimizations report
 // ---------------------------------------------------------------------------
@@ -167,21 +139,23 @@ async function inspectActiveOptimizations(args) {
   const active = [];
   const missing = [];
 
-  // ── Catalog entry for the requested/default Eliza-1 tier ───────────────
+  // ── Catalog entry for eliza-1-1_7b ─────────────────────────────────────
   let catalogEntry = null;
   let drafterEntry = null;
   try {
     const { findCatalogModel, FIRST_RUN_DEFAULT_MODEL_ID } = await import(
       "../../shared/src/local-inference/catalog.ts"
     );
-    // The duet harness passes `args.modelId` (e.g. `eliza-1-0_8b`); the
+    // The duet harness passes `args.modelId` (e.g. `eliza-1-0_6b`); the
     // interactive harness leaves it unset → the first-run default.
-    catalogEntry = findCatalogModel(args?.modelId ?? FIRST_RUN_DEFAULT_MODEL_ID);
+    catalogEntry = findCatalogModel(
+      args?.modelId ?? FIRST_RUN_DEFAULT_MODEL_ID,
+    );
     const drafterId = catalogEntry?.runtime?.dflash?.drafterModelId;
     if (drafterId) drafterEntry = findCatalogModel(drafterId);
   } catch (err) {
     missing.push({
-      what: `resolve the Eliza-1 catalog entry (${err instanceof Error ? err.message : String(err)})`,
+      what: `resolve the eliza-1-1_7b catalog entry (${err instanceof Error ? err.message : String(err)})`,
       fix: "ensure @elizaos/shared is built: bun run build (or turbo run build --filter=@elizaos/shared)",
     });
   }
@@ -207,7 +181,7 @@ async function inspectActiveOptimizations(args) {
     );
     const candidate = path.join(
       elizaModelsDir(),
-      `${(catalogEntry?.id ?? "eliza-1-2b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
+      `${(catalogEntry?.id ?? "eliza-1-1_7b").replace(/[^a-zA-Z0-9._-]/g, "_")}.bundle`,
     );
     if (existsSync(candidate)) bundleRoot = candidate;
   } catch {
@@ -221,7 +195,7 @@ async function inspectActiveOptimizations(args) {
     });
   } else {
     missing.push({
-      what: `the ${catalogEntry?.id ?? "eliza-1-2b"} bundle is not installed`,
+      what: `the ${catalogEntry?.id ?? "eliza-1-1_7b"} bundle is not installed`,
       fix: "download it (run the harness without --list-active for the auto-download prompt) or follow RELEASE_V1.md to acquire/convert/quantize the bundle, then place it under <state-dir>/local-inference/models/<id>.bundle/",
     });
   }
@@ -257,7 +231,7 @@ async function inspectActiveOptimizations(args) {
           const lacking = required.filter((k) => advertised[k] !== true);
           if (lacking.length > 0) {
             missing.push({
-              what: `the installed llama-server (${status.capabilities?.target ?? "unknown target"}) does not advertise the kernels ${catalogEntry?.id ?? "eliza-1-2b"} requires: {${lacking.join(", ")}} — the eliza-1 path is gated on these (packages/inference/AGENTS.md §3). On Linux/Windows CPU/CUDA builds, some kernels (qjl_full, polarquant, turbo3_tcq) ship Metal-only.`,
+              what: `the installed llama-server (${status.capabilities?.target ?? "unknown target"}) does not advertise the kernels ${catalogEntry?.id ?? "eliza-1-1_7b"} requires: {${lacking.join(", ")}} — the eliza-1 path is gated on these (packages/inference/AGENTS.md §3). On Linux/Windows CPU/CUDA builds, some kernels (qjl_full, polarquant, turbo3_tcq) ship Metal-only.`,
               fix: `rebuild the fork with the matching backend and kernels: node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>  (a real interactive turn currently needs the macOS-Metal fused build, which advertises the full kernel set)`,
             });
             active.push({
@@ -1018,7 +992,7 @@ async function makeAudioSink(opts) {
 // ---------------------------------------------------------------------------
 
 /**
- * Ensure the selected Eliza-1 bundle on disk is registered in the local-inference
+ * Ensure the eliza-1-1_7b bundle on disk is registered in the local-inference
  * registry (so `listInstalledModels()` returns it and the engine can activate
  * it). A bundle downloaded via the dashboard registers itself; a bundle that
  * was staged/copied onto disk (e.g. a manual `RELEASE_V1.md` install) may not
@@ -1038,20 +1012,11 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
   const { upsertElizaModel } = await import(
     "../src/services/local-inference/registry.ts"
   );
-  const resolveBundleFile = (rel) => {
-    const direct = path.join(bundleRoot, rel);
-    if (existsSync(direct)) return direct;
-    const bundlePrefix = `bundles/${catalogEntry.id.replace("eliza-1-", "")}/`;
-    if (rel.startsWith(bundlePrefix)) {
-      const stripped = path.join(bundleRoot, rel.slice(bundlePrefix.length));
-      if (existsSync(stripped)) return stripped;
-    }
-    return direct;
-  };
-  const manifestPath = resolveBundleFile(
+  const manifestPath = path.join(
+    bundleRoot,
     catalogEntry.bundleManifestFile ?? "eliza-1.manifest.json",
   );
-  const textGguf = resolveBundleFile(catalogEntry.ggufFile);
+  const textGguf = path.join(bundleRoot, catalogEntry.ggufFile);
   if (!existsSync(textGguf)) {
     throw new Error(
       `bundle at ${bundleRoot} is missing the primary text GGUF ${catalogEntry.ggufFile}`,
@@ -1095,7 +1060,7 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
     );
     const companion = findCatalogModel(companionId);
     if (companion) {
-      const drafterGguf = resolveBundleFile(companion.ggufFile);
+      const drafterGguf = path.join(bundleRoot, companion.ggufFile);
       if (existsSync(drafterGguf)) {
         const dstat = await fs.stat(drafterGguf);
         await upsertElizaModel({
@@ -1130,14 +1095,14 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
 
 /**
  * Boot a minimal standalone AgentRuntime with the local-inference handler
- * registered and the selected Eliza-1 tier assigned to TEXT_SMALL. Returns
+ * registered and `eliza-1-1_7b` assigned to TEXT_SMALL. Returns
  * `{ runtime, generate }` where `generate` runs one transcript through the
- * runtime's local model handler and streams reply chunks via `onChunk`.
+ * runtime's message handler and streams `replyText` chunks via `onChunk`.
  *
  * Throws if the runtime can't be constructed (missing deps) — the caller
  * surfaces that as a prereq failure, not a crash.
  */
-async function bootStandaloneRuntime({ roomId, modelId }) {
+async function bootStandaloneRuntime({ roomId }) {
   // The runtime needs plugin-sql (storage) + plugin-bootstrap (message
   // service) + the local-inference model handler. Fail loudly if a piece
   // is missing rather than half-booting.
@@ -1162,19 +1127,15 @@ async function bootStandaloneRuntime({ roomId, modelId }) {
       `@elizaos/plugin-bootstrap not available: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  const { FIRST_RUN_DEFAULT_MODEL_ID } = await import(
-    "../../shared/src/local-inference/catalog.ts"
-  );
-  const activeModelId = modelId ?? FIRST_RUN_DEFAULT_MODEL_ID;
 
-  // In-memory DB; assign the selected Eliza-1 model to the local slots.
+  // In-memory DB; assign the eliza-1-1_7b model to TEXT_SMALL.
   process.env.PGLITE_DATA_DIR = process.env.PGLITE_DATA_DIR || "memory://";
 
   const runtime = new AgentRuntime({
     character: {
       name: "Eliza",
       bio: [
-        `A local-first AI assistant running the ${activeModelId} model with the full optimized voice stack.`,
+        "A local-first AI assistant running the eliza-1-1_7b model with the full optimized voice stack.",
       ],
       messageExamples: [],
       adjectives: [],
@@ -1192,22 +1153,7 @@ async function bootStandaloneRuntime({ roomId, modelId }) {
   );
   await ensureLocalInferenceHandler(runtime);
 
-  const { stringToUuid } = await import("../../core/src/utils.ts");
-  const worldId = stringToUuid(`voice-interactive-world:${roomId}`);
-  const entityId = stringToUuid(`voice-interactive-user:${roomId}`);
-  await runtime.ensureConnection({
-    entityId,
-    roomId,
-    worldId,
-    source: "voice-interactive",
-    type: "VOICE_DM",
-    channelId: roomId,
-    roomName: "Voice interactive",
-    userName: "Local voice user",
-    name: "Local voice user",
-  });
-
-  // Ensure the selected Eliza-1 model is assigned to the local slots (the eliza-1
+  // Ensure the eliza-1-1_7b model is assigned to TEXT_SMALL (the eliza-1
   // tiers route through the dflash llama-server). Best-effort: if no model
   // is installed this throws downstream and the caller reports it.
   try {
@@ -1215,10 +1161,7 @@ async function bootStandaloneRuntime({ roomId, modelId }) {
       "../src/services/local-inference/assignments.ts"
     );
     if (typeof setAssignment === "function") {
-      await setAssignment("TEXT_SMALL", activeModelId);
-      await setAssignment("TEXT_LARGE", activeModelId);
-      await setAssignment("TEXT_TO_SPEECH", activeModelId);
-      await setAssignment("TRANSCRIPTION", activeModelId);
+      await setAssignment("TEXT_SMALL", "eliza-1-1_7b");
     } else if (typeof readAssignments === "function") {
       // older API — skip; ensure-local-inference-handler auto-assigns
     }
@@ -1226,62 +1169,17 @@ async function bootStandaloneRuntime({ roomId, modelId }) {
     /* the handler may auto-assign; reported later if generation fails */
   }
 
-  // The `generate` callback for the voice turn controller. The default path is
-  // the local voice fast path: route directly through the runtime's local
-  // TEXT_SMALL handler so the live harness measures ASR -> local model -> TTS
-  // without the full action/planner surface. Set
-  // ELIZA_VOICE_INTERACTIVE_FULL_AGENT=1 to exercise the full message service.
+  // The `generate` callback for the voice turn controller.
   const generate = async (request, onChunk) => {
-    if (process.env.ELIZA_VOICE_INTERACTIVE_FULL_AGENT !== "1") {
-      let replyText = "";
-      const result = await runtime.useModel(ModelType.TEXT_SMALL, {
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are Eliza. Reply in one short conversational sentence. If the user asks you to say hello, include the word hello.",
-          },
-          { role: "user", content: request.transcript },
-        ],
-        maxTokens: intFromEnv("ELIZA_VOICE_REPLY_MAX_TOKENS", 24),
-        temperature: 0.2,
-        topP: 0.9,
-        stream: true,
-        onStreamChunk: async (chunk) => {
-          if (typeof chunk !== "string" || chunk.length === 0) return;
-          replyText += chunk;
-          await onChunk?.(chunk);
-        },
-        voiceOutput: "user-visible",
-      });
-      const finalText =
-        typeof result === "string"
-          ? result
-          : typeof result?.text === "string"
-            ? result.text
-            : replyText;
-      return {
-        transcript: request.transcript,
-        replyText: finalText || replyText,
-        ...(request.source ? { source: request.source } : {}),
-        ...(request.speaker ? { speaker: request.speaker } : {}),
-        ...(request.segments ? { segments: request.segments } : {}),
-        ...(request.turn ? { turn: request.turn } : {}),
-      };
-    }
-
     if (!runtime.messageService?.handleMessage) {
       throw new Error(
         "[voice] runtime.messageService.handleMessage is unavailable (plugin-bootstrap not loaded?)",
       );
     }
+    const entityId = `${roomId}-user`;
     const incoming = {
-      id: stringToUuid(`voice-interactive-message:${roomId}:${Date.now()}`),
-      content: {
-        text: request.transcript,
-        source: "voice-interactive",
-        channelType: "VOICE_DM",
-      },
+      id: `${roomId}-${Date.now()}`,
+      content: { text: request.transcript, source: "voice-interactive" },
       entityId,
       agentId: runtime.agentId,
       roomId,
@@ -1469,9 +1367,6 @@ async function main() {
 
   // Re-inspect after any auto-download.
   report = await inspectActiveOptimizations(args);
-  if (report.vadPath && !process.env.ELIZA_VAD_MODEL_PATH) {
-    process.env.ELIZA_VAD_MODEL_PATH = report.vadPath;
-  }
   printActive(report, args);
 
   if (report.missing.length > 0) {
@@ -1484,7 +1379,7 @@ async function main() {
     log(
       c(
         "dim",
-        `Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the selected bundle (${report.catalogEntry?.id ?? "Eliza-1"}), or follow RELEASE_V1.md.`,
+        "Set ELIZA_AUTO_DOWNLOAD_BUNDLE=1 to auto-download the (large) eliza-1-1_7b bundle, or follow RELEASE_V1.md.",
       ),
     );
     process.exit(1);
@@ -1497,29 +1392,23 @@ async function main() {
     log(
       c(
         "red",
-        `Failed to register the ${report.catalogEntry?.id ?? "Eliza-1"} bundle: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to register the eliza-1-1_7b bundle: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
     process.exit(1);
   }
 
-  const { stringToUuid } = await import("../../core/src/utils.ts");
-  const runtimeRoomId = stringToUuid(args.room);
-
   // ── Boot runtime ───────────────────────────────────────────────────────
   tag(
     "boot",
     "blue",
-    `starting standalone AgentRuntime (in-memory, ${report.catalogEntry?.id ?? "Eliza-1"} → local slots)…`,
+    "starting standalone AgentRuntime (in-memory, eliza-1-1_7b → TEXT_SMALL)…",
   );
   let runtime;
   let generate;
   let prewarmResponseHandler;
   try {
-    const booted = await bootStandaloneRuntime({
-      roomId: runtimeRoomId,
-      modelId: report.catalogEntry?.id ?? args.modelId,
-    });
+    const booted = await bootStandaloneRuntime({ roomId: args.room });
     runtime = booted.runtime;
     generate = booted.generate;
     prewarmResponseHandler = booted.prewarmResponseHandler;
@@ -1549,27 +1438,22 @@ async function main() {
     "../src/services/local-inference/engine.ts"
   );
   const engine = localInferenceEngine;
-  const activeModelId = report.catalogEntry?.id ?? args.modelId;
-  if (!activeModelId) {
-    log(c("red", "Failed to resolve the selected Eliza-1 model id."));
-    process.exit(1);
-  }
 
-  // Load the selected Eliza-1 model into the engine (this activates the bundle).
+  // Load the eliza-1-1_7b model into the engine (this activates the bundle).
   try {
     const { listInstalledModels } = await import(
       "../src/services/local-inference/registry.ts"
     );
     const installed = await listInstalledModels();
-    const target = installed.find((m) => m.id === activeModelId);
+    const target = installed.find((m) => m.id === "eliza-1-1_7b");
     if (!target)
-      throw new Error(`${activeModelId} is not registered as an installed model`);
+      throw new Error("eliza-1-1_7b is not registered as an installed model");
     await engine.load(target.path);
   } catch (err) {
     log(
       c(
         "red",
-        `Failed to activate the ${activeModelId} bundle in the engine: ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to activate the eliza-1-1_7b bundle in the engine: ${err instanceof Error ? err.message : String(err)}`,
       ),
     );
     process.exit(1);
@@ -1694,20 +1578,10 @@ async function main() {
       _lastReplyText += delta;
       process.stdout.write(delta);
     });
-    if (
-      typeof outcome?.replyText === "string" &&
-      outcome.replyText.length > 0 &&
-      _lastReplyText.trim().length === 0
-    ) {
-      _lastReplyText = outcome.replyText;
-      process.stdout.write(outcome.replyText);
-    }
     process.stdout.write("\n");
     return outcome;
   };
 
-  const oneShotMode = args.say != null || args.wav != null;
-  let completedTurnCount = 0;
   const events = {
     onSpeculativeStart: (transcript) =>
       tag("speculative", "dim", `generating off partial: "${transcript}"`),
@@ -1716,20 +1590,14 @@ async function main() {
     onSpeculativePromoted: () =>
       tag("speculative", "green", "promoted (matched final transcript)"),
     onTurnComplete: async (outcome) => {
-      completedTurnCount += 1;
       tag(
         "envelope",
         "green",
         `shouldRespond=${outcome.replyText && outcome.replyText.length > 0 ? "RESPOND" : "IGNORE/STOP"} replyText.len=${outcome.replyText?.length ?? 0}`,
       );
-      await printTurnLatency(runtimeRoomId);
-      // Idle-time phrase-cache prewarm is useful in live mic mode, but it
-      // pollutes one-shot smoke/benchmark runs by synthesizing cache phrases
-      // after the measured turn. Release gates should measure the turn, not
-      // cache warmup work.
-      if (!oneShotMode) {
-        engine.prewarmIdleVoicePhrases().catch(() => {});
-      }
+      await printTurnLatency(args.room);
+      // Idle-time phrase-cache prewarm after each turn.
+      engine.prewarmIdleVoicePhrases().catch(() => {});
     },
     onError: (err) => tag("error", "red", err?.message ?? String(err)),
   };
@@ -1744,8 +1612,8 @@ async function main() {
       const { markVoiceLatency } = await import(
         "../src/services/local-inference/latency-trace.ts"
       );
-      markVoiceLatency(runtimeRoomId, "vad-trigger");
-      markVoiceLatency(runtimeRoomId, "asr-final");
+      markVoiceLatency(args.room, "vad-trigger");
+      markVoiceLatency(args.room, "asr-final");
       const signal = new AbortController().signal;
       const outcome = await wrappedGenerate({
         transcript: args.say,
@@ -1796,32 +1664,13 @@ async function main() {
       );
       const wavBytes = await fs.readFile(wavPath);
       const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
-      const decodedPcm = decoded.pcm;
-      if (process.env.ELIZA_VOICE_WAV_USE_VAD !== "1") {
-        const transcript = await bridge.transcribePcm({
-          pcm: decodedPcm,
-          sampleRate: decoded.sampleRate,
-        });
-        tag("asr", "green", `"${transcript}"`);
-        const outcome = await wrappedGenerate({
-          transcript,
-          final: true,
-          source: "wav-batch-asr",
-        });
-        await events.onTurnComplete(outcome);
-        await bridge?.settle?.();
-        log(c("green", `[done] audio → ${audio.describe()}`));
-        await shutdown(0);
-        return;
-      }
-      const vadSampleRate = 16000;
-      const push = new PushMicSource({ sampleRate: vadSampleRate });
+      const push = new PushMicSource({ sampleRate: decoded.sampleRate });
       micSource = push;
       const vad = await createSileroVadDetector({
         modelPath: process.env.ELIZA_VAD_MODEL_PATH,
       });
       controller = await engine.startVoiceSession({
-        roomId: runtimeRoomId,
+        roomId: args.room,
         micSource: push,
         vad,
         generate: wrappedGenerate,
@@ -1835,36 +1684,20 @@ async function main() {
         speculatePauseMs: 300,
         events,
       });
-      // Feed the WAV PCM (the PushMicSource re-frames it). The decoder
-      // already returns mono Float32 PCM; only VAD needs a 16 kHz copy.
-      const f = resampleLinearFloat32(
-        decodedPcm,
-        decoded.sampleRate,
-        vadSampleRate,
+      // Feed the WAV PCM (the PushMicSource re-frames it). Convert int16→float.
+      const view = new DataView(
+        decoded.pcm.buffer,
+        decoded.pcm.byteOffset,
+        decoded.pcm.byteLength,
       );
-      const beforeTurns = completedTurnCount;
+      const n = Math.floor(decoded.pcm.byteLength / 2);
+      const f = new Float32Array(n);
+      for (let i = 0; i < n; i++) f[i] = view.getInt16(i * 2, true) / 0x8000;
       push.push(f);
       // Trailing silence so the VAD fires speech-end.
-      push.push(new Float32Array(vadSampleRate)); // 1 s
-      // Wait for the VAD-driven turn to complete.
+      push.push(new Float32Array(decoded.sampleRate)); // 1 s
+      // Wait for the turn to complete.
       await new Promise((r) => setTimeout(r, 4000));
-      if (completedTurnCount === beforeTurns) {
-        // File-mode smoke must be deterministic. Synthetic fixture audio can
-        // sit below live VAD thresholds, so fall back to the same fused ASR
-        // ABI over the full file and then drive the normal LLM→TTS half.
-        // Live mic sessions still require VAD; this branch is --wav only.
-        const transcript = await bridge.transcribePcm({
-          pcm: decodedPcm,
-          sampleRate: decoded.sampleRate,
-        });
-        tag("asr", "green", `"${transcript}"`);
-        const outcome = await wrappedGenerate({
-          transcript,
-          final: true,
-          source: "wav-batch-asr-fallback",
-        });
-        await events.onTurnComplete(outcome);
-      }
       await bridge?.settle?.();
     } catch (err) {
       log(
@@ -1899,7 +1732,7 @@ async function main() {
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
     });
     controller = await engine.startVoiceSession({
-      roomId: runtimeRoomId,
+      roomId: args.room,
       micSource,
       vad,
       generate: wrappedGenerate,
@@ -2000,11 +1833,8 @@ async function main() {
     });
   }
 
-  // Fire an initial idle phrase-cache prewarm only for live mic sessions.
-  // One-shot --say/--wav runs should stay deterministic and short.
-  if (!oneShotMode) {
-    engine.prewarmIdleVoicePhrases().catch(() => {});
-  }
+  // Fire an initial idle phrase-cache prewarm.
+  engine.prewarmIdleVoicePhrases().catch(() => {});
 
   // Keep the process alive; shutdown happens via 'q' / Ctrl-C / signals.
   process.on("SIGINT", () => {
@@ -2020,10 +1850,10 @@ async function main() {
 // Guarded so importing this module (instead of running it) doesn't kick off
 // the interactive `main()`.
 export {
-  inspectActiveOptimizations,
   ensureBundleRegistered,
-  printPlatformReport,
+  inspectActiveOptimizations,
   PLATFORM_MATRIX,
+  printPlatformReport,
 };
 
 if (import.meta.main) {

@@ -43,7 +43,7 @@ function defaultStateFor(id: PermissionId): PermissionState {
 }
 
 function resolveStateDir(): string {
-  const explicit = process.env.ELIZA_STATE_DIR;
+  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.MILADY_STATE_DIR;
   if (explicit?.trim()) return explicit;
   return path.join(os.homedir(), ".eliza");
 }

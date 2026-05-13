@@ -1,12 +1,11 @@
-import { FIRST_RUN_DEFAULT_MODEL_ID, MODEL_CATALOG } from "./catalog";
 import {
-  isDefaultLocalModelFamily,
-  isSettingsDefaultLocalModel,
-} from "./catalog-policy";
+  DEFAULT_ELIGIBLE_MODEL_IDS,
+  FIRST_RUN_DEFAULT_MODEL_ID,
+  MODEL_CATALOG,
+} from "./catalog";
 import { assessFit } from "./hardware";
 import type {
   CatalogModel,
-  CatalogQuantizationVariant,
   HardwareFitLevel,
   HardwareProbe,
   TextGenerationSlot,
@@ -24,7 +23,6 @@ export interface RecommendedModelSelection {
   slot: TextGenerationSlot;
   platformClass: RecommendationPlatformClass;
   model: CatalogModel | null;
-  quantization: CatalogQuantizationVariant | null;
   fit: HardwareFitLevel | null;
   reason: string;
   alternatives: CatalogModel[];
@@ -39,47 +37,51 @@ const BYTES_PER_GB = 1024 ** 3;
  * tier that fits the platform; desktops/servers pick larger tiers
  * first when memory headroom allows.
  */
+// Per the 2026-05-12 operator directive, the Qwen3.5 line is the default —
+// eliza-1-0_8b (Qwen3.5-0.8B) is the small default, eliza-1-2b
+// (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers (eliza-1-0_6b /
+// eliza-1-1_7b) stay in the ladders as DEPRECATED fallbacks but sit below
+// the Qwen3.5 tiers. Mirrors the app-core SLOT_LADDERS — keep the two in
+// sync.
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, string[]>
 > = {
   mobile: {
-    // 2026-05-12 operator directive: Qwen3.5 tiers first; legacy Qwen3 tiers
-    // (0_6b, 1_7b) remain as fallbacks for existing installs.
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-1_7b"],
-    TEXT_LARGE: ["eliza-1-1_7b", "eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-0_6b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_LARGE: ["eliza-1-2b", "eliza-1-0_8b", "eliza-1-1_7b", "eliza-1-0_6b"],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-1_7b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
-      "eliza-1-1_7b",
+      "eliza-1-2b",
       "eliza-1-1_7b",
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
     TEXT_LARGE: [
       "eliza-1-27b-256k",
       "eliza-1-27b",
       "eliza-1-9b",
-      "eliza-1-1_7b",
+      "eliza-1-2b",
       "eliza-1-1_7b",
     ],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["eliza-1-0_6b", "eliza-1-1_7b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-1_7b", "eliza-1-1_7b"],
+    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
   },
 };
 
@@ -163,47 +165,6 @@ function canFit(
   return assessCatalogModelFit(hardware, model, catalog) !== "wontfit";
 }
 
-function effectiveMemoryGb(hardware: HardwareProbe): number {
-  if (hardware.appleSilicon) return hardware.totalRamGb;
-  if (hardware.gpu) {
-    return Math.max(hardware.gpu.totalVramGb, hardware.totalRamGb * 0.5);
-  }
-  return hardware.totalRamGb * 0.5;
-}
-
-export function selectBestQuantizationVariant(
-  model: CatalogModel,
-  hardware: HardwareProbe,
-): CatalogQuantizationVariant | null {
-  const matrix = model.quantization;
-  if (!matrix) return null;
-  const published = matrix.variants.filter(
-    (variant) => variant.status === "published",
-  );
-  if (published.length === 0) return null;
-  const isMobile = classifyRecommendationPlatform(hardware) === "mobile";
-  const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
-  const maxFootprintRatio = isMobile ? 0.65 : 0.7;
-  const rank: Record<CatalogQuantizationVariant["id"], number> = {
-    q8_0: 3,
-    q6_k: 2,
-    q4_k_m: 1,
-  };
-  const fitting = published
-    .filter(
-      (variant) =>
-        variant.minRamGb <= memGb &&
-        variant.sizeGb <= memGb * maxFootprintRatio,
-    )
-    .sort((left, right) => rank[right.id] - rank[left.id]);
-  return (
-    fitting[0] ??
-    published.find((variant) => variant.id === matrix.defaultVariantId) ??
-    published[0] ??
-    null
-  );
-}
-
 /**
  * True when every kernel listed in `model.runtime.optimizations.requiresKernel`
  * is advertised as `true` in the binary's CAPABILITIES.json kernels map.
@@ -268,7 +229,8 @@ function fallbackCandidates(
 ): CatalogModel[] {
   const candidates = chatCandidates(catalog).filter(
     (model) =>
-      isDefaultLocalModelFamily(model) && canFit(hardware, model, catalog),
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
+      canFit(hardware, model, catalog),
   );
   const preferLongContext = hasLongContextHeadroom(hardware);
   return candidates.sort((left, right) => {
@@ -329,20 +291,14 @@ export function selectRecommendedModelForSlot(
           kernelRequirementsSatisfied(model, binaryKernels),
         );
   const model = alternatives[0] ?? null;
-  const quantization = model
-    ? selectBestQuantizationVariant(model, hardware)
-    : null;
   const fit = model ? assessCatalogModelFit(hardware, model, catalog) : null;
   return {
     slot,
     platformClass,
     model,
-    quantization,
     fit,
     reason: model
-      ? `${platformClass} ${slot} ladder selected ${model.id}${
-          quantization ? ` (${quantization.id})` : ""
-        }`
+      ? `${platformClass} ${slot} ladder selected ${model.id}`
       : `${platformClass} ${slot} ladder has no fitting catalog model`,
     alternatives,
   };
@@ -406,8 +362,16 @@ export function recommendForFirstRun(
 ): CatalogModel | null {
   const byId = catalogById(catalog);
   const preferred = byId.get(FIRST_RUN_DEFAULT_MODEL_ID);
-  if (preferred && isSettingsDefaultLocalModel(preferred)) return preferred;
-  return catalog.find((model) => isSettingsDefaultLocalModel(model)) ?? null;
+  if (preferred && DEFAULT_ELIGIBLE_MODEL_IDS.has(preferred.id))
+    return preferred;
+  return (
+    catalog.find(
+      (model) =>
+        !model.hiddenFromCatalog &&
+        model.runtimeRole !== "dflash-drafter" &&
+        DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id),
+    ) ?? null
+  );
 }
 
 export function chooseSmallerFallbackModel(

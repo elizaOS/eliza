@@ -176,7 +176,6 @@ export class TwitchService extends Service implements ITwitchService {
           { src: "plugin:twitch", agentId: runtime.agentId },
           "Registered Twitch chat connector",
         );
-        continue;
       }
     }
   }

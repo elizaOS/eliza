@@ -180,7 +180,7 @@
       "@elizaos/skills": ["./packages/skills/dist/index.d.ts"],
       "@elizaos/vault": ["./packages/vault/dist/index.d.ts"],
       "@elizaos/plugin-linear": ["./plugins/plugin-linear/dist/index.d.ts"],
-      "@elizaos/plugin-bluesky": ["./plugins/plugin-bluesky/index.ts"],
+      "@elizaos/plugin-bluesky": ["./plugins/plugin-bluesky/dist/index.d.ts"],
       "@elizaos/app-companion": ["./plugins/app-companion/dist/index.d.ts"],
       "@elizaos/app-polymarket": ["./plugins/app-polymarket/dist/index.d.ts"],
       "@elizaos/plugin-computeruse": [
@@ -275,7 +275,7 @@
       "@elizaos/plugin-mysticism": [
         "./plugins/plugin-mysticism/dist/index.d.ts"
       ],
-      "@elizaos/plugin-groq": ["./plugins/plugin-groq/dist/index.d.ts"],
+      "@elizaos/plugin-groq": ["./plugins/plugin-groq/index.ts"],
       "@elizaos/plugin-openai": ["./plugins/plugin-openai/dist/index.d.ts"],
       "@elizaos/plugin-commands": ["./plugins/plugin-commands/dist/index.d.ts"],
       "@elizaos/plugin-x": ["./plugins/plugin-x/dist/index.d.ts"],
@@ -286,7 +286,7 @@
       ],
       "@elizaos/plugin-calendly": ["./plugins/plugin-calendly/dist/index.d.ts"],
       "@elizaos/app-wifi": ["./plugins/app-wifi/dist/index.d.ts"],
-      "@elizaos/plugin-xai": ["./plugins/plugin-xai/dist/index.d.ts"],
+      "@elizaos/plugin-xai": ["./plugins/plugin-xai/index.ts"],
       "@elizaos/plugin-xai/*": ["./plugins/plugin-xai/*"],
       "@elizaos/plugin-cli": ["./plugins/plugin-cli/dist/index.d.ts"],
       "@elizaos/plugin-signal": ["./plugins/plugin-signal/dist/index.d.ts"],

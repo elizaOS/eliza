@@ -19,11 +19,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import {
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -102,7 +98,10 @@ function loadPlan(runDir) {
       JSON.stringify(["hermes", "openclaw", "eliza"]),
     "plan.harnesses defaults to hermes,openclaw,eliza",
   );
-  assert(plan.cells.length === 6, `expected 6 cells (got ${plan.cells.length})`);
+  assert(
+    plan.cells.length === 6,
+    `expected 6 cells (got ${plan.cells.length})`,
+  );
   for (const cell of plan.cells) {
     assert(
       cell.command.includes("--suite") &&
@@ -148,7 +147,7 @@ function loadPlan(runDir) {
   assert(plan.cells.length === 1, "exactly one cell planned");
   const cell = plan.cells[0];
   assert(
-    cell.skipReason && cell.skipReason.includes("dflash"),
+    cell.skipReason?.includes("dflash"),
     `small tier skip reason mentions dflash (got ${cell.skipReason})`,
   );
   rmSync(runDir, { recursive: true, force: true });

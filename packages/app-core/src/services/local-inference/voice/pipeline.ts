@@ -169,6 +169,18 @@ export interface VoicePipelineConfig {
 export interface VoicePipelineEvents {
   /** Fired once, the instant ASR emits its final token (= drafter+verifier kick-off). */
   onAsrComplete?(tokens: ReadonlyArray<TextToken>): void;
+  /**
+   * Fired exactly once per turn, right after the ASR phase finishes and
+   * before the first drafter/verifier round. ASR → text → TTS are
+   * sequential within a turn (AGENTS.md §4), so the idle ASR-model pages
+   * can be dropped now — wire this to `MmapRegionHandle.evictPages()`
+   * (`madvise(MADV_DONTNEED)` on POSIX) for the ASR region to claw back
+   * ~1 GB of peak RSS while TTS decodes. The pages page back in
+   * transparently on the next turn's `feed()`; a host that prefers to
+   * keep ASR resident simply doesn't supply this hook. May be async; the
+   * pipeline does not block on it (a slow trim must not delay first audio).
+   */
+  onAsrPhaseComplete?(): void | Promise<void>;
   /** Fired with each verifier accept/reject event before it hits the scheduler. */
   onVerifierEvent?(event: VerifierStreamEvent): void;
   /** Fired when the loop exits (verifier `done`, token cap, or barge-in cancel). */
@@ -307,6 +319,13 @@ export class VoicePipeline {
     // The instant ASR's last token has been emitted: drafter + verifier
     // start. (`onAsrComplete` is the kick-off observability hook.)
     this.events.onAsrComplete?.(asrTokens);
+    // ASR is done for this turn; text generation + TTS run next and never
+    // touch the ASR model again until the next turn. Let the host drop the
+    // idle ASR pages now (within-turn RSS trim, AGENTS.md §4). Fire-and-
+    // forget: a slow `madvise` must not delay the drafter kick-off.
+    if (this.events.onAsrPhaseComplete) {
+      void Promise.resolve(this.events.onAsrPhaseComplete()).catch(() => {});
+    }
 
     // --- overlapped drafter ∥ verifier loop ---------------------------
     // Each round:

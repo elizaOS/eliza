@@ -158,9 +158,7 @@ function createSyntheticXGrant(
     mode,
     metadata: {
       source: "plugin-x-runtime",
-      ...(accountId
-        ? { accountId, connectorAccountId: accountId }
-        : {}),
+      ...(accountId ? { accountId, connectorAccountId: accountId } : {}),
     },
     lastRefreshAt: new Date().toISOString(),
   });
@@ -392,7 +390,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     ): Promise<StartLifeOpsXConnectorResponse> {
       const side =
         normalizeOptionalConnectorSide(request.side, "side") ?? "owner";
-      const mode =
+      const _mode =
         normalizeOptionalConnectorMode(request.mode, "mode") ?? xDefaultMode();
       const requestedAccountId = xRequestedAccountId(request);
       const runtimeStatus = await getXAccountStatusWithRuntimeService({
@@ -434,9 +432,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
             : {},
         metadata: {
           source: "plugin-x-runtime",
-          ...(accountId
-            ? { accountId, connectorAccountId: accountId }
-            : {}),
+          ...(accountId ? { accountId, connectorAccountId: accountId } : {}),
         },
       });
       return {
@@ -539,7 +535,11 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     async getXDmDigest(
-      opts: { accountId?: string; limit?: number; conversationId?: string } = {},
+      opts: {
+        accountId?: string;
+        limit?: number;
+        conversationId?: string;
+      } = {},
     ): Promise<{
       generatedAt: string;
       conversationId: string | null;
@@ -610,9 +610,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
             isInbound:
               typeof x.isInbound === "boolean"
                 ? x.isInbound
-                : metadata.fromBot === true
-                  ? false
-                  : true,
+                : metadata.fromBot !== true,
             text: memory.content?.text ?? "",
             receivedAt:
               Number.isFinite(Number(memory.createdAt)) &&

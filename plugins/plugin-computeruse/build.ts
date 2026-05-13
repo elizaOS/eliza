@@ -28,7 +28,10 @@ async function build() {
       (async () => {
         console.log("Bundling with Bun...");
         const outputs: BuildArtifact[] = [];
-        for (const entrypoint of ["./src/index.ts", "./src/register-routes.ts"]) {
+        for (const entrypoint of [
+          "./src/index.ts",
+          "./src/register-routes.ts",
+        ]) {
           const result = await Bun.build({
             entrypoints: [entrypoint],
             outdir: "./dist",
@@ -36,11 +39,7 @@ async function build() {
             format: "esm",
             sourcemap: "linked",
             minify: false,
-            external: [
-              "node:*",
-              "@elizaos/core",
-              "puppeteer-core",
-            ],
+            external: ["node:*", "@elizaos/core", "puppeteer-core"],
             naming: {
               entry: "[dir]/[name].[ext]",
             },
@@ -53,10 +52,7 @@ async function build() {
           outputs.push(...result.outputs);
         }
 
-        const totalSize = outputs.reduce(
-          (sum, output) => sum + output.size,
-          0,
-        );
+        const totalSize = outputs.reduce((sum, output) => sum + output.size, 0);
         const sizeMB = (totalSize / 1024 / 1024).toFixed(2);
         console.log(`Built ${outputs.length} file(s) - ${sizeMB}MB`);
 

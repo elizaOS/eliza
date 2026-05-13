@@ -177,10 +177,7 @@ async function nextAnchorIso(
     | {
         resolve?: (
           ctx: unknown,
-        ) =>
-          | Promise<{ atIso: string } | null>
-          | { atIso: string }
-          | null;
+        ) => Promise<{ atIso: string } | null> | { atIso: string } | null;
       }
     | null
     | undefined;
@@ -268,10 +265,7 @@ export async function computeNextFireAt(
       return nextMs === null ? null : new Date(nextMs).toISOString();
     }
     case "interval": {
-      if (
-        !Number.isFinite(trigger.everyMinutes) ||
-        trigger.everyMinutes <= 0
-      ) {
+      if (!Number.isFinite(trigger.everyMinutes) || trigger.everyMinutes <= 0) {
         return null;
       }
       const fromMs = parseIsoMs(trigger.from);

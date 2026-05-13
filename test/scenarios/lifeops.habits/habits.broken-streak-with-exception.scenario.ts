@@ -48,9 +48,7 @@ export default scenario({
       type: "custom",
       name: "agent-acknowledges-exception",
       predicate: (ctx) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const acknowledged =
           reply.includes("sick") ||

@@ -221,10 +221,8 @@ describe("LifeOps plugin action gating", () => {
     const paramNames = (money.parameters ?? []).map((p) => p.name);
     expect(paramNames).toContain("action");
     expect(paramNames).not.toContain("mode");
-    const actionEnum =
-      (money.parameters ?? []).find((p) => p.name === "action")?.schema as
-        | { enum?: readonly string[] }
-        | undefined;
+    const actionEnum = (money.parameters ?? []).find((p) => p.name === "action")
+      ?.schema as { enum?: readonly string[] } | undefined;
     expect(actionEnum?.enum).toEqual(
       expect.arrayContaining([
         "dashboard",
@@ -253,15 +251,11 @@ describe("LifeOps plugin action gating", () => {
     expect(block.similes ?? []).toEqual(
       expect.arrayContaining(["APP_BLOCK", "WEBSITE_BLOCK"]),
     );
-    const targetEnum =
-      (block.parameters ?? []).find((p) => p.name === "target")?.schema as
-        | { enum?: readonly string[] }
-        | undefined;
+    const targetEnum = (block.parameters ?? []).find((p) => p.name === "target")
+      ?.schema as { enum?: readonly string[] } | undefined;
     expect(targetEnum?.enum).toEqual(["app", "website"]);
-    const actionEnum =
-      (block.parameters ?? []).find((p) => p.name === "action")?.schema as
-        | { enum?: readonly string[] }
-        | undefined;
+    const actionEnum = (block.parameters ?? []).find((p) => p.name === "action")
+      ?.schema as { enum?: readonly string[] } | undefined;
     expect(actionEnum?.enum).toEqual([
       "block",
       "unblock",
@@ -281,9 +275,9 @@ describe("LifeOps plugin action gating", () => {
     expect(credentials.similes ?? []).toEqual(
       expect.arrayContaining(["AUTOFILL", "PASSWORD_MANAGER"]),
     );
-    const actionEnum =
-      (credentials.parameters ?? []).find((p) => p.name === "action")
-        ?.schema as { enum?: readonly string[] } | undefined;
+    const actionEnum = (credentials.parameters ?? []).find(
+      (p) => p.name === "action",
+    )?.schema as { enum?: readonly string[] } | undefined;
     expect(actionEnum?.enum).toEqual([
       "fill",
       "whitelist_add",
@@ -333,8 +327,8 @@ describe("LifeOps plugin action gating", () => {
       throw new Error("VOICE_CALL has no `action` parameter");
     }
     const enumValues =
-      (actionParam.schema as { enum?: readonly string[] } | undefined)
-        ?.enum ?? [];
+      (actionParam.schema as { enum?: readonly string[] } | undefined)?.enum ??
+      [];
     expect(enumValues).toEqual(["dial"]);
 
     const recipientKindParam = (voiceCall.parameters ?? []).find(
@@ -350,9 +344,7 @@ describe("LifeOps plugin action gating", () => {
   });
 });
 
-describe.each([
-  "ENTITY",
-])("%s owner-only access gate", (actionName) => {
+describe.each(["ENTITY"])("%s owner-only access gate", (actionName) => {
   it("declares an owner role gate", () => {
     const action = findAction(actionName);
     expect(action.roleGate).toEqual({ minRole: "OWNER" });

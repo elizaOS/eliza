@@ -55,7 +55,7 @@ export function setBrowserRuntimeOptions(options: {
   }
 }
 
-function envFlagEnabled(value: string | undefined): boolean {
+function _envFlagEnabled(value: string | undefined): boolean {
   if (!value) return false;
   const normalized = value.trim().toLowerCase();
   return normalized === "1" || normalized === "true" || normalized === "yes";

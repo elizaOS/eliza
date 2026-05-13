@@ -24,11 +24,6 @@
 
 const TTS_SAMPLE_RATE = 24_000;
 const ASR_SAMPLE_RATE = 16_000;
-const DEFAULT_PACE_FRAME_MS = 32;
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 /**
  * Linear-interpolation resample of mono `Float32Array` PCM. Cheap and good
@@ -66,12 +61,6 @@ export function resampleLinear(pcm, fromRate, toRate) {
  * each chunk to `targetRate` and forwards it to a callback (the harness pushes
  * it into the peer's ring / `PushMicSource`). Tracks last-write time and total
  * samples so the harness can detect "the producer has drained".
- *
- * By default writes are synchronous for tests and simple wiring. The live duet
- * harness enables `pace`, which forwards the resampled PCM in frame-sized
- * chunks over real audio time. That matters because the peer's VAD runs
- * asynchronously; blasting a multi-second TTS buffer through `PushMicSource`
- * in one JS turn can outrun VAD gating and starve ASR of most of the speech.
  */
 export class DuetSink {
   /**
@@ -82,8 +71,6 @@ export class DuetSink {
    * @param {number} [opts.sourceRate] default 24 kHz (the TTS rate). Each
    *   `write` may carry its own rate; this is only the assumed default when a
    *   write doesn't say.
-   * @param {boolean} [opts.pace] when true, forward in realtime-ish frames.
-   * @param {number} [opts.frameMs] paced frame size, default 32 ms.
    */
   constructor(onResampled, opts = {}) {
     if (typeof onResampled !== "function") {
@@ -92,17 +79,10 @@ export class DuetSink {
     this.onResampled = onResampled;
     this.targetRate = opts.targetRate ?? ASR_SAMPLE_RATE;
     this.sourceRate = opts.sourceRate ?? TTS_SAMPLE_RATE;
-    this.pace = opts.pace ?? false;
-    this.frameSamples = Math.max(
-      1,
-      Math.round((this.targetRate * (opts.frameMs ?? DEFAULT_PACE_FRAME_MS)) / 1000),
-    );
     this._totalWritten = 0;
     this._totalOut = 0;
     this._lastWriteAt = 0;
     this._buffered = 0;
-    this._queue = Promise.resolve();
-    this._generation = 0;
   }
 
   /** @param {Float32Array} pcm @param {number} sampleRate */
@@ -113,27 +93,14 @@ export class DuetSink {
         ? sampleRate
         : this.sourceRate;
     this._totalWritten += pcm.length;
+    this._buffered += pcm.length;
+    this._lastWriteAt = Date.now();
     const resampled = resampleLinear(pcm, sr, this.targetRate);
-    if (!this.pace) {
-      this._lastWriteAt = Date.now();
-      this._totalOut += resampled.length;
-      this.onResampled(resampled, this.targetRate);
-      this._buffered = 0;
-      return;
-    }
-    this._buffered += resampled.length;
-    const generation = this._generation;
-    this._queue = this._queue
-      .then(() => this._forwardPaced(resampled, generation))
-      .catch(() => {
-        // The harness treats audio forwarding as best-effort after the engine
-        // has accepted a TTS chunk. Keep future chunks flowing if one callback
-        // races with shutdown.
-      });
+    this._totalOut += resampled.length;
+    this.onResampled(resampled, this.targetRate);
   }
 
   drain() {
-    this._generation += 1;
     this._buffered = 0;
   }
 
@@ -160,24 +127,6 @@ export class DuetSink {
   forwardedSeconds() {
     return this._totalOut / this.targetRate;
   }
-
-  /** Wait until all paced chunks queued so far have been forwarded or drained. */
-  async settle() {
-    await this._queue;
-  }
-
-  async _forwardPaced(pcm, generation) {
-    for (let offset = 0; offset < pcm.length; offset += this.frameSamples) {
-      if (generation !== this._generation) return;
-      const end = Math.min(pcm.length, offset + this.frameSamples);
-      const slice = pcm.subarray(offset, end);
-      this._lastWriteAt = Date.now();
-      this._totalOut += slice.length;
-      this.onResampled(slice, this.targetRate);
-      this._buffered = Math.max(0, this._buffered - slice.length);
-      await sleep((slice.length / this.targetRate) * 1000);
-    }
-  }
 }
 
 /**
@@ -199,8 +148,6 @@ export class DuetAudioBridge {
    * @param {object} [args.opts]
    * @param {number} [args.opts.ringMs] target cross-ring size in ms (sweep knob).
    * @param {number} [args.opts.targetRate] ASR/VAD rate (default 16 kHz).
-   * @param {boolean} [args.opts.pace] forward cross-agent PCM over real audio time.
-   * @param {number} [args.opts.frameMs] paced frame size, default 32 ms.
    * @param {(dir: "aToB"|"bToA", pcm: Float32Array) => void} [args.opts.onForward]
    *   observability hook (the harness uses it to count PCM crossing each way).
    */
@@ -208,11 +155,6 @@ export class DuetAudioBridge {
     this.ringMs = opts.ringMs ?? 200;
     const targetRate = opts.targetRate ?? ASR_SAMPLE_RATE;
     const onForward = opts.onForward;
-    const paceOpts = {
-      targetRate,
-      pace: opts.pace ?? false,
-      frameMs: opts.frameMs ?? DEFAULT_PACE_FRAME_MS,
-    };
     // A speaks → resample → push into B's mic source.
     this.aToB = new DuetSink(
       (pcm) => {
@@ -223,7 +165,7 @@ export class DuetAudioBridge {
           /* a stopped mic source ignores pushes — fine */
         }
       },
-      paceOpts,
+      { targetRate },
     );
     // B replies → resample → push into A's mic source.
     this.bToA = new DuetSink(
@@ -235,7 +177,7 @@ export class DuetAudioBridge {
           /* ignore */
         }
       },
-      paceOpts,
+      { targetRate },
     );
   }
 
@@ -247,10 +189,5 @@ export class DuetAudioBridge {
   /** The sink the harness assigns to engine B's scheduler. */
   sinkForB() {
     return this.bToA;
-  }
-
-  /** Wait until both cross-ring sinks have flushed queued paced audio. */
-  async settle() {
-    await Promise.all([this.aToB.settle(), this.bToA.settle()]);
   }
 }

@@ -25,10 +25,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight",
-      "business"
-    ],
+    "required_outputs": ["flight", "business"],
     "first_question_fallback": {
       "canned_answer": "Two adult passengers, business class.",
       "applies_when": "agent asks about passenger count or cabin class"
@@ -60,10 +57,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "OOO",
-      "NYC"
-    ],
+    "required_outputs": ["OOO", "NYC"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -91,9 +85,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "airport"
-    ],
+    "required_outputs": ["airport"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which reminder list to use"
@@ -121,9 +113,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -152,9 +142,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "vacation"
-    ],
+    "required_outputs": ["vacation"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -182,9 +170,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "check\u2011in"
-    ],
+    "required_outputs": ["check\u2011in"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which list to use"
@@ -216,9 +202,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight"
-    ],
+    "required_outputs": ["flight"],
     "first_question_fallback": {
       "canned_answer": "One adult passenger, economy class.",
       "applies_when": "agent asks about passenger count or cabin"
@@ -250,9 +234,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "conference"
-    ],
+    "required_outputs": ["conference"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -280,9 +262,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "check\u2011in"
-    ],
+    "required_outputs": ["check\u2011in"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which list to store the reminder in"
@@ -310,9 +290,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "texted"
-    ],
+    "required_outputs": ["texted"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -341,9 +319,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "business"
-    ],
+    "required_outputs": ["business"],
     "first_question_fallback": {
       "canned_answer": "One adult passenger, business class.",
       "applies_when": "agent asks about cabin or passenger count"
@@ -375,9 +351,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "OOO"
-    ],
+    "required_outputs": ["OOO"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -405,9 +379,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "checklist"
-    ],
+    "required_outputs": ["checklist"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which reminder list to use"
@@ -435,9 +407,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -466,9 +436,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight"
-    ],
+    "required_outputs": ["flight"],
     "first_question_fallback": {
       "canned_answer": "One adult passenger, economy class.",
       "applies_when": "agent asks about passenger count or cabin class"
@@ -500,9 +468,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Ski"
-    ],
+    "required_outputs": ["Ski"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -530,9 +496,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "feedback"
-    ],
+    "required_outputs": ["feedback"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which list to store the reminder in"
@@ -567,9 +531,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight"
-    ],
+    "required_outputs": ["flight"],
     "first_question_fallback": {
       "canned_answer": "Two adult passengers, economy class.",
       "applies_when": "agent asks about passenger count or cabin"
@@ -601,9 +563,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "conference"
-    ],
+    "required_outputs": ["conference"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -631,9 +591,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "check\u2011in"
-    ],
+    "required_outputs": ["check\u2011in"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which list to use for the reminder"
@@ -661,9 +619,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -692,9 +648,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight"
-    ],
+    "required_outputs": ["flight"],
     "first_question_fallback": {
       "canned_answer": "One adult passenger, economy class.",
       "applies_when": "agent asks about passenger count or cabin"
@@ -726,9 +680,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Halloween"
-    ],
+    "required_outputs": ["Halloween"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -756,9 +708,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "checklist"
-    ],
+    "required_outputs": ["checklist"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which list to store the reminder in"
@@ -790,9 +740,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "business"
-    ],
+    "required_outputs": ["business"],
     "first_question_fallback": {
       "canned_answer": "One adult passenger, business class.",
       "applies_when": "agent asks about passenger count or cabin class"
@@ -824,9 +772,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "OOO"
-    ],
+    "required_outputs": ["OOO"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -854,9 +800,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "feedback"
-    ],
+    "required_outputs": ["feedback"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which list to store the reminder in"
@@ -884,9 +828,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "sent"
-    ],
+    "required_outputs": ["sent"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -915,9 +857,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "flight"
-    ],
+    "required_outputs": ["flight"],
     "first_question_fallback": {
       "canned_answer": "One adult passenger, economy class.",
       "applies_when": "agent asks about passenger count or cabin class"
@@ -949,9 +889,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Conference"
-    ],
+    "required_outputs": ["Conference"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -979,9 +917,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "check\u2011in"
-    ],
+    "required_outputs": ["check\u2011in"],
     "first_question_fallback": {
       "canned_answer": "Personal list, default reminder.",
       "applies_when": "agent asks which list to use for the reminder"

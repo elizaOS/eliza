@@ -67,15 +67,15 @@ export {
   X402_ROUTE_PAYMENT_WRAPPED,
 } from "./payment-wrapper.js";
 export {
-  resolveEffectiveX402,
-  X402_EVENT_PAYMENT_REQUIRED,
-  X402_EVENT_PAYMENT_VERIFIED,
-} from "./x402-resolve.js";
-export {
   type StartupValidationResult,
   validateAndThrowIfInvalid,
   validateX402Startup,
 } from "./startup-validator.js";
+export {
+  resolveEffectiveX402,
+  X402_EVENT_PAYMENT_REQUIRED,
+  X402_EVENT_PAYMENT_VERIFIED,
+} from "./x402-resolve.js";
 
 export {
   type Accepts,

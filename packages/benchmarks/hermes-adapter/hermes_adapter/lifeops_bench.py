@@ -196,11 +196,61 @@ def _history_to_openai_messages(conversation_history: list[Any]) -> list[dict[st
     return out
 
 
+def _build_bench_preamble(
+    tools: list[dict[str, Any]],
+    world_context: dict[str, Any] | None = None,
+) -> str:
+    """Build a shape-hint preamble for hermes/openclaw bench sessions (P1-7).
+
+    Injected as the first system turn before the scenario instruction so the
+    agent knows:
+    1. Exact action names and parameter schemas (use the tool list verbatim).
+    2. The ``ENTITY`` contact-create convention (subaction=create with name/email).
+    3. The search-before-write rule (look up existing records before creating).
+    4. IDs of seeded contacts/events (when world_context is provided) so the
+       agent can reference them directly without a search round-trip.
+
+    This replaces zero-shot guessing with explicit context — the eliza-runtime
+    adapter already receives personality prompts that cover this, so we skip
+    it there and inject only here (hermes + openclaw).
+    """
+    lines: list[str] = [
+        "You are operating in LifeOpsBench. Use the exact action names and "
+        "parameter schemas shown in your tool list — do not invent synonyms. "
+        "For contacts, use ENTITY with subaction='create' and provide name and "
+        "email at the top level of the arguments object. "
+        "Always search for existing records before creating new ones.",
+    ]
+
+    # Surface seeded contact IDs so the agent can reference them directly.
+    if world_context:
+        contacts = world_context.get("contacts", {})
+        if contacts:
+            snippets = [
+                f"  {cid}: {c.get('display_name', '?')} <{c.get('primary_email', '?')}>"
+                for cid, c in list(contacts.items())[:10]
+            ]
+            lines.append("Seeded contacts (use these IDs to reference existing people):")
+            lines.extend(snippets)
+
+        events = world_context.get("calendar_events", {})
+        if events:
+            snippets = [
+                f"  {eid}: {e.get('title', '?')} @ {e.get('start', '?')}"
+                for eid, e in list(events.items())[:10]
+            ]
+            lines.append("Seeded calendar events:")
+            lines.extend(snippets)
+
+    return "\n".join(lines)
+
+
 def build_lifeops_bench_agent_fn(
     *,
     client: HermesClient | None = None,
     system_prompt: str | None = None,
     model_name: str | None = None,
+    inject_preamble: bool = True,
 ) -> Callable[[list[Any], list[dict[str, Any]]], Awaitable[Any]]:
     """Create a LifeOpsBench-compatible ``agent_fn`` backed by hermes-agent.
 
@@ -208,6 +258,11 @@ def build_lifeops_bench_agent_fn(
     ``agent_fn(history: list[MessageTurn], tools: list[dict]) -> MessageTurn``
     so it plugs into ``LifeOpsBenchRunner`` exactly like the eliza-adapter
     equivalent.
+
+    ``inject_preamble`` (default ``True``) prepends a shape-hint system
+    message on the first turn of each new session so hermes/openclaw receive
+    the same structural context that the eliza-runtime adapter gets via its
+    personality prompts (P1-7). Set to ``False`` to disable for ablation runs.
     """
     from eliza_lifeops_bench.types import (  # noqa: WPS433 — lazy
         MessageTurn,
@@ -240,6 +295,16 @@ def build_lifeops_bench_agent_fn(
         context: dict[str, object] = {"messages": messages}
         if tools:
             context["tools"] = tools
+
+        # P1-7: inject shape-hint preamble before the first user turn so
+        # hermes/openclaw know the expected action names, the ENTITY.create
+        # convention, and seeded object IDs. We only inject on the first turn
+        # (no existing assistant turn) to avoid polluting multi-turn history.
+        if inject_preamble and not any(m.get("role") == "assistant" for m in messages):
+            preamble = _build_bench_preamble(list(tools) if tools else [])
+            if preamble and not any(m.get("role") == "system" for m in messages):
+                messages.insert(0, {"role": "system", "content": preamble})
+
         if system_prompt:
             # Prepend system prompt to the threaded message list (only if the
             # caller didn't already include one in history).

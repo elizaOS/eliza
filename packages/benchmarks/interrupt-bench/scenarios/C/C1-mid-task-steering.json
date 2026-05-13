@@ -9,18 +9,33 @@
     "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
     "users": [{ "id": "alice", "role": "OWNER" }],
     "openThreads": [
-      { "id": "thread-recipe-001", "owner": "alice", "status": "active", "instruction": "find a vegetarian pasta recipe for dinner tonight", "roomId": "dm-alice" }
+      {
+        "id": "thread-recipe-001",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "find a vegetarian pasta recipe for dinner tonight",
+        "roomId": "dm-alice"
+      }
     ],
     "scheduledTasks": [],
     "memory": []
   },
   "script": [
-    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "actually make it vegan not just vegetarian" }
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "actually make it vegan not just vegetarian"
+    }
   ],
   "quiesceAfterMs": 3000,
   "expectedFinalState": {
     "threads": [
-      { "id": "thread-recipe-001", "status": "active", "instructionContains": ["vegan"] }
+      {
+        "id": "thread-recipe-001",
+        "status": "active",
+        "instructionContains": ["vegan"]
+      }
     ],
     "scheduledTasks": [],
     "repliesByChannel": {

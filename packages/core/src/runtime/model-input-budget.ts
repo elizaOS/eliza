@@ -140,13 +140,36 @@ export function buildModelInputBudget(args: {
 		explicitWindow ??
 		DEFAULT_CONTEXT_WINDOW_TOKENS;
 
-	const explicitReserve =
+	const rawExplicitReserve =
 		Number.isFinite(args.reserveTokens) && args.reserveTokens !== undefined
 			? Math.max(0, Math.floor(args.reserveTokens))
 			: undefined;
 
+	// Treat a caller-supplied reserve equal to `DEFAULT_COMPACTION_RESERVE_TOKENS`
+	// as "carrying the legacy default" rather than an explicit override.
+	// Otherwise the planner-loop's call site — which always forwards
+	// `params.config.compactionReserveTokens` (default 10k) — would lock the
+	// reserve at 10k even when `modelName` resolves to a known model and
+	// the per-model 20%-of-window derivation should win. Callers that
+	// truly want the 10k floor and not the derived reserve must pass
+	// `modelName: undefined` (then no lookup) or override
+	// `contextWindowTokens` explicitly (then derivation is bypassed because
+	// `lookup` is checked first).
+	//
+	// Net effect: passing `DEFAULT_COMPACTION_RESERVE_TOKENS` is treated as
+	// "no override" so derivation can fire when the lookup hits. Any other
+	// reserve value (0, 5000, 25000, …) is honored verbatim as an explicit
+	// override.
+	const lookupHit = lookup !== null;
+	const explicitReserve =
+		rawExplicitReserve === DEFAULT_COMPACTION_RESERVE_TOKENS && lookupHit
+			? undefined
+			: rawExplicitReserve;
+
 	// Reserve resolution order:
 	//   1. Explicit caller arg (any value, including 0) — strict override.
+	//      The default-equal-to-DEFAULT-and-lookup-hit case folds into #2
+	//      so the per-model derivation can fire (see comment above).
 	//   2. Per-model derived reserve (only when window came from lookup):
 	//      `max(DEFAULT_COMPACTION_RESERVE_TOKENS, window * 0.20)`. This
 	//      absorbs the char/3.5 estimator's empirical 25–30% under-shoot on

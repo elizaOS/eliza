@@ -13,16 +13,40 @@
     "memory": []
   },
   "script": [
-    { "t": 0,    "channel": "dm-alice", "sender": "alice", "text": "set up a meeting" },
-    { "t": 600,  "channel": "dm-alice", "sender": "alice", "text": "with carol tomorrow at 3pm" },
-    { "t": 1100, "channel": "dm-alice", "sender": "alice", "text": "wait actually scratch that" },
-    { "t": 1600, "channel": "dm-alice", "sender": "alice", "text": "with carol on friday at 10am instead" }
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "set up a meeting"
+    },
+    {
+      "t": 600,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "with carol tomorrow at 3pm"
+    },
+    {
+      "t": 1100,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "wait actually scratch that"
+    },
+    {
+      "t": 1600,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "with carol on friday at 10am instead"
+    }
   ],
   "quiesceAfterMs": 5000,
   "expectedFinalState": {
     "threads": [],
     "scheduledTasks": [
-      { "owner": "alice", "descriptionContains": ["carol", "friday", "10"], "descriptionExcludes": ["tomorrow", "3pm"] }
+      {
+        "owner": "alice",
+        "descriptionContains": ["carol", "friday", "10"],
+        "descriptionExcludes": ["tomorrow", "3pm"]
+      }
     ],
     "repliesByChannel": {
       "dm-alice": { "count": { "min": 1, "max": 2 } }

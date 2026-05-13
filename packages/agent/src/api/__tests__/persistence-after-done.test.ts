@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Capture the deferred persistence promise the handler kicks off so the test
 // can resolve it on demand and assert ordering against the SSE writes.
-let persistResolve: (() => void) | null = null;
+let persistResolve: ((value?: unknown) => void) | null = null;
 let persistReject: ((err: unknown) => void) | null = null;
 let persistCalledAt: number | null = null;
 let persistResolvedAt: number | null = null;
@@ -52,8 +52,8 @@ vi.mock("../chat-routes.ts", async () => {
     persistConversationMemory: vi.fn(async () => undefined),
     persistAssistantConversationMemory: vi.fn(async () => {
       persistCalledAt = Date.now();
-      return new Promise<void>((resolve, reject) => {
-        persistResolve = () => {
+      return new Promise((resolve, reject) => {
+        persistResolve = (_value) => {
           persistResolvedAt = Date.now();
           resolve();
         };
@@ -258,12 +258,9 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(persistResolvedAt).not.toBeNull();
     // res.end() ran before persistence finished.
     expect(record.endedAt).not.toBeNull();
-    const endedAt = record.endedAt;
-    const resolvedAt = persistResolvedAt;
-    if (endedAt === null || resolvedAt === null) {
-      throw new Error("expected response end and persistence timestamps");
-    }
-    expect(endedAt).toBeLessThanOrEqual(resolvedAt);
+    expect(record.endedAt ?? 0).toBeLessThanOrEqual(
+      persistResolvedAt ?? Infinity,
+    );
   });
 
   it("logs persistence failures via Logger.error and still ends the response cleanly", async () => {

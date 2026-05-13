@@ -1,8 +1,4 @@
-import {
-  type CloudBillingHistoryItem,
-  client,
-  useApp,
-} from "@elizaos/ui";
+import { type CloudBillingHistoryItem, client, useApp } from "@elizaos/ui";
 import {
   Ban,
   CalendarClock,

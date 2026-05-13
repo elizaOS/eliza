@@ -1,6 +1,5 @@
 import { Capacitor } from "@capacitor/core";
 import { isMobileLocalAgentUrl } from "../onboarding/local-agent-token";
-import { IOS_LOCAL_AGENT_IPC_BASE } from "../onboarding/mobile-runtime-mode";
 import { getElizaApiBase } from "../utils/eliza-globals";
 import {
   handleIosLocalAgentRequest,
@@ -13,8 +12,7 @@ let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
 let globalFetchBridgeInstalled = false;
 let originalFetch: typeof fetch | null = null;
-let fullBunRuntime: Promise<{ runtime: FullBunRuntimePlugin | null }> | null =
-  null;
+let fullBunRuntime: Promise<FullBunRuntimePlugin | null> | null = null;
 
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
@@ -35,7 +33,7 @@ export interface IosLocalAgentNativeRequestResult {
   body: string;
 }
 
-export interface FullBunRuntimePlugin {
+interface FullBunRuntimePlugin {
   start(options: {
     engine: "bun";
     argv?: string[];
@@ -52,8 +50,6 @@ interface FullBunRuntimeModule {
   ElizaBunRuntime: FullBunRuntimePlugin;
 }
 
-const FULL_BUN_RUNTIME_CALL_TIMEOUT_MS = 120_000;
-const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
@@ -61,7 +57,6 @@ declare global {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
-    __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
 
@@ -73,24 +68,12 @@ function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
   return value === true || /^(1|true|yes|on)$/i.test(String(value ?? ""));
 }
 
-function isLocalStorageFlagEnabled(key: string): boolean {
-  try {
-    return globalThis.localStorage?.getItem(key) === "1";
-  } catch {
-    return false;
-  }
-}
-
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
-  const iosRuntimeMode =
-    env.VITE_ELIZA_IOS_RUNTIME_MODE ?? env.VITE_MILADY_IOS_RUNTIME_MODE;
+  const iosRuntimeMode = env.VITE_ELIZA_IOS_RUNTIME_MODE;
   return (
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
-    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_STRICT) ||
-    isTruthyBuildFlag(env.VITE_MILADY_IOS_FULL_BUN_SMOKE) ||
-    isLocalStorageFlagEnabled(IOS_FULL_BUN_SMOKE_REQUEST_KEY) ||
     (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local")
   );
 }
@@ -103,32 +86,6 @@ function fullBunStartupError(message: string, cause?: unknown): Error {
       causeMessage ? `: ${causeMessage}` : ""
     }`,
   );
-}
-
-function withTimeout<T>(
-  label: string,
-  timeoutMs: number,
-  operation: Promise<T>,
-): Promise<T> {
-  return Promise.race([
-    operation,
-    new Promise<never>((_resolve, reject) => {
-      globalThis.setTimeout(() => {
-        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-    }),
-  ]);
-}
-
-function emitIosLocalAgentDebug(event: Record<string, unknown>): void {
-  try {
-    window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__?.({
-      ...event,
-      updatedAt: new Date().toISOString(),
-    });
-  } catch {
-    // Debug hooks must never affect request handling.
-  }
 }
 
 function isNativeIos(): boolean {
@@ -172,7 +129,7 @@ function isSafeLocalPath(path: string): boolean {
 }
 
 function requestPathFromUrl(url: string): string {
-  const parsed = new URL(url, IOS_LOCAL_AGENT_IPC_BASE);
+  const parsed = new URL(url, "http://127.0.0.1:31337");
   return `${parsed.pathname}${parsed.search}`;
 }
 
@@ -211,92 +168,41 @@ function normalizeNativeResult(
   };
 }
 
-async function getFullBunRuntime(): Promise<{
-  runtime: FullBunRuntimePlugin | null;
-}> {
+async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
+  if (!isNativeIos()) return null;
   const strict = shouldRequireFullBunRuntime();
-  emitIosLocalAgentDebug({
-    step: "transport-runtime-resolve-start",
-    strict,
-    nativeIos: isNativeIos(),
-    hasCachedRuntime: Boolean(fullBunRuntime),
-  });
-  if (!isNativeIos() && !strict) return { runtime: null };
+  if (!isFullBunRuntimePluginAvailable()) {
+    if (strict) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+    return null;
+  }
   fullBunRuntime ??= (async () => {
     try {
-      const pluginReportedAvailable = isFullBunRuntimePluginAvailable();
-      emitIosLocalAgentDebug({
-        step: "transport-runtime-import-start",
-        pluginReportedAvailable,
-      });
+      // Resolve via a variable so the typechecker doesn't require the (often
+      // un-built) `@elizaos/capacitor-bun-runtime` package to be present —
+      // it only ships in the iOS app bundle. Mirrors `android-native-agent-transport.ts`.
+      const fullBunRuntimePluginId = "@elizaos/capacitor-bun-runtime";
       const mod = (await import(
-        "@elizaos/capacitor-bun-runtime"
+        /* @vite-ignore */ fullBunRuntimePluginId
       )) as FullBunRuntimeModule;
       const runtime = mod.ElizaBunRuntime;
-      emitIosLocalAgentDebug({
-        step: "transport-runtime-imported",
-        pluginReportedAvailable,
-        hasRuntime: Boolean(runtime),
+      const started = await runtime.start({
+        engine: "bun",
+        argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
+        env: {
+          ELIZA_PLATFORM: "ios",
+          ELIZA_MOBILE_PLATFORM: "ios",
+          ELIZA_IOS_LOCAL_BACKEND: "1",
+          ELIZA_HEADLESS: "1",
+          ELIZA_API_BIND: "127.0.0.1",
+          LOG_LEVEL: "error",
+        },
       });
-      if (!runtime) {
-        if (strict || pluginReportedAvailable) {
-          throw new Error("ElizaBunRuntime plugin is unavailable");
-        }
-        return { runtime: null };
-      }
-      const existingStatus = await withTimeout(
-        "ElizaBunRuntime.getStatus",
-        10_000,
-        runtime.getStatus(),
-      );
-      emitIosLocalAgentDebug({
-        step: "transport-runtime-existing-status",
-        ready: existingStatus.ready,
-        engine: existingStatus.engine,
-      });
-      if (existingStatus.ready && existingStatus.engine === "bun") {
-        return { runtime };
-      }
-      const started = await withTimeout(
-        "ElizaBunRuntime.start",
-        300_000,
-        runtime.start({
-          engine: "bun",
-          argv: [
-            "bun",
-            "--no-install",
-            "public/agent/agent-bundle.js",
-            "ios-bridge",
-            "--stdio",
-          ],
-          env: {
-            ELIZA_PLATFORM: "ios",
-            ELIZA_MOBILE_PLATFORM: "ios",
-            ELIZA_IOS_LOCAL_BACKEND: "1",
-            ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
-            ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
-            ELIZA_VAULT_BACKEND: "file",
-            ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
-            ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP: "1",
-            ELIZA_HEADLESS: "1",
-            ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
-            LOG_LEVEL: "error",
-          },
-        }),
-      );
       if (!started.ok) {
         throw new Error(started.error ?? "runtime start returned ok=false");
       }
-      const status = await withTimeout(
-        "ElizaBunRuntime.getStatus",
-        10_000,
-        runtime.getStatus(),
-      );
-      emitIosLocalAgentDebug({
-        step: "transport-runtime-started-status",
-        ready: status.ready,
-        engine: status.engine,
-      });
+      const status = await runtime.getStatus();
       if (!status.ready || status.engine !== "bun") {
         throw new Error(
           `runtime status was ready=${String(status.ready)} engine=${
@@ -304,97 +210,43 @@ async function getFullBunRuntime(): Promise<{
           }`,
         );
       }
-      return { runtime };
+      return runtime;
     } catch (error) {
       if (strict) {
         throw fullBunStartupError("startup failed", error);
       }
-      return { runtime: null };
+      return null;
     }
   })();
   try {
-    const holder = await fullBunRuntime;
-    emitIosLocalAgentDebug({
-      step: "transport-runtime-resolved",
-      hasRuntime: Boolean(holder.runtime),
-    });
-    if (!holder.runtime) fullBunRuntime = null;
-    return holder;
+    const runtime = await fullBunRuntime;
+    if (!runtime) fullBunRuntime = null;
+    return runtime;
   } catch (error) {
     fullBunRuntime = null;
     throw error;
   }
 }
 
-export function primeIosFullBunRuntime(
-  runtime: FullBunRuntimePlugin | null,
-): void {
-  emitIosLocalAgentDebug({
-    step: "transport-runtime-primed",
-    hasRuntime: Boolean(runtime),
-  });
-  fullBunRuntime = Promise.resolve({ runtime });
-}
-
 async function tryFullBunNativeRequest(
   options: IosLocalAgentNativeRequestOptions,
 ): Promise<IosLocalAgentNativeRequestResult | null> {
-  emitIosLocalAgentDebug({
-    step: "transport-request-start",
-    method: options.method,
-    path: options.path,
-    hasBody: options.body != null,
-  });
-  const { runtime } = await getFullBunRuntime();
-  emitIosLocalAgentDebug({
-    step: "transport-runtime-ready",
-    method: options.method,
-    path: options.path,
-    hasRuntime: Boolean(runtime),
-  });
+  const runtime = await getFullBunRuntime();
   if (!runtime) return null;
-  const timeoutMs =
-    typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs)
-      ? Math.max(1, options.timeoutMs)
-      : FULL_BUN_RUNTIME_CALL_TIMEOUT_MS;
-  const args: Record<string, unknown> = {
-    method: options.method,
-    path: options.path,
-    headers: options.headers,
-    timeoutMs,
-  };
-  if (options.body != null) {
-    args.body = options.body;
-  }
-  emitIosLocalAgentDebug({
-    step: "transport-call-start",
-    method: options.method,
-    path: options.path,
-    argKeys: Object.keys(args),
-  });
-  const response = await withTimeout(
-    `ElizaBunRuntime.call(http_request ${options.path})`,
-    timeoutMs,
-    runtime.call({
-      method: "http_request",
-      args,
-    }),
-  );
-  emitIosLocalAgentDebug({
-    step: "transport-call-returned",
-    method: options.method,
-    path: options.path,
+  const response = await runtime.call({
+    method: "http_request",
+    args: {
+      method: options.method,
+      path: options.path,
+      headers: options.headers,
+      body: options.body,
+      timeoutMs: options.timeoutMs,
+    },
   });
   const result = normalizeNativeResult(response.result);
   if (!result) {
     throw new Error("Full Bun iOS bridge returned an invalid HTTP response");
   }
-  emitIosLocalAgentDebug({
-    step: "transport-result-normalized",
-    method: options.method,
-    path: options.path,
-    status: result.status,
-  });
   return result;
 }
 
@@ -459,7 +311,7 @@ export async function handleIosLocalAgentNativeRequest(
 
   startIosLocalAgentKernel();
   const response = await handleIosLocalAgentRequest(
-    new Request(`${IOS_LOCAL_AGENT_IPC_BASE}${path}`, {
+    new Request(`http://127.0.0.1:31337${path}`, {
       method,
       headers: options.headers,
       body:
@@ -499,7 +351,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
 
 function localAgentUrlForFetch(url: URL): string {
   if (isMobileLocalAgentUrl(url.toString())) return url.toString();
-  return `${IOS_LOCAL_AGENT_IPC_BASE}${url.pathname}${url.search}`;
+  return `http://127.0.0.1:31337${url.pathname}${url.search}`;
 }
 
 export function installIosLocalAgentFetchBridge(): void {
@@ -521,8 +373,8 @@ export function installIosLocalAgentFetchBridge(): void {
       url = new URL(
         rawUrl,
         typeof window !== "undefined"
-          ? (window.location?.href ?? IOS_LOCAL_AGENT_IPC_BASE)
-          : IOS_LOCAL_AGENT_IPC_BASE,
+          ? (window.location?.href ?? "http://localhost")
+          : "http://localhost",
       );
     } catch {
       return original(input, init);

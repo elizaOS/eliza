@@ -14,7 +14,8 @@ import type {
 const unsupported = {
   ok: false,
   error: "not_supported",
-  message: "Apple Calendar is only available through the native iOS app or macOS desktop runtime.",
+  message:
+    "Apple Calendar is only available through the native iOS app or macOS desktop runtime.",
 } as const;
 
 export class AppleCalendarWeb extends WebPlugin implements AppleCalendarPlugin {

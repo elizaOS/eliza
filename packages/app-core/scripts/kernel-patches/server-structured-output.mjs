@@ -200,8 +200,6 @@ function findVerifierTuInsertionPoint(source) {
     ) {
       lastPreambleLineIdx = i;
     } else if (t === "" || t.startsWith("//")) {
-      // tolerate blank lines / line comments inside the preamble
-      continue;
     } else {
       break;
     }
@@ -209,7 +207,8 @@ function findVerifierTuInsertionPoint(source) {
   if (lastPreambleLineIdx < 0) return null;
   // Offset = start of the line *after* the last preamble line.
   let index = 0;
-  for (let i = 0; i <= lastPreambleLineIdx; i += 1) index += lines[i].length + 1;
+  for (let i = 0; i <= lastPreambleLineIdx; i += 1)
+    index += lines[i].length + 1;
   return { marker, index };
 }
 

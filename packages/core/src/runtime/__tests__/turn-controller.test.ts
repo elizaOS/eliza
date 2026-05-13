@@ -161,14 +161,20 @@ describe("TurnControllerRegistry", () => {
 				return signalA.aborted ? "aborted" : "complete";
 			});
 			const promiseB = registry.runWith(ROOM_B, async (signalB) => {
-				await new Promise<void>((_resolve, reject) => {
-					signalB.addEventListener("abort", () => {
-						bAborted = true;
-						reject(new TurnAbortedError("b-cancel"));
-					});
-				});
-				return "never";
+				// Poll the abort flag rather than rejecting from inside an abort
+				// listener: bun's ``AbortController.abort`` surfaces listener
+				// rejections back through the abort() call site, which fails the
+				// surrounding test instead of just rejecting ``promiseB``.
+				while (!signalB.aborted) {
+					await sleep(1);
+				}
+				bAborted = true;
+				throw new TurnAbortedError("b-cancel");
 			});
+			// Swallow the eventual rejection on a side handle so the runtime
+			// doesn't flag it as unhandled before ``await expect(...).rejects``
+			// observes it below.
+			promiseB.catch(() => {});
 
 			await sleep(2);
 			expect(registry.hasActiveTurn(ROOM_A)).toBe(true);

@@ -6,11 +6,13 @@
  */
 
 import type http from "node:http";
-import { sendJson as httpSendJson, sendJsonError as httpSendJsonError } from "@elizaos/core";
 import { TLSSocket } from "node:tls";
-import {
-  readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import type { AgentRuntime, Plugin, Route } from "@elizaos/core";
+import {
+  sendJson as httpSendJson,
+  sendJsonError as httpSendJsonError,
+} from "@elizaos/core";
+import { readJsonBody as httpReadJsonBody } from "@elizaos/shared";
 import { handleDocumentsRoutes } from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {

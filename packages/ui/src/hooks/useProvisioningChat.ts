@@ -1,5 +1,4 @@
 import * as React from "react";
-import { client } from "../api";
 
 export interface ProvisioningChatMessage {
   id: string;
@@ -60,27 +59,34 @@ export function useProvisioningChat(
     const poll = async () => {
       if (stoppedRef.current) return;
       try {
-        const res = await client.getProvisioningAgentStatus(
-          agentId ?? undefined,
+        const url = new URL(
+          `/api/v1/provisioning-agent${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ""}`,
+          cloudApiBase,
         );
+        const resp = await fetch(url.toString());
         if (stoppedRef.current) return;
-        if (res.success && res.data) {
-          const newStatus = res.data.status ?? containerStatus;
-          const nextBridgeUrl = res.data.bridgeUrl ?? res.data.webUiUrl ?? null;
-          setContainerStatus(newStatus);
-          if (nextBridgeUrl) {
-            setBridgeUrl(nextBridgeUrl);
-          }
-          if (newStatus === "running" && nextBridgeUrl) {
-            stoppedRef.current = true;
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: generateId(),
-                role: "assistant",
-                content: "Your container is ready! Transferring you now...",
-              },
-            ]);
+        if (resp.ok) {
+          const json = (await resp.json()) as {
+            success?: boolean;
+            data?: { status?: string; bridgeUrl?: string };
+          };
+          if (json.success && json.data) {
+            const newStatus = json.data.status ?? containerStatus;
+            setContainerStatus(newStatus);
+            if (json.data.bridgeUrl) {
+              setBridgeUrl(json.data.bridgeUrl);
+            }
+            if (newStatus === "running" && json.data.bridgeUrl) {
+              stoppedRef.current = true;
+              setMessages((prev) => [
+                ...prev,
+                {
+                  id: generateId(),
+                  role: "assistant",
+                  content: "Your container is ready! Transferring you now...",
+                },
+              ]);
+            }
           }
         }
       } catch {
@@ -112,27 +118,31 @@ export function useProvisioningChat(
       setIsLoading(true);
 
       try {
-        const res = await client.sendProvisioningAgentMessage(
-          content.trim(),
-          agentId ?? undefined,
-        );
-        if (res.success && res.data) {
-          if (res.data.containerStatus) {
-            setContainerStatus(res.data.containerStatus);
-          }
-          const nextBridgeUrl = res.data.bridgeUrl ?? res.data.webUiUrl ?? null;
-          if (nextBridgeUrl) {
-            setBridgeUrl(nextBridgeUrl);
-          }
-          if (res.data.reply) {
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: generateId(),
-                role: "assistant",
-                content: res.data.reply ?? "",
-              },
-            ]);
+        const chatUrl = new URL("/api/v1/provisioning-agent/chat", cloudApiBase);
+        const resp = await fetch(chatUrl.toString(), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message: content.trim(), agentId: agentId ?? undefined }),
+        });
+        if (resp.ok) {
+          const json = (await resp.json()) as {
+            success?: boolean;
+            data?: { reply?: string; containerStatus?: string; bridgeUrl?: string };
+          };
+          if (json.success && json.data) {
+            if (json.data.containerStatus) {
+              setContainerStatus(json.data.containerStatus);
+            }
+            if (json.data.bridgeUrl) {
+              setBridgeUrl(json.data.bridgeUrl);
+            }
+            const reply = json.data.reply;
+            if (reply) {
+              setMessages((prev) => [
+                ...prev,
+                { id: generateId(), role: "assistant", content: reply },
+              ]);
+            }
           }
         }
       } catch {
@@ -142,7 +152,7 @@ export function useProvisioningChat(
             id: generateId(),
             role: "assistant",
             content:
-              "I'm having trouble updating the chat right now. Your container is still warming up in the background.",
+              "I'm having trouble connecting right now. Your container is still warming up in the background — I'll let you know when it's ready!",
           },
         ]);
       } finally {

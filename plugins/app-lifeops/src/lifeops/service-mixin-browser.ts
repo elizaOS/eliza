@@ -24,8 +24,8 @@ import type {
   LifeOpsScreenTimeSession,
   UpdateLifeOpsBrowserSessionProgressRequest,
 } from "../contracts/index.js";
-import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import { authenticateBrowserBridgeCompanionCredential } from "./browser-bridge-companion-auth.js";
+import { recordBrowserFocusWindow } from "./browser-extension-store.js";
 import {
   browserPageContextIdentityKey,
   browserSessionMatchesCompanion,
@@ -152,8 +152,7 @@ function mergeMetadata(
 }
 
 const MAX_BROWSER_FOCUS_WINDOW_MS = 2 * 60 * 1000;
-const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS =
-  30 * 24 * 60 * 60 * 1000;
+const DEFAULT_BROWSER_COMPANION_PAIRING_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 function browserCompanionPairingTokenTtlMs(): number {
   const raw =
@@ -172,7 +171,10 @@ function browserCompanionPairingTokenExpiresAt(nowMs = Date.now()): string {
   return new Date(nowMs + browserCompanionPairingTokenTtlMs()).toISOString();
 }
 
-function isoTimestampExpired(value: string | null | undefined, nowMs: number): boolean {
+function isoTimestampExpired(
+  value: string | null | undefined,
+  nowMs: number,
+): boolean {
   if (!value) {
     return false;
   }
@@ -354,9 +356,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       const nowIso = new Date().toISOString();
       const remainingPendingPairingTokens =
         normalizePendingBrowserPairingTokenHashes(
-          auth.remainingPendingPairingTokens.map(
-            (candidate) => candidate.hash,
-          ),
+          auth.remainingPendingPairingTokens.map((candidate) => candidate.hash),
           pairingTokenHash,
         ).map((hash) => {
           const previous = auth.remainingPendingPairingTokens.find(
@@ -960,10 +960,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
       const replaceActiveToken =
         !credential?.pairingTokenHash ||
         Boolean(credential.companion.pairingTokenRevokedAt) ||
-        isoTimestampExpired(
-          credential.companion.pairingTokenExpiresAt,
-          nowMs,
-        );
+        isoTimestampExpired(credential.companion.pairingTokenExpiresAt, nowMs);
       if (replaceActiveToken) {
         await this.repository.updateBrowserCompanionPairingToken(
           this.agentId(),

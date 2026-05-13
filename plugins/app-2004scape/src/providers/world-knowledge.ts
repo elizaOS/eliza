@@ -1,9 +1,9 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
 } from "@elizaos/core";
 import { getRs2004scapeStateService } from "./service-access.js";
 
@@ -103,16 +103,23 @@ export const worldKnowledgeProvider: Provider = {
       const state = service?.getBotState?.();
       if (!state?.connected || !state.inGame || !state.player) {
         return {
-          text: JSON.stringify({
-            rs_2004_world_knowledge: { status: "not_in_game" },
-          }, null, 2),
+          text: JSON.stringify(
+            {
+              rs_2004_world_knowledge: { status: "not_in_game" },
+            },
+            null,
+            2,
+          ),
         };
       }
 
       const { worldX: x, worldZ: z } = state.player;
       const trainable = state.skills
         .map((skill) => {
-          const recommendation = trainingRecommendation(skill.name, skill.level);
+          const recommendation = trainingRecommendation(
+            skill.name,
+            skill.level,
+          );
           return recommendation
             ? {
                 skill: skill.name,
@@ -150,23 +157,31 @@ export const worldKnowledgeProvider: Provider = {
       }
 
       return {
-        text: JSON.stringify({
-          rs_2004_world_knowledge: {
-            status: "ready",
-            nearestBank: nearestBank(x, z),
-            training: trainable.slice(0, TRAINING_LIMIT),
-            warnings: warnings.slice(0, WARNING_LIMIT),
+        text: JSON.stringify(
+          {
+            rs_2004_world_knowledge: {
+              status: "ready",
+              nearestBank: nearestBank(x, z),
+              training: trainable.slice(0, TRAINING_LIMIT),
+              warnings: warnings.slice(0, WARNING_LIMIT),
+            },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
       };
     } catch (error) {
       return {
-        text: JSON.stringify({
-          rs_2004_world_knowledge: {
-            status: "error",
-            reason: error instanceof Error ? error.message : String(error),
+        text: JSON.stringify(
+          {
+            rs_2004_world_knowledge: {
+              status: "error",
+              reason: error instanceof Error ? error.message : String(error),
+            },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
       };
     }
   },

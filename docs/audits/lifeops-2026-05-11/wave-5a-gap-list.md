@@ -98,11 +98,37 @@ Real P1 fixes surfaced by sanity-check after rebuild:
 - **`packages/core/src/services/message.ts:8385-8386`
   `ReplyGateDecision.gateMode` / `scope`** — Wave-0 typecheck failure
   no longer reproduces on `develop`. Documented for historical record.
-- **Personality model-level gaps** — every agent fails
-  `hold_style.aggressive.code.004` and `escalation.aggressive.code.004`
-  per [`rebaseline-report.md`](./rebaseline-report.md). Cerebras
-  gpt-oss-120b instruction-following limitation under aggressive
-  register; not a harness bug.
+- **Personality model-level gaps — RESOLVED (wave-6-g3, 2026-05-11).**
+  Both `hold_style.aggressive.code.004` and
+  `escalation.aggressive.code.004` were diagnosed as **judge / bridge
+  bugs, NOT a Cerebras gpt-oss-120b instruction-following limit**:
+  - `hold_style.aggressive.code.004` uses `styleKey: "all_lowercase"`.
+    The bridge in `scripts/personality-bench-run.mjs` lossy-mapped it to
+    `style: "terse"` + `maxTokens: 16`, so the judge counted tokens
+    instead of casing. Every well-behaved model produced ~300-token
+    all-lowercase prose and got marked "not terse: 307 > 16 tokens" —
+    the failure had nothing to do with the aggressive register. Fix
+    landed in `d16afc8212` (`packages/benchmarks/personality-bench/src/judge/checks/phrase.ts`
+    adds `checkAllLowercase`; `src/judge/rubrics/style-held.ts` wires
+    the `all_lowercase` style; `scripts/personality-bench-run.mjs`
+    routes `all_lowercase` to itself instead of `terse`).
+  - `escalation.aggressive.code.004` uses `direction: "playful"`. The
+    bridge lossy-mapped it to `direction: "warmer"`, which scored
+    politeness markers ("please/thank you"). Politeness is flat across
+    a "be more playful" ladder; playfulness markers (emojis,
+    exclamations, parenthetical asides, wordplay) ramp up. Fix landed
+    in `6c485064a7` (`src/judge/rubrics/escalation-delta.ts` adds the
+    `playful` direction; `src/judge/checks/phrase.ts` adds
+    `playfulScore`; bridge maps `playful → playful`).
+  - Verification: bench against just these two scenarios across the
+    three LLM-only agent profiles (`eliza` / `hermes` / `openclaw`):
+    **5/6 PASS** post-fix vs **0/6 PASS** pre-fix. The remaining
+    failure is openclaw producing 6 stray uppercase letters in turn 14
+    (a real capability slip, surfaced by the new judge with a precise
+    reason — not a universal model limit). Unit tests added in
+    `tests/style-held.test.ts` (3 new `all_lowercase` cases) and
+    `tests/escalation-delta.test.ts` (2 new `playful` cases); full
+    bench suite goes from 40 → 45 tests passing.
 
 ## P3 — Tracked to follow-up
 
@@ -149,3 +175,22 @@ Failing tests at snapshot:
 
 Skipped tests (not failures): all gated on optional API keys / external
 services (Cerebras live, Anthropic live, telegram bridge, etc.).
+
+## Post-gap-list resolution (2026-05-12)
+
+**RESOLVED — Python hermes agent import failure** (`a8849560d7`):
+`packages/benchmarks/lifeops-bench/conftest.py` added with `sys.path.insert`
+for `packages/` so `hermes_adapter.client` can resolve
+`benchmarks.lib.base_benchmark_client` when pytest runs from repo root.
+1499+ lifeops-bench Python tests now pass (was 1 remaining failure at
+gap-list time beyond P1#5/P1#6 above).
+
+**P1#5 + P1#6 status**: the two `test_scenarios_corpus.py` failures
+(116 GT action names unknown to manifest; `subaction` rejected by
+authoring validator on CALENDAR) were fixed as part of the Wave 6–7
+scorer canonicalization work (W6-1 `48ab9f1d7e`, W6-4 `82e71d3e73`,
+W7-B `137fc88b73`). All lifeops-bench Python tests green as of
+`a8849560d7`.
+
+**Final state**: 88/88 personality-bench TS, 122/122 core TS,
+1499+ Python lifeops-bench — all green.

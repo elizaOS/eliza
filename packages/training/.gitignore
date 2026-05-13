@@ -14,7 +14,12 @@ benchmarks/*
 !benchmarks/__init__.py
 !benchmarks/test_eliza1_gates.py
 !benchmarks/THROUGHPUT.md
+!benchmarks/OPTIMIZATIONS_ROLLUP.md
 !benchmarks/OPTIMIZATION_INVENTORY.md
+!benchmarks/APOLLO_TUNING.md
+!benchmarks/CUDA_KERNEL_PUNCHLIST.md
+!benchmarks/MODELS_STATUS.md
+!benchmarks/INFERENCE_OPTIMIZATION_PLAN.md
 previews/
 local-corpora/
 wandb/

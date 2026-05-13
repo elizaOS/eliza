@@ -175,7 +175,11 @@ function assertCacheTypeSupportedOnBackend(name: string, value: string): void {
 }
 
 export function dflashEnabled(): boolean {
-  if (readBool("ELIZA_DFLASH_DISABLED")) return false;
+  // Developer-only kill-switch (canonical `MILADY_DFLASH_DISABLE`, with
+  // `ELIZA_DFLASH_DISABLE` as a back-compat alias). Wins over everything.
+  if (readBool("MILADY_DFLASH_DISABLE") || readBool("ELIZA_DFLASH_DISABLE")) {
+    return false;
+  }
   if (readBool("ELIZA_DFLASH_ENABLED")) return true;
   if (!fs.existsSync(managedDflashBinaryPath())) return false;
   if (isMetalDflashRuntime()) return dflashMetalAutoEnabled();

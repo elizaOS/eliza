@@ -55,9 +55,7 @@ function isStackStatusReport(value: unknown): value is StackStatusReport {
   );
 }
 
-function assertDevStackShape(
-  value: unknown,
-): asserts value is DevStackPayload {
+function assertDevStackShape(value: unknown): asserts value is DevStackPayload {
   expect(value).toBeTypeOf("object");
   expect(value).not.toBeNull();
   const v = value as Record<string, unknown>;
@@ -74,9 +72,9 @@ function assertDevStackShape(
   expect(
     desktop.rendererUrl === null || typeof desktop.rendererUrl === "string",
   ).toBe(true);
-  expect(
-    desktop.uiPort === null || typeof desktop.uiPort === "number",
-  ).toBe(true);
+  expect(desktop.uiPort === null || typeof desktop.uiPort === "number").toBe(
+    true,
+  );
   expect(
     desktop.desktopApiBase === null ||
       typeof desktop.desktopApiBase === "string",
@@ -89,12 +87,10 @@ function assertDevStackShape(
 
   expect(v.desktopDevLog).toBeTypeOf("object");
   const log = v.desktopDevLog as Record<string, unknown>;
-  expect(
-    log.filePath === null || typeof log.filePath === "string",
-  ).toBe(true);
-  expect(
-    log.apiTailPath === null || typeof log.apiTailPath === "string",
-  ).toBe(true);
+  expect(log.filePath === null || typeof log.filePath === "string").toBe(true);
+  expect(log.apiTailPath === null || typeof log.apiTailPath === "string").toBe(
+    true,
+  );
 
   expect(Array.isArray(v.hints)).toBe(true);
 }
@@ -161,7 +157,9 @@ describe("live desktop dev stack probe", () => {
 
     test("GET /api/dev/cursor-screenshot returns PNG or documented 503/404", async () => {
       expect(baseUrl, "previous test populated baseUrl").toBeTruthy();
-      const res = await fetchWithTimeout(`${baseUrl}/api/dev/cursor-screenshot`);
+      const res = await fetchWithTimeout(
+        `${baseUrl}/api/dev/cursor-screenshot`,
+      );
 
       if (res.status === 200) {
         const contentType = res.headers.get("content-type") ?? "";

@@ -106,6 +106,7 @@ import {
   isMobilePlatform,
   normalizeCharacterLanguage,
   resolveApiBindHost,
+  resolveDesktopApiPort,
   resolveServerOnlyPort,
   resolveStylePresetByAvatarIndex,
 } from "@elizaos/shared";
@@ -2950,7 +2951,15 @@ export async function startApiServer(opts?: {
   const apiStartTime = Date.now();
   console.log(`[eliza-api] startApiServer called`);
 
-  const port = opts?.port ?? resolveServerOnlyPort(process.env);
+  // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
+  // the renderer's hardcoded API base reaches this server. CLI-mode
+  // (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort` default
+  // of 2138, so this change is transparent for non-desktop users.
+  const port =
+    opts?.port ??
+    (process.env.ELIZA_API_PORT
+      ? resolveDesktopApiPort(process.env)
+      : resolveServerOnlyPort(process.env));
   const host = resolveApiBindHost(process.env);
   ensureApiTokenForBindHost(host);
   console.log(`[eliza-api] Token check done (${Date.now() - apiStartTime}ms)`);

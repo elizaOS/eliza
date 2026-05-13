@@ -1,4 +1,3 @@
-import { client, useApp } from "@elizaos/ui";
 import type {
   CreateLifeOpsDefinitionRequest,
   LifeOpsActiveReminderView,
@@ -8,6 +7,7 @@ import type {
   LifeOpsWindowPolicy,
   SnoozeLifeOpsOccurrenceRequest,
 } from "@elizaos/shared";
+import { client, useApp } from "@elizaos/ui";
 import {
   AlarmClock,
   Apple,

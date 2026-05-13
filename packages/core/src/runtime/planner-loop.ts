@@ -60,7 +60,10 @@ import type {
 	PlannerToolResult,
 	PlannerTrajectory,
 } from "./planner-types";
-import { buildPlannerActionGrammar } from "./response-grammar";
+import {
+	buildPlannerActionGrammar,
+	withGuidedDecodeProviderOptions,
+} from "./response-grammar";
 import type {
 	RecordedStage,
 	RecordedToolCall,
@@ -1073,10 +1076,11 @@ async function callPlanner(params: {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
 		tools: params.tools,
-		// `modelName` lets the per-model context-window lookup fire when the
-		// caller provides one. The lookup is authoritative over the legacy
-		// `contextWindowTokens` default; an explicit reserve only wins when the
-		// caller actually supplied `compactionReserveTokens`.
+		// `modelName` lets the per-model context-window lookup fire.
+		// The lookup result wins over contextWindowTokens (see buildModelInputBudget
+		// resolution order). Note: contextWindowTokens defaults to 128_000 so the
+		// spread is always non-empty; the lookup will still override it when
+		// contextWindowModelName resolves.
 		modelName: params.config.contextWindowModelName,
 		...(params.config.contextWindowTokens
 			? { contextWindowTokens: params.config.contextWindowTokens }
@@ -1177,6 +1181,12 @@ async function callPlanner(params: {
 					plannerActionSchemas: plannerActionGrammar.actionSchemas,
 				},
 			};
+			// Guided structured decode on by default for the planner pass that
+			// carries a forced PLAN_ACTIONS skeleton: the local engine derives the
+			// deterministic-token prefill plan and the fork fast-forwards the forced
+			// scaffold. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`. Cloud adapters
+			// ignore `providerOptions.eliza.guidedDecode`.
+			withGuidedDecodeProviderOptions(modelParams.providerOptions);
 		}
 	} else {
 		modelParams.responseSchema = plannerSchema;
@@ -2183,6 +2193,25 @@ function terminalMessageFromToolCalls(
 	);
 }
 
+/**
+ * Latest user-safe projection of a tool's result, walking the trajectory
+ * back-to-front. Returns ONLY the tool's `userFacingText` field — never
+ * the diagnostic `text` field, because `text` is log-shaped (shell
+ * prompts, exit codes, cwd, byte counts) and leaks the tool's wrapper
+ * format into the user channel.
+ *
+ * Tools that produce real user-facing answers (Q&A, content generation,
+ * REPLY) must opt in by setting `userFacingText`. Tools that emit logs
+ * (BASH, SHELL, fetchers, file readers) leave it unset; this function
+ * then returns undefined and the caller falls through to the evaluator's
+ * synthesized reply instead of dumping the log into the channel.
+ *
+ * Pre-PR, this function returned `step.result.text` directly — that's
+ * how `$ find … [exit 0] (cwd=…) --- stdout --- 443` ever ended up as
+ * a literal Discord reply. The fix is structural: tools tell the
+ * framework what's safe, the framework doesn't guess by parsing
+ * wrapper text.
+ */
 function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {

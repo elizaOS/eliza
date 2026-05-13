@@ -1,13 +1,13 @@
 {
   "schemaVersion": "lifeops-action-collisions-v1",
-  "generatedAt": "2026-05-11T17:25:09.045Z",
+  "generatedAt": "2026-05-12T16:56:02.583Z",
   "threshold": 0.75,
   "nearMissFloor": 0.5,
-  "population": 134,
+  "population": 128,
   "pairs": [],
   "nearMisses": [
     {
-      "similarity": 0.6675,
+      "similarity": 0.6882,
       "a": {
         "actionName": "LINEAR_ISSUE",
         "id": "action.LINEAR_ISSUE@plugins/plugin-linear/src/actions/routers.ts.description",
@@ -20,20 +20,59 @@
       }
     },
     {
-      "similarity": 0.6069,
+      "similarity": 0.5958,
       "a": {
         "actionName": "OWNER_REMINDERS",
-        "id": "action.OWNER_REMINDERS@plugins/app-lifeops/src/actions/owner-surfaces.ts.description",
+        "id": "action.OWNER_REMINDERS@plugins/app-lifeops/src/actions/owner-surfaces.ts:234.description",
         "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
       },
       "b": {
         "actionName": "OWNER_ALARMS",
-        "id": "action.OWNER_ALARMS@plugins/app-lifeops/src/actions/owner-surfaces.ts.description",
+        "id": "action.OWNER_ALARMS@plugins/app-lifeops/src/actions/owner-surfaces.ts:264.description",
         "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
       }
     },
     {
-      "similarity": 0.6021,
+      "similarity": 0.5958,
+      "a": {
+        "actionName": "OWNER_REMINDERS",
+        "id": "action.OWNER_REMINDERS@plugins/app-lifeops/src/actions/owner-surfaces.ts:234.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      },
+      "b": {
+        "actionName": "OWNER_ALARMS",
+        "id": "action.OWNER_ALARMS@plugins/app-lifeops/src/actions/owner-surfaces.ts:272.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      }
+    },
+    {
+      "similarity": 0.5958,
+      "a": {
+        "actionName": "OWNER_REMINDERS",
+        "id": "action.OWNER_REMINDERS@plugins/app-lifeops/src/actions/owner-surfaces.ts:248.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      },
+      "b": {
+        "actionName": "OWNER_ALARMS",
+        "id": "action.OWNER_ALARMS@plugins/app-lifeops/src/actions/owner-surfaces.ts:264.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      }
+    },
+    {
+      "similarity": 0.5958,
+      "a": {
+        "actionName": "OWNER_REMINDERS",
+        "id": "action.OWNER_REMINDERS@plugins/app-lifeops/src/actions/owner-surfaces.ts:248.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      },
+      "b": {
+        "actionName": "OWNER_ALARMS",
+        "id": "action.OWNER_ALARMS@plugins/app-lifeops/src/actions/owner-surfaces.ts:272.description",
+        "filePath": "plugins/app-lifeops/src/actions/owner-surfaces.ts"
+      }
+    },
+    {
+      "similarity": 0.5951,
       "a": {
         "actionName": "PLAY_AUDIO",
         "id": "action.PLAY_AUDIO@plugins/plugin-music/src/actions/playAudio.ts.description",
@@ -46,20 +85,20 @@
       }
     },
     {
-      "similarity": 0.5181,
+      "similarity": 0.5223,
       "a": {
-        "actionName": "LINEAR",
-        "id": "action.LINEAR@plugins/plugin-linear/src/actions/linear.ts.description",
-        "filePath": "plugins/plugin-linear/src/actions/linear.ts"
-      },
-      "b": {
         "actionName": "LINEAR_ISSUE",
         "id": "action.LINEAR_ISSUE@plugins/plugin-linear/src/actions/routers.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/routers.ts"
+      },
+      "b": {
+        "actionName": "LINEAR_WORKFLOW",
+        "id": "action.LINEAR_WORKFLOW@plugins/plugin-linear/src/actions/routers.ts.description",
         "filePath": "plugins/plugin-linear/src/actions/routers.ts"
       }
     },
     {
-      "similarity": 0.5108,
+      "similarity": 0.5156,
       "a": {
         "actionName": "LINEAR",
         "id": "action.LINEAR@plugins/plugin-linear/src/actions/linear.ts.description",
@@ -72,7 +111,7 @@
       }
     },
     {
-      "similarity": 0.5062,
+      "similarity": 0.506,
       "a": {
         "actionName": "CREATE_LINEAR_COMMENT",
         "id": "action.CREATE_LINEAR_COMMENT@plugins/plugin-linear/src/actions/createComment.ts.description",
@@ -85,15 +124,15 @@
       }
     },
     {
-      "similarity": 0.5023,
+      "similarity": 0.5018,
       "a": {
-        "actionName": "LINEAR_ISSUE",
-        "id": "action.LINEAR_ISSUE@plugins/plugin-linear/src/actions/routers.ts.description",
-        "filePath": "plugins/plugin-linear/src/actions/routers.ts"
+        "actionName": "LINEAR",
+        "id": "action.LINEAR@plugins/plugin-linear/src/actions/linear.ts.description",
+        "filePath": "plugins/plugin-linear/src/actions/linear.ts"
       },
       "b": {
-        "actionName": "LINEAR_WORKFLOW",
-        "id": "action.LINEAR_WORKFLOW@plugins/plugin-linear/src/actions/routers.ts.description",
+        "actionName": "LINEAR_ISSUE",
+        "id": "action.LINEAR_ISSUE@plugins/plugin-linear/src/actions/routers.ts.description",
         "filePath": "plugins/plugin-linear/src/actions/routers.ts"
       }
     }

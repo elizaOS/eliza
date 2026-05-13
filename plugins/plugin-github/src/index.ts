@@ -25,9 +25,6 @@ import {
   promoteSubactionsToActions,
 } from "@elizaos/core";
 import { githubAction } from "./actions/github.js";
-import { issueOpAction } from "./actions/issue-op.js";
-import { notificationTriageAction } from "./actions/notification-triage.js";
-import { prOpAction } from "./actions/pr-op.js";
 import { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 import { handleGitHubRoutes } from "./routes/github-routes.js";
 import { registerGitHubSearchCategory } from "./search-category.js";
@@ -52,15 +49,15 @@ function createGitHubRouteHandler(method: "GET" | "POST" | "DELETE") {
   };
 }
 
-export { issueOpAction } from "./actions/issue-op.js";
+export * from "./accounts.js";
 export { githubAction } from "./actions/github.js";
+export { issueOpAction } from "./actions/issue-op.js";
 export {
   notificationTriageAction,
   scoreNotification,
   type TriagedNotification,
 } from "./actions/notification-triage.js";
 export { prOpAction } from "./actions/pr-op.js";
-export * from "./accounts.js";
 export { createGitHubConnectorAccountProvider } from "./connector-account-provider.js";
 export { GitHubService } from "./services/github-service.js";
 export * from "./types.js";

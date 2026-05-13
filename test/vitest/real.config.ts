@@ -117,7 +117,12 @@ const elizaCoreEntry = getElizaCoreEntry(repoRoot);
 const autonomousSourceRoot = getAutonomousSourceRoot(repoRoot);
 const appCoreSourceRoot = getAppCoreSourceRoot(repoRoot);
 const sharedSourceRoot = getSharedSourceRoot(repoRoot);
-const vaultSourceRoot = path.join(elizaWorkspaceRoot, "packages", "vault", "src");
+const vaultSourceRoot = path.join(
+  elizaWorkspaceRoot,
+  "packages",
+  "vault",
+  "src",
+);
 const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
   "cloud",
@@ -134,15 +139,27 @@ const workspaceUiSourceRoot = path.join(
 const uiSourceRoot = fs.existsSync(path.join(workspaceUiSourceRoot, "index.ts"))
   ? workspaceUiSourceRoot
   : getUiSourceRoot(repoRoot);
-const pluginOpenAiRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-openai");
+const pluginOpenAiRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-openai",
+);
 const pluginGoogleRoot = path.join(
   elizaWorkspaceRoot,
   "plugins",
   "plugin-google",
   "src",
 );
-const pluginIMessageRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-imessage");
-const pluginDiscordRoot = path.join(elizaWorkspaceRoot, "plugins", "plugin-discord");
+const pluginIMessageRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-imessage",
+);
+const pluginDiscordRoot = path.join(
+  elizaWorkspaceRoot,
+  "plugins",
+  "plugin-discord",
+);
 const pluginBrowserRoot = path.join(
   elizaWorkspaceRoot,
   "plugins",

@@ -87,11 +87,15 @@ function copyDirRecursive(src, dst) {
 function replaceBetween(source, startMarker, endMarker, replacement) {
   const start = source.indexOf(startMarker);
   if (start < 0) {
-    throw new Error(`[omnivoice-fuse] compatibility patch anchor not found: ${startMarker}`);
+    throw new Error(
+      `[omnivoice-fuse] compatibility patch anchor not found: ${startMarker}`,
+    );
   }
   const end = source.indexOf(endMarker, start);
   if (end < 0) {
-    throw new Error(`[omnivoice-fuse] compatibility patch end anchor not found: ${endMarker}`);
+    throw new Error(
+      `[omnivoice-fuse] compatibility patch end anchor not found: ${endMarker}`,
+    );
   }
   return source.slice(0, start) + replacement + source.slice(end);
 }
@@ -707,7 +711,7 @@ int eliza_inference_tts_synthesize(
 
     std::lock_guard<std::mutex> lock(ctx->tts_mutex);
     if (!ctx->ov) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize: TTS region is not acquired; call mmap_acquire(\\"tts\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
     ElizaScopedTtsForward forward(ctx);
@@ -762,7 +766,7 @@ int eliza_inference_asr_transcribe(
 
     std::lock_guard<std::mutex> lock(ctx->asr_mutex);
     if (!ctx->asr_model || !ctx->asr_lctx || !ctx->asr_mtmd || !ctx->asr_sampler) {
-        eliza_set_error(out_error, "[libelizainference] asr_transcribe: ASR region is not acquired; call mmap_acquire(\\\"asr\\\") after arming voice input");
+        eliza_set_error(out_error, "[libelizainference] asr_transcribe: ASR region is not acquired; call mmap_acquire(\\"asr\\") after arming voice input");
         return ELIZA_ERR_INVALID_ARG;
     }
 
@@ -980,7 +984,7 @@ int eliza_inference_tts_synthesize_stream(
 
     std::lock_guard<std::mutex> lock(ctx->tts_mutex);
     if (!ctx->ov) {
-        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: TTS region is not acquired; call mmap_acquire(\\\"tts\\\") after arming voice");
+        eliza_set_error(out_error, "[libelizainference] tts_synthesize_stream: TTS region is not acquired; call mmap_acquire(\\"tts\\") after arming voice");
         return ELIZA_ERR_INVALID_ARG;
     }
     ElizaScopedTtsForward forward(ctx);
@@ -1393,9 +1397,7 @@ function readOmnivoiceGgmlSubmoduleCommit(checkoutDir) {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (result.status !== 0) return null;
-  const match = /^160000\s+commit\s+([0-9a-f]{40})/.exec(
-    result.stdout || "",
-  );
+  const match = /^160000\s+commit\s+([0-9a-f]{40})/.exec(result.stdout || "");
   return match ? match[1] : null;
 }
 
@@ -1532,7 +1534,12 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/clip-impl.h");
   }
 
-  const clipModelPath = path.join(llamaCppRoot, "tools", "mtmd", "clip-model.h");
+  const clipModelPath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "clip-model.h",
+  );
   let clipModel = fs.readFileSync(clipModelPath, "utf8");
   if (!clipModel.includes("conv_out_w")) {
     clipModel = replaceRequired(
@@ -1555,7 +1562,13 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/clip-model.h");
   }
 
-  const modelsHeaderPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "models.h");
+  const modelsHeaderPath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "models",
+    "models.h",
+  );
   let modelsHeader = fs.readFileSync(modelsHeaderPath, "utf8");
   if (!modelsHeader.includes("clip_graph_qwen3a")) {
     modelsHeader = replaceRequired(
@@ -1568,13 +1581,24 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
     touched.push("tools/mtmd/models/models.h");
   }
 
-  const qwen3aPath = path.join(llamaCppRoot, "tools", "mtmd", "models", "qwen3a.cpp");
+  const qwen3aPath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "models",
+    "qwen3a.cpp",
+  );
   if (!fs.existsSync(qwen3aPath)) {
     fs.writeFileSync(qwen3aPath, QWEN3A_MODEL_CPP, "utf8");
     touched.push("tools/mtmd/models/qwen3a.cpp");
   }
 
-  const mtmdCmakePath = path.join(llamaCppRoot, "tools", "mtmd", "CMakeLists.txt");
+  const mtmdCmakePath = path.join(
+    llamaCppRoot,
+    "tools",
+    "mtmd",
+    "CMakeLists.txt",
+  );
   let mtmdCmake = fs.readFileSync(mtmdCmakePath, "utf8");
   if (!mtmdCmake.includes("models/qwen3a.cpp")) {
     mtmdCmake = replaceRequired(
@@ -1612,7 +1636,11 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a graph dispatch",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n                case PROJECTOR_TYPE_GLMA",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "                case PROJECTOR_TYPE_QWEN2A:\n                case PROJECTOR_TYPE_GLMA:",
@@ -1620,15 +1648,23 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a hparams",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "            case PROJECTOR_TYPE_VOXTRAL:\n                {",
-      "            case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w = get_tensor(string_format(TN_CONV2D, 1, \"weight\"));\n                    model.conv2d_1_b = get_tensor(string_format(TN_CONV2D, 1, \"bias\"));\n                    model.conv2d_2_w = get_tensor(string_format(TN_CONV2D, 2, \"weight\"));\n                    model.conv2d_2_b = get_tensor(string_format(TN_CONV2D, 2, \"bias\"));\n                    model.conv2d_3_w = get_tensor(string_format(TN_CONV2D, 3, \"weight\"));\n                    model.conv2d_3_b = get_tensor(string_format(TN_CONV2D, 3, \"bias\"));\n                    model.conv_out_w = get_tensor(string_format(TN_CONV_OUT, \"weight\"));\n                    model.conv_out_b = get_tensor(string_format(TN_CONV_OUT, \"bias\"), false);\n                    model.mm_1_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"weight\"));\n                    model.mm_1_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, \"bias\"));\n                    model.mm_2_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"weight\"));\n                    model.mm_2_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, \"bias\"));\n                } break;\n            case PROJECTOR_TYPE_VOXTRAL:\n                {",
+      '            case PROJECTOR_TYPE_QWEN3A:\n                {\n                    model.conv2d_1_w = get_tensor(string_format(TN_CONV2D, 1, "weight"));\n                    model.conv2d_1_b = get_tensor(string_format(TN_CONV2D, 1, "bias"));\n                    model.conv2d_2_w = get_tensor(string_format(TN_CONV2D, 2, "weight"));\n                    model.conv2d_2_b = get_tensor(string_format(TN_CONV2D, 2, "bias"));\n                    model.conv2d_3_w = get_tensor(string_format(TN_CONV2D, 3, "weight"));\n                    model.conv2d_3_b = get_tensor(string_format(TN_CONV2D, 3, "bias"));\n                    model.conv_out_w = get_tensor(string_format(TN_CONV_OUT, "weight"));\n                    model.conv_out_b = get_tensor(string_format(TN_CONV_OUT, "bias"), false);\n                    model.mm_1_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, "weight"));\n                    model.mm_1_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 1, "bias"));\n                    model.mm_2_w = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, "weight"));\n                    model.mm_2_b = get_tensor(string_format(TN_MM_AUDIO_MLP, 2, "bias"));\n                } break;\n            case PROJECTOR_TYPE_VOXTRAL:\n                {',
       "clip.cpp qwen3a tensor loads",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n            {\n                // 3x stride-2 conv2d",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_GLMA:\n            {",
@@ -1636,7 +1672,11 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a output token count",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_ULTRAVOX:",
@@ -1644,7 +1684,11 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a input setup",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n            return ctx->model.mm_2_w->ne[1];",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n            return ctx->model.mm_fc_w->ne[1];\n        case PROJECTOR_TYPE_GLMA:",
@@ -1652,7 +1696,11 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
       "clip.cpp qwen3a mmproj embedding dim",
     );
   }
-  if (!clip.includes("case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL")) {
+  if (
+    !clip.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL",
+    )
+  ) {
     clip = replaceRequired(
       clip,
       "        case PROJECTOR_TYPE_QWEN2A:\n        case PROJECTOR_TYPE_GLMA:\n        case PROJECTOR_TYPE_VOXTRAL:",
@@ -1667,7 +1715,11 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
 
   const mtmdPath = path.join(llamaCppRoot, "tools", "mtmd", "mtmd.cpp");
   let mtmd = fs.readFileSync(mtmdPath, "utf8");
-  if (!mtmd.includes("case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:")) {
+  if (
+    !mtmd.includes(
+      "case PROJECTOR_TYPE_QWEN3A:\n            case PROJECTOR_TYPE_QWEN25O:",
+    )
+  ) {
     mtmd = replaceRequired(
       mtmd,
       "            case PROJECTOR_TYPE_QWEN2A:\n            case PROJECTOR_TYPE_QWEN25O:",

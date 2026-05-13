@@ -48,8 +48,8 @@ function parseGmailPlan(text: string): GmailPlan {
 
 export async function extractGmailPlanWithLlm(
   runtime: IAgentRuntime,
-  message: Memory,
-  state: State | undefined,
+  _message: Memory,
+  _state: State | undefined,
   intent: string,
 ): Promise<GmailPlan> {
   const first = String(

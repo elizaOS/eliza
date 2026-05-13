@@ -1565,6 +1565,39 @@ function copyPgliteCompatibilityAssets(targetDist: string): void {
   }
 }
 
+// Post-copy assertion: missingAlwaysBundled catches resolve failures, but
+// can't catch a transitive-walk filter silently skipping a CORE plugin or
+// pruneCopiedPackageDir removing a load-bearing package.json.
+export function assertRequiredBundledPackagesLanded(
+  targetNodeModules: string,
+  alwaysBundled: ReadonlySet<string>,
+): void {
+  const missing: string[] = [];
+  for (const name of alwaysBundled) {
+    if (!isPackageNameCompatibleWithCurrentPlatform(name)) continue;
+    const pkgJsonPath = path.join(
+      packagePath(name, targetNodeModules),
+      "package.json",
+    );
+    if (!fs.existsSync(pkgJsonPath)) {
+      missing.push(name);
+    }
+  }
+  if (missing.length === 0) return;
+  throw new Error(
+    [
+      `[runtime-copy] ${missing.length} required runtime package(s) failed to land in the bundle after copy + prune:`,
+      ...missing
+        .sort()
+        .map(
+          (n) =>
+            `  ${n}  (missing ${path.join(packagePath(n, targetNodeModules), "package.json")})`,
+        ),
+      "This usually means a filter in the transitive-walk or a rule in pruneCopiedPackageDir accidentally excluded a required package. Bundle is unsafe to ship.",
+    ].join("\n"),
+  );
+}
+
 function assertTarSafeRuntimePaths(targetDist: string): void {
   const unsafe: string[] = [];
 
@@ -1736,6 +1769,16 @@ function main(): void {
         continue;
       }
 
+      // Same filter as initial discovery: non-alwaysBundled plugins are
+      // post-release-installable and must not enter the transitive walk.
+      // Without this, a peerDep on an optional plugin drags its entire
+      // deep tree (e.g. @solana/codecs* nested 8 levels) into the bundle
+      // and trips assertTarSafeRuntimePaths.
+      if (!shouldBundleDiscoveredPackage(dep.name, alwaysBundled)) {
+        filteredOptionalPlugins.add(dep.name);
+        continue;
+      }
+
       queue.push({
         name: dep.name,
         spec: dep.spec,
@@ -1747,6 +1790,7 @@ function main(): void {
 
   copyPgliteCompatibilityAssets(targetDist);
   assertTarSafeRuntimePaths(targetDist);
+  assertRequiredBundledPackagesLanded(targetNodeModules, alwaysBundled);
 
   console.log(
     `[runtime-copy] bundled ${copiedNames.size} package(s) into ${targetNodeModules}`,

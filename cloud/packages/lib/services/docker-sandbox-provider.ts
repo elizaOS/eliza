@@ -18,7 +18,10 @@ import { getNodeAutoscaler } from "@/lib/services/containers/node-autoscaler";
 import { dockerNodeManager } from "@/lib/services/docker-node-manager";
 import { getUsedDockerHostPorts } from "@/lib/services/docker-port-allocation";
 import { DockerSSHClient } from "@/lib/services/docker-ssh";
-import { resolveStewardTenantCredentials } from "@/lib/services/steward-tenant-config";
+import {
+  ensureStewardTenant,
+  resolveStewardTenantCredentials,
+} from "@/lib/services/steward-tenant-config";
 import { resolveServerStewardApiUrlFromEnv } from "@/lib/steward-url";
 import { logger } from "@/lib/utils/logger";
 import {
@@ -419,7 +422,18 @@ export class DockerSandboxProvider implements SandboxProvider {
     const webUiPort = allocatePort(WEBUI_PORT_MIN, WEBUI_PORT_MAX, usedPorts);
     const containerName = getContainerName(agentId);
     const volumePath = getVolumePath(agentId);
-    const stewardTenant = await resolveStewardTenantCredentials({ organizationId });
+    // Auto-provision the Steward tenant for this org if it doesn't have one
+    // yet. Without this step, fresh organizations fall through to
+    // `DEFAULT_STEWARD_TENANT_ID` ("elizacloud") — and if that default tenant
+    // hasn't been pre-created on the Steward backend, `registerAgentWithSteward`
+    // below fails with "Steward agent registration failed with status 404",
+    // surfacing as "CLOUD CONNECTION NEEDS ATTENTION" in the desktop UI for
+    // every newly-signed-in user. When `STEWARD_PLATFORM_KEYS` is not
+    // configured (non-prod environments) this is a no-op that leaves the
+    // legacy fallback behavior intact.
+    const stewardTenant = organizationId
+      ? await ensureStewardTenant(organizationId)
+      : await resolveStewardTenantCredentials({ organizationId });
 
     // 4. Optionally prepare Headscale VPN
     const headscaleEnabled = !!process.env.HEADSCALE_API_KEY;

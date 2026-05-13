@@ -5,9 +5,7 @@
     "moduleResolution": "bundler",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "lib": [
-      "ES2021.String"
-    ],
+    "lib": ["ES2021.String"],
     "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
     "rootDir": "./src",
@@ -16,13 +14,9 @@
     "emitDeclarationOnly": true,
     "noEmit": false,
     "sourceMap": true,
-    "typeRoots": [
-      "./node_modules/@types"
-    ]
+    "typeRoots": ["./node_modules/@types"]
   },
-  "include": [
-    "src/**/*.ts"
-  ],
+  "include": ["src/**/*.ts"],
   "exclude": [
     "src/**/__tests__/**",
     "src/**/*.test.ts",

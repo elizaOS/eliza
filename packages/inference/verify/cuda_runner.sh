@@ -243,4 +243,5 @@ fi
 
 "$HERE/runtime_graph_smoke.sh" \
     --target "$CUDA_TARGET" \
-    --backend-pattern 'CUDA|cuda|cuBLAS|ggml_cuda|NVIDIA'
+    --backend-pattern 'CUDA|cuda|cuBLAS|ggml_cuda|NVIDIA' \
+    --gen-check

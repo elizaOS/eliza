@@ -115,6 +115,7 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 	{ topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
 > = {
 	small: {
+		// measured: K=5 saturates (W6-G2 Pareto 2026-05-11; heuristic was 5)
 		topK: 5,
 		stageWeights: {
 			exact: 1.5,
@@ -126,7 +127,8 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	mid: {
-		topK: 8,
+		// measured: K=5 saturates at 0.98 recall (heuristic was 8)
+		topK: 6,
 		stageWeights: {
 			exact: 1.4,
 			regex: 1.2,
@@ -137,7 +139,8 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	large: {
-		topK: 12,
+		// measured: K=5 saturates at 0.98 recall (heuristic was 12)
+		topK: 8,
 		stageWeights: {
 			exact: 1.2,
 			regex: 1.1,
@@ -148,7 +151,8 @@ const RETRIEVAL_TIER_DEFAULTS: Record<
 		},
 	},
 	frontier: {
-		topK: 20,
+		// measured: K=5 saturates at 0.98 recall (heuristic was 20)
+		topK: 12,
 		stageWeights: {
 			exact: 1,
 			regex: 1,

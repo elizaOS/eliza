@@ -5,8 +5,8 @@ import type {
 } from "@elizaos/agent";
 import {
   ELIZA_NATIVE_TRAJECTORY_FORMAT,
-  iterateTrajectoryLlmCalls,
   type ElizaNativeTrajectoryRow,
+  iterateTrajectoryLlmCalls,
 } from "@elizaos/core";
 
 export interface TrajectoryCallEntry {
@@ -23,7 +23,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function isElizaNativeExportRow(value: unknown): value is ElizaNativeTrajectoryRow {
+function isElizaNativeExportRow(
+  value: unknown,
+): value is ElizaNativeTrajectoryRow {
   return (
     isRecord(value) &&
     value.format === ELIZA_NATIVE_TRAJECTORY_FORMAT &&

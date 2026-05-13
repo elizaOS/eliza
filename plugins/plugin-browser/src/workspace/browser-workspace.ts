@@ -19,8 +19,6 @@
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 
-// ── Re-export types ──────────────────────────────────────────────────
-export { BROWSER_WORKSPACE_CONNECTOR_AUTH_STATES } from "./browser-workspace-types.js";
 export type {
   AcquireBrowserWorkspaceConnectorSessionRequest,
   BrowserWorkspaceBridgeConfig,
@@ -64,6 +62,8 @@ export type {
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
 } from "./browser-workspace-types.js";
+// ── Re-export types ──────────────────────────────────────────────────
+export { BROWSER_WORKSPACE_CONNECTOR_AUTH_STATES } from "./browser-workspace-types.js";
 
 import type {
   AcquireBrowserWorkspaceConnectorSessionRequest,

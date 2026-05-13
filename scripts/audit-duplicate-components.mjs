@@ -678,7 +678,7 @@ function staticStringText(node) {
   return values.join("\n");
 }
 
-function stripComments(text) {
+function _stripComments(text) {
   return text
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
@@ -789,7 +789,7 @@ function collectReturnExpressions(node) {
   return returns;
 }
 
-function isEmptyProvider(provider, sourceFile) {
+function isEmptyProvider(provider, _sourceFile) {
   const implementation = getProviderGetImplementation(provider.node);
   if (!implementation) return false;
 
@@ -805,9 +805,7 @@ function isEmptyProvider(provider, sourceFile) {
       : null;
   if (!body) return false;
   const returns = collectReturnExpressions(body);
-  return (
-    returns.length > 0 && returns.every(isEmptyProviderReturnExpression)
-  );
+  return returns.length > 0 && returns.every(isEmptyProviderReturnExpression);
 }
 
 function shouldBeProviderByName(actionName) {

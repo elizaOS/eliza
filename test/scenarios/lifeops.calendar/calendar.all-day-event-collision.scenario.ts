@@ -12,9 +12,9 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentSurfacesAllDayConflict(
   ctx: ScenarioContext,
@@ -95,8 +95,9 @@ export default scenario({
           updatedAt: now.toISOString(),
         });
         // Existing meeting today (so "move it" is unambiguous).
-        const todayPlusOne = new Date(now.getTime() + 24 * 60 * 60_000)
-          .toISOString();
+        const todayPlusOne = new Date(
+          now.getTime() + 24 * 60 * 60_000,
+        ).toISOString();
         await repo.upsertCalendarEvent({
           id: "meeting-to-move",
           externalId: "meeting-to-move-ext",

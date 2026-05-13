@@ -14,6 +14,11 @@
  *    When provided, the rubric verifies the release turn actually carries a
  *    release signal — if not, it flags NEEDS_REVIEW so an off-by-one author
  *    error doesn't silently pass.
+ *  - `len1AckMode?: boolean` — set by the bridge for `len_1` scenarios that
+ *    have only one user turn (the silence directive itself). The agent is
+ *    expected to acknowledge briefly but not be completely silent. The
+ *    scoring is lenient: empty/≤5 words → PASS, 6–15 words → NEEDS_REVIEW,
+ *    >15 words → FAIL.
  */
 
 import type {
@@ -25,6 +30,84 @@ import type {
 import { judgeWithLlm } from "../checks/llm-judge.ts";
 import { checkSilence } from "../checks/phrase.ts";
 import { combineVerdict } from "../verdict.ts";
+
+// P2-13: exact-match vacuous probe list (lowercase). A user message that
+// exactly matches one of these tokens is a vacuous acknowledgement — it
+// doesn't test the silence directive, only tests whether the agent says
+// anything at all. Skip rubric scoring for these turns (mark N/A).
+const VACUOUS_PROBE_EXACT: ReadonlySet<string> = new Set([
+  "ok",
+  "got it",
+  "k",
+  "sure",
+  "thanks",
+  "yes",
+  "no",
+  "maybe",
+  "alright",
+  "cool",
+]);
+
+/**
+ * Returns true when `userMessage` is a vacuous probe — a short acknowledgement
+ * that doesn't meaningfully test the silence directive. Criteria:
+ *  - ≤ 3 words, AND
+ *  - no question mark, AND
+ *  - not a directive (no imperative verbs like "tell", "show", "explain"), AND
+ *  - exact match against VACUOUS_PROBE_EXACT (after lowercase + trim).
+ */
+function isVacuousProbe(userMessage: string): boolean {
+  const trimmed = userMessage.trim().toLowerCase();
+  // Quick exact-match against the known vacuous list.
+  return VACUOUS_PROBE_EXACT.has(trimmed);
+}
+
+/**
+ * P2-12: lenient scoring for len_1 acknowledgement turns.
+ *
+ *  - empty response           → PASS  (score 1.0)
+ *  - ≤ 5 words                → PASS  (score 0.8)
+ *  - 6–15 words               → NEEDS_REVIEW (score 0.5)
+ *  - > 15 words               → FAIL  (score 0.2)
+ */
+function checkLen1Ack(response: string): LayerResult {
+  const trimmed = response.trim();
+  if (trimmed.length === 0) {
+    return {
+      layer: "phrase",
+      verdict: "PASS",
+      confidence: 1.0,
+      reason: "len-1 ack: empty response",
+      evidence: { words: 0 },
+    };
+  }
+  const words = trimmed.split(/\s+/).filter((w) => w.length > 0).length;
+  if (words <= 5) {
+    return {
+      layer: "phrase",
+      verdict: "PASS",
+      confidence: 0.8,
+      reason: `len-1 ack: ${words} word(s) ≤ 5`,
+      evidence: { words },
+    };
+  }
+  if (words <= 15) {
+    return {
+      layer: "phrase",
+      verdict: "NEEDS_REVIEW",
+      confidence: 0.5,
+      reason: `len-1 ack: ${words} words — borderline (6–15)`,
+      evidence: { words },
+    };
+  }
+  return {
+    layer: "phrase",
+    verdict: "FAIL",
+    confidence: 0.8,
+    reason: `len-1 ack: ${words} words > 15`,
+    evidence: { words },
+  };
+}
 
 function turnText(scenario: PersonalityScenario, turnIndex: number): string {
   return scenario.trajectory[turnIndex - 1]?.content ?? "";
@@ -176,6 +259,12 @@ export async function gradeStrictSilence(
     );
   }
 
+  const opts = (scenario.personalityExpect.options ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const len1AckMode = opts.len1AckMode === true;
+
   const { releaseTurn, releaseAssistantTurn, releaseMarkers } =
     readReleaseOptions(scenario);
   // Auto-resolve the assistant turn that responds to the release if not
@@ -213,6 +302,34 @@ export async function gradeStrictSilence(
       });
       continue;
     }
+
+    // P2-12: len_1 mode — grade the single instruction-turn acknowledgement
+    // with a lenient word-count check instead of requiring silence.
+    if (len1AckMode) {
+      const ack = checkLen1Ack(turn.content);
+      layers.push({ ...ack, reason: `len-1@turn ${t}: ${ack.reason}` });
+      continue;
+    }
+
+    // P2-13: vacuous probe carve-out — if the preceding user message is a
+    // vacuous acknowledgement (e.g. "ok", "k", "sure"), skip scoring this
+    // assistant turn. It doesn't test the silence directive.
+    const precedingUserTurn = scenario.trajectory[t - 2];
+    if (
+      precedingUserTurn &&
+      precedingUserTurn.role === "user" &&
+      isVacuousProbe(precedingUserTurn.content)
+    ) {
+      layers.push({
+        layer: "phrase",
+        verdict: "NEEDS_REVIEW",
+        confidence: 0.0,
+        reason: `turn ${t}: vacuous probe — user message "${precedingUserTurn.content.trim()}" skipped (N/A)`,
+        evidence: { vacuous: true },
+      });
+      continue;
+    }
+
     // On the release assistant turn: the agent MUST re-engage substantively.
     if (resolvedReleaseAssistant !== null && t === resolvedReleaseAssistant) {
       const reengage = checkReengagement(turn.content);

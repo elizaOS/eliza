@@ -2790,15 +2790,6 @@
           }
         },
         {
-          "name": "subaction",
-          "description": "Alias for action.",
-          "required": false,
-          "schema": {
-            "type": "string",
-            "enum": ["read", "place_order", "place-order"]
-          }
-        },
-        {
           "name": "kind",
           "description": "read only: status | markets | market | positions | funding.",
           "required": false,
@@ -2850,7 +2841,6 @@
             "PERPETUAL_MARKET": {
               "target": "hyperliquid",
               "action": "read",
-              "subaction": "read",
               "kind": "status",
               "coin": "example",
               "side": "buy",

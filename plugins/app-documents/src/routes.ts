@@ -1,9 +1,11 @@
-import type { RouteHelpers, RouteRequestContext } from "@elizaos/core";
-import {
-  parseClampedFloat,
-  parsePositiveInteger,
-} from "@elizaos/agent";
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import { parseClampedFloat, parsePositiveInteger } from "@elizaos/agent";
+import type {
+  AgentRuntime,
+  Memory,
+  RouteHelpers,
+  RouteRequestContext,
+  UUID,
+} from "@elizaos/core";
 import {
   __setDocumentUrlFetchImplForTests,
   fetchDocumentFromUrl,
@@ -385,7 +387,9 @@ function matchesDocumentFilter(
   return true;
 }
 
-function documentScopedEntityId(memory: DocumentReadableMemory): UUID | undefined {
+function documentScopedEntityId(
+  memory: DocumentReadableMemory,
+): UUID | undefined {
   const metadata = asRecord(memory.metadata);
   return (
     asUuid(metadata?.scopedToEntityId) ??

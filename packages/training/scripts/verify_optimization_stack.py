@@ -20,10 +20,10 @@ Asserts on a staged/published Eliza-1 bundle dir (or the raw
 
 Run on a staged bundle:
     uv run python scripts/verify_optimization_stack.py \\
-        --bundle-dir /tmp/eliza1-stage/eliza-1-0_8b
+        --bundle-dir /tmp/eliza1-stage/eliza-1-0_6b
 On the orchestrator output:
     uv run python scripts/verify_optimization_stack.py \\
-        --opt-dir checkpoints/eliza-1-0_8b-apollo-1778551769/eliza1-optimized
+        --opt-dir checkpoints/eliza-1-0_6b-apollo-1778551769/eliza1-optimized
 Exits non-zero on a failed assertion (publish-blocking).
 """
 
@@ -248,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument(
         "--bundle-dir",
         type=Path,
-        help="Staged Eliza-1 bundle dir (uploaded to elizaos/eliza-1 under bundles/<tier>/).",
+        help="Staged Eliza-1 bundle dir (the dir uploaded to elizaos/eliza-1-<tier>).",
     )
     ap.add_argument(
         "--json", action="store_true",

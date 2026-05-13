@@ -1,3 +1,11 @@
+import type {
+  CreateLifeOpsCalendarEventAttendee,
+  CreateLifeOpsCalendarEventRequest,
+  LifeOpsCalendarEvent,
+  LifeOpsCalendarEventUpdate,
+  LifeOpsCalendarSummary,
+  LifeOpsConnectorSide,
+} from "@elizaos/shared";
 import {
   Button,
   ConfirmDialog,
@@ -14,14 +22,6 @@ import {
   Textarea,
   useApp,
 } from "@elizaos/ui";
-import type {
-  CreateLifeOpsCalendarEventAttendee,
-  CreateLifeOpsCalendarEventRequest,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarEventUpdate,
-  LifeOpsCalendarSummary,
-  LifeOpsConnectorSide,
-} from "@elizaos/shared";
 import { X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 

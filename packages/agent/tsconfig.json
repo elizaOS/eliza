@@ -113,7 +113,9 @@
         "../../plugins/plugin-discord-local/src/*"
       ],
       "@elizaos/*": ["../../node_modules/@elizaos/*"],
-      "puppeteer-core": ["./node_modules/puppeteer-core"]
+      "puppeteer-core": ["./node_modules/puppeteer-core"],
+      "drizzle-orm": ["../app-core/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../app-core/node_modules/drizzle-orm/*"]
     }
   },
   "include": ["src"]

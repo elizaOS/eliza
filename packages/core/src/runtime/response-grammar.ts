@@ -643,6 +643,51 @@ export function clearResponseGrammarCache(): void {
 	plannerCache.clear();
 }
 
+/**
+ * True unless the operator has explicitly opted *out* of guided structured
+ * decode for the local llama-server engine. Guided decode (the
+ * deterministic-token prefill-plan fast-forward layered on top of the GBNF
+ * constrained decode) is **on by default** for the Stage-1 response handler and
+ * the Stage-2 planner — those are the calls that always carry a forced skeleton.
+ * Set `MILADY_LOCAL_GUIDED_DECODE=0` (or `ELIZA_LOCAL_GUIDED_DECODE=0` /
+ * `false` / `off` / `no`) to disable. Cloud adapters ignore
+ * `providerOptions.eliza.guidedDecode` entirely, so this is a no-op for them.
+ */
+function guidedDecodeEnabledByDefault(): boolean {
+	const raw = (
+		process.env.MILADY_LOCAL_GUIDED_DECODE ??
+		process.env.ELIZA_LOCAL_GUIDED_DECODE ??
+		""
+	)
+		.trim()
+		.toLowerCase();
+	return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
+}
+
+/**
+ * Merge `eliza.guidedDecode = true` into a provider-options bag so the local
+ * llama-server engine builds the {@link ResponseSkeleton}'s deterministic-token
+ * prefill plan (`eliza_prefill_plan`) and fast-forwards the forced scaffold
+ * spans — turning the ≈28% of envelope tokens the GBNF already pins into ≈28%
+ * fewer `decode()` calls (the fork-side fast-forward consumes the plan; without
+ * it the runtime degrades to grammar-only / byte-identical output). Idempotent;
+ * returns the same object reference with `eliza.guidedDecode` set. When the
+ * operator opted out via `MILADY_LOCAL_GUIDED_DECODE=0` this is a no-op so an
+ * existing `providerOptions.eliza.guidedDecode` (likely absent) is left alone.
+ */
+export function withGuidedDecodeProviderOptions<
+	T extends Record<string, unknown>,
+>(providerOptions: T): T {
+	if (!guidedDecodeEnabledByDefault()) return providerOptions;
+	const existingEliza =
+		(providerOptions as { eliza?: Record<string, unknown> }).eliza ?? {};
+	(providerOptions as { eliza?: Record<string, unknown> }).eliza = {
+		...existingEliza,
+		guidedDecode: true,
+	};
+	return providerOptions;
+}
+
 // ---------------------------------------------------------------------------
 // Stage-2: planner action grammar
 // ---------------------------------------------------------------------------

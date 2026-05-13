@@ -16,7 +16,6 @@ import type {
   State,
   Task,
 } from "@elizaos/core";
-import { toRecord } from "./utils.js";
 import type {
   CapturedAction,
   CapturedApprovalRequest,
@@ -25,6 +24,7 @@ import type {
   CapturedMemoryWrite,
   CapturedStateTransition,
 } from "@elizaos/scenario-schema";
+import { toRecord } from "./utils.js";
 
 const INTERCEPTOR_MARKER = Symbol.for("scenario-runner.interceptor-wrapped");
 const RUNTIME_CAPTURE_HOOK = Symbol.for("scenario-runner.capture-hooks");
@@ -64,11 +64,11 @@ function errorMessage(err: unknown): string {
 }
 
 function getRuntimeCaptureHooks(
-	runtime: IAgentRuntime,
+  runtime: IAgentRuntime,
 ): RuntimeCaptureHooks | null {
-	const hooks = (runtime as { [RUNTIME_CAPTURE_HOOK]?: unknown })[
-		RUNTIME_CAPTURE_HOOK
-	];
+  const hooks = (runtime as { [RUNTIME_CAPTURE_HOOK]?: unknown })[
+    RUNTIME_CAPTURE_HOOK
+  ];
   if (!hooks || typeof hooks !== "object") {
     return null;
   }
@@ -484,10 +484,7 @@ function captureConnectorDispatchesFromAction(
     });
   };
 
-  if (
-    actionName === "MESSAGE" ||
-    actionName === "MESSAGE"
-  ) {
+  if (actionName === "MESSAGE" || actionName === "MESSAGE") {
     const channels = [
       ...toStringArray(params?.channel),
       ...toStringArray(resultData?.channel),
@@ -516,7 +513,9 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   // Wrap actions registered on this runtime.
   const restoreFns: Array<() => void> = [];
 
-  (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[RUNTIME_CAPTURE_HOOK] = {
+  (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[
+    RUNTIME_CAPTURE_HOOK
+  ] = {
     approvalRequests,
     connectorDispatches,
     stateTransitions,

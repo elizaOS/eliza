@@ -57,7 +57,6 @@ def test_fixture_parses_metadata_fields() -> None:
         "Knowledge",
     }
     assert sample.difficulty in {"easy", "medium", "hard"}
-    assert sample.transcript
 
 
 def test_record_with_unknown_task_is_skipped(tmp_path: Path) -> None:

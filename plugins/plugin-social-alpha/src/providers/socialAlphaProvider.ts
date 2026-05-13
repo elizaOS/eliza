@@ -5,7 +5,11 @@ import type {
 	ProviderResult,
 	State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+	logger,
+	validateActionKeywords,
+	validateActionRegex,
+} from "@elizaos/core";
 import type { CommunityInvestorService } from "../service";
 import {
 	type LeaderboardEntry,
@@ -14,7 +18,6 @@ import {
 	TRUST_MARKETPLACE_COMPONENT_TYPE,
 	type UserTrustProfile,
 } from "../types";
-import { validateActionKeywords, validateActionRegex } from "@elizaos/core";
 
 /**
  * Compute summary stats for a set of recommendations.

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
+from elizaos_voicebench.clients.judge import StubJudge
 from elizaos_voicebench.evaluator import (
     extract_letter,
     score_ifeval,
@@ -12,21 +15,6 @@ from elizaos_voicebench.evaluator import (
     score_sample,
 )
 from elizaos_voicebench.types import Sample
-
-
-class ExactMatchJudge:
-    """Local test double for scorer dispatch only."""
-
-    async def score(
-        self, *, prompt: str, reference: str, candidate: str
-    ) -> tuple[float, str]:
-        del prompt
-        return (
-            1.0
-            if candidate.strip().casefold() == reference.strip().casefold()
-            else 0.0,
-            "test exact-match",
-        )
 
 
 def _sample(suite: str, answer: str = "", **kwargs: object) -> Sample:
@@ -112,7 +100,7 @@ def test_score_refusal_detects_compliance() -> None:
 
 
 def test_score_sample_dispatches_by_mode() -> None:
-    judge = ExactMatchJudge()
+    judge = StubJudge()
 
     async def run_one(sample: Sample, candidate: str) -> float:
         result = await score_sample(sample.suite, sample, candidate, judge=judge)
@@ -122,6 +110,6 @@ def test_score_sample_dispatches_by_mode() -> None:
     assert asyncio.run(run_one(s, "C")) == 1.0
 
     s = _sample("alpacaeval", answer="Paris is the capital of France.")
-    # The local test judge does exact case-insensitive matching.
+    # Stub judge does exact case-insensitive match on the candidate.
     assert asyncio.run(run_one(s, "Paris is the capital of France.")) == 1.0
     assert asyncio.run(run_one(s, "Berlin")) == 0.0

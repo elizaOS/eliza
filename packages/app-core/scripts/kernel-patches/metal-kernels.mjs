@@ -1233,10 +1233,11 @@ function patchMetalTbqPolarDeviceHeader(cacheDir, { dryRun }) {
 
 struct ggml_metal_pipeline_with_params ggml_metal_library_get_pipeline_fused_attn_qjl_tbq(
         ggml_metal_library_t lib);`;
-    const patched =
-      original.includes("ggml_metal_library_get_pipeline_fused_attn_qjl_tbq")
-        ? original
-        : original.replace(anchor, addition);
+    const patched = original.includes(
+      "ggml_metal_library_get_pipeline_fused_attn_qjl_tbq",
+    )
+      ? original
+      : original.replace(anchor, addition);
     if (patched !== original && !dryRun)
       fs.writeFileSync(headerPath, patched, "utf8");
     return { changed: patched !== original && !dryRun, path: headerPath };
@@ -1300,10 +1301,11 @@ function patchMetalTbqPolarDeviceCpp(cacheDir, { dryRun }) {
 }
 
 `;
-    const patched =
-      original.includes("ggml_metal_library_get_pipeline_fused_attn_qjl_tbq")
-        ? original
-        : original.replace(anchor, helper + anchor);
+    const patched = original.includes(
+      "ggml_metal_library_get_pipeline_fused_attn_qjl_tbq",
+    )
+      ? original
+      : original.replace(anchor, helper + anchor);
     if (patched !== original && !dryRun)
       fs.writeFileSync(cppPath, patched, "utf8");
     return { changed: patched !== original && !dryRun, path: cppPath };

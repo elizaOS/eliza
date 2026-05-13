@@ -124,6 +124,12 @@ async function main() {
 
   const buildablePluginNames = pluginNames.filter((name) => {
     const pkg = readPluginPackageJson(pluginsDir, name);
+    // Type-only / source-consumed packages (e.g. shared-types) have no build
+    // script. Skip them so `bun run build` does not abort the whole batch.
+    if (!pkg?.scripts?.build) {
+      logVerbose(`[plugin:${name}] skipping — no build script declared`);
+      return false;
+    }
     if (shouldBuildPluginForHost(pkg, process.platform)) {
       return true;
     }

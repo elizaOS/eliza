@@ -6,10 +6,9 @@ Each factory wraps the equivalent LifeOpsBench agent factory. The user
 adapters consume ``content``; future direct-audio adapters can opt
 into the ``audio_input`` field without further runner changes.
 
-The Eliza factory uses the same source-loaded eliza bridge as LifeOpsBench.
-VoiceAgentBench's ``MessageTurn`` subclasses the LifeOps turn type, so the
-cascaded text path can reuse that adapter while still carrying audio bytes for
-future direct-audio adapters.
+The Eliza factory currently delegates to ``cerebras-direct`` because
+the eliza-adapter LifeOps bridge requires a scenario-bound runtime
+state that VoiceAgentBench does not synthesize.
 """
 
 from __future__ import annotations
@@ -20,10 +19,12 @@ from ..types import AgentFn
 
 
 def build_eliza_agent(**kwargs: Any) -> AgentFn:
-    """Cascaded Eliza adapter backed by the eliza benchmark bridge."""
-    from eliza_lifeops_bench.agents import build_eliza_agent as _build
+    """Cascaded Eliza adapter - delegates to LifeOps cerebras-direct."""
+    from eliza_lifeops_bench.agents.cerebras_direct import (
+        build_cerebras_direct_agent,
+    )
 
-    return _build(**kwargs)
+    return build_cerebras_direct_agent(**kwargs)
 
 
 def build_hermes_agent(**kwargs: Any) -> AgentFn:

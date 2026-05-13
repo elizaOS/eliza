@@ -1,0 +1,50 @@
+{
+  "schema": "voice-duet-bench/1",
+  "model": "eliza-1-0_6b",
+  "generatedAt": "2026-05-12T00:00:00.000Z",
+  "platform": "linux-x64",
+  "backend": "cpu",
+  "twoProcess": false,
+  "requestedTurns": 20,
+  "completedTurns": 0,
+  "status": "needs-run",
+  "reason": "The duet harness booted both standalone runtimes, registered both eliza-1-0_6b bundles, armed both engines' voice lifecycles, and drove engine.load() — at which point the locally-installed linux-x64-cpu-fused llama-server failed with 'error while loading shared libraries: libmtmd.so.0: cannot open shared object file'. That is a broken local fused build (a WS-2/WS-3 build-matrix item), not a harness bug. The real-output CPU baseline run is blocked until a working fused build is present. No numbers are fabricated.",
+  "sweepKnobs": {
+    "ringMs": 200,
+    "parallel": null,
+    "draftMax": null,
+    "draftMin": null,
+    "ctxSizeDraft": null,
+    "prewarmLeadMs": null,
+    "chunkWords": null,
+    "kvCacheType": null
+  },
+  "latency": { "histograms": null, "derivedKeys": [] },
+  "runMetrics": {
+    "turns": 0,
+    "dflashAcceptRate": null,
+    "dflashAccepted": 0,
+    "dflashDrafted": 0,
+    "dflashAcceptRateHistogram": { "count": 0, "p50": null, "p90": null, "p99": null, "min": null, "max": null, "mean": null },
+    "structuredDecodeTokenSavingsPct": { "count": 0, "p50": null, "p90": null, "p99": null, "min": null, "max": null, "mean": null },
+    "tokensPerSecond": { "count": 0, "p50": null, "p90": null, "p99": null, "min": null, "max": null, "mean": null },
+    "rss": { "firstMb": null, "lastMb": null, "maxMb": null, "samples": 0, "leakSuspected": false, "growthMb": null }
+  },
+  "emotionFidelity": {
+    "perceiver": "perceiver: fallback-classifier (unavailable — recorded as null)",
+    "samples": 0,
+    "accuracy": null,
+    "confusionMatrix": {}
+  },
+  "gates": {
+    "first_token_latency_ms": null,
+    "first_audio_latency_ms": null,
+    "duet_round_trip_ms": null,
+    "structured_decode_token_savings_pct": null,
+    "dflash_acceptance": null,
+    "expressive_tag_faithfulness": null,
+    "e2e_loop_ok": false
+  },
+  "notes": "Needs a working fused llama-server build to run; this artifact is the honest placeholder so eliza1_gates_collect.mjs records the duet gates as needs-data, not a fabricated pass. The static structured-decode token-savings aggregate over the synthetic action set is ~28% forced (WS-4's guided_decode_token_bench.mjs); the per-run number is needs-run. The GGUF-ASR emotion-label surface is unconfirmed (WS-4 probes eliza-1-asr-mmproj.gguf) so emotionFidelity.accuracy is null with perceiver: fallback-classifier (unavailable).",
+  "turns": []
+}

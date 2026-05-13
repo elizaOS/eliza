@@ -116,7 +116,7 @@ export class ScreenVisionE2ETestSuite {
         await new Promise((resolve) => setTimeout(resolve, 5000));
 
         const enhancedScene = await visionService.getEnhancedSceneDescription();
-        if (!enhancedScene || !enhancedScene.screenAnalysis) {
+        if (!enhancedScene?.screenAnalysis) {
           console.warn("⚠️  No enhanced scene analysis available yet");
           return;
         }

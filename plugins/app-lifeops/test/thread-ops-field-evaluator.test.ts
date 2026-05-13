@@ -51,7 +51,9 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
     // import at test boundary — simpler is to intercept via the fake's
     // owner/entity helpers. The implementation we care about is that
     // hasOwnerAccess returns ownerAccess.
-    character: { owners: ownerAccess ? ["00000000-0000-0000-0000-deadbeefdead"] : [] },
+    character: {
+      owners: ownerAccess ? ["00000000-0000-0000-0000-deadbeefdead"] : [],
+    },
     adapter: {
       db: {
         execute: async () => {
@@ -85,7 +87,8 @@ function buildFakeRuntime(overrides: FakeRuntimeOverrides = {}): unknown {
       },
     },
     turnControllers: {
-      hasActiveTurn: (roomId: string) => Boolean(hasActiveTurn) && roomId === "room-1",
+      hasActiveTurn: (roomId: string) =>
+        Boolean(hasActiveTurn) && roomId === "room-1",
       abortTurn: (roomId: string, reason: string) => {
         if (onAbortTurn) onAbortTurn(roomId, reason);
         return abortTurnReturn;
@@ -150,7 +153,10 @@ describe("threadOpsFieldEvaluator", () => {
 
   describe("parse", () => {
     it("returns empty array for non-array input", () => {
-      const result = threadOpsFieldEvaluator.parse?.(null, buildCtx(buildFakeRuntime()));
+      const result = threadOpsFieldEvaluator.parse?.(
+        null,
+        buildCtx(buildFakeRuntime()),
+      );
       expect(result).toEqual([]);
     });
 
@@ -174,11 +180,10 @@ describe("threadOpsFieldEvaluator", () => {
         buildCtx(buildFakeRuntime()),
       );
       expect(result).toHaveLength(1);
-      expect((result as Array<{ sourceWorkThreadIds: string[] }>)[0].sourceWorkThreadIds).toEqual([
-        "wt-a",
-        "wt-b",
-        "wt-c",
-      ]);
+      expect(
+        (result as Array<{ sourceWorkThreadIds: string[] }>)[0]
+          .sourceWorkThreadIds,
+      ).toEqual(["wt-a", "wt-b", "wt-c"]);
     });
 
     it("parses sourceRef when valid", () => {
@@ -236,7 +241,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       expect(effect).toBeDefined();
       expect(effect?.preempt).toEqual({
         mode: "ack-and-stop",
@@ -262,7 +267,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       const mutated = { ...handleCtx.parsed } as Record<string, unknown>;
       effect?.mutateResult?.(mutated as never);
       expect(mutated.replyText).toBe("Stopped — partial work preserved.");
@@ -276,7 +281,11 @@ describe("threadOpsFieldEvaluator", () => {
       const handleCtx: ResponseHandlerFieldHandleContext<unknown> = {
         ...buildCtx(runtime, buildMessage("steer the research thread")),
         value: [
-          { type: "steer", workThreadId: "wt-1", instruction: "focus on bean-to-cup" },
+          {
+            type: "steer",
+            workThreadId: "wt-1",
+            instruction: "focus on bean-to-cup",
+          },
         ],
         parsed: {
           shouldRespond: "RESPOND",
@@ -289,7 +298,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       const mutated = { ...handleCtx.parsed } as Record<string, unknown>;
       effect?.mutateResult?.(mutated as never);
       expect(mutated.candidateActionNames).toContain("WORK_THREAD");
@@ -317,7 +326,7 @@ describe("threadOpsFieldEvaluator", () => {
           addressedTo: [],
         },
       };
-      const effect = await threadOpsFieldEvaluator.handle!(handleCtx);
+      const effect = await threadOpsFieldEvaluator.handle?.(handleCtx);
       expect(effect).toBeUndefined();
     });
   });

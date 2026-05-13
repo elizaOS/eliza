@@ -23,16 +23,17 @@ export default scenario({
     "aggression:polite",
     "format:allcaps",
   ],
-  description: "Ladder of escalation requests ('more_formal', direction: more_formal). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
+  description:
+    "Ladder of escalation requests ('more_formal', direction: more_formal). Agent's tone/responsiveness should shift monotonically with each escalation step, and the new level should hold across the probe turns that follow.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "escalation",
@@ -41,16 +42,11 @@ export default scenario({
     forbiddenContent: [],
     requiredContent: [],
     judgeKwargs: {
-          ladderKey: "more_formal",
-          direction: "more_formal",
-          escalationStepTurnIndices: [
-                  0,
-                  2,
-                ],
-          probeTurnIndices: [
-                  1,
-                ],
-        },
+      ladderKey: "more_formal",
+      direction: "more_formal",
+      escalationStepTurnIndices: [0, 2],
+      probeTurnIndices: [1, 3, 4],
+    },
   },
   turns: [
     // escalation step 1 of 5
@@ -73,6 +69,20 @@ export default scenario({
       name: "escalation-step-2",
       room: "main",
       text: "IF YOU WOULD — MORE FORMAL.",
+    },
+    // probe after escalation step 2; agent should reflect current level
+    {
+      kind: "message",
+      name: "probe-after-step-2",
+      room: "main",
+      text: "Real quick — what are the symptoms of a vitamin D deficiency?",
+    },
+    // probe after escalation step 2; verify tone holds across a second question
+    {
+      kind: "message",
+      name: "probe-after-step-2b",
+      room: "main",
+      text: "Real quick — give me a quick overview of Stoicism?",
     },
   ],
 });

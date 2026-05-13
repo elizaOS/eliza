@@ -15,12 +15,12 @@
  * See the script's top-of-file docstring for the strategy ordering.
  */
 
-import { describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { describe, expect, it } from "vitest";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixtureDir = path.resolve(here, "fixtures", "translate-action-examples");
@@ -33,10 +33,23 @@ const scriptPath = path.resolve(
 );
 
 function locateBun(): string {
+  // Resolve via PATH first — works on CI (Linux) and dev (macOS).
+  // Vitest overrides HOME with a sandbox dir so we can't rely on os.homedir()
+  // for ~/.bun/bin/bun, but PATH still includes the bun install dir.
+  const which = spawnSync("which", ["bun"], { encoding: "utf8" });
+  if (which.status === 0 && which.stdout.trim()) {
+    return which.stdout.trim();
+  }
+  // Fallback: probe common install locations.
   const candidates = [
-    process.env.BUN_INSTALL ? path.join(process.env.BUN_INSTALL, "bin", "bun") : null,
-    // The user's real home — vitest overrides HOME but keeps SUDO_USER /
-    // USER to look up the original.
+    process.env.BUN_INSTALL
+      ? path.join(process.env.BUN_INSTALL, "bin", "bun")
+      : null,
+    // Linux CI: ~/.bun/bin/bun under the real user home.
+    process.env.USER
+      ? path.join("/home", process.env.USER, ".bun", "bin", "bun")
+      : null,
+    // macOS dev: ~/.bun/bin/bun under the real user home.
     process.env.USER
       ? path.join("/Users", process.env.USER, ".bun", "bin", "bun")
       : null,
@@ -54,7 +67,7 @@ function locateBun(): string {
     }
   }
   throw new Error(
-    `Could not locate bun binary; tried: ${candidates.join(", ")}`,
+    `Could not locate bun binary; tried: which + ${candidates.join(", ")}`,
   );
 }
 
@@ -128,7 +141,10 @@ function runHarness(fixture: string): {
   // keys and trailing commas. Convert to JSON.
   const jsonLike = jsLiteral
     .replace(/,(\s*[\]}])/g, "$1") // trailing commas
-    .replace(/(\b)(exampleKey|locale|user|agent|name|content|text|actions|action)(\s*):/g, '$1"$2"$3:');
+    .replace(
+      /(\b)(exampleKey|locale|user|agent|name|content|text|actions|action)(\s*):/g,
+      '$1"$2"$3:',
+    );
   const entries = JSON.parse(jsonLike) as ExtractedEntry[];
   return { actionName, entries, stderr: result.stderr };
 }
@@ -173,7 +189,9 @@ describe("translate-action-examples — extractor strategies", () => {
     // The composite-key contract is `<actionName>.example.<index>`. Spread
     // resolution must produce stable, monotonically-increasing indices so
     // re-runs of the harness don't shuffle locale entries.
-    const indices = entries.map((e) => Number(e.exampleKey.split(".example.")[1]));
+    const indices = entries.map((e) =>
+      Number(e.exampleKey.split(".example.")[1]),
+    );
     expect(indices).toEqual([0, 1, 2]);
   });
 

@@ -373,7 +373,7 @@ def main() -> int:
         )
     model.eval()
 
-    # For active hybrid linear+full-attention Qwen3.5 models, we MUST
+    # For hybrid linear+full-attention models (Qwen3.5 / Qwen3.6) we MUST
     # pre-build a layer-type-aware cache or HF will create a DynamicCache
     # whose internal layer-type dispatch is correct, but if the underlying
     # model implementation accidentally creates a plain DynamicCache without

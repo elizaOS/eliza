@@ -405,12 +405,14 @@ function buildSession(
     .filter((c) => c.available !== false && typeof c.command === "string")
     .map((c) => c.command as string);
 
-  const recommendedGoals: AppSessionJsonValue[] = availableGoals.map((g, i) => ({
-    id: `goal-${i}`,
-    type: g.type ?? "general",
-    description: g.description ?? "",
-    reason: typeof g.reason === "string" ? g.reason : null,
-  }));
+  const recommendedGoals: AppSessionJsonValue[] = availableGoals.map(
+    (g, i) => ({
+      id: `goal-${i}`,
+      type: g.type ?? "general",
+      description: g.description ?? "",
+      reason: typeof g.reason === "string" ? g.reason : null,
+    }),
+  );
 
   const recentThoughts: AppSessionJsonValue[] = thoughts
     .slice(0, THOUGHTS_LIMIT)

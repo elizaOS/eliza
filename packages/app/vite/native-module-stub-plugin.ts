@@ -213,6 +213,10 @@ export function nativeModuleStubPlugin(
     "@elizaos/plugin-signal",
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-whatsapp",
+    // Node-only edge-tts backend. app-core's runtime/ensure-text-to-speech-handler.ts
+    // does `await import("@elizaos/plugin-edge-tts")`; the dist barrel pulls that
+    // module into the client graph where it must be stubbed (no browser TTS path).
+    "@elizaos/plugin-edge-tts",
     // The cloud plugin's runtime surface (cloud secrets, TTS routes,
     // ElevenLabs key resolver) is server-only. The app-core dist barrel
     // re-exports symbols from it via api/server.js — stub the bare

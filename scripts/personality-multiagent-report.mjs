@@ -15,11 +15,7 @@
  *   --inputs  <inputs.json>      JSON of `{ agents: [{ agent, run_dir }] }`.
  */
 
-import {
-  existsSync,
-  readFileSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const args = process.argv.slice(2);
@@ -88,10 +84,8 @@ for (const a of agentRuns) {
     scenarios: typeof v.scenarios === "number" ? v.scenarios : 0,
     wallMs: typeof v.wall_ms === "number" ? v.wall_ms : 0,
     judgeWallMs: typeof v.judge_wall_ms === "number" ? v.judge_wall_ms : 0,
-    totalCost:
-      typeof v.total_cost_usd === "number" ? v.total_cost_usd : 0,
-    promptTokens:
-      typeof v.prompt_tokens === "number" ? v.prompt_tokens : 0,
+    totalCost: typeof v.total_cost_usd === "number" ? v.total_cost_usd : 0,
+    promptTokens: typeof v.prompt_tokens === "number" ? v.prompt_tokens : 0,
     completionTokens:
       typeof v.completion_tokens === "number" ? v.completion_tokens : 0,
     errors: typeof v.errors === "number" ? v.errors : 0,
@@ -147,8 +141,7 @@ for (const [scenarioId, byAgent] of verdictByScenarioByAgent) {
     uniquePass.push({
       scenarioId,
       onlyAgent: winner,
-      winningReason:
-        byAgent.get(winner)?.reason ?? "(no reason)",
+      winningReason: byAgent.get(winner)?.reason ?? "(no reason)",
       others: otherReason,
     });
   }
@@ -203,9 +196,7 @@ if (perAgent.length === 0) {
   lines.push(
     `| agent | scenarios | PASS | FAIL | NEEDS_REVIEW | %Pass | cost | wall |`,
   );
-  lines.push(
-    `| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |`,
-  );
+  lines.push(`| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |`);
   for (const a of perAgent) {
     lines.push(
       `| ${a.agent} | ${a.scenarios} | ${a.totals.pass} | ${a.totals.fail} | ${a.totals.needsReview} | ${fmtPct(a.totals.pass, a.scenarios)} | ${fmtCost(a.totalCost)} | ${fmtLatency(a.wallMs)} |`,
@@ -238,7 +229,9 @@ if (perAgent.length === 0) {
     if (uniquePass.length === 0) {
       lines.push(`_None._`);
     } else {
-      lines.push(`| scenario | only agent to pass | others | judge reason (winning agent) |`);
+      lines.push(
+        `| scenario | only agent to pass | others | judge reason (winning agent) |`,
+      );
       lines.push(`| --- | --- | --- | --- |`);
       for (const u of uniquePass) {
         lines.push(
@@ -326,10 +319,7 @@ const reportJson = {
   },
   needs_review: needsReviewList,
 };
-writeFileSync(
-  join(runDir, "report.json"),
-  JSON.stringify(reportJson, null, 2),
-);
+writeFileSync(join(runDir, "report.json"), JSON.stringify(reportJson, null, 2));
 console.log(
   `[personality-multiagent-report] wrote ${join(runDir, "report.json")}`,
 );

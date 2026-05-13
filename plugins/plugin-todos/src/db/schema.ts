@@ -24,12 +24,8 @@ export const todosTable = todosSchema.table(
     parentTodoId: uuid("parent_todo_id"),
     parentTrajectoryStepId: text("parent_trajectory_step_id"),
     metadata: jsonb("metadata").default("{}").notNull(),
-    createdAt: timestamp("created_at")
-      .default(sql`now()`)
-      .notNull(),
-    updatedAt: timestamp("updated_at")
-      .default(sql`now()`)
-      .notNull(),
+    createdAt: timestamp("created_at").default(sql`now()`).notNull(),
+    updatedAt: timestamp("updated_at").default(sql`now()`).notNull(),
     completedAt: timestamp("completed_at"),
   },
   (table) => ({

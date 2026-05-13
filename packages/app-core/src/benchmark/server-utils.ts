@@ -30,7 +30,39 @@ export const BENCHMARK_MESSAGE_SERVER_ID = stringToUuid(
  * Roles for additional users (admin/user/guest) are seeded per-session by
  * `seedBenchUserRole` below.
  */
-export const BENCHMARK_OWNER_ENTITY_ID: UUID = stringToUuid("eliza-benchmark-owner");
+export const BENCHMARK_OWNER_ENTITY_ID = stringToUuid("eliza-benchmark-owner");
+
+const BENCH_ROLE_NAMES: readonly RoleName[] = [
+  "OWNER",
+  "ADMIN",
+  "USER",
+  "GUEST",
+] as const;
+
+export function normalizeBenchRoleName(raw: unknown): RoleName | null {
+  if (typeof raw !== "string") return null;
+  const upper = raw.trim().toUpperCase();
+  switch (upper) {
+    case "OWNER":
+    case "ADMIN":
+    case "USER":
+    case "GUEST":
+      return upper;
+    // Tolerate the runner's lowercase `admin` / `member` vocabulary so we
+    // don't have to keep both sides in lockstep.
+    case "MEMBER":
+      return "USER";
+    default:
+      return null;
+  }
+}
+
+export function isBenchRoleName(value: unknown): value is RoleName {
+  return (
+    typeof value === "string" &&
+    (BENCH_ROLE_NAMES as readonly string[]).includes(value)
+  );
+}
 
 export interface BenchmarkSession {
   benchmark: string;
@@ -80,6 +112,22 @@ export interface BenchmarkTurnUsage {
   calls: BenchmarkLlmCallUsage[];
 }
 
+/**
+ * Compact audit-log entry surfaced in the benchmark trajectory. Mirrors
+ * `personality_audit_log` memory rows written by the PERSONALITY action.
+ * Only the fields the scorer needs are pulled forward; raw memory bytes
+ * are not propagated. Added in P0-7 so the `scope_global_vs_user` rubric
+ * can grade real mutation attempts instead of guessing from response text.
+ */
+export interface BenchmarkPersonalityAuditEntry {
+  action: string;
+  scope: string;
+  actorId: string;
+  targetId: string;
+  /** ISO timestamp; defaults to memory `createdAt` when missing. */
+  timestamp: string;
+}
+
 export interface BenchmarkTrajectoryStep {
   step: number;
   startedAt: number;
@@ -97,48 +145,11 @@ export interface BenchmarkTrajectoryStep {
    */
   usage?: BenchmarkTurnUsage;
   /**
-   * Native OpenAI-compatible projection of captured Eliza action calls.
-   * Benchmark adapters consume this instead of re-parsing prose or planner
-   * params, so a result labeled "Eliza" proves the runtime emitted a real
-   * action/tool call.
-   */
-  toolCalls?: BenchmarkToolCall[];
-  metadata?: BenchmarkTurnMetadata;
-  nativeTrajectory?: unknown;
-  /**
    * Personality-action audit entries observed during this turn. Empty when
    * no PERSONALITY mutation was recorded (most non-personality scenarios).
    * Added in P0-7 so the scope-discrimination rubric has a real signal.
    */
   personality_audit_log?: BenchmarkPersonalityAuditEntry[];
-}
-
-export interface BenchmarkToolCall {
-  id: string;
-  type: "function";
-  function: {
-    name: string;
-    arguments: string;
-  };
-}
-
-export interface BenchmarkTurnMetadata {
-  agent_label: "eliza";
-  benchmark: string;
-  task_id: string;
-  room_id: UUID;
-  relay_room_id: UUID;
-  trajectory_step: number;
-  trajectory_endpoint: string;
-  diagnostics_endpoint: string;
-  native_trajectory_step_id: string | null;
-  model_provider: string | null;
-  model_name: string | null;
-  compaction_strategy: string | null;
-  compaction_threshold_tokens: number | null;
-  auto_compact: string | null;
-  tool_schema_count: number;
-  tool_names: string[];
 }
 
 export interface CuaServiceLike {
@@ -441,128 +452,6 @@ export function capturedActionToParams(
   return { BENCHMARK_ACTION: benchmarkParams };
 }
 
-export function capturedActionsToToolCalls(
-  capturedActions: CapturedAction[],
-): BenchmarkToolCall[] {
-  const calls: BenchmarkToolCall[] = [];
-  for (const action of capturedActions) {
-    const name = capturedActionToolName(action);
-    if (!name) continue;
-    calls.push({
-      id: `call_benchmark_${calls.length}`,
-      type: "function",
-      function: {
-        name,
-        arguments: stableJsonStringify(capturedActionArguments(action)),
-      },
-    });
-  }
-  return calls;
-}
-
-function capturedActionToolName(action: CapturedAction): string | null {
-  if (typeof action.toolName === "string" && action.toolName.trim()) {
-    return action.toolName.trim();
-  }
-  if (typeof action.command === "string" && action.command.trim()) {
-    return action.command.trim();
-  }
-  if (typeof action.operation === "string" && action.operation.trim()) {
-    return action.operation.trim();
-  }
-  const params = isRecord(action.params) ? action.params : undefined;
-  const paramTool = params?.tool_name;
-  if (typeof paramTool === "string" && paramTool.trim()) {
-    return paramTool.trim();
-  }
-  const paramCommand = params?.command;
-  if (typeof paramCommand === "string" && paramCommand.trim()) {
-    return paramCommand.trim();
-  }
-  return null;
-}
-
-function capturedActionArguments(
-  action: CapturedAction,
-): Record<string, unknown> {
-  if (isRecord(action.arguments)) {
-    return action.arguments;
-  }
-  const params = isRecord(action.params) ? { ...action.params } : {};
-  delete params.tool_name;
-  delete params.command;
-  return params;
-}
-
-function stableJsonStringify(value: Record<string, unknown>): string {
-  return JSON.stringify(sortJson(value));
-}
-
-function sortJson(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(sortJson);
-  }
-  if (!isRecord(value)) {
-    return value;
-  }
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([key, item]) => [key, sortJson(item)]),
-  );
-}
-
-export function benchmarkTurnMetadata(params: {
-  session: BenchmarkSession;
-  step: number;
-  context?: Record<string, unknown>;
-  nativeTrajectoryStepId?: string;
-}): BenchmarkTurnMetadata {
-  const tools = Array.isArray(params.context?.tools)
-    ? params.context.tools.filter(isRecord)
-    : [];
-  return {
-    agent_label: "eliza",
-    benchmark: params.session.benchmark,
-    task_id: params.session.taskId,
-    room_id: params.session.roomId,
-    relay_room_id: params.session.relayRoomId,
-    trajectory_step: params.step,
-    trajectory_endpoint: `/api/benchmark/trajectory?benchmark=${encodeURIComponent(params.session.benchmark)}&task_id=${encodeURIComponent(params.session.taskId)}`,
-    diagnostics_endpoint: `/api/benchmark/diagnostics?benchmark=${encodeURIComponent(params.session.benchmark)}&task_id=${encodeURIComponent(params.session.taskId)}`,
-    native_trajectory_step_id: params.nativeTrajectoryStepId ?? null,
-    model_provider:
-      process.env.BENCHMARK_MODEL_PROVIDER ??
-      process.env.ELIZA_PROVIDER ??
-      null,
-    model_name:
-      process.env.BENCHMARK_MODEL_NAME ??
-      process.env.CEREBRAS_MODEL ??
-      process.env.LARGE_MODEL ??
-      null,
-    compaction_strategy: process.env.ELIZA_CONVERSATION_COMPACTOR ?? null,
-    compaction_threshold_tokens:
-      numberFromEnv("ELIZA_COMPACTION_THRESHOLD_TOKENS") ??
-      numberFromEnv("MAX_CONVERSATION_TOKENS"),
-    auto_compact: process.env.AUTO_COMPACT ?? null,
-    tool_schema_count: tools.length,
-    tool_names: tools.map(toolSchemaName).filter((name) => name.length > 0),
-  };
-}
-
-function numberFromEnv(name: string): number | null {
-  const raw = process.env[name]?.trim();
-  if (!raw) return null;
-  const value = Number(raw);
-  return Number.isFinite(value) ? value : null;
-}
-
-function toolSchemaName(tool: Record<string, unknown>): string {
-  const fn = isRecord(tool.function) ? tool.function : undefined;
-  const raw = tool.name ?? fn?.name;
-  return typeof raw === "string" ? raw : "";
-}
-
 export function sessionKey(session: BenchmarkSession): string {
   return `${session.benchmark}:${session.taskId}`;
 }
@@ -571,6 +460,10 @@ export async function ensureBenchmarkSessionContext(
   runtime: AgentRuntime,
   session: BenchmarkSession,
 ): Promise<void> {
+  // Pin world ownership to a canonical bench-owner entity so the role-resolver
+  // has a real OWNER. Without this, every benchmark sender resolves to GUEST
+  // (see `core/roles.ts:resolveCanonicalOwnerId` + `isCanonicalOwner`) and
+  // ADMIN-gated actions like PERSONALITY (global scope) deny universally.
   await runtime.ensureWorldExists({
     id: BENCHMARK_WORLD_ID,
     name: "Eliza Benchmark World",
@@ -651,6 +544,338 @@ export async function ensureBenchmarkSessionContext(
   await runtime.ensureParticipantInRoom(runtime.agentId, session.relayRoomId);
 }
 
+/**
+ * Pin a runtime role for the given entity in the bench world. Used by
+ * `/api/benchmark/message` so scenarios that need an admin or non-admin
+ * sender can drive the role-gate deterministically. Without this, every
+ * bench entity resolves to GUEST and PERSONALITY-style ADMIN-gated ops
+ * deny universally — the `scope_global_vs_user` bucket cannot discriminate.
+ *
+ * The caller passes the same entityId it places on outbound bench Memories;
+ * the bench server normalizes that id to a UUID via `stringToUuid` so any
+ * scenario-defined string ("admin", "user-1", etc.) maps stably.
+ *
+ * Idempotent. When `role === "GUEST"` the entry is dropped from
+ * `world.metadata.roles` (so the resolver falls back to GUEST anyway).
+ */
+export async function seedBenchUserRole(
+  runtime: AgentRuntime,
+  session: BenchmarkSession,
+  entityId: UUID,
+  role: RoleName,
+): Promise<void> {
+  // Make sure the entity participates in the bench room before assigning
+  // a role — the role-resolver looks up the entity's metadata via
+  // `runtime.getEntityById`, which the connection step creates.
+  await runtime.ensureConnection({
+    entityId,
+    roomId: session.roomId,
+    worldId: BENCHMARK_WORLD_ID,
+    userName: `bench-entity-${entityId.slice(0, 8)}`,
+    source: "benchmark",
+    channelId: `bench-${session.taskId}`,
+    type: ChannelType.API,
+    messageServerId: BENCHMARK_MESSAGE_SERVER_ID,
+    metadata: {
+      benchmark: session.benchmark,
+      taskId: session.taskId,
+      role: "benchmark-room",
+    },
+  });
+
+  // setEntityRole resolves the world via the message's roomId, so build the
+  // smallest Memory shape that satisfies the resolver.
+  const seedMessage: Memory = {
+    id: stringToUuid(`bench-role-seed:${entityId}:${session.taskId}`),
+    entityId,
+    agentId: runtime.agentId,
+    roomId: session.roomId,
+    content: { text: "", source: "benchmark" },
+    createdAt: Date.now(),
+  };
+  await setEntityRole(runtime, seedMessage, entityId, role, "manual");
+}
+
+/**
+ * Pull personality audit-log memories written by the PERSONALITY action
+ * during the latest turn(s) and project them to the compact trajectory
+ * shape. Used by `/api/benchmark/message` so judges can grade real
+ * mutation attempts (especially deny verdicts in `scope_global_vs_user`).
+ *
+ * Returns at most `limit` entries newest-first. Entries written before
+ * `sinceMs` are excluded — callers pass the turn's `startedAt` so the
+ * trajectory step only shows audit entries from this turn.
+ *
+ * Audit entries are written to `roomId` (the bench session room) by the
+ * runtime PERSONALITY action; see `personality.ts:recordAuditMemory`.
+ */
+export async function collectPersonalityAuditLog(
+  runtime: AgentRuntime,
+  roomId: UUID,
+  sinceMs: number,
+  limit = 16,
+): Promise<BenchmarkPersonalityAuditEntry[]> {
+  const memories = await runtime.getMemories({
+    roomId,
+    tableName: "personality_audit_log",
+    count: limit,
+    start: sinceMs,
+  });
+  if (!Array.isArray(memories) || memories.length === 0) return [];
+  const entries: BenchmarkPersonalityAuditEntry[] = [];
+  for (const memory of memories) {
+    const meta = (memory.metadata ?? {}) as Record<string, unknown>;
+    const action = typeof meta.action === "string" ? meta.action : "";
+    const scope =
+      typeof meta.personalityScope === "string" ? meta.personalityScope : "";
+    if (!action || !scope) continue;
+    const targetId = typeof meta.targetId === "string" ? meta.targetId : "";
+    const actorId =
+      typeof meta.actorId === "string"
+        ? meta.actorId
+        : typeof memory.entityId === "string"
+          ? memory.entityId
+          : "";
+    const timestampSource =
+      typeof meta.timestamp === "number" && Number.isFinite(meta.timestamp)
+        ? meta.timestamp
+        : typeof memory.createdAt === "number" &&
+            Number.isFinite(memory.createdAt)
+          ? memory.createdAt
+          : Date.now();
+    entries.push({
+      action,
+      scope,
+      actorId,
+      targetId,
+      timestamp: new Date(timestampSource).toISOString(),
+    });
+  }
+  return entries;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Role-seeding payload for /api/benchmark/reset.
+//
+// The personality `scope_global_vs_user` bucket needs the bench server to
+// pin per-entity roles + seed PersonalityStore slots BEFORE the runner
+// drives any user turns. Without this, the runtime's role-gate refuses
+// every ADMIN-required op and the discriminating "global vs user" check
+// can't be exercised. See
+// docs/audits/lifeops-2026-05-11/SYNTHESIS-IMPLEMENTATION-PLAN.md P0-7.
+// ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * Personality scope mode that the bench server seeds before scenario turns.
+ *
+ * - `global_wins`: a global directive is set; per-user directive is empty or
+ *   subordinate. The agent must apply the global setting everywhere.
+ * - `user_wins`: a per-user directive is set; global directive is empty or
+ *   subordinate. The agent must respect the user override.
+ * - `conflict_explicit`: BOTH global and user directives are set and the
+ *   user-tagged actor is admin/owner — explicit override allowed.
+ * - `conflict_implicit`: BOTH directives are set but the user-tagged actor
+ *   is a non-admin — the agent must refuse a regular-user attempt to flip
+ *   the global directive and offer a per-user alternative.
+ */
+export type ScopeSeedMode =
+  | "global_wins"
+  | "user_wins"
+  | "conflict_explicit"
+  | "conflict_implicit";
+
+/**
+ * Optional structured payload accepted by `POST /api/benchmark/reset`.
+ *
+ * Every field is optional. When `globalDirective` / `userDirective` are
+ * provided, the bench server writes them into the runtime's PersonalityStore
+ * BEFORE accepting the first benchmark message. When `userId` /
+ * `globalRoleId` are provided, the bench server pins those entities to
+ * USER and ADMIN roles respectively via `setEntityRole` so the runtime's
+ * role gate (`hasRoleAccess`) returns the correct verdict on
+ * personality-mutation actions.
+ *
+ * Back-compat: scenarios that don't send a `roles` block see no behavior
+ * change. The PersonalityStore is always `.clear()`-ed on reset regardless
+ * (synthesis P1-14) to prevent slot bleed across scenarios.
+ */
+export interface RoleSeedPayload {
+  /** Single directive that should apply to every user in this benchmark. */
+  globalDirective?: string;
+  /** Directive that should apply ONLY to `userId`. */
+  userDirective?: string;
+  /** Which side wins in this scenario — judge uses this to grade. */
+  scopeMode?: ScopeSeedMode;
+  /** Entity id of the non-admin user driving the conversation. */
+  userId?: string;
+  /** Entity id that should be marked ADMIN for this benchmark. */
+  globalRoleId?: string;
+}
+
+/**
+ * Minimal structural shape of the runtime PersonalityStore service that
+ * the bench-server role-seeding helper consumes. Declared inline so this
+ * file does not depend on a non-public path of `@elizaos/core`. The
+ * concrete service lives in
+ * `packages/core/src/features/advanced-capabilities/personality/services/personality-store.ts`.
+ */
+interface BenchPersonalityStore {
+  setSlot(slot: {
+    userId: string;
+    agentId: UUID;
+    verbosity: string | null;
+    tone: string | null;
+    formality: string | null;
+    reply_gate: string | null;
+    custom_directives: string[];
+    updated_at: string;
+    source: "user" | "admin" | "agent_inferred";
+  }): void;
+  clear(): void;
+}
+
+const PERSONALITY_STORE_SERVICE = "PERSONALITY_STORE";
+/** Mirror of `GLOBAL_PERSONALITY_SCOPE` from the runtime personality module. */
+const PERSONALITY_GLOBAL_SCOPE = "global";
+
+function getBenchPersonalityStore(
+  runtime: AgentRuntime,
+): BenchPersonalityStore | null {
+  const service = (
+    runtime as unknown as {
+      getService: (name: string) => unknown;
+    }
+  ).getService(PERSONALITY_STORE_SERVICE);
+  if (!service || typeof service !== "object") return null;
+  const candidate = service as Partial<BenchPersonalityStore>;
+  if (
+    typeof candidate.setSlot !== "function" ||
+    typeof candidate.clear !== "function"
+  ) {
+    return null;
+  }
+  return candidate as BenchPersonalityStore;
+}
+
+export function isScopeSeedMode(value: unknown): value is ScopeSeedMode {
+  return (
+    value === "global_wins" ||
+    value === "user_wins" ||
+    value === "conflict_explicit" ||
+    value === "conflict_implicit"
+  );
+}
+
+export function parseRoleSeedPayload(
+  value: unknown,
+): RoleSeedPayload | undefined {
+  if (!isRecord(value)) return undefined;
+  const out: RoleSeedPayload = {};
+  if (typeof value.globalDirective === "string" && value.globalDirective) {
+    out.globalDirective = value.globalDirective;
+  }
+  if (typeof value.userDirective === "string" && value.userDirective) {
+    out.userDirective = value.userDirective;
+  }
+  if (isScopeSeedMode(value.scopeMode)) {
+    out.scopeMode = value.scopeMode;
+  }
+  if (typeof value.userId === "string" && value.userId) {
+    out.userId = value.userId;
+  }
+  if (typeof value.globalRoleId === "string" && value.globalRoleId) {
+    out.globalRoleId = value.globalRoleId;
+  }
+  return Object.keys(out).length === 0 ? undefined : out;
+}
+
+/**
+ * Always-clear the in-memory PersonalityStore so stale slots do not bleed
+ * across benchmark scenarios sharing one runtime process (synthesis P1-14).
+ * Returns true when the store was cleared; false when the runtime did not
+ * load advanced capabilities (no-op).
+ */
+export function clearPersonalityStateOnReset(runtime: AgentRuntime): boolean {
+  const store = getBenchPersonalityStore(runtime);
+  if (!store) return false;
+  store.clear();
+  return true;
+}
+
+/**
+ * Apply a role-seed payload to the bench runtime. Throws when the runtime
+ * does not have the PersonalityStore service loaded but the payload had
+ * something concrete to apply — callers should surface that as a 4xx since
+ * the scenario asked for a guarantee the server can't provide.
+ */
+export function applyRoleSeedPayload(
+  runtime: AgentRuntime,
+  payload: RoleSeedPayload,
+): {
+  appliedGlobalDirective: boolean;
+  appliedUserDirective: boolean;
+  scopeMode: ScopeSeedMode | null;
+} {
+  const hasDirective = Boolean(
+    payload.globalDirective || payload.userDirective,
+  );
+  if (!hasDirective) {
+    return {
+      appliedGlobalDirective: false,
+      appliedUserDirective: false,
+      scopeMode: payload.scopeMode ?? null,
+    };
+  }
+
+  const store = getBenchPersonalityStore(runtime);
+  if (!store) {
+    throw new Error(
+      "PersonalityStore service unavailable — bench server must load advanced capabilities (ADVANCED_CAPABILITIES=true) to accept role-seeding directives",
+    );
+  }
+
+  const agentId = runtime.agentId;
+  const now = new Date().toISOString();
+  let appliedGlobalDirective = false;
+  let appliedUserDirective = false;
+
+  if (payload.globalDirective) {
+    store.setSlot({
+      userId: PERSONALITY_GLOBAL_SCOPE,
+      agentId,
+      verbosity: null,
+      tone: null,
+      formality: null,
+      reply_gate: null,
+      custom_directives: [payload.globalDirective],
+      updated_at: now,
+      source: "admin",
+    });
+    appliedGlobalDirective = true;
+  }
+
+  if (payload.userDirective && payload.userId) {
+    store.setSlot({
+      userId: payload.userId,
+      agentId,
+      verbosity: null,
+      tone: null,
+      formality: null,
+      reply_gate: null,
+      custom_directives: [payload.userDirective],
+      updated_at: now,
+      source: "user",
+    });
+    appliedUserDirective = true;
+  }
+
+  return {
+    appliedGlobalDirective,
+    appliedUserDirective,
+    scopeMode: payload.scopeMode ?? null,
+  };
+}
+
 export function createSession(
   taskId: string,
   benchmark: string,
@@ -666,238 +891,4 @@ export function createSession(
     relayRoomId: stringToUuid(`benchmark-relay:${seed}`),
     userEntityId: stringToUuid(`benchmark-user:${seed}`),
   };
-}
-
-// ---------------------------------------------------------------------------
-// Bench-server role-seeding helpers (P0-7)
-// ---------------------------------------------------------------------------
-
-/** Canonical role names accepted by the bench server. */
-export type BenchRoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
-
-/**
- * Normalize a role token from the runner's vocabulary to one of the four
- * canonical BenchRoleName values. Returns null for unknown or missing values.
- *
- * The runner uses "member" as an alias for USER; case is not significant.
- */
-export function normalizeBenchRoleName(value: unknown): BenchRoleName | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toUpperCase();
-  if (normalized === "OWNER") return "OWNER";
-  if (normalized === "ADMIN") return "ADMIN";
-  if (normalized === "USER" || normalized === "MEMBER") return "USER";
-  if (normalized === "GUEST") return "GUEST";
-  return null;
-}
-
-/**
- * Write a role for `entityId` directly into the bench world's
- * `metadata.roles` map. This bypasses the normal `setEntityRole` path
- * (which requires a Memory object) so the bench runner can pin identities
- * before any messages are sent.
- */
-export async function seedBenchUserRole(
-  runtime: AgentRuntime,
-  _session: BenchmarkSession,
-  entityId: UUID,
-  role: BenchRoleName,
-): Promise<void> {
-  const world = await runtime.getWorld(BENCHMARK_WORLD_ID);
-  if (!world) {
-    throw new Error(
-      "[bench] BENCHMARK_WORLD_ID world not found — call ensureBenchmarkSessionContext first",
-    );
-  }
-  const meta = (world.metadata ?? {}) as Record<string, unknown>;
-  const roles = (meta.roles ?? {}) as Record<string, string>;
-  roles[entityId] = role;
-  meta.roles = roles;
-  await runtime.updateWorld({
-    ...world,
-    metadata: meta,
-  } as Parameters<typeof runtime.updateWorld>[0]);
-}
-
-// ---------------------------------------------------------------------------
-// Personality-store role-seeding helpers (P0-7 scope_global_vs_user)
-// ---------------------------------------------------------------------------
-
-/** Valid values for the `scopeMode` field in a RoleSeedPayload. */
-export type ScopeSeedMode =
-  | "global_wins"
-  | "user_wins"
-  | "conflict_explicit"
-  | "conflict_implicit";
-
-/** Payload accepted by `/api/benchmark/reset` for personality role seeding. */
-export interface RoleSeedPayload {
-  globalDirective?: string;
-  userDirective?: string;
-  scopeMode?: ScopeSeedMode;
-  userId?: string;
-  globalRoleId?: string;
-}
-
-const SCOPE_SEED_MODES: Set<string> = new Set([
-  "global_wins",
-  "user_wins",
-  "conflict_explicit",
-  "conflict_implicit",
-]);
-
-/** Type-guard for ScopeSeedMode values. */
-export function isScopeSeedMode(value: unknown): value is ScopeSeedMode {
-  return typeof value === "string" && SCOPE_SEED_MODES.has(value);
-}
-
-/**
- * Parse and validate a raw role-seed payload from the request body.
- * Returns undefined if the input is not an object or has no recognizable
- * fields; drops individual fields that fail type checks.
- */
-export function parseRoleSeedPayload(
-  raw: unknown,
-): RoleSeedPayload | undefined {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return undefined;
-  }
-
-  const obj = raw as Record<string, unknown>;
-  const out: RoleSeedPayload = {};
-  let hasField = false;
-
-  if (typeof obj.globalDirective === "string") {
-    out.globalDirective = obj.globalDirective;
-    hasField = true;
-  }
-  if (typeof obj.userDirective === "string") {
-    out.userDirective = obj.userDirective;
-    hasField = true;
-  }
-  if (isScopeSeedMode(obj.scopeMode)) {
-    out.scopeMode = obj.scopeMode;
-    hasField = true;
-  }
-  if (typeof obj.userId === "string") {
-    out.userId = obj.userId;
-    hasField = true;
-  }
-  if (typeof obj.globalRoleId === "string") {
-    out.globalRoleId = obj.globalRoleId;
-    hasField = true;
-  }
-
-  return hasField ? out : undefined;
-}
-
-interface PersonalityStoreSlot {
-  userId: string;
-  agentId: string;
-  verbosity: string | null;
-  tone: string | null;
-  formality: string | null;
-  reply_gate: string | null;
-  custom_directives: string[];
-  updated_at: string;
-  source: string;
-}
-
-interface PersonalityStoreLike {
-  setSlot(slot: PersonalityStoreSlot): void;
-  clear(): void;
-}
-
-function isPersonalityStore(value: unknown): value is PersonalityStoreLike {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    typeof (value as Record<string, unknown>).clear === "function" &&
-    typeof (value as Record<string, unknown>).setSlot === "function"
-  );
-}
-
-/**
- * Call `clear()` on the runtime's PersonalityStore service if one is
- * registered. Returns true when the store was found and cleared, false when
- * no store is available (no-op, not an error).
- */
-export function clearPersonalityStateOnReset(
-  runtime: Pick<AgentRuntime, "getService">,
-): boolean {
-  const store = runtime.getService("PERSONALITY_STORE");
-  if (!isPersonalityStore(store)) return false;
-  store.clear();
-  return true;
-}
-
-export interface ApplyRoleSeedResult {
-  appliedGlobalDirective: boolean;
-  appliedUserDirective: boolean;
-  scopeMode: ScopeSeedMode | undefined;
-}
-
-/**
- * Apply a parsed RoleSeedPayload to the runtime's PersonalityStore.
- *
- * Throws when the payload carries a directive but the runtime has no
- * PersonalityStore service — the bench runner must install one before
- * calling this function for personality scope tests.
- */
-export function applyRoleSeedPayload(
-  runtime: Pick<AgentRuntime, "agentId" | "getService">,
-  payload: RoleSeedPayload,
-): ApplyRoleSeedResult {
-  const result: ApplyRoleSeedResult = {
-    appliedGlobalDirective: false,
-    appliedUserDirective: false,
-    scopeMode: payload.scopeMode,
-  };
-
-  const hasDirective = !!(payload.globalDirective || payload.userDirective);
-  if (!hasDirective) {
-    return result;
-  }
-
-  const store = runtime.getService("PERSONALITY_STORE");
-  if (!isPersonalityStore(store)) {
-    throw new Error(
-      "[bench] PersonalityStore service unavailable — cannot apply role-seed directives. " +
-        "Register a PersonalityStore service in the runtime before bench reset.",
-    );
-  }
-
-  const now = new Date().toISOString();
-
-  if (payload.globalDirective) {
-    store.setSlot({
-      userId: "global",
-      agentId: runtime.agentId,
-      verbosity: null,
-      tone: null,
-      formality: null,
-      reply_gate: null,
-      custom_directives: [payload.globalDirective],
-      updated_at: now,
-      source: "admin",
-    });
-    result.appliedGlobalDirective = true;
-  }
-
-  if (payload.userDirective && payload.userId) {
-    store.setSlot({
-      userId: payload.userId,
-      agentId: runtime.agentId,
-      verbosity: null,
-      tone: null,
-      formality: null,
-      reply_gate: null,
-      custom_directives: [payload.userDirective],
-      updated_at: now,
-      source: "user",
-    });
-    result.appliedUserDirective = true;
-  }
-
-  return result;
 }

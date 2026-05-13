@@ -43,9 +43,6 @@
       ],
       "@elizaos/app-companion": ["../../plugins/app-companion/src/index.ts"],
       "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
-      "@capacitor/app": [
-        "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
-      ],
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],

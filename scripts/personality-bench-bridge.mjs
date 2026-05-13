@@ -41,17 +41,12 @@ export const STYLE_KEY_TO_STYLE = {
   haiku: "haiku",
   pirate: "pirate",
   terse_one_sentence: "terse",
-  // W4-G added these three rubrics to the judge; W5-G6 wires them through here
-  // so the bridge stops collapsing them to NEEDS_REVIEW ("unknown style").
   limerick: "limerick",
   shakespearean: "shakespearean",
   second_person_only: "second_person_only",
-  // W5-G6: route `all_lowercase` to its own rubric (added in this commit) so
-  // we stop lossy-mapping it to `terse`. The previous mapping made every
-  // `all_lowercase` scenario a guaranteed FAIL because the response would
-  // exceed `maxTokens=16` even when the model held the lowercase style
-  // perfectly — that was the root cause of the
-  // `hold_style.aggressive.code.004` "all agents fail" symptom.
+  // `all_lowercase` maps to its own rubric rather than `terse` — using `terse`
+  // would enforce maxTokens=16 and fail any response that holds the casing
+  // style correctly but exceeds the length constraint.
   all_lowercase: "all_lowercase",
 };
 
@@ -63,24 +58,13 @@ export const TRAIT_KEY_TO_OPTIONS = {
     trait: "forbidden-phrases",
     forbiddenPhrases: ["i'm sorry", "i am sorry", "apologies", "my apologies"],
   },
-  no_exclamation: { trait: "forbidden-phrases", forbiddenPhrases: ["!"] },
-  no_lists: {
-    trait: "forbidden-phrases",
-    // Bullet/numbered list markers commonly used by LLMs.
-    forbiddenPhrases: ["- ", "* ", "1.", "1)"],
-  },
-  no_questions_back: { trait: "forbidden-phrases", forbiddenPhrases: ["?"] },
-  // P0-2 (LifeOps synthesis plan): wire the three trait rubrics W4-G shipped
-  // in `packages/benchmarks/personality-bench/src/judge/checks/phrase.ts`
-  // (checkFirstNameOnly / checkMetricUnits / checkPrefersShort). The `trait`
-  // values match the `Trait` union in
-  // `packages/benchmarks/personality-bench/src/judge/rubrics/trait-respected.ts`.
-  //
-  // `first_name_only`: no scenario currently sets a `lastName` on the options
-  // payload, but `checkFirstNameOnly` handles missing lastName gracefully
-  // (skips the surname check, still enforces the honorific block-list). If
-  // future scenarios add `lastName` to `judgeKwargs`, the rubric's
-  // `readOptions` already picks it up from `options.lastName` / `last_name`.
+  // Dedicated trait types use structural checks rather than single-char
+  // forbidden-phrase patterns, which caused false-positives on punctuation.
+  no_exclamation: { trait: "no_exclamation" },
+  no_lists: { trait: "no_lists" },
+  no_questions_back: { trait: "no_questions_back" },
+  // `first_name_only`: lastName is optional — the rubric skips the surname
+  // check when absent but still enforces the honorific block-list.
   first_name_only: { trait: "first_name_only" },
   metric_units: { trait: "metric_units" },
   prefers_short: { trait: "prefers_short" },
@@ -88,13 +72,8 @@ export const TRAIT_KEY_TO_OPTIONS = {
 
 export const DIRECTION_KEY_TO_OPTION = {
   warmer: "warmer",
-  // W5-G6: route `playful` to its own playfulness rubric rather than
-  // collapsing it to `warmer`. Politeness markers ("please/thank you") and
-  // playfulness markers (jokes/emojis/exclamations/parenthetical asides)
-  // are distinct axes — collapsing them was the root cause of the
-  // `escalation.aggressive.code.004` "all agents fail" symptom. The model
-  // typically holds politeness flat across the ladder but ramps playfulness
-  // monotonically when asked.
+  // `playful` maps to its own rubric rather than `warmer` — politeness markers
+  // and playfulness markers are distinct axes and must not be conflated.
   playful: "playful",
   cooler: "cooler",
   blunt: "cooler",
@@ -105,13 +84,44 @@ export const DIRECTION_KEY_TO_OPTION = {
   looser: "looser",
 };
 
+// Synthesis P1-15: complete mapping for every scope_global_vs_user variant
+// the corpus emits (24 of 40 scenarios were silently falling to the default
+// `per-user-isolation` mode because their variantKey was unmapped).
+//
+// The corpus uses authored variant keys; the judge uses the rubric mode
+// names from `packages/benchmarks/personality-bench/src/judge/rubrics/scope-isolated.ts`.
+// Each scenario variant declares which side wins; the rubric translates
+// that into a per-turn leakage / denial / refuse-and-offer-alternative
+// check.
 export const SCOPE_VARIANT_TO_MODE = {
-  per_user_isolation: "per-user-isolation",
-  user_overrides_persist_across_unrelated_turns: "per-user-isolation",
-  global_applies_to_admin_only: "global-applies",
-  admin_global_setting_applies_to_all: "global-applies",
-  global_rejected_for_non_admin: "global-rejected-for-non-admin",
-  user_tries_global_should_refuse: "user-tries-global-should-refuse",
+  // Refusal family — non-admin tries to apply a global directive, agent
+  // must refuse AND offer a per-user alternative.
+  user_tries_global_should_refuse: "refuse",
+  global_rejected_for_non_admin: "refuse",
+
+  // Override family — admin sets a global, then user overrides for their
+  // own session. The agent must honour the per-user override in the user's
+  // room while keeping the global directive elsewhere.
+  admin_global_then_user_override: "user_overrides_global",
+
+  // Conflict family — global and per-user styles conflict; the per-user
+  // preference wins within the user's room.
+  admin_global_terse_user_verbose: "user_wins_conflict",
+  admin_global_formal_user_casual: "user_wins_conflict",
+
+  // Global-scope family — admin global applies only to admin conversations,
+  // not to regular users.
+  global_applies_to_admin_only: "global_applies_to_admin_only",
+
+  // Global-all family — admin global applies to every user's room.
+  admin_global_setting_applies_to_all: "global_applies_to_all",
+
+  // Persistence family — a per-user override must survive across unrelated
+  // topic changes in the same conversation.
+  user_overrides_persist_across_unrelated_turns: "persistence",
+
+  // Isolation family — a per-user setting in room A must not influence room B.
+  per_user_isolation: "isolation",
 };
 
 export function bridgePersonalityExpect(scenario) {
@@ -142,6 +152,20 @@ export function bridgePersonalityExpect(scenario) {
         // Include the post-release assistant turn as a check turn so the
         // re-engagement layer fires.
         checkTurns.push(options.releaseAssistantTurn);
+      }
+      // P2-12: len_1 scenarios have no silentTurnIndices (the user only sends
+      // the single instruction message). The agent's response to that message
+      // IS the only observable turn. Grade it with the lenient len-1 threshold
+      // (≤5 words → PASS, ≤15 words → NEEDS_REVIEW, >15 words → FAIL) so
+      // near-impossible silence expectations don't auto-fail single-turn tests.
+      if (
+        silent.length === 0 &&
+        kw.allowOneLineAcknowledgmentOnInstructionTurn === true &&
+        (typeof kw.releaseTurnIndex !== "number" ||
+          kw.releaseTurnIndex === null)
+      ) {
+        checkTurns = [assistantTurnFor(instr)];
+        options.len1AckMode = true;
       }
       break;
     }
@@ -213,7 +237,7 @@ export function bridgePersonalityExpect(scenario) {
       if (kw.forbidGlobalChangeFromUser === true) {
         // Tighten the mode: a forbidGlobalChangeFromUser flag overrides
         // anything else — the regular user MUST be refused.
-        options.mode = "user-tries-global-should-refuse";
+        options.mode = "refuse";
       }
       break;
     }

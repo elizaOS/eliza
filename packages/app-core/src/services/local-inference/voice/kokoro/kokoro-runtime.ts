@@ -223,7 +223,7 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
       sampleRate: this.sampleRate,
       isFinal: true,
     });
-    return { cancelled: want === true || Boolean(args.cancelSignal.cancelled) };
+    return { cancelled: want === true };
   }
 
   private async loadVoiceStyle(voice: KokoroVoicePack): Promise<Float32Array> {
@@ -427,8 +427,10 @@ export interface KokoroPythonRuntimeOptions {
 export class KokoroPythonRuntime implements KokoroRuntime {
   readonly id = "python" as const;
   readonly sampleRate: number;
+  private readonly opts: KokoroPythonRuntimeOptions;
 
   constructor(opts: KokoroPythonRuntimeOptions) {
+    this.opts = opts;
     this.sampleRate = opts.layout.sampleRate;
   }
 

@@ -9,8 +9,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import {
   DuffelConfigError,
   readDuffelConfigFromEnv,
-  searchFlights,
   type SearchFlightsRequest,
+  searchFlights,
 } from "../travel-adapters/duffel.js";
 import type {
   ConnectorContribution,
@@ -80,7 +80,10 @@ export function createDuffelConnectorContribution(
           "duffel.read requires { origin, destination, departureDate, passengers, cabinClass }",
         );
       }
-      return searchFlights(params as SearchFlightsRequest, readDuffelConfigFromEnv());
+      return searchFlights(
+        params as SearchFlightsRequest,
+        readDuffelConfigFromEnv(),
+      );
     },
   };
 }

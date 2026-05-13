@@ -13,8 +13,8 @@
  */
 
 import type { ResponseHandlerResult } from "@elizaos/core";
-import type { Scenario, ScenarioScriptStep } from "./types.ts";
 import type { SimulatorState } from "./state.ts";
+import type { Scenario, ScenarioScriptStep } from "./types.ts";
 
 export interface ScriptedLlmInput {
   scenario: Scenario;
@@ -33,13 +33,17 @@ export interface ScriptedLlmOutput {
   latencyMs: number;
 }
 
-export type ScriptedLlmProvider = (input: ScriptedLlmInput) => ScriptedLlmOutput;
+export type ScriptedLlmProvider = (
+  input: ScriptedLlmInput,
+) => ScriptedLlmOutput;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function emptyResult(overrides: Partial<ResponseHandlerResult> = {}): ResponseHandlerResult {
+function emptyResult(
+  overrides: Partial<ResponseHandlerResult> = {},
+): ResponseHandlerResult {
   return {
     shouldRespond: "RESPOND",
     contexts: [],
@@ -57,7 +61,9 @@ function emptyResult(overrides: Partial<ResponseHandlerResult> = {}): ResponseHa
 function looksLikeAbort(text: string): boolean {
   const t = text.toLowerCase();
   return (
-    /\b(nvm|stop|cancel|nevermind|never mind|abort|wait\b.*\bdon'?t|dont send|hold on)\b/.test(t) ||
+    /\b(nvm|stop|cancel|nevermind|never mind|abort|wait\b.*\bdon'?t|dont send|hold on)\b/.test(
+      t,
+    ) ||
     /\bwait\s+actually\b/.test(t) ||
     /\bactually\s+(nvm|stop|cancel|scratch)\b/.test(t)
   );
@@ -70,7 +76,9 @@ function looksLikeAbort(text: string): boolean {
 export function createDefaultScriptedProvider(): ScriptedLlmProvider {
   return (input) => {
     const { scenario, message, history, state } = input;
-    const ownerRoom = scenario.setup.rooms.find((r) => r.owner === message.sender);
+    const _ownerRoom = scenario.setup.rooms.find(
+      (r) => r.owner === message.sender,
+    );
     const channelId = message.channel;
     const text = message.text;
 
@@ -79,8 +87,11 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
       // ---- A1, K1: fragmented stream — coalesce, respond on last fragment ----
       case "A1-fragmented-email-draft":
       case "K1-recipe-assembly": {
-        const allMessagesInChannel = history.concat([message]).filter((m) => m.channel === channelId);
-        const isLast = message.t === scenario.script[scenario.script.length - 1]!.t;
+        const allMessagesInChannel = history
+          .concat([message])
+          .filter((m) => m.channel === channelId);
+        const isLast =
+          message.t === scenario.script[scenario.script.length - 1]?.t;
         if (!isLast) {
           // Suppress reply on intermediate fragments — IGNORE keeps the queue
           // quiet but lets us mutate state if needed. Empty replyText prevents
@@ -95,17 +106,23 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
         if (scenario.id === "A1-fragmented-email-draft") {
           replyText = "Drafting an email to Bob about lunch tomorrow.";
         } else {
-          replyText = "Here's a quick Italian gluten-free recipe for 4 in under 30 minutes: lemon-garlic shrimp linguine with GF pasta.";
+          replyText =
+            "Here's a quick Italian gluten-free recipe for 4 in under 30 minutes: lemon-garlic shrimp linguine with GF pasta.";
         }
         return {
-          parsed: emptyResult({ replyText, addressedTo: [message.sender], facts: [combined] }),
+          parsed: emptyResult({
+            replyText,
+            addressedTo: [message.sender],
+            facts: [combined],
+          }),
           latencyMs: 120,
         };
       }
 
       // ---- A4: stream with retraction ----
       case "A4-stream-with-retraction": {
-        const isLast = message.t === scenario.script[scenario.script.length - 1]!.t;
+        const isLast =
+          message.t === scenario.script[scenario.script.length - 1]?.t;
         if (!isLast) {
           return {
             parsed: emptyResult({ shouldRespond: "IGNORE" }),
@@ -114,10 +131,20 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
         }
         return {
           parsed: emptyResult({
-            replyText: "Got it — scheduling Carol for Friday at 10am (ignoring the earlier tomorrow-3pm draft).",
+            replyText:
+              "Got it — scheduling Carol for Friday at 10am (ignoring the earlier tomorrow-3pm draft).",
             facts: ["meeting:carol:friday:10am"],
             // Tell the harness to schedule a follow-up via threadOps create + side effect.
-            threadOps: [{ type: "create", workThreadId: null, sourceWorkThreadIds: [], sourceRef: null, instruction: "meeting with carol friday 10am", reason: "retraction-honored" }],
+            threadOps: [
+              {
+                type: "create",
+                workThreadId: null,
+                sourceWorkThreadIds: [],
+                sourceRef: null,
+                instruction: "meeting with carol friday 10am",
+                reason: "retraction-honored",
+              },
+            ],
           }),
           latencyMs: 110,
         };
@@ -125,7 +152,9 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
 
       // ---- B1: pure cancellation ----
       case "B1-pure-cancellation": {
-        const targetThread = [...state.threads.values()].find((t) => t.roomId === channelId && t.status !== "stopped");
+        const targetThread = [...state.threads.values()].find(
+          (t) => t.roomId === channelId && t.status !== "stopped",
+        );
         return {
           parsed: emptyResult({
             replyText: "Ok, stopping.",
@@ -146,7 +175,9 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
 
       // ---- B2: destructive cancellation — abort BEFORE send ----
       case "B2-destructive-cancellation": {
-        const targetThread = [...state.threads.values()].find((t) => t.roomId === channelId && t.status !== "stopped");
+        const targetThread = [...state.threads.values()].find(
+          (t) => t.roomId === channelId && t.status !== "stopped",
+        );
         return {
           parsed: emptyResult({
             replyText: "Ok, did NOT send. Cancelled.",
@@ -167,7 +198,9 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
 
       // ---- C1: mid-task steering ----
       case "C1-mid-task-steering": {
-        const targetThread = [...state.threads.values()].find((t) => t.roomId === channelId && t.status === "active");
+        const targetThread = [...state.threads.values()].find(
+          (t) => t.roomId === channelId && t.status === "active",
+        );
         return {
           parsed: emptyResult({
             replyText: "",
@@ -212,10 +245,13 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
 
       // ---- F1: pivot within thread — stop old, create new ----
       case "F1-pivot-within-thread": {
-        const oldThread = [...state.threads.values()].find((t) => t.roomId === channelId && t.status === "active");
+        const oldThread = [...state.threads.values()].find(
+          (t) => t.roomId === channelId && t.status === "active",
+        );
         return {
           parsed: emptyResult({
-            replyText: "Got it — dropping the trip search, starting on the electrician hunt.",
+            replyText:
+              "Got it — dropping the trip search, starting on the electrician hunt.",
             threadOps: [
               ...(oldThread
                 ? [
@@ -245,12 +281,18 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
 
       // ---- G1: cross-channel pending-prompt resolution ----
       case "G1-cross-channel-prompt-resolution": {
-        const pendingPrompt = [...state.pendingPrompts.values()].find((p) => !p.resolved);
-        const thread = [...state.threads.values()].find((t) => t.pendingPromptId === pendingPrompt?.id);
+        const pendingPrompt = [...state.pendingPrompts.values()].find(
+          (p) => !p.resolved,
+        );
+        const thread = [...state.threads.values()].find(
+          (t) => t.pendingPromptId === pendingPrompt?.id,
+        );
         return {
           parsed: emptyResult({
             replyText: "Got it — deploying.",
-            facts: pendingPrompt ? [`resolved_prompt:${pendingPrompt.id}:yes`] : [],
+            facts: pendingPrompt
+              ? [`resolved_prompt:${pendingPrompt.id}:yes`]
+              : [],
             threadOps: thread
               ? [
                   {
@@ -270,7 +312,9 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
 
       // ---- H1: concurrent merge ----
       case "H1-concurrent-merge": {
-        const active = [...state.threads.values()].filter((t) => t.status === "active");
+        const active = [...state.threads.values()].filter(
+          (t) => t.status === "active",
+        );
         if (active.length >= 2) {
           const [target, ...rest] = active;
           return {
@@ -279,10 +323,11 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
               threadOps: [
                 {
                   type: "merge",
-                  workThreadId: target!.id,
+                  workThreadId: target?.id,
                   sourceWorkThreadIds: rest.map((t) => t.id),
                   sourceRef: null,
-                  instruction: "draft Black Friday email blast AND design Black Friday landing page",
+                  instruction:
+                    "draft Black Friday email blast AND design Black Friday landing page",
                   reason: "user requested merge",
                 },
               ],
@@ -299,7 +344,9 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
       default: {
         // Generic fallback — abort heuristic + plain reply.
         if (looksLikeAbort(text)) {
-          const targetThread = [...state.threads.values()].find((t) => t.roomId === channelId && t.status !== "stopped");
+          const targetThread = [...state.threads.values()].find(
+            (t) => t.roomId === channelId && t.status !== "stopped",
+          );
           return {
             parsed: emptyResult({
               replyText: "Ok, stopping.",

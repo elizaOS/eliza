@@ -34,12 +34,7 @@ export default scenario({
       room: "main",
       text: "I missed a call with the Frontier Tower guys today. Need to repair that and reschedule if possible asap, but hold the note for my approval first.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: [
-          "MESSAGE",
-          "MESSAGE",
-          "CALENDAR",
-          "MESSAGE",
-        ],
+        acceptedActions: ["MESSAGE", "MESSAGE", "CALENDAR", "MESSAGE"],
         description: "missed-call repair draft",
         includesAny: [
           "repair",
@@ -68,12 +63,7 @@ export default scenario({
       room: "main",
       text: "Yes, approve that repair note and send it now.",
       assertTurn: expectTurnToCallAction({
-        acceptedActions: [
-          "MESSAGE",
-          "RESOLVE_REQUEST",
-          "MESSAGE",
-          "MESSAGE",
-        ],
+        acceptedActions: ["MESSAGE", "RESOLVE_REQUEST", "MESSAGE", "MESSAGE"],
         description: "repair approval and dispatch",
         includesAny: ["approve", "send", "repair", "Frontier Tower"],
       }),

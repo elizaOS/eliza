@@ -37,25 +37,17 @@ type MockOptions = {
   generate?: GenerateFn;
 };
 
-function eliza1MobileManifest(
-  id: "eliza-1-2b" | "eliza-1-4b" = "eliza-1-2b",
-): Record<string, unknown> {
-  const textPath =
-    id === "eliza-1-2b"
-      ? "text/eliza-1-2b-32k.gguf"
-      : "text/eliza-1-4b-64k.gguf";
-  const drafterPath =
-    id === "eliza-1-2b" ? "dflash/drafter-2b.gguf" : "dflash/drafter-4b.gguf";
+function eliza1MobileManifest(): Record<string, unknown> {
   return {
-    id,
+    id: "eliza-1-2b",
     version: "1.0.0",
     defaultEligible: true,
     files: {
       text: [
         {
-          path: textPath,
+          path: "text/eliza-1-2b-32k.gguf",
           sha256: "0".repeat(64),
-          ctx: id === "eliza-1-2b" ? 32768 : 65536,
+          ctx: 32768,
         },
       ],
       voice: [
@@ -73,14 +65,14 @@ function eliza1MobileManifest(
       vision: [],
       dflash: [
         {
-          path: drafterPath,
+          path: "dflash/drafter-2b.gguf",
           sha256: "0".repeat(64),
           ctx: 32768,
         },
       ],
       cache: [
         {
-          path: `cache/${id}.kvcache`,
+          path: "cache/eliza-1-2b.kvcache",
           sha256: "0".repeat(64),
         },
       ],
@@ -226,17 +218,11 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
   vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = input instanceof Request ? input.url : String(input);
-      return Response.json(
-        eliza1MobileManifest(
-          url.includes("eliza-1-4b") ? "eliza-1-4b" : "eliza-1-2b",
-        ),
-        {
-          status: 200,
-        },
-      );
-    }),
+    vi.fn(async () =>
+      Response.json(eliza1MobileManifest(), {
+        status: 200,
+      }),
+    ),
   );
 
   await handleIosLocalAgentRequest(
@@ -418,20 +404,20 @@ describe("iOS local-agent local inference flow", () => {
       load,
       availableModels: [
         {
-          name: "eliza-1-4b-64k.gguf",
-          path: "/models/eliza-1-4b-64k.gguf",
+          name: "eliza-1-2b-32k.gguf",
+          path: "/models/eliza-1-2b-32k.gguf",
           size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-4b-64k.gguf",
+        modelPath: "/models/eliza-1-2b-32k.gguf",
         contextSize: 6144,
         maxThreads: 6,
         useGpu: true,
@@ -449,20 +435,20 @@ describe("iOS local-agent local inference flow", () => {
       },
       availableModels: [
         {
-          name: "eliza-1-4b-64k.gguf",
-          path: "/models/eliza-1-4b-64k.gguf",
+          name: "eliza-1-2b-32k.gguf",
+          path: "/models/eliza-1-2b-32k.gguf",
           size: 1_200_000_000,
         },
       ],
     });
 
     await jsonRequest(kernel, "POST", "/api/local-inference/active", {
-      modelId: "eliza-1-4b",
+      modelId: "eliza-1-2b",
     });
 
     expect(load).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelPath: "/models/eliza-1-4b-64k.gguf",
+        modelPath: "/models/eliza-1-2b-32k.gguf",
         useGpu: true,
       }),
     );

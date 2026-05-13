@@ -13,6 +13,12 @@
  *   - Linux:  nm -D --defined-only <lib>
  *   - Windows: objdump -T <lib> (cross-toolchain ships it; PE has no
  *     standard `nm -D`).
+ *
+ * For the product `llama-server` *executable* (which static-links
+ * omnivoice-core) the dynamic-symbol view is the wrong one — the `ov_*`
+ * symbols sit in the regular symbol table — so it is inspected with
+ * `nm --defined-only` (full table), falling back to the dynamic view on a
+ * stripped binary.
  */
 
 import { spawnSync } from "node:child_process";
@@ -52,6 +58,41 @@ function pickToolForPlatform(target) {
   return { cmd: "nm", args: ["-D", "--defined-only"] };
 }
 
+/**
+ * Tool for inspecting an *executable* (not a shared lib). The fused
+ * `llama-server` static-links `omnivoice-core`, so the `ov_*` symbols land
+ * in the regular symbol table — `nm -D` (dynamic only) would not see them
+ * and would spuriously report a "dead mount". Use the full symbol table for
+ * executables; on a stripped binary this returns nothing, in which case the
+ * caller falls back to the dynamic-symbol view.
+ */
+function pickToolForExecutable(target) {
+  if (target.startsWith("windows-")) {
+    // PE: objdump -t lists the full COFF symbol table.
+    return { cmd: "x86_64-w64-mingw32-objdump", args: ["-t"] };
+  }
+  // ELF / Mach-O: `nm --defined-only` over the full symbol table.
+  return { cmd: "nm", args: ["--defined-only"] };
+}
+
+function dumpSymbolsBestEffort({ tool, file }) {
+  const result = spawnSync(tool.cmd, [...tool.args, file], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    timeout: 30_000,
+    // The full symbol table of a static-linked executable is large (~1 MB+);
+    // the default 1 MB maxBuffer trips ENOBUFS, which would mask the table.
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (
+    result.error ||
+    (typeof result.status === "number" && result.status !== 0)
+  ) {
+    return "";
+  }
+  return result.stdout || "";
+}
+
 function locateFusedLibrary({ outDir, target }) {
   const candidates = [];
   if (target.startsWith("darwin-")) {
@@ -80,7 +121,9 @@ function locateFusedServer({ outDir, target }) {
 }
 
 function locateProductServer({ outDir, target }) {
-  const names = target.startsWith("windows-") ? ["llama-server.exe"] : ["llama-server"];
+  const names = target.startsWith("windows-")
+    ? ["llama-server.exe"]
+    : ["llama-server"];
   for (const name of names) {
     const full = path.join(outDir, name);
     if (fs.existsSync(full)) return full;
@@ -93,6 +136,7 @@ function dumpSymbols({ tool, file }) {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     timeout: 30_000,
+    maxBuffer: 64 * 1024 * 1024,
   });
   if (result.error) {
     throw new Error(
@@ -157,7 +201,10 @@ function hasElfNeededLlama(lib) {
       stdio: ["ignore", "pipe", "pipe"],
       timeout: 30_000,
     });
-    if (result.error || (typeof result.status === "number" && result.status !== 0)) {
+    if (
+      result.error ||
+      (typeof result.status === "number" && result.status !== 0)
+    ) {
       continue;
     }
     const out = result.stdout || "";
@@ -315,7 +362,14 @@ function verifyFusedSymbolsInner({ outDir, target }) {
       `[omnivoice-fuse] symbol-verify: fused target did not install llama-server in ${outDir}; /v1/audio/speech cannot be served from the product HTTP runtime`,
     );
   }
-  const productServerSyms = dumpSymbols({ tool, file: productServer });
+  // An executable that static-links omnivoice-core carries `ov_*` in the
+  // regular symbol table, not the dynamic one — inspect the full table
+  // (with the dynamic-symbol view as the stripped-binary fallback).
+  const productServerSyms =
+    dumpSymbolsBestEffort({
+      tool: pickToolForExecutable(target),
+      file: productServer,
+    }) || dumpSymbols({ tool, file: productServer });
   const productServerReport = {
     llamaSymbolCount: countExportedSymbolFamily(productServerSyms, "llama"),
     omnivoiceSymbolCount: countExportedSymbolFamily(productServerSyms, "ov"),
@@ -332,7 +386,11 @@ function verifyFusedSymbolsInner({ outDir, target }) {
   let serverReport = null;
   const server = locateFusedServer({ outDir, target });
   if (server) {
-    const serverSyms = dumpSymbols({ tool, file: server });
+    const serverSyms =
+      dumpSymbolsBestEffort({
+        tool: pickToolForExecutable(target),
+        file: server,
+      }) || dumpSymbols({ tool, file: server });
     serverReport = {
       llamaSymbolCount: countExportedSymbolFamily(serverSyms, "llama"),
       omnivoiceSymbolCount: countExportedSymbolFamily(serverSyms, "ov"),
@@ -409,6 +467,9 @@ function main() {
   }
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (
+  process.argv[1] &&
+  fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
+) {
   main();
 }

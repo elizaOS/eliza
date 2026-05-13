@@ -12,9 +12,9 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
+import { buildOnboardingRuntimeConfig } from "@elizaos/ui/onboarding-config";
 import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { buildOnboardingRuntimeConfig } from "@elizaos/ui/onboarding-config";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 

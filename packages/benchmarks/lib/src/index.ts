@@ -6,6 +6,16 @@
  * computation, aggregator utilities, etc.) land here in later waves.
  */
 
+export {
+  bundleIsPreRelease,
+  ELIZA_ONE_MODEL_SIZES,
+  ELIZA_ONE_RELEASE_STATES,
+  type ElizaOneBundleManifest,
+  type ElizaOneModelSize,
+  type ElizaOneReleaseState,
+  readElizaOneBundle,
+} from "./eliza-1-bundle.ts";
+export * from "./local-llama-cpp.ts";
 // `ModelTier` is declared in both metrics-schema.ts (Zod-inferred from
 // `MODEL_TIERS`) and model-tiers.ts (free-standing union). The two
 // definitions resolve to the same string-literal set; we re-export
@@ -13,25 +23,15 @@
 // so the public surface stays unambiguous.
 export * from "./metrics-schema.ts";
 export {
-  type ModelTierProvider,
-  type TierSpec,
   DEFAULT_TIERS,
   isModelTier,
+  type ModelTierProvider,
   resolveTier,
+  type TierSpec,
 } from "./model-tiers.ts";
-export * from "./local-llama-cpp.ts";
 export {
+  RETRIEVAL_DEFAULTS_BY_TIER,
   type RetrievalStageName,
   type RetrievalTierDefaults,
-  RETRIEVAL_DEFAULTS_BY_TIER,
   resolveRetrievalDefaults,
 } from "./retrieval-defaults.ts";
-export {
-  type ElizaOneBundleManifest,
-  type ElizaOneModelSize,
-  type ElizaOneReleaseState,
-  ELIZA_ONE_MODEL_SIZES,
-  ELIZA_ONE_RELEASE_STATES,
-  bundleIsPreRelease,
-  readElizaOneBundle,
-} from "./eliza-1-bundle.ts";

@@ -45,12 +45,40 @@
 #include <string>
 #include <vector>
 
+// Backend ABI: NVIDIA CUDA by default; ROCm/HIP when compiled by hipcc
+// (which defines __HIP_PLATFORM_AMD__) or with -DELIZA_VERIFY_HIP. The
+// `cuda*` runtime entry points, the `<<<grid,block>>>` launch syntax,
+// `__global__`/`__device__`/`__constant__`, `__shfl_*_sync`, and `__half` /
+// `__half2float` all map 1:1 onto HIP, so the kernel bodies, fixture loader
+// and main() below are shared verbatim — only this header block and the
+// `cuda*` → `hip*` aliases differ. hip_verify.cu just `#include`s this file.
+#if defined(__HIP_PLATFORM_AMD__) || defined(ELIZA_VERIFY_HIP)
+#include <hip/hip_runtime.h>
+#include <hip/hip_fp16.h>
+using cudaError_t    = hipError_t;
+using cudaStream_t   = hipStream_t;
+using cudaDeviceProp = hipDeviceProp_t;   // .name/.major/.minor/.totalGlobalMem identical
+static constexpr hipError_t cudaSuccess = hipSuccess;
+#define cudaMalloc              hipMalloc
+#define cudaFree                hipFree
+#define cudaMemcpy              hipMemcpy
+#define cudaMemset              hipMemset
+#define cudaMemcpyHostToDevice  hipMemcpyHostToDevice
+#define cudaMemcpyDeviceToHost  hipMemcpyDeviceToHost
+#define cudaGetLastError        hipGetLastError
+#define cudaDeviceSynchronize   hipDeviceSynchronize
+#define cudaGetErrorString      hipGetErrorString
+#define cudaGetDeviceCount      hipGetDeviceCount
+#define cudaGetDeviceProperties hipGetDeviceProperties
+#define cudaSetDevice           hipSetDevice
+#else
 #include <cuda_runtime.h>
 #include <cuda_fp16.h>
+#endif
 
 // CPU reference declarations — used only for an on-host double-check of the
 // fixture's expected_scores (the same .o that metal_verify / vulkan_verify
-// link). The CUDA dispatch path below is independent of these.
+// link). The CUDA/HIP dispatch path below is independent of these.
 extern "C" {
 #include "qjl_polar_ref.h"
 }
@@ -476,12 +504,25 @@ __global__ void polar_score_kernel(const float * __restrict__ q,
 // (`eliza_tbq3_decode_block_uncond`) — the fused V-mix needs the *real* V
 // vector, not the preconditioned one.
 //
-// One CUDA block per query head; head_dim=128 fits in registers. Layout
-// (matches the fused-attention-reference agent's fixtures/fused_attn_qjl_tbq.json):
+// Warp-cooperative production mirror. One CUDA block per query head; 32 lanes.
+// This is the SAME algorithm and the SAME arithmetic / reduction order as the
+// production kernel in packages/inference/cuda/fused-attn-qjl-tbq.cu — only
+// "which lane runs each scalar op" differs from the (now retired) single-thread
+// reference shape, so the bit-exact fixture parity below is the proof that the
+// production warp-cooperative form is correct. Lane `l`:
+//   * owns byte `l` of the 32-byte QJL sign vector (8 sign bits / 8 sketch dims)
+//   * keeps 4 of the 128 head-dim accumulator slots (chunk c -> element c*32+l)
+//   * for c<4, decodes one TBQ3 V block per KV step into shared sh_dec[c][..],
+//     then all 32 lanes read sh_dec[c][lane] (P0 — 8x fewer V-decode runs)
+//   * loads its 8 Q sketch elements once into registers at entry (P1)
+// __launch_bounds__ + __ldg mirror the production P3 tuning.
+// Layout (matches fixtures/fused_attn_qjl_tbq.json):
 //   q_sketch F32       [n_heads, proj_dim]                   (already projected)
 //   k_blocks QJL1_256  [n_kv_heads, n_tokens]    (token-major, 34 B/block)
 //   v_blocks TBQ3_0    [n_kv_heads, n_tokens, 4] (token-major, 4 x 14 B)
 //   out      F32       [n_heads, 128]
+#define FUSED_VERIFY_WARP 32
+#define FUSED_VERIFY_MIN_BLOCKS_PER_SM 16
 __device__ __constant__ float k_tbq3_codebook_fork[8] = {
     -2.1519457f, -1.3439093f, -0.7560053f, -0.2450942f,
      0.2450942f,  0.7560053f,  1.3439093f,  2.1519457f,
@@ -521,13 +562,15 @@ __device__ __forceinline__ void tbq3_decode_block_uncond_dev(const dev_block_tbq
     for (int i = 0; i < 32; ++i) out32[i] *= (float)k_tbq_signs_32_fork[i];
 }
 
-__global__ void fused_attn_qjl_tbq3_kernel(const float * __restrict__ q_sketch,
-                                           const dev_block_qjl1_256 * __restrict__ k_blocks,
-                                           const dev_block_tbq3_0 * __restrict__ v_blocks,
-                                           int proj_dim, int n_heads, int n_kv_heads, int n_tokens,
-                                           float sm_scale, float * __restrict__ out) {
-    const int hq = blockIdx.x;
-    if (hq >= n_heads || threadIdx.x != 0) return;
+__global__ void __launch_bounds__(FUSED_VERIFY_WARP, FUSED_VERIFY_MIN_BLOCKS_PER_SM)
+fused_attn_qjl_tbq3_kernel(const float * __restrict__ q_sketch,
+                           const dev_block_qjl1_256 * __restrict__ k_blocks,
+                           const dev_block_tbq3_0 * __restrict__ v_blocks,
+                           int proj_dim, int n_heads, int n_kv_heads, int n_tokens,
+                           float sm_scale, float * __restrict__ out) {
+    const int lane = threadIdx.x;            // 0..31
+    const int hq   = blockIdx.x;
+    if (hq >= n_heads || lane >= FUSED_VERIFY_WARP) return;
     const int gqa = n_heads / n_kv_heads;
     const int hk  = hq / gqa;
     const float * qh = q_sketch + (size_t)hq * proj_dim;
@@ -536,32 +579,53 @@ __global__ void fused_attn_qjl_tbq3_kernel(const float * __restrict__ q_sketch,
     float * oh = out + (size_t)hq * 128;
 
     const float qjl_scl = 1.2533141373155003f / (float)proj_dim;
-    float acc[128];
-    for (int d = 0; d < 128; ++d) acc[d] = 0.0f;
+
+    // P1: hoist this lane's 8 Q sketch elements into registers (vectorized).
+    float qreg[8];
+    {
+        const float * qbase = qh + lane * 8;
+        if (((uintptr_t)qbase & 0xF) == 0) {
+            const float4 a = reinterpret_cast<const float4 *>(qbase)[0];
+            const float4 b = reinterpret_cast<const float4 *>(qbase)[1];
+            qreg[0] = a.x; qreg[1] = a.y; qreg[2] = a.z; qreg[3] = a.w;
+            qreg[4] = b.x; qreg[5] = b.y; qreg[6] = b.z; qreg[7] = b.w;
+        } else {
+            #pragma unroll
+            for (int b = 0; b < 8; ++b) qreg[b] = qbase[b];
+        }
+    }
+
+    __shared__ float sh_dec[4][32];          // P0: decoded V blocks shared across lanes
+    float acc[4];
+    #pragma unroll
+    for (int c = 0; c < 4; ++c) acc[c] = 0.0f;
     float m = -INFINITY, l = 0.0f;
     for (int t = 0; t < n_tokens; ++t) {
-        float dot = 0.0f;
-        for (int j = 0; j < proj_dim; ++j) {
-            const int bit = (pk[t].qs[j >> 3] >> (j & 7)) & 1;
-            dot += bit ? qh[j] : -qh[j];
-        }
-        const float score = qjl_scl * bf16_to_fp32_dev(pk[t].norm_bf16) * dot * sm_scale;
+        // QJL K score: lane owns sign byte `lane`.
+        const uint8_t sb = __ldg(&pk[t].qs[lane]);
+        float partial = 0.0f;
+        #pragma unroll
+        for (int b = 0; b < 8; ++b) partial += ((sb >> b) & 1) ? qreg[b] : -qreg[b];
+        #pragma unroll
+        for (int off = 16; off > 0; off >>= 1)
+            partial += __shfl_xor_sync(0xFFFFFFFFu, partial, off);
+        const float score = qjl_scl * bf16_to_fp32_dev(__ldg(&pk[t].norm_bf16)) * partial * sm_scale;
+
         const float m_new = fmaxf(m, score);
         const float corr  = __expf(m - m_new);
         const float w     = __expf(score - m_new);
         l = l * corr + w;
-        for (int c = 0; c < 4; ++c) {
-            float dec[32];
-            tbq3_decode_block_uncond_dev(pv[(size_t)t * 4 + c], dec);
-            for (int i = 0; i < 32; ++i) {
-                const int d = c * 32 + i;
-                acc[d] = acc[d] * corr + w * dec[i];
-            }
-        }
+
+        if (lane < 4) tbq3_decode_block_uncond_dev(pv[(size_t)t * 4 + lane], sh_dec[lane]);
+        __syncwarp();
+        #pragma unroll
+        for (int c = 0; c < 4; ++c) acc[c] = acc[c] * corr + w * sh_dec[c][lane];
+        __syncwarp();
         m = m_new;
     }
     const float inv_l = (l > 0.0f) ? (1.0f / l) : 0.0f;
-    for (int d = 0; d < 128; ++d) oh[d] = acc[d] * inv_l;
+    #pragma unroll
+    for (int c = 0; c < 4; ++c) oh[c * 32 + lane] = acc[c] * inv_l;
 }
 
 // ---------------------- QJL int8-sketch DP4A path -------------------------

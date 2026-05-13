@@ -21,7 +21,6 @@ import {
   ModelType,
   type Plugin,
 } from "@elizaos/core";
-import { discoverOmnivoiceModels } from "./discover";
 import {
   OmnivoiceModelMissing,
   OmnivoiceTranscriptionNotSupported,
@@ -30,11 +29,7 @@ import { OmnivoiceContext } from "./ffi";
 import { registerOmnivoiceCloser } from "./shutdown";
 import { getSingingContext, runSingingSynthesis } from "./singing";
 import { pcmFloatToWavBuffer, runSynthesis } from "./synth";
-import type {
-  OmnivoiceSynthesisResult,
-  OmnivoiceSynthesizeOptions,
-  OmnivoiceVoiceDesign,
-} from "./types";
+import type { OmnivoiceSynthesizeOptions, OmnivoiceVoiceDesign } from "./types";
 
 interface RuntimeSettings {
   libPath: string | undefined;
@@ -69,31 +64,12 @@ function getSetting(
   return (runtime.getSetting(key) as string | undefined) ?? env ?? fallback;
 }
 
-function autoDetectDisabled(): boolean {
-  const raw =
-    typeof process !== "undefined" && process.env
-      ? process.env.OMNIVOICE_AUTO_DETECT
-      : undefined;
-  if (typeof raw !== "string") return false;
-  const lower = raw.trim().toLowerCase();
-  return lower === "0" || lower === "false" || lower === "no";
-}
-
 function loadSettings(runtime: IAgentRuntime): RuntimeSettings {
-  const modelPath = getSetting(runtime, "OMNIVOICE_MODEL_PATH");
-  const codecPath = getSetting(runtime, "OMNIVOICE_CODEC_PATH");
-  const singingModelPath = getSetting(runtime, "OMNIVOICE_SINGING_MODEL_PATH");
-  const needsFallback =
-    !autoDetectDisabled() && (!modelPath || !codecPath || !singingModelPath);
-  const discovered = needsFallback ? discoverOmnivoiceModels() : null;
   return {
     libPath: getSetting(runtime, "OMNIVOICE_LIB_PATH"),
-    modelPath: modelPath ?? discovered?.speech?.modelPath,
-    codecPath:
-      codecPath ??
-      discovered?.speech?.codecPath ??
-      discovered?.singing?.codecPath,
-    singingModelPath: singingModelPath ?? discovered?.singing?.modelPath,
+    modelPath: getSetting(runtime, "OMNIVOICE_MODEL_PATH"),
+    codecPath: getSetting(runtime, "OMNIVOICE_CODEC_PATH"),
+    singingModelPath: getSetting(runtime, "OMNIVOICE_SINGING_MODEL_PATH"),
     lang: getSetting(runtime, "OMNIVOICE_LANG", "English"),
     instruct: getSetting(runtime, "OMNIVOICE_INSTRUCT"),
     useFa:
@@ -175,7 +151,7 @@ export const omnivoicePlugin: Plugin = {
       logger.info(
         `[plugin-omnivoice] TTS singing=${opts.singing ?? false} chars=${opts.text.length}`,
       );
-      let result: OmnivoiceSynthesisResult;
+      let result;
       if (opts.singing) {
         if (!settings.singingModelPath || !settings.codecPath) {
           throw new OmnivoiceModelMissing(

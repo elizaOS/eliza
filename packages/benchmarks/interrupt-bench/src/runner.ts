@@ -16,10 +16,10 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import type { Scenario, ScenarioResult } from "./types.ts";
-import { loadScenarios } from "./scenarios.ts";
-import { runScenario, type EvaluatorMode } from "./evaluator.ts";
+import { type EvaluatorMode, runScenario } from "./evaluator.ts";
 import { buildReport, renderJson, renderMarkdown } from "./report.ts";
+import { loadScenarios } from "./scenarios.ts";
+import type { Scenario, ScenarioResult } from "./types.ts";
 
 interface Args {
   mode: EvaluatorMode;
@@ -37,11 +37,12 @@ function parseArgs(argv: string[]): Args {
       const v = a.slice(7);
       if (v === "scripted" || v === "cerebras") args.mode = v;
       else throw new Error(`unknown --mode value: ${v}`);
-    }
-    else if (a.startsWith("--scenario=")) args.scenarioFilter = a.slice("--scenario=".length);
+    } else if (a.startsWith("--scenario="))
+      args.scenarioFilter = a.slice("--scenario=".length);
     else if (a.startsWith("--out=")) args.out = a.slice("--out=".length);
     else if (a === "--judge") args.judge = true;
-    else if (a.startsWith("--model=")) args.cerebrasModel = a.slice("--model=".length);
+    else if (a.startsWith("--model="))
+      args.cerebrasModel = a.slice("--model=".length);
     else if (a === "--help" || a === "-h") {
       process.stdout.write(HELP_TEXT);
       process.exit(0);
@@ -71,12 +72,16 @@ async function main(): Promise<void> {
     ? all.filter((s) => s.id === args.scenarioFilter)
     : all;
   if (scenarios.length === 0) {
-    process.stderr.write(`No scenarios matched filter '${args.scenarioFilter ?? "*"}'\n`);
+    process.stderr.write(
+      `No scenarios matched filter '${args.scenarioFilter ?? "*"}'\n`,
+    );
     process.exit(1);
   }
 
   const startedAt = new Date().toISOString();
-  process.stdout.write(`InterruptBench — mode=${args.mode}, ${scenarios.length} scenario(s)\n`);
+  process.stdout.write(
+    `InterruptBench — mode=${args.mode}, ${scenarios.length} scenario(s)\n`,
+  );
 
   const results: ScenarioResult[] = [];
   for (const scenario of scenarios) {
@@ -90,23 +95,32 @@ async function main(): Promise<void> {
         cerebrasModel: args.cerebrasModel,
       });
     } catch (err) {
-      process.stderr.write(`${tag} ERROR: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(
+        `${tag} ERROR: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
       result = buildErrorResult(scenario, err);
     }
     results.push(result);
-    process.stdout.write(`${tag} score=${(result.score * 100).toFixed(1)} boundary=${result.boundaryViolated ? "VIOLATED" : "ok"} duration=${result.durationMs}ms\n`);
+    process.stdout.write(
+      `${tag} score=${(result.score * 100).toFixed(1)} boundary=${result.boundaryViolated ? "VIOLATED" : "ok"} duration=${result.durationMs}ms\n`,
+    );
   }
   const finishedAt = new Date().toISOString();
   const report = buildReport({
     results,
     mode: args.mode,
-    model: args.mode === "cerebras" ? (args.cerebrasModel ?? "gpt-oss-120b") : undefined,
+    model:
+      args.mode === "cerebras"
+        ? (args.cerebrasModel ?? "gpt-oss-120b")
+        : undefined,
     startedAt,
     finishedAt,
   });
   process.stdout.write("\n");
   process.stdout.write(renderMarkdown(report));
-  process.stdout.write(`\nFINAL SCORE: ${report.finalScore.toFixed(2)} (aggregate=${report.aggregate.toFixed(2)} + judge=${report.judgeBonus.toFixed(2)})\n`);
+  process.stdout.write(
+    `\nFINAL SCORE: ${report.finalScore.toFixed(2)} (aggregate=${report.aggregate.toFixed(2)} + judge=${report.judgeBonus.toFixed(2)})\n`,
+  );
   process.stdout.write(`PASS TIER: ${report.passTier}\n`);
   if (args.out) {
     const md = resolve(args.out, "report.md");
@@ -143,7 +157,9 @@ function buildErrorResult(scenario: Scenario, err: unknown): ScenarioResult {
 
 if (import.meta.main) {
   main().catch((err) => {
-    process.stderr.write(`Fatal: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    process.stderr.write(
+      `Fatal: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+    );
     process.exit(1);
   });
 }

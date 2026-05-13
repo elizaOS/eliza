@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Cerebras smoke test — one round trip with the composed Stage-1 schema.
  *
@@ -10,8 +11,8 @@
  *   bun run scripts/cerebras-smoke.ts --model=gpt-oss-120b
  */
 
-import { buildBenchRegistry } from "../src/registry.ts";
 import { callCerebras, isCerebrasConfigured } from "../src/llm-cerebras.ts";
+import { buildBenchRegistry } from "../src/registry.ts";
 
 async function main(): Promise<void> {
   if (!isCerebrasConfigured()) {
@@ -23,7 +24,12 @@ async function main(): Promise<void> {
 
   const registry = buildBenchRegistry();
   const schema = registry.composeSchema();
-  process.stdout.write(`Schema fields: ${registry.list().map((e) => e.name).join(", ")}\n`);
+  process.stdout.write(
+    `Schema fields: ${registry
+      .list()
+      .map((e) => e.name)
+      .join(", ")}\n`,
+  );
   process.stdout.write("Calling Cerebras...\n");
 
   const result = await callCerebras({
@@ -59,6 +65,8 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  process.stderr.write(`Smoke failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`);
+  process.stderr.write(
+    `Smoke failed: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+  );
   process.exit(1);
 });

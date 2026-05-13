@@ -24,7 +24,9 @@ function isRs2004scapeStateService(
 function isRs2004scapeEventLogService(
   service: Service | null,
 ): service is Rs2004scapeEventLogService {
-  return isRs2004scapeStateService(service) && hasMethod(service, "getEventLog");
+  return (
+    isRs2004scapeStateService(service) && hasMethod(service, "getEventLog")
+  );
 }
 
 export function getRs2004scapeStateService(

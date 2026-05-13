@@ -185,8 +185,7 @@ export async function grepHandler(
       truncated,
     });
   } catch (error) {
-    const messageText =
-      error instanceof Error ? error.message : String(error);
+    const messageText = error instanceof Error ? error.message : String(error);
     return failureToActionResult({
       reason: "internal",
       message: `grep failed: ${messageText.slice(0, 500)}`,

@@ -87,7 +87,11 @@ if (needsNativeEnvReexec && process.env.ELIZA_TTS_NATIVE_ENV_REEXEC !== "1") {
   process.exit(rerun.status ?? (rerun.signal ? 1 : 0));
 }
 
-function writeWavPcm16Mono(path: string, pcm: Float32Array, sampleRate: number) {
+function writeWavPcm16Mono(
+  path: string,
+  pcm: Float32Array,
+  sampleRate: number,
+) {
   mkdirSync(dirname(path), { recursive: true });
   const dataBytes = pcm.length * 2;
   const buf = Buffer.alloc(44 + dataBytes);

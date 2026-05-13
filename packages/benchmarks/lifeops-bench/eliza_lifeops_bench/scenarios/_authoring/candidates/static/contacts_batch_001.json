@@ -20,9 +20,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "GreenTech"
-    ],
+    "required_outputs": ["GreenTech"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -48,9 +46,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "John"
-    ],
+    "required_outputs": ["John"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -73,9 +69,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Acme"
-    ],
+    "required_outputs": ["Acme"],
     "first_question_fallback": {
       "canned_answer": "Acme Corp contacts.",
       "applies_when": "agent asks which company"
@@ -100,9 +94,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "work"
-    ],
+    "required_outputs": ["work"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -126,9 +118,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Alex"
-    ],
+    "required_outputs": ["Alex"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -154,9 +144,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Mom"
-    ],
+    "required_outputs": ["Mom"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -182,9 +170,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Mom"
-    ],
+    "required_outputs": ["Mom"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -229,9 +215,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Lee"
-    ],
+    "required_outputs": ["Lee"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -258,9 +242,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Samir"
-    ],
+    "required_outputs": ["Samir"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -286,9 +268,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Julia"
-    ],
+    "required_outputs": ["Julia"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -310,9 +290,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "New York"
-    ],
+    "required_outputs": ["New York"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -338,9 +316,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Delivery"
-    ],
+    "required_outputs": ["Delivery"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -366,9 +342,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Julia"
-    ],
+    "required_outputs": ["Julia"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -413,9 +387,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Smith"
-    ],
+    "required_outputs": ["Smith"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -442,9 +414,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Laura"
-    ],
+    "required_outputs": ["Laura"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -468,9 +438,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Omega"
-    ],
+    "required_outputs": ["Omega"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -496,9 +464,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Elena"
-    ],
+    "required_outputs": ["Elena"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -523,9 +489,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Julia"
-    ],
+    "required_outputs": ["Julia"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -547,9 +511,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "example.test"
-    ],
+    "required_outputs": ["example.test"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 4,
@@ -571,9 +533,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "friend"
-    ],
+    "required_outputs": ["friend"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -600,9 +560,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Carlos"
-    ],
+    "required_outputs": ["Carlos"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -626,9 +584,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "Jamie"
-    ],
+    "required_outputs": ["Jamie"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,
@@ -653,9 +609,7 @@
         }
       }
     ],
-    "required_outputs": [
-      "John"
-    ],
+    "required_outputs": ["John"],
     "first_question_fallback": null,
     "world_seed": 2026,
     "max_turns": 5,

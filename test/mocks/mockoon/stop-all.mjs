@@ -8,8 +8,8 @@
 
 import { readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PID_DIR = join(HERE, ".mockoon-pids");
@@ -46,7 +46,9 @@ async function main() {
         process.kill(pid, "SIGTERM");
         console.log(`SIGTERM ${f} pid=${pid}`);
       } catch (e) {
-        console.warn(`could not SIGTERM ${pid}: ${e instanceof Error ? e.message : String(e)}`);
+        console.warn(
+          `could not SIGTERM ${pid}: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     }
   }
@@ -59,7 +61,9 @@ async function main() {
         process.kill(pid, "SIGKILL");
         console.log(`SIGKILL ${f} pid=${pid}`);
       } catch (e) {
-        console.warn(`could not SIGKILL ${pid}: ${e instanceof Error ? e.message : String(e)}`);
+        console.warn(
+          `could not SIGKILL ${pid}: ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
     }
     try {

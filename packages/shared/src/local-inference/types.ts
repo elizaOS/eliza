@@ -11,13 +11,8 @@
  * the type contracts live here.
  */
 
-/** Agent slot ids the runtime maps to a local model/provider. */
-export type AgentModelSlot =
-  | "TEXT_SMALL"
-  | "TEXT_LARGE"
-  | "TEXT_EMBEDDING"
-  | "TEXT_TO_SPEECH"
-  | "TRANSCRIPTION";
+/** Agent slot ids the runtime maps to a local model. */
+export type AgentModelSlot = "TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING";
 
 /** Subset of `AgentModelSlot` that participates in text generation. */
 export type TextGenerationSlot = Extract<
@@ -29,8 +24,6 @@ export const AGENT_MODEL_SLOTS: AgentModelSlot[] = [
   "TEXT_SMALL",
   "TEXT_LARGE",
   "TEXT_EMBEDDING",
-  "TEXT_TO_SPEECH",
-  "TRANSCRIPTION",
 ];
 
 export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
@@ -207,31 +200,6 @@ export interface LocalRuntimeOptimizations {
    * provide these kernels.
    */
   requiresKernel?: LocalRuntimeKernel[];
-  /**
-   * Number of mid-prefill KV checkpoints the server retains for rollback.
-   * Maps to upstream llama-server `--ctx-checkpoints N` (default 8 upstream).
-   * Required by the voice loop's optimistic-rollback path: snapshots taken at
-   * `speech-pause` so the slot can be restored if the user resumes within
-   * the rollback window. Server-side flag is gated by a runtime probe — set
-   * here only as a catalog default.
-   */
-  ctxCheckpoints?: number;
-  /**
-   * Token interval between mid-prefill KV checkpoints. Maps to
-   * `--ctx-checkpoint-interval M` (default 8192 upstream). Larger contexts
-   * benefit from larger intervals to keep checkpoint count bounded.
-   */
-  ctxCheckpointInterval?: number;
-  /**
-   * Opt this bundle into the native DFlash accept/reject event protocol
-   * (see `docs/dflash-native-events-protocol.md`). When true AND the
-   * running llama-server advertises `capabilities.dflashNativeEvents` on
-   * `/health`, the JS side consumes structured `dflash` events from each
-   * SSE chunk instead of synthesizing accept events from text deltas.
-   * Defaults to false — the legacy synthesis path is what runs in
-   * production until the fork's native emission is merged and verified.
-   */
-  nativeDflashEvents?: boolean;
 }
 
 export interface LocalRuntimeAcceleration {
@@ -288,17 +256,8 @@ export interface CatalogModel {
   /** Stable Eliza id — used as the primary key. */
   id: string;
   displayName: string;
-  /** Repo slug on the selected hub, e.g. "elizaos/eliza-1". */
+  /** HuggingFace repo slug, e.g. "elizaos/eliza-1-1_7b". */
   hfRepo: string;
-  /** Source hub. Omitted means Hugging Face for backward compatibility. */
-  hub?: "huggingface" | "modelscope";
-  /**
-   * Optional directory prefix inside `hfRepo` for remote artifact lookup. Eliza-1
-   * uses one model repo (`elizaos/eliza-1`) with each bundle under
-   * `bundles/<tier>/`, while manifest-internal paths remain `text/...`,
-   * `dflash/...`, etc.
-   */
-  hfPathPrefix?: string;
   /** Exact GGUF filename in the repo. */
   ggufFile: string;
   /**
@@ -318,10 +277,10 @@ export interface CatalogModel {
     | "360M"
     | "0.5B"
     | "0.6B"
-    | "0.6B"
+    | "0.8B"
     | "1B"
     | "1.7B"
-    | "1.7B"
+    | "2B"
     | "3B"
     | "4B"
     | "7B"
@@ -333,8 +292,6 @@ export interface CatalogModel {
     | "24B"
     | "27B"
     | "32B";
-  /** Optional display-only parameter label for external models. */
-  parameterLabel?: string;
   quant: string;
   sizeGb: number;
   /** Minimum system RAM (GB) we recommend before offering this model. */
@@ -383,53 +340,8 @@ export interface CatalogModel {
       >
     >;
   };
-  /**
-   * Voice engines whose artifacts ship inside this bundle. Small/mobile tiers
-   * prefer Kokoro for low latency; large/server tiers prefer OmniVoice for
-   * higher-fidelity cloning.
-   */
-  voiceBackends?: ReadonlyArray<"kokoro" | "omnivoice">;
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
-  /**
-   * Suggested single-GPU profile id for this bundle. Populated for tiers
-   * we have hand-tuned profiles for; absent on tiers where the catalog
-   * defaults already fit any supported card. The recommender uses this to
-   * pick a bundle when the host's GPU matches the profile.
-   *
-   * Single-GPU only — multi-GPU / tensor-parallel deployments are
-   * explicitly out of scope (see `local-inference/gpu-profiles.ts`). The
-   * type is duplicated here rather than imported from `gpu-profiles.ts` to
-   * avoid an import cycle between the two leaf modules.
-   */
-  gpuProfile?: "rtx-3090" | "rtx-4090" | "rtx-5090" | "h200";
-  /**
-   * Text-weight quantization matrix for this tier. `ggufFile` remains the
-   * active/default downloadable artifact; entries here let the recommendation
-   * engine choose a higher-precision GGUF once that artifact is published in
-   * the same model repo.
-   */
-  quantization?: CatalogQuantizationMatrix;
-}
-
-export type CatalogQuantizationId = "q4_k_m" | "q6_k" | "q8_0";
-
-export interface CatalogQuantizationVariant {
-  id: CatalogQuantizationId;
-  label: "4-bit" | "6-bit" | "8-bit";
-  ggufFile: string;
-  sizeGb: number;
-  minRamGb: number;
-  /**
-   * `published` means the app may select/download this GGUF now. `planned`
-   * is recorded in the matrix for release planning but must not be selected.
-   */
-  status: "published" | "planned";
-}
-
-export interface CatalogQuantizationMatrix {
-  defaultVariantId: CatalogQuantizationId;
-  variants: CatalogQuantizationVariant[];
 }
 
 export type HardwareFitLevel = "fits" | "tight" | "wontfit";

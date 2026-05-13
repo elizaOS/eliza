@@ -18,8 +18,8 @@ import {
 import {
 	decideReplyGate,
 	enforceVerbosity,
-	getPersonalityStore,
 } from "../features/advanced-capabilities/personality";
+import { getPersonalityStore } from "../features/advanced-capabilities/personality/services/personality-store.ts";
 import { looksLikeNonActionableChatter } from "../features/basic-capabilities/providers/non-actionable-chatter";
 import { logger } from "../logger";
 import { imageDescriptionTemplate, messageHandlerTemplate } from "../prompts";
@@ -85,7 +85,10 @@ import {
 	type PlannerTrajectory,
 	runPlannerLoop,
 } from "../runtime/planner-loop";
-import { buildResponseGrammar } from "../runtime/response-grammar";
+import {
+	buildResponseGrammar,
+	withGuidedDecodeProviderOptions,
+} from "../runtime/response-grammar";
 import {
 	type ResponseHandlerEvaluator,
 	type ResponseHandlerPatch,
@@ -560,6 +563,7 @@ export function resolvePlannerActionName(
 	runtime: Pick<IAgentRuntime, "actions" | "logger">,
 	actionLookup: Map<string, Action> | undefined,
 	actionName: string,
+	options?: { strict?: boolean },
 ): string[] {
 	const lookup =
 		actionLookup ?? buildRuntimeActionLookup(runtime as IAgentRuntime);
@@ -572,7 +576,9 @@ export function resolvePlannerActionName(
 		return resolved;
 	}
 
-	if (actionLookup) {
+	// In strict mode don't fall back to the full registry — LLM aliases
+	// like WRITE -> FILE would defeat a candidateActions narrow.
+	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
 			runtime,
 			buildRuntimeActionLookup(runtime as IAgentRuntime),
@@ -1970,6 +1976,7 @@ function buildV5PlannerActionSurface(params: {
 	const tieredSurface = tierActionResults({
 		catalog,
 		results: retrieval.results,
+		narrowToCandidateActions: candidateActions,
 	});
 	const toolSearchEndedAt = Date.now();
 	const exposedActionNames = new Set(
@@ -2244,6 +2251,32 @@ function contextAvailableForRepair(
 	);
 }
 
+/**
+ * Resolve a Stage 1 repair's `parentActionHints` to the first umbrella from
+ * `preferred` that is present in `availableActionNames`. When none of the
+ * preferred umbrellas are present, fall back to `fallback` so legacy callers
+ * (and runtimes that don't expose the umbrella action) still receive a usable
+ * hint.
+ *
+ * Names are compared case-insensitively after the same identifier normalization
+ * the planner alias map uses (`A_B` and `AB` both match the `AB` umbrella).
+ */
+function resolveActionAwareParentHint(
+	preferred: readonly string[],
+	fallback: string,
+	availableActionNames: readonly string[] | undefined,
+): string {
+	const available = new Set(
+		(availableActionNames ?? []).map((name) => normalizeActionIdentifier(name)),
+	);
+	for (const candidate of preferred) {
+		if (available.has(normalizeActionIdentifier(candidate))) {
+			return candidate;
+		}
+	}
+	return fallback;
+}
+
 function addRepairPlanToPatch(
 	patch: {
 		setContexts?: AgentContext[];
@@ -2404,6 +2437,7 @@ function getStage1PasswordManagerRepairPlan(args: {
 function getStage1CheckinRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2431,6 +2465,15 @@ function getStage1CheckinRepairPlan(args: {
 	).filter((context) =>
 		contextAvailableForRepair(context, args.availableContexts),
 	);
+	// Action-aware umbrella: prefer the dedicated `CHECKIN` action when the
+	// runtime exposes it (LifeOps deployments), otherwise fall back to the
+	// generic `SCHEDULED_TASKS` umbrella that hosts check-in subactions in
+	// vanilla runtimes.
+	const parentActionHint = resolveActionAwareParentHint(
+		["CHECKIN"],
+		"SCHEDULED_TASKS",
+		args.availableActionNames,
+	);
 	return {
 		contexts: contexts.length > 0 ? contexts : ["tasks"],
 		candidateActions: nightIntent
@@ -2438,7 +2481,7 @@ function getStage1CheckinRepairPlan(args: {
 			: morningIntent
 				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
 				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: ["SCHEDULED_TASKS"],
+		parentActionHints: [parentActionHint],
 	};
 }
 
@@ -2581,6 +2624,7 @@ function getStage1CalendarSignatureDeadlineRepairPlan(args: {
 function getStage1KnownToolRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2600,6 +2644,7 @@ function getStage1KnownToolRepairPlan(args: {
 function buildFallbackStage1PlanForKnownToolRequest(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): MessageHandlerResult | null {
 	const repair = getStage1KnownToolRepairPlan(args);
 	if (!repair) {
@@ -2622,6 +2667,7 @@ function buildFallbackStage1PlanForKnownToolRequest(args: {
 function buildKnownToolRequestResponseHandlerPatch(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): ResponseHandlerPatch | null {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text) {
@@ -2745,10 +2791,13 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 			priority: 20,
 			shouldRun: ({ message }) =>
 				Boolean((getUserMessageText(message) ?? "").trim()),
-			evaluate: ({ message, availableContexts }) =>
+			evaluate: ({ runtime, message, availableContexts }) =>
 				buildKnownToolRequestResponseHandlerPatch({
 					message,
 					availableContexts,
+					availableActionNames: (runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? undefined,
 		},
 	];
@@ -4414,10 +4463,14 @@ async function executeV5PlannedToolCall(
 
 	const actions = args.executorOptions?.actions ?? args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup({ actions });
+	// Different reference means the caller narrowed the surface; resolve
+	// strictly so LLM aliases can't escape through the global fallback.
+	const strictResolve = actions !== args.runtime.actions;
 	const resolvedNames = resolvePlannerActionName(
 		args.runtime,
 		actionLookup,
 		unwrappedToolCall.name,
+		{ strict: strictResolve },
 	);
 	const resolvedName = resolvedNames[0] ?? unwrappedToolCall.name;
 	const forceContactReminderToLife =
@@ -4817,7 +4870,14 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
-				providerOptions: messageHandlerProviderOptions,
+				// Guided structured decode on by default for Stage 1 (the call always
+				// carries a forced skeleton): the local engine derives the
+				// deterministic-token prefill plan and the fork fast-forwards the
+				// forced scaffold spans. Opt out with `MILADY_LOCAL_GUIDED_DECODE=0`.
+				// Cloud adapters ignore `providerOptions.eliza.guidedDecode`.
+				providerOptions: withGuidedDecodeProviderOptions(
+					messageHandlerProviderOptions,
+				),
 			},
 		)) as string | GenerateTextResult;
 		const messageHandlerEndedAt = Date.now();
@@ -4848,6 +4908,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				buildFallbackStage1PlanForKnownToolRequest({
 					message: args.message,
 					availableContexts,
+					availableActionNames: (args.runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
 		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
@@ -5569,6 +5632,60 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
 	}
 	return out;
+}
+
+/**
+ * Build the prompt sent to the fallback "failure reply" model when the
+ * planner trajectory errors out (rate limits, transient network failure,
+ * provider 5xx). The prompt forbids the model from emitting any
+ * substantive answer to the user's question — including answers that
+ * appear "obvious" from recent-conversation context — because the
+ * grounding trajectory never ran.
+ *
+ * Why a separate exported function: this prompt is load-bearing for
+ * correctness (a previous version's "if you can plausibly act, do it"
+ * escape hatch caused gpt-oss-120b on Cerebras to hallucinate a git
+ * SHA from prior chat context during a live battle test, even though
+ * no tool was actually called). Pinning the hard rules in tests means
+ * a future "let's make the failure reply more helpful" refactor can't
+ * silently re-introduce the hallucination vector.
+ *
+ * @param recentMessages Plain-text projection of the recent conversation
+ * (whatever the caller has at hand — typically `state.values.recentMessages`).
+ */
+export function buildFailureReplyPrompt(recentMessages: string): string {
+	return [
+		"You hit a transient model error and have to send a short user-facing reply.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Stay in character. Keep your usual voice and tone.",
+		"- NEVER mention internal mechanism words such as: planner, action_planner,",
+		"  XML, JSON, schema, structured output, model, retries, sonnet,",
+		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+		"  loop, runtime, dispatch, or hand off. The user does not know or care",
+		"  what those are.",
+		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+		"- Acknowledge that something went wrong and suggest a retry. Examples:",
+		'  "something flaked, try again in a sec",',
+		'  "weird hiccup, give me another shot in a moment",',
+		'  "got stuck on my end, retry that?"',
+		"- NEVER answer the user's question on the merits in this reply. Even",
+		"  if the answer looks obvious from context (a SHA, a count, a price,",
+		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
+		"  The trajectory that would have GROUNDED the answer failed, so any",
+		"  factual claim you make here is by definition ungrounded. The user",
+		"  will retry, the real run will produce the grounded answer, and",
+		"  meanwhile you must not invent one from recent-conversation context.",
+		"- Do not paraphrase or echo the user's question as if you were about",
+		"  to answer it. Just say something went wrong and invite a retry.",
+		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
+		"",
+		"Recent Conversation:",
+		recentMessages,
+		"",
+		"Reply:",
+	].join("\n");
 }
 
 /**

@@ -12,16 +12,18 @@
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
-function checkBatchedNotIndividual(
-  ctx: ScenarioContext,
-): string | undefined {
+function checkBatchedNotIndividual(ctx: ScenarioContext): string | undefined {
   // Walk Gmail mock requests if exposed via ctx — fall back to action count.
   const modifyActions = ctx.actionsCalled.filter((a) => {
     const blob = JSON.stringify({
       n: a.actionName,
       p: a.parameters,
     }).toLowerCase();
-    return blob.includes("archive") || blob.includes("modify") || blob.includes("batch");
+    return (
+      blob.includes("archive") ||
+      blob.includes("modify") ||
+      blob.includes("batch")
+    );
   });
   if (modifyActions.length > 10) {
     return `Agent fired ${modifyActions.length} archive/modify actions instead of batching. Expected <=10 calls.`;
@@ -31,7 +33,8 @@ function checkBatchedNotIndividual(
 
 export default scenario({
   id: "gmail.batch-modify-50-messages",
-  title: "Bulk archive of ~50 messages goes through batchModify, not per-message",
+  title:
+    "Bulk archive of ~50 messages goes through batchModify, not per-message",
   domain: "lifeops.gmail",
   tags: ["lifeops", "gmail", "batch", "scale", "quota"],
   isolation: "per-scenario",

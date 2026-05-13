@@ -19,6 +19,13 @@ node_modules/.cache
 packages/**/node_modules
 !packages/agent/node_modules/
 !packages/agent/node_modules/**
+# `@elizaos/ui`'s Node barrel re-exports `App.js`, which imports `react/jsx-runtime`.
+# The server agent pulls `@elizaos/ui` in transitively (via `@elizaos/app-core`'s
+# `ui-compat` re-export), so `react` must be resolvable from `packages/ui/dist/`.
+# bun's isolated install keeps it at `packages/ui/node_modules/react` (a symlink),
+# so don't strip that tree.
+!packages/ui/node_modules/
+!packages/ui/node_modules/**
 apps/**/node_modules
 # `plugins/**/node_modules` is intentionally NOT excluded: bun's isolated
 # install puts each workspace plugin's runtime deps under
@@ -31,6 +38,8 @@ eliza/**/node_modules
 !eliza/plugins/*/node_modules/**
 !eliza/packages/agent/node_modules/
 !eliza/packages/agent/node_modules/**
+!eliza/packages/ui/node_modules/
+!eliza/packages/ui/node_modules/**
 eliza/packages/app-core/deploy/**/node_modules
 eliza/.turbo
 eliza/packages/benchmarks
