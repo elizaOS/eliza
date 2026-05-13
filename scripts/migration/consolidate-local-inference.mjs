@@ -55,13 +55,11 @@ const MOVES = [
 		notes:
 			"node-llama-cpp implementation moves under adapters/. package.json/build.ts/.turbo/dist will need cleanup after the move.",
 	},
-	{
-		src: "plugins/plugin-local-embedding",
-		dst: "plugins/plugin-local-embedding.DELETE_ME",
-		type: "dir",
-		notes:
-			"Deprecated shim — moved to a trash dir so the import-rewrite codemod can run; delete in Phase 6 cleanup once consumers point at plugin-local-inference.",
-	},
+	// Note: plugins/plugin-local-embedding is intentionally NOT in this table.
+	// It's a 27-line re-export shim of plugin-local-inference. We leave it in
+	// place during the file moves so unconverted `@elizaos/plugin-local-embedding`
+	// imports keep resolving, then the import codemod replaces all references,
+	// then we `git rm -r plugins/plugin-local-embedding/` as the very last step.
 
 	// 2. app-core services/local-inference tree (212 files)
 	{
@@ -229,6 +227,27 @@ function isPathTrackedDir(relPath) {
 	return res.status === 0 && res.stdout.trim().length > 0;
 }
 
+/** Count files tracked by git under a path (more honest than fs walk: skips
+ * node_modules / dist / .turbo). */
+function countTrackedFiles(relPath) {
+	const res = git(["ls-files", "--", relPath], { allowFail: true });
+	if (res.status !== 0 || !res.stdout.trim()) return 0;
+	return res.stdout.trim().split("\n").length;
+}
+
+/** If the source contains (or is) a submodule gitlink, return its path. */
+function detectSubmodule(relPath) {
+	const res = git(["ls-files", "--stage", "--", relPath], { allowFail: true });
+	if (res.status !== 0) return null;
+	for (const line of res.stdout.split("\n")) {
+		if (line.startsWith("160000 ")) {
+			const parts = line.split("\t");
+			if (parts.length >= 2) return parts[1];
+		}
+	}
+	return null;
+}
+
 function color(s, code) {
 	if (!process.stdout.isTTY) return s;
 	return `\x1b[${code}m${s}\x1b[0m`;
@@ -341,8 +360,17 @@ function validateMoves() {
 			);
 		}
 
-		const fileCount = countFilesRecursive(srcAbs);
-		validated.push({ ...move, ok: true, fileCount });
+		const trackedCount = countTrackedFiles(move.src);
+		const fsCount = countFilesRecursive(srcAbs);
+		const submodulePath =
+			move.type === "dir" ? detectSubmodule(move.src) : null;
+		validated.push({
+			...move,
+			ok: true,
+			fileCount: trackedCount,
+			fsCount,
+			submodulePath,
+		});
 	}
 
 	return { issues, validated };
