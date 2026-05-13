@@ -38,7 +38,7 @@
     "@elizaos/core": "2.0.0-beta.1",
     "@types/node": "^25.2.3",
     "typescript": "^6.0.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.6"
   },
   "dependencies": {
     "@nut-tree-fork/nut-js": "^4.2.6",
