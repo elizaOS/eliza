@@ -315,6 +315,47 @@ export const VOICE_PROVIDERS: Array<{
 ];
 
 /**
+ * ASR (automatic speech recognition) provider catalogue. Mirrors
+ * `VOICE_PROVIDERS` so the settings UI can render a provider picker for
+ * speech-to-text. The legacy whisper.cpp pipeline has been retired —
+ * on-device transcription now runs through the local-inference Qwen3-ASR
+ * bundle instead.
+ */
+export const ASR_PROVIDERS: Array<{
+  id: "local-inference" | "eliza-cloud" | "openai";
+  label: string;
+  labelKey: string;
+  hint: string;
+  hintKey: string;
+  needsKey: boolean;
+}> = [
+  {
+    id: "local-inference",
+    label: "Local inference",
+    labelKey: "asr.provider.localInference",
+    hint: "On-device Qwen3-ASR",
+    hintKey: "asr.provider.localInference.hint",
+    needsKey: false,
+  },
+  {
+    id: "eliza-cloud",
+    label: "Eliza Cloud",
+    labelKey: "asr.provider.elizaCloud",
+    hint: "Routed through your Eliza Cloud login",
+    hintKey: "asr.provider.elizaCloud.hint",
+    needsKey: false,
+  },
+  {
+    id: "openai",
+    label: "OpenAI",
+    labelKey: "asr.provider.openai",
+    hint: "Whisper hosted by OpenAI",
+    hintKey: "asr.provider.openai.hint",
+    needsKey: true,
+  },
+];
+
+/**
  * Minimal backup voices for non-ElevenLabs providers (Edge TTS / OpenAI).
  * Only a male and female option — keeps the UI uncluttered when premium
  * voices aren't available.
