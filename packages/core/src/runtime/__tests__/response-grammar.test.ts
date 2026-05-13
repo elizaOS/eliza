@@ -7,6 +7,7 @@ import {
 	buildPlannerParamsSkeleton,
 	buildResponseGrammar,
 	clearResponseGrammarCache,
+	strictPlannerActionGrammarEnabled,
 	withGuidedDecodeProviderOptions,
 } from "../response-grammar";
 import type { ResponseHandlerFieldEvaluator } from "../response-handler-field-evaluator";
@@ -463,6 +464,48 @@ describe("buildPlannerParamsSkeleton — second-pass per-action parameters", () 
 		);
 		const nSpan = sk.spans.find((s) => s.key === "n");
 		expect(nSpan).toEqual({ kind: "free-string", key: "n" });
+	});
+});
+
+describe("strictPlannerActionGrammarEnabled — env-driven switch for the P2-4 path", () => {
+	const ENV_KEYS = [
+		"MILADY_PLANNER_STRICT_PARAMS",
+		"ELIZA_PLANNER_STRICT_PARAMS",
+	] as const;
+	const saved: Record<string, string | undefined> = {};
+	for (const k of ENV_KEYS) saved[k] = process.env[k];
+	afterEach(() => {
+		for (const k of ENV_KEYS) {
+			if (saved[k] === undefined) delete process.env[k];
+			else process.env[k] = saved[k];
+		}
+	});
+
+	it("is off by default", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		expect(strictPlannerActionGrammarEnabled()).toBe(false);
+	});
+
+	it("accepts 1 / true / on / yes as on", () => {
+		for (const value of ["1", "true", "TRUE", "on", "Yes"]) {
+			for (const k of ENV_KEYS) delete process.env[k];
+			process.env.MILADY_PLANNER_STRICT_PARAMS = value;
+			expect(strictPlannerActionGrammarEnabled()).toBe(true);
+		}
+	});
+
+	it("treats 0 / false / off / no / empty as off", () => {
+		for (const value of ["0", "false", "off", "no", ""]) {
+			for (const k of ENV_KEYS) delete process.env[k];
+			process.env.MILADY_PLANNER_STRICT_PARAMS = value;
+			expect(strictPlannerActionGrammarEnabled()).toBe(false);
+		}
+	});
+
+	it("honours the ELIZA_ alias", () => {
+		for (const k of ENV_KEYS) delete process.env[k];
+		process.env.ELIZA_PLANNER_STRICT_PARAMS = "1";
+		expect(strictPlannerActionGrammarEnabled()).toBe(true);
 	});
 });
 

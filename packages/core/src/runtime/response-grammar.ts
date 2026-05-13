@@ -664,6 +664,28 @@ function guidedDecodeEnabledByDefault(): boolean {
 }
 
 /**
+ * Opt-in switch for the single-call per-action union grammar
+ * (`buildPlannerActionGrammarStrict`) in the Stage-2 planner. **Off by
+ * default** because the strict grammar is larger and the loose grammar +
+ * `validate-tool-args.ts` coercion path is the current production behavior;
+ * flip it on to engage the P2-4 path.
+ *
+ * Set `MILADY_PLANNER_STRICT_PARAMS=1` (or `=true`/`on`/`yes`) to enable.
+ * Aliased on `ELIZA_PLANNER_STRICT_PARAMS` for symmetry with the other
+ * env knobs. Cloud adapters still receive `tools` + the unforced contract.
+ */
+export function strictPlannerActionGrammarEnabled(): boolean {
+	const raw = (
+		process.env.MILADY_PLANNER_STRICT_PARAMS ??
+		process.env.ELIZA_PLANNER_STRICT_PARAMS ??
+		""
+	)
+		.trim()
+		.toLowerCase();
+	return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+/**
  * Merge `eliza.guidedDecode = true` into a provider-options bag so the local
  * llama-server engine builds the {@link ResponseSkeleton}'s deterministic-token
  * prefill plan (`eliza_prefill_plan`) and fast-forwards the forced scaffold
