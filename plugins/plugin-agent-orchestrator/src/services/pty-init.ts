@@ -624,18 +624,30 @@ export async function initializePTYManager(
       const stoppedCleanly =
         (session as { exitCode?: number }).exitCode === 0 ||
         /exit code 0/i.test(reason);
-      if (
-        session.type === "codex" &&
-        ctx.sessionMetadata.get(session.id)?.codexExecMode === true &&
-        stoppedCleanly
-      ) {
+      // Fast-path completion for non-interactive sub-agents — codex
+      // exec mode and opencode `run` mode are both shaped the same way
+      // (single-shot CLI, prompt as positional arg, exit when done).
+      // The bot is currently using nodeManager (native PTYManager) not
+      // BunCompatiblePTYManager — the bunManager branch above has the
+      // same fix, but this is the one that actually runs.
+      const meta = ctx.sessionMetadata.get(session.id);
+      const codexExec =
+        session.type === "codex" && meta?.codexExecMode === true;
+      const opencodeRun =
+        session.type === "opencode" && meta?.opencodeRunMode === true;
+      if (stoppedCleanly && (codexExec || opencodeRun)) {
         const response = await captureFastPathTaskResponse(ctx, session.id);
         const durationMs = session.startedAt
           ? Date.now() - new Date(session.startedAt).getTime()
           : 0;
-        ctx.metricsTracker.recordCompletion("codex", "fast-path", durationMs);
+        const fastPathAgent = codexExec ? "codex" : "opencode";
+        ctx.metricsTracker.recordCompletion(
+          fastPathAgent,
+          "fast-path",
+          durationMs,
+        );
         ctx.log(
-          `Task complete for ${session.id} (codex exec stopped), response: ${response.length} chars`,
+          `Task complete for ${session.id} (${fastPathAgent} ${codexExec ? "exec" : "run"} stopped), response: ${response.length} chars`,
         );
         ctx.emitEvent(session.id, "task_complete", {
           session,
