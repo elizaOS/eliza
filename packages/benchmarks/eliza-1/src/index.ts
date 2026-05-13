@@ -16,6 +16,7 @@
  * into CI without secrets / without the GGUF.
  */
 import { resolve } from "node:path";
+import type { Eliza1TierId } from "./engine-resolver.ts";
 import { CerebrasMode } from "./modes/cerebras.ts";
 import { ElizaGuidedMode } from "./modes/eliza-guided.ts";
 import { ElizaUnguidedMode } from "./modes/eliza-unguided.ts";
@@ -23,12 +24,23 @@ import { renderReport, writeReportJson } from "./report.ts";
 import { runBench, type TaskSelection } from "./runner.ts";
 import type { ModeAdapter, ModeName } from "./types.ts";
 
+const VALID_TIERS: ReadonlySet<Eliza1TierId> = new Set<Eliza1TierId>([
+  "eliza-1-0_8b",
+  "eliza-1-2b",
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+  "eliza-1-27b-1m",
+]);
+
 interface Args {
   tasks: TaskSelection[];
   modes: ModeName[] | "all";
   n: number;
   out: string;
   cerebrasModel?: string;
+  tier?: Eliza1TierId;
 }
 
 const HELP = `eliza-1 bench
@@ -45,6 +57,11 @@ Flags:
   --cerebras-model <name>
       Override the Cerebras reference model. Default: llama3.1-8b
       (use gpt-oss-120b when benching the eliza-1 27B tier on an H200).
+  --tier <id>
+      Eliza-1 tier to load. Default: eliza-1-0_8b. Valid:
+      eliza-1-0_8b, eliza-1-2b, eliza-1-4b, eliza-1-9b,
+      eliza-1-27b, eliza-1-27b-256k, eliza-1-27b-1m.
+      The GGUF must be on disk (downloaded via the eliza-1 manifest flow).
   --help, -h
       Show this help.
 
@@ -95,6 +112,15 @@ function parseArgs(argv: string[]): Args {
       const next = argv[++i];
       if (!next) throw new Error("--cerebras-model requires a value");
       args.cerebrasModel = next;
+    } else if (arg === "--tier") {
+      const next = argv[++i];
+      if (!next) throw new Error("--tier requires a value");
+      if (!VALID_TIERS.has(next as Eliza1TierId)) {
+        throw new Error(
+          `--tier must be one of ${[...VALID_TIERS].join(", ")} (got '${next}')`,
+        );
+      }
+      args.tier = next as Eliza1TierId;
     } else {
       throw new Error(`unknown flag: ${arg}`);
     }
@@ -111,8 +137,8 @@ function defaultOutPath(): string {
 
 function selectModes(args: Args): ModeAdapter[] {
   const all: ModeAdapter[] = [
-    new ElizaUnguidedMode(),
-    new ElizaGuidedMode(),
+    new ElizaUnguidedMode({ tier: args.tier }),
+    new ElizaGuidedMode({ tier: args.tier }),
     new CerebrasMode({ model: args.cerebrasModel }),
   ];
   if (args.modes === "all") return all;
@@ -135,7 +161,7 @@ async function main(): Promise<void> {
   process.stdout.write(
     `eliza-1 bench — tasks=${args.tasks.join(",")} modes=${
       args.modes === "all" ? "all" : args.modes.join(",")
-    } n=${args.n}\n`,
+    } n=${args.n} tier=${args.tier ?? "eliza-1-0_8b (default)"}\n`,
   );
   const report = await runBench({
     tasks: args.tasks,
