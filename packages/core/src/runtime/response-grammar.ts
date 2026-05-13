@@ -851,19 +851,24 @@ export function buildPlannerParamsSkeleton(
 		spans.push({ kind: "literal", value: "{}" });
 		return { spans, id: `params#${action.name}` };
 	}
+	const enumDigest: string[] = [];
 	keys.forEach((key, index) => {
 		const glue = index === 0 ? `{"${key}":` : `,"${key}":`;
 		spans.push({ kind: "literal", value: glue });
 		const propSchema = properties[key];
 		const type = (propSchema as { type?: unknown }).type;
 		if (type === "string") {
-			const enumValues = (propSchema as { enum?: unknown[] }).enum;
-			if (Array.isArray(enumValues) && enumValues.length === 1) {
+			const enumValues = readStringEnum(propSchema);
+			if (enumValues !== null && enumValues.length === 1) {
 				spans.push({
 					kind: "literal",
 					key,
-					value: JSON.stringify(String(enumValues[0])),
+					value: JSON.stringify(enumValues[0]),
 				});
+				enumDigest.push(`${key}=${enumValues[0]}`);
+			} else if (enumValues !== null && enumValues.length > 1) {
+				spans.push({ kind: "enum", key, enumValues });
+				enumDigest.push(`${key}∈[${enumValues.join("|")}]`);
 			} else {
 				spans.push({ kind: "free-string", key });
 			}
@@ -872,7 +877,27 @@ export function buildPlannerParamsSkeleton(
 		}
 	});
 	spans.push({ kind: "literal", value: "}" });
-	return { spans, id: `params#${action.name}#${keys.join(",")}` };
+	const idSuffix = enumDigest.length > 0 ? `#${enumDigest.join(",")}` : "";
+	return { spans, id: `params#${action.name}#${keys.join(",")}${idSuffix}` };
+}
+
+/**
+ * Read a string-property's `enum` array, normalising to `string[]` and
+ * returning `null` when none is declared or values are non-string.
+ *
+ * Multi-value string enums are pinnable by the GBNF skeleton compiler as an
+ * `enum` span — that's what makes the 2nd-pass per-action parameters grammar
+ * actually constrain the model instead of falling through to `free-string`.
+ */
+function readStringEnum(propSchema: JSONSchema): string[] | null {
+	const raw = (propSchema as { enum?: unknown }).enum;
+	if (!Array.isArray(raw) || raw.length === 0) return null;
+	const normalized: string[] = [];
+	for (const v of raw) {
+		if (typeof v !== "string") return null;
+		normalized.push(v);
+	}
+	return normalized;
 }
 
 // Re-export the local JsonSchema type for convenience.
