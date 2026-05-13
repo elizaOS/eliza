@@ -12,3 +12,6 @@ link_check_results.json
 *summary*.json
 *_analysis*
 *_summary*
+
+# Allow real REST API doc pages whose names happen to match *-report.md.
+!rest/bug-report.md
