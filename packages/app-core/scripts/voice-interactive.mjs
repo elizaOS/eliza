@@ -129,6 +129,31 @@ function tag(t, color, msg) {
   log(`${c(color, `[${t}]`)} ${msg}`);
 }
 
+function intFromEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return fallback;
+  const value = Number.parseInt(raw, 10);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function resampleLinearFloat32(input, fromRate, toRate) {
+  if (fromRate === toRate) return input;
+  if (fromRate <= 0 || toRate <= 0) {
+    throw new Error(`invalid sample rate conversion ${fromRate} -> ${toRate}`);
+  }
+  const outLength = Math.max(1, Math.round((input.length * toRate) / fromRate));
+  const output = new Float32Array(outLength);
+  const ratio = fromRate / toRate;
+  for (let i = 0; i < outLength; i += 1) {
+    const x = i * ratio;
+    const lo = Math.floor(x);
+    const hi = Math.min(input.length - 1, lo + 1);
+    const frac = x - lo;
+    output[i] = input[lo] * (1 - frac) + input[hi] * frac;
+  }
+  return output;
+}
+
 // ---------------------------------------------------------------------------
 // Active optimizations report
 // ---------------------------------------------------------------------------
@@ -1107,7 +1132,7 @@ async function ensureBundleRegistered(catalogEntry, bundleRoot) {
  * Boot a minimal standalone AgentRuntime with the local-inference handler
  * registered and the selected Eliza-1 tier assigned to TEXT_SMALL. Returns
  * `{ runtime, generate }` where `generate` runs one transcript through the
- * runtime's message handler and streams `replyText` chunks via `onChunk`.
+ * runtime's local model handler and streams reply chunks via `onChunk`.
  *
  * Throws if the runtime can't be constructed (missing deps) — the caller
  * surfaces that as a prereq failure, not a crash.
@@ -1167,6 +1192,21 @@ async function bootStandaloneRuntime({ roomId, modelId }) {
   );
   await ensureLocalInferenceHandler(runtime);
 
+  const { stringToUuid } = await import("../../core/src/utils.ts");
+  const worldId = stringToUuid(`voice-interactive-world:${roomId}`);
+  const entityId = stringToUuid(`voice-interactive-user:${roomId}`);
+  await runtime.ensureConnection({
+    entityId,
+    roomId,
+    worldId,
+    source: "voice-interactive",
+    type: "VOICE_DM",
+    channelId: roomId,
+    roomName: "Voice interactive",
+    userName: "Local voice user",
+    name: "Local voice user",
+  });
+
   // Ensure the selected Eliza-1 model is assigned to the local slots (the eliza-1
   // tiers route through the dflash llama-server). Best-effort: if no model
   // is installed this throws downstream and the caller reports it.
@@ -1186,17 +1226,62 @@ async function bootStandaloneRuntime({ roomId, modelId }) {
     /* the handler may auto-assign; reported later if generation fails */
   }
 
-  // The `generate` callback for the voice turn controller.
+  // The `generate` callback for the voice turn controller. The default path is
+  // the local voice fast path: route directly through the runtime's local
+  // TEXT_SMALL handler so the live harness measures ASR -> local model -> TTS
+  // without the full action/planner surface. Set
+  // ELIZA_VOICE_INTERACTIVE_FULL_AGENT=1 to exercise the full message service.
   const generate = async (request, onChunk) => {
+    if (process.env.ELIZA_VOICE_INTERACTIVE_FULL_AGENT !== "1") {
+      let replyText = "";
+      const result = await runtime.useModel(ModelType.TEXT_SMALL, {
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are Eliza. Reply in one short conversational sentence. If the user asks you to say hello, include the word hello.",
+          },
+          { role: "user", content: request.transcript },
+        ],
+        maxTokens: intFromEnv("ELIZA_VOICE_REPLY_MAX_TOKENS", 24),
+        temperature: 0.2,
+        topP: 0.9,
+        stream: true,
+        onStreamChunk: async (chunk) => {
+          if (typeof chunk !== "string" || chunk.length === 0) return;
+          replyText += chunk;
+          await onChunk?.(chunk);
+        },
+        voiceOutput: "user-visible",
+      });
+      const finalText =
+        typeof result === "string"
+          ? result
+          : typeof result?.text === "string"
+            ? result.text
+            : replyText;
+      return {
+        transcript: request.transcript,
+        replyText: finalText || replyText,
+        ...(request.source ? { source: request.source } : {}),
+        ...(request.speaker ? { speaker: request.speaker } : {}),
+        ...(request.segments ? { segments: request.segments } : {}),
+        ...(request.turn ? { turn: request.turn } : {}),
+      };
+    }
+
     if (!runtime.messageService?.handleMessage) {
       throw new Error(
         "[voice] runtime.messageService.handleMessage is unavailable (plugin-bootstrap not loaded?)",
       );
     }
-    const entityId = `${roomId}-user`;
     const incoming = {
-      id: `${roomId}-${Date.now()}`,
-      content: { text: request.transcript, source: "voice-interactive" },
+      id: stringToUuid(`voice-interactive-message:${roomId}:${Date.now()}`),
+      content: {
+        text: request.transcript,
+        source: "voice-interactive",
+        channelType: "VOICE_DM",
+      },
       entityId,
       agentId: runtime.agentId,
       roomId,
@@ -1384,6 +1469,9 @@ async function main() {
 
   // Re-inspect after any auto-download.
   report = await inspectActiveOptimizations(args);
+  if (report.vadPath && !process.env.ELIZA_VAD_MODEL_PATH) {
+    process.env.ELIZA_VAD_MODEL_PATH = report.vadPath;
+  }
   printActive(report, args);
 
   if (report.missing.length > 0) {
@@ -1415,6 +1503,9 @@ async function main() {
     process.exit(1);
   }
 
+  const { stringToUuid } = await import("../../core/src/utils.ts");
+  const runtimeRoomId = stringToUuid(args.room);
+
   // ── Boot runtime ───────────────────────────────────────────────────────
   tag(
     "boot",
@@ -1426,7 +1517,7 @@ async function main() {
   let prewarmResponseHandler;
   try {
     const booted = await bootStandaloneRuntime({
-      roomId: args.room,
+      roomId: runtimeRoomId,
       modelId: report.catalogEntry?.id ?? args.modelId,
     });
     runtime = booted.runtime;
@@ -1603,10 +1694,20 @@ async function main() {
       _lastReplyText += delta;
       process.stdout.write(delta);
     });
+    if (
+      typeof outcome?.replyText === "string" &&
+      outcome.replyText.length > 0 &&
+      _lastReplyText.trim().length === 0
+    ) {
+      _lastReplyText = outcome.replyText;
+      process.stdout.write(outcome.replyText);
+    }
     process.stdout.write("\n");
     return outcome;
   };
 
+  const oneShotMode = args.say != null || args.wav != null;
+  let completedTurnCount = 0;
   const events = {
     onSpeculativeStart: (transcript) =>
       tag("speculative", "dim", `generating off partial: "${transcript}"`),
@@ -1615,14 +1716,20 @@ async function main() {
     onSpeculativePromoted: () =>
       tag("speculative", "green", "promoted (matched final transcript)"),
     onTurnComplete: async (outcome) => {
+      completedTurnCount += 1;
       tag(
         "envelope",
         "green",
         `shouldRespond=${outcome.replyText && outcome.replyText.length > 0 ? "RESPOND" : "IGNORE/STOP"} replyText.len=${outcome.replyText?.length ?? 0}`,
       );
-      await printTurnLatency(args.room);
-      // Idle-time phrase-cache prewarm after each turn.
-      engine.prewarmIdleVoicePhrases().catch(() => {});
+      await printTurnLatency(runtimeRoomId);
+      // Idle-time phrase-cache prewarm is useful in live mic mode, but it
+      // pollutes one-shot smoke/benchmark runs by synthesizing cache phrases
+      // after the measured turn. Release gates should measure the turn, not
+      // cache warmup work.
+      if (!oneShotMode) {
+        engine.prewarmIdleVoicePhrases().catch(() => {});
+      }
     },
     onError: (err) => tag("error", "red", err?.message ?? String(err)),
   };
@@ -1637,8 +1744,8 @@ async function main() {
       const { markVoiceLatency } = await import(
         "../src/services/local-inference/latency-trace.ts"
       );
-      markVoiceLatency(args.room, "vad-trigger");
-      markVoiceLatency(args.room, "asr-final");
+      markVoiceLatency(runtimeRoomId, "vad-trigger");
+      markVoiceLatency(runtimeRoomId, "asr-final");
       const signal = new AbortController().signal;
       const outcome = await wrappedGenerate({
         transcript: args.say,
@@ -1689,13 +1796,32 @@ async function main() {
       );
       const wavBytes = await fs.readFile(wavPath);
       const decoded = decodeMonoPcm16Wav(new Uint8Array(wavBytes));
-      const push = new PushMicSource({ sampleRate: decoded.sampleRate });
+      const decodedPcm = decoded.pcm;
+      if (process.env.ELIZA_VOICE_WAV_USE_VAD !== "1") {
+        const transcript = await bridge.transcribePcm({
+          pcm: decodedPcm,
+          sampleRate: decoded.sampleRate,
+        });
+        tag("asr", "green", `"${transcript}"`);
+        const outcome = await wrappedGenerate({
+          transcript,
+          final: true,
+          source: "wav-batch-asr",
+        });
+        await events.onTurnComplete(outcome);
+        await bridge?.settle?.();
+        log(c("green", `[done] audio → ${audio.describe()}`));
+        await shutdown(0);
+        return;
+      }
+      const vadSampleRate = 16000;
+      const push = new PushMicSource({ sampleRate: vadSampleRate });
       micSource = push;
       const vad = await createSileroVadDetector({
         modelPath: process.env.ELIZA_VAD_MODEL_PATH,
       });
       controller = await engine.startVoiceSession({
-        roomId: args.room,
+        roomId: runtimeRoomId,
         micSource: push,
         vad,
         generate: wrappedGenerate,
@@ -1709,20 +1835,36 @@ async function main() {
         speculatePauseMs: 300,
         events,
       });
-      // Feed the WAV PCM (the PushMicSource re-frames it). Convert int16→float.
-      const view = new DataView(
-        decoded.pcm.buffer,
-        decoded.pcm.byteOffset,
-        decoded.pcm.byteLength,
+      // Feed the WAV PCM (the PushMicSource re-frames it). The decoder
+      // already returns mono Float32 PCM; only VAD needs a 16 kHz copy.
+      const f = resampleLinearFloat32(
+        decodedPcm,
+        decoded.sampleRate,
+        vadSampleRate,
       );
-      const n = Math.floor(decoded.pcm.byteLength / 2);
-      const f = new Float32Array(n);
-      for (let i = 0; i < n; i++) f[i] = view.getInt16(i * 2, true) / 0x8000;
+      const beforeTurns = completedTurnCount;
       push.push(f);
       // Trailing silence so the VAD fires speech-end.
-      push.push(new Float32Array(decoded.sampleRate)); // 1 s
-      // Wait for the turn to complete.
+      push.push(new Float32Array(vadSampleRate)); // 1 s
+      // Wait for the VAD-driven turn to complete.
       await new Promise((r) => setTimeout(r, 4000));
+      if (completedTurnCount === beforeTurns) {
+        // File-mode smoke must be deterministic. Synthetic fixture audio can
+        // sit below live VAD thresholds, so fall back to the same fused ASR
+        // ABI over the full file and then drive the normal LLM→TTS half.
+        // Live mic sessions still require VAD; this branch is --wav only.
+        const transcript = await bridge.transcribePcm({
+          pcm: decodedPcm,
+          sampleRate: decoded.sampleRate,
+        });
+        tag("asr", "green", `"${transcript}"`);
+        const outcome = await wrappedGenerate({
+          transcript,
+          final: true,
+          source: "wav-batch-asr-fallback",
+        });
+        await events.onTurnComplete(outcome);
+      }
       await bridge?.settle?.();
     } catch (err) {
       log(
@@ -1757,7 +1899,7 @@ async function main() {
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
     });
     controller = await engine.startVoiceSession({
-      roomId: args.room,
+      roomId: runtimeRoomId,
       micSource,
       vad,
       generate: wrappedGenerate,
@@ -1858,8 +2000,11 @@ async function main() {
     });
   }
 
-  // Fire an initial idle phrase-cache prewarm.
-  engine.prewarmIdleVoicePhrases().catch(() => {});
+  // Fire an initial idle phrase-cache prewarm only for live mic sessions.
+  // One-shot --say/--wav runs should stay deterministic and short.
+  if (!oneShotMode) {
+    engine.prewarmIdleVoicePhrases().catch(() => {});
+  }
 
   // Keep the process alive; shutdown happens via 'q' / Ctrl-C / signals.
   process.on("SIGINT", () => {

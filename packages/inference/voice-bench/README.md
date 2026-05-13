@@ -131,8 +131,9 @@ Commit the JSON. Future PRs compare against it.
 
 ## Wiring the real pipeline (follow-up)
 
-The runnable mock-only CLI is disabled. The `MockPipelineDriver` remains
-test-only scaffolding; the real pipeline driver is a follow-up — the contract is the
+The runnable mock-only CLI is disabled and `runBench()` rejects mock/fake/stub
+drivers. The `MockPipelineDriver` remains test-only scaffolding; the real
+pipeline driver is a follow-up — the contract is the
 `PipelineDriver` interface in `src/types.ts`. To wire it:
 
 1. Construct a `VoicePipeline` (`packages/app-core/.../voice/pipeline.ts`)

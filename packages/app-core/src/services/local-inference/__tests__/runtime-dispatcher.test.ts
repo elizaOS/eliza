@@ -129,7 +129,10 @@ describe("dispatchGenerate (ffi-streaming)", () => {
 
     const kinds = events.map((e) => e.kind);
     expect(kinds).toEqual(["text", "accept", "text", "accept", "done"]);
-    const done = events.at(-1)! as Extract<InferenceStreamEvent, { kind: "done" }>;
+    const done = events.at(-1)! as Extract<
+      InferenceStreamEvent,
+      { kind: "done" }
+    >;
     expect(done.text).toBe("hi!");
     expect(done.drafted).toBe(3);
     expect(done.accepted).toBe(3);
@@ -142,7 +145,9 @@ describe("dispatchGenerate (ffi-streaming)", () => {
         /* drain */
       }
     };
-    await expect(run()).rejects.toThrow(/backend=ffi-streaming but no ffi.runner/);
+    await expect(run()).rejects.toThrow(
+      /backend=ffi-streaming but no ffi.runner/,
+    );
   });
 });
 
@@ -169,7 +174,10 @@ describe("dispatchGenerate (http-server)", () => {
       "accept",
       "done",
     ]);
-    const done = events.at(-1)! as Extract<InferenceStreamEvent, { kind: "done" }>;
+    const done = events.at(-1)! as Extract<
+      InferenceStreamEvent,
+      { kind: "done" }
+    >;
     expect(done.text).toBe("hello");
     expect(done.firstTokenMs).toBe(12);
   });
@@ -239,6 +247,8 @@ describe("dispatchGenerate (http-server)", () => {
         /* drain */
       }
     };
-    await expect(run()).rejects.toThrow(/backend=http-server but no http.runner/);
+    await expect(run()).rejects.toThrow(
+      /backend=http-server but no http.runner/,
+    );
   });
 });

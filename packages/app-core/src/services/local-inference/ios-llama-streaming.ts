@@ -127,10 +127,7 @@ interface CapacitorLlamaStreamingPlugin {
    */
   cancel(args: { streamHandle: string }): Promise<void>;
   saveSlot(args: { streamHandle: string; filename: string }): Promise<void>;
-  restoreSlot(args: {
-    streamHandle: string;
-    filename: string;
-  }): Promise<void>;
+  restoreSlot(args: { streamHandle: string; filename: string }): Promise<void>;
   close(args: { streamHandle: string }): Promise<void>;
 }
 

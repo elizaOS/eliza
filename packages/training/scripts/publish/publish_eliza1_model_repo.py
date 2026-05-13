@@ -29,13 +29,13 @@ TIERS: tuple[str, ...] = (
     "0_8b",
     "2b",
     "4b",
-    "9b",
-    "27b",
-    "27b-256k",
-    "27b-1m",
 )
-KOKORO_TIERS = {"0_8b", "2b", "4b", "9b"}
-OMNIVOICE_TIERS = {"9b", "27b", "27b-256k", "27b-1m"}
+KOKORO_TIERS: set[str] = set()
+OMNIVOICE_TIERS = {"0_8b", "2b", "4b"}
+PUBLISH_METADATA_DIRS = frozenset(
+    {"checksums", "evidence", "evals", "licenses", "quantization"}
+)
+PUBLISH_METADATA_FILES = frozenset({"README.md", "lineage.json"})
 
 
 @dataclass(frozen=True)
@@ -88,6 +88,30 @@ def _iter_manifest_file_entries(manifest: dict[str, Any]) -> Iterable[dict[str, 
                 yield entry
 
 
+def _publishable_bundle_relpaths(bundle_dir: Path, manifest: dict[str, Any]) -> list[str]:
+    """Return the runtime bundle files that should be published to the Hub.
+
+    Local staging bundles may contain large ``source/`` inputs used to build
+    GGUF artifacts. The app only needs the manifest-declared runtime files and
+    release metadata, so avoid publishing build inputs into the single model
+    repo.
+    """
+
+    rels: set[str] = {"eliza-1.manifest.json"}
+    rels.update(_iter_manifest_paths(manifest))
+    rels.update(
+        rel for rel in PUBLISH_METADATA_FILES if _safe_bundle_child(bundle_dir, rel).is_file()
+    )
+    for metadata_dir in PUBLISH_METADATA_DIRS:
+        root = bundle_dir / metadata_dir
+        if not root.is_dir():
+            continue
+        for path in root.rglob("*"):
+            if path.is_file():
+                rels.add(path.relative_to(bundle_dir).as_posix())
+    return sorted(rels)
+
+
 def _safe_bundle_child(bundle_dir: Path, rel: str) -> Path:
     if not rel or Path(rel).is_absolute():
         raise ValueError(f"invalid bundle-relative path: {rel!r}")
@@ -111,10 +135,8 @@ def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
     has_kokoro = any("kokoro" in p for p in voice_paths)
     has_omnivoice = any("omnivoice" in p or "omni" in p for p in voice_paths)
     warnings: list[str] = []
-    if tier in KOKORO_TIERS and not has_kokoro:
-        warnings.append(f"{tier}: expected Kokoro voice artifacts for <=9B tiers")
     if tier in OMNIVOICE_TIERS and not has_omnivoice:
-        warnings.append(f"{tier}: expected OmniVoice artifacts for >=9B tiers")
+        warnings.append(f"{tier}: expected OmniVoice artifacts for active Eliza-1 tiers")
     return warnings
 
 
@@ -166,7 +188,6 @@ def plan_bundle(
         if manifest_tier != tier:
             errors.append(f"manifest tier {manifest_tier!r} does not match {tier}")
 
-        seen: set[str] = {"eliza-1.manifest.json"}
         for entry in _iter_manifest_file_entries(manifest):
             rel = entry["path"]
             try:
@@ -174,7 +195,6 @@ def plan_bundle(
             except ValueError as exc:
                 errors.append(str(exc))
                 continue
-            seen.add(rel)
             if not target.is_file():
                 errors.append(f"missing manifest file: {rel}")
                 continue
@@ -191,7 +211,7 @@ def plan_bundle(
         else:
             warnings.extend(voice_warnings)
 
-        for rel in seen:
+        for rel in _publishable_bundle_relpaths(bundle_dir, manifest):
             try:
                 target = _safe_bundle_child(bundle_dir, rel)
             except ValueError:
@@ -296,11 +316,24 @@ def _hardlink_or_copy(source: Path, destination: Path) -> None:
 
 def _mirror_for_large_folder_upload(plan: BundlePlan, staging_root: Path) -> Path:
     source_root = Path(plan.bundle_dir)
+    manifest = _load_json(source_root / "eliza-1.manifest.json")
     dest_root = staging_root / plan.path_in_repo
-    for source in sorted(source_root.rglob("*")):
+    for rel in _publishable_bundle_relpaths(source_root, manifest):
+        source = _safe_bundle_child(source_root, rel)
         if source.is_file():
-            _hardlink_or_copy(source, dest_root / source.relative_to(source_root))
+            _hardlink_or_copy(source, dest_root / rel)
     return staging_root
+
+
+def _mirror_for_upload_folder(plan: BundlePlan, staging_root: Path) -> Path:
+    source_root = Path(plan.bundle_dir)
+    manifest = _load_json(source_root / "eliza-1.manifest.json")
+    dest_root = staging_root / "bundle"
+    for rel in _publishable_bundle_relpaths(source_root, manifest):
+        source = _safe_bundle_child(source_root, rel)
+        if source.is_file():
+            _hardlink_or_copy(source, dest_root / rel)
+    return dest_root
 
 
 def publish_plans(
@@ -342,14 +375,20 @@ def publish_plans(
                     num_workers=large_folder_workers,
                 )
         else:
-            api.upload_folder(
-                folder_path=plan.bundle_dir,
-                path_in_repo=plan.path_in_repo,
-                repo_id=repo_id,
-                repo_type="model",
-                ignore_patterns=[".DS_Store", "__MACOSX/*"],
-                commit_message=f"Publish Eliza-1 {plan.tier} base GGUF bundle",
-            )
+            parent = Path(plan.bundle_dir).parent
+            with tempfile.TemporaryDirectory(
+                prefix=f"eliza1-{plan.tier}-hf-",
+                dir=str(parent),
+            ) as tmp:
+                folder_path = _mirror_for_upload_folder(plan, Path(tmp))
+                api.upload_folder(
+                    folder_path=folder_path,
+                    path_in_repo=plan.path_in_repo,
+                    repo_id=repo_id,
+                    repo_type="model",
+                    ignore_patterns=[".DS_Store", "__MACOSX/*"],
+                    commit_message=f"Publish Eliza-1 {plan.tier} base GGUF bundle",
+                )
 
 
 def _print_summary(plans: Sequence[BundlePlan], *, repo_id: str, dry_run: bool) -> None:

@@ -209,6 +209,61 @@ function pushOptionalFlag(args, skippedCliFlags, features, flag, ...values) {
   });
 }
 
+function pushFirstSupportedFlag(args, skippedCliFlags, features, flags, ...values) {
+  const supported = flags.find((flag) => supportsCliFlag(features, flag));
+  if (supported) {
+    args.push(supported, ...values);
+    return supported;
+  }
+  skippedCliFlags.push({
+    flag: flags[0],
+    alternatives: flags.slice(1),
+    values,
+    reason: "not advertised by binary --help",
+  });
+  return null;
+}
+
+function pushDraftContextFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--ctx-size-draft", "--spec-draft-ctx-size", "-cd"],
+    value,
+  );
+}
+
+function pushDraftMinFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--spec-draft-n-min", "--draft-min", "--draft-n-min"],
+    value,
+  );
+}
+
+function pushDraftMaxFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--spec-draft-n-max", "--draft-max", "--draft-n"],
+    value,
+  );
+}
+
+function pushDraftProbabilityFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--spec-draft-p-min", "--draft-p-min"],
+    value,
+  );
+}
+
 function serializeCliFeatures(features) {
   if (!features) return null;
   return {
@@ -217,9 +272,15 @@ function serializeCliFeatures(features) {
     supportedOptionalFlags: [
       "--device",
       "--device-draft",
+      "--ctx-size-draft",
+      "--spec-draft-ctx-size",
+      "-cd",
       "--draft",
+      "--spec-draft-n-min",
       "--draft-min",
+      "--spec-draft-n-max",
       "--draft-max",
+      "--spec-draft-p-min",
       "--draft-p-min",
       "--spec-type",
       "--temp",
@@ -549,13 +610,12 @@ function buildRuntimeArgs(targetModel, drafterModel, options) {
     "1",
     "-c",
     "128",
-    "-cd",
-    "128",
     "-ngl",
     options.ngl,
     "-ngld",
     options.ngld,
   ];
+  pushDraftContextFlag(args, skippedCliFlags, features, "128");
   if (options.deviceNone) {
     pushOptionalFlag(args, skippedCliFlags, features, "--device", "none");
     pushOptionalFlag(
@@ -566,9 +626,9 @@ function buildRuntimeArgs(targetModel, drafterModel, options) {
       "none",
     );
   }
-  pushOptionalFlag(args, skippedCliFlags, features, "--draft", "1");
-  pushOptionalFlag(args, skippedCliFlags, features, "--draft-min", "1");
-  pushOptionalFlag(args, skippedCliFlags, features, "--draft-p-min", "0.1");
+  pushDraftMinFlag(args, skippedCliFlags, features, "1");
+  pushDraftMaxFlag(args, skippedCliFlags, features, "1");
+  pushDraftProbabilityFlag(args, skippedCliFlags, features, "0.1");
   if (options.specType) {
     pushOptionalFlag(
       args,
@@ -817,25 +877,22 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     n,
     "-c",
     "2048",
-    "-cd",
-    "2048",
     "-ngl",
     options.ngl,
     "-ngld",
     options.ngld,
   ];
-  pushOptionalFlag(
+  pushDraftContextFlag(args, skippedCliFlags, options.cliFeatures, "2048");
+  pushDraftMinFlag(
     args,
     skippedCliFlags,
     options.cliFeatures,
-    "--draft-min",
     withDrafter ? "2" : "0",
   );
-  pushOptionalFlag(
+  pushDraftMaxFlag(
     args,
     skippedCliFlags,
     options.cliFeatures,
-    "--draft-max",
     withDrafter ? "6" : "0",
   );
   if (options.deviceNone) {

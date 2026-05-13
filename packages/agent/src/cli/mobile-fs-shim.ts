@@ -66,6 +66,7 @@ import * as nodeFs from "node:fs";
 import * as nodeFsPromises from "node:fs/promises";
 import { createRequire } from "node:module";
 import * as nodePath from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -73,6 +74,18 @@ import * as nodePath from "node:path";
 
 let _installed = false;
 let _workspaceRoot = "";
+let _workspaceRootReal = "";
+let _readOnlyRoots: string[] = [];
+let _readOnlyRootReals: string[] = [];
+type FsAccessMode = "read" | "write";
+const rawExistsSync = nodeFs.existsSync.bind(nodeFs);
+const rawRealpathSync = nodeFs.realpathSync.bind(nodeFs);
+type MobileFsGlobals = typeof globalThis & {
+  __ELIZA_MOBILE_FS_RESOLVE__?: (
+    inputPath: string,
+    mode?: FsAccessMode,
+  ) => string;
+};
 
 // Paths that are unconditionally blocked, regardless of whether they appear to
 // live under the workspace root.  These are OS-level paths that can never be
@@ -104,7 +117,98 @@ const BLOCKED_ROOT_PREFIXES = [
  * inside.  Returns the resolved absolute path on success.  Throws `EACCES`
  * on any traversal or blocked-prefix match.
  */
-function resolveSandboxed(inputPath: string): string {
+function isInsideRoot(pathname: string, root: string): boolean {
+  const rootWithSep = root.endsWith(nodePath.sep) ? root : root + nodePath.sep;
+  return pathname === root || pathname.startsWith(rootWithSep);
+}
+
+function envReadOnlyRoots(): string[] {
+  const candidates = [
+    process.env.ELIZA_IOS_AGENT_PUBLIC_DIR,
+    process.env.ELIZA_IOS_AGENT_ASSET_DIR,
+    process.env.ELIZA_IOS_AGENT_BUNDLE
+      ? nodePath.dirname(process.env.ELIZA_IOS_AGENT_BUNDLE)
+      : "",
+  ];
+  return candidates
+    .filter((value): value is string => Boolean(value?.trim()))
+    .map((value) => nodePath.resolve(value));
+}
+
+function realpathIfPossible(pathname: string): string {
+  try {
+    return rawRealpathSync(pathname);
+  } catch {
+    return nodePath.resolve(pathname);
+  }
+}
+
+function nearestExistingParent(pathname: string): string | null {
+  let current = nodePath.resolve(pathname);
+  for (;;) {
+    if (rawExistsSync(current)) return current;
+    const parent = nodePath.dirname(current);
+    if (parent === current) return null;
+    current = parent;
+  }
+}
+
+function validateResolvedRealPath(
+  inputPath: string,
+  resolved: string,
+  mode: FsAccessMode,
+  allowedReadOnly: boolean,
+): string {
+  if (mode === "read") {
+    if (!rawExistsSync(resolved)) return resolved;
+    const real = realpathIfPossible(resolved);
+    if (isInsideRoot(real, _workspaceRootReal || _workspaceRoot))
+      return resolved;
+    if (
+      allowedReadOnly &&
+      _readOnlyRootReals.some((root) => isInsideRoot(real, root))
+    ) {
+      return resolved;
+    }
+    throw accessError(
+      inputPath,
+      `mobile-fs-shim: real path escapes allowed roots: ${real}`,
+    );
+  }
+
+  const existing = nearestExistingParent(resolved);
+  if (!existing) return resolved;
+  const real = realpathIfPossible(existing);
+  if (isInsideRoot(real, _workspaceRootReal || _workspaceRoot)) return resolved;
+  throw accessError(
+    inputPath,
+    `mobile-fs-shim: write parent escapes workspace root: ${real}`,
+  );
+}
+
+/**
+ * Resolve symlinks in `pathname` by finding its nearest existing ancestor,
+ * calling realpathSync on that ancestor, then reconstructing the rest of the
+ * path.  This handles Android's /data/user/0 ↔ /data/data aliasing where
+ * Java-side APIs return symlink paths but the Bun bundle resolves via the
+ * real path.  Returns `pathname` unchanged if no symlink is found or on error.
+ */
+function resolveViaAncestor(pathname: string): string {
+  const existing = nearestExistingParent(pathname);
+  if (!existing) return pathname;
+  try {
+    const realExisting = rawRealpathSync(existing);
+    if (realExisting === existing) return pathname;
+    return realExisting + pathname.slice(existing.length);
+  } catch {
+    return pathname;
+  }
+}
+
+function resolveSandboxed(
+  inputPath: string,
+  mode: FsAccessMode = "read",
+): string {
   if (!_workspaceRoot) {
     throw accessError(
       inputPath,
@@ -131,18 +235,40 @@ function resolveSandboxed(inputPath: string): string {
   // Ensure the resolved path is inside the workspace root.
   // Use a trailing-sep check to prevent a root like /data/workspace being
   // accepted as a prefix for /data/workspace-escape.
-  const rootWithSep = _workspaceRoot.endsWith(nodePath.sep)
-    ? _workspaceRoot
-    : _workspaceRoot + nodePath.sep;
-
-  if (resolved !== _workspaceRoot && !resolved.startsWith(rootWithSep)) {
-    throw accessError(
-      inputPath,
-      `mobile-fs-shim: path escapes workspace root (${_workspaceRoot})`,
-    );
+  if (isInsideRoot(resolved, _workspaceRoot)) {
+    return validateResolvedRealPath(inputPath, resolved, mode, false);
   }
 
-  return resolved;
+  if (
+    mode === "read" &&
+    _readOnlyRoots.some((root) => isInsideRoot(resolved, root))
+  ) {
+    return validateResolvedRealPath(inputPath, resolved, mode, true);
+  }
+
+  // Second-chance: resolve symlinks through the path's nearest existing
+  // ancestor.  Handles Android /data/user/0 ↔ /data/data aliasing where
+  // Java-set env vars (HOME, ELIZA_STATE_DIR) use the symlink prefix but the
+  // Bun bundle's import.meta.url resolves via the real /data/data prefix.
+  if (_workspaceRootReal) {
+    const realResolved = resolveViaAncestor(resolved);
+    if (realResolved !== resolved) {
+      if (isInsideRoot(realResolved, _workspaceRootReal)) {
+        return resolved;
+      }
+      if (
+        mode === "read" &&
+        _readOnlyRootReals.some((root) => isInsideRoot(realResolved, root))
+      ) {
+        return resolved;
+      }
+    }
+  }
+
+  throw accessError(
+    inputPath,
+    `mobile-fs-shim: path escapes workspace root (${_workspaceRoot}): ${resolved}`,
+  );
 }
 
 /**
@@ -177,6 +303,20 @@ function accessError(path: string, message: string): NodeJS.ErrnoException {
   err.code = "EACCES";
   err.path = path;
   return err;
+}
+
+function pathLikeToString(raw: unknown): string | null {
+  if (raw instanceof URL) {
+    if (raw.protocol !== "file:") {
+      throw accessError(
+        raw.toString(),
+        `mobile-fs-shim: only file: URLs are accepted by fs (${raw.protocol})`,
+      );
+    }
+    return fileURLToPath(raw);
+  }
+  if (Buffer.isBuffer(raw)) return raw.toString("utf8");
+  return typeof raw === "string" ? raw : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -259,9 +399,7 @@ const mobileRequire = createRequire(import.meta.url);
 function optionalRequireObject(id: string): MutableModule | null {
   try {
     const value = mobileRequire(id);
-    return value && typeof value === "object"
-      ? (value as MutableModule)
-      : null;
+    return value && typeof value === "object" ? (value as MutableModule) : null;
   } catch {
     return null;
   }
@@ -298,22 +436,50 @@ function setIfMutable(
  * (or PathLike).  The wrapper resolves the path through the sandbox before
  * forwarding the call.
  */
-function wrapFsPath<T extends AnyFn>(original: T): T {
+function wrapFsPath<T extends AnyFn>(
+  original: T,
+  mode: FsAccessMode = "read",
+): T {
   return function sandboxedFsCall(this: unknown, ...args: unknown[]) {
     // Normalise PathLike (URL, Buffer, string) to string for checking.
     const raw = args[0];
-    const pathStr =
-      raw instanceof URL
-        ? raw.pathname
-        : Buffer.isBuffer(raw)
-          ? raw.toString("utf8")
-          : typeof raw === "string"
-            ? raw
-            : null;
+    const pathStr = pathLikeToString(raw);
 
     if (pathStr !== null) {
       // Throws EACCES if out-of-sandbox.
-      args[0] = resolveSandboxed(pathStr);
+      const resolved = resolveSandboxed(pathStr, mode);
+      if (mode === "write") guardWritePath(resolved, pathStr);
+      args[0] = resolved;
+    }
+
+    return original.apply(this, args as Parameters<T>);
+  } as T;
+}
+
+function modeForOpenFlags(flags: unknown): FsAccessMode {
+  if (typeof flags === "number") {
+    const writeBits =
+      nodeFs.constants.O_WRONLY |
+      nodeFs.constants.O_RDWR |
+      nodeFs.constants.O_APPEND |
+      nodeFs.constants.O_CREAT |
+      nodeFs.constants.O_TRUNC;
+    return (flags & writeBits) !== 0 ? "write" : "read";
+  }
+  if (typeof flags !== "string" || flags.length === 0) return "read";
+  return /[wa+]/.test(flags) ? "write" : "read";
+}
+
+function wrapFsOpenPath<T extends AnyFn>(original: T): T {
+  return function sandboxedOpenCall(this: unknown, ...args: unknown[]) {
+    const raw = args[0];
+    const pathStr = pathLikeToString(raw);
+
+    if (pathStr !== null) {
+      const mode = modeForOpenFlags(args[1]);
+      const resolved = resolveSandboxed(pathStr, mode);
+      if (mode === "write") guardWritePath(resolved, pathStr);
+      args[0] = resolved;
     }
 
     return original.apply(this, args as Parameters<T>);
@@ -324,25 +490,28 @@ function wrapFsPath<T extends AnyFn>(original: T): T {
  * Wrap a two-path fs function (e.g. copyFile, rename, link, symlink).
  * Both src and dest are sandboxed.
  */
-function wrapFsTwoPaths<T extends AnyFn>(original: T): T {
+function wrapFsTwoPaths<T extends AnyFn>(
+  original: T,
+  srcMode: FsAccessMode,
+  dstMode: FsAccessMode,
+): T {
   return function sandboxedFsCall(this: unknown, ...args: unknown[]) {
     const rawSrc = args[0];
     const rawDst = args[1];
 
-    const toStr = (v: unknown): string | null =>
-      v instanceof URL
-        ? v.pathname
-        : Buffer.isBuffer(v)
-          ? v.toString("utf8")
-          : typeof v === "string"
-            ? v
-            : null;
+    const srcStr = pathLikeToString(rawSrc);
+    const dstStr = pathLikeToString(rawDst);
 
-    const srcStr = toStr(rawSrc);
-    const dstStr = toStr(rawDst);
-
-    if (srcStr !== null) args[0] = resolveSandboxed(srcStr);
-    if (dstStr !== null) args[1] = resolveSandboxed(dstStr);
+    if (srcStr !== null) {
+      const resolved = resolveSandboxed(srcStr, srcMode);
+      if (srcMode === "write") guardWritePath(resolved, srcStr);
+      args[0] = resolved;
+    }
+    if (dstStr !== null) {
+      const resolved = resolveSandboxed(dstStr, dstMode);
+      if (dstMode === "write") guardWritePath(resolved, dstStr);
+      args[1] = resolved;
+    }
 
     return original.apply(this, args as Parameters<T>);
   } as T;
@@ -358,32 +527,29 @@ function wrapFsTwoPaths<T extends AnyFn>(original: T): T {
 function wrapFsWriteGuard<T extends AnyFn>(original: T): T {
   return function sandboxedFsWrite(this: unknown, ...args: unknown[]) {
     const raw = args[0];
-    const pathStr =
-      raw instanceof URL
-        ? raw.pathname
-        : Buffer.isBuffer(raw)
-          ? raw.toString("utf8")
-          : typeof raw === "string"
-            ? raw
-            : null;
+    const pathStr = pathLikeToString(raw);
 
     if (pathStr !== null) {
-      const resolved = resolveSandboxed(pathStr);
-      const ext = nodePath.extname(resolved).toLowerCase();
-      // Block writes to native binary extensions (.so / .dylib / .node) under
-      // any path — these can't be loaded legitimately at runtime on iOS anyway,
-      // but let's be explicit.
-      if (ext === ".so" || ext === ".dylib" || ext === ".node") {
-        throw accessError(
-          pathStr,
-          `mobile-fs-shim: writing native binary files is blocked (${ext})`,
-        );
-      }
+      const resolved = resolveSandboxed(pathStr, "write");
+      guardWritePath(resolved, pathStr);
       args[0] = resolved;
     }
 
     return original.apply(this, args as Parameters<T>);
   } as T;
+}
+
+function guardWritePath(resolved: string, originalPath: string): void {
+  const ext = nodePath.extname(resolved).toLowerCase();
+  // Block writes to native binary extensions (.so / .dylib / .node) under
+  // any path — these can't be loaded legitimately at runtime on iOS anyway,
+  // but let's be explicit.
+  if (ext === ".so" || ext === ".dylib" || ext === ".node") {
+    throw accessError(
+      originalPath,
+      `mobile-fs-shim: writing native binary files is blocked (${ext})`,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -437,37 +603,94 @@ function patchFsModule(): void {
     "lutimesSync",
     "existsSync",
     "opendirSync",
-    "openSync",
     "appendFileSync",
   ];
+  const syncWriteOnePath = new Set<string>([
+    "chmodSync",
+    "chownSync",
+    "lchmodSync",
+    "lchownSync",
+    "mkdirSync",
+    "mkdtempSync",
+    "rmdirSync",
+    "rmSync",
+    "truncateSync",
+    "unlinkSync",
+    "utimesSync",
+    "lutimesSync",
+    "appendFileSync",
+  ]);
 
   for (const target of fsTargets) {
     for (const name of syncOnePath) {
       const key = String(name);
       const orig = target[key];
       if (typeof orig === "function") {
-        setIfMutable(target, key, wrapFsPath(orig as AnyFn));
+        setIfMutable(
+          target,
+          key,
+          wrapFsPath(
+            orig as AnyFn,
+            syncWriteOnePath.has(key) ? "write" : "read",
+          ),
+        );
       }
     }
 
     // writeFileSync carries an extra write guard.
     if (typeof target.writeFileSync === "function") {
       const wrapped = wrapFsWriteGuard(target.writeFileSync as AnyFn);
-      setIfMutable(target, "writeFileSync", wrapFsPath(wrapped));
+      setIfMutable(target, "writeFileSync", wrapFsPath(wrapped, "write"));
+    }
+    if (typeof target.openSync === "function") {
+      setIfMutable(
+        target,
+        "openSync",
+        wrapFsOpenPath(target.openSync as AnyFn),
+      );
+    }
+    if (typeof target.createReadStream === "function") {
+      setIfMutable(
+        target,
+        "createReadStream",
+        wrapFsPath(target.createReadStream as AnyFn, "read"),
+      );
+    }
+    if (typeof target.createWriteStream === "function") {
+      setIfMutable(
+        target,
+        "createWriteStream",
+        wrapFsPath(target.createWriteStream as AnyFn, "write"),
+      );
+    }
+    if (typeof target.cpSync === "function") {
+      setIfMutable(
+        target,
+        "cpSync",
+        wrapFsTwoPaths(target.cpSync as AnyFn, "read", "write"),
+      );
     }
 
     // Two-path sync operations.
-    const syncTwoPaths: Array<keyof typeof nodeFs> = [
-      "copyFileSync",
-      "renameSync",
-      "linkSync",
-      "symlinkSync",
+    const syncTwoPaths: Array<{
+      name: keyof typeof nodeFs;
+      srcMode: FsAccessMode;
+      dstMode: FsAccessMode;
+    }> = [
+      { name: "copyFileSync", srcMode: "read", dstMode: "write" },
+      { name: "renameSync", srcMode: "write", dstMode: "write" },
+      { name: "linkSync", srcMode: "read", dstMode: "write" },
+      { name: "symlinkSync", srcMode: "read", dstMode: "write" },
     ];
-    for (const name of syncTwoPaths) {
+    for (const { name, srcMode, dstMode } of syncTwoPaths) {
       const key = String(name);
       const orig = target[key];
       if (typeof orig === "function") {
-        setIfMutable(target, key, wrapFsTwoPaths(orig as AnyFn));
+        setIfMutable(
+          target,
+          key,
+          wrapFsTwoPaths(orig as AnyFn, srcMode, dstMode),
+        );
       }
     }
 
@@ -496,35 +719,74 @@ function patchFsModule(): void {
       "unlink",
       "utimes",
       "lutimes",
-      "open",
       "opendir",
       "appendFile",
     ];
+    const callbackWriteOnePath = new Set<string>([
+      "chmod",
+      "chown",
+      "lchmod",
+      "lchown",
+      "mkdir",
+      "mkdtemp",
+      "rmdir",
+      "rm",
+      "truncate",
+      "unlink",
+      "utimes",
+      "lutimes",
+      "appendFile",
+    ]);
 
     for (const name of callbackOnePath) {
       const key = String(name);
       const orig = target[key];
       if (typeof orig === "function") {
-        setIfMutable(target, key, wrapFsPath(orig as AnyFn));
+        setIfMutable(
+          target,
+          key,
+          wrapFsPath(
+            orig as AnyFn,
+            callbackWriteOnePath.has(key) ? "write" : "read",
+          ),
+        );
       }
     }
 
     if (typeof target.writeFile === "function") {
       const wrapped = wrapFsWriteGuard(target.writeFile as AnyFn);
-      setIfMutable(target, "writeFile", wrapFsPath(wrapped));
+      setIfMutable(target, "writeFile", wrapFsPath(wrapped, "write"));
+    }
+    if (typeof target.open === "function") {
+      setIfMutable(target, "open", wrapFsOpenPath(target.open as AnyFn));
+    }
+    if (typeof target.cp === "function") {
+      setIfMutable(
+        target,
+        "cp",
+        wrapFsTwoPaths(target.cp as AnyFn, "read", "write"),
+      );
     }
 
-    const callbackTwoPaths: Array<keyof typeof nodeFs> = [
-      "copyFile",
-      "rename",
-      "link",
-      "symlink",
+    const callbackTwoPaths: Array<{
+      name: keyof typeof nodeFs;
+      srcMode: FsAccessMode;
+      dstMode: FsAccessMode;
+    }> = [
+      { name: "copyFile", srcMode: "read", dstMode: "write" },
+      { name: "rename", srcMode: "write", dstMode: "write" },
+      { name: "link", srcMode: "read", dstMode: "write" },
+      { name: "symlink", srcMode: "read", dstMode: "write" },
     ];
-    for (const name of callbackTwoPaths) {
+    for (const { name, srcMode, dstMode } of callbackTwoPaths) {
       const key = String(name);
       const orig = target[key];
       if (typeof orig === "function") {
-        setIfMutable(target, key, wrapFsTwoPaths(orig as AnyFn));
+        setIfMutable(
+          target,
+          key,
+          wrapFsTwoPaths(orig as AnyFn, srcMode, dstMode),
+        );
       }
     }
   }
@@ -551,28 +813,72 @@ function patchFsModule(): void {
     "unlink",
     "utimes",
     "lutimes",
-    "open",
     "opendir",
     "appendFile",
   ];
+  const promisesWriteOnePath = new Set<string>([
+    "chmod",
+    "chown",
+    "lchmod",
+    "lchown",
+    "mkdir",
+    "mkdtemp",
+    "rmdir",
+    "rm",
+    "truncate",
+    "unlink",
+    "utimes",
+    "lutimes",
+    "appendFile",
+  ]);
   for (const promises of promiseTargets) {
     for (const name of promisesOnePath) {
       const orig = promises[name];
       if (typeof orig === "function") {
-        setIfMutable(promises, name, wrapFsPath(orig as AnyFn));
+        setIfMutable(
+          promises,
+          name,
+          wrapFsPath(
+            orig as AnyFn,
+            promisesWriteOnePath.has(name) ? "write" : "read",
+          ),
+        );
       }
     }
 
     if (typeof promises.writeFile === "function") {
       const wrapped = wrapFsWriteGuard(promises.writeFile as AnyFn);
-      setIfMutable(promises, "writeFile", wrapFsPath(wrapped));
+      setIfMutable(promises, "writeFile", wrapFsPath(wrapped, "write"));
+    }
+    if (typeof promises.open === "function") {
+      setIfMutable(promises, "open", wrapFsOpenPath(promises.open as AnyFn));
+    }
+    if (typeof promises.cp === "function") {
+      setIfMutable(
+        promises,
+        "cp",
+        wrapFsTwoPaths(promises.cp as AnyFn, "read", "write"),
+      );
     }
 
-    const promisesTwoPaths = ["copyFile", "rename", "link", "symlink"];
-    for (const name of promisesTwoPaths) {
+    const promisesTwoPaths: Array<{
+      name: string;
+      srcMode: FsAccessMode;
+      dstMode: FsAccessMode;
+    }> = [
+      { name: "copyFile", srcMode: "read", dstMode: "write" },
+      { name: "rename", srcMode: "write", dstMode: "write" },
+      { name: "link", srcMode: "read", dstMode: "write" },
+      { name: "symlink", srcMode: "read", dstMode: "write" },
+    ];
+    for (const { name, srcMode, dstMode } of promisesTwoPaths) {
       const orig = promises[name];
       if (typeof orig === "function") {
-        setIfMutable(promises, name, wrapFsTwoPaths(orig as AnyFn));
+        setIfMutable(
+          promises,
+          name,
+          wrapFsTwoPaths(orig as AnyFn, srcMode, dstMode),
+        );
       }
     }
   }
@@ -618,7 +924,14 @@ export function installMobileFsShim(workspaceRoot: string): void {
   }
 
   _workspaceRoot = canonical;
+  _workspaceRootReal = realpathIfPossible(canonical);
+  _readOnlyRoots = envReadOnlyRoots().filter(
+    (root) => !isInsideRoot(root, canonical),
+  );
+  _readOnlyRootReals = _readOnlyRoots.map((root) => realpathIfPossible(root));
   _installed = true;
+  (globalThis as MobileFsGlobals).__ELIZA_MOBILE_FS_RESOLVE__ =
+    resolveSandboxed;
 
   patchFsModule();
   installRequireGuard();

@@ -15,8 +15,8 @@
 
 import { describe, expect, it } from "vitest";
 import {
-  MockCheckpointManager,
   type CheckpointHandle,
+  MockCheckpointManager,
 } from "../checkpoint-manager";
 import {
   type DrafterAbortReason,
@@ -34,7 +34,11 @@ interface DrafterCall {
 function fakeDrafter(): { fn: StartDrafterFn; calls: DrafterCall[] } {
   const calls: DrafterCall[] = [];
   const fn: StartDrafterFn = ({ turnId, partialTranscript }) => {
-    const record: DrafterCall = { turnId, partial: partialTranscript, aborted: null };
+    const record: DrafterCall = {
+      turnId,
+      partial: partialTranscript,
+      aborted: null,
+    };
     calls.push(record);
     // The state machine always pairs `controller.abort()` with an explicit
     // `handle.abort(reason)` — record only the explicit reason so tests can
@@ -74,8 +78,7 @@ function captureEvents(): {
   return {
     captured,
     events: {
-      onStateChange: (prev, next) =>
-        captured.states.push({ prev, next }),
+      onStateChange: (prev, next) => captured.states.push({ prev, next }),
       onDrafterStart: (turnId) => captured.drafterStarted.push(turnId),
       onDrafterAbort: (turnId, reason) =>
         captured.drafterAborted.push({ turnId, reason }),
@@ -88,9 +91,7 @@ function captureEvents(): {
   };
 }
 
-function makeMachine(
-  mock = new MockCheckpointManager(),
-): {
+function makeMachine(mock = new MockCheckpointManager()): {
   machine: VoiceStateMachine;
   mock: MockCheckpointManager;
   drafterCalls: DrafterCall[];
@@ -158,9 +159,9 @@ describe("VoiceStateMachine — happy paths and rollback", () => {
     expect(machine.getActiveCheckpoint()).toBeNull();
     // Drafter was aborted with reason "resumed".
     expect(drafterCalls[0].aborted).toBe("resumed");
-    expect(
-      captured.drafterAborted.some((d) => d.reason === "resumed"),
-    ).toBe(true);
+    expect(captured.drafterAborted.some((d) => d.reason === "resumed")).toBe(
+      true,
+    );
   });
 
   it("speech-end commits the turn and retains C1 for barge-in", async () => {
@@ -251,9 +252,9 @@ describe("VoiceStateMachine — happy paths and rollback", () => {
     // Second barge-in restores the same C1.
     await machine.dispatch({ type: "barge-in", timestampMs: 2500 });
     expect(machine.getState()).toBe("LISTENING");
-    expect(
-      mock.operations.filter((op) => op.kind === "restore"),
-    ).toHaveLength(2);
+    expect(mock.operations.filter((op) => op.kind === "restore")).toHaveLength(
+      2,
+    );
     // Both restores target the same handle id.
     const restoreOps = mock.operations.filter((op) => op.kind === "restore");
     expect(restoreOps[0].handleId).toBe(restoreOps[1].handleId);

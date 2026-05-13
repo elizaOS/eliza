@@ -8,7 +8,7 @@
  *
  * @module benchmark/plugin
  */
-import { logger, type Plugin } from "@elizaos/core";
+import { type ActionParameter, logger, type Plugin } from "@elizaos/core";
 
 // ---------------------------------------------------------------------------
 // Benchmark context (module-level shared state, set per-request by the server)
@@ -93,7 +93,469 @@ const VENDING_BENCHMARK_ACTION_NAMES = [
 ] as const;
 
 function isVendingBenchmarkContext(): boolean {
-  return new Set(["vending-bench", "vending_bench"]).has(currentBenchmarkName());
+  return new Set(["vending-bench", "vending_bench"]).has(
+    currentBenchmarkName(),
+  );
+}
+
+function isLocaBenchmarkContext(): boolean {
+  return new Set(["loca-bench", "loca_bench"]).has(currentBenchmarkName());
+}
+
+const LOCA_BENCHMARK_TOOL_ACTION_NAMES = [
+  "claim_done",
+  "filesystem_create_directory",
+  "filesystem_directory_tree",
+  "filesystem_edit_file",
+  "filesystem_get_file_info",
+  "filesystem_list_allowed_directories",
+  "filesystem_list_directory",
+  "filesystem_list_directory_with_sizes",
+  "filesystem_move_file",
+  "filesystem_read_file",
+  "filesystem_read_media_file",
+  "filesystem_read_multiple_files",
+  "filesystem_read_text_file",
+  "filesystem_search_files",
+  "filesystem_write_file",
+  "memory_add_observations",
+  "memory_create_entities",
+  "memory_create_relations",
+  "memory_delete_entities",
+  "memory_delete_observations",
+  "memory_delete_relations",
+  "memory_open_nodes",
+  "memory_read_graph",
+  "memory_search_nodes",
+  "python_execute",
+  "canvas_canvas_add_quiz_question",
+  "canvas_canvas_create_account_report",
+  "canvas_canvas_create_assignment",
+  "canvas_canvas_create_conversation",
+  "canvas_canvas_create_course",
+  "canvas_canvas_create_module",
+  "canvas_canvas_create_module_item",
+  "canvas_canvas_create_quiz",
+  "canvas_canvas_create_rubric",
+  "canvas_canvas_create_user",
+  "canvas_canvas_delete_quiz",
+  "canvas_canvas_delete_quiz_question",
+  "canvas_canvas_enroll_user",
+  "canvas_canvas_get_account",
+  "canvas_canvas_get_account_reports",
+  "canvas_canvas_get_assignment",
+  "canvas_canvas_get_conversation",
+  "canvas_canvas_get_course",
+  "canvas_canvas_get_course_grades",
+  "canvas_canvas_get_current_user",
+  "canvas_canvas_get_dashboard",
+  "canvas_canvas_get_dashboard_cards",
+  "canvas_canvas_get_discussion_topic",
+  "canvas_canvas_get_file",
+  "canvas_canvas_get_module",
+  "canvas_canvas_get_module_item",
+  "canvas_canvas_get_page",
+  "canvas_canvas_get_quiz",
+  "canvas_canvas_get_quiz_questions",
+  "canvas_canvas_get_rubric",
+  "canvas_canvas_get_submission",
+  "canvas_canvas_get_syllabus",
+  "canvas_canvas_get_upcoming_assignments",
+  "canvas_canvas_get_user_grades",
+  "canvas_canvas_get_user_profile",
+  "canvas_canvas_health_check",
+  "canvas_canvas_list_account_courses",
+  "canvas_canvas_list_account_users",
+  "canvas_canvas_list_announcements",
+  "canvas_canvas_list_assignments",
+  "canvas_canvas_list_calendar_events",
+  "canvas_canvas_list_conversations",
+  "canvas_canvas_list_courses",
+  "canvas_canvas_list_discussion_topics",
+  "canvas_canvas_list_files",
+  "canvas_canvas_list_folders",
+  "canvas_canvas_list_module_items",
+  "canvas_canvas_list_modules",
+  "canvas_canvas_list_notifications",
+  "canvas_canvas_list_pages",
+  "canvas_canvas_list_quizzes",
+  "canvas_canvas_list_rubrics",
+  "canvas_canvas_list_sub_accounts",
+  "canvas_canvas_list_users",
+  "canvas_canvas_login",
+  "canvas_canvas_logout",
+  "canvas_canvas_mark_module_item_complete",
+  "canvas_canvas_post_to_discussion",
+  "canvas_canvas_publish_quiz",
+  "canvas_canvas_start_quiz_attempt",
+  "canvas_canvas_submit_assignment",
+  "canvas_canvas_submit_grade",
+  "canvas_canvas_update_assignment",
+  "canvas_canvas_update_course",
+  "canvas_canvas_update_quiz",
+  "canvas_canvas_update_quiz_question",
+  "canvas_canvas_update_user_profile",
+  "canvas_get_assignment",
+  "canvas_get_course",
+  "canvas_get_dashboard",
+  "canvas_get_dashboard_cards",
+  "canvas_get_file",
+  "canvas_get_page",
+  "canvas_get_quiz",
+  "canvas_get_submission",
+  "canvas_get_syllabus",
+  "canvas_get_user_grades",
+  "canvas_get_user_profile",
+  "canvas_health_check",
+  "canvas_list_announcements",
+  "canvas_list_assignments",
+  "canvas_list_calendar_events",
+  "canvas_list_courses",
+  "canvas_list_discussion_topics",
+  "canvas_list_files",
+  "canvas_list_folders",
+  "canvas_list_module_items",
+  "canvas_list_modules",
+  "canvas_list_notifications",
+  "canvas_list_pages",
+  "canvas_list_quizzes",
+] as const;
+
+const stringListSchema = {
+  type: "array" as const,
+  items: { type: "string" as const },
+};
+
+const objectListSchema = {
+  type: "array" as const,
+  items: { type: "object" as const, additionalProperties: true },
+};
+
+const LOCA_BENCHMARK_TOOL_PARAMETERS: ActionParameter[] = [
+  {
+    name: "path",
+    description: "Filesystem path inside the LOCA task workspace.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "paths",
+    description: "Filesystem paths inside the LOCA task workspace.",
+    required: false,
+    schema: stringListSchema,
+  },
+  {
+    name: "pattern",
+    description: "Glob or search pattern for filesystem search tools.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "excludePatterns",
+    description: "Glob patterns to exclude from filesystem searches.",
+    required: false,
+    schema: stringListSchema,
+  },
+  {
+    name: "content",
+    description: "Text content to write to a file.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "head",
+    description: "Read only the first N lines of a text file.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "tail",
+    description: "Read only the last N lines of a text file.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "sortBy",
+    description: "Directory listing sort key.",
+    required: false,
+    schema: { type: "string", enum: ["name", "size"] },
+  },
+  {
+    name: "source",
+    description: "Source filesystem path for move or copy style operations.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "destination",
+    description:
+      "Destination filesystem path for move or copy style operations.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "query",
+    description: "Search query for memory or SaaS tools.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "names",
+    description: "Memory entity names to open.",
+    required: false,
+    schema: stringListSchema,
+  },
+  {
+    name: "observations",
+    description: "Memory observations payload.",
+    required: false,
+    schema: objectListSchema,
+  },
+  {
+    name: "entities",
+    description: "Memory entity creation payload.",
+    required: false,
+    schema: objectListSchema,
+  },
+  {
+    name: "relations",
+    description: "Memory relation payload.",
+    required: false,
+    schema: objectListSchema,
+  },
+  {
+    name: "deletions",
+    description: "Memory observation deletion payload.",
+    required: false,
+    schema: objectListSchema,
+  },
+  {
+    name: "entityNames",
+    description: "Memory entity names to delete.",
+    required: false,
+    schema: stringListSchema,
+  },
+  {
+    name: "edits",
+    description: "Structured file edit payload.",
+    required: false,
+    schema: objectListSchema,
+  },
+  {
+    name: "dryRun",
+    description: "Whether to preview a filesystem edit without applying it.",
+    required: false,
+    schema: { type: "boolean" },
+  },
+  {
+    name: "course_id",
+    description: "Canvas course id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "assignment_id",
+    description: "Canvas assignment id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "file_id",
+    description: "Canvas file id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "folder_id",
+    description: "Canvas folder id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "module_id",
+    description: "Canvas module id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "item_id",
+    description: "Canvas module item id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "page_url",
+    description: "Canvas page URL slug.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "quiz_id",
+    description: "Canvas quiz id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "user_id",
+    description: "Canvas user id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "account_id",
+    description: "Canvas account id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "conversation_id",
+    description: "Canvas conversation id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "topic_id",
+    description: "Canvas discussion topic id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "rubric_id",
+    description: "Canvas rubric id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "question_id",
+    description: "Canvas quiz question id.",
+    required: false,
+    schema: { type: "number" },
+  },
+  {
+    name: "submission_type",
+    description: "Canvas assignment submission type.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "grade",
+    description: "Canvas grade value.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "type",
+    description: "Canvas module item, quiz question, or content type.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "name",
+    description: "Canvas object name or generic resource name.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "title",
+    description: "Canvas object title.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "message",
+    description: "Canvas discussion or notification message.",
+    required: false,
+    schema: { type: "string" },
+  },
+  {
+    name: "body",
+    description: "Canvas body text or HTML payload.",
+    required: false,
+    schema: { type: "string" },
+  },
+];
+
+function pickLocaParameters(names: string[]): ActionParameter[] {
+  const wanted = new Set(names);
+  return LOCA_BENCHMARK_TOOL_PARAMETERS.filter((parameter) =>
+    wanted.has(parameter.name),
+  );
+}
+
+const LOCA_FILESYSTEM_TOOL_PARAMETERS = pickLocaParameters([
+  "path",
+  "paths",
+  "pattern",
+  "excludePatterns",
+  "content",
+  "head",
+  "tail",
+  "sortBy",
+  "source",
+  "destination",
+  "edits",
+  "dryRun",
+]);
+
+const LOCA_MEMORY_TOOL_PARAMETERS = pickLocaParameters([
+  "query",
+  "names",
+  "observations",
+  "entities",
+  "relations",
+  "deletions",
+  "entityNames",
+]);
+
+const LOCA_CANVAS_TOOL_PARAMETERS = pickLocaParameters([
+  "course_id",
+  "assignment_id",
+  "file_id",
+  "folder_id",
+  "module_id",
+  "item_id",
+  "page_url",
+  "quiz_id",
+  "user_id",
+  "account_id",
+  "conversation_id",
+  "topic_id",
+  "rubric_id",
+  "question_id",
+  "submission_type",
+  "grade",
+  "type",
+  "name",
+  "title",
+  "message",
+  "body",
+]);
+
+const LOCA_PYTHON_TOOL_PARAMETERS: ActionParameter[] = [
+  {
+    name: "code",
+    description: "Python code to execute in the LOCA task environment.",
+    required: false,
+    schema: { type: "string" },
+  },
+];
+
+const LOCA_CLAIM_DONE_PARAMETERS: ActionParameter[] = [
+  {
+    name: "answer",
+    description: "Final answer or completion summary for the LOCA task.",
+    required: false,
+    schema: { type: "string" },
+  },
+];
+
+function locaBenchmarkToolParametersFor(name: string): ActionParameter[] {
+  if (name.startsWith("filesystem_")) return LOCA_FILESYSTEM_TOOL_PARAMETERS;
+  if (name.startsWith("memory_")) return LOCA_MEMORY_TOOL_PARAMETERS;
+  if (name.startsWith("canvas_")) return LOCA_CANVAS_TOOL_PARAMETERS;
+  if (name === "python_execute") return LOCA_PYTHON_TOOL_PARAMETERS;
+  if (name === "claim_done") return LOCA_CLAIM_DONE_PARAMETERS;
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -162,6 +624,32 @@ function formatToolLine(t: Record<string, unknown>): string {
   const desc = t.description ?? fn?.description ?? "";
   const params = t.parameters ?? fn?.parameters ?? {};
   return `- **${String(name)}**: ${String(desc)}\n  Parameters: ${compactJson(params, 1200)}`;
+}
+
+function formatLocaToolLine(t: Record<string, unknown>): string {
+  const fn = isPlainRecord(t.function) ? t.function : undefined;
+  const name = String(t.name ?? fn?.name ?? "unknown");
+  const desc = String(t.description ?? fn?.description ?? "")
+    .replace(/\s+/g, " ")
+    .slice(0, 180);
+  const params = isPlainRecord(t.parameters)
+    ? t.parameters
+    : isPlainRecord(fn?.parameters)
+      ? fn.parameters
+      : {};
+  const properties = isPlainRecord(params.properties)
+    ? Object.keys(params.properties)
+    : [];
+  const required = Array.isArray(params.required)
+    ? params.required.map(String)
+    : [];
+  const requiredText =
+    required.length > 0 ? ` required: ${required.join(", ")}` : "";
+  const paramText =
+    properties.length > 0
+      ? ` params: ${properties.slice(0, 16).join(", ")}${properties.length > 16 ? ", ..." : ""};${requiredText}`
+      : " params: none";
+  return `- **${name}**: ${desc}${desc ? " " : ""}${paramText}`;
 }
 
 function renderLifeOpsContext(value: unknown): string | null {
@@ -250,6 +738,8 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isSweBench = benchmark === "swe_bench" || benchmark === "swe-bench";
   const isExperienceBenchmark = benchmark === "experience";
   const isGauntletBenchmark = benchmark === "gauntlet";
+  const isLocaBenchmark =
+    benchmark === "loca_bench" || benchmark === "loca-bench";
   const isConversationalBenchmark = new Set([
     "woobench",
     "woo-bench",
@@ -333,6 +823,9 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     sections.push(
       `For experience retrieval turns, use REPLY with a concise answer that recalls the relevant learning.`,
     );
+  } else if (isLocaBenchmark && ctx.tools && ctx.tools.length > 0) {
+    const toolLines = ctx.tools.map(formatLocaToolLine);
+    sections.push(`\n## Available Tools\n${toolLines.join("\n")}`);
   } else if (ctx.tools && ctx.tools.length > 0) {
     const toolLines = ctx.tools.map(formatToolLine);
     sections.push(`\n## Available Tools\n${toolLines.join("\n")}`);
@@ -414,6 +907,13 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     );
     sections.push(
       `Do not answer by describing the call. The benchmark only accepts the captured action call.`,
+    );
+  } else if (isLocaBenchmark && ctx.tools && ctx.tools.length > 0) {
+    sections.push(
+      `This is LOCA-bench. The Python LOCA runner executes tool calls outside Eliza. Use the available tool names directly, or call BENCHMARK_ACTION with params.BENCHMARK_ACTION.tool_name and params.BENCHMARK_ACTION.arguments. Do not claim the files are complete until the required CSV writes have been emitted as tool calls.`,
+    );
+    sections.push(
+      `Progress replies are invalid in LOCA-bench. If the task is not complete, call exactly one tool. Only use REPLY after the requested files have been written or claim_done has been called.`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {
     // Tau-bench-style harnesses: emphasise tool calling
@@ -512,9 +1012,18 @@ function extractActionParameters(options: unknown): Record<string, unknown> {
       } else {
         params = p;
       }
+    } else {
+      params = opts;
     }
   }
   return params;
+}
+
+function stripRuntimeActionContext(
+  params: Record<string, unknown>,
+): Record<string, unknown> {
+  const { actionContext: _actionContext, ...toolParams } = params;
+  return toolParams;
 }
 
 function parseCapturedArguments(
@@ -563,6 +1072,17 @@ function captureLifeOpsBenchmarkToolAction(
   };
 }
 
+function captureNamedBenchmarkToolAction(
+  name: string,
+  params: Record<string, unknown>,
+): CapturedAction {
+  return {
+    params,
+    toolName: name,
+    arguments: params,
+  };
+}
+
 export function createBenchmarkPlugin(): Plugin {
   return {
     name: "eliza-benchmark",
@@ -600,6 +1120,7 @@ export function createBenchmarkPlugin(): Plugin {
         name: "BENCHMARK_ACTION",
         contextGate: {},
         roleGate: { minRole: "NONE" },
+        suppressPostActionContinuation: true,
         similes: [
           "EXECUTE",
           "DO",
@@ -655,7 +1176,10 @@ export function createBenchmarkPlugin(): Plugin {
           return {
             text: `Benchmark action captured: ${JSON.stringify(capturedAction)}`,
             success: true,
-            continueChain: isVendingBenchmarkContext() ? false : undefined,
+            continueChain:
+              isVendingBenchmarkContext() || isLocaBenchmarkContext()
+                ? false
+                : undefined,
             values: { captured: true },
             data: { action: capturedAction },
           };
@@ -728,6 +1252,7 @@ export function createBenchmarkPlugin(): Plugin {
         name,
         contextGate: {},
         roleGate: { minRole: "NONE" as const },
+        suppressPostActionContinuation: true,
         similes: [],
         description:
           "Vending-Bench compatibility action. Captures one vending simulator action for the benchmark environment.",
@@ -754,6 +1279,7 @@ export function createBenchmarkPlugin(): Plugin {
         name,
         contextGate: {},
         roleGate: { minRole: "NONE" as const },
+        suppressPostActionContinuation: true,
         similes: [],
         description:
           "LifeOpsBench compatibility action. Captures a planner-emitted LifeOps tool call for the benchmark fake backend.",
@@ -772,6 +1298,34 @@ export function createBenchmarkPlugin(): Plugin {
           };
         },
         parameters: [],
+      })),
+      ...LOCA_BENCHMARK_TOOL_ACTION_NAMES.map((name) => ({
+        name,
+        contextGate: {},
+        roleGate: { minRole: "NONE" as const },
+        suppressPostActionContinuation: true,
+        similes: [],
+        description:
+          "LOCA-bench compatibility action. Captures a planner-emitted MCP tool call for the Python LOCA runner.",
+        allowAdditionalParameters: true,
+        validate: async () => isLocaBenchmarkContext(),
+        handler: async (_runtime, _message, _state, options) => {
+          const params = stripRuntimeActionContext(
+            extractActionParameters(options),
+          );
+          console.log(`[${name}] params:`, JSON.stringify(params));
+          const capturedAction = recordCapturedAction(
+            captureNamedBenchmarkToolAction(name, params),
+          );
+          return {
+            text: `Benchmark LOCA action captured: ${name}`,
+            success: true,
+            continueChain: false,
+            values: { captured: true },
+            data: { action: capturedAction },
+          };
+        },
+        parameters: locaBenchmarkToolParametersFor(name),
       })),
     ],
   };

@@ -107,11 +107,7 @@ export interface InferenceRuntimeModeInput {
 export function readRuntimeModeEnvOverride(
   env: NodeJS.ProcessEnv = process.env,
 ): InferenceRuntimeMode | null {
-  const raw = (
-    env.MILADY_INFERENCE_MODE ??
-    env.ELIZA_INFERENCE_MODE ??
-    ""
-  )
+  const raw = (env.MILADY_INFERENCE_MODE ?? env.ELIZA_INFERENCE_MODE ?? "")
     .trim()
     .toLowerCase();
   if (raw === "") return null;

@@ -62,7 +62,6 @@ import {
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
 import { parseJsonObject } from "../runtime/json-output";
-import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -74,6 +73,7 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "../runtime/model-input-budget";
+import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
@@ -1427,6 +1427,42 @@ interface StrategyResult {
 type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" };
+
+export function buildFailureReplyPrompt(recentMessages: string): string {
+	return [
+		"You hit a transient model error and have to send a short user-facing reply.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Stay in character. Keep your usual voice and tone.",
+		"- NEVER answer the user's question on the merits.",
+		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
+		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
+		"- Acknowledge that something went wrong and suggest a retry.",
+		"- Do not paraphrase or echo the user's question as if you are about to answer it.",
+		"- NEVER mention internal mechanism words such as: planner, action_planner,",
+		"  XML, JSON, schema, structured output, model, retries, sonnet,",
+		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+		"  loop, runtime, dispatch, or hand off. The user does not know or care",
+		"  what those are.",
+		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
+		"",
+		"Recent Conversation:",
+		recentMessages,
+		"",
+		"Reply:",
+	].join("\n");
+}
+
+export function stripReasoningBlocks(raw: string): string {
+	return raw
+		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+		.replace(/^[\s\S]*?<\/think>/i, "")
+		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
+		.replace(/\/?\bno_think\b/gi, "")
+		.trim();
+}
 
 export type V5MessageRuntimeStage1Result =
 	| {
@@ -3243,9 +3279,8 @@ function synthesizeSimpleReplyFromPlainText(
 	if (typeof raw !== "string") return null;
 	const trimmed = raw.trim();
 	if (!trimmed) return null;
-	// Strip <think>...</think> blocks emitted by reasoning models.
-	const cleaned = trimmed.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-	const replyText = cleaned || trimmed;
+	const replyText = stripReasoningBlocks(trimmed);
+	if (!replyText) return null;
 	return {
 		processMessage: "RESPOND",
 		thought:
@@ -4531,9 +4566,11 @@ function subPlannerResultToPlannerToolResult(
 	const lastStep =
 		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
+	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
 	return {
 		success,
-		text: subResult.finalMessage ?? evaluator?.messageToUser,
+		text: userFacingText,
+		userFacingText,
 		data: lastStep?.result?.data,
 		error: lastStep?.result?.error,
 	};
@@ -9986,9 +10023,7 @@ export class DefaultMessageService implements IMessageService {
 					continue;
 				}
 
-				const cleaned = response
-					.replace(/<think>[\s\S]*?<\/think>/g, "")
-					.trim();
+				const cleaned = stripReasoningBlocks(response);
 				const looksStructuredReply =
 					cleaned.startsWith("{") && cleaned.includes("}");
 				const parsed = looksStructuredReply
@@ -10051,31 +10086,7 @@ export class DefaultMessageService implements IMessageService {
 			state,
 			message,
 		);
-		const failurePrompt = [
-			"You hit a transient model error and have to send a short user-facing reply.",
-			"Write a one or two sentence reply in plain language.",
-			"",
-			"Hard rules:",
-			"- Stay in character. Keep your usual voice and tone.",
-			"- NEVER mention internal mechanism words such as: planner, action_planner,",
-			"  XML, JSON, schema, structured output, model, retries, sonnet,",
-			"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-			"  loop, runtime, dispatch, or hand off. The user does not know or care",
-			"  what those are.",
-			"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-			"- Just acknowledge that something went wrong and suggest a retry.",
-			'  Examples: "something flaked, try again in a sec",',
-			'  "weird hiccup, give me another shot in a moment",',
-			'  "got stuck on my end, retry that?"',
-			"- If the user already gave a clear command and you can plausibly act,",
-			"  acknowledge it and offer to take the action directly. Keep it short.",
-			"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-			"",
-			"Recent Conversation:",
-			recentMessages,
-			"",
-			"Reply:",
-		].join("\n");
+		const failurePrompt = buildFailureReplyPrompt(recentMessages);
 
 		const attempt = await this.generateFailureReplyText(
 			runtime,

@@ -20,7 +20,12 @@ from benchmarks.orchestrator.runner import (
     _required_env_for_request,
 )
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
-from benchmarks.registry import _score_from_bfcl_json, get_benchmark_registry
+from benchmarks.registry import (
+    _score_from_bfcl_json,
+    _score_from_mint_json,
+    _score_from_realm_json,
+    get_benchmark_registry,
+)
 
 
 def _workspace_root() -> Path:
@@ -128,6 +133,17 @@ def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
         assert _is_harness_compatible(adapter, "openclaw") is False
 
 
+def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+
+    for benchmark_id in ("mint", "realm"):
+        adapter = adapters[benchmark_id]
+        assert adapter.agent_compatibility == ("eliza",)
+        assert _is_harness_compatible(adapter, "eliza") is True
+        assert _is_harness_compatible(adapter, "hermes") is False
+        assert _is_harness_compatible(adapter, "openclaw") is False
+
+
 def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "gaia_orchestrated"
@@ -165,7 +181,7 @@ def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
     harness_command = entry.build_command(
         tmp_path,
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"agent": "hermes"},
+        {"agent": "eliza"},
     )
     direct_command = entry.build_command(
         tmp_path,
@@ -175,6 +191,66 @@ def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
 
     assert harness_command[harness_command.index("--provider") + 1] == "eliza"
     assert direct_command[direct_command.index("--provider") + 1] == "cerebras"
+    with pytest.raises(ValueError, match="native hermes harness adapter"):
+        entry.build_command(
+            tmp_path,
+            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+            {"agent": "hermes"},
+        )
+
+
+def test_realm_registry_smoke_bounds_and_blocks_mislabeled_harness(
+    tmp_path: Path,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "realm"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "max_tasks": 1, "max_steps": 3, "timeout": 60000},
+    )
+
+    assert command[command.index("--categories") + 1] == "sequential"
+    assert command[command.index("--max-tasks") + 1] == "1"
+    assert command[command.index("--max-steps") + 1] == "3"
+    assert command[command.index("--timeout") + 1] == "60000"
+    assert command[command.index("--provider") + 1] == "eliza"
+    with pytest.raises(ValueError, match="native openclaw harness adapter"):
+        entry.build_command(
+            tmp_path,
+            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+            {"agent": "openclaw", "max_tasks": 1},
+        )
+
+
+def test_registry_adapter_forwards_selected_harness_to_build_command(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["bfcl"]
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("bfcl",),
+            agent="openclaw",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"sample": 1},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--provider") + 1] == "openclaw"
 
 
 def test_lifeops_registry_forwards_suite_and_limit(tmp_path: Path) -> None:
@@ -190,6 +266,191 @@ def test_lifeops_registry_forwards_suite_and_limit(tmp_path: Path) -> None:
 
     assert command[command.index("--suite") + 1] == "smoke"
     assert command[command.index("--limit") + 1] == "1"
+
+
+def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    expected_limits = {
+        "gsm8k": "2",
+        "humaneval": "2",
+        "mmlu": "2",
+        "mt_bench": "1",
+    }
+    for benchmark_id, expected_limit in expected_limits.items():
+        adapter = adapters[benchmark_id]
+        effective = _effective_request(
+            adapter,
+            RunRequest(
+                benchmarks=(benchmark_id,),
+                agent="eliza",
+                provider="cerebras",
+                model="gpt-oss-120b",
+                extra_config={},
+            ),
+        )
+        ctx = ExecutionContext(
+            workspace_root=_workspace_root(),
+            benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+            output_root=tmp_path / benchmark_id,
+            run_root=tmp_path,
+            request=effective,
+            run_group_id="test",
+            env={},
+            repo_meta={},
+        )
+
+        command = adapter.command_builder(ctx, adapter)
+
+        assert command[command.index("--limit") + 1] == expected_limit
+        assert "--max-tokens" in command
+
+    mt_command = adapters["mt_bench"].command_builder(
+        ExecutionContext(
+            workspace_root=_workspace_root(),
+            benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+            output_root=tmp_path / "mt",
+            run_root=tmp_path,
+            request=_effective_request(
+                adapters["mt_bench"],
+                RunRequest(
+                    benchmarks=("mt_bench",),
+                    agent="eliza",
+                    provider="cerebras",
+                    model="gpt-oss-120b",
+                    extra_config={},
+                ),
+            ),
+            run_group_id="test",
+            env={},
+            repo_meta={},
+        ),
+        adapters["mt_bench"],
+    )
+    assert mt_command[mt_command.index("--judge-provider") + 1] == "cerebras"
+    assert mt_command[mt_command.index("--judge-model") + 1] == "gpt-oss-120b"
+    assert mt_command[mt_command.index("--judge-api-key-env") + 1] == "CEREBRAS_API_KEY"
+    assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "256"
+
+
+def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["tau_bench"]
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("tau_bench",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--max-tasks") + 1] == "1"
+    assert "--sample" in command
+    assert "--no-trajectories" in command
+
+
+def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    expected_flags = {
+        "configbench": ("--limit", "1"),
+        "lifeops_bench": ("--limit", "2"),
+        "mint": ("--max-tasks", "1"),
+        "realm": ("--max-tasks", "1"),
+        "hyperliquid_bench": ("--max-steps", "1"),
+        "hyperliquidbench": ("--max-steps", "1"),
+        "experience": ("--queries", "2"),
+        "loca_bench": ("--max-tool-uses", "25"),
+    }
+    for benchmark_id, (flag, value) in expected_flags.items():
+        adapter = adapters[benchmark_id]
+        effective = _effective_request(
+            adapter,
+            RunRequest(
+                benchmarks=(benchmark_id,),
+                agent=adapter.agent_compatibility[0],
+                provider="cerebras",
+                model="gpt-oss-120b",
+                extra_config={},
+            ),
+        )
+        ctx = ExecutionContext(
+            workspace_root=_workspace_root(),
+            benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+            output_root=tmp_path / benchmark_id,
+            run_root=tmp_path,
+            request=effective,
+            run_group_id="test",
+            env={},
+            repo_meta={},
+        )
+
+        command = adapter.command_builder(ctx, adapter)
+
+        assert command[command.index(flag) + 1] == value
+
+    mint = adapters["mint"]
+    effective_mint = _effective_request(
+        mint,
+        RunRequest(
+            benchmarks=("mint",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "mint",
+        run_root=tmp_path,
+        request=effective_mint,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+    mint_command = mint.command_builder(ctx, mint)
+    assert mint_command[mint_command.index("--categories") + 1] == "reasoning"
+    assert mint_command[mint_command.index("--max-turns") + 1] == "3"
+    assert mint_command[mint_command.index("--timeout") + 1] == "60"
+    assert "--no-ablation" in mint_command
+
+    evm = adapters["evm"]
+    effective_evm = _effective_request(
+        evm,
+        RunRequest(
+            benchmarks=("evm",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "evm",
+        run_root=tmp_path,
+        request=effective_evm,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+    env = evm.env_builder(ctx, evm) if evm.env_builder else {}
+    assert env["MAX_MESSAGES"] == "2"
 
 
 def test_bfcl_registry_always_writes_scoreable_json(tmp_path: Path) -> None:
@@ -227,6 +488,64 @@ def test_bfcl_score_rejects_zero_task_results() -> None:
                 }
             }
         )
+
+
+def test_realm_and_mint_scores_reject_zero_task_results() -> None:
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_realm_json(
+            {
+                "metrics": {
+                    "overall_success_rate": 0.0,
+                    "total_tasks": 0,
+                    "passed_tasks": 0,
+                }
+            }
+        )
+
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_mint_json(
+            {
+                "baseline_results": {
+                    "metrics": {
+                        "overall_success_rate": 0.0,
+                        "total_tasks": 0,
+                        "passed_tasks": 0,
+                    }
+                }
+            }
+        )
+
+
+def test_mint_score_uses_best_non_empty_configuration() -> None:
+    score = _score_from_mint_json(
+        {
+            "baseline_results": {
+                "metrics": {
+                    "overall_success_rate": 0.25,
+                    "total_tasks": 4,
+                    "passed_tasks": 1,
+                }
+            },
+            "feedback_only_results": {
+                "metrics": {
+                    "overall_success_rate": 0.75,
+                    "total_tasks": 4,
+                    "passed_tasks": 3,
+                }
+            },
+            "full_results": {
+                "metrics": {
+                    "overall_success_rate": 0.5,
+                    "total_tasks": 4,
+                    "passed_tasks": 2,
+                }
+            },
+        }
+    )
+
+    assert score.score == 0.75
+    assert score.metrics["best_configuration"] == "feedback"
+    assert score.metrics["passed_tasks"] == 3
 
 
 def test_bfcl_openclaw_env_uses_direct_openai_compatible_transport(tmp_path: Path) -> None:
@@ -564,6 +883,35 @@ def test_context_bench_adapter_defaults_to_smoke_command(tmp_path: Path) -> None
     assert command[command.index("--tasks-per-position") + 1] == "1"
 
 
+def test_adhdbench_adapter_defaults_to_bounded_quick_smoke(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["adhdbench"]
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("adhdbench",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert "--quick" in command
+    assert command[command.index("--ids") + 1] == "L0-002"
+
+
 def test_loca_adapter_gates_openclaw_until_native_loca_adapter_exists(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["loca_bench"]
     ctx = ExecutionContext(
@@ -762,6 +1110,59 @@ def test_vending_registry_clamps_smoke_to_revenue_observable_days(tmp_path: Path
     assert command[command.index("--max-actions-per-day") + 1] == "6"
 
 
+def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "no_docker": True, "max_tasks": 1},
+    )
+
+    assert "--local-sandbox" in command
+    assert "--dry-run" not in command
+    assert "--model-provider" not in command
+    assert command[command.index("--model") + 1] == "gpt-oss-120b"
+
+
+def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "rlm_bench"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"mode": "eliza", "no_oolong": True},
+    )
+
+    assert command[command.index("--root-model") + 1] == "gpt-oss-120b"
+    assert command[command.index("--subcall-model") + 1] == "gpt-oss-120b"
+
+
+def test_rlm_score_rejects_all_runtime_errors() -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "rlm_bench"
+    ]
+
+    with pytest.raises(ValueError, match="all tasks failed with runtime errors"):
+        entry.extract_score(
+            {
+                "metrics": {
+                    "overall_accuracy": 0.0,
+                    "total_tasks": 2,
+                    "passed_tasks": 0,
+                },
+                "results": [
+                    {"task_id": "a", "error": "provider failed"},
+                    {"task_id": "b", "error": "provider failed"},
+                ],
+            }
+        )
+
+
 def test_woobench_registry_forwards_scenario_list(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "woobench"
@@ -796,6 +1197,36 @@ def test_abliteration_registry_command_defaults_to_no_tool_choice(tmp_path: Path
 
     assert default_command[default_command.index("--tool-choice") + 1] == "none"
     assert explicit_command[explicit_command.index("--tool-choice") + 1] == "auto"
+
+
+def test_abliteration_orchestrator_default_is_bounded_smoke(tmp_path: Path) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["abliteration-robustness"]
+    effective = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=("abliteration-robustness",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=effective,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--max-examples") + 1] == "2"
+    assert command[command.index("--max-new-tokens") + 1] == "128"
+    assert command[command.index("--tool-choice") + 1] == "none"
 
 
 def test_loca_score_rejects_task_runs_without_token_usage(tmp_path: Path) -> None:

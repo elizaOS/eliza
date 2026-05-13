@@ -1,9 +1,10 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Eliza-1 is the only default-eligible model line. User-facing model ids are
- * size-first: `eliza-1-0_8b`, `eliza-1-2b`, `eliza-1-4b`, `eliza-1-9b`,
- * `eliza-1-27b`, `eliza-1-27b-256k`, and `eliza-1-27b-1m`.
+ * Eliza-1 is the only default-eligible model line. The current release train is
+ * size-first: `eliza-1-0_8b`, `eliza-1-2b`, and `eliza-1-4b` over Qwen3.5
+ * text bases. Larger historical hardware tiers remain as hidden placeholders
+ * until real Eliza-1 weights and evidence exist.
  *
  * HF-search results from outside the single `elizaos/eliza-1` repo must never
  * be marked default-eligible. The `sourceModel` block records upstream
@@ -31,10 +32,16 @@ export const ELIZA_1_TIER_IDS = [
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
+export const ELIZA_1_RELEASE_TIER_IDS = [
+  "eliza-1-0_8b",
+  "eliza-1-2b",
+  "eliza-1-4b",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
 export const DEFAULT_ELIGIBLE_MODEL_IDS: ReadonlySet<string> = new Set(
-  ELIZA_1_TIER_IDS,
+  ELIZA_1_RELEASE_TIER_IDS,
 );
 
 export function isDefaultEligibleId(id: string): boolean {
@@ -131,25 +138,33 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     repo: ELIZA_1_HF_REPO,
     file: bundleRemotePath(id, "asr/eliza-1-asr-large.gguf"),
   } as const;
+  const plannedText = {
+    repo: ELIZA_1_HF_REPO,
+    file: bundleRemotePath(id, `text/eliza-1-${tierSlug(id)}.gguf`),
+  } as const;
+  const plannedVision = {
+    repo: ELIZA_1_HF_REPO,
+    file: bundleRemotePath(id, `vision/mmproj-${tierSlug(id)}.gguf`),
+  } as const;
 
   const textByTier: Record<Eliza1TierId, { repo: string; file?: string }> = {
     "eliza-1-0_8b": { repo: "Qwen/Qwen3.5-0.8B" },
     "eliza-1-2b": { repo: "Qwen/Qwen3.5-2B" },
     "eliza-1-4b": { repo: "Qwen/Qwen3.5-4B" },
-    "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
-    "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
-    "eliza-1-27b-256k": { repo: "Qwen/Qwen3.6-27B" },
-    "eliza-1-27b-1m": { repo: "Qwen/Qwen3.6-27B" },
+    "eliza-1-9b": plannedText,
+    "eliza-1-27b": plannedText,
+    "eliza-1-27b-256k": plannedText,
+    "eliza-1-27b-1m": plannedText,
   };
 
   const visionByTier: Partial<
     Record<Eliza1TierId, { repo: string; file?: string }>
   > = {
     "eliza-1-4b": { repo: "Qwen/Qwen3.5-4B" },
-    "eliza-1-9b": { repo: "Qwen/Qwen3.5-9B" },
-    "eliza-1-27b": { repo: "Qwen/Qwen3.6-27B" },
-    "eliza-1-27b-256k": { repo: "Qwen/Qwen3.6-27B" },
-    "eliza-1-27b-1m": { repo: "Qwen/Qwen3.6-27B" },
+    "eliza-1-9b": plannedVision,
+    "eliza-1-27b": plannedVision,
+    "eliza-1-27b-256k": plannedVision,
+    "eliza-1-27b-1m": plannedVision,
   };
 
   const usesLargeAsr = id.startsWith("eliza-1-27b");
@@ -438,6 +453,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 65536,
     tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-9b-drafter"],
+    hiddenFromCatalog: true,
     sourceModel: sourceModelForTier("eliza-1-9b"),
     runtime: runtimeFor("eliza-1-9b", 65536),
     gpuProfile: "rtx-3090",
@@ -448,7 +464,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
       q4MinRamGb: 12,
     }),
     blurb:
-      "eliza-1-9b - laptop / 24 GB phone / 48 GB Mac default with text, voice, and vision in the optimized local runtime.",
+      "eliza-1-9b - future large-tier placeholder pending final Eliza-1 weights, evidence, and release approval.",
   },
   drafterCompanion({
     id: "eliza-1-9b",
@@ -475,6 +491,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 131072,
     tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-27b-drafter"],
+    hiddenFromCatalog: true,
     sourceModel: sourceModelForTier("eliza-1-27b"),
     runtime: runtimeFor("eliza-1-27b", 131072),
     gpuProfile: "rtx-4090",
@@ -485,7 +502,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
       q4MinRamGb: 32,
     }),
     blurb:
-      "eliza-1-27b - 96 GB+ Mac and high-VRAM desktop default with text, voice, vision, and 128k context.",
+      "eliza-1-27b - future high-memory placeholder pending final Eliza-1 weights, evidence, and release approval.",
   },
   drafterCompanion({
     id: "eliza-1-27b",
@@ -512,6 +529,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 262144,
     tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-27b-256k-drafter"],
+    hiddenFromCatalog: true,
     sourceModel: sourceModelForTier("eliza-1-27b-256k"),
     runtime: runtimeFor("eliza-1-27b-256k", 262144),
     gpuProfile: "rtx-5090",
@@ -525,7 +543,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
       q4MinRamGb: 96,
     }),
     blurb:
-      "eliza-1-27b-256k - workstation tier with the largest context window in the line.",
+      "eliza-1-27b-256k - future workstation placeholder pending final Eliza-1 weights, evidence, and release approval.",
   },
   drafterCompanion({
     id: "eliza-1-27b-256k",
@@ -552,6 +570,7 @@ export const MODEL_CATALOG: CatalogModel[] = [
     contextLength: 1_048_576,
     tokenizerFamily: "qwen35",
     companionModelIds: ["eliza-1-27b-1m-drafter"],
+    hiddenFromCatalog: true,
     sourceModel: sourceModelForTier("eliza-1-27b-1m"),
     runtime: runtimeFor("eliza-1-27b-1m", 1_048_576),
     gpuProfile: "h200",

@@ -66,9 +66,9 @@ import {
   type EotClassifier,
 } from "./eot-classifier";
 import {
-  prefillOptimistic,
   type PrefillOptimisticOptions,
   type PrefillOptimisticResult,
+  prefillOptimistic,
 } from "./prefill-client";
 
 /** Public state. Closed union — exhaustive switches catch new variants. */
@@ -576,7 +576,10 @@ export class VoiceStateMachine {
     const stateNow = this.currentState();
     if (!validStates.includes(stateNow)) return;
 
-    if (pDone >= EOT_COMMIT_THRESHOLD && silenceSinceMs >= EOT_COMMIT_SILENCE_MS) {
+    if (
+      pDone >= EOT_COMMIT_THRESHOLD &&
+      silenceSinceMs >= EOT_COMMIT_SILENCE_MS
+    ) {
       // Treat as speech-end: commit immediately.
       // Use the partial as the final transcript (streaming ASR may not have
       // finalized yet; callers that have the final transcript should prefer

@@ -496,7 +496,7 @@ library_name: gguf
 tags: [eliza, elizaos, eliza-1, gguf, on-device, candidate]
 ---
 
-# elizaos/eliza-1-{tier} — base-v1 candidate bundle
+# elizaos/eliza-1/bundles/{tier} - base-v1 candidate bundle
 
 This is the Eliza-1 **{tier}** on-device bundle, published as a
 **`base-v1-candidate`** (`defaultEligible: false`). The runtime can download

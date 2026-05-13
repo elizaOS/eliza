@@ -9,9 +9,8 @@ import Capacitor
 /// (`ai.eliza.bun.runtime`); async bridges dispatch off the queue internally
 /// and hop back to fulfill JS promises.
 ///
-/// The returned `BridgeKit` holds references to each bridge module so the
-/// caller can shut them down (e.g. HTTP server listeners) when the runtime
-/// stops.
+    /// The returned `BridgeKit` holds references to each bridge module so the
+    /// caller can release runtime-owned resources when the runtime stops.
 public struct BridgeKit {
     public let fs: FSBridge
     public let paths: PathsBridge

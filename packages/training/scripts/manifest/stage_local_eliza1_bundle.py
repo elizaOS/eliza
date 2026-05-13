@@ -80,15 +80,12 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
-VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k"}
+VISION_TIERS: Final[set[str]] = {"4b"}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (1800, 2400),
-    "2b": (3500, 5000),
+    "0_8b": (2500, 3700),
+    "2b": (4000, 5500),
     "4b": (6000, 8000),
-    "9b": (7000, 9500),
-    "27b": (24000, 32000),
-    "27b-256k": (48000, 64000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "tts",

@@ -105,10 +105,10 @@ export interface GpuProfile {
 /**
  * RTX 3090 — Ampere, 24 GiB, no FP8.
  *
- * Best fit: Eliza-1 9B (5.4 GiB Q4_K_M) at 64k context. KV at 64k for 9B
- * with Q8 K + Q4 V is ~3 GiB; total resident footprint ~9 GiB; headroom
- * ~12 GiB for activations / runtime / OS-window. Flash-attn helps Ampere
- * meaningfully (sm_86 has the fused-attention kernels).
+ * Best current release fit: Eliza-1 4B at 64k context. Larger 9B/27B
+ * hardware-tier plans are hidden until final Eliza-1 weights and evidence
+ * exist. Flash-attn helps Ampere meaningfully (sm_86 has the
+ * fused-attention kernels).
  */
 const RTX_3090: GpuProfile = {
   id: "rtx-3090",
@@ -117,7 +117,7 @@ const RTX_3090: GpuProfile = {
   computeCapability: "sm_86",
   memoryBandwidthGBs: 936,
   fp8: false,
-  recommendedBundles: ["eliza-1-9b", "eliza-1-4b", "eliza-1-2b"],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   // Ampere doesn't have the q4_polar kernel on the Polar fork; fall back to
   // the Q8/Q4 KV quants which work on every sm_70+ GPU.
@@ -138,9 +138,9 @@ const RTX_3090: GpuProfile = {
 /**
  * RTX 4090 — Ada Lovelace, 24 GiB, FP8 (no flash-attn-FP8 yet).
  *
- * Best fit: Eliza-1 9B at 128k OR 27B Q4_K_M at 32k. The 27B variant is
- * tight on 24 GiB — model is 16.8 GiB + ~3 GiB KV at 32k + headroom. Pick
- * 9B for default voice latency; 27B for higher-quality offline batch use.
+ * Best current release fit: Eliza-1 4B at 64k. The older 9B/27B planning
+ * entries are intentionally not recommended until those tiers have final
+ * weights and release evidence.
  */
 const RTX_4090: GpuProfile = {
   id: "rtx-4090",
@@ -149,7 +149,7 @@ const RTX_4090: GpuProfile = {
   computeCapability: "sm_89",
   memoryBandwidthGBs: 1008,
   fp8: true,
-  recommendedBundles: ["eliza-1-9b", "eliza-1-27b", "eliza-1-4b"],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -168,11 +168,10 @@ const RTX_4090: GpuProfile = {
 /**
  * RTX 5090 — Blackwell, 32 GiB, FP8/FP4 first-class.
  *
- * Best fit: Eliza-1 9B at 256k, or 27B at 64k. Blackwell sm_120 is new
- * enough that the Polar/QJL kernels may not be pre-built — the runtime
- * should probe `CAPABILITIES.json` and surface a structured error rather
- * than silently falling back. The runtime caller is responsible for that
- * check; this profile records the *intended* config.
+ * Best current release fit: Eliza-1 4B. Blackwell sm_120 is new enough that
+ * the Polar/QJL kernels may not be pre-built — the runtime should probe
+ * `CAPABILITIES.json` and surface a structured error rather than silently
+ * falling back.
  */
 const RTX_5090: GpuProfile = {
   id: "rtx-5090",
@@ -181,7 +180,7 @@ const RTX_5090: GpuProfile = {
   computeCapability: "sm_120",
   memoryBandwidthGBs: 1792,
   fp8: true,
-  recommendedBundles: ["eliza-1-27b", "eliza-1-9b", "eliza-1-27b-256k"],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -200,12 +199,9 @@ const RTX_5090: GpuProfile = {
 /**
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
- * Best fit: Eliza-1 27B at 1M context (the marquee config). The model is
- * ~17 GiB; KV cache at 1M tokens with QJL K + Polar V is ~80 GiB
- * (~80 KiB/token quantized). That leaves ~40+ GiB of headroom for
- * activations, the drafter, and N parallel slots. KV-spill-to-CPU is
- * explicitly disabled — the whole working set fits in HBM3e and PCIe
- * spill would defeat the point of the H200's bandwidth.
+ * Best current release fit: Eliza-1 4B. H200 still runs the full kernel
+ * verification recipe, but 27B/1M remains a hidden future tier until final
+ * weights and release evidence exist.
  */
 const H200: GpuProfile = {
   id: "h200",
@@ -214,12 +210,7 @@ const H200: GpuProfile = {
   computeCapability: "sm_90",
   memoryBandwidthGBs: 4800,
   fp8: true,
-  recommendedBundles: [
-    "eliza-1-27b-1m",
-    "eliza-1-27b-256k",
-    "eliza-1-27b",
-    "eliza-1-9b",
-  ],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",

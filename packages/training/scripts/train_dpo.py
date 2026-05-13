@@ -14,15 +14,15 @@ Usage:
     # Smoke
     uv run --extra train python scripts/train_dpo.py \
         --registry-key qwen3.5-2b \
-        --sft-checkpoint checkpoints/qwen3-06b-eliza-payload-v3/final \
-        --output-dir checkpoints/qwen3-06b-dpo-smoke \
+        --sft-checkpoint checkpoints/qwen3.5-0.8b-eliza-payload-v3/final \
+        --output-dir checkpoints/qwen3.5-0.8b-dpo-smoke \
         --max-steps 5
 
     # Real run
     uv run --extra train python scripts/train_dpo.py \
-        --registry-key qwen3.5-9b \
-        --sft-checkpoint checkpoints/eliza-1-9b-sft/final \
-        --output-dir checkpoints/eliza-1-9b-dpo
+        --registry-key qwen3.5-4b \
+        --sft-checkpoint checkpoints/eliza-1-4b-sft/final \
+        --output-dir checkpoints/eliza-1-4b-dpo
 """
 
 from __future__ import annotations

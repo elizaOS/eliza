@@ -22,9 +22,9 @@ describe("GPU profiles", () => {
     }
   });
 
-  it("H200 ships the 1M-context bundle as its first recommendation", () => {
+  it("H200 keeps current release tiers first while preserving the 1M kernel profile", () => {
     const h200 = GPU_PROFILES.h200;
-    expect(h200.recommendedBundles[0]).toBe("eliza-1-27b-1m");
+    expect(h200.recommendedBundles[0]).toBe("eliza-1-4b");
     expect(h200.contextSize).toBe(1_048_576);
     expect(h200.kvCacheTypeK).toBe("qjl1_256");
     expect(h200.kvCacheTypeV).toBe("q4_polar");
@@ -37,8 +37,8 @@ describe("GPU profiles", () => {
     const a4090 = GPU_PROFILES["rtx-4090"];
     expect(a3090.vramGb).toBe(24);
     expect(a4090.vramGb).toBe(24);
-    expect(a3090.recommendedBundles[0]).toBe("eliza-1-9b");
-    expect(a4090.recommendedBundles).toContain("eliza-1-27b");
+    expect(a3090.recommendedBundles[0]).toBe("eliza-1-4b");
+    expect(a4090.recommendedBundles).toContain("eliza-1-4b");
     expect(reservedHeadroomGb(a3090)).toBeGreaterThan(0);
     expect(reservedHeadroomGb(a4090)).toBeGreaterThan(0);
   });

@@ -195,11 +195,11 @@ using `qjl+polarq4` as the assumed layout, not f16.
 
 ### MEDIUM — add `eliza-1-4b` to `catalog.ts`
 
-`model_registry.py` has a real, buildable `qwen3-4b` → `eliza-1-4b` entry; the
+`model_registry.py` has a real, buildable `qwen3.5-4b` → `eliza-1-4b` entry; the
 catalog jumps 2B → 9B. The 4B fits an 8 GB phone (compressed cache, ~155k
 ceiling — though the base model caps at 40960) and is a strong 16 GB-GPU
 default (~436k KV ceiling, ~90k even at f16). Once the GGUF is published under
-`elizaos/eliza-1-4b`, add the tier with `contextLength: 32768`, `minRamGb: 6`,
+`elizaos/eliza-1/bundles/4b`, add the tier with `contextLength: 32768`, `minRamGb: 6`,
 `bucket: "small"`. (Out of scope here — no GGUF yet.)
 
 ### MEDIUM — `27b-256k` could surface on 24 GB GPUs
@@ -213,7 +213,7 @@ confirms the spill path meets the text latency budget; otherwise leave it.
 ### LOW / informational — no safe catalog `contextLength` bump for the small tiers
 
 It is tempting to read "0.8B fits 800k tokens of KV on 16 GB" and bump
-`contextLength` from 32768 to something huge. **Don't.** Qwen3-0.8B / 2B have
+`contextLength` from 32768 to something huge. **Don't.** Qwen3.5-0.8B / 2B have
 `max_position_embeddings = 40960`; past that the model produces garbage without
 a YaRN/RoPE-scaled GGUF. The catalog's `32768` is correct. The win is the
 *runtime* selector raising `contextSize` toward 40960 on roomy devices, not the
@@ -325,7 +325,7 @@ error) stays — a slow voice session is worse than a clear "this device can't d
   selector in `recommendation.ts` that raises runtime `dflash.contextSize`
   toward `min(tier.contextLength, baseNativeContext, maxFittingContext)` using
   the `estimateQuantizedKvBytesPerToken` figures; (2) add `eliza-1-4b` to the
-  catalog once `elizaos/eliza-1-4b` ships a GGUF; (3) an opt-in
+  catalog once `elizaos/eliza-1/bundles/4b` ships a GGUF; (3) an opt-in
   `preferAccurateKvWhenHeadroom` branch that picks f16/q8_0 KV on hosts with
   abundant VRAM relative to the chosen model+context; (4) consider surfacing
   `27b-256k` on 24 GB GPUs (gated on a passing on-device spill-latency verify).

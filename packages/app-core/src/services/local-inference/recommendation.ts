@@ -35,9 +35,6 @@ import type {
 const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
-const TIER_9B: Eliza1TierId = "eliza-1-9b";
-const TIER_27B: Eliza1TierId = "eliza-1-27b";
-const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
 
 export type RecommendationPlatformClass =
   | "mobile"
@@ -76,23 +73,23 @@ const SLOT_LADDERS: Record<
   },
   "apple-silicon": {
     TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B],
+    TEXT_LARGE: [TIER_4B, TIER_2B],
   },
   "linux-gpu": {
     TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B],
+    TEXT_LARGE: [TIER_4B, TIER_2B],
   },
   "linux-cpu": {
     TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B],
+    TEXT_LARGE: [TIER_4B, TIER_2B],
   },
   "desktop-gpu": {
     TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B],
+    TEXT_LARGE: [TIER_4B, TIER_2B],
   },
   "desktop-cpu": {
     TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B],
+    TEXT_LARGE: [TIER_4B, TIER_2B],
   },
 };
 
@@ -400,6 +397,7 @@ export function selectRecommendedModelForSlot(
   const budget = resolveBudgetOptions(options);
   const eligible = ladder.filter(
     (model) =>
+      DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
       canFit(hardware, model, catalog, budgetOptionsForModel(model, budget)) &&
       kernelRequirementsSatisfied(model, binaryKernels),
   );

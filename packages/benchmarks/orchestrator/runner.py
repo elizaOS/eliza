@@ -527,21 +527,24 @@ def _publication_quarantine_reason(
 ) -> str | None:
     """Return ``None`` if the result is publishable; otherwise a reason string.
 
-    ``latest/`` is the source of truth for the most recent real benchmark
-    result. Telemetry and sample-size weaknesses are recorded as publication
-    warnings, not quarantine reasons, because hiding successful rows makes the
-    matrix look missing and breaks idempotent tracking.
+    ``latest/`` is the source of truth for the most recent successful real
+    benchmark result. Telemetry and sample-size weaknesses are recorded as
+    publication warnings, not quarantine reasons, because hiding successful
+    rows makes the matrix look missing and breaks idempotent tracking.
     """
     del token_metrics, metrics
     if _is_synthetic_agent(agent):
         return None
     if status == "incompatible":
         return "incompatible_harness"
+    if status != "succeeded":
+        return "unsucceeded_run"
     return None
 
 
 def _publication_warnings(
     *,
+    benchmark_id: str,
     status: str,
     token_metrics: dict[str, Any] | None,
     metrics: dict[str, Any],
@@ -550,17 +553,26 @@ def _publication_warnings(
         return []
     warnings: list[str] = []
     tokens = token_metrics or {}
+    token_telemetry_optional = benchmark_id in {
+        "configbench",
+        "eliza_replay",
+        "evm",
+        "framework",
+        "personality_bench",
+        "social_alpha",
+        "solana",
+    }
     estimate_source = tokens.get("token_estimate_source")
     if estimate_source is not None or any(str(key).startswith("estimated_") for key in tokens):
         source = str(estimate_source or "unknown")
         warnings.append(f"estimated_token_metrics:{source}")
     total_tokens = tokens.get("total_tokens")
     llm_calls = tokens.get("llm_call_count")
-    if total_tokens in (None, 0):
+    if not token_telemetry_optional and total_tokens in (None, 0):
         warnings.append("telemetry_missing_total_tokens")
-    if llm_calls in (None, 0):
+    if not token_telemetry_optional and llm_calls in (None, 0):
         warnings.append(f"telemetry_missing_llm_calls:{llm_calls!r}")
-    elif llm_calls == 1:
+    elif not token_telemetry_optional and llm_calls == 1:
         warnings.append("single_llm_call")
     total_instances = metrics.get("total_instances")
     if isinstance(total_instances, (int, float)) and total_instances <= 1:
@@ -653,6 +665,7 @@ def _write_latest_result_snapshot(
     else:
         target_dir = output_root / "latest"
     publication_warnings = [] if is_synthetic else _publication_warnings(
+        benchmark_id=adapter.id,
         status=status,
         token_metrics=token_metrics,
         metrics=metrics,
@@ -694,9 +707,10 @@ def _write_latest_result_snapshot(
         payload["synthetic"] = True
     snapshot_path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
 
-    # Also prune any stale entry for the same (benchmark, agent) from the
-    # other directories. A run that previously published to ``latest/`` and
-    # this time fails the gate must not leave its stale snapshot behind.
+    # Also prune stale entries from alternate directories. Failed/quarantined
+    # real attempts must not delete a prior successful latest snapshot; latest
+    # is the successful source of truth, while quarantine records the failed
+    # attempt.
     other_dirs = [
         output_root / "latest",
         output_root / "quarantine",
@@ -704,6 +718,8 @@ def _write_latest_result_snapshot(
     ]
     for other in other_dirs:
         if other == target_dir:
+            continue
+        if target_dir.name == "quarantine" and other.name == "latest" and not is_synthetic:
             continue
         if not other.exists():
             continue
@@ -760,8 +776,9 @@ def _rebuild_latest_result_snapshots(
 
     This keeps ``benchmark_results/latest`` idempotent even when a single
     benchmark is rerun, a stale snapshot was manually removed, or a compatibility
-    rule changes. The latest row per ``(benchmark_id, agent)`` is the source of
-    truth; files not represented by SQLite are pruned.
+    rule changes. The latest successful scored row per ``(benchmark_id, agent)``
+    is the source of truth; failed/interrupted attempts do not replace a
+    known-good latest snapshot.
     """
 
     latest_dir = output_root / "latest"
@@ -796,6 +813,7 @@ def _rebuild_latest_result_snapshots(
     latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     latest_by_signature: dict[tuple[str, str, str], dict[str, Any]] = {}
     latest_by_comparison_signature: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
+    quarantine_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     valid_benchmark_ids = set(adapters) if adapters is not None else None
     for row in list_runs(conn, limit=100000):
         benchmark_id = str(row.get("benchmark_id") or "")
@@ -809,6 +827,12 @@ def _rebuild_latest_result_snapshots(
         if not benchmark_id or not agent:
             continue
         if _is_stale_compatibility_incompatible_row(row, adapters):
+            continue
+        is_synthetic = _is_synthetic_agent(agent)
+        if not is_synthetic and str(row.get("status") or "") != "succeeded":
+            key = (benchmark_id, agent)
+            if key not in quarantine_by_key:
+                quarantine_by_key[key] = row
             continue
         key = (benchmark_id, agent)
         if key not in latest_by_key:
@@ -862,6 +886,7 @@ def _rebuild_latest_result_snapshots(
             )
             target_dir = quarantine_dir if quarantine_reason is not None else latest_dir
         publication_warnings = [] if is_synthetic else _publication_warnings(
+            benchmark_id=benchmark_id,
             status=str(row.get("status") or ""),
             token_metrics=token_metrics,
             metrics=metrics,
@@ -922,6 +947,56 @@ def _rebuild_latest_result_snapshots(
                 "status": row.get("status"),
                 "updated_at": payload["updated_at"],
             }
+
+    for (benchmark_id, agent), row in sorted(quarantine_by_key.items()):
+        metrics = row.get("metrics") or {}
+        token_metrics = row.get("token_metrics") or {}
+        quarantine_reason = _publication_quarantine_reason(
+            status=str(row.get("status") or ""),
+            agent=agent,
+            token_metrics=token_metrics,
+            metrics=metrics,
+        ) or "unsucceeded_run"
+        snapshot_path = quarantine_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
+        expected_by_dir[quarantine_dir].add(snapshot_path)
+        payload = {
+            "updated_at": row.get("ended_at") or row.get("started_at") or _utc_now(),
+            "benchmark_id": benchmark_id,
+            "benchmark_directory": row.get("benchmark_directory"),
+            "run_group_id": row.get("run_group_id"),
+            "run_id": row.get("run_id"),
+            "signature": row.get("signature"),
+            "comparison_signature": _comparison_signature_from_parts(
+                benchmark_id=benchmark_id,
+                benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
+                agent=agent,
+                provider=str(row.get("provider") or ""),
+                model=str(row.get("model") or ""),
+                extra_config=row.get("extra_config")
+                if isinstance(row.get("extra_config"), dict)
+                else {},
+            ),
+            "status": row.get("status"),
+            "agent": agent,
+            "provider": row.get("provider"),
+            "model": row.get("model"),
+            "score": row.get("score"),
+            "unit": row.get("unit"),
+            "higher_is_better": row.get("higher_is_better"),
+            "metrics": metrics,
+            "trajectory_summary": row.get("trajectory_summary") or {},
+            "token_metrics": token_metrics,
+            "cache_metrics": row.get("cache_metrics") or {},
+            "performance_metrics": row.get("performance_metrics") or {},
+            "result_json_path": row.get("result_json_path"),
+            "artifacts": row.get("artifacts") or [],
+            "error": row.get("error"),
+            "quarantine_reason": quarantine_reason,
+        }
+        snapshot_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
+            encoding="utf-8",
+        )
 
     for (signature, benchmark_id, agent), row in sorted(latest_by_signature.items()):
         index["latest_by_signature"][f"{signature}::{benchmark_id}::{agent}"] = {

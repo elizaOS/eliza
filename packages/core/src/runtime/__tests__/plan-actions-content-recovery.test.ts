@@ -68,7 +68,9 @@ describe("parsePlannerOutput — PLAN_ACTIONS content-text recovery", () => {
 		const raw: GenerateTextResult = {
 			text: `PLAN_ACTIONS({"action":"TODO","parameters":{}})`,
 			finishReason: "tool-calls",
-			toolCalls: [{ name: "TASKS_SPAWN_AGENT", arguments: { task: "real task" } }],
+			toolCalls: [
+				{ name: "TASKS_SPAWN_AGENT", arguments: { task: "real task" } },
+			],
 			usage: { promptTokens: 50, completionTokens: 10, totalTokens: 60 },
 		};
 
@@ -182,7 +184,11 @@ describe("runPlannerLoop — content-text recovery end-to-end", () => {
 })`,
 						finishReason: "stop",
 						toolCalls: [],
-						usage: { promptTokens: 150, completionTokens: 40, totalTokens: 190 },
+						usage: {
+							promptTokens: 150,
+							completionTokens: 40,
+							totalTokens: 190,
+						},
 					} satisfies Partial<GenerateTextResult> as GenerateTextResult;
 				}
 				return {
@@ -194,11 +200,16 @@ describe("runPlannerLoop — content-text recovery end-to-end", () => {
 			}),
 		};
 
-		const capturedCalls: Array<{ name: string; params?: Record<string, unknown> }> = [];
-		const executeToolCall = vi.fn(async (toolCall: { name: string; params?: Record<string, unknown> }) => {
-			capturedCalls.push(toolCall);
-			return { success: true, text: "Agent spawned." };
-		});
+		const capturedCalls: Array<{
+			name: string;
+			params?: Record<string, unknown>;
+		}> = [];
+		const executeToolCall = vi.fn(
+			async (toolCall: { name: string; params?: Record<string, unknown> }) => {
+				capturedCalls.push(toolCall);
+				return { success: true, text: "Agent spawned." };
+			},
+		);
 
 		const evaluate = vi.fn(async () => ({
 			success: true,
@@ -255,6 +266,7 @@ describe("runPlannerLoop — content-text recovery end-to-end", () => {
 			evaluate,
 		});
 
+		expect(callCount).toBe(1);
 		expect(executeToolCall).not.toHaveBeenCalled();
 		expect(result.finalMessage).toContain("unable");
 	});

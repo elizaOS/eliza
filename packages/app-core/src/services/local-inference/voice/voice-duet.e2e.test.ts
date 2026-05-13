@@ -1,8 +1,8 @@
 /**
  * Real-output end-to-end test for the two-agents-talking-endlessly path the
- * `voice:duet` harness drives. Gated behind `it.skipIf(!realBackendPresent)` —
- * the existing probe (catalog kernels advertised + a fused build). When it
- * runs (a macOS-Metal / linux-fused box with `eliza-1-2b` staged) it boots
+ * `voice:duet` harness drives. Gated behind `ELIZA_REAL_VOICE_E2E=1` plus the
+ * existing probe (catalog kernels advertised + a fused build). When it runs
+ * (a macOS-Metal / linux-fused box with `eliza-1-2b` staged) it boots
  * two `LocalInferenceEngine`s on the same bundle with two characters, wires the
  * `DuetAudioBridge`, seeds agent A, and lets the duet ping-pong; the assertion
  * is that PCM crossed at least the forward direction, no crash. Don't fake a
@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 
 const ASR_RATE = 16_000;
 const realBundleId = "eliza-1-2b";
+const runRealVoiceE2e = process.env.ELIZA_REAL_VOICE_E2E === "1";
 
 /** Probe — lazy import so collection stays cheap when nothing is present. */
 async function probeRealBackend(): Promise<boolean> {
@@ -46,7 +47,7 @@ async function probeRealBackend(): Promise<boolean> {
 
 const realBackendPresent = await probeRealBackend();
 
-describe.skipIf(!realBackendPresent)(
+describe.skipIf(!runRealVoiceE2e || !realBackendPresent)(
   "voice:duet — real eliza-1-2b + fused TTS",
   () => {
     it("boots two engines on the same bundle, wires the duet bridge, and produces audio crossing the loop", async () => {

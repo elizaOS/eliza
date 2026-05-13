@@ -182,6 +182,11 @@ For more information, visit: https://tbench.ai
         help="Dry run - don't actually execute tasks",
     )
     parser.add_argument(
+        "--local-sandbox",
+        action="store_true",
+        help="Run sample tasks in a local temp workspace when Docker is unavailable",
+    )
+    parser.add_argument(
         "--oracle",
         action="store_true",
         help="Run reference solutions instead of using an LLM (validates harness/tests)",
@@ -244,10 +249,15 @@ async def run_cli(args: argparse.Namespace) -> int:
     """Run the CLI with parsed arguments. All runs go through the elizaOS TS bridge."""
     setup_logging(verbose=args.verbose, debug=args.debug)
     model_name = args.model
-    if args.model_provider and "/" not in model_name:
+    if args.model_provider and args.model_provider != "eliza" and "/" not in model_name:
         model_name = f"{args.model_provider}/{model_name}"
-    if args.model_provider:
+    if args.model_provider and args.model_provider != "eliza":
         os.environ["BENCHMARK_MODEL_PROVIDER"] = args.model_provider
+    elif args.model_provider == "eliza":
+        os.environ.setdefault(
+            "BENCHMARK_MODEL_PROVIDER",
+            os.environ.get("ELIZA_PROVIDER") or ("cerebras" if os.environ.get("CEREBRAS_API_KEY") else "openai"),
+        )
     os.environ["BENCHMARK_MODEL_NAME"] = model_name
     os.environ.setdefault("OPENAI_LARGE_MODEL", model_name)
     os.environ.setdefault("OPENAI_SMALL_MODEL", model_name)
@@ -287,6 +297,7 @@ async def run_cli(args: argparse.Namespace) -> int:
         verbose=args.verbose,
         dry_run=args.dry_run,
         oracle=args.oracle,
+        local_sandbox=args.local_sandbox,
     )
 
     # Create runner

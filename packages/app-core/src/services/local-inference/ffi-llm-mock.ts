@@ -75,9 +75,11 @@ function makeHandle(id: number): MockHandle {
  * callback follows the same convention as the real C backend which fires
  * a zero-length step with the EOS flag set after the last real token.
  */
-const SYNTHETIC_TOKENS: ReadonlyArray<
-  { id: number; text: string; isDone: boolean }
-> = [
+const SYNTHETIC_TOKENS: ReadonlyArray<{
+  id: number;
+  text: string;
+  isDone: boolean;
+}> = [
   { id: 1, text: "Hello", isDone: false },
   { id: 2, text: " world", isDone: false },
   { id: 3, text: "!", isDone: false },
@@ -129,7 +131,11 @@ export interface MockState {
  * adapters without needing separate factories.
  */
 export function makeFfiLlmMock(): {
-  ffi: FfiLlmStreamingAbi & FfiDflashStreamingAbi & { llmStreamSupported(): boolean; ttsStreamSupported(): boolean };
+  ffi: FfiLlmStreamingAbi &
+    FfiDflashStreamingAbi & {
+      llmStreamSupported(): boolean;
+      ttsStreamSupported(): boolean;
+    };
   state: MockState;
 } {
   let nextHandleId = 1;
@@ -331,13 +337,14 @@ export function makeFfiLlmMock(): {
     eliza_inference_dflash_stream_close(handle: FfiLlmHandle): void {
       close(handle);
     },
-  // TypeScript `satisfies` verifies the mock covers every required member.
-  // `generate` returns `Promise<number>` which is assignable to
-  // `number | Promise<number>` as declared in the interface.
-  } satisfies FfiLlmStreamingAbi & FfiDflashStreamingAbi & {
-    llmStreamSupported(): boolean;
-    ttsStreamSupported(): boolean;
-  };
+    // TypeScript `satisfies` verifies the mock covers every required member.
+    // `generate` returns `Promise<number>` which is assignable to
+    // `number | Promise<number>` as declared in the interface.
+  } satisfies FfiLlmStreamingAbi &
+    FfiDflashStreamingAbi & {
+      llmStreamSupported(): boolean;
+      ttsStreamSupported(): boolean;
+    };
 
   return { ffi, state };
 }

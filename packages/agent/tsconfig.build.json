@@ -59,7 +59,6 @@
     "src/**/*.test.tsx"
   ],
   "include": [
-    "src",
-    "vite-env.d.ts"
+    "src"
   ]
 }

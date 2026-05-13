@@ -89,9 +89,7 @@ function parseTokenArray(value: unknown): DflashVerifyToken[] | null {
  * Accepts both snake_case (the wire format) and camelCase (already-
  * adapted by a friendly emitter) field names.
  */
-export function parseDflashVerifyEvent(
-  raw: unknown,
-): DflashVerifyEvent | null {
+export function parseDflashVerifyEvent(raw: unknown): DflashVerifyEvent | null {
   if (!raw || typeof raw !== "object") return null;
   const obj = raw as Record<string, unknown>;
   if (obj.kind !== "dflash-verify") return null;
@@ -132,8 +130,7 @@ export function parseDflashVerifyEvent(
   if (rejectIndex === null && correction !== null) return null;
   if (rejectIndex !== null && correction === null) return null;
 
-  const postRaw =
-    obj.postCorrectionTokens ?? obj.post_correction_tokens ?? [];
+  const postRaw = obj.postCorrectionTokens ?? obj.post_correction_tokens ?? [];
   const post = parseTokenArray(postRaw);
   if (!post) return null;
 
@@ -249,7 +246,8 @@ export interface DflashVerifyMetricSample {
 }
 
 const L1_METRIC_PATTERNS = {
-  rejected: /^llamacpp:n_drafted_rejected(?:_total)?(?:\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
+  rejected:
+    /^llamacpp:n_drafted_rejected(?:_total)?(?:\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
   verify:
     /^llamacpp:n_verify_steps(?:_total)?(?:\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
 } as const;
@@ -290,7 +288,6 @@ export function parseDflashVerifyMetrics(
       const labeled = line.includes("{");
       if (labeled) verifyLabeled += value;
       else verifyUnlabeled = value;
-      continue;
     }
   }
 

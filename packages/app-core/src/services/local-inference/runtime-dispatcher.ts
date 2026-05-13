@@ -44,10 +44,12 @@
  * the `onDflashEvent` escape hatch.
  */
 
-import type { FfiStreamingGenerateArgs } from "./ffi-streaming-runner";
-import { FfiStreamingRunner } from "./ffi-streaming-runner";
 import type { LocalInferenceBackend as SelectorBackend } from "./backend-selector";
 import type { DflashStreamEvent } from "./dflash-event-schema";
+import type {
+  FfiStreamingGenerateArgs,
+  FfiStreamingRunner,
+} from "./ffi-streaming-runner";
 import type { VerifierStreamEvent } from "./voice/types";
 
 /**

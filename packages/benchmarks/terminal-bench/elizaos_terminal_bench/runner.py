@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from elizaos_terminal_bench.dataset import TerminalBenchDataset
-from elizaos_terminal_bench.environment import TerminalEnvironment
+from elizaos_terminal_bench.environment import LocalTerminalEnvironment, TerminalEnvironment
 from elizaos_terminal_bench.evaluator import (
     TerminalBenchEvaluator,
     format_report_markdown,
@@ -236,11 +236,7 @@ class TerminalBenchRunner:
         """Run a single task and return the result."""
         if self.config.oracle:
             # Oracle mode: execute the reference solution and then run the test script.
-            env = TerminalEnvironment(
-                image=task.docker_image,
-                timeout_seconds=task.timeout_seconds,
-                network_mode="bridge" if task.network_enabled else "none",
-            )
+            env = self._create_environment(task)
             session = TerminalSession(
                 session_id=f"oracle_{task.task_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
                 task=task,
@@ -276,15 +272,19 @@ class TerminalBenchRunner:
 
         return await self._run_with_bridge(task)
 
-    async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
-        """Run task by routing decisions through the elizaOS TS benchmark bridge."""
-        from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
-
-        env = TerminalEnvironment(
+    def _create_environment(self, task: TerminalTask) -> TerminalEnvironment | LocalTerminalEnvironment:
+        environment_cls = LocalTerminalEnvironment if self.config.local_sandbox else TerminalEnvironment
+        return environment_cls(
             image=task.docker_image,
             timeout_seconds=task.timeout_seconds,
             network_mode="bridge" if task.network_enabled else "none",
         )
+
+    async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
+        """Run task by routing decisions through the elizaOS TS benchmark bridge."""
+        from eliza_adapter.terminal_bench import ElizaBridgeTerminalAgent
+
+        env = self._create_environment(task)
 
         agent: Optional[ElizaBridgeTerminalAgent] = None
         try:

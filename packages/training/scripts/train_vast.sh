@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision a Vast.ai GPU instance, sync the training tree, and run a
 # full-parameter SFT (APOLLO), DPO warmup, or GRPO RL pipeline on a
-# Qwen3.5/3.6 model.
+# Qwen model.
 #
 # Pipeline selection (--pipeline sft|dpo|grpo, default sft):
 #   sft   — run train_local.py with APOLLO + Liger + FSDP (the historical
@@ -19,18 +19,14 @@
 #
 # Default GPU target is auto-selected from REGISTRY_KEY (override via
 # VAST_GPU_TARGET):
-#   qwen3.5-2b  → blackwell6000-1x   (96 GB; 15.5 GB budget = 16% util)
-#   qwen3.5-9b  → blackwell6000-1x   (96 GB; 80 GB budget   = 83% util)
-#   qwen3.6-27b → b200-2x            (~366 GB; 190 GB budget = 52% util)
+#   qwen3.5-0.8b → blackwell6000-1x  (96 GB; smoke/default plenty of headroom)
+#   qwen3.5-2b   → blackwell6000-1x  (96 GB; 15.5 GB budget)
+#   qwen3.5-4b   → blackwell6000-1x  (96 GB; 34 GB budget)
 #
 # Other targets (use VAST_GPU_TARGET=...):
 #   blackwell6000-2x — 2× RTX PRO 6000 Blackwell, 192 GB total. Safe for
-#                      27B at the registry's seq_len=65536 default
-#                      (M35-lowered from 147456). Long-context experiments
-#                      (--max-seq-len > 65k) still need b200-2x.
-#   h100-2x          — 2× H100 SXM/NVL, 160 GB total. Insufficient for 27B
-#                      at the registry budget; OK for 9B as a fallback.
-#   h100-1x / h200-1x — single H100 / H200 alternates for 9B if the
+#                      4B/9B tiers with extra headroom for long-context sweeps.
+#   h100-1x / h200-1x — single H100 / H200 alternates for 4B/9B if the
 #                       Blackwell pool is empty or you want faster bf16.
 #
 # 1B-token wall-time + cost projections (MFU=30%, Liger, FSDP if multi-GPU;
@@ -41,18 +37,10 @@
 #     1× Blackwell 6000 (96 GB)  ~31 h   ~$41    DEFAULT  (cheapest)
 #     1× H100 SXM      (80 GB)   ~11 h   ~$27    fastest cheap
 #     2× B200          (366 GB)   ~3 h   ~$19    overkill but fast
-#   qwen3.5-9b:
-#     1× Blackwell 6000 (96 GB) ~139 h  ~$186    DEFAULT  (cheapest)
-#     1× H100 SXM      (80 GB)   ~51 h  ~$121    nearly 3× faster; 80 GB tight
-#     1× H200 SXM     (141 GB)   ~51 h  ~$162    same wall, more headroom
-#     2× B200          (366 GB)  ~11 h   ~$84    fastest, also cheapish
-#   qwen3.6-27b:
-#     2× B200          (366 GB)  ~33 h  ~$253    DEFAULT (fast + safe)
-#     2× H200 SXM     (282 GB)   ~76 h  ~$485    2× as slow, 2× as expensive
-#     2× Blackwell 6000 (192 GB) ~208 h ~$558    cheapest $/hr, slowest;
-#                                                fits at the registry's
-#                                                seq=65536 default (190 GB
-#                                                budget vs 192 GB cap).
+#   qwen3.5-4b:
+#     1× Blackwell 6000 (96 GB)  ~62 h   ~$83    DEFAULT  (cheapest)
+#     1× H100 SXM      (80 GB)   ~23 h   ~$55    faster, still ample memory
+#     2× B200          (366 GB)   ~6 h   ~$46    overkill but useful for sweeps
 #
 # Required env:
 #   VAST_API_KEY               # NEVER bake this into a committed file —
@@ -62,7 +50,7 @@
 #   HUGGING_FACE_HUB_TOKEN     # for gated Qwen access
 #
 # Optional env:
-#   REGISTRY_KEY               # default: qwen3.6-27b
+#   REGISTRY_KEY               # default: qwen3.5-4b
 #   RUN_NAME                   # default: <registry-key>-apollo
 #   VAST_GPU_TARGET            # default: auto-picked from REGISTRY_KEY
 #   VAST_INSTANCE_LABEL        # default: eliza-train-vast-${REGISTRY_KEY//./-}
@@ -84,7 +72,7 @@
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
 #   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
-#   BENCH_MAX_PER_BUCKET       # default: 200 (auto-lowered to 100 for 27B)
+#   BENCH_MAX_PER_BUCKET       # default: 200
 #   FSDP_WORLD_SIZE            # default: matches num_gpus of selected
 #                                VAST_GPU_TARGET (1 for *-1x, 2 for *-2x)
 #   CONFIRM_TEARDOWN           # set to 1 to allow `teardown` to actually
@@ -111,7 +99,7 @@
 #   bash scripts/train_vast.sh quantize                         # remote: run QUANTIZE_AFTER list (SFT only)
 #   bash scripts/train_vast.sh bench                            # remote: base + fine-tuned bench
 #   bash scripts/train_vast.sh fetch                            # rsync checkpoints + benchmarks back
-#   bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b --epochs 1 [--bootstrap rsync|hf] [--pipeline sft|dpo|grpo] [--dry-run]
+#   bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-4b --epochs 1 [--bootstrap rsync|hf] [--pipeline sft|dpo|grpo] [--dry-run]
 #                                                               # provision + sync (or HF download) + run in one shot
 #   bash scripts/train_vast.sh bootstrap-from-hf [--data-repo elizaos/eliza-1-training] \
 #                                                [--pipeline-repo elizaos/eliza-1-pipeline]
@@ -125,8 +113,8 @@
 # Pipeline-specific examples (--pipeline / PIPELINE env defaults to sft):
 #   bash scripts/train_vast.sh --pipeline grpo provision-and-train \
 #       --registry-key qwen3.5-2b --dry-run
-#   PIPELINE=grpo DPO_CHECKPOINT=checkpoints/qwen3-5-9b-dpo/final \
-#       bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-9b
+#   PIPELINE=grpo DPO_CHECKPOINT=checkpoints/qwen3-5-4b-dpo/final \
+#       bash scripts/train_vast.sh provision-and-train --registry-key qwen3.5-4b
 #
 # Or `bash scripts/train_vast.sh full` for the whole flow.
 #
@@ -224,7 +212,7 @@ if [ -n "$_seen_registry_key" ]; then
 fi
 unset _seen_pipeline _seen_registry_key
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-4b}"
 # PIPELINE selects which training stage the launcher drives end-to-end on the
 # remote box. Default = SFT (the historical behaviour); --pipeline dpo|grpo
 # overrides via the CLI pre-scan above or via the PIPELINE env var.
@@ -232,25 +220,19 @@ PIPELINE="${PIPELINE:-sft}"
 
 # Auto-pick the GPU target and FSDP world size from (PIPELINE, REGISTRY_KEY).
 # SFT defaults (cheapest fit for full-parameter Liger+APOLLO):
-#   2B/9B → blackwell6000-1x (96 GB)
-#   27B   → b200-2x          (366 GB — 192 GB blackwell-2x is too tight)
+#   0.8B/2B/4B → blackwell6000-1x (96 GB)
 # GRPO defaults (verl splits actor train + rollout across the device pool;
 # per RL_STRATEGY.md hardware budgets):
 #   2B  → h200-2x  (1 train + 1 rollout)
-#   9B  → h200-4x  (1 train + 3 rollout shards)
-#   27B → h200-8x  (4 train + 4 rollout)
+#   4B  → h200-2x  (1 train + 1 rollout)
 # DPO defaults use the same SFT targets — DPO is forward+backward over the
 # preference pairs, no rollout, so it fits in the SFT memory budget.
 case "$PIPELINE" in
   sft|dpo)
     case "$REGISTRY_KEY" in
-      qwen3.5-2b|qwen3.5-9b)
+      qwen3.5-0.8b|qwen3.5-2b|qwen3.5-4b)
         DEFAULT_GPU_TARGET="blackwell6000-1x"
         DEFAULT_FSDP_WORLD_SIZE=1
-        ;;
-      qwen3.6-27b)
-        DEFAULT_GPU_TARGET="b200-2x"
-        DEFAULT_FSDP_WORLD_SIZE=2
         ;;
       *)
         DEFAULT_GPU_TARGET="blackwell6000-2x"
@@ -264,17 +246,13 @@ case "$PIPELINE" in
         DEFAULT_GPU_TARGET="h200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
-      qwen3.5-9b)
-        DEFAULT_GPU_TARGET="h200-4x"
-        DEFAULT_FSDP_WORLD_SIZE=4
-        ;;
-      qwen3.6-27b)
-        DEFAULT_GPU_TARGET="h200-8x"
-        DEFAULT_FSDP_WORLD_SIZE=8
+      qwen3.5-4b)
+        DEFAULT_GPU_TARGET="h200-2x"
+        DEFAULT_FSDP_WORLD_SIZE=2
         ;;
       *)
-        DEFAULT_GPU_TARGET="h200-4x"
-        DEFAULT_FSDP_WORLD_SIZE=4
+        DEFAULT_GPU_TARGET="h200-2x"
+        DEFAULT_FSDP_WORLD_SIZE=2
         ;;
     esac
     ;;
@@ -320,16 +298,7 @@ DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
-# native_tool_call_bench at --max-per-bucket 200 with --max-new-tokens=512 generates
-# ~600 forward passes per bucket × 4 buckets × 5 model variants ≈ 12k
-# generations. On a 27B bf16 model this is unnecessarily slow; cap to
-# 100/bucket for 27B unless caller overrides.
-if [ -z "${BENCH_MAX_PER_BUCKET:-}" ]; then
-  case "$REGISTRY_KEY" in
-    qwen3.6-27b) BENCH_MAX_PER_BUCKET=100 ;;
-    *)           BENCH_MAX_PER_BUCKET=200 ;;
-  esac
-fi
+BENCH_MAX_PER_BUCKET="${BENCH_MAX_PER_BUCKET:-200}"
 
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519.pub}"
 REMOTE_TRAIN_DIR="/workspace/training"
@@ -487,7 +456,7 @@ provision() {
   # Log a one-liner so the operator sees the $/hr delta before billing.
   if [ "$PIPELINE" = "grpo" ]; then
     log_warn "GRPO pipeline allocates $VAST_GPU_TARGET — meaningfully pricier than SFT."
-    log_warn "Per RL_STRATEGY.md: 2B ~24h, 9B ~24-48h, 27B ~48h on H200. Plan budget accordingly."
+    log_warn "Per RL_STRATEGY.md: active 2B/4B GRPO timings still need H200 evidence before publish."
   fi
 
   # Dry-run support: print the planned action and exit. Used by smoke
@@ -624,28 +593,12 @@ run_remote() {
     echo "[train_vast] [run] SMOKE_MODE=1 — capping at $n samples, seq=$seq"
   fi
 
-  # Hardware floor for 27B. The smoke runs (2026-05-04) confirmed that
-  # 2x RTX PRO 6000 Blackwell (96 GB/GPU, 192 GB total) OOMs even at seq=2048
-  # under FSDP-2 with APOLLO-Mini + Liger + FA3 + grad ckpt. The empirical
-  # backward all-gather peak overshoots memory_calc's static estimate by
-  # ~25 GB on this hardware tier. Refuse the combo and point operators at
-  # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
-  # FSDP-4 leaves real headroom).
-  if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
-     && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
-     && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
-    log_err "27B on blackwell6000-2x has been empirically shown to OOM"
-    log_err "(smoke 2026-05-04 OOM'd at seq=2048 with all optimizations on)."
-    log_err "Use VAST_GPU_TARGET=b200-2x (default), h200-2x, or blackwell6000-4x."
-    log_err "Set ELIZA_FORCE_27B_BLACKWELL2X=1 to bypass and accept OOM risk."
-    exit 2
-  fi
   echo "[train_vast] [run] launching APOLLO full-finetune (registry=$REGISTRY_KEY run=$RUN_NAME world=$FSDP_WORLD_SIZE$([ -n "$extra_train_flags" ] && echo " smoke") )"
   # Heredoc through bash -lc so the remote process tree dies when we
   # disconnect. For real long-running training, run this inside `tmux new
   # -d -s train 'bash scripts/train_vast.sh run'` on the local side.
   # APOLLO is the canonical optimizer for ALL eliza-1 sizes (see
-  # model_registry.py: 2B/9B → apollo_mini, 27B → apollo_mini @ rank=512).
+  # model_registry.py: 0.8B/2B/4B all route through APOLLO/APOLLO-Mini.
   # train_local.py builds it via _ElizaSFTTrainer.create_optimizer, which
   # routes 2-D weights to APOLLO's projector + everything else to APOLLO's
   # unprojected parameter group.
@@ -924,8 +877,7 @@ provision_and_train() {
         # against the same auto-pick table as the runtime default block.
         local _sft_default
         case "$REGISTRY_KEY" in
-          qwen3.5-2b|qwen3.5-9b) _sft_default="blackwell6000-1x" ;;
-          qwen3.6-27b)           _sft_default="b200-2x" ;;
+          qwen3.5-0.8b|qwen3.5-2b|qwen3.5-4b) _sft_default="blackwell6000-1x" ;;
           *)                     _sft_default="blackwell6000-2x" ;;
         esac
         log "  3. run_grpo_remote (bash scripts/train_grpo_verl.sh \\"
@@ -934,7 +886,7 @@ provision_and_train() {
         log "       --output-dir checkpoints/$RUN_NAME \\"
         log "       --gpus $FSDP_WORLD_SIZE)"
         log_warn "[provision-and-train] GRPO cost note: $VAST_GPU_TARGET on Vast is meaningfully pricier than the SFT default ($_sft_default)."
-        log_warn "[provision-and-train] Per RL_STRATEGY.md: 2B ~24h, 9B ~24-48h, 27B ~48h on H200."
+        log_warn "[provision-and-train] Per RL_STRATEGY.md: 2B/4B GRPO needs real H200 timing before publish."
         ;;
     esac
     log "[provision-and-train] dry-run complete — no instance created."
@@ -1210,9 +1162,9 @@ print_help() {
 
 Global flags (recognized at any position, also captured into PIPELINE env):
   --pipeline sft|dpo|grpo                      Default: sft. Selects training stage.
-                                               grpo allocates h200-{2,4,8}x (or b200
+                                               grpo allocates h200-2x (or b200
                                                fallback) and runs train_grpo_verl.sh.
-  --registry-key K                             Override REGISTRY_KEY (e.g. qwen3.5-9b)
+  --registry-key K                             Override REGISTRY_KEY (e.g. qwen3.5-4b)
   --dry-run                                    Print the planned GPU SKU + remote
                                                command and exit (no Vast spend).
 

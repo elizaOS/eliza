@@ -168,7 +168,17 @@ Always respond with valid JSON containing your action. You may include a "reason
             else:
                 json_str = response.strip()
 
-            data = json.loads(json_str)
+            try:
+                data = json.loads(json_str)
+            except json.JSONDecodeError:
+                # Some harnesses occasionally insert raw control characters
+                # inside otherwise-valid JSON keys/values, e.g.
+                # {"action": "\nADVANCE_DAY"}. Strip them and parse again.
+                cleaned = "".join(ch for ch in json_str if ord(ch) >= 32).strip()
+                try:
+                    data, _ = json.JSONDecoder().raw_decode(cleaned)
+                except json.JSONDecodeError:
+                    data = json.loads(cleaned)
             if not isinstance(data, dict):
                 return None, {}
             data = {str(k).strip(): v for k, v in data.items()}
@@ -187,7 +197,7 @@ Always respond with valid JSON containing your action. You may include a "reason
                 or data.get("command")
                 or data.get("tool_name")
                 or ""
-            ).upper()
+            ).strip().upper()
 
             # Map to ActionType
             action_map = {

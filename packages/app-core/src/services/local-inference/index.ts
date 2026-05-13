@@ -86,16 +86,16 @@ export {
   selectRecommendedModels,
 } from "./recommendation";
 export {
-  dispatchGenerate,
   type DispatchGenerateInput,
+  dispatchGenerate,
   type HttpStreamingAdapter,
   type InferenceStreamEvent,
 } from "./runtime-dispatcher";
 export {
-  inferencePlatformClass,
-  inferenceRuntimeMode,
   type InferenceRuntimeMode,
   type InferenceRuntimeModeInput,
+  inferencePlatformClass,
+  inferenceRuntimeMode,
   isCapacitorNativeRuntime,
   readRuntimeModeEnvOverride,
   type SupportedHostPlatform,

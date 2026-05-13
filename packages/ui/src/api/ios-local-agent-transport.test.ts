@@ -79,6 +79,28 @@ describe("iOS local agent transport bridge", () => {
     });
   });
 
+  it("routes iOS IPC local-agent URLs through the same in-process transport", async () => {
+    const { iosInProcessAgentTransportForUrl } = await import(
+      "./ios-local-agent-transport"
+    );
+
+    const transport = await iosInProcessAgentTransportForUrl(
+      "eliza-local-agent://ipc/api/health",
+    );
+    expect(transport).toBeTruthy();
+
+    const response = await transport?.request(
+      "eliza-local-agent://ipc/api/health",
+      { method: "GET" },
+    );
+
+    await expect(response?.json()).resolves.toMatchObject({
+      localAgent: {
+        mode: "ios-local",
+      },
+    });
+  });
+
   it("bridges direct relative fetch calls when iOS local mode owns the API base", async () => {
     const originalFetch = vi.fn(async () => {
       throw new Error("direct fetch should not run");
@@ -86,6 +108,30 @@ describe("iOS local agent transport bridge", () => {
     vi.stubGlobal("fetch", originalFetch);
     vi.stubGlobal("window", {
       __ELIZA_API_BASE__: "http://127.0.0.1:31337",
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+    });
+
+    const { installIosLocalAgentFetchBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentFetchBridge();
+
+    const response = await fetch("/api/local-agent/capabilities");
+
+    expect(originalFetch).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      mode: "ios-local",
+    });
+  });
+
+  it("bridges direct relative fetch calls when iOS owns the IPC API identity", async () => {
+    const originalFetch = vi.fn(async () => {
+      throw new Error("direct fetch should not run");
+    });
+    vi.stubGlobal("fetch", originalFetch);
+    vi.stubGlobal("window", {
+      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
       location: { href: "capacitor://localhost/" },
       navigator: { userAgent: "vitest" },
     });
@@ -174,7 +220,10 @@ describe("iOS local agent transport bridge", () => {
     });
 
     expect(start).toHaveBeenCalledWith(
-      expect.objectContaining({ engine: "bun" }),
+      expect.objectContaining({
+        engine: "bun",
+        env: expect.not.objectContaining({ ELIZA_API_BIND: expect.anything() }),
+      }),
     );
     expect(response).toMatchObject({
       status: 200,

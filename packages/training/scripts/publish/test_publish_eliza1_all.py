@@ -38,11 +38,11 @@ def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
 
 
 def test_bundle_dry_run_missing_bundle_is_pending():
-    out = P._bundle_dry_run("9b", Path("/nonexistent/eliza-1-9b.bundle"))
+    out = P._bundle_dry_run("4b", Path("/nonexistent/eliza-1-4b.bundle"))
     assert out.status == "pending"
     assert out.repo == "elizaos/eliza-1"
     assert out.kind == "model-bundle"
-    assert "9b:" in out.detail
+    assert "4b:" in out.detail
 
 
 def test_bundle_dry_run_red_gate_is_pending(tmp_path, monkeypatch):

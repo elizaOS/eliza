@@ -1,4 +1,4 @@
-import { ModelType, type AgentRuntime } from "@elizaos/core";
+import { type AgentRuntime, ModelType } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const modeState = vi.hoisted(() => ({ mode: "local" }));
@@ -9,6 +9,7 @@ const engineState = vi.hoisted(() => ({
   conversation: vi.fn(() => null),
   currentModelPath: vi.fn(() => null),
   embed: vi.fn(async () => [[0.1, 0.2]]),
+  ensureActiveBundleVoiceReady: vi.fn(async () => undefined),
   generate: vi.fn(async () => "ok"),
   generateInConversation: vi.fn(async () => ({
     slotId: "slot-0",
@@ -89,6 +90,7 @@ interface Registration {
   modelType: string | number;
   provider: string;
   priority?: number;
+  handler: unknown;
 }
 
 function makeRuntime(): {
@@ -107,7 +109,12 @@ function makeRuntime(): {
         provider: string,
         priority?: number,
       ) => {
-        registrations.push({ modelType, provider, priority });
+        registrations.push({
+          modelType,
+          provider,
+          priority,
+          handler: _handler,
+        });
       },
     ),
     registerService: vi.fn(),
@@ -134,31 +141,31 @@ describe("ensureLocalInferenceHandler", () => {
 
     expect(registrations).toEqual(
       expect.arrayContaining([
-        {
+        expect.objectContaining({
           modelType: ModelType.TEXT_SMALL,
           provider: "eliza-local-inference",
           priority: 0,
-        },
-        {
+        }),
+        expect.objectContaining({
           modelType: ModelType.TEXT_LARGE,
           provider: "eliza-local-inference",
           priority: 0,
-        },
-        {
+        }),
+        expect.objectContaining({
           modelType: ModelType.TEXT_EMBEDDING,
           provider: "eliza-local-inference",
           priority: 0,
-        },
-        {
+        }),
+        expect.objectContaining({
           modelType: ModelType.TEXT_TO_SPEECH,
           provider: "eliza-local-inference",
           priority: 0,
-        },
-        {
+        }),
+        expect.objectContaining({
           modelType: ModelType.TRANSCRIPTION,
           provider: "eliza-local-inference",
           priority: 0,
-        },
+        }),
       ]),
     );
   });
@@ -181,5 +188,41 @@ describe("ensureLocalInferenceHandler", () => {
     await ensureLocalInferenceHandler(runtime);
 
     expect(registrations).toHaveLength(firstCount);
+  });
+
+  it("renders v5 messages into a non-empty local prompt", async () => {
+    const { registrations, runtime } = makeRuntime();
+    engineState.hasLoadedModel.mockReturnValue(true);
+
+    await ensureLocalInferenceHandler(runtime);
+    const registration = registrations.find(
+      (entry) => entry.modelType === ModelType.TEXT_SMALL,
+    );
+    const handler = registration?.handler as
+      | ((
+          runtime: AgentRuntime,
+          params: Record<string, unknown>,
+        ) => Promise<string>)
+      | undefined;
+    expect(handler).toBeDefined();
+
+    await handler?.(runtime, {
+      messages: [
+        { role: "system", content: "You are Eliza." },
+        { role: "user", content: "hello. say hello back" },
+      ],
+      maxTokens: 32,
+      temperature: 0.1,
+      topP: 0.9,
+    });
+
+    expect(engineState.generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "system:\nYou are Eliza.\n\nuser:\nhello. say hello back",
+        maxTokens: 32,
+        temperature: 0.1,
+        topP: 0.9,
+      }),
+    );
   });
 });

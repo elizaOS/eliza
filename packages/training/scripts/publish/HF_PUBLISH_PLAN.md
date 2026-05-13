@@ -46,7 +46,7 @@ the DATASETS and FINETUNE workstreams produce them.
 > Qwen3.5 family — `Qwen/Qwen3.5-0.8B` → new `eliza-1-0_8b` tier (the small
 > default; published Hub base, no "substitute" caveat needed), `Qwen/Qwen3.5-2B`
 > → `eliza-1-2b` (already in the registry). The DFlash drafter for the
-> Qwen3.5/3.6 target tiers (`2b`/`9b`/`27b`/`27b-256k`/`27b-1m`) is distilled
+> Qwen3.5 active target tiers (`0_8b`/`2b`/`4b`) is distilled
 > from `Qwen/Qwen3.5-0.8B`; it must share the targets' 248320-token Qwen3.5
 > tokenizer, so the older text defaults `Qwen/Qwen3-{0.6B,1.7B}` are not valid
 > for Eliza-1 text tiers. `Qwen3.5-0.8B` is the published small base;

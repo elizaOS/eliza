@@ -70,14 +70,16 @@ distribution tracks the target's; logit KD is the direct way to optimize
 for that. `packages/training/scripts/distill_dflash_drafter.py` implements
 the recipe:
 
-- **Student base:** a small Qwen3.x model from the same family as the text
+- **Student base:** a small Qwen3.5 model from the same family as the text
   backbone, so the tokenizers are byte-identical (the script asserts this;
   the runtime `dflash-doctor` enforces the catalog-level version via
-  `tokenizerFamily`). Sizes: `drafter-0_6b`/`drafter-1_7b` ≈ 0.6B base
-  (quantized to ~0.15–0.35 GB), `drafter-9b`/`drafter-27b` ≈ 1.7B base.
+  `tokenizerFamily`). Sizes: `drafter-0_8b`/`drafter-2b` use the Qwen3.5
+  0.8B student path where it fits (quantized to ~0.15–0.35 GB);
+  `drafter-9b`/`drafter-27b` use the smallest measured Qwen3.5 student that
+  stays above the acceptance gate.
   Pick the smallest student whose measured acceptance window stays above
-  the tier's gate (`ACCEPTANCE_GATE` in the script: 0.45 for `0_6b`, 0.50
-  for `1_7b`, 0.55 for `9b`/`27b`).
+  the tier's gate (`ACCEPTANCE_GATE` in the script: 0.45 for `0_8b`, 0.50
+  for `2b`, 0.55 for `9b`/`27b`).
 - **Objective:** top-k forward KL on the target's logits plus a small
   ground-truth cross-entropy floor (`ce_weight` default 0.1):
   `loss = (1−ce_w)·T²·KL(p_t‖p_s) + ce_w·CE(z_s, y)`, restricted to the

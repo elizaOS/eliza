@@ -71,7 +71,7 @@ const { result } = await ElizaBunRuntime.call({
 // Check ready state, current model, throughput.
 const status = await ElizaBunRuntime.getStatus();
 
-// Tear down the runtime. Releases the JSContext, cancels HTTP listeners.
+// Tear down the runtime. Releases the JSContext or full Bun engine host.
 await ElizaBunRuntime.stop();
 ```
 
@@ -115,6 +115,7 @@ The plugin emits two Capacitor events:
   envelope.
 - No `worker_threads.Worker` support in the compatibility host.
 - No `child_process` — sandboxed out.
-- HTTP-server bodies are buffered, not streamed.
+- `http_serve_*` is disabled on iOS. Foreground and route traffic uses
+  Capacitor/engine IPC instead of a WebView-visible localhost listener.
 - `bun:ffi.dlopen` is forbidden. The only FFI surface is the llama
   bridge.

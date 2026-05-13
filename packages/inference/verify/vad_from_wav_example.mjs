@@ -23,7 +23,7 @@ const DEFAULT_BUNDLE = path.join(
   ".eliza",
   "local-inference",
   "models",
-  "eliza-1-0_6b.bundle",
+  "eliza-1-0_8b.bundle",
 );
 const DEFAULT_WAV = path.join(
   REPO_ROOT,
@@ -33,7 +33,7 @@ const DEFAULT_WAV = path.join(
   "local-e2e",
   "2026-05-11",
   "audio",
-  "tts-0_6b-hello.wav",
+  "tts-0_8b-hello.wav",
 );
 const DEFAULT_REPORT = path.join(
   REPO_ROOT,

@@ -1655,6 +1655,11 @@ export async function resolvePlugins(
           }
         }
       } else if (isOfficialElizaPlugin) {
+        // Mobile bundles have no node_modules tree. If the plugin wasn't
+        // pre-registered in STATIC_ELIZA_PLUGINS it can't be loaded — skip it.
+        if (process.env.ELIZA_MOBILE_PLATFORM) {
+          return null;
+        }
         // Eliza plugins can resolve either from bundled local wrappers
         // under eliza-dist/plugins/* or from packaged node_modules.
         mod = await importOfficialPluginFromNodeModules();

@@ -82,6 +82,12 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # handlers. Hermes/OpenClaw rows were previously scored against the
     # Perfect oracle fallback, which is not a real harness comparison.
     "configbench": ("eliza",),
+    # REALM currently has a real Eliza bridge adapter only. Hermes/OpenClaw
+    # rows previously used the Eliza bridge under different labels.
+    "realm": ("eliza",),
+    # MINT currently supports the Eliza TS bridge or direct provider calls, but
+    # not native Hermes/OpenClaw agent loops.
+    "mint": ("eliza",),
     # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
     # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
     # misleading until real per-harness framework drivers exist.
@@ -133,7 +139,10 @@ def _make_registry_adapter(
 ) -> BenchmarkAdapter:
     def command_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
         model = type("ModelSpecShim", (), {"provider": ctx.request.provider, "model": ctx.request.model, "temperature": None})()
-        return list(build_command(ctx.output_root, model, dict(ctx.request.extra_config)))
+        extra_config = dict(ctx.request.extra_config)
+        extra_config.setdefault("agent", ctx.request.agent)
+        extra_config.setdefault("harness", ctx.request.agent)
+        return list(build_command(ctx.output_root, model, extra_config))
 
     def result_locator(ctx: ExecutionContext, adapter: BenchmarkAdapter, benchmark_output_root: Path) -> Path | None:
         try:
@@ -1121,6 +1130,9 @@ def _score_from_woobench(path: Path) -> ScoreSummary:
         metrics={
             "overall_score": data.get("overall_score"),
             "revenue_efficiency": data.get("revenue_efficiency"),
+            "revenue_score": data.get("revenue_score"),
+            "price_discipline_score": data.get("price_discipline_score"),
+            "conversion_efficiency_score": data.get("conversion_efficiency_score"),
             "resilience_score": data.get("resilience_score"),
             "failed_scenarios": data.get("failed_scenarios"),
             "total_revenue": total_revenue,
@@ -1579,9 +1591,59 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mint": {
             "agent": "eliza",
+            "categories": ["reasoning"],
+            "max_tasks": 1,
+            "max_turns": 3,
+            "timeout": 60,
+            "no_ablation": True,
         },
         "mind2web": {
             "max_tasks": 1,
+        },
+        "configbench": {
+            "limit": 1,
+        },
+        "lifeops_bench": {
+            "suite": "smoke",
+            "limit": 2,
+            "concurrency": 1,
+            "seeds": 1,
+        },
+        "realm": {
+            "max_tasks": 1,
+            "max_steps": 3,
+            "timeout": 60000,
+        },
+        "hyperliquid_bench": {
+            "max_steps": 1,
+        },
+        "hyperliquidbench": {
+            "max_steps": 1,
+        },
+        "gsm8k": {
+            "limit": 2,
+            "max_tokens": 256,
+        },
+        "humaneval": {
+            "limit": 2,
+            "max_tokens": 256,
+            "timeout_s": 5,
+        },
+        "mmlu": {
+            "limit": 2,
+            "max_tokens": 8,
+        },
+        "mt_bench": {
+            "limit": 1,
+            "max_tokens": 256,
+            "judge_max_tokens": 256,
+            "judge_provider": "cerebras",
+            "judge_model": "gpt-oss-120b",
+            "judge_api_key_env": "CEREBRAS_API_KEY",
+        },
+        "tau_bench": {
+            "max_tasks": 1,
+            "sample": True,
         },
         "terminal_bench": {
             "max_tasks": 1,
@@ -1595,6 +1657,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "visualwebbench": {
             "max_tasks": 1,
             "task_types": "web_caption",
+        },
+        "abliteration-robustness": {
+            "max_examples": 2,
+            "max_new_tokens": 128,
         },
         "social_alpha": {
             "system": "eliza",
@@ -1757,6 +1823,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             result_patterns=["hyperliquid_bench-*.json", "runs/hyperliquid_bench-*.json"],
             env_builder=_command_hyperliquid_env,
             score_extractor=score_extractor_factory.for_benchmark("hyperliquid_bench"),
+            default_extra_config={"max_steps": 1},
         ),
         _make_extra_adapter(
             adapter_id="adhdbench",
@@ -1769,6 +1836,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             # fallback was picking traces and the scorer returned None.
             result_patterns=["adhdbench_summary_*.json"],
             score_extractor=_score_from_adhd,
+            default_extra_config={"mode": "quick", "ids": ["L0-002"]},
         ),
         _make_extra_adapter(
             adapter_id="configbench",
@@ -1779,6 +1847,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             env_builder=_env_configbench,
             result_patterns=["configbench-results-*.json", "results/configbench-results-*.json"],
             score_extractor=_score_from_configbench,
+            default_extra_config={"limit": 1},
             default_timeout_seconds=14400,
         ),
         _make_extra_adapter(
@@ -1797,6 +1866,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             },
             result_patterns=["experience-results.json", "*.json"],
             score_extractor=_score_from_experience,
+            default_extra_config={
+                "experiences": 25,
+                "queries": 2,
+                "learning_cycles": 1,
+                "seed": 1,
+            },
         ),
         _make_extra_adapter(
             adapter_id="app-eval",
@@ -1843,13 +1918,13 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=_score_from_loca_bench,
             env_builder=_env_loca_bench,
             default_extra_config={
-                "max_steps": 1,
-                "max_tool_uses": 5,
+                "max_steps": 12,
+                "max_tool_uses": 25,
                 "max_retries": 1,
-                "timeout": 120,
+                "timeout": 360,
                 "context_summary": True,
-                "max_context_size": 131072,
-                "reset_size": 65536,
+                "max_context_size": 32768,
+                "reset_size": 16384,
             },
             default_timeout_seconds=7200,
         ),
@@ -1959,6 +2034,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             env_builder=_env_evm,
             result_patterns=["metrics/evm_*_metrics.json"],
             score_extractor=_score_from_evm,
+            default_extra_config={"max_messages": 2},
         ),
         _make_extra_adapter(
             adapter_id="solana",

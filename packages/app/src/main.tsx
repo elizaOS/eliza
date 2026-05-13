@@ -166,9 +166,7 @@ declare global {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
-    __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (
-      event: Record<string, unknown>,
-    ) => void;
+    __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
 
@@ -224,6 +222,8 @@ const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
 const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
+const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
+  "In one short sentence, confirm the iOS full Bun local backend is running.";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
@@ -485,11 +485,14 @@ async function fetchIosFullBunSmokeJson<T>(
         const controller = new AbortController();
         const timer = window.setTimeout(() => controller.abort(), timeoutMs);
         try {
-          const response = await fetch(`${MOBILE_LOCAL_AGENT_API_BASE}${path}`, {
-            ...init,
-            headers,
-            signal: init?.signal ?? controller.signal,
-          });
+          const response = await fetch(
+            `${MOBILE_LOCAL_AGENT_API_BASE}${path}`,
+            {
+              ...init,
+              headers,
+              signal: init?.signal ?? controller.signal,
+            },
+          );
           status = response.status;
           text = await response.text();
         } finally {
@@ -516,6 +519,72 @@ async function fetchIosFullBunSmokeJson<T>(
   }
 }
 
+async function fetchIosFullBunSmokeText(
+  label: string,
+  path: string,
+  init?: RequestInit,
+  timeoutMs = IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+): Promise<string> {
+  const headers = new Headers(init?.headers);
+  const method = (init?.method ?? "GET").toString().trim().toUpperCase();
+  const body =
+    method === "GET" || method === "HEAD"
+      ? null
+      : typeof init?.body === "string"
+        ? init.body
+        : init?.body == null
+          ? null
+          : String(init.body);
+  const nativeRequest = window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__;
+  let status: number | undefined;
+  let text: string | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    window.setTimeout(() => {
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  await Promise.race([
+    (async () => {
+      if (typeof nativeRequest === "function") {
+        const nativeResponse = await nativeRequest({
+          method,
+          path,
+          headers: Object.fromEntries(headers.entries()),
+          body,
+          timeoutMs,
+        });
+        status = nativeResponse.status;
+        text = nativeResponse.body;
+      } else {
+        const controller = new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+        try {
+          const response = await fetch(
+            `${MOBILE_LOCAL_AGENT_API_BASE}${path}`,
+            {
+              ...init,
+              headers,
+              signal: init?.signal ?? controller.signal,
+            },
+          );
+          status = response.status;
+          text = await response.text();
+        } finally {
+          window.clearTimeout(timer);
+        }
+      }
+    })(),
+    timeout,
+  ]);
+  if (typeof status !== "number" || typeof text !== "string") {
+    throw new Error(`${label} did not return a complete response`);
+  }
+  if (status < 200 || status >= 300) {
+    throw new Error(`${label} returned HTTP ${status}: ${text.slice(0, 500)}`);
+  }
+  return text;
+}
+
 function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} did not return an object`);
@@ -537,7 +606,10 @@ function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   }
 }
 
-function assertSmokeObject(value: unknown, label: string): Record<string, unknown> {
+function assertSmokeObject(
+  value: unknown,
+  label: string,
+): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error(`${label} did not return an object`);
   }
@@ -642,13 +714,15 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
           ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
           ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP: "1",
           ELIZA_HEADLESS: "1",
-          ELIZA_API_BIND: "127.0.0.1",
+          ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
           LOG_LEVEL: "error",
         },
       }),
     );
     if (!started.ok) {
-      throw new Error(started.error ?? "ElizaBunRuntime.start returned ok=false");
+      throw new Error(
+        started.error ?? "ElizaBunRuntime.start returned ok=false",
+      );
     }
 
     await writeIosFullBunSmokeResult({
@@ -709,10 +783,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     const directHealth = parseIosFullBunSmokeHttpJson<{
       ready?: unknown;
       runtime?: unknown;
-    }>(
-      "Direct full Bun bridge /api/health",
-      directHealthResponse.result,
-    );
+    }>("Direct full Bun bridge /api/health", directHealthResponse.result);
     if (directHealth.ready !== true || directHealth.runtime !== "ok") {
       throw new Error(
         `Direct full Bun bridge /api/health returned unexpected body: ${JSON.stringify(directHealth)}`,
@@ -756,9 +827,15 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
     );
     assertSmokeArray(localInferenceHub.catalog, "local-inference hub catalog");
-    assertSmokeArray(localInferenceHub.installed, "local-inference hub installed");
+    const hubInstalled = assertSmokeArray(
+      localInferenceHub.installed,
+      "local-inference hub installed",
+    );
     assertSmokeObject(localInferenceHub.active, "local-inference hub active");
-    assertSmokeObject(localInferenceHub.assignments, "local-inference hub assignments");
+    assertSmokeObject(
+      localInferenceHub.assignments,
+      "local-inference hub assignments",
+    );
 
     const localInferenceProviders = await fetchIosFullBunSmokeJson<
       Record<string, unknown>
@@ -771,10 +848,14 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       "local-inference providers",
     );
     const capacitorProvider = providerList
-      .map((provider) => assertSmokeObject(provider, "local-inference provider"))
+      .map((provider) =>
+        assertSmokeObject(provider, "local-inference provider"),
+      )
       .find((provider) => provider.id === "capacitor-llama");
     if (!capacitorProvider) {
-      throw new Error("local-inference providers did not include capacitor-llama");
+      throw new Error(
+        "local-inference providers did not include capacitor-llama",
+      );
     }
     const slots = assertSmokeArray(
       capacitorProvider.registeredSlots,
@@ -801,26 +882,74 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         `local-inference native bridge returned unexpected status: ${JSON.stringify(localInferenceDevice)}`,
       );
     }
-    assertSmokeArray(localInferenceDevice.devices, "local-inference device list");
+    assertSmokeArray(
+      localInferenceDevice.devices,
+      "local-inference device list",
+    );
 
-    const [localInferenceActive, localInferenceInstalled, localInferenceRouting] =
-      await Promise.all([
-        fetchIosFullBunSmokeJson<Record<string, unknown>>(
-          "WebView fetch bridge /api/local-inference/active",
-          "/api/local-inference/active",
-        ),
-        fetchIosFullBunSmokeJson<Record<string, unknown>>(
-          "WebView fetch bridge /api/local-inference/installed",
-          "/api/local-inference/installed",
-        ),
-        fetchIosFullBunSmokeJson<Record<string, unknown>>(
-          "WebView fetch bridge /api/local-inference/routing",
-          "/api/local-inference/routing",
-        ),
-      ]);
-    assertSmokeArray(localInferenceInstalled.models, "local-inference installed models");
-    assertSmokeArray(localInferenceRouting.registrations, "local-inference routing registrations");
-    assertSmokeObject(localInferenceRouting.preferences, "local-inference routing preferences");
+    let activatedModel: Record<string, unknown> | null = null;
+    if (hubInstalled.length > 0) {
+      const firstInstalled = assertSmokeObject(
+        hubInstalled[0],
+        "local-inference installed model",
+      );
+      if (typeof firstInstalled.id !== "string" || !firstInstalled.id) {
+        throw new Error("local-inference installed model was missing id");
+      }
+      activatedModel = await fetchIosFullBunSmokeJson<Record<string, unknown>>(
+        "WebView fetch bridge POST /api/local-inference/active",
+        "/api/local-inference/active",
+        {
+          method: "POST",
+          headers: {
+            accept: "application/json",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ modelId: firstInstalled.id }),
+        },
+        IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+      );
+      if (
+        activatedModel.status !== "ready" ||
+        typeof activatedModel.modelPath !== "string" ||
+        !activatedModel.modelPath
+      ) {
+        throw new Error(
+          `local-inference active model did not become ready: ${JSON.stringify(activatedModel)}`,
+        );
+      }
+    }
+
+    const [
+      localInferenceActive,
+      localInferenceInstalled,
+      localInferenceRouting,
+    ] = await Promise.all([
+      fetchIosFullBunSmokeJson<Record<string, unknown>>(
+        "WebView fetch bridge /api/local-inference/active",
+        "/api/local-inference/active",
+      ),
+      fetchIosFullBunSmokeJson<Record<string, unknown>>(
+        "WebView fetch bridge /api/local-inference/installed",
+        "/api/local-inference/installed",
+      ),
+      fetchIosFullBunSmokeJson<Record<string, unknown>>(
+        "WebView fetch bridge /api/local-inference/routing",
+        "/api/local-inference/routing",
+      ),
+    ]);
+    assertSmokeArray(
+      localInferenceInstalled.models,
+      "local-inference installed models",
+    );
+    assertSmokeArray(
+      localInferenceRouting.registrations,
+      "local-inference routing registrations",
+    );
+    assertSmokeObject(
+      localInferenceRouting.preferences,
+      "local-inference routing preferences",
+    );
 
     await writeIosFullBunSmokeResult({
       ok: false,
@@ -828,11 +957,13 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       step: "local-inference-ok",
       runtimeStatus: status,
       bridgeStatus: bridgeStatus.result,
+      directHealth,
       fetchHealth,
       localInference: {
         hub: localInferenceHub,
         providers: localInferenceProviders,
         device: localInferenceDevice,
+        activatedModel,
         active: localInferenceActive,
         installed: localInferenceInstalled,
         routing: localInferenceRouting,
@@ -874,14 +1005,44 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
           "content-type": "application/json",
         },
         body: JSON.stringify({
-          text: "iOS full Bun simulator smoke",
+          text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
           channelType: "DM",
+          conversationMode: "simple",
           source: "ios-local",
           metadata: { smoke: "ios-full-bun" },
         }),
       },
       IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS,
     );
+    const streamMessage = await fetchIosFullBunSmokeText(
+      "WebView fetch bridge POST /api/conversations/:id/messages/stream",
+      `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
+      {
+        method: "POST",
+        headers: {
+          accept: "text/event-stream",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
+          channelType: "DM",
+          conversationMode: "simple",
+          source: "ios-local",
+          metadata: { smoke: "ios-full-bun-stream" },
+        }),
+      },
+      IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS,
+    );
+    if (
+      !streamMessage.includes('"type":"done"') ||
+      /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
+        streamMessage,
+      )
+    ) {
+      throw new Error(
+        `full Bun conversation stream returned unusable SSE: ${streamMessage.slice(0, 500)}`,
+      );
+    }
 
     await writeIosFullBunSmokeResult({
       ok: true,
@@ -894,12 +1055,14 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         hub: localInferenceHub,
         providers: localInferenceProviders,
         device: localInferenceDevice,
+        activatedModel,
         active: localInferenceActive,
         installed: localInferenceInstalled,
         routing: localInferenceRouting,
       },
       conversationId,
       sendMessage,
+      streamMessage,
     });
   } catch (error) {
     await writeIosFullBunSmokeResult({
@@ -1540,7 +1703,7 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
     details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
   }
   if (isIOS && runtimeConfig.mode === "local") {
-    details.localRouteKernel = "ittp";
+    details.localRouteKernel = runtimeConfig.fullBun ? "bun-host-ipc" : "ittp";
   }
 
   try {

@@ -32,7 +32,7 @@ def _write_bundle(root: Path) -> Path:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(payload)
     manifest = {
-        "$schema": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json",
+        "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
         "id": "eliza-1-2b",
         "tier": "2b",
         "version": "1.0.0",

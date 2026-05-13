@@ -79,6 +79,25 @@ describe("PushMicSource", () => {
     await src.stop();
   });
 
+  it("stamps emitted frames on the pushed audio timeline", async () => {
+    const src = new PushMicSource({ sampleRate: SR, frameSamples: 100 });
+    const frames: PcmFrame[] = [];
+    src.onFrame((f) => frames.push(f));
+    await src.start();
+
+    src.push(new Float32Array(250), 1_000);
+    src.push(new Float32Array(60), 2_000);
+
+    expect(frames).toHaveLength(3);
+    expect(frames[0].timestampMs).toBeCloseTo(1_000);
+    expect(frames[1].timestampMs).toBeCloseTo(1_006.25);
+    // The third frame starts with the 50 carried samples from the first push,
+    // so its timestamp continues from that audio timeline rather than jumping
+    // to the second push wall-clock timestamp.
+    expect(frames[2].timestampMs).toBeCloseTo(1_012.5);
+    await src.stop();
+  });
+
   it("surfaces a fatal producer error", async () => {
     const src = new PushMicSource({ frameSamples: 8 });
     const errors: Error[] = [];

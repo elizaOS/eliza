@@ -346,11 +346,20 @@ static void ensure_default_env(const char *app_support_dir, const char *bundle_p
     setenv("HOME", app_support_dir, 1);
     setenv("ELIZA_HOME", app_support_dir, 1);
     setenv("ELIZA_IOS_APP_SUPPORT_DIR", app_support_dir, 1);
-    setenv("ELIZA_STATE_DIR", app_support_dir, 0);
-    setenv("ELIZA_WORKSPACE_DIR", app_support_dir, 0);
+    setenv("ELIZA_STATE_DIR", app_support_dir, 1);
+    char *workspace_dir = join_path_dup(app_support_dir, "workspace");
+    if (workspace_dir) {
+      mkdir(workspace_dir, 0700);
+      setenv("ELIZA_WORKSPACE_DIR", workspace_dir, 1);
+      setenv("MOBILE_WORKSPACE_ROOT", app_support_dir, 1);
+      free(workspace_dir);
+    } else {
+      setenv("ELIZA_WORKSPACE_DIR", app_support_dir, 1);
+      setenv("MOBILE_WORKSPACE_ROOT", app_support_dir, 1);
+    }
     char *pglite_dir = join_path_dup(app_support_dir, ".elizadb");
     if (pglite_dir) {
-      setenv("PGLITE_DATA_DIR", pglite_dir, 0);
+      setenv("PGLITE_DATA_DIR", pglite_dir, 1);
       free(pglite_dir);
     }
   }
@@ -359,6 +368,11 @@ static void ensure_default_env(const char *app_support_dir, const char *bundle_p
     char *asset_dir = dirname_dup(bundle_path);
     if (asset_dir) {
       setenv("ELIZA_IOS_AGENT_ASSET_DIR", asset_dir, 1);
+      char *public_dir = dirname_dup(asset_dir);
+      if (public_dir) {
+        setenv("ELIZA_IOS_AGENT_PUBLIC_DIR", public_dir, 1);
+        free(public_dir);
+      }
       free(asset_dir);
     }
   }
@@ -370,6 +384,7 @@ static void ensure_default_env(const char *app_support_dir, const char *bundle_p
   setenv("ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP", "1", 0);
   setenv("ELIZA_PGLITE_DISABLE_EXTENSIONS", "0", 0);
   setenv("ELIZA_HEADLESS", "1", 0);
+  setenv("ELIZA_IOS_BRIDGE_TRANSPORT", "bun-host-ipc", 0);
   setenv("LOG_LEVEL", "error", 0);
   setenv("GIGACAGE_ENABLED", "0", 0);
 }
@@ -801,6 +816,19 @@ static int insert_bundle_arg(char ***argv_inout, int *argc_inout, const char *bu
   return 0;
 }
 
+static int append_arg(char ***argv_inout, int *argc_inout, const char *value) {
+  char **argv = *argv_inout;
+  int argc = *argc_inout;
+  char **grown = (char **)realloc(argv, (size_t)(argc + 1) * sizeof(char *));
+  if (!grown) return -1;
+  argv = grown;
+  argv[argc] = xstrdup(value ? value : "");
+  if (!argv[argc]) return -1;
+  *argv_inout = argv;
+  *argc_inout = argc + 1;
+  return 0;
+}
+
 static char **parse_argv_json(const char *json, const char *bundle_path, int *argc_out) {
   *argc_out = 0;
   const char *p = skip_ws(json);
@@ -869,6 +897,33 @@ static char **parse_argv_json(const char *json, const char *bundle_path, int *ar
   }
   *argc_out = argc;
   return argv;
+}
+
+static int append_ios_env_args(
+    char ***argv_inout,
+    int *argc_inout,
+    const char *env_json,
+    const char *app_support_dir,
+    const char *bundle_path) {
+  if (env_json && env_json[0]) {
+    if (append_arg(argv_inout, argc_inout, "--eliza-ios-env-json") != 0 ||
+        append_arg(argv_inout, argc_inout, env_json) != 0) {
+      return -1;
+    }
+  }
+  if (app_support_dir && app_support_dir[0]) {
+    if (append_arg(argv_inout, argc_inout, "--eliza-ios-app-support-dir") != 0 ||
+        append_arg(argv_inout, argc_inout, app_support_dir) != 0) {
+      return -1;
+    }
+  }
+  if (bundle_path && bundle_path[0]) {
+    if (append_arg(argv_inout, argc_inout, "--eliza-ios-agent-bundle") != 0 ||
+        append_arg(argv_inout, argc_inout, bundle_path) != 0) {
+      return -1;
+    }
+  }
+  return 0;
 }
 
 static int wait_for_ready(int stdout_fd, int timeout_ms) {
@@ -994,8 +1049,11 @@ int32_t eliza_bun_engine_start(
 
   int argc = 0;
   char **args = parse_argv_json(argv_json, bundle_path, &argc);
-  if (!args || argc <= 0) {
+  if (
+      !args || argc <= 0 ||
+      append_ios_env_args(&args, &argc, env_json, app_support_dir, bundle_path) != 0) {
     set_last_error("failed to parse argv JSON for Bun engine");
+    free_argv(args, argc);
     close(stdin_pipe[0]);
     close(stdin_pipe[1]);
     close(stdout_pipe[0]);

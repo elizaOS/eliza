@@ -359,7 +359,7 @@ def test_dataset_card_includes_license(publish_dataset):
     assert "manifest.json" in spec.card
     assert "eliza-1-0_8b" in spec.card
     assert "eliza-1-2b" in spec.card
-    assert "0.8B-27B" in spec.card
+    assert "0.8B-4B" in spec.card
     stale_small_tier = "eliza-1-0_" + "6b"
     stale_mobile_tier = "eliza-1-1_" + "7b"
     assert stale_small_tier not in spec.card
@@ -625,24 +625,55 @@ def test_sync_catalog_selects_manifest_text_file(sync_catalog):
     manifest = {
         "files": {
             "text": [
-                {"path": "text/eliza-1-9b-32k.gguf", "sha256": "a" * 64, "ctx": 32768},
-                {"path": "text/eliza-1-9b-64k.gguf", "sha256": "b" * 64, "ctx": 65536},
+                {"path": "text/eliza-1-4b-32k.gguf", "sha256": "a" * 64, "ctx": 32768},
+                {"path": "text/eliza-1-4b-64k.gguf", "sha256": "b" * 64, "ctx": 65536},
             ],
-            "dflash": [{"path": "dflash/drafter-9b.gguf", "sha256": "c" * 64}],
+            "dflash": [{"path": "dflash/drafter-4b.gguf", "sha256": "c" * 64}],
         },
     }
     file_index = {
-        "text/eliza-1-9b-32k.gguf": ("a" * 64, 100),
-        "text/eliza-1-9b-64k.gguf": ("b" * 64, 200),
-        "dflash/drafter-9b.gguf": ("c" * 64, 50),
+        "text/eliza-1-4b-32k.gguf": ("a" * 64, 100),
+        "text/eliza-1-4b-64k.gguf": ("b" * 64, 200),
+        "dflash/drafter-4b.gguf": ("c" * 64, 50),
     }
 
     selected = sync_catalog._primary_text_file_from_manifest(
         manifest,
         file_index,
-        "elizaos/eliza-1-9b",
+        "elizaos/eliza-1-4b",
     )
     bundle_size = sync_catalog._bundle_size_from_manifest(manifest, file_index)
 
-    assert selected == ("text/eliza-1-9b-64k.gguf", "b" * 64, 200)
+    assert selected == ("text/eliza-1-4b-64k.gguf", "b" * 64, 200)
     assert bundle_size == 350
+
+
+def test_sync_catalog_selects_single_repo_bundle_paths(sync_catalog):
+    manifest = {
+        "id": "eliza-1-9b",
+        "files": {
+            "text": [
+                {"path": "text/eliza-1-9b-64k.gguf", "sha256": "d" * 64, "ctx": 65536},
+            ],
+            "dflash": [{"path": "dflash/drafter-9b.gguf", "sha256": "e" * 64}],
+        },
+    }
+    file_index = {
+        "bundles/9b/text/eliza-1-9b-64k.gguf": ("d" * 64, 900),
+        "bundles/9b/dflash/drafter-9b.gguf": ("e" * 64, 90),
+    }
+
+    selected = sync_catalog._primary_text_file_from_manifest(
+        manifest,
+        file_index,
+        "elizaos/eliza-1",
+        "bundles/9b",
+    )
+    bundle_size = sync_catalog._bundle_size_from_manifest(
+        manifest,
+        file_index,
+        "bundles/9b",
+    )
+
+    assert selected == ("text/eliza-1-9b-64k.gguf", "d" * 64, 900)
+    assert bundle_size == 990

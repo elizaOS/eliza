@@ -4,7 +4,7 @@
  * Gated — only runs when one of:
  *   - `LOCAL_AI_TEST_MODEL` env var points at a readable `.gguf` file, or
  *   - the default small model is present at
- *     `~/.eliza/models/text/eliza-1-mobile-1_7b-32k.gguf` (or the
+ *     `~/.eliza/models/text/eliza-1-2b-32k.gguf` (or the
  *     legacy `~/.milady/models/...` path).
  *
  * Loads the real model via `node-llama-cpp`, runs a short prompt, and
@@ -29,8 +29,8 @@ function resolveTestModelPath(): string | undefined {
   if (explicit && fs.existsSync(explicit)) return explicit;
 
   const candidates = [
-    path.join(os.homedir(), ".eliza", "models", "text", "eliza-1-mobile-1_7b-32k.gguf"),
-    path.join(os.homedir(), ".milady", "models", "text", "eliza-1-mobile-1_7b-32k.gguf"),
+    path.join(os.homedir(), ".eliza", "models", "text", "eliza-1-2b-32k.gguf"),
+    path.join(os.homedir(), ".milady", "models", "text", "eliza-1-2b-32k.gguf"),
   ];
   return candidates.find((p) => fs.existsSync(p));
 }

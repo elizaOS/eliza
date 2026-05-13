@@ -15,42 +15,14 @@ export {
   type MockSnapshotSource,
 } from "./checkpoint-manager";
 export {
-  EagerContextBuilder,
   type BuildDeterministicFn,
   type BuildMessageDependentFn,
   type ContextPartial,
+  EagerContextBuilder,
   type EagerContextBuilderOptions,
   type FullContext,
   mergeContext,
 } from "./eager-context-builder";
-export {
-  prefillOptimistic,
-  type PrefillOptimisticArgs,
-  type PrefillOptimisticOptions,
-  type PrefillOptimisticResult,
-} from "./prefill-client";
-export {
-  EOT_COMMIT_SILENCE_MS,
-  EOT_COMMIT_THRESHOLD,
-  EOT_HANGOVER_EXTENSION_MS,
-  EOT_MID_CLAUSE_THRESHOLD,
-  EOT_TENTATIVE_SILENCE_MS,
-  EOT_TENTATIVE_THRESHOLD,
-  type EotClassifier,
-  HeuristicEotClassifier,
-  type RemoteEotClassifierOptions,
-  RemoteEotClassifier,
-} from "./eot-classifier";
-export {
-  type DrafterAbortReason,
-  type DrafterHandle,
-  type StartDrafterFn,
-  VoiceStateMachine,
-  type VoiceStateMachineEvents,
-  type VoiceStateMachineOptions,
-  type VoiceState,
-  type VoiceStateEvent,
-} from "./voice-state-machine";
 export {
   buildLocalEmbeddingRoute,
   EMBEDDING_DIR_REL_PATH,
@@ -76,6 +48,18 @@ export {
   FfiOmniVoiceBackend,
   StubOmniVoiceBackend,
 } from "./engine-bridge";
+export {
+  EOT_COMMIT_SILENCE_MS,
+  EOT_COMMIT_THRESHOLD,
+  EOT_HANGOVER_EXTENSION_MS,
+  EOT_MID_CLAUSE_THRESHOLD,
+  EOT_TENTATIVE_SILENCE_MS,
+  EOT_TENTATIVE_THRESHOLD,
+  type EotClassifier,
+  HeuristicEotClassifier,
+  RemoteEotClassifier,
+  type RemoteEotClassifierOptions,
+} from "./eot-classifier";
 export { VoiceStartupError } from "./errors";
 export {
   type ArmedResources,
@@ -121,13 +105,19 @@ export {
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
 } from "./pipeline-impls";
-export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
-export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
+export {
+  type PrefillOptimisticArgs,
+  type PrefillOptimisticOptions,
+  type PrefillOptimisticResult,
+  prefillOptimistic,
+} from "./prefill-client";
 export {
   PrefixPreservingQueue,
   type RollbackResult,
   type TaggedAudioChunk,
 } from "./prefix-preserving-queue";
+export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
+export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
   type SchedulerDeps,
   type SchedulerEvents,
@@ -228,6 +218,16 @@ export {
   type VoicePresetSeedPhrase,
   writeVoicePresetFile,
 } from "./voice-preset-format";
+export {
+  type DrafterAbortReason,
+  type DrafterHandle,
+  type StartDrafterFn,
+  type VoiceState,
+  type VoiceStateEvent,
+  VoiceStateMachine,
+  type VoiceStateMachineEvents,
+  type VoiceStateMachineOptions,
+} from "./voice-state-machine";
 export {
   isPlaceholderWakeWordHead,
   loadBundledWakeWordModel,

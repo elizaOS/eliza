@@ -13,11 +13,7 @@ import {
   type TaggedAudioChunk,
 } from "../prefix-preserving-queue";
 
-function chunk(
-  start: number,
-  end: number,
-  durationMs = 50,
-): TaggedAudioChunk {
+function chunk(start: number, end: number, durationMs = 50): TaggedAudioChunk {
   const pcm = new Float32Array(Math.ceil((durationMs / 1000) * 24_000));
   return { pcm, tokenRange: [start, end], durationMs };
 }
@@ -75,7 +71,7 @@ describe("PrefixPreservingQueue — rollbackAt", () => {
 
   it("drops chunks whose tokenRange[0] > divergencePoint", () => {
     const q = new PrefixPreservingQueue();
-    const c0 = chunk(0, 3);  // retained
+    const c0 = chunk(0, 3); // retained
     const c1 = chunk(6, 10); // start=6 > N=5 → dropped
     q.enqueue(c0);
     q.enqueue(c1);
@@ -87,8 +83,8 @@ describe("PrefixPreservingQueue — rollbackAt", () => {
 
   it("keeps straddling chunks (start<=N, end>N) and records them separately", () => {
     const q = new PrefixPreservingQueue();
-    const c0 = chunk(0, 2);  // fully before N=4 → retained
-    const c1 = chunk(3, 7);  // straddles N=4 (start=3<=4, end=7>4) → retained+straddled
+    const c0 = chunk(0, 2); // fully before N=4 → retained
+    const c1 = chunk(3, 7); // straddles N=4 (start=3<=4, end=7>4) → retained+straddled
     const c2 = chunk(8, 12); // fully after N=4 → dropped
     q.enqueue(c0);
     q.enqueue(c1);
@@ -133,8 +129,8 @@ describe("PrefixPreservingQueue — rollbackAt", () => {
   it("sums durations correctly", () => {
     const q = new PrefixPreservingQueue();
     q.enqueue(chunk(0, 2, 100)); // retained
-    q.enqueue(chunk(3, 5, 80));  // retained
-    q.enqueue(chunk(6, 9, 60));  // dropped
+    q.enqueue(chunk(3, 5, 80)); // retained
+    q.enqueue(chunk(6, 9, 60)); // dropped
     const result = q.rollbackAt(5);
     expect(result.retainedDurationMs).toBe(180);
     expect(result.droppedDurationMs).toBe(60);

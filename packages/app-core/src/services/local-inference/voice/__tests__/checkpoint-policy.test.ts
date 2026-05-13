@@ -155,11 +155,7 @@ describe("CheckpointPolicy — gate ON", () => {
     await policy.onSpeechPause("T3", 1);
     await policy.onSpeechResume("T3", 1, { speculativeFired: false });
     expect(ops).toHaveLength(1); // only the save
-    expect(noopSink).toHaveBeenCalledWith(
-      "restore",
-      "T3",
-      "no-speculative",
-    );
+    expect(noopSink).toHaveBeenCalledWith("restore", "T3", "no-speculative");
   });
 
   it("onSpeechResume emits onNoop=registry-miss when manager.restore returns false", async () => {
@@ -216,11 +212,7 @@ describe("CheckpointPolicy — gate ON", () => {
     const onError = vi.fn();
     const policy = new CheckpointPolicy({ manager: mgr, events: { onError } });
     await policy.onSpeechPause("T8", 1);
-    expect(onError).toHaveBeenCalledWith(
-      "save",
-      expect.any(Error),
-      "T8",
-    );
+    expect(onError).toHaveBeenCalledWith("save", expect.any(Error), "T8");
   });
 
   it("emits onError when manager.restore throws but policy does not rethrow", async () => {
@@ -230,11 +222,7 @@ describe("CheckpointPolicy — gate ON", () => {
     await expect(
       policy.onSpeechResume("T9", 2, { speculativeFired: true }),
     ).resolves.toBeUndefined();
-    expect(onError).toHaveBeenCalledWith(
-      "restore",
-      expect.any(Error),
-      "T9",
-    );
+    expect(onError).toHaveBeenCalledWith("restore", expect.any(Error), "T9");
   });
 
   it("emits onSaved with the returned handle", async () => {

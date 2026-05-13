@@ -30,7 +30,6 @@ import {
 import { computeCallCostUsd } from "./cost-table";
 import { runEvaluator } from "./evaluator";
 import { parseJsonObject, stringifyForModel } from "./json-output";
-import { extractPlanActionsFromContent } from "./plan-actions-extractor";
 import {
 	assertRepeatedFailureLimit,
 	assertTrajectoryLimit,
@@ -44,6 +43,7 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
+import { extractPlanActionsFromContent } from "./plan-actions-extractor";
 import {
 	cacheProviderOptions,
 	toolMessageContent,
@@ -2187,7 +2187,7 @@ function latestToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	for (const step of [...trajectory.steps].reverse()) {
-		const text = step.result?.text?.trim();
+		const text = step.result?.userFacingText?.trim();
 		if (text) {
 			return text;
 		}
@@ -2362,6 +2362,7 @@ export function actionResultToPlannerToolResult(
 	return {
 		success: result.success,
 		text: result.text,
+		userFacingText: result.userFacingText,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
 		continueChain: result.continueChain,

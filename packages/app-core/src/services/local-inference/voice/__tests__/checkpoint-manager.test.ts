@@ -36,6 +36,14 @@ function makeFetch(recorded: RecordedRequest[]): CheckpointFetch {
   };
 }
 
+function makePrefillFetch(): typeof fetch {
+  const impl = Object.assign(
+    async () => new Response(JSON.stringify({ content: "" }), { status: 200 }),
+    { preconnect: fetch.preconnect },
+  );
+  return impl as typeof fetch;
+}
+
 describe("CheckpointManager (REST-backed)", () => {
   it("saveCheckpoint hits POST /slots/<id>/save and returns a live handle", async () => {
     const recorded: RecordedRequest[] = [];
@@ -109,9 +117,9 @@ describe("CheckpointManager (REST-backed)", () => {
     await expect(mgr.saveCheckpoint("", "pre-draft")).rejects.toThrow(
       /invalid slotId/,
     );
-    await expect(
-      mgr.saveCheckpoint("conv-1", "../etc/passwd"),
-    ).rejects.toThrow(/invalid checkpoint name/);
+    await expect(mgr.saveCheckpoint("conv-1", "../etc/passwd")).rejects.toThrow(
+      /invalid checkpoint name/,
+    );
   });
 });
 
@@ -179,32 +187,51 @@ describe("MockCheckpointManager", () => {
 });
 
 describe("prefillOptimistic", () => {
-  it("delegates to the checkpoint manager and returns the same handle", async () => {
+  it("delegates to the checkpoint manager and returns the post-prefill handle", async () => {
     const mock = new MockCheckpointManager(() => ({ tokens: [1, 2, 3] }));
     const result = await prefillOptimistic(
-      { slotId: "conv-1", partialText: "hello there", eotProb: 0.7 },
-      { checkpointManager: mock },
+      {
+        baseUrl: "http://localhost:8080",
+        slotId: "conv-1",
+        partialText: "hello there",
+        eotProb: 0.7,
+      },
+      { checkpointManager: mock, fetchImpl: makePrefillFetch() },
     );
     expect(result.backend).toBe("slot-save-stub");
     expect(result.eotProb).toBe(0.7);
-    expect(result.handle.slotId).toBe("conv-1");
+    expect(result.checkpointHandle.slotId).toBe("conv-1");
     // The handle should be live and restorable.
-    await mock.restoreCheckpoint(result.handle);
-    expect(mock.operations.map((o) => o.kind)).toEqual(["save", "restore"]);
+    await mock.restoreCheckpoint(result.checkpointHandle);
+    expect(mock.operations.map((o) => o.kind)).toEqual([
+      "save",
+      "save",
+      "restore",
+    ]);
   });
 
   it("rejects empty partialText and out-of-range eotProb", async () => {
     const mock = new MockCheckpointManager();
     await expect(
       prefillOptimistic(
-        { slotId: "conv-1", partialText: "  ", eotProb: 0.5 },
-        { checkpointManager: mock },
+        {
+          baseUrl: "http://localhost:8080",
+          slotId: "conv-1",
+          partialText: "  ",
+          eotProb: 0.5,
+        },
+        { checkpointManager: mock, fetchImpl: makePrefillFetch() },
       ),
     ).rejects.toThrow(/partialText/);
     await expect(
       prefillOptimistic(
-        { slotId: "conv-1", partialText: "hi", eotProb: 1.5 },
-        { checkpointManager: mock },
+        {
+          baseUrl: "http://localhost:8080",
+          slotId: "conv-1",
+          partialText: "hi",
+          eotProb: 1.5,
+        },
+        { checkpointManager: mock, fetchImpl: makePrefillFetch() },
       ),
     ).rejects.toThrow(/eotProb/);
   });

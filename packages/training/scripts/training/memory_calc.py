@@ -86,7 +86,7 @@ class ModelShape:
     kv_head_dim: int = 0
     vocab_size: int = 248_320
     """Qwen3.5/3.6 vocab (HF config.json `vocab_size`; verified against
-    Qwen/Qwen3.5-{2B,9B} and Qwen/Qwen3.6-27B model cards)."""
+    the active 0.8B/2B/4B Eliza-1 line)."""
 
     embedding_params: int = 0
     """Token embedding + lm_head — these stay in APOLLO's unprojected group.
@@ -369,11 +369,10 @@ def estimate_infer(shape: ModelShape, cfg: InferConfig) -> MemoryBreakdown:
 
 # ─────────────────── shape catalog ───────────────────
 
-# Architectural facts pulled directly from the Qwen3.5 / Qwen3.6 HF
+# Architectural facts pulled directly from the Qwen HF
 # `config.json` (`text_config` block — these are multimodal image-text
 # checkpoints whose LM-side hyperparameters live nested). The eliza-1
-# series ships four sizes: 0.8B/2B (local), 9B (workstation), 27B (cloud).
-# Hybrid 3:1 linear:full attention pattern is the same across all three.
+# active line ships three sizes: 0.8B/2B/4B.
 SHAPES: dict[str, ModelShape] = {
     # qwen3.5-0.8b is the smoke-only base (`smoke_full_stack.sh`); not part of
     # the eliza-1 production lineup but the preflight checker resolves it
@@ -390,20 +389,15 @@ SHAPES: dict[str, ModelShape] = {
         hidden_size=2048, intermediate_size=6144, num_layers=24,
         full_attn_layers=6, kv_heads=2, kv_head_dim=256,
     ),
-    "qwen3.5-9b": ModelShape(
-        name="qwen3.5-9b", params_total=9_000_000_000,
+    "qwen3.5-4b": ModelShape(
+        name="qwen3.5-4b", params_total=4_000_000_000,
         hidden_size=4096, intermediate_size=12288, num_layers=32,
         full_attn_layers=8, kv_heads=4, kv_head_dim=256,
-    ),
-    "qwen3.6-27b": ModelShape(
-        name="qwen3.6-27b", params_total=27_000_000_000,
-        hidden_size=5120, intermediate_size=17408, num_layers=64,
-        full_attn_layers=16, kv_heads=4, kv_head_dim=256,
     ),
 }
 
 
-def print_train_table(shape_name: str = "qwen3.6-27b") -> None:
+def print_train_table(shape_name: str = "qwen3.5-4b") -> None:
     """Compare APOLLO variants across seq_len for the named shape."""
     s = SHAPES[shape_name]
     print(f"\n=== TRAINING memory — {shape_name} ===")
@@ -421,7 +415,7 @@ def print_train_table(shape_name: str = "qwen3.6-27b") -> None:
         print()
 
 
-def print_infer_table(shape_name: str = "qwen3.6-27b") -> None:
+def print_infer_table(shape_name: str = "qwen3.5-4b") -> None:
     """Sweep seq + quantization combos for inference."""
     s = SHAPES[shape_name]
     print(f"\n=== INFERENCE memory — {shape_name} ===")
@@ -501,7 +495,7 @@ def fits_on(breakdown: MemoryBreakdown, *, hw: str,
     return breakdown.total_gb <= ceiling, 100.0 * breakdown.total_gb / cap
 
 
-def print_train_target_matrix(shape_name: str = "qwen3.6-27b") -> None:
+def print_train_target_matrix(shape_name: str = "qwen3.5-4b") -> None:
     """For each (seq_len, cluster) tuple, print per-GPU fit (the metric that
     actually decides whether the run OOMs). Both the per-GPU and the world-
     aggregate numbers are shown so it's clear what's sharded vs replicated.
@@ -527,7 +521,7 @@ def print_train_target_matrix(shape_name: str = "qwen3.6-27b") -> None:
     print()
 
 
-def print_infer_target_matrix(shape_name: str = "qwen3.6-27b") -> None:
+def print_infer_target_matrix(shape_name: str = "qwen3.5-4b") -> None:
     """For each (context, hardware) tuple with full quant stack, print fit."""
     s = SHAPES[shape_name]
     targets = ["rtx-pro-5000-blackwell-48", "rtx-5090", "rtx-pro-6000-blackwell",
@@ -638,7 +632,7 @@ def estimate_train_seconds(
 
 
 def print_train_time_matrix(
-    shape_names: tuple[str, ...] = ("qwen3.5-9b", "qwen3.6-27b"),
+    shape_names: tuple[str, ...] = ("qwen3.5-2b", "qwen3.5-4b"),
     n_tokens: int = 1_000_000_000,
     mfu_pct: float = 30.0,
 ) -> None:
@@ -679,7 +673,7 @@ def print_train_time_matrix(
                   f"${cost:>8.0f} {sec_fp8/3600:>8.1f}h ${cost_fp8:>8.0f}")
 
 
-def print_max_context_matrix(shape_names: tuple[str, ...] = ("qwen3.5-9b", "qwen3.6-27b")) -> None:
+def print_max_context_matrix(shape_names: tuple[str, ...] = ("qwen3.5-2b", "qwen3.5-4b")) -> None:
     """For each (model, hardware) tuple, the largest context that fits with
     the full quant stack."""
     targets = [
@@ -713,7 +707,7 @@ def print_max_context_matrix(shape_names: tuple[str, ...] = ("qwen3.5-9b", "qwen
 if __name__ == "__main__":
     import argparse
     ap = argparse.ArgumentParser()
-    ap.add_argument("--shape", default="qwen3.6-27b",
+    ap.add_argument("--shape", default="qwen3.5-4b",
                     choices=sorted(SHAPES))
     ap.add_argument("--mode", default="all",
                     choices=("train", "infer", "fit", "time", "all"))

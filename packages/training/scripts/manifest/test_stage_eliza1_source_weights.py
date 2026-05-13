@@ -56,29 +56,28 @@ def test_mobile_tier_uses_qwen35_2b_source(
     assert stale_source not in report["sources"]
 
 
-def test_pro_tier_records_text_dflash_and_vision_sources(
+def test_4b_tier_records_text_and_vision_sources_with_dflash_missing(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
 
-    report = stage.stage_sources(_args(tmp_path, "27b"))
+    report = stage.stage_sources(_args(tmp_path, "4b"))
 
-    assert [f["kind"] for f in report["files"]] == ["text", "dflash", "vision"]
-    assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
+    assert [f["kind"] for f in report["files"]] == ["text", "vision"]
+    assert "unsloth/Qwen3.5-4B-GGUF" in report["sources"]
+    assert any("No upstream DFlash drafter" in b for b in report["blockers"])
     assert all("final Eliza-1" not in f["destination"] for f in report["files"])
 
 
-def test_one_million_context_tier_reuses_27b_sources(
+def test_stage_sources_rejects_removed_large_tier(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
 
-    report = stage.stage_sources(_args(tmp_path, "27b-1m"))
-
-    assert [f["kind"] for f in report["files"]] == ["text", "dflash", "vision"]
-    assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
-    assert any("final 1m" in note for f in report["files"] for note in f["notes"])
+    try:
+        stage.stage_sources(_args(tmp_path, "27b"))
+    except KeyError:
+        return
+    raise AssertionError("27b source staging should not be part of the active release line")

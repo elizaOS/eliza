@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$SCRIPT_DIR"
 
 ANDROID_API="${ANDROID_API:-28}"
@@ -319,6 +320,14 @@ if [[ -z "$GRAPH_EVIDENCE" ]]; then
   ELIZA_ALLOW_SOFTWARE_VULKAN="$ALLOW_SOFTWARE" \
     ./android_vulkan_graph_smoke.sh
   GRAPH_EVIDENCE="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE_OUT:-$SCRIPT_DIR/vulkan-runtime-dispatch-evidence.json}"
+fi
+if [[ -n "$GRAPH_EVIDENCE" && ! -f "$GRAPH_EVIDENCE" && "$GRAPH_EVIDENCE" != /* ]]; then
+  for candidate in "$SCRIPT_DIR/$GRAPH_EVIDENCE" "$REPO_ROOT/$GRAPH_EVIDENCE"; do
+    if [[ -f "$candidate" ]]; then
+      GRAPH_EVIDENCE="$candidate"
+      break
+    fi
+  done
 fi
 if [[ ! -f "$GRAPH_EVIDENCE" ]]; then
   fail 4 "ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE does not exist: $GRAPH_EVIDENCE"

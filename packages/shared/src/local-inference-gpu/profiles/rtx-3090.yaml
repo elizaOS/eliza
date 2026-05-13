@@ -65,7 +65,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 95
     estimated_prefill_tps: 3000
-    notes: "Card's best fit. q8_0 K instead of qjl1_256 on Ampere (sm_86 lacks Polar K kernel in some forks)."
+    notes: "Hidden future recipe. q8_0 K instead of qjl1_256 on Ampere (sm_86 lacks Polar K kernel in some forks)."
   eliza-1-27b:
     n_gpu_layers: 56          # partial offload — weights 16.8 GiB + 128k KV won't fit alongside 27B
     ctx_size: 32768           # capped from catalog 128k to keep KV ~2 GiB
@@ -77,7 +77,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 25  # mixed CPU/GPU offload — bandwidth-limited on the host bus
     estimated_prefill_tps: 700
-    notes: "Tight on 24 GiB; recommend the 9B bundle for primary use. 27B here is for offline batch only."
+    notes: "Hidden future recipe. Tight on 24 GiB; offline batch only if final weights ship."
 
 dflash:
   enabled: true
@@ -100,5 +100,5 @@ verify_recipe:
     - dflash
   unavailable_kernels:
     - turbo3_tcq                 # tensor-core Q kernel requires sm_89+
-  smoke_bundle: eliza-1-9b       # default bundle used by `verify_3090.sh`
+  smoke_bundle: eliza-1-4b       # current release smoke bundle used by `verify_3090.sh`
   tolerance_pct: 10

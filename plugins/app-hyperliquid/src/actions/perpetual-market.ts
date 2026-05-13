@@ -742,6 +742,12 @@ export const perpetualMarketAction: Action = {
       schema: { type: "string", enum: ["read", "place_order"] },
     },
     {
+      name: "subaction",
+      description: "Alias for action.",
+      required: false,
+      schema: { type: "string", enum: ["read", "place_order", "place-order"] },
+    },
+    {
       name: "kind",
       description:
         "read only: status | markets | market | positions | funding.",

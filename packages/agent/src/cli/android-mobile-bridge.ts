@@ -59,51 +59,147 @@ process.env.ELIZA_DISABLE_TRAJECTORY_LOGGING ||= "1";
 // Use ELIZA_STATE_DIR (set by ElizaAgentService) as the workspace root.
 // Fall back to HOME/.eliza if running standalone outside the service.
 
-import { installMobileFsShim } from "./mobile-fs-shim.ts";
 import * as nodeFs from "node:fs";
+import nodePath from "node:path";
+import { installMobileFsShim } from "./mobile-fs-shim.ts";
+
+// ── Resolve canonical paths and install mobile fs sandbox ─────────────────
+//
+// On Android, getFilesDir() returns /data/user/0/<pkg>/files but the bundle
+// runs from /data/data/<pkg>/files (the real path; /data/user/0 is a symlink).
+// The mobile-fs-shim uses string-prefix matching, so the sandbox root and all
+// fs paths passed to it must use the same canonical form.
+//
+// Strategy:
+//   1. Resolve HOME (= getFilesDir) through realpathSync → canonical root.
+//   2. Update ELIZA_STATE_DIR / MILADY_STATE_DIR / HOME to use the canonical
+//      prefix so any downstream path construction produces matching strings.
+//   3. Set sandbox root = canonical HOME → covers .eliza/, agent/ assets, etc.
+const _rawHome =
+  process.env.HOME ||
+  nodePath.dirname(
+    process.env.ELIZA_STATE_DIR ||
+      process.env.MILADY_STATE_DIR ||
+      "/data/local/tmp/.eliza",
+  );
+
+let _canonicalHome: string;
+try {
+  _canonicalHome = nodeFs.realpathSync(_rawHome);
+} catch {
+  _canonicalHome = _rawHome;
+}
+
+// Remap any env var that starts with the old (symlink) prefix to the
+// canonical (real) prefix so downstream code resolves paths consistently.
+if (_canonicalHome !== _rawHome) {
+  if (process.env.HOME) process.env.HOME = _canonicalHome;
+  for (const key of [
+    "ELIZA_STATE_DIR",
+    "MILADY_STATE_DIR",
+    "ELIZA_WORKSPACE_DIR",
+    "MILADY_WORKSPACE_DIR",
+    "TMPDIR",
+  ] as const) {
+    const val = process.env[key];
+    if (val?.startsWith(_rawHome)) {
+      process.env[key] = _canonicalHome + val.slice(_rawHome.length);
+    }
+  }
+}
 
 const stateDir =
   process.env.ELIZA_STATE_DIR ||
   process.env.MILADY_STATE_DIR ||
-  `${process.env.HOME ?? "/data/local/tmp"}/.eliza`;
+  `${_canonicalHome}/.eliza`;
 
-installMobileFsShim(stateDir);
+installMobileFsShim(_canonicalHome);
 
 // ── Debug file logger (bypasses stdio to avoid TIOCGWINSZ/SELinux issues) ───
 // Writes to $ELIZA_STATE_DIR/android-bridge.log so we can read via adb run-as.
 const _logPath = `${stateDir}/android-bridge.log`;
-try { nodeFs.mkdirSync(stateDir, { recursive: true }); } catch { /* ignore */ }
-function _logToFile(line: string): void {
-  try { nodeFs.appendFileSync(_logPath, `${new Date().toISOString()} ${line}\n`); } catch { /* ignore */ }
+try {
+  nodeFs.mkdirSync(stateDir, { recursive: true });
+} catch {
+  /* ignore */
 }
-_logToFile("[android-bridge] process started, stateDir=" + stateDir);
+function _logToFile(line: string): void {
+  try {
+    nodeFs.appendFileSync(_logPath, `${new Date().toISOString()} ${line}\n`);
+  } catch {
+    /* ignore */
+  }
+}
+_logToFile(`[android-bridge] process started, stateDir=${stateDir}`);
 
 // ── Step 3: boot the runtime ──────────────────────────────────────────────
 
 export async function runAndroidBridgeCli(): Promise<void> {
+  // Log the process exit code for every exit (including process.exit(N) calls
+  // from deep inside the runtime that bypass our try/catch).
+  process.on("exit", (code) => {
+    _logToFile(`[android-bridge] process.exit code=${code}`);
+  });
+
+  // Intercept console.error so errors logged by the runtime (e.g. the
+  // "Could not start API server" message from eliza.ts) are captured in the
+  // file log even though stdout/stderr are redirected to /dev/null on Android.
+  const _origConsoleError = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    _logToFile(`[console.error] ${args.map(String).join(" ")}`);
+    _origConsoleError(...args);
+  };
+  const _origConsoleWarn = console.warn.bind(console);
+  console.warn = (...args: unknown[]) => {
+    const msg = args.map(String).join(" ");
+    if (
+      msg.includes("Error") ||
+      msg.includes("error") ||
+      msg.includes("fail")
+    ) {
+      _logToFile(`[console.warn] ${msg}`);
+    }
+    _origConsoleWarn(...args);
+  };
+
   process.on("unhandledRejection", (reason) => {
-    const msg = reason instanceof Error ? reason.stack || reason.message : String(reason);
-    _logToFile("[android-bridge] unhandledRejection: " + msg);
+    const msg =
+      reason instanceof Error ? reason.stack || reason.message : String(reason);
+    _logToFile(`[android-bridge] unhandledRejection: ${msg}`);
     console.error("[android-bridge] unhandled rejection:", msg);
   });
   process.on("uncaughtException", (error) => {
-    _logToFile("[android-bridge] uncaughtException: " + (error.stack || error.message));
-    console.error("[android-bridge] uncaught exception:", error.stack || error.message);
+    _logToFile(
+      `[android-bridge] uncaughtException: ${error.stack || error.message}`,
+    );
+    console.error(
+      "[android-bridge] uncaught exception:",
+      error.stack || error.message,
+    );
   });
 
   _logToFile("[android-bridge] importing startEliza...");
   const { startEliza } = await import("../runtime/index.ts");
   _logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
 
+  // Heartbeat: log every 10s during startEliza so we can see where it stalls.
+  const _hb = setInterval(() => {
+    _logToFile("[android-bridge] startEliza still running...");
+  }, 10_000);
+
   let runtime: Awaited<ReturnType<typeof startEliza>>;
   try {
     runtime = await startEliza({ serverOnly: true });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.stack || err.message : String(err);
-    _logToFile("[android-bridge] startEliza THREW: " + msg);
+    _logToFile(`[android-bridge] startEliza THREW: ${msg}`);
     throw err;
+  } finally {
+    clearInterval(_hb);
   }
-  _logToFile("[android-bridge] startEliza returned: " + (runtime ? "present" : "null"));
+  _logToFile(
+    `[android-bridge] startEliza returned: ${runtime ? "present" : "null"}`,
+  );
 
   console.log(
     `[android-bridge] startEliza returned: runtime=${runtime ? "present" : "null"}, ` +

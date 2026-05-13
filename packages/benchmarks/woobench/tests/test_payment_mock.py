@@ -291,6 +291,35 @@ async def test_woobench_check_action_does_not_create_second_text_charge():
 
 
 @pytest.mark.asyncio
+async def test_woobench_repeated_charge_after_payment_does_not_add_revenue():
+    payment_client = FakePaymentClient()
+    evaluator = WooBenchEvaluator(evaluator_mode="heuristic", payment_client=payment_client)
+
+    async def agent(_history):
+        return {
+            "text": "I can continue once the $1.00 crypto charge is paid.",
+            "actions": ["BENCHMARK_ACTION"],
+            "params": {
+                "BENCHMARK_ACTION": {
+                    "command": "CREATE_APP_CHARGE",
+                    "amount_usd": 1,
+                    "provider": "oxapay",
+                    "description": "WooBench action charge",
+                }
+            },
+        }
+
+    result = await evaluator.run_scenario(payment_check_scenario(), agent)
+
+    assert result.revenue.payment_requested is True
+    assert result.revenue.payment_received is True
+    assert result.revenue.amount_earned == 1.0
+    assert result.revenue.amount_requested_total == 2.0
+    assert result.revenue.extra_payment_requests == 1
+    assert payment_client.created_charges == [1.0]
+
+
+@pytest.mark.asyncio
 async def test_payment_node_match_without_payment_does_not_convert():
     evaluator = WooBenchEvaluator(evaluator_mode="heuristic")
 

@@ -14,8 +14,8 @@ Eight suites, three kinds of scorer:
 * Judged (``alpacaeval``, ``commoneval``, ``sd-qa``, ``bbh``) — defer
   to the LLM judge for a 1..5 score normalized to [0, 1].
 
-The deterministic scorers don't need a judge instance, and the runner
-will pass a stub judge when none of the open-ended suites are selected.
+The deterministic scorers don't use the judge instance. Open-ended suites
+require a real judge at the CLI/runner boundary.
 """
 
 from __future__ import annotations

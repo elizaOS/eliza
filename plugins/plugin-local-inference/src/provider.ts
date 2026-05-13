@@ -1,6 +1,8 @@
 import {
 	type GenerateTextParams,
 	type IAgentRuntime,
+	type ImageDescriptionParams,
+	type ImageDescriptionResult,
 	logger,
 	ModelType,
 	type Plugin,
@@ -20,6 +22,7 @@ export const LOCAL_INFERENCE_TEXT_MODEL_TYPES = [
 export const LOCAL_INFERENCE_MODEL_TYPES = [
 	...LOCAL_INFERENCE_TEXT_MODEL_TYPES,
 	ModelType.TEXT_EMBEDDING,
+	ModelType.IMAGE_DESCRIPTION,
 	ModelType.TEXT_TO_SPEECH,
 	ModelType.TRANSCRIPTION,
 ] as const;
@@ -71,6 +74,7 @@ interface LocalInferenceGenerateArgs {
 	stopSequences?: string[];
 	maxTokens?: number;
 	temperature?: number;
+	topP?: number;
 	signal?: AbortSignal;
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 }
@@ -103,6 +107,12 @@ interface LocalInferenceRuntimeService
 	embed?: (args: {
 		input: string;
 	}) => Promise<number[] | LocalInferenceEmbedResult>;
+	describeImage?: (
+		params: ImageDescriptionParams | string,
+	) => Promise<ImageDescriptionResult | string>;
+	imageDescription?: (
+		params: ImageDescriptionParams | string,
+	) => Promise<ImageDescriptionResult | string>;
 }
 
 type RuntimeWithServices = IAgentRuntime & {
@@ -154,8 +164,66 @@ function requireService(
 	return service;
 }
 
+type MessageLike = {
+	role?: unknown;
+	content?: unknown;
+};
+
+type PromptSegmentLike = {
+	content?: unknown;
+};
+
+function renderPromptContent(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (Array.isArray(content)) {
+		return content
+			.map((part) => {
+				if (typeof part === "string") return part;
+				if (
+					part &&
+					typeof part === "object" &&
+					typeof (part as { text?: unknown }).text === "string"
+				) {
+					return (part as { text: string }).text;
+				}
+				return "";
+			})
+			.filter(Boolean)
+			.join("\n");
+	}
+	return "";
+}
+
+function promptFromMessages(messages: readonly MessageLike[]): string {
+	return messages
+		.map((message) => {
+			const content = renderPromptContent(message.content);
+			if (!content) return "";
+			const role =
+				typeof message.role === "string" && message.role.trim()
+					? message.role.trim()
+					: "message";
+			return `${role}:\n${content}`;
+		})
+		.filter(Boolean)
+		.join("\n\n");
+}
+
 function promptFromParams(params: GenerateTextParams): string {
-	const prompt = params.prompt ?? "";
+	const record = params as GenerateTextParams & {
+		messages?: readonly MessageLike[];
+		promptSegments?: readonly PromptSegmentLike[];
+	};
+	const prompt =
+		typeof params.prompt === "string" && params.prompt.length > 0
+			? params.prompt
+			: Array.isArray(record.promptSegments) && record.promptSegments.length > 0
+				? record.promptSegments
+						.map((segment) => renderPromptContent(segment.content))
+						.join("")
+				: Array.isArray(record.messages) && record.messages.length > 0
+					? promptFromMessages(record.messages)
+					: "";
 	if (typeof prompt !== "string" || prompt.trim().length === 0) {
 		throw unavailable(
 			ModelType.TEXT_SMALL,
@@ -174,6 +242,7 @@ function textGenerationArgsFromParams(
 		stopSequences: params.stopSequences,
 		maxTokens: params.maxTokens,
 		temperature: params.temperature,
+		topP: params.topP,
 		signal: params.signal,
 		onTextChunk:
 			(params.stream === true || params.streamStructured === true) &&
@@ -304,6 +373,37 @@ function normalizeTranscript(result: string | { text?: string }): string {
 	return text;
 }
 
+function normalizeImageDescription(
+	result: ImageDescriptionResult | string,
+): ImageDescriptionResult {
+	if (typeof result === "string") {
+		const description = ensureNonEmptyText(ModelType.IMAGE_DESCRIPTION, result);
+		return {
+			title: description.split(/[.!?]/, 1)[0]?.trim() || "Image",
+			description,
+		};
+	}
+	if (
+		result &&
+		typeof result === "object" &&
+		typeof result.title === "string" &&
+		typeof result.description === "string"
+	) {
+		return {
+			title: ensureNonEmptyText(ModelType.IMAGE_DESCRIPTION, result.title),
+			description: ensureNonEmptyText(
+				ModelType.IMAGE_DESCRIPTION,
+				result.description,
+			),
+		};
+	}
+	throw unavailable(
+		ModelType.IMAGE_DESCRIPTION,
+		"invalid_output",
+		"[local-inference] IMAGE_DESCRIPTION backend returned an invalid description",
+	);
+}
+
 function createTextHandler(modelType: string) {
 	return async (
 		runtime: IAgentRuntime,
@@ -388,6 +488,26 @@ function createTranscriptionHandler() {
 	};
 }
 
+function createImageDescriptionHandler() {
+	return async (
+		runtime: IAgentRuntime,
+		params: ImageDescriptionParams | string,
+	): Promise<ImageDescriptionResult> => {
+		const service = requireService(runtime, ModelType.IMAGE_DESCRIPTION);
+		if (typeof service.describeImage === "function") {
+			return normalizeImageDescription(await service.describeImage(params));
+		}
+		if (typeof service.imageDescription === "function") {
+			return normalizeImageDescription(await service.imageDescription(params));
+		}
+		throw unavailable(
+			ModelType.IMAGE_DESCRIPTION,
+			"capability_unavailable",
+			"[local-inference] Active local backend does not implement IMAGE_DESCRIPTION",
+		);
+	};
+}
+
 export function createLocalInferenceModelHandlers(): NonNullable<
 	Plugin["models"]
 > {
@@ -395,6 +515,7 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 		[ModelType.TEXT_SMALL]: createTextHandler(ModelType.TEXT_SMALL),
 		[ModelType.TEXT_LARGE]: createTextHandler(ModelType.TEXT_LARGE),
 		[ModelType.TEXT_EMBEDDING]: createEmbeddingHandler(),
+		[ModelType.IMAGE_DESCRIPTION]: createImageDescriptionHandler(),
 		[ModelType.TEXT_TO_SPEECH]: createTextToSpeechHandler(),
 		[ModelType.TRANSCRIPTION]: createTranscriptionHandler(),
 	};
@@ -421,6 +542,9 @@ export const localInferencePlugin: Plugin = {
 				textToSpeech:
 					typeof service.synthesizeSpeech === "function" ||
 					typeof service.textToSpeech === "function",
+				imageDescription:
+					typeof service.describeImage === "function" ||
+					typeof service.imageDescription === "function",
 				transcription:
 					typeof service.transcribe === "function" ||
 					typeof service.transcribePcm === "function",

@@ -1,4 +1,4 @@
-import { type JSONSchema, type ToolDefinition, extractPlanActionsFromContent } from "@elizaos/core";
+import { extractPlanActionsFromContent, type JSONSchema, type ToolDefinition } from "@elizaos/core";
 import {
   type ChatModelFunctionCall,
   type ChatSessionModelFunctions,
@@ -22,6 +22,15 @@ export interface StructuredOutputContext {
 
 type LlamaFunctionDefinition = ChatSessionModelFunctions[string];
 type LlamaJsonSchemaGrammarForAnySchema = LlamaJsonSchemaGrammar<GbnfJsonSchema>;
+const defineDeferredChatSessionFunction = defineChatSessionFunction as unknown as (definition: {
+  description?: string;
+  params?: GbnfJsonSchema;
+  handler: () => string;
+}) => LlamaFunctionDefinition;
+const LlamaJsonSchemaGrammarForAnySchemaCtor = LlamaJsonSchemaGrammar as unknown as new (
+  llama: Llama,
+  schema: GbnfJsonSchema
+) => LlamaJsonSchemaGrammarForAnySchema;
 
 /**
  * Convert an elizaOS-shaped JSON schema to the Gbnf variant accepted by
@@ -49,9 +58,9 @@ export function buildLlamaFunctions(tools: readonly ToolDefinition[]): ChatSessi
   for (const tool of tools) {
     if (!tool?.name) continue;
     const params = toGbnfJsonSchema(tool.parameters);
-    out[tool.name] = defineChatSessionFunction({
+    out[tool.name] = defineDeferredChatSessionFunction({
       description: tool.description,
-      params: params as never,
+      params,
       // The handler intentionally returns a sentinel. We collect the parsed
       // call from `promptWithMeta`'s response array; we do not execute the
       // tool in-process. node-llama-cpp requires a handler to be defined.
@@ -96,9 +105,7 @@ export function extractToolCalls(
 
   if (calls.length === 0) {
     // Collect the full text from any string entries in the response array.
-    const textParts = response
-      .filter((e) => typeof e === "string")
-      .join("");
+    const textParts = response.filter((e) => typeof e === "string").join("");
     if (textParts.trim().length > 0) {
       const recovered = extractPlanActionsFromContent(textParts);
       if (recovered) {
@@ -134,7 +141,7 @@ export function buildJsonSchemaGrammar(
   if (gbnf == null) {
     throw new Error("[plugin-local-ai] responseSchema is required to build a JSON schema grammar");
   }
-  return new LlamaJsonSchemaGrammar(llama, gbnf as never) as LlamaJsonSchemaGrammarForAnySchema;
+  return new LlamaJsonSchemaGrammarForAnySchemaCtor(llama, gbnf);
 }
 
 /**

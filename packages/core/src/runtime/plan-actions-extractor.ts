@@ -203,7 +203,10 @@ interface ExtractedSpan {
 	end: number;
 }
 
-function extractJsonObject(raw: string, startSearch: number): ExtractedSpan | null {
+function extractJsonObject(
+	raw: string,
+	startSearch: number,
+): ExtractedSpan | null {
 	const start = raw.indexOf("{", startSearch);
 	if (start < 0) return null;
 
@@ -245,9 +248,13 @@ function extractJsonObject(raw: string, startSearch: number): ExtractedSpan | nu
 function countOccurrences(text: string, needle: string): number {
 	let count = 0;
 	let pos = 0;
-	while ((pos = text.indexOf(needle, pos)) !== -1) {
+	for (
+		let matchIndex = text.indexOf(needle, pos);
+		matchIndex !== -1;
+		matchIndex = text.indexOf(needle, pos)
+	) {
 		count++;
-		pos += needle.length;
+		pos = matchIndex + needle.length;
 	}
 	return count;
 }

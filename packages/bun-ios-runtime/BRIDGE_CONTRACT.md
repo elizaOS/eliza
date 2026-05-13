@@ -111,7 +111,7 @@ Required native host-call methods today:
 
 Required methods today:
 
-- `status` -> `{ "ready": true, "apiPort": number }`
+- `status` -> `{ "ready": true, "engine": "bun", "transport": "bun-host-ipc", "bridgeVersion": "bun-ios:3" }`
 - `http_request` / `http_fetch` with `{ method, path, headers, body,
   timeoutMs }` -> `{ status, statusText, headers, body }`
 - `send_message` with `{ message, conversationId? }` -> `{ reply, text,
@@ -124,7 +124,9 @@ the Swift, C, and JS bridge layers.
 
 The full engine must support:
 
-- `Bun.serve` or an equivalent Hono/fetch-compatible route kernel.
+- An in-process Hono/fetch-compatible route kernel reachable through
+  `http_request` IPC. iOS full-Bun mode must not rely on `Bun.serve`,
+  WebSockets, or a WebView-visible TCP listener.
 - `fetch`, `Request`, `Response`, `Headers`, streams, and buffered bodies.
 - `Bun.file`, `node:fs`, `node:path`, `node:crypto`, `node:buffer`, and
   package/module resolution needed by `packages/agent/dist-mobile-ios`.

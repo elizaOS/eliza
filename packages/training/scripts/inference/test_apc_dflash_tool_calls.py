@@ -1,9 +1,9 @@
-"""A/B test harness for DFlash + Automatic Prefix Caching + Qwen3.5/3.6
+"""A/B test harness for DFlash + Automatic Prefix Caching + Qwen3.5
 hybrid-attention tool-calling parity.
 
 Why this exists
 ---------------
-omlx#825 documents a known failure mode: when vLLM serves a Qwen3.5/3.6
+omlx#825 documents a known failure mode: when vLLM serves a Qwen3.5
 hybrid model (3 GatedDeltaNet linear-attn + 1 GatedAttention full-attn per
 block) with both `--enable-prefix-caching` AND a speculative drafter
 (EAGLE-3 / DFlash / qwen3_next_mtp), the linear-attention layers'
@@ -28,13 +28,13 @@ Usage
 
     # Start the serve in one terminal, e.g.:
     #   uv run --extra serve python scripts/inference/serve_vllm.py \
-    #       --registry-key qwen3.6-27b --gpu-target h200-2x \
-    #       --dflash z-lab/Qwen3.6-27B-DFlash --enable-prefix-caching
+    #       --registry-key qwen3.5-4b --gpu-target rtx-4090 \
+    #       --dflash elizaos/eliza-1-dflash-4b --enable-prefix-caching
 
     # Then in another terminal point this at it:
     uv run --extra serve python scripts/inference/test_apc_dflash_tool_calls.py \
         --base-url http://localhost:8000/v1 \
-        --model Qwen/Qwen3.6-27B \
+        --model Qwen/Qwen3.5-4B \
         --n-prompts 20 \
         --report-out /tmp/apc_dflash_parity.json
 

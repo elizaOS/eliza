@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   computeAcceptanceRate,
-  dflashBatchEventSchema,
   type DflashStreamEvent,
   type DflashVerifyStreamEvent,
+  dflashBatchEventSchema,
   expandDflashBatchEvent,
   groupByRound,
   parseDflashBatchEvent,
@@ -221,7 +221,9 @@ describe("parseDflashFieldFromSseChunk", () => {
     });
     expect(events.map((e) => e.kind)).toEqual(["speculate-start", "accept"]);
     expect((events[1] as { nativeEvent?: boolean }).nativeEvent).toBe(true);
-    expect((events[0] as { nativeEvent?: boolean }).nativeEvent).toBeUndefined();
+    expect(
+      (events[0] as { nativeEvent?: boolean }).nativeEvent,
+    ).toBeUndefined();
   });
 
   it("rejects native batch when accept_count disagrees with accept_tokens", () => {
@@ -515,10 +517,7 @@ describe("parseDflashStreamEvent — dflash-verify", () => {
       verify_latency_ms: 5.0,
     };
     const events = parseDflashFieldFromSseChunk({
-      dflash: [
-        { kind: "speculate-start", round: 0, ts: 0 },
-        allAccepted,
-      ],
+      dflash: [{ kind: "speculate-start", round: 0, ts: 0 }, allAccepted],
     });
     expect(events).toHaveLength(2);
     expect(events[0]?.kind).toBe("speculate-start");

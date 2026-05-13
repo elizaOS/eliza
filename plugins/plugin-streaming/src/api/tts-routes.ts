@@ -400,7 +400,11 @@ async function useLocalInferenceTts(
   let lastError: unknown;
   for (const provider of LOCAL_TTS_PROVIDER_IDS) {
     try {
-      return await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text }, provider);
+      return await runtime.useModel(
+        ModelType.TEXT_TO_SPEECH,
+        { text },
+        provider,
+      );
     } catch (err) {
       lastError = err;
       if (!isMissingProviderError(err)) {

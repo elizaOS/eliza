@@ -15,14 +15,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
-
-import { FfiStreamingRunner } from "../ffi-streaming-runner";
+import { makeFfiLlmMock } from "../ffi-llm-mock";
 import {
   detectMobileCapabilities,
   type FfiDflashStreamingAbi,
   type FfiLlmStreamingAbi,
 } from "../ffi-llm-streaming-abi";
-import { makeFfiLlmMock } from "../ffi-llm-mock";
+import { FfiStreamingRunner } from "../ffi-streaming-runner";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
@@ -255,7 +254,8 @@ describe("FfiStreamingRunner.generateWithUsage (mocked FFI)", () => {
       inflight += 1;
       maxObserved = Math.max(maxObserved, inflight);
       // Cycle through the scripted steps, but loop independently per call.
-      const step = STEPS_3[(spies.next.mock.calls.length - 1) % STEPS_3.length]!;
+      const step =
+        STEPS_3[(spies.next.mock.calls.length - 1) % STEPS_3.length]!;
       inflight -= 1;
       return step;
     }) as never);
@@ -405,7 +405,11 @@ describe("FfiLlmMock — generate → cancel stops the stream early", () => {
     const handle = ffi.eliza_inference_llm_stream_open("fake.gguf", 512, 4, 0);
     expect(handle).not.toBeNull();
 
-    ffi.eliza_inference_llm_stream_prefill(handle!, new Int32Array([1, 2, 3]), 0);
+    ffi.eliza_inference_llm_stream_prefill(
+      handle!,
+      new Int32Array([1, 2, 3]),
+      0,
+    );
 
     const emitted: string[] = [];
     let doneCount = 0;
@@ -540,7 +544,11 @@ describe("FfiDflashStreamingAbi shape — type-check via mock", () => {
       0,
       4,
     )!;
-    dflash.eliza_inference_dflash_stream_prefill(handle, new Int32Array([1]), 0);
+    dflash.eliza_inference_dflash_stream_prefill(
+      handle,
+      new Int32Array([1]),
+      0,
+    );
 
     const ids: number[] = [];
     await dflash.eliza_inference_dflash_stream_generate(

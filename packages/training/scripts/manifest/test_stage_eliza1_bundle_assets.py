@@ -60,7 +60,7 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    report = stage.stage_assets(_args(tmp_path, "9b"))
+    report = stage.stage_assets(_args(tmp_path, "4b"))
 
     staged = {
         (f["repo"], f["remotePath"], Path(f["path"]).as_posix())
@@ -70,17 +70,17 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
     assert (
         "ggml-org/Qwen3-ASR-0.6B-GGUF",
         "Qwen3-ASR-0.6B-Q8_0.gguf",
-        (tmp_path / "9b" / "asr" / "eliza-1-asr.gguf").as_posix(),
+        (tmp_path / "4b" / "asr" / "eliza-1-asr.gguf").as_posix(),
     ) in staged
     assert (
         "ggml-org/Qwen3-ASR-0.6B-GGUF",
         "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf",
-        (tmp_path / "9b" / "asr" / "eliza-1-asr-mmproj.gguf").as_posix(),
+        (tmp_path / "4b" / "asr" / "eliza-1-asr-mmproj.gguf").as_posix(),
     ) in staged
     assert (
         "ggml-org/whisper-vad",
         "ggml-silero-v5.1.2.bin",
-        (tmp_path / "9b" / "vad" / "silero-vad-v5.1.2.ggml.bin").as_posix(),
+        (tmp_path / "4b" / "vad" / "silero-vad-v5.1.2.ggml.bin").as_posix(),
     ) in staged
     assert report["asrMmprojRemotePath"] == "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
     assert report["vad"] == {
@@ -104,14 +104,14 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
         "wake/embedding_model.onnx",
         "wake/hey-eliza.onnx",
     ):
-        dst = (tmp_path / "9b" / rel).as_posix()
+        dst = (tmp_path / "4b" / rel).as_posix()
         assert dst in ww
         assert ww[dst].startswith(stage.WAKEWORD_RELEASE)
 
 
 def test_skip_wakeword_omits_wake_graphs(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    args = _args(tmp_path, "9b")
+    args = _args(tmp_path, "4b")
     args.skip_wakeword = True
     report = stage.stage_assets(args)
     assert not any("url" in f for f in report["files"])
@@ -122,7 +122,7 @@ def test_stage_dry_run_can_include_legacy_onnx_vad_fallback(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    args = _args(tmp_path, "9b")
+    args = _args(tmp_path, "4b")
     args.include_vad_onnx_fallback = True
     report = stage.stage_assets(args)
     staged = {
@@ -133,30 +133,22 @@ def test_stage_dry_run_can_include_legacy_onnx_vad_fallback(
     assert (
         "onnx-community/silero-vad",
         "onnx/model_int8.onnx",
-        (tmp_path / "9b" / "vad" / "silero-vad-int8.onnx").as_posix(),
+        (tmp_path / "4b" / "vad" / "silero-vad-int8.onnx").as_posix(),
     ) in staged
     assert report["vad"]["onnxFallbackIncluded"] is True
     assert report["vad"]["onnxFallbackRepo"] == "onnx-community/silero-vad"
 
 
-def test_stage_dry_run_uses_larger_asr_for_pro_tier(
+def test_stage_dry_run_rejects_removed_large_tier(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    report = stage.stage_assets(_args(tmp_path, "27b"))
-    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-1.7B-GGUF"
-    assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
-
-
-def test_stage_dry_run_uses_larger_asr_for_27b_1m_tier(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    report = stage.stage_assets(_args(tmp_path, "27b-1m"))
-    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-1.7B-GGUF"
-    assert report["asrRemotePath"] == "Qwen3-ASR-1.7B-Q8_0.gguf"
+    try:
+        stage.stage_assets(_args(tmp_path, "27b"))
+    except KeyError:
+        return
+    raise AssertionError("27b ASR staging should not be part of the active release line")
 
 
 def test_non_dry_run_writes_asr_vad_and_wakeword_license_notes(

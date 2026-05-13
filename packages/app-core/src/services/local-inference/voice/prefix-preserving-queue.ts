@@ -133,7 +133,13 @@ export class PrefixPreservingQueue {
     }
 
     this.chunks.length = 0;
-    return { retained, dropped, straddled, retainedDurationMs, droppedDurationMs };
+    return {
+      retained,
+      dropped,
+      straddled,
+      retainedDurationMs,
+      droppedDurationMs,
+    };
   }
 
   /**

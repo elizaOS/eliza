@@ -18,10 +18,9 @@ Hard contract (training/AGENTS.md §2 + §9):
     the sha256 of the final shipped text GGUF it was distilled to match.
     The publish path (and the runtime doctor) refuse a drafter whose
     recorded hash does not match the text GGUF in the same bundle.
-  - The recipe is the same across tiers; only the student size changes.
-    Eliza-1 small tiers use Qwen3.5-compatible students: 0.8B for 2B/4B,
-    2B for 9B, and 4B for 27B. Pick the smallest student whose verified
-    acceptance window stays above the tier's gate.
+  - The recipe is the same across active tiers. Eliza-1 uses Qwen3.5
+    students only: the 0.8B tier self-distills, and 2B/4B use the 0.8B
+    student unless empirical acceptance/speed gates force a larger student.
 
 Distillation objective: forward KL on the top-k target logits plus a small
 cross-entropy floor on the ground-truth token (label smoothing keeps the
@@ -78,21 +77,14 @@ log = logging.getLogger("distill_dflash_drafter")
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
-# Recommended student base per tier. These defaults intentionally stay within
-# the Qwen3.5/Qwen3.6 tokenizer family. The 0.8B tier has no smaller public
+# Recommended student base per active tier. These defaults intentionally stay
+# within the Qwen3.5 tokenizer family. The 0.8B tier has no smaller public
 # Qwen3.5 student; its drafter is an aggressively quantized, KD-aligned
 # self-size drafter and must pass the acceptance/speed gate before release.
 DEFAULT_STUDENT_BASE: dict[str, str] = {
     "0_8b": "Qwen/Qwen3.5-0.8B",
     "2b": "Qwen/Qwen3.5-0.8B",
     "4b": "Qwen/Qwen3.5-0.8B",
-    "9b": "Qwen/Qwen3.5-2B",
-    "27b": "Qwen/Qwen3.5-4B",
-    "27b-256k": "Qwen/Qwen3.5-4B",
-    # 1M-context variant of the 27B tier: same student base as 27b/27b-256k.
-    # The long-context K-cache rides the trellis path (turbo3_tcq); the
-    # drafter itself is the same KD recipe.
-    "27b-1m": "Qwen/Qwen3.5-4B",
 }
 
 # Canonical Eliza-1 text targets that each drafter is allowed to pair with.
@@ -104,10 +96,6 @@ DEFAULT_TARGET_MODEL: dict[str, str] = {
     "0_8b": "elizaos/eliza-1/bundles/0_8b",
     "2b": "elizaos/eliza-1/bundles/2b",
     "4b": "elizaos/eliza-1/bundles/4b",
-    "9b": "elizaos/eliza-1/bundles/9b",
-    "27b": "elizaos/eliza-1/bundles/27b",
-    "27b-256k": "elizaos/eliza-1/bundles/27b-256k",
-    "27b-1m": "elizaos/eliza-1/bundles/27b-1m",
 }
 
 # Acceptance-rate gate per tier — the drafter is publish-blocking below this.
@@ -118,10 +106,6 @@ ACCEPTANCE_GATE: dict[str, float] = {
     "0_8b": 0.40,
     "2b": 0.50,
     "4b": 0.52,
-    "9b": 0.55,
-    "27b": 0.55,
-    "27b-256k": 0.55,
-    "27b-1m": 0.55,
 }
 
 

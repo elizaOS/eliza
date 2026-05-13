@@ -16,11 +16,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { MockCheckpointManager } from "../checkpoint-manager";
+import type { PrefillOptimisticResult } from "../prefill-client";
 import type {
   DrafterAbortReason,
   DrafterHandle,
   StartDrafterFn,
-  PrefillOptimisticResult,
 } from "../voice-state-machine";
 import { VoiceStateMachine } from "../voice-state-machine";
 
@@ -32,7 +32,8 @@ function fakeDrafter(): {
   fn: StartDrafterFn;
   calls: Array<{ turnId: string; aborted: DrafterAbortReason | null }>;
 } {
-  const calls: Array<{ turnId: string; aborted: DrafterAbortReason | null }> = [];
+  const calls: Array<{ turnId: string; aborted: DrafterAbortReason | null }> =
+    [];
   const fn: StartDrafterFn = ({ turnId }) => {
     const rec = { turnId, aborted: null as DrafterAbortReason | null };
     calls.push(rec);
@@ -47,9 +48,12 @@ function fakeDrafter(): {
 }
 
 function okFetch(): typeof fetch {
-  return vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({ content: "" }), { status: 200 }),
-  ) as typeof fetch;
+  const mock = vi
+    .fn()
+    .mockResolvedValue(
+      new Response(JSON.stringify({ content: "" }), { status: 200 }),
+    );
+  return Object.assign(mock, { preconnect: fetch.preconnect }) as typeof fetch;
 }
 
 function makeMachineWithPrefill(mgr = new MockCheckpointManager()) {

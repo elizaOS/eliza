@@ -5,10 +5,10 @@
 # those card-level defaults with per-bundle overrides + TPS expectations.
 #
 # All TPS numbers are *estimates* — they have not been measured on real
-# hardware. The H200 is the marquee config: Eliza-1 27B at 1M context with
-# QJL K + Polar V KV quant fully resident in HBM3e. NVLink/SXM
-# multi-card setups are *out of scope* per the single-GPU framing; see
-# `docs/eliza-1-gpu-tier.md` for the constraint discussion.
+# hardware. Current release smoke uses Eliza-1 4B; 27B/1M recipes remain
+# hidden future recipes until final Eliza-1 weights and release evidence
+# exist. NVLink/SXM multi-card setups are *out of scope* per the single-GPU
+# framing; see `docs/eliza-1-gpu-tier.md` for the constraint discussion.
 
 gpu_id: h200
 gpu_arch: sm_90
@@ -19,8 +19,8 @@ fp4_supported: false
 nvlink: true                       # SXM has NVLink, but single-GPU only here
 
 bundle_recommendations:
-  # Small bundles are present for completeness, but the H200 is wasted on
-  # anything below 9B. Operators should pick 27b / 27b-256k / 27b-1m.
+  # Current release bundles come first. Hidden future 9B/27B recipes remain
+  # below for hardware planning only, not default selection.
   eliza-1-0_8b:
     n_gpu_layers: -1
     ctx_size: 32768
@@ -80,7 +80,7 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 130
     estimated_prefill_tps: 4500
-    notes: "27B at 128k — comfortable fit; recommended default for H200 chat."
+    notes: "Hidden future recipe. Comfortable fit only after final 27B weights ship."
   eliza-1-27b-256k:
     n_gpu_layers: -1
     ctx_size: 262144
@@ -92,9 +92,9 @@ bundle_recommendations:
     flash_attention: true
     estimated_decode_tps: 95
     estimated_prefill_tps: 3200
-    notes: "27B at 256k — KV ~20 GiB; resident in HBM3e."
+    notes: "Hidden future recipe. KV ~20 GiB; resident in HBM3e."
   eliza-1-27b-1m:
-    # The marquee config. ~17 GiB weights + ~80 GiB KV at 1M (QJL K + Polar V
+    # Hidden future recipe. ~17 GiB weights + ~80 GiB KV at 1M (QJL K + Polar V
     # ≈ 80 KiB/token quantized) + ~40 GiB headroom for activations, drafter,
     # and parallel slots. NO CPU spill.
     n_gpu_layers: -1
@@ -131,5 +131,5 @@ verify_recipe:
     - polarquant
     - dflash
   unavailable_kernels: []
-  smoke_bundle: eliza-1-27b-1m
+  smoke_bundle: eliza-1-4b
   tolerance_pct: 10

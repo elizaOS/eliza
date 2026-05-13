@@ -816,7 +816,7 @@ public class ElizaAgentService extends Service {
             // Also gate on `isBrandedDevice()` so the same APK can be
             // installed on stock Android (Capacitor sideload) without the
             // bun process auto-loading libllama.so. The aosp-llama-adapter
-            // tries to auto-download a 1.7B GGUF from huggingface on first
+            // tries to auto-download the default 2B GGUF from huggingface on first
             // run and bun-on-untrusted_app cannot reach the network without
             // configuration; the download fail then cascades into a
             // mid-init crash (no stderr, no exit code, agent.log empty).

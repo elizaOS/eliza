@@ -27,6 +27,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DuetAudioBridge,
+  DuetSink,
   resampleLinear,
 } from "../../../../scripts/lib/duet-bridge.mjs";
 import { EndToEndLatencyTracer, type LatencyTrace } from "../latency-trace";
@@ -141,6 +142,37 @@ describe("voice:duet — wiring (stub backends + DuetAudioBridge)", () => {
     for (let i = 0; i < a.length; i++) a[i] = Math.sin(i / 100);
     expect(resampleLinear(a, TTS_RATE, ASR_RATE).length).toBe(32_000);
     expect(resampleLinear(a, 16_000, 16_000)).toBe(a);
+  });
+
+  it("DuetSink paced mode forwards synthetic TTS over mic-time frames", async () => {
+    const chunks: Array<{ pcm: Float32Array; sampleRate: number }> = [];
+    const sink = new DuetSink(
+      (pcm: Float32Array, sampleRate: number) => {
+        chunks.push({ pcm, sampleRate });
+      },
+      { sourceRate: 1_000, targetRate: 1_000, pace: true, frameMs: 5 },
+    );
+    sink.write(new Float32Array(10).fill(0.25), 1_000);
+    await sink.settle();
+    expect(chunks.map((c) => c.pcm.length)).toEqual([5, 5]);
+    expect(chunks.every((c) => c.sampleRate === 1_000)).toBe(true);
+    expect(sink.totalForwarded()).toBe(10);
+    expect(sink.bufferedSamples()).toBe(0);
+  });
+
+  it("DuetSink drain cancels queued paced audio", async () => {
+    const chunks: Float32Array[] = [];
+    const sink = new DuetSink((pcm: Float32Array) => chunks.push(pcm), {
+      sourceRate: 1_000,
+      targetRate: 1_000,
+      pace: true,
+      frameMs: 5,
+    });
+    sink.write(new Float32Array(20).fill(0.25), 1_000);
+    sink.drain();
+    await sink.settle();
+    expect(chunks.length).toBe(0);
+    expect(sink.bufferedSamples()).toBe(0);
   });
 
   it("(a)(b)(c)(d)(e) A's TTS PCM crosses to B → B replies → 3 round-trips; both tracers record the duet checkpoints; cross-ring bounded", async () => {

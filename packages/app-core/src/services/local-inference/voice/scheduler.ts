@@ -1,11 +1,11 @@
-import { BargeInController } from "./barge-in";
 import { inferenceTelemetry } from "../inference-telemetry";
+import { BargeInController } from "./barge-in";
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import { PhraseCache } from "./phrase-cache";
 import { PhraseChunker } from "./phrase-chunker";
 import {
-  type TaggedAudioChunk,
   PrefixPreservingQueue,
+  type TaggedAudioChunk,
 } from "./prefix-preserving-queue";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 import { RollbackQueue } from "./rollback-queue";
@@ -607,9 +607,7 @@ export class VoiceScheduler {
         // backend constructor name is the cheapest available identity label
         // without threading a separate config field.
         const chunkDurationMs =
-          chunk.sampleRate > 0
-            ? (pcm.length / chunk.sampleRate) * 1000
-            : 0;
+          chunk.sampleRate > 0 ? (pcm.length / chunk.sampleRate) * 1000 : 0;
         const ttsBackendName = backend.constructor.name;
         inferenceTelemetry.record("tts.chunk_size_ms", chunkDurationMs, {
           backend: ttsBackendName,
@@ -856,19 +854,22 @@ export class VoiceScheduler {
     this.clearPhraseFlushTimer();
     const delayMs = this.chunker.msUntilTimeBudget();
     if (!Number.isFinite(delayMs)) return;
-    this.phraseFlushTimer = setTimeout(() => {
-      this.phraseFlushTimer = null;
-      const phrase = this.chunker.flushIfTimeBudgetExceeded();
-      if (!phrase) {
-        this.armPhraseFlushTimer();
-        return;
-      }
-      void this.dispatchPhrase(phrase).catch((err) => {
-        setTimeout(() => {
-          throw err;
-        }, 0);
-      });
-    }, Math.max(0, delayMs));
+    this.phraseFlushTimer = setTimeout(
+      () => {
+        this.phraseFlushTimer = null;
+        const phrase = this.chunker.flushIfTimeBudgetExceeded();
+        if (!phrase) {
+          this.armPhraseFlushTimer();
+          return;
+        }
+        void this.dispatchPhrase(phrase).catch((err) => {
+          setTimeout(() => {
+            throw err;
+          }, 0);
+        });
+      },
+      Math.max(0, delayMs),
+    );
   }
 
   private clearPhraseFlushTimer(): void {

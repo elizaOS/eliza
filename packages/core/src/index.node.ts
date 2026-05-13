@@ -169,16 +169,11 @@ export {
 } from "./runtime/action-catalog";
 export * from "./runtime/builtin-field-evaluators";
 export * from "./runtime/cleanup-scope";
-export * from "./runtime/conversation-compaction-hook";
 export * from "./runtime/context-gates";
 export * from "./runtime/context-registry";
+export * from "./runtime/conversation-compaction-hook";
 export * from "./runtime/cost-table";
 export * from "./runtime/execute-planned-tool-call";
-export {
-	type ExtractedPlanAction,
-	type ExtractOptions,
-	extractPlanActionsFromContent,
-} from "./runtime/plan-actions-extractor";
 export {
 	detectLocaleFromText,
 	type ResolveOwnerLocaleOptions,
@@ -192,6 +187,11 @@ export {
 	type LocalizedExamplesProviderInput,
 	registerLocalizedExamplesProvider,
 } from "./runtime/localized-examples-provider";
+export {
+	type ExtractedPlanAction,
+	type ExtractOptions,
+	extractPlanActionsFromContent,
+} from "./runtime/plan-actions-extractor";
 export * from "./runtime/response-grammar";
 export * from "./runtime/response-handler-evaluators";
 export * from "./runtime/response-handler-field-evaluator";

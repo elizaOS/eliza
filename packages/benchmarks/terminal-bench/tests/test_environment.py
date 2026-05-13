@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime
 
 from elizaos_terminal_bench.environment import (
+    LocalTerminalEnvironment,
     MockTerminalEnvironment,
     TerminalEnvironment,
     TerminalEnvironmentError,
@@ -14,6 +15,20 @@ from elizaos_terminal_bench.types import (
     TaskDifficulty,
     TerminalTask,
 )
+
+
+def _docker_daemon_available() -> bool:
+    try:
+        import docker
+
+        client = docker.from_env()
+        try:
+            client.ping()
+        finally:
+            client.close()
+        return True
+    except Exception:
+        return False
 
 
 class TestMockTerminalEnvironment:
@@ -97,6 +112,36 @@ class TestMockTerminalEnvironment:
         assert env._started is False
 
 
+class TestLocalTerminalEnvironment:
+    """Test real local temp-workspace execution used when Docker is unavailable."""
+
+    @pytest.mark.asyncio
+    async def test_rewrites_workspace_paths_and_runs_test(self) -> None:
+        env = LocalTerminalEnvironment(timeout_seconds=30)
+        await env.start()
+        try:
+            result = await env.execute(
+                "cat > /workspace/hello.py << 'EOF'\nprint('Hello, World!')\nEOF"
+            )
+            assert result.exit_code == 0
+
+            success, output, exit_code = await env.run_test(
+                """#!/bin/bash
+if [ -f "/workspace/hello.py" ]; then
+    output=$(python3 /workspace/hello.py 2>&1)
+    if [ "$output" = "Hello, World!" ]; then
+        exit 0
+    fi
+fi
+exit 1
+"""
+            )
+            assert success is True, output
+            assert exit_code == 0
+        finally:
+            await env.stop()
+
+
 class TestTerminalEnvironmentNoDocker:
     """Test TerminalEnvironment initialization without Docker."""
 
@@ -125,6 +170,7 @@ class TestTerminalEnvironmentNoDocker:
 
 
 @pytest.mark.docker
+@pytest.mark.skipif(not _docker_daemon_available(), reason="Docker daemon unavailable")
 class TestTerminalEnvironmentDocker:
     """Test TerminalEnvironment with Docker (integration tests)."""
 

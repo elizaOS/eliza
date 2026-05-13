@@ -13,7 +13,7 @@ describe("searchHuggingFaceGguf", () => {
     vi.unstubAllGlobals();
   });
 
-  it("classifies decimal tiers without hiding external parameter labels", async () => {
+  it("classifies Qwen3.5 decimal tiers without legacy Qwen3 aliases", async () => {
     const details = new Map<string, unknown>([
       [
         "Qwen/Qwen3.5-0.8B-GGUF",
@@ -30,15 +30,6 @@ describe("searchHuggingFaceGguf", () => {
           id: "Qwen/Qwen3.5-2B-GGUF",
           tags: ["gguf", "text-generation"],
           siblings: [{ rfilename: "qwen3.5-2b-q4_k_m.gguf", size: 512 }],
-          pipeline_tag: "text-generation",
-        },
-      ],
-      [
-        "org/legacy-1.7b-GGUF",
-        {
-          id: "org/legacy-1.7b-GGUF",
-          tags: ["gguf"],
-          siblings: [{ rfilename: "legacy-1.7b-q4_k_m.gguf", size: 512 }],
           pipeline_tag: "text-generation",
         },
       ],
@@ -69,11 +60,10 @@ describe("searchHuggingFaceGguf", () => {
     expect(results.map((result) => [result.params, result.bucket])).toEqual([
       ["0.8B", "small"],
       ["2B", "small"],
-      ["2B", "small"],
       ["0.8B", "small"],
     ]);
     expect(
       results.map((result) => result.parameterLabel ?? result.params),
-    ).toEqual(["0.8B", "2B", "1.7B", "0.8B"]);
+    ).toEqual(["0.8B", "2B", "0.8B"]);
   });
 });

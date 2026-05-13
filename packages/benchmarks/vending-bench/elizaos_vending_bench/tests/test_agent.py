@@ -46,6 +46,39 @@ class TestVendingAgent:
         assert params["column"] == 1
         assert params["price"] == 1.50
 
+    def test_parse_action_strips_action_name_whitespace(self) -> None:
+        """Test parsing harness-style JSON with whitespace in action names."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"action": " RESTOCK_SLOT", "row": 0, "column": 1, "product_id": "water", "quantity": 5}'
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.RESTOCK_SLOT
+        assert params["product_id"] == "water"
+
+    def test_parse_action_strips_control_characters(self) -> None:
+        """Test parsing harness-style JSON with raw control characters."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"\\naction": "\\nADVANCE_DAY"}'.replace("\\n", "\n")
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.ADVANCE_DAY
+        assert params == {}
+
+    def test_parse_action_ignores_trailing_harness_noise(self) -> None:
+        """Test parsing the first JSON object from noisy harness output."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"action":"VIEW_SUPPLIERS"} NO_REPLY'
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.VIEW_SUPPLIERS
+        assert params == {}
+
     def test_parse_action_place_order(self) -> None:
         """Test parsing place order action."""
         env = VendingEnvironment(seed=42)

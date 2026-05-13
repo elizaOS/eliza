@@ -12,9 +12,9 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
+  type ContextPartial,
   EagerContextBuilder,
   mergeContext,
-  type ContextPartial,
 } from "../eager-context-builder";
 
 // ---------------------------------------------------------------------------
@@ -91,7 +91,10 @@ describe("EagerContextBuilder", () => {
     // Deterministic system block is present.
     expect(ctx.systemText).toContain("[det-system]");
     // User message is last history entry.
-    expect(ctx.history.at(-1)).toEqual({ role: "user", content: "hello world" });
+    expect(ctx.history.at(-1)).toEqual({
+      role: "user",
+      content: "hello world",
+    });
   });
 
   it("complete() rebuilds when the cache is stale (> staleCutoffMs)", async () => {
@@ -239,7 +242,10 @@ describe("mergeContext", () => {
   });
 
   it("filters out empty string blocks from systemText", () => {
-    const det: ContextPartial = { systemBlocks: ["", "REAL"], historyBlocks: [] };
+    const det: ContextPartial = {
+      systemBlocks: ["", "REAL"],
+      historyBlocks: [],
+    };
     const msgDep: ContextPartial = { systemBlocks: [""], historyBlocks: [] };
     const full = mergeContext(det, msgDep, {
       deterministicBuiltAt: "",

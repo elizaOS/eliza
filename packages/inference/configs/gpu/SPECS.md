@@ -70,7 +70,7 @@ Eliza-1 bundles (Qwen3.5 / 3.6 base):
 
 | Bundle | n_layers | n_kv_heads | head_dim | FP16 KiB/tok | Q8K/Q4V KiB/tok | QJL+Polar KiB/tok |
 |---|---|---|---|---|---|---|
-| 1.7B / 2B class | 28 | 8 | 128 | 112 | 88 | 28 |
+| 0.8B / 2B class | 28 | 8 | 128 | 112 | 88 | 28 |
 | 4B | 36 | 8 | 128 | 144 | 113 | 36 |
 | 9B | 48 | 8 | 128 | 192 | 150 | 48 |
 | 27B | 62 | 8 | 128 | 248 | 194 | 62 |
@@ -79,8 +79,8 @@ Eliza-1 bundles (Qwen3.5 / 3.6 base):
 
 | Bundle | Ctx | KV quant | KV per slot |
 |---|---|---|---|
-| 1.7B | 32k | Q8K/Q4V | 32 768 × 88 KiB = **2.75 GiB** |
-| 1.7B | 32k | QJL+Polar | 32 768 × 28 KiB = **0.88 GiB** |
+| 2B | 32k | Q8K/Q4V | 32 768 × 88 KiB = **2.75 GiB** |
+| 2B | 32k | QJL+Polar | 32 768 × 28 KiB = **0.88 GiB** |
 | 9B | 65k | QJL+Polar | 65 536 × 48 KiB = **3.0 GiB** |
 | 27B | 32k | QJL+Polar | 32 768 × 62 KiB = **2.0 GiB** |
 | 27B | 128k | QJL+Polar | 131 072 × 62 KiB = **8.0 GiB** |
@@ -97,7 +97,7 @@ cards, 4 GiB on 5090, 6 GiB on H200. See `reservedHeadroomGb()` in
 **RTX 3090 (24 GiB, no FP8)** — uses Q8K / Q4V KV (Ampere has no q4_polar
 kernel on the Polar fork).
 
-- 1.7B (1.2 GiB model): KV budget 19.8 GiB / 2.75 GiB-per-slot = **7 max
+- 2B (1.5 GiB model): KV budget 19.5 GiB / 2.75 GiB-per-slot = **7 max
   parallel @ 32k**. Config caps at 8 to leave OS-window headroom.
 - 9B (5.4 GiB): KV budget 15.6 GiB / (65 536 × 150 KiB = 9.4 GiB-per-slot
   @ 64k) = 1 parallel @ 64k; at 32k it's 4.7 GiB-per-slot → **3 parallel**.
@@ -106,7 +106,7 @@ kernel on the Polar fork).
 
 **RTX 4090 (24 GiB, FP8)** — QJL + Polar KV available.
 
-- 1.7B: KV budget 19.8 GiB / 0.88 GiB-per-slot @ 32k = **16 parallel**
+- 2B: KV budget 19.5 GiB / 0.88 GiB-per-slot @ 32k = **16 parallel**
   (we cap at 16 for practical session-count reasons).
 - 9B: 18 GiB / 3 GiB-per-slot @ 64k = 6; spec picks **8 parallel @ 32k**
   (slot KV = 1.5 GiB) for voice; 4 @ 64k for chat.
@@ -117,7 +117,7 @@ kernel on the Polar fork).
 
 **RTX 5090 (32 GiB, FP8/FP4)** — same KV math, 8 GiB more headroom.
 
-- 1.7B: KV budget 27.8 GiB / 0.88 GiB = 31 → **24 parallel** (we leave
+- 2B: KV budget 27.5 GiB / 0.88 GiB = 31 → **24 parallel** (we leave
   realistic session headroom).
 - 9B: 26.6 GiB / 3 GiB @ 64k = 8 → **12 parallel @ 64k**.
 - 27B: 12 GiB / 2 GiB @ 32k = 6 → **6 parallel @ 32k**; at 128k it's
@@ -176,7 +176,7 @@ Used by the voice optimistic-rollback path. Mid-prefill snapshots cost
 
 | Bundle | ctx_checkpoints | interval |
 |---|---|---|
-| 1.7B / 2B | 4 | 4 096 |
+| 0.8B / 2B | 4 | 4 096 |
 | 4B / 9B | 8 | 8 192 |
 | 27B (incl. 256k / 1m) | 16 | 8 192 |
 

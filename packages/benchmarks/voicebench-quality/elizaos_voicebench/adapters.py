@@ -97,8 +97,8 @@ def build_adapter(
     any of them.
     """
 
-    if mock or agent == "echo":
-        raise RuntimeError("Echo/mock adapter is disabled for benchmark runs")
+    if mock:
+        raise RuntimeError("Mock adapter is disabled for benchmark runs")
 
     stt = _build_stt(stt_provider) if stt_provider else None
     text = _build_text_adapter(agent)

@@ -388,7 +388,7 @@ def setup_mcp_servers(
             continue
             
         server_type = server_config.get("type")
-        params = server_config.get("params", {})
+        params = dict(server_config.get("params", {}))
         
         # Replace path placeholders
         for key, value in params.items():

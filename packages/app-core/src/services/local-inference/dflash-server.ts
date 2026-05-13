@@ -37,19 +37,20 @@ import {
   parseDflashFieldFromSseChunk,
 } from "./dflash-event-schema";
 import {
-  diffDflashVerifyMetrics,
+  DflashMetricsCollector,
+  dflashTurnHistory,
+} from "./dflash-metrics-collector";
+import {
   type DflashVerifyEvent,
   type DflashVerifyMetricSample,
   type DflashVerifyStats,
+  diffDflashVerifyMetrics,
   fetchDflashVerifyMetricSample,
   parseDflashVerifyEventsFromSseChunk,
   summarizeVerifyEvents,
 } from "./dflash-verify-event";
-import {
-  DflashMetricsCollector,
-  dflashTurnHistory,
-} from "./dflash-metrics-collector";
 import { probeHardware } from "./hardware";
+import { inferenceTelemetry } from "./inference-telemetry";
 import {
   estimateQuantizedKvBytesPerToken,
   KV_SPILL_MIN_CONTEXT,
@@ -63,7 +64,6 @@ import {
   fetchMetricsSnapshot,
   type LocalUsageBlock,
 } from "./llama-server-metrics";
-import { inferenceTelemetry } from "./inference-telemetry";
 import { localInferenceRoot } from "./paths";
 import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
@@ -133,7 +133,7 @@ export interface DflashServerPlan {
    * as the last-resort memory-pressure eviction for the drafter role (the
    * drafter is co-resident in this process, so dropping it means a relaunch).
    * When true, `start()` omits `-md`, `--spec-type dflash`, and the `--draft-*`
-   * / `--ctx-size-draft` / `--n-gpu-layers-draft` flags. `drafterModelPath`
+   * / draft-count / `--n-gpu-layers-draft` flags. `drafterModelPath`
    * is still carried in the plan so a subsequent re-arm can put it back.
    */
   disableDrafter?: boolean;
@@ -412,16 +412,56 @@ export function shouldRequireActiveDflashForRequest(
     | null
     | undefined,
   maxTokens: number | null | undefined,
+  observedOutputTokens?: number | null,
 ): boolean {
   if (!plan || plan.disableDrafter || allowZeroDraftForDiagnostics()) {
     return false;
+  }
+  const minDraftableTokens = Math.max(1, plan.draftMin) + 2;
+  if (Number.isFinite(maxTokens) && maxTokens != null) {
+    if (maxTokens < minDraftableTokens) return false;
+  }
+  if (Number.isFinite(observedOutputTokens) && observedOutputTokens != null) {
+    if (observedOutputTokens < minDraftableTokens) return false;
   }
   if (!Number.isFinite(maxTokens) || maxTokens == null) return true;
   // The verifier can only test a draft after the first target token, and
   // llama.cpp's server refuses drafts smaller than draftMin. One-token
   // prewarm and tiny control probes should not be mistaken for a skipped
   // DFlash path.
-  return maxTokens >= Math.max(1, plan.draftMin) + 2;
+  return maxTokens >= minDraftableTokens;
+}
+
+export function attachDflashSpeculativeRequestFields(
+  payload: Record<string, unknown>,
+  plan:
+    | Pick<DflashServerPlan, "disableDrafter" | "draftMin" | "draftMax">
+    | null
+    | undefined,
+): void {
+  if (!plan || plan.disableDrafter) return;
+  payload["speculative.n_min"] = Math.max(0, plan.draftMin);
+  payload["speculative.n_max"] = Math.max(
+    Math.max(0, plan.draftMin),
+    plan.draftMax,
+  );
+  payload["speculative.type"] = "dflash";
+}
+
+export function estimateOutputTokensForDflashEvidence(
+  usage: Pick<LocalUsageBlock, "output_tokens">,
+  text: string,
+): number {
+  if (Number.isFinite(usage.output_tokens) && usage.output_tokens > 0) {
+    return usage.output_tokens;
+  }
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return 0;
+  // Streaming chat responses on some llama-server builds omit
+  // n_tokens_predicted_total. Use a conservative BPE-ish estimate only for
+  // the DFlash activity assertion, so generated visible text cannot hide a
+  // zero-draft server path behind missing metrics.
+  return Math.max(1, Math.ceil(trimmed.length / 4));
 }
 
 /**
@@ -610,6 +650,10 @@ export interface DflashBinaryCapabilities {
    * count, symbol-verify report). `null` on non-fused builds.
    */
   omnivoice?: unknown;
+  /** True when the build passed the required-kernel gate at install time. */
+  publishable?: boolean;
+  /** Required kernels missing at install time; empty means the build gate passed. */
+  missingRequiredKernels?: string[];
 }
 
 function readCapabilitiesAt(capsPath: string): DflashBinaryCapabilities | null {
@@ -718,6 +762,64 @@ function helpAdvertisesDflashSpecType(binaryPath: string): boolean {
   return help.includes("--spec-type") && /\bdflash\b/.test(help);
 }
 
+function capabilitiesAreFreshForBinary(binaryPath: string): boolean {
+  try {
+    const capsStat = fs.statSync(
+      path.join(path.dirname(binaryPath), "CAPABILITIES.json"),
+    );
+    const binStat = fs.statSync(binaryPath);
+    return capsStat.mtimeMs >= binStat.mtimeMs;
+  } catch {
+    return false;
+  }
+}
+
+function capabilitiesAdvertiseDflashSpecType(binaryPath: string): boolean {
+  const caps = readDflashBinaryCapabilities(binaryPath);
+  if (!caps) return false;
+  return Boolean(
+    capabilitiesAreFreshForBinary(binaryPath) &&
+      caps.publishable === true &&
+      caps.kernels?.dflash === true &&
+      caps.dflashDraftArchitecture === true &&
+      (caps.missingRequiredKernels?.length ?? 0) === 0 &&
+      (caps.binaries ?? []).includes("llama-server") &&
+      ((caps.supportedArchitectures ?? []).includes("dflash-draft") ||
+        (caps.draftArchitectures ?? []).includes("dflash-draft")),
+  );
+}
+
+function helpAdvertisesFlag(binaryPath: string, flag: string): boolean {
+  return llamaServerHelpText(binaryPath).includes(flag);
+}
+
+export function appendDflashDraftTuningFlags(
+  args: string[],
+  opts: {
+    binaryPath: string;
+    draftContextSize: number;
+    draftMin: number;
+    draftMax: number;
+  },
+): void {
+  if (helpAdvertisesFlag(opts.binaryPath, "--ctx-size-draft")) {
+    args.push("--ctx-size-draft", String(opts.draftContextSize));
+  }
+
+  args.push(
+    helpAdvertisesFlag(opts.binaryPath, "--spec-draft-n-min")
+      ? "--spec-draft-n-min"
+      : "--draft-min",
+    String(opts.draftMin),
+  );
+  args.push(
+    helpAdvertisesFlag(opts.binaryPath, "--spec-draft-n-max")
+      ? "--spec-draft-n-max"
+      : "--draft-max",
+    String(opts.draftMax),
+  );
+}
+
 function assertCacheTypeSupportedOnBackend(
   name: string,
   value: string,
@@ -746,6 +848,12 @@ function assertDflashSpecSupportedOnBackend(binaryPath: string): void {
     );
   }
   if (!helpAdvertisesDflashSpecType(binaryPath)) {
+    // Runtime `--help` is the strongest stale-binary guard, but native test
+    // and sandbox runners can occasionally return an empty help surface while
+    // the exact same product binary is valid when probed from the shell. Allow
+    // the build-script capability file as a narrow fallback only when it is
+    // fresh relative to the binary and records a publishable DFlash build.
+    if (capabilitiesAdvertiseDflashSpecType(binaryPath)) return;
     throw new Error(
       `[dflash] ${binaryPath} does not advertise '--spec-type ... dflash' in --help; refusing to launch because Eliza-1 requires DFlash drafting.`,
     );
@@ -780,7 +888,11 @@ export function probeCtxCheckpointsSupported(binaryPath: string): boolean {
   try {
     const result = spawnSync(binaryPath, ["--help"], {
       encoding: "utf8",
-      timeout: 5_000,
+      // Cold Metal/fused binaries can spend several seconds loading native
+      // libraries before printing the full arg table. A short timeout creates
+      // a false "no --spec-type dflash" negative and blocks otherwise-valid
+      // Eliza-1 launches.
+      timeout: 30_000,
       maxBuffer: 4 * 1024 * 1024,
     });
     const text = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -837,11 +949,21 @@ export function appendCtxCheckpointFlags(
   enableCheckpoints = true,
 ): void {
   if (!enableCheckpoints) return;
+  const caps = readDflashBinaryCapabilities(binaryPath);
+  if (caps?.backend === "metal") {
+    // The current llama.cpp checkpoint path uses SET_ROWS during graph
+    // reserve. On Metal, a reshaped Metal-resident KV tensor can select
+    // SET_ROWS and abort before the server starts. Keep optimistic rollback
+    // enabled at the JS level, but do not pass native ctx-checkpoint flags on
+    // Metal until the backend advertises a Metal-safe checkpoint primitive.
+    return;
+  }
   if (!probeCtxCheckpointsSupported(binaryPath)) return;
   const ckpt = optimizations?.ctxCheckpoints ?? DEFAULT_CTX_CHECKPOINTS;
   const interval =
     optimizations?.ctxCheckpointInterval ?? DEFAULT_CTX_CHECKPOINT_INTERVAL;
   if (
+    helpAdvertisesFlag(binaryPath, "--ctx-checkpoints") &&
     typeof ckpt === "number" &&
     Number.isInteger(ckpt) &&
     ckpt > 0
@@ -849,6 +971,7 @@ export function appendCtxCheckpointFlags(
     args.push("--ctx-checkpoints", String(ckpt));
   }
   if (
+    helpAdvertisesFlag(binaryPath, "--ctx-checkpoint-interval") &&
     typeof interval === "number" &&
     Number.isInteger(interval) &&
     interval > 0
@@ -866,7 +989,7 @@ function llamaServerHelpText(binaryPath: string): string {
   try {
     const result = spawnSync(binaryPath, ["--help"], {
       encoding: "utf8",
-      timeout: 5_000,
+      timeout: 30_000,
       maxBuffer: 4 * 1024 * 1024,
     });
     return `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
@@ -892,12 +1015,14 @@ export function resolveDisableThinkingFlags(binaryPath: string): string[] {
 
   const help = llamaServerHelpText(binaryPath);
   const flags: string[] = [];
-  if (/(^|\n)\s*--reasoning(?:[,\s]|$)/.test(help)) {
+  if (/(^|\n).*--reasoning(?:[,\s]|$)/.test(help)) {
     flags.push("--reasoning", "off");
-  } else if (/(^|\n)\s*--reasoning-format(?:[,\s]|$)/.test(help)) {
+    if (/(^|\n).*--reasoning-budget(?:[,\s]|$)/.test(help)) {
+      flags.push("--reasoning-budget", "0");
+    }
+  } else if (/(^|\n).*--reasoning-format(?:[,\s]|$)/.test(help)) {
     flags.push("--reasoning-format", "none");
-  }
-  if (/(^|\n)\s*--chat-template-kwargs(?:[,\s]|$)/.test(help)) {
+  } else if (/(^|\n).*--chat-template-kwargs(?:[,\s]|$)/.test(help)) {
     flags.push("--chat-template-kwargs", '{"enable_thinking":false}');
   }
   if (flags.length === 0) {
@@ -907,6 +1032,92 @@ export function resolveDisableThinkingFlags(binaryPath: string): string[] {
   }
   disableThinkingProbeCache.set(binaryPath, flags);
   return [...flags];
+}
+
+export function appendMetalSafeStartupFlags(
+  args: string[],
+  binaryPath: string,
+): void {
+  const caps = readDflashBinaryCapabilities(binaryPath);
+  if (caps?.backend !== "metal") return;
+  const help = llamaServerHelpText(binaryPath);
+  if (/(^|\n)\s*(?:-fit,|-fit\b|--fit\b)/.test(help)) {
+    // The automatic fit probe constructs a temporary context before normal
+    // serving. With Qwen3.5 hybrid attention + compressed KV, that graph can
+    // still route QJL/Polar cache tensors through generic Metal attention
+    // kernels before the dedicated compressed-KV graph route is selected.
+    // Disable the probe on Metal; explicit ctx/gpu-layer values are already
+    // supplied by the catalog/active-model planner.
+    args.push("-fit", "off");
+  }
+}
+
+const METAL_COMPRESSED_KV_FALLBACK = "q8_0";
+const METAL_COMPRESSED_KV_UNSUPPORTED = new Set(["qjl1_256", "q4_polar"]);
+const metalCompressedKvWarnings = new Set<string>();
+
+export function resolveMetalRuntimeCacheTypes(opts: {
+  binaryPath: string;
+  targetModelPath: string;
+  cacheTypeK: string | undefined;
+  cacheTypeV: string | undefined;
+  emitWarning?: boolean;
+}): {
+  cacheTypeK: string | undefined;
+  cacheTypeV: string | undefined;
+  downgraded: boolean;
+  reason: string | null;
+} {
+  const caps = readDflashBinaryCapabilities(opts.binaryPath);
+  const k = opts.cacheTypeK?.trim();
+  const v = opts.cacheTypeV?.trim();
+  const kLower = k?.toLowerCase();
+  const vLower = v?.toLowerCase();
+  const usesMetalCompressedKv =
+    (kLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(kLower)) ||
+    (vLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(vLower));
+
+  if (
+    caps?.backend !== "metal" ||
+    !usesMetalCompressedKv ||
+    readBool("ELIZA_DFLASH_METAL_COMPRESSED_KV") ||
+    readBool("ELIZA_DFLASH_ALLOW_UNSAFE_METAL_COMPRESSED_KV")
+  ) {
+    return {
+      cacheTypeK: k,
+      cacheTypeV: v,
+      downgraded: false,
+      reason: null,
+    };
+  }
+
+  const cacheTypeK =
+    kLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(kLower)
+      ? METAL_COMPRESSED_KV_FALLBACK
+      : k;
+  const cacheTypeV =
+    vLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(vLower)
+      ? METAL_COMPRESSED_KV_FALLBACK
+      : v;
+  const reason =
+    "Metal runtime graph dispatch for Qwen3.5 hybrid attention still routes compressed QJL/Polar KV tensors through generic attention/MUL_MAT in the built decoder graph; using q8_0 KV keeps the fused Metal+DFlash+voice path live until the graph selects the dedicated compressed-KV attention ops.";
+
+  if (opts.emitWarning !== false) {
+    const warningKey = `${path.resolve(opts.binaryPath)}:${cacheTypeK}:${cacheTypeV}`;
+    if (!metalCompressedKvWarnings.has(warningKey)) {
+      metalCompressedKvWarnings.add(warningKey);
+      console.warn(
+        `[local-inference] ${reason} Set ELIZA_DFLASH_METAL_COMPRESSED_KV=1 only for kernel-runtime experiments; standalone QJL/Polar Metal shaders are verified, but the current built-fork graph path is not production-safe.`,
+      );
+    }
+  }
+
+  return {
+    cacheTypeK,
+    cacheTypeV,
+    downgraded: true,
+    reason,
+  };
 }
 
 export function dflashEnabled(): boolean {
@@ -1805,7 +2016,12 @@ async function fetchStreamingChatCompletion(
   repairStream?: StructuredOutputRepairStream | null,
   externalSignal?: AbortSignal,
   startIndex = 0,
-): Promise<{ text: string; firstTokenMs: number | null }> {
+): Promise<{
+  text: string;
+  firstTokenMs: number | null;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  dflash?: { drafted: number; accepted: number };
+}> {
   const controller = new AbortController();
   const abort = () => controller.abort(externalSignal?.reason);
   if (externalSignal?.aborted) abort();
@@ -1833,6 +2049,10 @@ async function fetchStreamingChatCompletion(
     let buffer = "";
     let text = "";
     let nextIndex = startIndex;
+    let responseUsage:
+      | { prompt_tokens?: number; completion_tokens?: number }
+      | undefined;
+    let responseDflash: { drafted: number; accepted: number } | undefined;
     const consumeEvent = async (raw: string): Promise<void> => {
       const dataLines = raw
         .split(/\r?\n/)
@@ -1843,6 +2063,37 @@ async function fetchStreamingChatCompletion(
       const data = dataLines.join("\n").trim();
       if (!data || data === "[DONE]") return;
       const parsed = JSON.parse(data);
+      const timingRecord =
+        parsed && typeof parsed === "object"
+          ? (parsed as Record<string, unknown>).timings
+          : null;
+      if (timingRecord && typeof timingRecord === "object") {
+        const timings = timingRecord as Record<string, unknown>;
+        const prompt = timings.prompt_n;
+        const predicted = timings.predicted_n;
+        const drafted = timings.draft_n;
+        const accepted = timings.draft_n_accepted;
+        const usage: { prompt_tokens?: number; completion_tokens?: number } =
+          {};
+        if (typeof prompt === "number" && Number.isFinite(prompt)) {
+          usage.prompt_tokens = prompt;
+        }
+        if (typeof predicted === "number" && Number.isFinite(predicted)) {
+          usage.completion_tokens = predicted;
+        }
+        if (Object.keys(usage).length > 0) responseUsage = usage;
+        if (
+          typeof drafted === "number" &&
+          Number.isFinite(drafted) &&
+          typeof accepted === "number" &&
+          Number.isFinite(accepted)
+        ) {
+          responseDflash = {
+            drafted: Math.max(0, drafted),
+            accepted: Math.max(0, accepted),
+          };
+        }
+      }
 
       // Native DFlash protocol — parse the `dflash` field first. When the
       // C-side fork advertises `capabilities.dflashNativeEvents` and the
@@ -1945,7 +2196,12 @@ async function fetchStreamingChatCompletion(
       }
       await callbacks.onTextChunk?.(finalRepair);
     }
-    return { text, firstTokenMs };
+    return {
+      text,
+      firstTokenMs,
+      ...(responseUsage ? { usage: responseUsage } : {}),
+      ...(responseDflash ? { dflash: responseDflash } : {}),
+    };
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener("abort", abort);
@@ -2782,7 +3038,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       throw new Error(`[dflash] ${status.reason}`);
     }
 
-    let drafterEnabled = !plan.disableDrafter;
+    const drafterEnabled = !plan.disableDrafter;
     let disabledDrafterReason = plan.disabledDrafterReason;
     if (drafterEnabled) {
       assertDflashSpecSupportedOnBackend(status.binaryPath);
@@ -2839,10 +3095,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
     const port = await resolvePort();
     const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
-    const cacheTypeK =
+    const requestedCacheTypeK =
       process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim() || effectivePlan.cacheTypeK;
-    const cacheTypeV =
+    const requestedCacheTypeV =
       process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim() || effectivePlan.cacheTypeV;
+    const runtimeCacheTypes = resolveMetalRuntimeCacheTypes({
+      binaryPath: status.binaryPath,
+      targetModelPath: effectivePlan.targetModelPath,
+      cacheTypeK: requestedCacheTypeK,
+      cacheTypeV: requestedCacheTypeV,
+    });
+    const cacheTypeK = runtimeCacheTypes.cacheTypeK;
+    const cacheTypeV = runtimeCacheTypes.cacheTypeV;
     const usableRamMb =
       Math.round(os.totalmem() / BYTES_PER_MB_DFLASH) - ramHeadroomReserveMb();
     const parallel = resolveParallel(
@@ -2900,12 +3164,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
             "dflash",
             "--n-gpu-layers-draft",
             normalizeGpuLayers(effectivePlan.draftGpuLayers),
-            "--ctx-size-draft",
-            String(effectivePlan.draftContextSize),
-            "--draft-min",
-            String(effectivePlan.draftMin),
-            "--draft-max",
-            String(effectivePlan.draftMax),
           ]
         : []),
       "--host",
@@ -2932,6 +3190,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       "--metrics",
       "--jinja",
     ];
+    if (drafterEnabled) {
+      appendDflashDraftTuningFlags(args, {
+        binaryPath: status.binaryPath,
+        draftContextSize: effectivePlan.draftContextSize,
+        draftMin: effectivePlan.draftMin,
+        draftMax: effectivePlan.draftMax,
+      });
+    }
     if (effectivePlan.disableThinking) {
       args.push(...resolveDisableThinkingFlags(status.binaryPath));
     }
@@ -2973,6 +3239,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
     // optimistic-rollback path (`OptimisticRollbackController`) reads these
     // snapshots over `/slots/<id>/save` + `/restore`.
     appendCtxCheckpointFlags(args, optimizations ?? null, status.binaryPath);
+    appendMetalSafeStartupFlags(args, status.binaryPath);
 
     // Fused omnivoice TTS: when the resolved binary is the omnivoice-fused
     // `llama-server` and the bundle ships its TTS GGUFs, hand them to the
@@ -3505,18 +3772,43 @@ export class DflashLlamaServer implements LocalInferenceBackend {
   ): Promise<DflashGenerateResult> {
     const streaming = Boolean(
       args.onTextChunk ||
-      dflashArgs.onVerifierEvent ||
-      dflashArgs.onDflashEvent,
+        dflashArgs.onVerifierEvent ||
+        dflashArgs.onDflashEvent,
     );
     const prefill =
       typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
         ? dflashArgs.prefill
         : "";
     const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
+    attachDflashSpeculativeRequestFields(payload, this.loadedPlan);
+    if (readBool("ELIZA_DFLASH_DEBUG_REQUEST")) {
+      console.error(
+        "[dflash] request",
+        JSON.stringify({
+          streaming,
+          slotId,
+          maxTokens: payload.max_tokens,
+          speculativeType: payload["speculative.type"] ?? null,
+          speculativeMin: payload["speculative.n_min"] ?? null,
+          speculativeMax: payload["speculative.n_max"] ?? null,
+          loadedPlan: this.loadedPlan
+            ? {
+                draftMin: this.loadedPlan.draftMin,
+                draftMax: this.loadedPlan.draftMax,
+                disableDrafter: this.loadedPlan.disableDrafter ?? false,
+              }
+            : null,
+        }),
+      );
+    }
     const before = await fetchMetricsSnapshot(baseUrl);
     let json: Record<string, unknown> | null = null;
     let text: string;
     let firstTokenMs: number | null = null;
+    let streamingResponseUsage:
+      | { prompt_tokens?: number; completion_tokens?: number }
+      | undefined;
+    let streamingDflash: { drafted: number; accepted: number } | undefined;
     // Native DFlash event collector. Active only when the bundle opts in
     // AND the running server advertises the capability. When inactive,
     // `nativeEventsActive` is false and the existing JS synthesis path
@@ -3579,6 +3871,17 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       );
       text = streamedPrefix + tail.text;
       firstTokenMs = tail.firstTokenMs;
+      streamingResponseUsage = tail.usage;
+      streamingDflash = tail.dflash;
+      if (readBool("ELIZA_DFLASH_DEBUG_REQUEST")) {
+        console.error(
+          "[dflash] streaming-tail",
+          JSON.stringify({
+            usage: streamingResponseUsage ?? null,
+            dflash: streamingDflash ?? null,
+          }),
+        );
+      }
       // L5 — emit first-token latency metrics now that we have the value.
       // `inference.ttfa_ms` is the time from fetch() to the first HTTP chunk
       // (time-to-first-arrival); `inference.first_token_ms` captures the same
@@ -3622,8 +3925,27 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       }
     }
     const after = await fetchMetricsSnapshot(baseUrl);
-    const responseUsage = json ? extractResponseUsage(json) : undefined;
-    const usage = diffSnapshots(before, after, responseUsage);
+    const responseUsage = json
+      ? extractResponseUsage(json)
+      : streamingResponseUsage;
+    let usage = diffSnapshots(before, after, responseUsage);
+    if (
+      streamingDflash &&
+      streamingDflash.drafted > 0 &&
+      (usage.dflash_drafted_tokens ?? 0) <= 0
+    ) {
+      usage = {
+        ...usage,
+        dflash_drafted_tokens: streamingDflash.drafted,
+        dflash_accepted_tokens: streamingDflash.accepted,
+        dflash_acceptance_rate:
+          streamingDflash.accepted / streamingDflash.drafted,
+      };
+    }
+    const observedOutputTokens = estimateOutputTokensForDflashEvidence(
+      usage,
+      text,
+    );
     const maxTokens =
       typeof payload.max_tokens === "number" ? payload.max_tokens : null;
     const metricsCanProveDflashActivity =
@@ -3632,7 +3954,11 @@ export class DflashLlamaServer implements LocalInferenceBackend {
       before.hasGenerationCounters === true &&
       after.hasGenerationCounters === true;
     if (
-      shouldRequireActiveDflashForRequest(this.loadedPlan, maxTokens) &&
+      shouldRequireActiveDflashForRequest(
+        this.loadedPlan,
+        maxTokens,
+        observedOutputTokens,
+      ) &&
       metricsCanProveDflashActivity &&
       (usage.dflash_drafted_tokens ?? 0) <= 0
     ) {

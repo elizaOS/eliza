@@ -10,19 +10,21 @@ import {
 describe("readRuntimeModeEnvOverride", () => {
   it("returns null for unset / empty / unknown", () => {
     expect(readRuntimeModeEnvOverride({})).toBeNull();
-    expect(readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "" })).toBeNull();
+    expect(
+      readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "" }),
+    ).toBeNull();
     expect(
       readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "garbage" }),
     ).toBeNull();
   });
 
   it("recognises spawn aliases", () => {
-    expect(
-      readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "spawn" }),
-    ).toBe("spawn");
-    expect(
-      readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "HTTP" }),
-    ).toBe("spawn");
+    expect(readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "spawn" })).toBe(
+      "spawn",
+    );
+    expect(readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "HTTP" })).toBe(
+      "spawn",
+    );
     expect(
       readRuntimeModeEnvOverride({ MILADY_INFERENCE_MODE: "http-server" }),
     ).toBe("spawn");
@@ -50,9 +52,9 @@ describe("readRuntimeModeEnvOverride", () => {
   });
 
   it("accepts ELIZA_INFERENCE_MODE as a legacy alias", () => {
-    expect(
-      readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "ffi" }),
-    ).toBe("ffi");
+    expect(readRuntimeModeEnvOverride({ ELIZA_INFERENCE_MODE: "ffi" })).toBe(
+      "ffi",
+    );
   });
 
   it("prefers MILADY_INFERENCE_MODE over ELIZA_INFERENCE_MODE", () => {

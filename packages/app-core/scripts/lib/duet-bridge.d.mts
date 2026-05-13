@@ -17,7 +17,12 @@ export function resampleLinear(pcm: Float32Array, fromRate: number, toRate: numb
 export class DuetSink {
   constructor(
     onResampled: (pcm: Float32Array, sampleRate: number) => void,
-    opts?: { targetRate?: number; sourceRate?: number },
+    opts?: {
+      targetRate?: number;
+      sourceRate?: number;
+      pace?: boolean;
+      frameMs?: number;
+    },
   );
   onResampled: (pcm: Float32Array, sampleRate: number) => void;
   targetRate: number;
@@ -33,6 +38,8 @@ export class DuetSink {
   lastWriteAt(): number;
   /** Seconds of audio (at the source rate) forwarded so far. */
   forwardedSeconds(): number;
+  /** Wait until all paced chunks queued so far have been forwarded or drained. */
+  settle(): Promise<void>;
 }
 
 /**
@@ -46,6 +53,8 @@ export class DuetAudioBridge {
     opts?: {
       ringMs?: number;
       targetRate?: number;
+      pace?: boolean;
+      frameMs?: number;
       onForward?: (dir: "aToB" | "bToA", pcm: Float32Array) => void;
     };
   });
@@ -56,4 +65,6 @@ export class DuetAudioBridge {
   sinkForA(): DuetSink;
   /** The sink the harness assigns to engine B's scheduler. */
   sinkForB(): DuetSink;
+  /** Wait until both cross-ring sinks have flushed queued paced audio. */
+  settle(): Promise<void>;
 }

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import * as _earlyFs from "node:fs";
 // Static import so `Bun.build` pulls the AOSP llama loader into the mobile
 // bundle. The adapter self-gates on `ELIZA_LOCAL_LLAMA=1` and no-ops on
 // every other platform/runtime, so the import is safe everywhere; we only
@@ -22,7 +23,6 @@
 // which is enough for resolution but not for inclusion in some Bun.build
 // configurations). Mirror the `__elizaAospLlamaLoader` pattern.
 import { runAutonomousCli } from "./cli/index.ts";
-import * as _earlyFs from "node:fs";
 
 // Pull @elizaos/app-{wifi,contacts,phone}'s runtime plugin adapter into the
 // mobile bundle. The adapter imports each app package's `/plugin` subpath,
@@ -39,18 +39,34 @@ import * as _earlyFs from "node:fs";
 // Early diagnostic logger for Android: captures errors before the fs shim runs.
 // Uses the raw node:fs (captured above) so the shim can't interfere.
 // Writes to $ELIZA_STATE_DIR/bin-debug.log — readable via adb run-as.
-const _binDebugLog = (() => {
-  const stateDir =
-    process.env.ELIZA_STATE_DIR ||
-    process.env.MILADY_STATE_DIR ||
-    `${process.env.HOME ?? "/data/local/tmp"}/.eliza`;
-  const logPath = `${stateDir}/bin-debug.log`;
-  try { _earlyFs.mkdirSync(stateDir, { recursive: true }); } catch { /* ignore */ }
-  return (msg: string) => {
-    try { _earlyFs.appendFileSync(logPath, `${new Date().toISOString()} ${msg}\n`); } catch { /* ignore */ }
-  };
-})();
-_binDebugLog(`[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM ?? "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR ?? "(unset)"}`);
+const _binDebugLog =
+  process.env.ELIZA_PLATFORM === "android"
+    ? (() => {
+        const stateDir =
+          process.env.ELIZA_STATE_DIR ||
+          process.env.MILADY_STATE_DIR ||
+          `${process.env.HOME ?? "/data/local/tmp"}/.eliza`;
+        const logPath = `${stateDir}/bin-debug.log`;
+        try {
+          _earlyFs.mkdirSync(stateDir, { recursive: true });
+        } catch {
+          /* ignore */
+        }
+        return (msg: string) => {
+          try {
+            _earlyFs.appendFileSync(
+              logPath,
+              `${new Date().toISOString()} ${msg}\n`,
+            );
+          } catch {
+            /* ignore */
+          }
+        };
+      })()
+    : () => {};
+_binDebugLog(
+  `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM ?? "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR ?? "(unset)"}`,
+);
 
 if (process.env.ELIZA_PLATFORM === "android") {
   _binDebugLog("[bin.ts] entering android block");
@@ -69,7 +85,9 @@ if (process.env.ELIZA_PLATFORM === "android") {
     ).__elizaAospLocalInferenceBootstrap = ensureAospLocalInferenceHandlers;
   } catch (e) {
     // Android-only local inference is optional outside the privileged AOSP build.
-    _binDebugLog(`[bin.ts] aosp-local-inference init error (ok): ${e instanceof Error ? e.message : String(e)}`);
+    _binDebugLog(
+      `[bin.ts] aosp-local-inference init error (ok): ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 
   try {
@@ -78,7 +96,9 @@ if (process.env.ELIZA_PLATFORM === "android") {
   } catch (e) {
     // Android-only app plugins not bundled in this build; plugin-resolver.ts
     // returns null for these IDs and the rest of the runtime is unaffected.
-    _binDebugLog(`[bin.ts] android-app-plugins init error (ok): ${e instanceof Error ? e.message : String(e)}`);
+    _binDebugLog(
+      `[bin.ts] android-app-plugins init error (ok): ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }
 _binDebugLog("[bin.ts] pre-runAutonomousCli");
@@ -101,7 +121,8 @@ if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
 }
 
 runAutonomousCli().catch((error) => {
-  const msg = error instanceof Error ? (error.stack ?? error.message) : String(error);
+  const msg =
+    error instanceof Error ? (error.stack ?? error.message) : String(error);
   _binDebugLog(`[bin.ts] FATAL runAutonomousCli threw: ${msg}`);
   console.error("[eliza-autonomous] Failed to start:", msg);
   process.exit(1);

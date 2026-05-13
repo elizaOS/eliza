@@ -9,16 +9,19 @@ import {
   __resetLlamaServerHelpTextForTests,
   __setCtxCheckpointsProbeCacheForTests,
   __setLlamaServerHelpTextForTests,
-  appendDflashDraftTuningFlags,
   appendCtxCheckpointFlags,
+  appendDflashDraftTuningFlags,
   appendKvOffloadFlags,
+  appendMetalSafeStartupFlags,
   appendOptimizationFlags,
+  attachDflashSpeculativeRequestFields,
   DEFAULT_CTX_CHECKPOINT_INTERVAL,
   DEFAULT_CTX_CHECKPOINTS,
   DflashLlamaServer,
   dflashDevDisabled,
   dflashEnabled,
   dflashLlamaServer,
+  estimateOutputTokensForDflashEvidence,
   extractStreamingChatDelta,
   extractVerifierRejectRange,
   findBundleOmnivoiceAssets,
@@ -27,7 +30,9 @@ import {
   parseDflashMetrics,
   resolveDflashBinary,
   resolveDflashKvOffload,
+  resolveDisableThinkingFlags,
   resolveFusedDflashBinary,
+  resolveMetalRuntimeCacheTypes,
   shouldRequireActiveDflashForRequest,
   validateDflashDrafterCompatibility,
 } from "./dflash-server";
@@ -363,6 +368,119 @@ describe("fused-vs-two-process spawn selection", () => {
 });
 
 describe("DFlash draft CLI flag drift", () => {
+  it("prefers --reasoning off over deprecated chat-template kwargs when both are advertised", () => {
+    const bin = "/tmp/reasoning-llama-server";
+    __setLlamaServerHelpTextForTests(
+      bin,
+      "--reasoning [on|off|auto]\n--chat-template-kwargs JSON\n",
+    );
+
+    expect(resolveDisableThinkingFlags(bin)).toEqual(["--reasoning", "off"]);
+  });
+
+  it("detects aliased llama-server reasoning flags and disables the thinking budget", () => {
+    const bin = "/tmp/reasoning-aliased-llama-server";
+    __setLlamaServerHelpTextForTests(
+      bin,
+      [
+        "-rea,  --reasoning [on|off|auto]",
+        "--reasoning-budget N",
+        "--reasoning-format FORMAT",
+      ].join("\n"),
+    );
+
+    expect(resolveDisableThinkingFlags(bin)).toEqual([
+      "--reasoning",
+      "off",
+      "--reasoning-budget",
+      "0",
+    ]);
+  });
+
+  it("adds -fit off for Metal fused binaries to avoid unsafe fit-time compressed-KV graphs", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-fit-"));
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.chmodSync(binary, 0o755);
+    fs.writeFileSync(
+      path.join(root, "CAPABILITIES.json"),
+      JSON.stringify({
+        target: "darwin-arm64-metal-fused",
+        backend: "metal",
+        kernels: { dflash: true },
+      }),
+      "utf8",
+    );
+    __setLlamaServerHelpTextForTests(binary, "-fit,  --fit [on|off]\n");
+    const args: string[] = [];
+
+    appendMetalSafeStartupFlags(args, binary);
+
+    expect(args).toEqual(["-fit", "off"]);
+  });
+
+  it("downgrades compressed QJL/Polar KV to q8_0 on Metal runtime graph dispatch", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-"));
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.chmodSync(binary, 0o755);
+    fs.writeFileSync(
+      path.join(root, "CAPABILITIES.json"),
+      JSON.stringify({
+        target: "darwin-arm64-metal-fused",
+        backend: "metal",
+        kernels: { dflash: true, qjl_full: true, polarquant: true },
+      }),
+      "utf8",
+    );
+
+    const resolved = resolveMetalRuntimeCacheTypes({
+      binaryPath: binary,
+      targetModelPath: "/models/eliza-1-2b.gguf",
+      cacheTypeK: "qjl1_256",
+      cacheTypeV: "q4_polar",
+      emitWarning: false,
+    });
+
+    expect(resolved).toMatchObject({
+      cacheTypeK: "q8_0",
+      cacheTypeV: "q8_0",
+      downgraded: true,
+    });
+    expect(resolved.reason).toContain("generic attention/MUL_MAT");
+  });
+
+  it("keeps compressed KV on Metal only when the unsafe experiment flag is explicit", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-exp-"));
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.chmodSync(binary, 0o755);
+    fs.writeFileSync(
+      path.join(root, "CAPABILITIES.json"),
+      JSON.stringify({
+        target: "darwin-arm64-metal-fused",
+        backend: "metal",
+        kernels: { dflash: true, qjl_full: true, polarquant: true },
+      }),
+      "utf8",
+    );
+    process.env.ELIZA_DFLASH_METAL_COMPRESSED_KV = "1";
+
+    const resolved = resolveMetalRuntimeCacheTypes({
+      binaryPath: binary,
+      targetModelPath: "/models/eliza-1-2b.gguf",
+      cacheTypeK: "qjl1_256",
+      cacheTypeV: "q4_polar",
+      emitWarning: false,
+    });
+
+    expect(resolved).toMatchObject({
+      cacheTypeK: "qjl1_256",
+      cacheTypeV: "q4_polar",
+      downgraded: false,
+    });
+  });
+
   it("uses current speculative draft count flags and omits removed draft ctx flag", () => {
     const bin = "/tmp/current-llama-server";
     __setLlamaServerHelpTextForTests(
@@ -540,6 +658,26 @@ describe("shouldRequireActiveDflashForRequest", () => {
     ).toBe(true);
   });
 
+  it("does not require draft evidence when a requested long turn finishes before a draft window exists", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 8, disableDrafter: false },
+        96,
+        9,
+      ),
+    ).toBe(false);
+  });
+
+  it("requires draft evidence when both the request and observed turn are long enough", () => {
+    expect(
+      shouldRequireActiveDflashForRequest(
+        { draftMin: 8, disableDrafter: false },
+        96,
+        12,
+      ),
+    ).toBe(true);
+  });
+
   it("does not require draft evidence when the drafter is deliberately disabled", () => {
     expect(
       shouldRequireActiveDflashForRequest(
@@ -557,6 +695,58 @@ describe("shouldRequireActiveDflashForRequest", () => {
         128,
       ),
     ).toBe(false);
+  });
+});
+
+describe("DFlash speculative request fields", () => {
+  it("stamps every active DFlash request with explicit per-task speculative settings", () => {
+    const payload: Record<string, unknown> = {};
+
+    attachDflashSpeculativeRequestFields(payload, {
+      draftMin: 2,
+      draftMax: 6,
+      disableDrafter: false,
+    });
+
+    expect(payload).toMatchObject({
+      "speculative.n_min": 2,
+      "speculative.n_max": 6,
+      "speculative.type": "dflash",
+    });
+  });
+
+  it("does not stamp target-only diagnostic launches", () => {
+    const payload: Record<string, unknown> = {};
+
+    attachDflashSpeculativeRequestFields(payload, {
+      draftMin: 2,
+      draftMax: 6,
+      disableDrafter: true,
+    });
+
+    expect(payload).toEqual({});
+  });
+
+  it("estimates streamed output length when llama-server omits predicted-token metrics", () => {
+    expect(
+      estimateOutputTokensForDflashEvidence(
+        {
+          output_tokens: 0,
+        },
+        "A visible streamed answer with enough text to require a draft.",
+      ),
+    ).toBeGreaterThan(4);
+  });
+
+  it("prefers exact response usage when available", () => {
+    expect(
+      estimateOutputTokensForDflashEvidence(
+        {
+          output_tokens: 17,
+        },
+        "tiny",
+      ),
+    ).toBe(17);
   });
 });
 
@@ -691,10 +881,7 @@ describe("validateDflashDrafterCompatibility", () => {
       "utf8",
     );
     fs.chmodSync(binary, 0o755);
-    __setLlamaServerHelpTextForTests(
-      binary,
-      "--spec-type none,draft,dflash\n",
-    );
+    __setLlamaServerHelpTextForTests(binary, "--spec-type none,draft,dflash\n");
     writeTinyGguf(target, { architecture: "qwen3", tokens: ["a", "b", "c"] });
     writeTinyGguf(drafter, {
       architecture: "dflash-draft",
@@ -819,6 +1006,79 @@ describe("DFlash streaming callbacks", () => {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
       await mock.close();
+    }
+  });
+
+  it("uses final streaming timings as DFlash evidence when metrics counters lag", async () => {
+    const server = http.createServer(async (req, res) => {
+      if (req.method === "GET" && req.url === "/metrics") {
+        res.statusCode = 200;
+        res.end(
+          [
+            "llamacpp:prompt_tokens_total 0",
+            "llamacpp:n_tokens_predicted_total 0",
+            "llamacpp:n_drafted_total 0",
+            "llamacpp:n_accepted_total 0",
+          ].join("\n"),
+        );
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/chat/completions") {
+        res.writeHead(200, { "content-type": "text/event-stream" });
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: { content: "Hello" } }],
+          })}\n\n`,
+        );
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ finish_reason: "stop", index: 0, delta: {} }],
+            timings: {
+              prompt_n: 12,
+              predicted_n: 5,
+              draft_n: 4,
+              draft_n_accepted: 3,
+            },
+          })}\n\n`,
+        );
+        res.end("data: [DONE]\n\n");
+        return;
+      }
+      res.statusCode = 404;
+      res.end();
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+    const target = dflashLlamaServer as unknown as {
+      baseUrl: string | null;
+      cacheParallel: number;
+    };
+    const previous = {
+      baseUrl: target.baseUrl,
+      cacheParallel: target.cacheParallel,
+    };
+    target.baseUrl = baseUrl;
+    target.cacheParallel = 4;
+    try {
+      const result = await dflashLlamaServer.generateWithUsage({
+        prompt: "say hello",
+        onTextChunk: () => {},
+      });
+
+      expect(result.text).toBe("Hello");
+      expect(result.usage).toMatchObject({
+        input_tokens: 12,
+        output_tokens: 5,
+        dflash_drafted_tokens: 4,
+        dflash_accepted_tokens: 3,
+        dflash_acceptance_rate: 0.75,
+      });
+    } finally {
+      target.baseUrl = previous.baseUrl;
+      target.cacheParallel = previous.cacheParallel;
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -1305,6 +1565,32 @@ describe("appendCtxCheckpointFlags", () => {
     expect(args).toHaveLength(0);
   });
 
+  it("is a no-op for Metal fused builds because SET_ROWS checkpoints abort during graph reserve", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-ctx-ckpt-"));
+    const binary = path.join(root, "llama-server");
+    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.chmodSync(binary, 0o755);
+    fs.writeFileSync(
+      path.join(root, "CAPABILITIES.json"),
+      JSON.stringify({
+        target: "darwin-arm64-metal-fused",
+        backend: "metal",
+        kernels: { dflash: true },
+      }),
+      "utf8",
+    );
+    __setCtxCheckpointsProbeCacheForTests(binary, true);
+    __setLlamaServerHelpTextForTests(
+      binary,
+      "--ctx-checkpoints N\n--ctx-checkpoint-interval N\n",
+    );
+
+    const args: string[] = [];
+    appendCtxCheckpointFlags(args, null, binary);
+
+    expect(args).toHaveLength(0);
+  });
+
   it("is a no-op when the binary does not advertise the flags", () => {
     // Write a binary whose --help does NOT mention --ctx-checkpoints.
     const tmp = os.tmpdir();
@@ -1325,6 +1611,9 @@ describe("appendCtxCheckpointFlags", () => {
 
     appendCtxCheckpointFlags(args, null, bin);
 
-    expect(args).toEqual(["--ctx-checkpoints", String(DEFAULT_CTX_CHECKPOINTS)]);
+    expect(args).toEqual([
+      "--ctx-checkpoints",
+      String(DEFAULT_CTX_CHECKPOINTS),
+    ]);
   });
 });

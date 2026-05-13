@@ -119,6 +119,7 @@ export class BargeInController implements WordsDetectedSink {
    *  blip-vs-words decision. */
   private awaitingWordConfirm = false;
   private wordConfirmDeadlineTimer: ReturnType<typeof setTimeout> | null = null;
+  private wordConfirmExpiresAtMs: number | null = null;
   private lastEventTimestampMs = 0;
   private vadUnsub: (() => void) | null = null;
 
@@ -185,7 +186,11 @@ export class BargeInController implements WordsDetectedSink {
         // Definitely not speech — resume immediately.
         if (this.awaitingWordConfirm) {
           this.awaitingWordConfirm = false;
-          this.clearWordConfirm();
+          // Stop the pending auto-resume timer, but keep the ASR grace
+          // window alive. A VAD blip decision can arrive before the ASR
+          // partial for the same audio; if words land inside the original
+          // window, they are authoritative and should still hard-stop.
+          this.clearWordConfirm({ keepWindow: true });
           this.emitSignal({
             type: "resume-tts",
             timestampMs: event.timestampMs,
@@ -213,7 +218,15 @@ export class BargeInController implements WordsDetectedSink {
     timestampMs: number;
   }): void {
     if (args.wordCount < 1) return;
-    if (!this.agentSpeaking || !this.awaitingWordConfirm) return;
+    const withinConfirmWindow =
+      this.wordConfirmExpiresAtMs != null &&
+      args.timestampMs <= this.wordConfirmExpiresAtMs;
+    if (
+      !this.agentSpeaking ||
+      (!this.awaitingWordConfirm && !withinConfirmWindow)
+    ) {
+      return;
+    }
     // Authoritative: real user speech. Hard-stop.
     this.hardStop("barge-in-words", args.timestampMs);
   }
@@ -287,6 +300,7 @@ export class BargeInController implements WordsDetectedSink {
 
   private armWordConfirmDeadline(timestampMs: number): void {
     this.clearWordConfirm();
+    this.wordConfirmExpiresAtMs = timestampMs + this.wordsGraceMs;
     this.wordConfirmDeadlineTimer = setTimeout(() => {
       this.wordConfirmDeadlineTimer = null;
       if (this.awaitingWordConfirm && this.agentSpeaking) {
@@ -298,6 +312,7 @@ export class BargeInController implements WordsDetectedSink {
           timestampMs: timestampMs + this.wordsGraceMs,
         });
       }
+      this.wordConfirmExpiresAtMs = null;
     }, this.wordsGraceMs);
     // Don't keep the event loop alive on this timer.
     if (
@@ -309,10 +324,13 @@ export class BargeInController implements WordsDetectedSink {
     }
   }
 
-  private clearWordConfirm(): void {
+  private clearWordConfirm(options: { keepWindow?: boolean } = {}): void {
     if (this.wordConfirmDeadlineTimer) {
       clearTimeout(this.wordConfirmDeadlineTimer);
       this.wordConfirmDeadlineTimer = null;
+    }
+    if (!options.keepWindow) {
+      this.wordConfirmExpiresAtMs = null;
     }
   }
 }

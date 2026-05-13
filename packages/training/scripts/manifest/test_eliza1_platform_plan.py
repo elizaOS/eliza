@@ -39,7 +39,7 @@ def test_vad_is_native_ggml_not_gguf_but_asr_is_gguf() -> None:
 
 
 def test_rocm_desktop_platform_evidence_and_dispatch_are_required() -> None:
-    tier_plan = build_plan()["9b"]
+    tier_plan = build_plan()["4b"]
     assert "evals/rocm_verify.json" in tier_plan.required_files
     assert "evals/rocm_dispatch.json" in tier_plan.required_files
     targets = {target.id: target for target in tier_plan.required_platform_evidence}
@@ -50,23 +50,23 @@ def test_rocm_desktop_platform_evidence_and_dispatch_are_required() -> None:
 
 
 def test_dflash_required_files_match_bundle_layout() -> None:
-    tier_plan = build_plan()["9b"]
-    assert "dflash/drafter-9b.gguf" in tier_plan.required_files
+    tier_plan = build_plan()["4b"]
+    assert "dflash/drafter-4b.gguf" in tier_plan.required_files
     assert "dflash/target-meta.json" in tier_plan.required_files
-    assert "dflash/eliza-1-drafter-9b.gguf" not in tier_plan.required_files
+    assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
 
 
 def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
     plan = build_plan()
     root = tmp_path / "bundles"
-    (root / "eliza-1-9b" / "vad").mkdir(parents=True)
-    (root / "eliza-1-9b" / "vad" / "silero-vad-v5.1.2.ggml.bin").write_bytes(
+    (root / "eliza-1-4b" / "vad").mkdir(parents=True)
+    (root / "eliza-1-4b" / "vad" / "silero-vad-v5.1.2.ggml.bin").write_bytes(
         b"vad"
     )
     missing = missing_files(root, plan)
-    assert "vad/silero-vad-v5.1.2.ggml.bin" not in missing["9b"]
-    assert "text/eliza-1-9b-64k.gguf" in missing["9b"]
-    assert "evidence/platform/linux-x64-rocm.json" in missing["9b"]
+    assert "vad/silero-vad-v5.1.2.ggml.bin" not in missing["4b"]
+    assert "text/eliza-1-4b-64k.gguf" in missing["4b"]
+    assert "evidence/platform/linux-x64-rocm.json" in missing["4b"]
 
 
 def test_readiness_mentions_vad_native_ggml_caveat() -> None:
@@ -76,8 +76,10 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "vad/silero-vad-int8.onnx" in text
     assert "Qwen3.5 0.8B (`0_8b`)" in text
     assert "Qwen3.5 2B (`2b`)" in text
+    assert "Qwen3.5 4B (`4b`)" in text
     assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
     assert "Qwen3-Embedding-0.8B/2B repo IDs" in text
+    assert "not evaluated in plan-only mode" in text
     assert "VAD latency/boundary/endpoint/false-barge-in" in text
     assert "Release evidence must use real final hashes" in text
     assert "No-larp release readiness" in text

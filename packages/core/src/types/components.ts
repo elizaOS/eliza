@@ -647,6 +647,9 @@ export interface ActionResult {
 	/** Optional text description of the result */
 	text?: string;
 
+	/** Text that is safe to surface directly to the user */
+	userFacingText?: string;
+
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;
 

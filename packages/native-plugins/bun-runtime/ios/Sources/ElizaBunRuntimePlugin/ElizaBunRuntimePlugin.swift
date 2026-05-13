@@ -193,7 +193,7 @@ public class ElizaBunRuntimePlugin: CAPPlugin, CAPBridgedPlugin {
             "ELIZA_DISABLE_VAULT_PROFILE_RESOLVER": "1",
             "ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP": "1",
             "ELIZA_HEADLESS": "1",
-            "ELIZA_API_BIND": "127.0.0.1",
+            "ELIZA_IOS_BRIDGE_TRANSPORT": "bun-host-ipc",
             "LOG_LEVEL": "error",
         ]
         if isSmoke {

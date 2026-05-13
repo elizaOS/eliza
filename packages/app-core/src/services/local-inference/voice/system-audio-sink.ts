@@ -14,7 +14,8 @@ function findOnPath(name: string): string | null {
 }
 
 export function resolveSystemPlayerName(_sampleRate = 24_000): string | null {
-  if (process.platform === "darwin") return findOnPath("afplay") ? "afplay" : null;
+  if (process.platform === "darwin")
+    return findOnPath("afplay") ? "afplay" : null;
   return findOnPath("paplay") ? "paplay" : findOnPath("aplay") ? "aplay" : null;
 }
 
@@ -89,7 +90,10 @@ export class SystemAudioSink implements AudioSink {
   constructor(opts: { sampleRate: number }) {
     this.wav = new WavFileAudioSink({
       sampleRate: opts.sampleRate,
-      filePath: path.join(os.tmpdir(), `eliza-audio-${process.pid}-${Date.now()}.wav`),
+      filePath: path.join(
+        os.tmpdir(),
+        `eliza-audio-${process.pid}-${Date.now()}.wav`,
+      ),
     });
   }
 

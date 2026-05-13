@@ -61,7 +61,15 @@ export interface NativeBackendOptions {
   runtime: { useModel: UseModelHandler };
   /** Override adapter (tests). */
   adapter?: LlmAdapter;
+  /**
+   * Fraction reserved for the promotion gate's held-out comparison. The split
+   * is deterministic over each row's stable id, so the same dataset always
+   * produces the same train/holdout partition.
+   */
+  holdoutFraction?: number;
 }
+
+export const DEFAULT_HOLDOUT_FRACTION = 0.2;
 
 export interface NativeBackendResult {
   invoked: boolean;
@@ -78,6 +86,10 @@ export interface NativeBackendResult {
    * re-parsing the file.
    */
   dataset: OptimizationExample[];
+  /** Training subset the optimizer consumed. */
+  trainSet: OptimizationExample[];
+  /** Held-out subset reserved for the promotion gate. */
+  holdoutSet: OptimizationExample[];
   /**
    * Scorer instance used during optimization. Surfaced for the same reason as
    * `dataset` — the promotion gate runs the candidate against the incumbent
@@ -85,6 +97,49 @@ export interface NativeBackendResult {
    * depending on the task).
    */
   scorer: PromptScorer;
+}
+
+function fnv1aHash(input: string): number {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash >>> 0;
+}
+
+export function splitTrainHoldout(
+  dataset: OptimizationExample[],
+  holdoutFraction: number,
+): { trainSet: OptimizationExample[]; holdoutSet: OptimizationExample[] } {
+  if (holdoutFraction <= 0 || dataset.length < 2) {
+    return { trainSet: dataset, holdoutSet: [] };
+  }
+
+  const fraction = Math.min(Math.max(holdoutFraction, 0), 0.5);
+  const trainSet: OptimizationExample[] = [];
+  const holdoutSet: OptimizationExample[] = [];
+  const threshold = Math.floor(fraction * 0xffffffff);
+
+  dataset.forEach((example, index) => {
+    const key = example.id ?? `row-${index}`;
+    if (fnv1aHash(key) < threshold) {
+      holdoutSet.push(example);
+    } else {
+      trainSet.push(example);
+    }
+  });
+
+  if (trainSet.length === 0 && holdoutSet.length > 0) {
+    const firstHoldout = holdoutSet.shift();
+    if (firstHoldout) trainSet.push(firstHoldout);
+  }
+  if (holdoutSet.length === 0 && dataset.length >= 5) {
+    const lastTrain = trainSet.pop();
+    if (lastTrain) holdoutSet.push(lastTrain);
+  }
+
+  return { trainSet, holdoutSet };
 }
 
 interface JsonlMessage {
@@ -374,18 +429,31 @@ export async function runNativeBackend(
         `dataset at ${options.datasetPath} parsed to 0 usable rows; nothing to optimize`,
       ],
       dataset,
+      trainSet: dataset,
+      holdoutSet: [],
       scorer,
     };
   }
 
+  const holdoutFraction = options.holdoutFraction ?? DEFAULT_HOLDOUT_FRACTION;
+  const { trainSet, holdoutSet } = splitTrainHoldout(
+    dataset,
+    holdoutFraction,
+  );
+
   const result = await dispatchOptimizer(options.optimizer, {
     baselinePrompt: options.baselinePrompt,
-    dataset,
+    dataset: trainSet,
     scorer,
     llm: adapter,
     task: options.task,
     datasetPath: options.datasetPath,
   });
+
+  const splitNote =
+    holdoutSet.length > 0
+      ? `split train=${trainSet.length} holdout=${holdoutSet.length} (fraction=${holdoutFraction})`
+      : `split disabled (holdoutFraction=${holdoutFraction}, dataset=${dataset.length}); gate will re-use full dataset`;
 
   return {
     invoked: true,
@@ -397,8 +465,11 @@ export async function runNativeBackend(
     result,
     notes: [
       `optimizer=${options.optimizer} dataset=${basename(options.datasetPath)} size=${dataset.length} baseline=${result.baseline.toFixed(3)} optimized=${result.score.toFixed(3)}`,
+      splitNote,
     ],
     dataset,
+    trainSet,
+    holdoutSet,
     scorer,
   };
 }

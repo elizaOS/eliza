@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { coerceParams } from "./params";
+import {
+  clearCapturedAction,
+  createBenchmarkPlugin,
+  getCapturedActions,
+  setBenchmarkContext,
+} from "./plugin";
 import {
   benchmarkTurnMetadata,
   capturedActionsToToolCalls,
 } from "./server-utils";
-import { coerceParams } from "./params";
 
 const uuid = (value: string) =>
   value as unknown as import("@elizaos/core").UUID;
@@ -86,5 +92,74 @@ describe("benchmark function-call metadata", () => {
     expect(metadata.tool_schema_count).toBe(1);
     expect(metadata.tool_names).toEqual(["calendar.search"]);
     expect(metadata.trajectory_endpoint).toContain("loca_bench");
+  });
+});
+
+describe("benchmark plugin LOCA tool capture", () => {
+  it("scopes LOCA MCP tool shims and captures direct tool-name calls", async () => {
+    clearCapturedAction();
+    setBenchmarkContext(null);
+    const plugin = createBenchmarkPlugin();
+    const action = plugin.actions?.find(
+      (candidate) => candidate.name === "filesystem_list_directory_with_sizes",
+    );
+    const canvasAction = plugin.actions?.find(
+      (candidate) => candidate.name === "canvas_canvas_list_assignments",
+    );
+
+    expect(action).toBeDefined();
+    expect(canvasAction).toBeDefined();
+    expect(action?.allowAdditionalParameters).toBe(true);
+    expect(canvasAction?.allowAdditionalParameters).toBe(true);
+    expect(action?.suppressPostActionContinuation).toBe(true);
+    expect(canvasAction?.suppressPostActionContinuation).toBe(true);
+    expect(
+      action?.parameters?.some((parameter) => parameter.name === "path"),
+    ).toBe(true);
+    expect(
+      canvasAction?.parameters?.some(
+        (parameter) => parameter.name === "course_id",
+      ),
+    ).toBe(true);
+    expect(
+      await action?.validate?.({} as never, {} as never, {} as never),
+    ).toBe(false);
+    expect(
+      await canvasAction?.validate?.({} as never, {} as never, {} as never),
+    ).toBe(false);
+
+    setBenchmarkContext({
+      benchmark: "loca_bench",
+      taskId: "task-a",
+    });
+
+    expect(
+      await action?.validate?.({} as never, {} as never, {} as never),
+    ).toBe(true);
+    expect(
+      await canvasAction?.validate?.({} as never, {} as never, {} as never),
+    ).toBe(true);
+
+    await action?.handler(
+      {} as never,
+      {} as never,
+      {} as never,
+      {
+        actionContext: { previousResults: [] },
+        path: ".",
+        sortBy: "size",
+      } as never,
+    );
+
+    expect(getCapturedActions()).toEqual([
+      {
+        params: { path: ".", sortBy: "size" },
+        toolName: "filesystem_list_directory_with_sizes",
+        arguments: { path: ".", sortBy: "size" },
+      },
+    ]);
+
+    clearCapturedAction();
+    setBenchmarkContext(null);
   });
 });

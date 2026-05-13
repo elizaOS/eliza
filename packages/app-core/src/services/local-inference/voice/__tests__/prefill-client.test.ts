@@ -22,20 +22,34 @@ import { prefillOptimistic } from "../prefill-client";
 // Mock fetch builder
 // ---------------------------------------------------------------------------
 
-function okFetch(): typeof fetch {
-  return vi.fn().mockResolvedValue(
-    new Response(JSON.stringify({ content: "" }), { status: 200 }),
-  ) as typeof fetch;
+type FetchMock = typeof fetch & ReturnType<typeof vi.fn>;
+
+function asFetchMock(mock: ReturnType<typeof vi.fn>): FetchMock {
+  return Object.assign(mock, {
+    preconnect: fetch.preconnect,
+  }) as unknown as FetchMock;
 }
 
-function errorFetch(status = 500): typeof fetch {
-  return vi.fn().mockResolvedValue(
-    new Response("Internal Server Error", { status }),
-  ) as typeof fetch;
+function okFetch(): FetchMock {
+  return asFetchMock(
+    vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify({ content: "" }), { status: 200 }),
+      ),
+  );
 }
 
-function networkErrorFetch(): typeof fetch {
-  return vi.fn().mockRejectedValue(new Error("Network error")) as typeof fetch;
+function errorFetch(status = 500): FetchMock {
+  return asFetchMock(
+    vi
+      .fn()
+      .mockResolvedValue(new Response("Internal Server Error", { status })),
+  );
+}
+
+function networkErrorFetch(): FetchMock {
+  return asFetchMock(vi.fn().mockRejectedValue(new Error("Network error")));
 }
 
 // ---------------------------------------------------------------------------
@@ -102,7 +116,7 @@ describe("prefillOptimistic", () => {
       { checkpointManager: mgr, fetchImpl: mockFetch },
     );
     expect(mockFetch).toHaveBeenCalledOnce();
-    const [url, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [url, init] = mockFetch.mock.calls[0];
     expect(url).toBe("http://localhost:8080/completion");
     expect(init.method).toBe("POST");
     const body = JSON.parse(init.body as string);
@@ -174,7 +188,7 @@ describe("prefillOptimistic", () => {
       },
       { checkpointManager: new MockCheckpointManager(), fetchImpl: mockFetch },
     );
-    const [, init] = (mockFetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const [, init] = mockFetch.mock.calls[0];
     const body = JSON.parse(init.body as string);
     expect(body.prompt).toContain("You are Eliza.");
     expect(body.prompt).toContain("Hello!");
@@ -207,8 +221,16 @@ describe("prefillOptimistic", () => {
   it("throws TypeError for empty partialText", async () => {
     await expect(
       prefillOptimistic(
-        { baseUrl: "http://localhost:8080", slotId: "slot-1", partialText: "  ", eotProb: 0.5 },
-        { checkpointManager: new MockCheckpointManager(), fetchImpl: okFetch() },
+        {
+          baseUrl: "http://localhost:8080",
+          slotId: "slot-1",
+          partialText: "  ",
+          eotProb: 0.5,
+        },
+        {
+          checkpointManager: new MockCheckpointManager(),
+          fetchImpl: okFetch(),
+        },
       ),
     ).rejects.toThrow(TypeError);
   });
@@ -216,8 +238,16 @@ describe("prefillOptimistic", () => {
   it("throws TypeError for out-of-range eotProb", async () => {
     await expect(
       prefillOptimistic(
-        { baseUrl: "http://localhost:8080", slotId: "slot-1", partialText: "text", eotProb: 1.5 },
-        { checkpointManager: new MockCheckpointManager(), fetchImpl: okFetch() },
+        {
+          baseUrl: "http://localhost:8080",
+          slotId: "slot-1",
+          partialText: "text",
+          eotProb: 1.5,
+        },
+        {
+          checkpointManager: new MockCheckpointManager(),
+          fetchImpl: okFetch(),
+        },
       ),
     ).rejects.toThrow(TypeError);
   });
@@ -226,7 +256,10 @@ describe("prefillOptimistic", () => {
     await expect(
       prefillOptimistic(
         { baseUrl: "", slotId: "slot-1", partialText: "text", eotProb: 0.5 },
-        { checkpointManager: new MockCheckpointManager(), fetchImpl: okFetch() },
+        {
+          checkpointManager: new MockCheckpointManager(),
+          fetchImpl: okFetch(),
+        },
       ),
     ).rejects.toThrow(TypeError);
   });

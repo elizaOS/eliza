@@ -417,7 +417,11 @@ async function useLocalInferenceTts(
   let lastError: unknown;
   for (const provider of LOCAL_TTS_PROVIDER_IDS) {
     try {
-      return await runtime.useModel(ModelType.TEXT_TO_SPEECH, { text }, provider);
+      return await runtime.useModel(
+        ModelType.TEXT_TO_SPEECH,
+        { text },
+        provider,
+      );
     } catch (err) {
       lastError = err;
       if (!isMissingProviderError(err)) {
@@ -460,7 +464,9 @@ function isRedactedSecret(val: string): boolean {
   return /^\*+$/.test(val) || val === "REDACTED" || val === "[REDACTED]";
 }
 
-function hasLocalInferenceTtsHandler(runtime: IAgentRuntime | undefined): boolean {
+function hasLocalInferenceTtsHandler(
+  runtime: IAgentRuntime | undefined,
+): boolean {
   const registrations = (runtime as { models?: unknown } | undefined)?.models;
   if (registrations instanceof Map) {
     const handlers = registrations.get(ModelType.TEXT_TO_SPEECH);

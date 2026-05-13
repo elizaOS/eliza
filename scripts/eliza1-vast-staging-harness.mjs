@@ -20,7 +20,7 @@ const DEFAULT_EVIDENCE_DIR = path.join(
   "eliza1-release-gates",
 );
 
-const DEFAULT_MODEL = "vast/eliza-1-27b-256k";
+const DEFAULT_MODEL = "vast/eliza-1-4b";
 
 function parseArgs(argv) {
   const args = {
@@ -30,7 +30,7 @@ function parseArgs(argv) {
     instanceId: process.env.VAST_STAGING_INSTANCE_ID?.trim() || "unknown",
     evidenceDir:
       process.env.ELIZA1_EVIDENCE_DIR?.trim() || DEFAULT_EVIDENCE_DIR,
-    smokeTier: process.env.ELIZA1_SMOKE_TIER?.trim() || "27b",
+    smokeTier: process.env.ELIZA1_SMOKE_TIER?.trim() || "4b",
     burstRequests: Number.parseInt(
       process.env.ELIZA1_BURST_REQUESTS || "12",
       10,

@@ -50,9 +50,11 @@ REPO_ROOT = TRAINING_ROOT.parents[1]
 ORG = "elizaos"
 MODEL_REPO = f"{ORG}/eliza-1"
 
-# Tier device bundles — all publish under one model repo:
-# ``elizaos/eliza-1/bundles/<tier>/...``.
-BUNDLE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+# Active release-line device bundles — all publish under one model repo:
+# ``elizaos/eliza-1/bundles/<tier>/...``. Larger 9B/27B-class recipes remain
+# hidden future placeholders until final weights/evals/licenses/platform
+# evidence exist.
+BUNDLE_TIERS = ("0_8b", "2b", "4b")
 
 # Where the staged bundles live on a dev box (see RELEASE_V1.md). The path can
 # be overridden with --bundles-root.

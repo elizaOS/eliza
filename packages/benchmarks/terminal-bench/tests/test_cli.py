@@ -28,6 +28,7 @@ def _args(tmp_path: Path) -> argparse.Namespace:
         no_sessions=True,
         no_leaderboard=True,
         dry_run=False,
+        local_sandbox=False,
         oracle=False,
         verbose=False,
         debug=False,
