@@ -84,7 +84,7 @@ jobs:
           cmake --version
 
       - name: Cache llama.cpp build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             packages/inference/llama.cpp/build-ios-device
