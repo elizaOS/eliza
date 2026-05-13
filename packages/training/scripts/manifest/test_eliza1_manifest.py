@@ -89,35 +89,30 @@ def test_schema_version_constant():
 
 def test_eliza1_tier_ids_are_canonical():
     assert ELIZA_1_TIERS == (
-        "0_6b",
-        "1_7b",
+        "0_8b",
+        "2b",
         "4b",
         "9b",
         "27b",
         "27b-256k",
         "27b-1m",
     )
-    assert REQUIRED_KERNELS_BY_TIER["0_6b"] == (
-        "turboquant_q3",
-        "qjl",
-        "polarquant",
-        "dflash",
-    )
-    assert REQUIRED_KERNELS_BY_TIER["1_7b"] == (
+    assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
         "dflash",
     )
-    assert REQUIRED_KERNELS_BY_TIER["27b-1m"] == (
+    assert REQUIRED_KERNELS_BY_TIER["2b"] == REQUIRED_KERNELS_BY_TIER["0_8b"]
+    assert REQUIRED_KERNELS_BY_TIER["4b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
         "dflash",
         "turbo3_tcq",
     )
-    assert VOICE_BACKENDS_BY_TIER["0_6b"] == ("omnivoice",)
-    assert VOICE_BACKENDS_BY_TIER["1_7b"] == ("omnivoice",)
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
     assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
@@ -186,7 +181,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 @pytest.mark.parametrize(
     "tier",
-    ["0_6b", "1_7b", "4b"],
+    ["0_8b", "2b", "4b"],
 )
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))
@@ -221,7 +216,7 @@ def test_default_eligible_requires_measured_dflash_eval():
 
 
 def test_non_publishable_manifest_can_validate_for_local_staging():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -260,7 +255,7 @@ def test_non_publishable_manifest_can_validate_for_local_staging():
 
 
 def test_default_eligible_true_still_rejected_in_local_staging_mode():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["text_eval_passed"] = False
 
     with pytest.raises(Eliza1ManifestError) as exc:
@@ -356,7 +351,7 @@ def test_lite_tier_does_not_require_cuda_or_rocm_pass():
     """Lite tier ships on metal/vulkan/cpu — failing cuda/rocm backends
     must not block lite publishing."""
 
-    kwargs = base_kwargs("0_6b")
+    kwargs = base_kwargs("0_8b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -486,7 +481,7 @@ def test_write_manifest_refuses_invalid(tmp_path: Path):
 def test_write_manifest_allows_non_publishable_only_when_requested(
     tmp_path: Path,
 ):
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -550,7 +545,7 @@ def test_parse_text_ctx_from_filename_finds_suffix_token():
 
 
 def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
-    assert parse_text_ctx_from_filename(Path("text/eliza-1-1_7b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("text/eliza-1-2b.gguf")) is None
     assert parse_text_ctx_from_filename(Path("dflash/drafter-4b.gguf")) is None
 
 
@@ -629,17 +624,17 @@ def test_base_v1_provenance_rejects_fake_qwen_asr_and_embedding_repos():
     kwargs["embed_mteb_score"] = 0.62
     kwargs["embed_mteb_passed"] = True
     prov = _base_v1_provenance()
-    prov["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"}
+    prov["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-1.8B-GGUF"}
     prov["sourceModels"]["embedding"] = {
-        "repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"
+        "repo": "Qwen/Qwen3-Embedding-1.7B-GGUF"
     }
     kwargs["provenance"] = prov
 
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
 
-    assert any("Qwen3-ASR-0.8B-GGUF" in e for e in exc.value.errors)
-    assert any("Qwen3-Embedding-0.8B-GGUF" in e for e in exc.value.errors)
+    assert any("Qwen3-ASR-1.8B-GGUF" in e for e in exc.value.errors)
+    assert any("Qwen3-Embedding-1.7B-GGUF" in e for e in exc.value.errors)
 
 
 def test_provenance_rejects_unknown_release_state():

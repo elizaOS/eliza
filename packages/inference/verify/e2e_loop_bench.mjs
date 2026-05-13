@@ -34,8 +34,8 @@
  * with a reason and null metrics — never a fabricated pass.
  *
  *   bun packages/inference/verify/e2e_loop_bench.mjs \
- *     --bundle ~/.eliza/local-inference/models/eliza-1-0_8b.bundle \
- *     --tier 0_8b --backend cpu [--turns 1] [--wav a.wav,b.wav] [--report out.json]
+ *     --bundle ~/.eliza/local-inference/models/eliza-1-0_6b.bundle \
+ *     --tier 0_6b --backend cpu [--turns 1] [--wav a.wav,b.wav] [--report out.json]
  */
 
 import fs from "node:fs";

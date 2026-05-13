@@ -176,6 +176,8 @@ def _context_from_payload(
     tools = _normalize_tool_manifest(
         payload.get("tools", payload.get("functions", []))
     )
+    if not tools:
+        tools = _default_loca_tool_manifest()
     context: dict[str, object] = {
         "benchmark": "loca_bench",
         "task_id": session_id,
@@ -208,6 +210,13 @@ def _normalize_tool_manifest(raw_tools: object) -> list[dict[str, Any]]:
     the planner see an empty tool inventory and invent helper calls.
     """
 
+    if isinstance(raw_tools, Mapping):
+        nested = raw_tools.get("tools")
+        if nested is None:
+            nested = raw_tools.get("functions")
+        if nested is not None:
+            return _normalize_tool_manifest(nested)
+        return [dict(raw_tools)] if _tool_name(raw_tools) else []
     if not isinstance(raw_tools, Sequence) or isinstance(
         raw_tools, (str, bytes, bytearray)
     ):
@@ -223,6 +232,65 @@ def _normalize_tool_manifest(raw_tools: object) -> list[dict[str, Any]]:
                 if isinstance(nested, Mapping):
                     normalized.append(dict(nested))
     return normalized
+
+
+def _schema(properties: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": dict(properties),
+        "additionalProperties": True,
+    }
+
+
+def _tool(name: str, description: str, properties: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": _schema(properties),
+        },
+    }
+
+
+def _default_loca_tool_manifest() -> list[dict[str, Any]]:
+    """Conservative fallback for LOCA debug/config runs with empty tool schemas.
+
+    LOCA's MCP discovery can be slow or produce legacy shapes in benchmark
+    harness mode. These are the core tools exposed by the debug Canvas task:
+    filesystem, memory, python_execute, and claim_done. Supplying this fallback
+    keeps Eliza/Hermes/OpenClaw on the real LOCA execution path instead of
+    prompting them to invent aggregate helper functions.
+    """
+
+    path = {"type": "string", "description": "Path inside the LOCA task workspace."}
+    content = {"type": "string", "description": "File content to write."}
+    pattern = {"type": "string", "description": "Search pattern."}
+    query = {"type": "string", "description": "Memory search query."}
+    code = {"type": "string", "description": "Python code to execute."}
+    return [
+        _tool("claim_done", "Signal that all required LOCA files have been updated.", {"answer": {"type": "string"}}),
+        _tool("python_execute", "Execute Python in the LOCA task workspace.", {"code": code}),
+        _tool("filesystem_list_directory", "List files in a workspace directory.", {"path": path}),
+        _tool("filesystem_directory_tree", "Return a recursive directory tree.", {"path": path}),
+        _tool("filesystem_read_file", "Read a file from the workspace.", {"path": path}),
+        _tool("filesystem_read_text_file", "Read a text file from the workspace.", {"path": path}),
+        _tool("filesystem_read_multiple_files", "Read several files from the workspace.", {"paths": {"type": "array", "items": {"type": "string"}}}),
+        _tool("filesystem_write_file", "Write a file in the workspace.", {"path": path, "content": content}),
+        _tool("filesystem_edit_file", "Patch or replace a file in the workspace.", {"path": path, "content": content}),
+        _tool("filesystem_search_files", "Search files in the workspace.", {"path": path, "pattern": pattern}),
+        _tool("filesystem_get_file_info", "Get file metadata.", {"path": path}),
+        _tool("filesystem_list_allowed_directories", "List allowed filesystem roots.", {}),
+        _tool("memory_read_graph", "Read benchmark memory graph.", {}),
+        _tool("memory_search_nodes", "Search benchmark memory nodes.", {"query": query}),
+        _tool("memory_open_nodes", "Open named memory nodes.", {"names": {"type": "array", "items": {"type": "string"}}}),
+        _tool("memory_create_entities", "Create memory entities.", {"entities": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_create_relations", "Create memory relations.", {"relations": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_add_observations", "Add memory observations.", {"observations": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_delete_entities", "Delete memory entities.", {"entityNames": {"type": "array", "items": {"type": "string"}}}),
+        _tool("memory_delete_relations", "Delete memory relations.", {"relations": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_delete_observations", "Delete memory observations.", {"deletions": {"type": "array", "items": {"type": "object"}}}),
+    ]
 
 
 def _response_metadata(harness_name: str, response: Any) -> dict[str, Any]:
@@ -347,6 +415,10 @@ def _eliza_prompt_from_payload(payload: Mapping[str, Any]) -> str:
             "LOCA tool contract: call only one of the exact available function tool names below. "
             "Do not invent aggregate helper tools such as process_assignments_and_quizzes. "
             "If work remains, call a filesystem, memory, Canvas, python_execute, or claim_done tool.",
+            "LOCA completion protocol: existing workspace files may contain examples or placeholders. "
+            "Use them for schema and formatting only; do not treat existing rows as proof that the task is complete. "
+            "Derive the required final state from the provided tools, local_db files, workspace files, and memory records. "
+            "For CSV-output tasks, overwrite or edit every requested CSV file with the derived final rows before any final reply or claim_done call.",
             "Available LOCA function tools:\n" + "\n".join(f"- {name}" for name in tool_names),
         ]
     )

@@ -86,6 +86,49 @@ def test_loca_harness_accepts_nested_or_legacy_function_tools() -> None:
     ]
     assert "filesystem_list_directory" in prompt
     assert "process_assignments_and_quizzes" in prompt
+    assert "examples or placeholders" in prompt
+    assert "overwrite or edit every requested CSV file" in prompt
+
+
+def test_loca_harness_accepts_wrapped_tool_manifest() -> None:
+    payload = {
+        "messages": [{"role": "user", "content": "continue"}],
+        "tools": {
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {"name": "filesystem_read_file"},
+                }
+            ]
+        },
+    }
+
+    context = _context_from_payload(payload, "session_wrapped")
+
+    assert context["tools"] == [
+        {
+            "type": "function",
+            "function": {"name": "filesystem_read_file"},
+        }
+    ]
+
+
+def test_loca_harness_falls_back_to_core_loca_tools_when_manifest_empty() -> None:
+    context = _context_from_payload(
+        {"messages": [{"role": "user", "content": "continue"}], "tools": []},
+        "session_fallback",
+    )
+
+    tool_names = [
+        tool["function"]["name"]
+        for tool in context["tools"]
+        if isinstance(tool, dict) and isinstance(tool.get("function"), dict)
+    ]
+
+    assert "filesystem_list_directory" in tool_names
+    assert "filesystem_write_file" in tool_names
+    assert "python_execute" in tool_names
+    assert "claim_done" in tool_names
 
 
 def test_loca_harness_response_marks_hermes_native_tool_calls(monkeypatch) -> None:

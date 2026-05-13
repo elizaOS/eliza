@@ -44,13 +44,13 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses the single Eliza Labs HuggingFace repo for every visible Eliza-1 tier", () => {
+  it("uses the single elizaOS HuggingFace repo for every visible Eliza-1 tier", () => {
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
       const tier = model.id.slice("eliza-1-".length);
-      expect(model.hfRepo).toBe("elizalabs/eliza-1");
+      expect(model.hfRepo).toBe("elizaos/eliza-1");
       expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
       expect(buildHuggingFaceResolveUrl(model)).toContain(
-        `/elizalabs/eliza-1/resolve/main/bundles/${tier}/`,
+        `/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
       );
     }
   });
@@ -90,12 +90,12 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B/1.7B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B/2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_6b": 32768,
-      "eliza-1-1_7b": 32768,
+      "eliza-1-0_8b": 32768,
+      "eliza-1-2b": 32768,
       "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
@@ -202,20 +202,20 @@ describe("local inference catalog", () => {
       ]);
     }
 
-    expect(findCatalogModel("eliza-1-0_6b")?.voiceBackends).toEqual([
-      "omnivoice",
+    expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
       "kokoro",
-    ]);
-    expect(findCatalogModel("eliza-1-1_7b")?.voiceBackends).toEqual([
       "omnivoice",
-      "kokoro",
     ]);
-    expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual([
-      "omnivoice",
-      "kokoro",
-    ]);
-    expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual(["omnivoice"]);
     expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b-1m")?.voiceBackends).toEqual([
       "omnivoice",
     ]);
   });
@@ -225,7 +225,7 @@ describe("local inference catalog", () => {
     expect(model?.sourceModel?.finetuned).toBe(false);
     const components = model?.sourceModel?.components;
     expect(components?.text).toEqual({
-      repo: "elizalabs/eliza-1",
+      repo: "elizaos/eliza-1",
       file: "bundles/27b-1m/text/eliza-1-27b-1m.gguf",
     });
     // Vision is intentionally omitted from the 1m tier because the KV-cache

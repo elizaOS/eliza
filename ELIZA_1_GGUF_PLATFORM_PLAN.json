@@ -14,7 +14,6 @@
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
-      "vision/mmproj-0_8b.gguf",
       "dflash/drafter-0_8b.gguf",
       "dflash/target-meta.json",
       "cache/voice-preset-default.bin",
@@ -31,7 +30,6 @@
       "licenses/LICENSE.vad",
       "licenses/LICENSE.dflash",
       "licenses/LICENSE.eliza-1",
-      "licenses/LICENSE.vision",
       "checksums/SHA256SUMS",
       "evidence/release.json",
       "quantization/turboquant.json",
@@ -208,13 +206,12 @@
       "vad/silero-vad-int8.onnx"
     ],
     "required_files": [
-      "text/eliza-1-27b-1m-1m.gguf",
+      "text/eliza-1-27b-1m.gguf",
       "tts/omnivoice-base-Q8_0.gguf",
       "tts/omnivoice-tokenizer-Q8_0.gguf",
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
-      "vision/mmproj-27b-1m.gguf",
       "dflash/drafter-27b-1m.gguf",
       "dflash/target-meta.json",
       "cache/voice-preset-default.bin",
@@ -227,7 +224,6 @@
       "licenses/LICENSE.vad",
       "licenses/LICENSE.dflash",
       "licenses/LICENSE.eliza-1",
-      "licenses/LICENSE.vision",
       "checksums/SHA256SUMS",
       "evidence/release.json",
       "quantization/turboquant.json",
@@ -267,7 +263,7 @@
       "vad/silero-vad-int8.onnx"
     ],
     "required_files": [
-      "text/eliza-1-27b-256k-256k.gguf",
+      "text/eliza-1-27b-256k.gguf",
       "tts/omnivoice-base-Q8_0.gguf",
       "tts/omnivoice-tokenizer-Q8_0.gguf",
       "asr/eliza-1-asr.gguf",
@@ -333,22 +329,19 @@
   },
   "2b": {
     "contexts": [
-      "32k",
-      "64k"
+      "32k"
     ],
     "optional_files": [
       "vad/silero-vad-int8.onnx"
     ],
     "required_files": [
       "text/eliza-1-2b-32k.gguf",
-      "text/eliza-1-2b-64k.gguf",
       "tts/kokoro/model_q4.onnx",
       "tts/kokoro/tokenizer.json",
       "tts/kokoro/voices/af_bella.bin",
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
-      "vision/mmproj-2b.gguf",
       "dflash/drafter-2b.gguf",
       "dflash/target-meta.json",
       "cache/voice-preset-default.bin",
@@ -365,7 +358,6 @@
       "licenses/LICENSE.vad",
       "licenses/LICENSE.dflash",
       "licenses/LICENSE.eliza-1",
-      "licenses/LICENSE.vision",
       "checksums/SHA256SUMS",
       "evidence/release.json",
       "quantization/turboquant.json",

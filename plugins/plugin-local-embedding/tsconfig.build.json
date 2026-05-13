@@ -1,12 +1,16 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
-		"rootDir": "../../../",
+		"rootDir": "src",
 		"outDir": "./dist",
 		"sourceMap": true,
 		"inlineSources": true,
 		"declaration": true,
-		"emitDeclarationOnly": true
+		"emitDeclarationOnly": true,
+		"paths": {
+			"@elizaos/core": ["../../packages/core/dist/index.d.ts"],
+			"@elizaos/plugin-local-inference": ["../plugin-local-inference/dist/index.d.ts"]
+		}
 	},
 	"include": ["src/**/*.ts"],
 	"exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.spec.ts"]

@@ -176,11 +176,9 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("omnivoice",),
-    "2b": ("omnivoice",),
-    "4b": ("omnivoice",),
-    # 9B is the boundary tier: laptop installs use Kokoro, workstation/server
-    # installs can use OmniVoice cloning when the heavier assets are present.
+    "0_8b": ("kokoro",),
+    "2b": ("kokoro",),
+    "4b": ("kokoro",),
     "9b": ("kokoro", "omnivoice"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
@@ -197,9 +195,10 @@ KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
 def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
-    Paths are relative to the bundle's ``tts/`` directory. Active Eliza-1
-    release tiers ship OmniVoice; Kokoro entries are retained only for
-    explicit legacy compatibility when a future/experimental tier opts in.
+    Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
+    release line keeps small/mobile tiers on Kokoro, overlaps 9B with both
+    Kokoro and OmniVoice, and uses OmniVoice only for the 27B long-context
+    tiers.
     """
 
     out: list[str] = []
@@ -1054,7 +1053,7 @@ def canonical_qwen_source_repo_error(slot: str, repo: str) -> str | None:
 
     Text tiers are Qwen3.5, but ASR and embedding are separate Qwen3
     components with their own published GGUF repos. The release pipeline must
-    not invent matching Qwen3.5 or 0.8B/2B ASR/embedding names.
+    not invent matching Qwen3.5 or tier-mirrored ASR/embedding names.
     """
 
     allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)

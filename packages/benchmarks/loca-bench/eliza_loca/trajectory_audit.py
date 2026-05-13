@@ -16,6 +16,14 @@ _SECRET_RE = re.compile(
 )
 
 
+def _usage_int(usage: dict[str, Any], *keys: str) -> int:
+    for key in keys:
+        value = usage.get(key)
+        if isinstance(value, (int, float)):
+            return int(value)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", required=True, type=Path)
@@ -262,9 +270,21 @@ def _audit_trajectory(
     if not usage_tracking and not provider_payload.get("error"):
         issues.append({"path": label, "issue": "missing_usage_tracking"})
     for usage in usage_tracking if isinstance(usage_tracking, list) else []:
-        token_totals["prompt_tokens"] += int(usage.get("prompt_tokens", 0) or 0)
-        token_totals["completion_tokens"] += int(usage.get("completion_tokens", 0) or 0)
-        token_totals["total_tokens"] += int(usage.get("total_tokens", 0) or 0)
+        token_totals["prompt_tokens"] += _usage_int(
+            usage,
+            "prompt_tokens",
+            "promptTokens",
+        )
+        token_totals["completion_tokens"] += _usage_int(
+            usage,
+            "completion_tokens",
+            "completionTokens",
+        )
+        token_totals["total_tokens"] += _usage_int(
+            usage,
+            "total_tokens",
+            "totalTokens",
+        )
 
     events = trajectory.get("events", {})
     for key in ("reset", "summary", "summary_skip", "trim", "thinking_reset"):
@@ -435,15 +455,25 @@ def _usage_summary(trajectory: dict[str, Any]) -> dict[str, int]:
     return {
         "call_count": len([item for item in usage if isinstance(item, dict)]),
         "max_prompt_tokens": max(
-            [int(item.get("prompt_tokens", 0) or 0) for item in usage if isinstance(item, dict)]
+            [
+                _usage_int(item, "prompt_tokens", "promptTokens")
+                for item in usage
+                if isinstance(item, dict)
+            ]
             or [0]
         ),
         "max_total_tokens": max(
-            [int(item.get("total_tokens", 0) or 0) for item in usage if isinstance(item, dict)]
+            [
+                _usage_int(item, "total_tokens", "totalTokens")
+                for item in usage
+                if isinstance(item, dict)
+            ]
             or [0]
         ),
         "total_tokens": sum(
-            int(item.get("total_tokens", 0) or 0) for item in usage if isinstance(item, dict)
+            _usage_int(item, "total_tokens", "totalTokens")
+            for item in usage
+            if isinstance(item, dict)
         ),
     }
 
@@ -457,8 +487,8 @@ def _usage_maxima(trajectory: dict[str, Any]) -> tuple[int, int]:
     for item in usage:
         if not isinstance(item, dict):
             continue
-        max_prompt = max(max_prompt, int(item.get("prompt_tokens", 0) or 0))
-        max_total = max(max_total, int(item.get("total_tokens", 0) or 0))
+        max_prompt = max(max_prompt, _usage_int(item, "prompt_tokens", "promptTokens"))
+        max_total = max(max_total, _usage_int(item, "total_tokens", "totalTokens"))
     return max_prompt, max_total
 
 

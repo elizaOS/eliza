@@ -358,7 +358,7 @@ int main(int argc, char ** argv) {
     }
 
     // n_kv sweep (resp. n_tokens / n_rows): 512 / 4096 / 32768 covers the
-    // 0.8B/2B context tiers.
+    // 0.6B/1.7B context tiers.
     const uint32_t NKV[] = { 512u, 4096u, 32768u };
     const uint32_t MULTI[] = { 1u, 2u, 4u, 8u, 16u };
 
@@ -403,7 +403,7 @@ int main(int argc, char ** argv) {
     bench_turbo("turbo4",     "turbo4_multi",     TURBO4_BLOCK,     4, false);
     bench_turbo("turbo3_tcq", "turbo3_tcq_multi", TURBO3_TCQ_BLOCK, 1, true);
 
-    // QJL (n_heads x n_tokens grid). Bench n_heads=8 to mirror the 2B head count
+    // QJL (n_heads x n_tokens grid). Bench n_heads=8 to mirror the 1.7B head count
     // ballpark while keeping the buffers small.
     {
         const uint32_t n_heads = 8, n_kv_heads = 2;

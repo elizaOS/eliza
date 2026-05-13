@@ -58,9 +58,11 @@
       ],
       "ignore": ["dist/**", "ios/**", "android/**"],
       "ignoreDependencies": [
+        "@capacitor/android",
         "@capacitor/barcode-scanner",
         "@capacitor/browser",
         "@capacitor/haptics",
+        "@capacitor/ios",
         "@capacitor/push-notifications",
         "@clawville/app-clawville",
         "@elizaos/app-.*",
@@ -85,6 +87,7 @@
         "platforms/**/*.{ts,tsx}",
         "packaging/**/*.{mjs,ts}",
         "vitest.config.ts",
+        "vitest.node-sqlite.config.ts",
         "vitest.e2e.config.ts",
         "playwright.config.ts"
       ],
@@ -94,6 +97,7 @@
         "test/**/*.{ts,tsx}",
         "platforms/**/*.{ts,tsx}",
         "packaging/**/*.{mjs,ts}",
+        "vitest.node-sqlite.config.ts",
         "*.ts"
       ],
       "ignore": [

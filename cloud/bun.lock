@@ -209,19 +209,19 @@
         "@ai-sdk/anthropic": "^3.0.13",
         "@clack/prompts": "^1.0.0",
         "@elizaos/app-contacts": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/app-phone": "2.0.0-beta.1",
         "@elizaos/app-wifi": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/plugin-agent-orchestrator": "2.0.0-beta.1",
-        "@elizaos/plugin-agent-skills": "2.0.0-beta.1",
+        "@elizaos/plugin-anthropic": "2.0.0-beta.1",
         "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1",
+        "@elizaos/plugin-background-runner": "2.0.0-beta.1",
         "@elizaos/plugin-browser": "2.0.0-beta.1",
         "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1",
         "@elizaos/plugin-coding-tools": "2.0.0-beta.1",
         "@elizaos/plugin-commands": "2.0.0-beta.1",
         "@elizaos/plugin-computeruse": "2.0.0-beta.1",
-        "@elizaos/plugin-device-filesystem": "2.0.0-beta.1",
         "@elizaos/plugin-discord": "2.0.0-beta.2",
         "@elizaos/plugin-elizacloud": "2.0.0-beta.1",
         "@elizaos/plugin-imessage": "2.0.0-beta.1",
@@ -230,6 +230,7 @@
         "@elizaos/plugin-mcp": "2.0.0-beta.1",
         "@elizaos/plugin-mlx": "file:../../plugins/plugin-mlx",
         "@elizaos/plugin-ollama": "2.0.0-beta.1",
+        "@elizaos/plugin-openai": "2.0.0-beta.1",
         "@elizaos/plugin-shell": "2.0.0-beta.1",
         "@elizaos/plugin-signal": "2.0.0-beta.1",
         "@elizaos/plugin-sql": "2.0.0-beta.1",
@@ -392,41 +393,19 @@
         "@elizaos/plugin-sql": "2.0.0-beta.1",
         "@elizaos/plugin-wechat": "2.0.0-beta.1",
         "@elizaos/plugin-workflow": "2.0.0-beta.1",
-        "@elizaos/plugin-zai": "file:../../plugins/plugin-zai",
         "@elizaos/shared": "2.0.0-beta.1",
+        "@elizaos/skills": "2.0.0-beta.1",
         "@elizaos/ui": "2.0.0-beta.2",
         "@elizaos/vault": "2.0.0-beta.1",
+        "@huggingface/transformers": "^4.0.0",
         "@node-rs/argon2": "^2.0.2",
-        "@radix-ui/react-checkbox": "^1.3.3",
-        "@radix-ui/react-dialog": "^1.1.15",
-        "@radix-ui/react-dropdown-menu": "^2.1.16",
-        "@radix-ui/react-label": "^2.1.8",
-        "@radix-ui/react-popover": "^1.1.15",
-        "@radix-ui/react-select": "^2.2.6",
-        "@radix-ui/react-separator": "^1.1.8",
-        "@radix-ui/react-slider": "^1.3.6",
-        "@radix-ui/react-slot": "^1.2.4",
-        "@radix-ui/react-switch": "^1.2.6",
-        "@radix-ui/react-tabs": "^1.1.13",
-        "@radix-ui/react-tooltip": "^1.2.8",
-        "@simplewebauthn/browser": "^13.0.0",
-        "@stwd/sdk": "^0.8.1",
-        "@xterm/addon-fit": "^0.11.0",
-        "@xterm/xterm": "^6.0.0",
-        "@xyflow/react": "^12.10.2",
         "chalk": "^5.3.0",
-        "class-variance-authority": "^0.7.1",
-        "clsx": "^2.1.1",
         "commander": "^14.0.0",
-        "cron-parser": "^5.5.0",
         "dotenv": "^17.2.3",
         "drizzle-orm": "0.45.2",
         "ethers": "^6.16.0",
         "jose": "^6.2.2",
         "json5": "^2.2.3",
-        "lucide-react": "^1.0.0",
-        "sonner": "^2.0.7",
-        "tailwind-merge": "^3.0.0",
         "telegraf": "^4.16.3",
         "undici": "8.2.0",
         "ws": "^8.19.0",
@@ -434,12 +413,8 @@
       },
       "devDependencies": {
         "@playwright/test": "^1.59.1",
-        "@testing-library/dom": "^10.4.0",
-        "@testing-library/react": "^16.3.2",
-        "@testing-library/user-event": "^14.6.1",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
-        "@types/three": "^0.184.0",
         "@types/ws": "^8.18.1",
         "bun-types": "^1.3.12",
         "playwright": "^1.59.1",
@@ -447,6 +422,7 @@
         "react-test-renderer": "^19.2.4",
         "sharp": "^0.34.5",
         "tailwindcss": "^4.1.18",
+        "tsx": "^4.21.0",
         "typescript": "^6.0.3",
         "vite": "^8.0.8",
         "vitest": "^4.0.18",
@@ -740,7 +716,7 @@
       "name": "@elizaos/capacitor-desktop",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
       },
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
@@ -774,7 +750,7 @@
       "name": "@elizaos/capacitor-gateway",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -814,7 +790,7 @@
       "name": "@elizaos/capacitor-location",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
       },
       "devDependencies": {
         "@capacitor/cli": "^8.0.0",
@@ -905,7 +881,7 @@
       "name": "@elizaos/capacitor-screencapture",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
       },
       "devDependencies": {
         "@capacitor/android": "^8.0.0",
@@ -928,7 +904,7 @@
       "name": "@elizaos/capacitor-swabble",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
       },
       "devDependencies": {
         "@capacitor/android": "^8.0.0",
@@ -961,7 +937,7 @@
       "name": "@elizaos/capacitor-talkmode",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
       },
       "devDependencies": {
         "@capacitor/cli": "^8.0.0",
@@ -1150,7 +1126,7 @@
       "name": "@elizaos/app-2004scape",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
@@ -1193,7 +1169,7 @@
       "name": "@elizaos/app-companion",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/app-task-coordinator": "2.0.0-beta.1",
         "@elizaos/app-wallet": "2.0.0-beta.1",
@@ -1266,11 +1242,11 @@
       "name": "@elizaos/app-device-settings",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-system": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -1287,7 +1263,7 @@
       "name": "@elizaos/app-documents",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
       },
@@ -1299,7 +1275,7 @@
       "name": "@elizaos/app-elizamaker",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/core": "2.0.0-beta.1",
         "ethers": "^6.15.0",
       },
@@ -1342,8 +1318,8 @@
       "version": "2.0.0-beta.1",
       "dependencies": {
         "@capacitor/core": "8.3.1",
-        "@elizaos/agent": "2.0.0-beta.1",
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-calendar": "2.0.0-beta.1",
         "@elizaos/capacitor-mobile-signals": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
@@ -1357,7 +1333,7 @@
         "@elizaos/plugin-whatsapp": "2.0.0-beta.1",
         "@elizaos/scenario-schema": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "drizzle-orm": "0.45.2",
         "lucide-react": "^1.0.0",
         "react-plaid-link": "^4.0.1",
@@ -1384,12 +1360,12 @@
       "name": "@elizaos/app-messages",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-messages": "2.0.0-beta.1",
         "@elizaos/capacitor-system": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -1447,7 +1423,7 @@
       "name": "@elizaos/app-scape",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
@@ -1461,7 +1437,7 @@
       "name": "@elizaos/app-screenshare",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/plugin-computeruse": "2.0.0-beta.1",
@@ -1494,7 +1470,7 @@
       "name": "@elizaos/app-steward",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/plugin-wallet": "2.0.0-beta.1",
@@ -1529,7 +1505,7 @@
       "name": "@elizaos/app-training",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
         "@elizaos/ui": "2.0.0-beta.2",
@@ -1565,7 +1541,7 @@
       "name": "@elizaos/app-vincent",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/agent": "2.0.0-beta.1",
+        "@elizaos/agent": "2.0.0-beta.2",
         "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
@@ -1598,12 +1574,12 @@
       "name": "@elizaos/app-wifi",
       "version": "2.0.0-beta.1",
       "dependencies": {
-        "@elizaos/app-core": "2.0.0-beta.1",
+        "@elizaos/app-core": "2.0.0-beta.3",
         "@elizaos/capacitor-system": "2.0.0-beta.1",
         "@elizaos/capacitor-wifi": "2.0.0-beta.1",
         "@elizaos/core": "2.0.0-beta.1",
         "@elizaos/shared": "2.0.0-beta.1",
-        "@elizaos/ui": "2.0.0-beta.1",
+        "@elizaos/ui": "2.0.0-beta.2",
         "lucide-react": "^1.0.0",
       },
       "devDependencies": {
@@ -7513,7 +7489,7 @@
 
     "doctrine": ["doctrine@3.0.0", "", { "dependencies": { "esutils": "^2.0.2" } }, "sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w=="],
 
-    "dom-accessibility-api": ["dom-accessibility-api@0.5.16", "", {}, "sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg=="],
+    "dom-accessibility-api": ["dom-accessibility-api@0.6.3", "", {}, "sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w=="],
 
     "dom-serializer": ["dom-serializer@1.4.1", "", { "dependencies": { "domelementtype": "^2.0.1", "domhandler": "^4.2.0", "entities": "^2.0.0" } }, "sha512-VHwB3KfrcOOkelEG2ZOfxqLZdfkil8PtJi4P8N2MMXucZq2yLp75ClViUlOVwyoHEDjYU433Aq+5zWP61+RGag=="],
 
@@ -9265,7 +9241,7 @@
 
     "pretty-bytes": ["pretty-bytes@5.6.0", "", {}, "sha512-FFw039TmrBqFK8ma/7OL3sDz/VytdtJr044/QUJtH0wK9lb9jLq9tJyIxUwtQJHwar2BqtiA4iCWSwo9JLkzFg=="],
 
-    "pretty-format": ["pretty-format@27.5.1", "", { "dependencies": { "ansi-regex": "^5.0.1", "ansi-styles": "^5.0.0", "react-is": "^17.0.1" } }, "sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ=="],
+    "pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
 
     "pretty-ms": ["pretty-ms@7.0.1", "", { "dependencies": { "parse-ms": "^2.1.0" } }, "sha512-973driJZvxiGOQ5ONsFhOF/DtzPMOMtgC11kCpUrPGMTgqp2q/1gwzCquocrN33is0VZ5GFHXZYMM9l6h67v2Q=="],
 
@@ -10457,65 +10433,15 @@
 
     "@ecies/ciphers/@noble/ciphers": ["@noble/ciphers@1.3.0", "", {}, "sha512-2I0gnIVPtfnMw9ee9h1dJG7tp81+8Ob3OJb3Mv37rx5L40/b0i7djjCVvGOVqc9AEIQyvyu1i6ypKdFw8R8gQw=="],
 
-    "@elizaos/agent/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
     "@elizaos/agent-server/@types/node": ["@types/node@22.19.18", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-9v00a+dn2yWVsYDEunWC4g/TcRKVq3r8N5FuZp7u0SGrPvdN9c2yXI9bBuf5Fl0hNCb+QTIePTn5pJs2pwBOQQ=="],
-
-    "@elizaos/app-2004scape/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-companion/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
 
     "@elizaos/app-contacts/@biomejs/biome": ["@biomejs/biome@2.4.15", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.4.15", "@biomejs/cli-darwin-x64": "2.4.15", "@biomejs/cli-linux-arm64": "2.4.15", "@biomejs/cli-linux-arm64-musl": "2.4.15", "@biomejs/cli-linux-x64": "2.4.15", "@biomejs/cli-linux-x64-musl": "2.4.15", "@biomejs/cli-win32-arm64": "2.4.15", "@biomejs/cli-win32-x64": "2.4.15" }, "bin": { "biome": "bin/biome" } }, "sha512-j5VH3a/h/HXTKBM50MDMxRCzkeLv9S2XJcW2WgnZT1+xyisi+0bISrXR82gCX+8S9lvK0skEvHJRN+3Ktr2hlw=="],
 
-    "@elizaos/app-device-settings/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
-    "@elizaos/app-device-settings/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
-    "@elizaos/app-documents/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-elizamaker/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-lifeops/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-lifeops/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
-    "@elizaos/app-lifeops/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
-    "@elizaos/app-messages/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
-    "@elizaos/app-messages/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
-    "@elizaos/app-scape/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-screenshare/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-steward/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-training/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-vincent/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-wifi/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
-    "@elizaos/app-wifi/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
     "@elizaos/billing/@types/node": ["@types/node@22.19.17", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q=="],
-
-    "@elizaos/capacitor-desktop/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
 
     "@elizaos/capacitor-gateway/@biomejs/biome": ["@biomejs/biome@2.4.15", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.4.15", "@biomejs/cli-darwin-x64": "2.4.15", "@biomejs/cli-linux-arm64": "2.4.15", "@biomejs/cli-linux-arm64-musl": "2.4.15", "@biomejs/cli-linux-x64": "2.4.15", "@biomejs/cli-linux-x64-musl": "2.4.15", "@biomejs/cli-win32-arm64": "2.4.15", "@biomejs/cli-win32-x64": "2.4.15" }, "bin": { "biome": "bin/biome" } }, "sha512-j5VH3a/h/HXTKBM50MDMxRCzkeLv9S2XJcW2WgnZT1+xyisi+0bISrXR82gCX+8S9lvK0skEvHJRN+3Ktr2hlw=="],
 
-    "@elizaos/capacitor-gateway/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
-    "@elizaos/capacitor-location/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
     "@elizaos/capacitor-mobile-agent-bridge/@biomejs/biome": ["@biomejs/biome@2.4.15", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.4.15", "@biomejs/cli-darwin-x64": "2.4.15", "@biomejs/cli-linux-arm64": "2.4.15", "@biomejs/cli-linux-arm64-musl": "2.4.15", "@biomejs/cli-linux-x64": "2.4.15", "@biomejs/cli-linux-x64-musl": "2.4.15", "@biomejs/cli-win32-arm64": "2.4.15", "@biomejs/cli-win32-x64": "2.4.15" }, "bin": { "biome": "bin/biome" } }, "sha512-j5VH3a/h/HXTKBM50MDMxRCzkeLv9S2XJcW2WgnZT1+xyisi+0bISrXR82gCX+8S9lvK0skEvHJRN+3Ktr2hlw=="],
-
-    "@elizaos/capacitor-screencapture/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
-    "@elizaos/capacitor-swabble/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
-
-    "@elizaos/capacitor-talkmode/@elizaos/app-core": ["@elizaos/app-core@2.0.0-beta.1", "", { "dependencies": { "@capacitor-community/sqlite": "^7.0.0", "@capacitor/barcode-scanner": "^3.0.0", "@capacitor/core": "8.3.1", "@capacitor/haptics": "8.0.2", "@capacitor/keyboard": "8.0.3", "@capacitor/preferences": "^8.0.1", "@capacitor/push-notifications": "^8.0.0", "@clack/prompts": "^1.0.0", "@elizaos/agent": "2.0.0-beta.1", "@elizaos/capacitor-llama": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-anthropic": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-edge-tts": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-groq": "2.0.0-beta.1", "@elizaos/plugin-openai": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/ui": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@node-rs/argon2": "^2.0.2", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@simplewebauthn/browser": "^13.0.0", "@stwd/sdk": "^0.8.1", "@xterm/addon-fit": "^0.11.0", "@xterm/xterm": "^6.0.0", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "commander": "^14.0.0", "cron-parser": "^5.5.0", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "ethers": "^6.16.0", "jose": "^6.2.2", "json5": "^2.2.3", "lucide-react": "^1.0.0", "sonner": "^2.0.7", "tailwind-merge": "^3.0.0", "telegraf": "^4.16.3", "undici": "8.2.0", "ws": "^8.19.0", "zod": "^4.4.3" }, "optionalDependencies": { "node-llama-cpp": "3.18.1", "sharp": "^0.34.5" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0", "three": "^0.184.0" } }, "sha512-k8DA6pSetRbL1OjBf+cjjgjAMMRT1fGkWZGtLDx158z02njL5yeVIuTx+o6GGuaykV9zDO0hkU3xi0J+uSmTGA=="],
 
     "@elizaos/cloud-db/@types/node": ["@types/node@22.19.17", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-wGdMcf+vPYM6jikpS/qhg6WiqSV/OhG+jeeHT/KlVqxYfD40iYJf9/AE1uQxVWFvU7MipKRkRv8NSHiCGgPr8Q=="],
 
@@ -10784,8 +10710,6 @@
     "@jest/core/ansi-escapes": ["ansi-escapes@4.3.2", "", { "dependencies": { "type-fest": "^0.21.3" } }, "sha512-gKXj5ALrKWQLsYG9jlTRmR/xKluxHV+Z9QEwNIgCfM1/uwPMCuzVVnh5mwTd+OuBZcwSIMbqssNWRm1lE51QaQ=="],
 
     "@jest/core/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
-
-    "@jest/core/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
 
     "@jest/reporters/@bcoe/v8-coverage": ["@bcoe/v8-coverage@0.2.3", "", {}, "sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw=="],
 
@@ -11181,7 +11105,9 @@
 
     "@tensorflow/tfjs-node/tar": ["tar@6.2.1", "", { "dependencies": { "chownr": "^2.0.0", "fs-minipass": "^2.0.0", "minipass": "^5.0.0", "minizlib": "^2.1.1", "mkdirp": "^1.0.3", "yallist": "^4.0.0" } }, "sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A=="],
 
-    "@testing-library/jest-dom/dom-accessibility-api": ["dom-accessibility-api@0.6.3", "", {}, "sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w=="],
+    "@testing-library/dom/dom-accessibility-api": ["dom-accessibility-api@0.5.16", "", {}, "sha512-X7BJ2yElsnOJ30pZF4uIIDfBEVgF4XEBxL9Bxhy6dnrm5hkzqmsWHGTiHqRiITNhMyFLyAiWndIJP7Z1NTteDg=="],
+
+    "@testing-library/dom/pretty-format": ["pretty-format@27.5.1", "", { "dependencies": { "ansi-regex": "^5.0.1", "ansi-styles": "^5.0.0", "react-is": "^17.0.1" } }, "sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ=="],
 
     "@toruslabs/base-controllers/@ethereumjs/util": ["@ethereumjs/util@9.1.0", "", { "dependencies": { "@ethereumjs/rlp": "^5.0.2", "ethereum-cryptography": "^2.2.1" } }, "sha512-XBEKsYqLGXLah9PNJbgdkigthkG7TAGvlD/sH12beMXEyHDyigfcbdvHhmLyDWgDyOJn4QwiQUaF7yeuhnjdog=="],
 
@@ -11234,8 +11160,6 @@
     "@trezor/utils/bignumber.js": ["bignumber.js@9.3.1", "", {}, "sha512-Ko0uX15oIUS7wJ3Rb30Fs6SkVbLmPBAKdlm7q9+ak9bbIeFf0MwuBsQV6z7+X768/cHsfg+WlysDWJcmthjsjQ=="],
 
     "@ts-morph/common/minimatch": ["minimatch@3.1.5", "", { "dependencies": { "brace-expansion": "^1.1.7" } }, "sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w=="],
-
-    "@types/jest/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
 
     "@types/jsdom/undici-types": ["undici-types@7.25.0", "", {}, "sha512-AXNgS1Byr27fTI+2bsPEkV9CxkT8H6xNyRI68b3TatlZo3RkzlqQBLL+w7SmGPVpokjHbcuNVQUWE7FRTg+LRA=="],
 
@@ -11623,8 +11547,6 @@
 
     "jest-circus/p-limit": ["p-limit@3.1.0", "", { "dependencies": { "yocto-queue": "^0.1.0" } }, "sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ=="],
 
-    "jest-circus/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
-
     "jest-circus/pure-rand": ["pure-rand@7.0.1", "", {}, "sha512-oTUZM/NAZS8p7ANR3SHh30kXB+zK2r2BPcEn/awJIbOvq82WoMN4p62AWWp3Hhw50G0xMsw1mhIBLqHw64EcNQ=="],
 
     "jest-cli/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
@@ -11633,27 +11555,15 @@
 
     "jest-config/glob": ["glob@10.5.0", "", { "dependencies": { "foreground-child": "^3.1.0", "jackspeak": "^3.1.2", "minimatch": "^9.0.4", "minipass": "^7.1.2", "package-json-from-dist": "^1.0.0", "path-scurry": "^1.11.1" }, "bin": { "glob": "dist/esm/bin.mjs" } }, "sha512-DfXN8DfhJ7NH3Oe7cFmu3NCu1wKbkReJ8TorzSAFbSKrlNaQSKfIzqYqVY8zlbs2NLBbWpRiU52GX2PbaBVNkg=="],
 
-    "jest-config/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
-
     "jest-config/strip-json-comments": ["strip-json-comments@3.1.1", "", {}, "sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig=="],
 
     "jest-diff/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
-    "jest-diff/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
-
     "jest-each/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
-
-    "jest-each/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
-
-    "jest-leak-detector/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
 
     "jest-matcher-utils/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
-    "jest-matcher-utils/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
-
     "jest-message-util/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
-
-    "jest-message-util/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
 
     "jest-resolve/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
@@ -11671,13 +11581,9 @@
 
     "jest-snapshot/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
-    "jest-snapshot/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
-
     "jest-util/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
 
     "jest-validate/chalk": ["chalk@4.1.2", "", { "dependencies": { "ansi-styles": "^4.1.0", "supports-color": "^7.1.0" } }, "sha512-oKnbhFyRIXpUuez8iBMmyEa4nbj4IOQyuhc/wy9kY7/WVPcwIO9VA668Pu8RkO7+0G76SLROeyw9CpQ061i4mA=="],
-
-    "jest-validate/pretty-format": ["pretty-format@30.4.1", "", { "dependencies": { "@jest/schemas": "30.4.1", "ansi-styles": "^5.2.0", "react-is-18": "npm:react-is@^18.3.1", "react-is-19": "npm:react-is@^19.2.5" } }, "sha512-K6KiKMHTL4jjX4u3Kir2EW07nRfcqVTXIImx50wbjHQTcZPgg+gjVeNTIT3l3L1Rd4UefxfogquC9J37SoFyyw=="],
 
     "jest-watcher/ansi-escapes": ["ansi-escapes@4.3.2", "", { "dependencies": { "type-fest": "^0.21.3" } }, "sha512-gKXj5ALrKWQLsYG9jlTRmR/xKluxHV+Z9QEwNIgCfM1/uwPMCuzVVnh5mwTd+OuBZcwSIMbqssNWRm1lE51QaQ=="],
 
@@ -11926,8 +11832,6 @@
     "precinct/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
-    "pretty-format/react-is": ["react-is@17.0.2", "", {}, "sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w=="],
 
     "promise-worker-transferable/is-promise": ["is-promise@2.2.2", "", {}, "sha512-+lP4/6lKUBfQjZ2pdxThZvLUAafmZb8OAxFb8XXtiQmS35INgr85hdOGoEs124ez1FCnZJt6jau/T+alh58QFQ=="],
 
@@ -12249,18 +12153,6 @@
 
     "@elizaos/agent-server/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
-    "@elizaos/agent/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/agent/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
-    "@elizaos/app-2004scape/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-2004scape/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-companion/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-companion/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
     "@elizaos/app-contacts/@biomejs/biome/@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.4.15", "", { "os": "darwin", "cpu": "arm64" }, "sha512-rF3PPqLq1yoST79zaQbDjVJwsuIeci/O+9bgNmC5QpgOqz6aqYuzA4abyAGx+mgyiDXn4A049xAN8gijbuR1Qg=="],
 
     "@elizaos/app-contacts/@biomejs/biome/@biomejs/cli-darwin-x64": ["@biomejs/cli-darwin-x64@2.4.15", "", { "os": "darwin", "cpu": "x64" }, "sha512-/5KHXYMfSJs1fNXiX30xFtI8JcCFV6zaVVLxOa0M2sfqBKHkpQhRTv94yxQWxeTY2lzo2OuTlNvPC+hDQt2wcQ=="],
@@ -12277,49 +12169,7 @@
 
     "@elizaos/app-contacts/@biomejs/biome/@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.15", "", { "os": "win32", "cpu": "x64" }, "sha512-zBrGq5mx5wwpnow4+2BxUvleDM+GNd4sLbPaMapsSLQLD0NGRCquqPBTgN+7XkUteHvj7M+BstuI8tmnV7+HgQ=="],
 
-    "@elizaos/app-device-settings/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-documents/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-documents/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-elizamaker/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-elizamaker/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-lifeops/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-lifeops/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-messages/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/app-scape/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-scape/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-screenshare/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-screenshare/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-steward/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-steward/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-training/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-training/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-vincent/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-vincent/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-wifi/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
     "@elizaos/billing/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
-
-    "@elizaos/capacitor-desktop/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/capacitor-desktop/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
 
     "@elizaos/capacitor-gateway/@biomejs/biome/@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.4.15", "", { "os": "darwin", "cpu": "arm64" }, "sha512-rF3PPqLq1yoST79zaQbDjVJwsuIeci/O+9bgNmC5QpgOqz6aqYuzA4abyAGx+mgyiDXn4A049xAN8gijbuR1Qg=="],
 
@@ -12337,14 +12187,6 @@
 
     "@elizaos/capacitor-gateway/@biomejs/biome/@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.15", "", { "os": "win32", "cpu": "x64" }, "sha512-zBrGq5mx5wwpnow4+2BxUvleDM+GNd4sLbPaMapsSLQLD0NGRCquqPBTgN+7XkUteHvj7M+BstuI8tmnV7+HgQ=="],
 
-    "@elizaos/capacitor-gateway/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/capacitor-gateway/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
-    "@elizaos/capacitor-location/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/capacitor-location/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
     "@elizaos/capacitor-mobile-agent-bridge/@biomejs/biome/@biomejs/cli-darwin-arm64": ["@biomejs/cli-darwin-arm64@2.4.15", "", { "os": "darwin", "cpu": "arm64" }, "sha512-rF3PPqLq1yoST79zaQbDjVJwsuIeci/O+9bgNmC5QpgOqz6aqYuzA4abyAGx+mgyiDXn4A049xAN8gijbuR1Qg=="],
 
     "@elizaos/capacitor-mobile-agent-bridge/@biomejs/biome/@biomejs/cli-darwin-x64": ["@biomejs/cli-darwin-x64@2.4.15", "", { "os": "darwin", "cpu": "x64" }, "sha512-/5KHXYMfSJs1fNXiX30xFtI8JcCFV6zaVVLxOa0M2sfqBKHkpQhRTv94yxQWxeTY2lzo2OuTlNvPC+hDQt2wcQ=="],
@@ -12360,18 +12202,6 @@
     "@elizaos/capacitor-mobile-agent-bridge/@biomejs/biome/@biomejs/cli-win32-arm64": ["@biomejs/cli-win32-arm64@2.4.15", "", { "os": "win32", "cpu": "arm64" }, "sha512-ouhkYdlhp/1GghEJPdWwD/Vi3gQ1nFxuSpMolWsbq3Lsq3QUR4jl6UdhhscdCugKU5vOEuMiJhvKj66O0OCq+w=="],
 
     "@elizaos/capacitor-mobile-agent-bridge/@biomejs/biome/@biomejs/cli-win32-x64": ["@biomejs/cli-win32-x64@2.4.15", "", { "os": "win32", "cpu": "x64" }, "sha512-zBrGq5mx5wwpnow4+2BxUvleDM+GNd4sLbPaMapsSLQLD0NGRCquqPBTgN+7XkUteHvj7M+BstuI8tmnV7+HgQ=="],
-
-    "@elizaos/capacitor-screencapture/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/capacitor-screencapture/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
-    "@elizaos/capacitor-swabble/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/capacitor-swabble/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
-
-    "@elizaos/capacitor-talkmode/@elizaos/app-core/@elizaos/agent": ["@elizaos/agent@2.0.0-beta.1", "", { "dependencies": { "@clack/prompts": "^1.0.0", "@elizaos/capacitor-contacts": "2.0.0-beta.1", "@elizaos/capacitor-phone": "2.0.0-beta.1", "@elizaos/capacitor-wifi": "2.0.0-beta.1", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-agent-skills": "2.0.0-beta.1", "@elizaos/plugin-aosp-local-inference": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/plugin-capacitor-bridge": "2.0.0-beta.1", "@elizaos/plugin-coding-tools": "2.0.0-beta.1", "@elizaos/plugin-commands": "2.0.0-beta.1", "@elizaos/plugin-computeruse": "2.0.0-beta.1", "@elizaos/plugin-discord": "2.0.0-beta.1", "@elizaos/plugin-discord-local": "2.0.0-beta.1", "@elizaos/plugin-elizacloud": "2.0.0-beta.1", "@elizaos/plugin-imessage": "2.0.0-beta.1", "@elizaos/plugin-local-embedding": "2.0.0-beta.1", "@elizaos/plugin-local-inference": "2.0.0-beta.1", "@elizaos/plugin-mcp": "2.0.0-beta.1", "@elizaos/plugin-ollama": "2.0.0-beta.1", "@elizaos/plugin-pdf": "2.0.0-beta.1", "@elizaos/plugin-signal": "2.0.0-beta.1", "@elizaos/plugin-sql": "2.0.0-beta.1", "@elizaos/plugin-streaming": "2.0.0-beta.1", "@elizaos/plugin-video": "2.0.0-beta.1", "@elizaos/plugin-wechat": "2.0.0-beta.1", "@elizaos/plugin-whatsapp": "2.0.0-beta.1", "@elizaos/plugin-workflow": "2.0.0-beta.1", "@elizaos/plugin-x402": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@elizaos/skills": "2.0.0-beta.1", "@elizaos/vault": "2.0.0-beta.1", "@hapi/boom": "^10.0.1", "@noble/curves": "2.2.0", "@solana/web3.js": "1.98.4", "@whiskeysockets/baileys": "7.0.0-rc.9", "abitype": "^1.0.0", "coding-agent-adapters": "0.16.3", "dotenv": "^17.2.3", "drizzle-orm": "0.45.2", "esbuild": "^0.28.0", "ethers": "^6.16.0", "git-workspace-service": "0.4.5", "jsdom": "^29.0.0", "json5": "^2.2.3", "pg": "^8.16.3", "pino": "^10.3.1", "pty-manager": "1.11.0", "puppeteer-core": "^24.37.5", "qrcode": "^1.5.4", "telegram": "2.26.22", "viem": "^2.48.8", "ws": "^8.19.0", "zod": "^4.4.3" }, "peerDependencies": { "@elizaos/signal-native": "*" }, "optionalPeers": ["@elizaos/signal-native"], "bin": { "eliza-autonomous": "src/bin.ts" } }, "sha512-RONrlwlESJo9/FkS5GIm3N+O03QvhN38s/dgxBD1Gi1qtJ60gDrq3acmJJoy6Ilm8XZBhLaqSfNd0JrKkcBc0g=="],
-
-    "@elizaos/capacitor-talkmode/@elizaos/app-core/@elizaos/ui": ["@elizaos/ui@2.0.0-beta.1", "", { "dependencies": { "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "@elizaos/shared": "2.0.0-beta.1", "@radix-ui/react-checkbox": "^1.3.3", "@radix-ui/react-dialog": "^1.1.15", "@radix-ui/react-dropdown-menu": "^2.1.16", "@radix-ui/react-label": "^2.1.8", "@radix-ui/react-popover": "^1.1.15", "@radix-ui/react-select": "^2.2.6", "@radix-ui/react-separator": "^1.1.8", "@radix-ui/react-slider": "^1.3.6", "@radix-ui/react-slot": "^1.2.4", "@radix-ui/react-switch": "^1.2.6", "@radix-ui/react-tabs": "^1.1.13", "@radix-ui/react-tooltip": "^1.2.8", "@xyflow/react": "^12.10.2", "chalk": "^5.3.0", "class-variance-authority": "^0.7.1", "clsx": "^2.1.1", "cron-parser": "^5.5.0", "drizzle-orm": "0.45.2", "lucide-react": "^1.0.0", "tailwind-merge": "^3.0.0" }, "peerDependencies": { "react": "^19.0.0", "react-dom": "^19.0.0" } }, "sha512-Ph6ED+eGB56C8DBGibGzWEYS5eiEZDAanTy70irKpVcSWxTWobiizmytYNvT10CClMXJD/Rf1KopTZ19+hl4tA=="],
 
     "@elizaos/cloud-db/@types/node/undici-types": ["undici-types@6.21.0", "", {}, "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="],
 
@@ -13641,8 +13471,6 @@
 
     "@jest/core/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
-    "@jest/core/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
     "@jest/reporters/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
     "@jest/reporters/glob/minimatch": ["minimatch@9.0.9", "", { "dependencies": { "brace-expansion": "^2.0.2" } }, "sha512-OBwBN9AL4dqmETlpS2zasx+vTeWclWzkblfZk7KTA5j3jeOONz/tRCnZomUyvNg83wL5Zv9Ss6HMJXAgL8R2Yg=="],
@@ -13933,6 +13761,10 @@
 
     "@tensorflow/tfjs/yargs/yargs-parser": ["yargs-parser@20.2.9", "", {}, "sha512-y11nGElTIV+CT3Zv9t7VKl+Q3hTQoT9a1Qzezhhl6Rp21gJ/IVTW7Z3y9EWXhuUBC2Shnf+DX0antecpAwSP8w=="],
 
+    "@testing-library/dom/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
+
+    "@testing-library/dom/pretty-format/react-is": ["react-is@17.0.2", "", {}, "sha512-w2GsyukL62IJnlaff/nRegPQR94C/XXamvMWmSHRJ4y7Ts/4ocGRmTHvOs8PSE6pB3dWOrD/nueuU5sduBsQ4w=="],
+
     "@toruslabs/base-controllers/@ethereumjs/util/@ethereumjs/rlp": ["@ethereumjs/rlp@5.0.2", "", { "bin": { "rlp": "bin/rlp.cjs" } }, "sha512-DziebCdg4JpGlEqEdGgXmjqcFoJi+JGulUXwEjsZGAscAQ7MyD/7LE/GVCP29vEQxKc7AAwjT3A2ywHp2xfoCA=="],
 
     "@trezor/blockchain-link-utils/@trezor/protobuf/long": ["long@5.2.5", "", {}, "sha512-e0r9YBBgNCq1D1o5Dp8FMH0N5hsFtXDBiVa0qoJPHpakvZkmDKPRoGffZJII/XsHvj9An9blm+cRJ01yQqU+Dw=="],
@@ -14038,8 +13870,6 @@
     "@trezor/protobuf/protobufjs/long": ["long@5.3.2", "", {}, "sha512-mNAgZ1GmyNhD7AuqnTG3/VQ26o760+ZYBPKjPvugO8+nLbYfX6TVpJPseBvopbdY+qpZ/lKUnmEc1LeZYS3QAA=="],
 
     "@ts-morph/common/minimatch/brace-expansion": ["brace-expansion@1.1.14", "", { "dependencies": { "balanced-match": "^1.0.0", "concat-map": "0.0.1" } }, "sha512-MWPGfDxnyzKU7rNOW9SP/c50vi3xrmrua/+6hfPbCS2ABNWfx24vPidzvC7krjU/RTo235sV776ymlsMtGKj8g=="],
-
-    "@types/jest/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
 
     "@types/ssh2/@types/node/undici-types": ["undici-types@5.26.5", "", {}, "sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA=="],
 
@@ -14331,8 +14161,6 @@
 
     "jest-circus/p-limit/yocto-queue": ["yocto-queue@0.1.0", "", {}, "sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q=="],
 
-    "jest-circus/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
     "jest-cli/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
     "jest-config/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
@@ -14341,25 +14169,13 @@
 
     "jest-config/glob/path-scurry": ["path-scurry@1.11.1", "", { "dependencies": { "lru-cache": "^10.2.0", "minipass": "^5.0.0 || ^6.0.2 || ^7.0.0" } }, "sha512-Xa4Nw17FS9ApQFJ9umLiJS4orGjm7ZzwUrwamcGQuHSzDyth9boKDaycYdDcZDuqYATXw4HFXgaqWTctW/v1HA=="],
 
-    "jest-config/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
     "jest-diff/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
-
-    "jest-diff/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
 
     "jest-each/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
-    "jest-each/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
-    "jest-leak-detector/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
     "jest-matcher-utils/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
-    "jest-matcher-utils/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
     "jest-message-util/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
-
-    "jest-message-util/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
 
     "jest-resolve/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
@@ -14377,13 +14193,9 @@
 
     "jest-snapshot/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
-    "jest-snapshot/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
-
     "jest-util/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
     "jest-validate/chalk/supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
-
-    "jest-validate/pretty-format/ansi-styles": ["ansi-styles@5.2.0", "", {}, "sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA=="],
 
     "jest-watcher/ansi-escapes/type-fest": ["type-fest@0.21.3", "", {}, "sha512-t0rzBq87m3fVcduHDUFhKmyyX+9eo6WQjZvf51Ea/M0Q7+T374Jp1aUiyUl0GKxp8M/OETVHSDvmkyPgvX+X2w=="],
 
@@ -14968,46 +14780,6 @@
     "@discordjs/node-pre-gyp/rimraf/glob/minimatch": ["minimatch@3.1.5", "", { "dependencies": { "brace-expansion": "^1.1.7" } }, "sha512-VgjWUsnnT6n+NUk6eZq77zeFdpW2LWDzP6zFGrCbHXiYNul5Dzqk2HHQ5uFH2DNW5Xbp8+jVzaeNt94ssEEl4w=="],
 
     "@discordjs/node-pre-gyp/tar/minizlib/minipass": ["minipass@3.3.6", "", { "dependencies": { "yallist": "^4.0.0" } }, "sha512-DxiNidxSEK+tHG6zOIklvNOwm3hvCrbUrdtzY74U6HKTJxvIDfOUL5W5P2Ghd3DTkhhKPYGqeNUIh5qcM4YBfw=="],
-
-    "@elizaos/agent/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/agent/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-device-settings/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-device-settings/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-messages/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-messages/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/app-wifi/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/app-wifi/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/capacitor-desktop/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/capacitor-desktop/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/capacitor-gateway/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/capacitor-gateway/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/capacitor-location/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/capacitor-location/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/capacitor-screencapture/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/capacitor-screencapture/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/capacitor-swabble/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/capacitor-swabble/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
-
-    "@elizaos/capacitor-talkmode/@elizaos/app-core/@elizaos/agent/@elizaos/plugin-discord": ["@elizaos/plugin-discord@2.0.0-beta.1", "", { "dependencies": { "@discordjs/opus": "^0.10.0", "@discordjs/rest": "^2.6.1", "@discordjs/voice": "^0.19.2", "@elizaos/core": "2.0.0-beta.1", "@elizaos/plugin-browser": "2.0.0-beta.1", "discord-api-types": "^0.38.0", "discord.js": "^14.26.4", "fast-levenshtein": "^3.0.0", "fluent-ffmpeg": "^2.1.3", "get-func-name": "^3.0.0", "libsodium-wrappers": "^0.8.0", "opusscript": "^0.1.1", "prism-media": "1.3.5", "zod": "^4.4.3" } }, "sha512-7hpLLWlZg5c7JfFKUo0T35MKQmuNWh6cPeR4jy6vVw6TYRb6DmN+ZW5CaNbTfSOKD8JLMbx/QaPVhRrjS9ZHig=="],
-
-    "@elizaos/capacitor-talkmode/@elizaos/app-core/@elizaos/agent/abitype": ["abitype@1.2.4", "", { "peerDependencies": { "typescript": ">=5.0.4", "zod": "^3.22.0 || ^4.0.0" }, "optionalPeers": ["typescript", "zod"] }, "sha512-dpKH+N27vRjarMVTFFkeY445VTKftzGWpL0FiT7xmVmzQRKazZexzC5uHG0f6XKsVLAuUlndnbGau6lRejClxg=="],
 
     "@elizaos/plugin-social-alpha/@tailwindcss/postcss/@tailwindcss/oxide/@tailwindcss/oxide-android-arm64": ["@tailwindcss/oxide-android-arm64@4.2.4", "", { "os": "android", "cpu": "arm64" }, "sha512-e7MOr1SAn9U8KlZzPi1ZXGZHeC5anY36qjNwmZv9pOJ8E4Q6jmD1vyEHkQFmNOIN7twGPEMXRHmitN4zCMN03g=="],
 

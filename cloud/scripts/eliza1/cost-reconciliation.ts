@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { aiBillingRecordsRepository } from "../../packages/db/repositories/ai-billing-records";
+import { Pool } from "pg";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, "../../..");
@@ -16,6 +16,16 @@ interface Args {
   providerSpendTotal: number | null;
   maxDrift: number;
   evidenceDir: string;
+}
+
+interface BillingRecordRow {
+  id: string;
+  usage_record_id: string;
+  reservation_transaction_id: string | null;
+  settlement_transaction_ids: string[] | null;
+  idempotency_key: string;
+  usage_total_cost: string;
+  ledger_total: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -98,15 +108,86 @@ function sum(records: readonly { usage_total_cost: string; ledger_total: string 
   );
 }
 
+async function listBillingRecords(args: Args): Promise<BillingRecordRow[]> {
+  const databaseUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL or TEST_DATABASE_URL is required");
+  }
+
+  const pool = new Pool({ connectionString: databaseUrl });
+  try {
+    const values: unknown[] = [args.startDate, args.endDate];
+    const conditions = ["created_at >= $1", "created_at <= $2"];
+    if (args.organizationId) {
+      values.push(args.organizationId);
+      conditions.push(`organization_id = $${values.length}`);
+    }
+    if (args.provider) {
+      values.push(args.provider);
+      conditions.push(`provider = $${values.length}`);
+    }
+    if (args.model) {
+      values.push(args.model);
+      conditions.push(`model = $${values.length}`);
+    }
+
+    const result = await pool.query<BillingRecordRow>(
+      `
+        SELECT
+          id,
+          usage_record_id,
+          reservation_transaction_id,
+          settlement_transaction_ids,
+          idempotency_key,
+          usage_total_cost,
+          ledger_total
+        FROM ai_billing_records
+        WHERE ${conditions.join(" AND ")}
+        ORDER BY created_at DESC
+        LIMIT 10000
+      `,
+      values,
+    );
+    return result.rows;
+  } finally {
+    await pool.end();
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const records = await aiBillingRecordsRepository.listForReconciliation({
-    organizationId: args.organizationId,
-    provider: args.provider,
-    model: args.model,
-    startDate: args.startDate,
-    endDate: args.endDate,
-  });
+  let records: BillingRecordRow[];
+  try {
+    records = await listBillingRecords(args);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    writeEvidence(args.evidenceDir, "cost_reconciliation", {
+      gate: "cost_reconciliation",
+      status: "fail",
+      completedAt: new Date().toISOString(),
+      organizationId: args.organizationId ?? null,
+      provider: args.provider ?? null,
+      model: args.model ?? null,
+      usageRecordsTotal: 0,
+      ledgerTotal: 0,
+      providerSpendTotal: args.providerSpendTotal,
+      drift: null,
+      error: reason,
+      summary: `DB-backed cost reconciliation could not run: ${reason}`,
+    });
+    writeEvidence(args.evidenceDir, "billing_records", {
+      gate: "billing_records",
+      status: "fail",
+      completedAt: new Date().toISOString(),
+      usageRecordId: null,
+      creditTransactionId: null,
+      idempotencyKey: null,
+      error: reason,
+      summary: `DB-backed billing record check could not run: ${reason}`,
+    });
+    process.exitCode = 1;
+    return;
+  }
 
   const totals = sum(records);
   const usageRecordsTotal = Number(totals.usage.toFixed(6));

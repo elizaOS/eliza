@@ -20,7 +20,7 @@
  *
  * Usage:
  *   node packages/inference/verify/mobile_peak_rss_harness.mjs \
- *     [--device <udid>] [--platform ios|android] [--tier 0_8b|2b|...] [--report PATH] [--json]
+ *     [--device <udid>] [--platform ios|android] [--tier 0_6b|1_7b|...] [--report PATH] [--json]
  */
 
 import fs from "node:fs";

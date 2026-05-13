@@ -273,7 +273,7 @@ export type TokenizerFamily =
 
 export type CatalogHub = "huggingface" | "modelscope";
 
-export type CatalogQuantizationId = "q4_k_m" | "q6_k" | "q8_0";
+export type CatalogQuantizationId = "q4_0" | "q4_k_m" | "q6_k" | "q8_0";
 
 export interface CatalogQuantizationVariant {
   id: CatalogQuantizationId;

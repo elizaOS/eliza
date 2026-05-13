@@ -19,7 +19,7 @@ Hard contract (training/AGENTS.md §2 + §9):
     The publish path (and the runtime doctor) refuse a drafter whose
     recorded hash does not match the text GGUF in the same bundle.
   - The recipe is the same across active tiers. Eliza-1 uses Qwen3.5
-    students only: the active tiny tier is `eliza-1-0_6b`; every tier must
+    students only: the active tiny tier is `eliza-1-0_8b`; every tier must
     distill from a base with byte-identical tokenizer metadata.
 
 Distillation objective: forward KL on the top-k target logits plus a small
@@ -33,17 +33,17 @@ Usage:
 
     # Smoke (no real models, no GPU): exercises the pipeline + metadata write
     uv run --extra train python scripts/distill_dflash_drafter.py \
-        --tier 0_6b --synthetic-smoke --out-dir /tmp/dflash-smoke
+        --tier 0_8b --synthetic-smoke --out-dir /tmp/dflash-smoke
 
     # Real run for the active tiny drafter
     uv run --extra train python scripts/distill_dflash_drafter.py \
-        --tier 0_6b \
-        --target-checkpoint training/checkpoints/eliza-1-0_6b-text \
-        --target-gguf out/eliza-1-0_6b/text/eliza-1-0_6b-32k.gguf \
-        --student-base Qwen/Qwen3-0.6B \
+        --tier 0_8b \
+        --target-checkpoint training/checkpoints/eliza-1-0_8b-text \
+        --target-gguf out/eliza-1-0_8b/text/eliza-1-0_8b-32k.gguf \
+        --student-base Qwen/Qwen3.5-0.8B-Base \
         --dataset data/distill/eliza1-distill.jsonl \
         --epochs 1 --batch-size 8 --grad-accum 4 \
-        --out-dir out/eliza-1-0_6b/dflash
+        --out-dir out/eliza-1-0_8b/dflash
 
 The script writes <out-dir>/drafter-<tier>.gguf and a run manifest
 <out-dir>/drafter-<tier>.distill.json recording dataset hashes, the student
@@ -77,20 +77,18 @@ log = logging.getLogger("distill_dflash_drafter")
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
-ACTIVE_TIERS = ("0_6b", "1_7b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
 
-# Recommended student base per active tier. The 0_6b / 1_7b release line uses
-# Qwen3-tokenizer targets, while 4b+ uses the Qwen3.5 tokenizer family. These
-# defaults are intentionally tokenizer-family-specific so real runs fail closed
-# before training instead of producing a drafter that cannot speculate.
+# Recommended student base per active tier. Every active Eliza-1 tier is on the
+# Qwen3.5 tokenizer family; keep this base aligned with model_registry.py.
 DEFAULT_STUDENT_BASE: dict[str, str] = {
-    "0_6b": "Qwen/Qwen3-0.6B",
-    "1_7b": "Qwen/Qwen3-0.6B",
-    "4b": "Qwen/Qwen3.5-0.8B",
-    "9b": "Qwen/Qwen3.5-0.8B",
-    "27b": "Qwen/Qwen3.5-0.8B",
-    "27b-256k": "Qwen/Qwen3.5-0.8B",
-    "27b-1m": "Qwen/Qwen3.5-0.8B",
+    "0_8b": "Qwen/Qwen3.5-0.8B-Base",
+    "2b": "Qwen/Qwen3.5-0.8B-Base",
+    "4b": "Qwen/Qwen3.5-0.8B-Base",
+    "9b": "Qwen/Qwen3.5-0.8B-Base",
+    "27b": "Qwen/Qwen3.5-0.8B-Base",
+    "27b-256k": "Qwen/Qwen3.5-0.8B-Base",
+    "27b-1m": "Qwen/Qwen3.5-0.8B-Base",
 }
 
 # Canonical Eliza-1 text targets that each drafter is allowed to pair with.
@@ -99,8 +97,8 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
 # can distinguish "trained against a small-tier-ish directory" from "trained
 # against the exact Eliza-1 target".
 DEFAULT_TARGET_MODEL: dict[str, str] = {
-    "0_6b": "elizaos/eliza-1/bundles/0_6b",
-    "1_7b": "elizaos/eliza-1/bundles/1_7b",
+    "0_8b": "elizaos/eliza-1/bundles/0_8b",
+    "2b": "elizaos/eliza-1/bundles/2b",
     "4b": "elizaos/eliza-1/bundles/4b",
     "9b": "elizaos/eliza-1/bundles/9b",
     "27b": "elizaos/eliza-1/bundles/27b",
@@ -113,8 +111,8 @@ DEFAULT_TARGET_MODEL: dict[str, str] = {
 # acceptance window into `dflash/target-meta.json`. Tighten only with a
 # rebaseline (see training/AGENTS.md §8).
 ACCEPTANCE_GATE: dict[str, float] = {
-    "0_6b": 0.40,
-    "1_7b": 0.48,
+    "0_8b": 0.40,
+    "2b": 0.48,
     "4b": 0.52,
     "9b": 0.52,
     "27b": 0.52,

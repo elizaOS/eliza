@@ -23,15 +23,16 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable, Sequence
 
+_HERE = Path(__file__).resolve()
+_TRAINING_ROOT = _HERE.parents[2]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
+
+from scripts.manifest import eliza1_manifest as M  # noqa: E402
+
 DEFAULT_REPO_ID = "elizaos/eliza-1"
 DEFAULT_BUNDLES_ROOT = Path.home() / ".eliza" / "local-inference" / "models"
-TIERS: tuple[str, ...] = (
-    "0_8b",
-    "2b",
-    "4b",
-)
-KOKORO_TIERS: set[str] = set()
-OMNIVOICE_TIERS = {"0_8b", "2b", "4b"}
+TIERS: tuple[str, ...] = M.ELIZA_1_TIERS
 PUBLISH_METADATA_DIRS = frozenset(
     {"checksums", "evidence", "evals", "licenses", "quantization"}
 )
@@ -141,12 +142,18 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
 
 
 def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
-    voice_paths = [p.lower() for p in _iter_manifest_paths(manifest) if p.startswith("tts/") or "voice" in p.lower()]
-    has_kokoro = any("kokoro" in p for p in voice_paths)
-    has_omnivoice = any("omnivoice" in p or "omni" in p for p in voice_paths)
+    voice_paths = {
+        p.lower()
+        for p in _iter_manifest_paths(manifest)
+        if p.startswith("tts/") or "voice" in p.lower()
+    }
+    expected_paths = {
+        f"tts/{rel}".lower()
+        for rel in M.required_voice_artifacts_for_tier(tier)
+    }
     warnings: list[str] = []
-    if tier in OMNIVOICE_TIERS and not has_omnivoice:
-        warnings.append(f"{tier}: expected OmniVoice artifacts for active Eliza-1 tiers")
+    for expected_path in sorted(expected_paths - voice_paths):
+        warnings.append(f"{tier}: expected voice artifact {expected_path}")
     return warnings
 
 
@@ -189,6 +196,52 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
             errors.append(
                 f"evidence/release.json hf.pathPrefix {hf.get('pathPrefix')!r} "
                 f"does not match bundles/{tier}"
+            )
+        hf_status = hf.get("status")
+        if hf_status == "uploaded":
+            upload_evidence = hf.get("uploadEvidence")
+            if not isinstance(upload_evidence, dict):
+                errors.append(
+                    "evidence/release.json hf.status is 'uploaded' but "
+                    "hf.uploadEvidence is missing"
+                )
+            else:
+                if upload_evidence.get("repoId") != DEFAULT_REPO_ID:
+                    errors.append(
+                        "evidence/release.json hf.uploadEvidence.repoId must be "
+                        f"{DEFAULT_REPO_ID!r}"
+                    )
+                if not upload_evidence.get("commit") or not upload_evidence.get("url"):
+                    errors.append(
+                        "evidence/release.json hf.uploadEvidence requires commit and url"
+                    )
+                if upload_evidence.get("status") != "uploaded":
+                    errors.append(
+                        "evidence/release.json hf.uploadEvidence.status must be 'uploaded'"
+                    )
+                uploaded_paths = upload_evidence.get("uploadedPaths")
+                if not isinstance(uploaded_paths, list) or not all(
+                    isinstance(p, str) for p in uploaded_paths
+                ):
+                    errors.append(
+                        "evidence/release.json hf.uploadEvidence.uploadedPaths "
+                        "must be an array of strings"
+                    )
+                else:
+                    required_paths = {
+                        f"bundles/{tier}/eliza-1.manifest.json",
+                        f"bundles/{tier}/README.md",
+                    }
+                    missing_paths = sorted(required_paths - set(uploaded_paths))
+                    if missing_paths:
+                        errors.append(
+                            "evidence/release.json hf.uploadEvidence.uploadedPaths "
+                            f"missing required path(s): {missing_paths}"
+                        )
+        elif hf_status not in {"pending-upload", "upload-ready"}:
+            errors.append(
+                "evidence/release.json hf.status must be 'pending-upload', "
+                "'upload-ready', or 'uploaded' with uploadEvidence"
             )
     return errors
 

@@ -18,7 +18,7 @@
 #     on a Mac for `--help` / dry-run checks).
 #   - Emits JSON evidence to evidence/gpu/<gpu>/<timestamp>.json.
 #
-# **DOES NOT LOAD ANY MODEL > 2B by default**. The bench step requires
+# **DOES NOT LOAD ANY MODEL > 1.7B by default**. The bench step requires
 # an explicit opt-in (`ELIZA_GPU_BENCH=1`) plus an `ELIZA_DFLASH_SMOKE_MODEL`
 # path. The script aborts early when neither is set in `--bench` mode.
 #

@@ -18,25 +18,35 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _default_voice_paths(tier: str) -> tuple[str, ...]:
+    return tuple(f"tts/{rel}" for rel in P.M.required_voice_artifacts_for_tier(tier))
+
+
 def _write_bundle(
     root: Path,
     tier: str,
     *,
-    voice_path: str = "tts/omnivoice-base-Q4_K_M.gguf",
+    voice_paths: tuple[str, ...] | None = None,
 ) -> Path:
     bundle = root / f"eliza-1-{tier}.bundle"
     text = b"gguf text"
-    voice = b"voice"
     drafter = b"draft"
-    for rel, blob in (
+    files: list[tuple[str, bytes]] = [
         (f"text/eliza-1-{tier}-32k.gguf", text),
-        (voice_path, voice),
         (f"dflash/drafter-{tier}.gguf", drafter),
         ("cache/voice-preset-default.bin", b"cache"),
-    ):
+    ]
+    for i, voice_path in enumerate(voice_paths or _default_voice_paths(tier)):
+        files.append((voice_path, f"voice-{i}".encode("utf-8")))
+    for rel, blob in files:
         path = bundle / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
+    voice_entries = [
+        {"path": rel, "sha256": _sha(blob)}
+        for rel, blob in files
+        if rel.startswith("tts/")
+    ]
     manifest = {
         "id": f"eliza-1-{tier}",
         "tier": tier,
@@ -49,7 +59,7 @@ def _write_bundle(
                     "ctx": 32768,
                 }
             ],
-            "voice": [{"path": voice_path, "sha256": _sha(voice)}],
+            "voice": voice_entries,
             "dflash": [
                 {"path": f"dflash/drafter-{tier}.gguf", "sha256": _sha(drafter)}
             ],
@@ -154,15 +164,27 @@ def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
 
 
 def test_voice_policy_can_warn_or_block(tmp_path: Path):
-    _write_bundle(tmp_path, "2b", voice_path="tts/kokoro.gguf")
+    _write_bundle(tmp_path, "2b", voice_paths=("tts/omnivoice-base-Q4_K_M.gguf",))
 
     warning_plan = P.plan_bundle(tmp_path, "2b")
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
     assert warning_plan.uploadable is True
-    assert any("OmniVoice" in w for w in warning_plan.warnings)
+    assert any("kokoro/model_q4.onnx" in w for w in warning_plan.warnings)
     assert strict_plan.uploadable is False
-    assert any("OmniVoice" in e for e in strict_plan.errors)
+    assert any("kokoro/model_q4.onnx" in e for e in strict_plan.errors)
+
+
+def test_tier_choices_cover_full_eliza1_matrix() -> None:
+    assert P.TIERS == (
+        "0_8b",
+        "2b",
+        "4b",
+        "9b",
+        "27b",
+        "27b-256k",
+        "27b-1m",
+    )
 
 
 def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
@@ -180,6 +202,20 @@ def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
     assert any("releaseState" in e for e in plan.errors)
     assert any("publishEligible" in e for e in plan.errors)
     assert any("final.evals" in e for e in plan.errors)
+
+
+def test_plan_bundle_blocks_uploaded_status_without_hf_evidence(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "2b")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["hf"]["status"] = "uploaded"
+    release["hf"].pop("uploadEvidence", None)
+    release_path.write_text(json.dumps(release), encoding="utf-8")
+
+    plan = P.plan_bundle(tmp_path, "2b")
+
+    assert plan.uploadable is False
+    assert any("uploadEvidence is missing" in e for e in plan.errors)
 
 
 def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):

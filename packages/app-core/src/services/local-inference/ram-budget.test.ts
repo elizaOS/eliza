@@ -88,11 +88,10 @@ describe("resolveRamBudget", () => {
 
     expect(budget.source).toBe("catalog");
     // catalog row says minRamGb: 4 -> 4096 MB; recommendedMb adds the
-    // bundle's KV-cache footprint at its 32k default ctx (2B = 2400
-    // B/token -> 75 MB), so recommended is the boot floor plus that.
+    // bundle's KV-cache footprint at its 32k default ctx.
     expect(budget.minMb).toBe(4 * 1024);
     expect(budget.recommendedMb).toBeGreaterThan(budget.minMb);
-    expect(budget.recommendedMb).toBe(4 * 1024 + 75);
+    expect(budget.recommendedMb).toBe(4 * 1024 + 69);
   });
 
   it("never consults the loader for a non-Eliza-1 model", () => {

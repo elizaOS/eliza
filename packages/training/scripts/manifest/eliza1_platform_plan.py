@@ -173,6 +173,8 @@ class TierGgufPlan:
 
 
 def text_artifact_name(tier: str, ctx: str) -> str:
+    if tier.endswith(f"-{ctx}"):
+        return f"text/eliza-1-{tier}.gguf"
     return f"text/eliza-1-{tier}-{ctx}.gguf"
 
 
@@ -467,12 +469,12 @@ def render_readiness(
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
-        "- Canonical small/mid text tiers are Qwen3.5 0.8B (`0_8b`), "
-        "Qwen3.5 2B (`2b`), and Qwen3.5 4B (`4b`). ASR and embedding are real Qwen3 upstream "
-        "exceptions: use the published Qwen3-ASR 0.6B / 1.7B GGUF repos "
-        "and Qwen3-Embedding 0.6B / 4B / 8B GGUF repos; do not invent "
-        "Qwen3.5-ASR, Qwen3.5-Embedding, Qwen3-ASR-0.8B/2B, or "
-        "Qwen3-Embedding-0.8B/2B repo IDs.",
+        "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
+        "Qwen3.5 2B (`2b`), and Qwen3.5 4B (`4b`). ASR and embedding are "
+        "real Qwen3 upstream exceptions: use the published Qwen3-ASR "
+        "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
+        "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "
+        "Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
         "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "

@@ -139,16 +139,15 @@ def test_stage_dry_run_can_include_legacy_onnx_vad_fallback(
     assert report["vad"]["onnxFallbackRepo"] == "onnx-community/silero-vad"
 
 
-def test_stage_dry_run_rejects_removed_large_tier(
+def test_stage_dry_run_accepts_lite_active_tier(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-    try:
-        stage.stage_assets(_args(tmp_path, "27b"))
-    except KeyError:
-        return
-    raise AssertionError("27b ASR staging should not be part of the active release line")
+    report = stage.stage_assets(_args(tmp_path, "0_8b"))
+
+    assert report["tier"] == "0_8b"
+    assert report["asrRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"
 
 
 def test_non_dry_run_writes_asr_vad_and_wakeword_license_notes(
@@ -209,15 +208,15 @@ def test_real_stage_writes_evidence_report_without_downloading(
     monkeypatch.setattr(stage, "HfApi", FakeHfApi)
     monkeypatch.setattr(stage, "copy_hf_file", fake_copy_hf_file)
     monkeypatch.setattr(stage, "download_url_file", fake_download_url_file)
-    args = _args(tmp_path, "0_6b")
+    args = _args(tmp_path, "0_8b")
     args.dry_run = False
 
     report = stage.stage_assets(args)
 
     assert report["dryRun"] is False
     assert copied
-    assert (tmp_path / "0_6b" / "wake" / "hey-eliza.onnx").is_file()
+    assert (tmp_path / "0_8b" / "wake" / "hey-eliza.onnx").is_file()
     evidence = json.loads(
-        (tmp_path / "0_6b" / "evidence" / "bundle-assets.json").read_text()
+        (tmp_path / "0_8b" / "evidence" / "bundle-assets.json").read_text()
     )
     assert evidence["asrRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"
