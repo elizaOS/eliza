@@ -956,8 +956,22 @@ export class PTYService {
     }
 
     const maxSessions = this.serviceConfig.maxConcurrentSessions ?? 8;
-    const activeSessions = (await this.listSessions()).length;
-    if (activeSessions >= maxSessions) {
+    // Only count LIVE sessions against the capacity. `listSessions()`
+    // returns both live sessions AND terminal-state sessions (kept around
+    // for UI history). Sessions that are already `stopping`/`stopped`/`error`
+    // no longer hold a PTY, so they must not block new spawns — pty-manager
+    // can leave a session in `stopping` indefinitely if its exit event
+    // races with the auto-stop cleanup. Without this filter every dead
+    // session permanently consumes a slot, the runtime hits the limit
+    // after 8 lifetime spawns, and the bot starts honestly refusing all
+    // further requests ("Cannot spawn opencode sub-agent due to session
+    // limit") until restart.
+    const TERMINAL_STATES = new Set(["stopping", "stopped", "error"]);
+    const allSessions = await this.listSessions();
+    const liveSessions = allSessions.filter(
+      (session) => !TERMINAL_STATES.has(session.status as string),
+    );
+    if (liveSessions.length >= maxSessions) {
       throw new Error(`Concurrent session limit reached (${maxSessions})`);
     }
 
