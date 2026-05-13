@@ -43,7 +43,7 @@
     }
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && tsc --declaration --emitDeclarationOnly --noEmit false --outDir dist",
+    "build": "tsup --config tsup.config.ts && tsc --declaration --emitDeclarationOnly --noEmit false --outDir dist --rootDir src",
     "check": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "vitest run --config ./vitest.config.ts",
