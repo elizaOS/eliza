@@ -274,7 +274,7 @@ export const SET_WALLPAPER_ACTION: Action = {
     ],
     description:
         "Generate a wallpaper image from a natural-language brief and set it " +
-        "as the sway desktop background. Honors color words (space, sunset, " +
+        "as the sway desktop background. Honors color words (red, crimson, space, sunset, " +
         "ocean, forest, rose, purple) and motifs (stars, gradient, noise).",
 
     validate: async (_runtime: IAgentRuntime, message: Memory) => {

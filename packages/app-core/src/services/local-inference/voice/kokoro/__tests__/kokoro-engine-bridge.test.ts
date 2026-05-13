@@ -130,7 +130,7 @@ describe("EngineVoiceBridge — kokoroOnly mode", () => {
       },
       lifecycleLoaders: lifecycleLoadersOk(),
     });
-    expect(bridge.backend.sampleRate).toBe(16_000);
+    expect((bridge.backend as KokoroTtsBackend).sampleRate).toBe(16_000);
     bridge.dispose();
   });
 });

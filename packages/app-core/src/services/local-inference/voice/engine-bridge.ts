@@ -630,7 +630,7 @@ export class EngineVoiceBridge {
     if (opts.kokoroOnly) {
       if (opts.useFfiBackend || opts.backendOverride) {
         throw new VoiceStartupError(
-          "missing-fused-build",
+          "invalid-options",
           "[voice] kokoroOnly cannot be combined with useFfiBackend or backendOverride. Caller must pick exactly one backend path.",
         );
       }
@@ -783,7 +783,7 @@ export class EngineVoiceBridge {
   private static startKokoroOnly(opts: EngineVoiceBridgeOptions): EngineVoiceBridge {
     if (!opts.kokoroOnly) {
       throw new VoiceStartupError(
-        "missing-bundle-root",
+        "invalid-options",
         "[voice] startKokoroOnly called without `kokoroOnly` config — this is an internal error.",
       );
     }
