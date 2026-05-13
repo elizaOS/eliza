@@ -26,6 +26,7 @@
  */
 
 import { spawn } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
@@ -201,9 +202,29 @@ async function applyWallpaperViaSway(path: string): Promise<void> {
     // Skip in test mode — there's no sway socket and the chroot test
     // suite doesn't have a compositor to drive.
     if (process.env.USBELIZA_STATE_DIR !== undefined) return;
+    // eliza-agent runs from systemd, not sway's interactive user session,
+    // so SWAYSOCK isn't inherited. Detect it by globbing the user's
+    // runtime dir — sway writes its IPC socket to
+    // `$XDG_RUNTIME_DIR/sway-ipc.<uid>.<pid>.sock` on startup.
+    const xdg = process.env.XDG_RUNTIME_DIR ?? `/run/user/${process.getuid?.() ?? 1000}`;
+    let swaysock = process.env.SWAYSOCK;
+    if (swaysock === undefined || !existsSync(swaysock)) {
+        try {
+            const entries = readdirSync(xdg);
+            const match = entries.find((n) => /^sway-ipc\..*\.sock$/.test(n));
+            if (match !== undefined) swaysock = `${xdg}/${match}`;
+        } catch {
+            // best-effort — fall through and let swaymsg fail with a
+            // clear error message if it really can't find the socket.
+        }
+    }
     await new Promise<void>((resolve, reject) => {
         const child = spawn("swaymsg", ["output", "*", "bg", path, "fill"], {
             stdio: "ignore",
+            env: {
+                ...process.env,
+                ...(swaysock !== undefined ? { SWAYSOCK: swaysock } : {}),
+            },
         });
         child.on("error", (err) =>
             reject(new Error(`swaymsg spawn failed: ${err.message}`)),

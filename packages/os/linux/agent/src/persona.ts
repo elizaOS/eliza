@@ -59,6 +59,14 @@ export interface CalibrationBlock {
      * LOGIN_CLAUDE / LOGIN_CODEX OAuth loop.
      */
     claudeOfferAccepted?: boolean | null;
+    /**
+     * Final onboarding question — freeform answer to "what do you want
+     * me to build first?". The dispatcher routes the answer to
+     * BUILD_APP unless it looks like a skip ("nothing yet", "later", etc).
+     * Saved so subsequent sessions can show what the user wanted as
+     * their first thing — useful for "show me what we built" surfaces.
+     */
+    buildIntent?: string | null;
 }
 
 /**

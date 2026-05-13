@@ -254,6 +254,13 @@ export async function dispatch(input: DispatchInput): Promise<DispatchResult> {
             });
             return { reply, launch: null, actionName: "PERSISTENCE_FLOW" };
         }
+        if (flow.flowId === "claude-signin") {
+            const { continueClaudeFlow } = await import("./flows/claude-flow.ts");
+            const result = await continueClaudeFlow(input.text, flow);
+            // No rephrase — the reply talks about a code-paste flow that
+            // the user is mid-action on; rewording would confuse it.
+            return { reply: result.reply, launch: null, actionName: "CLAUDE_FLOW" };
+        }
         if (flow.flowId === "install-package") {
             const result = await continueInstallPackageFlow(input.text, flow);
             const reply = await maybeRephrase(runtime, {

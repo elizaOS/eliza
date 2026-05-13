@@ -30,7 +30,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 /** Discriminator for the active flow. Add a new id here when adding a new flow. */
-export type FlowId = "wifi-setup" | "persistence-setup" | "install-package";
+export type FlowId = "wifi-setup" | "persistence-setup" | "install-package" | "claude-signin";
 
 export interface FlowState {
     readonly schema_version: 1;

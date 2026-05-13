@@ -342,28 +342,31 @@ function parseOffer(reply: string): boolean | undefined {
 }
 
 /**
- * The ten onboarding questions, in order:
+ * The three onboarding questions, in order:
  *
  *   1. name                       — what Eliza calls the user
- *   2. wifiOfferAccepted          — offer to connect to Wi-Fi (triggers wifi-flow on yes)
- *   3. claudeOfferAccepted        — offer to sign into Claude/Codex (triggers OAuth on yes)
- *   4. workFocus                  — what the user spends computer time on
- *   5. multitasking               — many tools at once or one focused workspace
- *   6. chronotype                 — morning / evening / flexible
- *   7. errorCommunication         — quiet retry or transparent narration on failure
- *   8. keyboardLayout             — applied via localectl every boot
- *   9. language                   — applied via localectl every boot
- *  10. timezone                   — applied via timedatectl every boot
+ *   2. claudeOfferAccepted        — offer to sign into Claude (triggers
+ *                                   the multi-turn claude-flow on yes;
+ *                                   user pastes the auth code in chat)
+ *   3. buildIntent                — freeform "what do you want me to
+ *                                   build first?" — answer auto-routes
+ *                                   to the BUILD_APP action so the
+ *                                   first app appears immediately after
+ *                                   onboarding completes
  *
- * Questions 2 + 3 come BEFORE the personality questions so the user has
- * a real Claude model available from turn 4 onward (or stays local if
- * they decline). The local Llama-3.2-1B answers conversation while the
- * upgrade is wiring up — there's never a blank-cursor wait.
+ * Trimmed from the v35 ten-question flow by user request 2026-05-13:
+ * the language / timezone / chronotype / etc questions were a slog for
+ * the first 30 seconds of using the OS. Locale gets a sensible default
+ * (en_US.UTF-8 / UTC); the user can ask Eliza to change either later.
+ *
+ * Wi-Fi was also dropped from onboarding — accessible from chat any
+ * time via "connect to wifi" (multi-turn picker flow). Most users boot
+ * on ethernet anyway and the wifi prompt during onboarding just slowed
+ * everyone else down.
  *
  * Adding/removing a question is a breaking change for the persisted
- * `~/.eliza/calibration.toml` — bump `CALIBRATION_SCHEMA_VERSION` in
- * eliza_types and write a migration. All non-personal fields are
- * optional on `CalibrationBlock` so older calibration files still parse.
+ * `~/.eliza/calibration.toml` — older multi-field calibration files
+ * still parse because every non-name field is optional.
  */
 export const QUESTIONS: readonly OnboardingQuestion[] = [
     {
@@ -378,94 +381,38 @@ export const QUESTIONS: readonly OnboardingQuestion[] = [
         clarify: "Just a name or a handle — whatever you'd like me to use.",
     },
     {
-        id: "wifiOfferAccepted",
-        prompt:
-            "I'm running on the local model on this stick — fast enough to talk. " +
-            "Want to get on Wi-Fi now? I run better with a connection, but we can stay offline.",
-        parse: parseOffer,
-        clarify:
-            "Yes if you'd like me to connect, no to stay offline for now. You can always change your mind later.",
-    },
-    {
         id: "claudeOfferAccepted",
         prompt:
-            "And want to sign into Claude or Codex? It's the difference between me writing apps you'll actually use and me writing apps that mostly work. " +
-            "I'll open a browser; you log in there. Or we can skip and stay local — that's fine too.",
+            "Want to sign into Claude? It's the difference between me writing " +
+            "apps you'll actually use and me writing apps that mostly work. " +
+            "I'll open a browser; you log in there, then paste the code back here. " +
+            "Or skip and stay on the local model — that's fine too.",
         parse: parseOffer,
         clarify: "Yes to sign in, no to stay local-only. Up to you.",
     },
     {
-        id: "workFocus",
-        prompt: "Nice to meet you. What do you spend most of your computer time on these days?",
+        id: "buildIntent",
+        prompt:
+            "Last question. What do you want me to build first? Could be a clock, " +
+            "a notes app, a calculator, a calendar — whatever feels useful. " +
+            "Or say \"nothing yet\" and we can just chat.",
         parse: (reply: string) => {
             const text = reply.trim();
             if (text.length === 0 || text.length > 256) return undefined;
             return text;
         },
-        clarify: "Just a sentence or two — coding, writing, design, gaming, whatever feels true.",
-    },
-    {
-        id: "multitasking",
-        prompt:
-            "When you're working, do you usually have a bunch of tools open at once, or do you like to focus on one thing at a time?",
-        parse: (reply: string) => {
-            const m = oneOf(reply, "bunch", "many", "multi", "lots", "several");
-            if (m !== undefined) return "multi-task";
-            const s = oneOf(reply, "one", "single", "focus", "just one", "one at a time");
-            if (s !== undefined) return "single-task";
-            return undefined;
-        },
-        clarify: "Roughly — many tools open at once, or one focused workspace?",
-    },
-    {
-        id: "chronotype",
-        prompt: "Are you more of a morning person, an evening person, or it depends?",
-        parse: (reply: string) => {
-            const m = oneOf(reply, "morning", "early", "am");
-            if (m !== undefined) return "morning";
-            const e = oneOf(reply, "evening", "night", "late", "pm");
-            if (e !== undefined) return "evening";
-            const f = oneOf(reply, "depends", "flexible", "either", "both", "neither");
-            if (f !== undefined) return "flexible";
-            return undefined;
-        },
-        clarify: "Morning, evening, or flexible — pick whichever feels closest.",
-    },
-    {
-        id: "errorCommunication",
-        prompt:
-            "When something I build doesn't work — fix it quietly and try again, or tell you what went wrong?",
-        parse: (reply: string) => {
-            const t = oneOf(reply, "tell", "transparent", "verbose", "loud", "explain", "show");
-            if (t !== undefined) return "transparent";
-            const q = oneOf(reply, "quiet", "silent", "just fix", "fix it", "behind");
-            if (q !== undefined) return "quiet";
-            return undefined;
-        },
-        clarify: "Quiet (fix and retry) or transparent (tell you what happened)?",
-    },
-    {
-        id: "keyboardLayout",
-        prompt: "What keyboard layout do you use? (us, uk, german, dvorak — whatever fits.)",
-        parse: parseKeyboardLayout,
         clarify:
-            "Just a layout name — \"us\", \"uk\", \"german\", \"dvorak\", that kind of thing. Skip if you're not sure.",
-    },
-    {
-        id: "language",
-        prompt: "What language should I speak with you?",
-        parse: parseLanguage,
-        clarify:
-            "Just a language name — english, español, français, deutsch, 日本語. I'll fall back to english if you skip.",
-    },
-    {
-        id: "timezone",
-        prompt: "Last one. What timezone are you in?",
-        parse: parseTimezone,
-        clarify:
-            "A timezone name like PST, UTC, or Europe/Berlin works. If you skip I'll keep the clock on UTC.",
+            "Just describe one thing in a sentence — e.g. \"a sticky-notes app\" " +
+            "or \"a timer\". Say \"nothing yet\" to skip.",
     },
 ] as const;
+// Silence the unused-import lints for now — the heavy parsers
+// (timezone, language, keyboard) stay imported because the calibration
+// schema still tolerates them in older files we may load.
+void parseKeyboardLayout;
+void parseLanguage;
+void parseTimezone;
+void oneOf;
 
 /**
  * Build the warm completion message after the last calibration question.

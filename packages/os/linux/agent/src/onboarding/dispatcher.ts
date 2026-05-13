@@ -129,33 +129,55 @@ export async function handleOnboarding(
     if (parsed !== undefined) {
         const next = advance(state, q, parsed);
         saveState(next);
-        // Side effects on the wifi/claude offers (questions 2 + 3): when
-        // the user says yes, kick off the appropriate flow / OAuth in
-        // the background before emitting the next onboarding question.
-        // The dispatcher in `runtime/dispatch.ts` checks flow state first,
-        // so a yes-to-wifi will route the user's next message into the
-        // multi-turn wifi flow handler. The claude offer fires the
-        // LOGIN_CLAUDE action async (fire-and-forget) and lets onboarding
-        // continue — the OAuth window opens in chromium in parallel.
-        if (q.id === "wifiOfferAccepted" && parsed === true) {
-            await maybeBeginWifiFlow();
+
+        // Side effect on the claude offer (question 2): if the user
+        // said yes, hand control to the multi-turn claude-flow which
+        // opens chromium + asks them to paste the auth code back in
+        // chat. The flow's prompt REPLACES the next onboarding question
+        // (vs prefixing). When the flow completes (success or bail),
+        // onboarding resumes from where we left off — the buildIntent
+        // question fires on the user's next message that isn't the
+        // code paste.
+        if (q.id === "claudeOfferAccepted" && parsed === true && process.env.USBELIZA_STATE_DIR === undefined) {
+            try {
+                const { beginClaudeFlow } = await import("../runtime/flows/claude-flow.ts");
+                const result = await beginClaudeFlow();
+                if (!result.done) {
+                    // Flow is in-progress; user's next message goes to
+                    // continueClaudeFlow via dispatch.ts. After it
+                    // completes, the user's next message AGAIN routes
+                    // here (onboarding is incomplete) and we ask the
+                    // buildIntent question.
+                    return { reply: result.reply, completed: false };
+                }
+                // Flow short-circuited (already-signed-in, no binary,
+                // no URL). Continue with buildIntent + prepend the
+                // flow's message so the user knows the outcome.
+                const turn = await emitNext(next, trimmed);
+                return { ...turn, reply: `${result.reply} ${turn.reply}` };
+            } catch {
+                // Don't gate onboarding on claude-flow setup failures.
+                // Just continue.
+            }
         }
-        let prefix = "";
-        if (q.id === "claudeOfferAccepted" && parsed === true) {
-            maybeFireClaudeLogin();
-            // Chromium takes 3-5s to render the OAuth page after spawn;
-            // without an immediate acknowledgement the user thinks the
-            // chat froze and re-types. The prefix lands on the next
-            // question's reply so the user sees "opening sign-in" right
-            // away, then continues onboarding while OAuth loads.
-            prefix =
-                "Opening the Claude sign-in window — it'll pop up in a few seconds. " +
-                "While that loads: ";
+
+        // Side effect on the build-intent (question 3): the answer IS
+        // the build brief. Fire BUILD_APP via the action surface so the
+        // first app starts generating immediately after onboarding.
+        // Skip when the user said "nothing" / "skip" / "later".
+        if (q.id === "buildIntent" && typeof parsed === "string" && process.env.USBELIZA_STATE_DIR === undefined) {
+            const norm = (parsed as string).toLowerCase().trim();
+            const skip = /^(nothing|skip|later|nah|no|none|nope|not now)$/.test(norm);
+            if (!skip) {
+                // Fire BUILD_APP async — codegen takes 30-60s so we
+                // return the completion message first; the agent will
+                // emit a follow-up turn when the app is ready (via the
+                // BUILD_APP action's own reply on subsequent /api/chat).
+                void maybeFireBuildApp(parsed as string);
+            }
         }
+
         const turn = await emitNext(next, trimmed);
-        if (prefix !== "") {
-            return { ...turn, reply: `${prefix}${turn.reply}` };
-        }
         return turn;
     }
 
@@ -346,6 +368,11 @@ function defaultForSkip(id: keyof CalibrationBlock): CalibrationBlock[Onboarding
             return false;
         case "claudeOfferAccepted":
             return false;
+        case "buildIntent":
+            // Skip = "nothing yet" = onboarding completes without
+            // firing a build. The string is short on purpose so it's
+            // obvious in calibration.toml that the user opted out.
+            return "skip";
         default:
             throw new Error(`defaultForSkip: unknown question id ${String(id)}`);
     }
@@ -356,54 +383,43 @@ function defaultForSkip(id: keyof CalibrationBlock): CalibrationBlock[Onboarding
  * Soft-fails — if NetworkManager isn't available (test env / no nmcli),
  * we just continue onboarding and let the user pick this up later.
  */
-async function maybeBeginWifiFlow(): Promise<void> {
-    // Skip side effects in test runs — the wifi flow is exercised by its
-    // own test file with a mocked NetworkManager boundary. The
-    // USBELIZA_STATE_DIR override is the standard test-mode signal we
-    // use across the codebase.
-    if (process.env.USBELIZA_STATE_DIR !== undefined) return;
-    try {
-        const { beginWifiFlow } = await import("../runtime/flows/wifi-flow.ts");
-        await beginWifiFlow();
-    } catch {
-        // No nmcli, no Wi-Fi card, or a stale flow — don't gate onboarding.
-    }
-}
+// v35's `maybeBeginWifiFlow` + `maybeFireClaudeLogin` were removed in
+// v36: wifi is no longer an onboarding question (chat-driven "connect
+// to wifi" handles it), and claude OAuth runs as the multi-turn
+// claude-flow inline in handleOnboarding above.
 
 /**
- * Fire the LOGIN_CLAUDE action in the background when the user says yes
- * to question 3. We don't await the handler — OAuth can take 30s+ and
- * we want onboarding to continue immediately. The chromium window opens
- * in parallel; when the user completes auth in the browser the token
- * lands at `~/.eliza/auth/claude.json` via the action's poll loop.
+ * Fire BUILD_APP for the user's onboarding answer to "what do you want
+ * me to build first?". Async fire-and-forget — codegen takes 30-60s and
+ * we want the onboarding completion message to land immediately. The
+ * built app shows up in `~/.eliza/apps/<slug>/` and the user can
+ * launch it with "open <thing>" when ready.
  *
- * Soft-fails the same way as the wifi offer.
+ * Soft-fails on every error (no runtime, no claude binary, codegen
+ * crash) so onboarding never gets stuck waiting for a build.
  */
-function maybeFireClaudeLogin(): void {
+function maybeFireBuildApp(brief: string): void {
     if (process.env.USBELIZA_STATE_DIR !== undefined) return;
     void (async () => {
         try {
-            const [{ getRuntime }, { LOGIN_CLAUDE_ACTION }] = await Promise.all([
+            const [{ getRuntime }, { BUILD_APP_ACTION }] = await Promise.all([
                 import("../runtime/eliza.ts"),
-                import("../runtime/actions/login-claude.ts"),
+                import("../runtime/actions/build-app.ts"),
             ]);
             const runtime = await getRuntime();
-            // Synthesize a minimal Memory shaped like the dispatcher's.
-            // The action's handler just uses runtime + memory.content.text;
-            // it doesn't need a full chat history.
             const { stringToUuid } = await import("@elizaos/core");
             const memory = {
-                id: stringToUuid(`onboarding-claude-${Date.now()}`),
+                id: stringToUuid(`onboarding-build-${Date.now()}`),
                 entityId: stringToUuid("usbeliza-user"),
                 agentId: runtime.agentId,
                 roomId: stringToUuid("usbeliza-onboarding"),
-                content: { text: "log into claude", source: "onboarding" },
+                content: { text: `build me ${brief}`, source: "onboarding" },
                 createdAt: Date.now(),
             };
-            await LOGIN_CLAUDE_ACTION.handler(runtime, memory, undefined, undefined, async () => []);
+            await BUILD_APP_ACTION.handler(runtime, memory, undefined, undefined, async () => []);
         } catch {
-            // Fire-and-forget: if claude isn't installed or the runtime
-            // hasn't booted, the user can retry from chat later.
+            // Fire-and-forget; failed builds surface in `~/.eliza/apps`
+            // only when they succeed, which is the natural feedback path.
         }
     })();
 }
