@@ -31,6 +31,9 @@ import os from "node:os";
 import path from "node:path";
 import { localInferenceRoot } from "../paths";
 import { VoiceStartupError } from "./errors";
+import { KokoroTtsBackend } from "./kokoro/kokoro-backend";
+import type { KokoroEngineDiscoveryResult } from "./kokoro/kokoro-engine-discovery";
+import { KokoroOnnxRuntime } from "./kokoro/kokoro-runtime";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
@@ -538,6 +541,16 @@ export interface EngineVoiceBridgeOptions {
   lifecycleLoaders?: VoiceLifecycleLoaders;
   /** Optional whisper.cpp interim ASR configuration. */
   whisper?: WhisperCppOptions;
+  /**
+   * Construct a `KokoroTtsBackend` directly and skip the bundle-root +
+   * speaker-preset + FFI checks the fused omnivoice path requires.
+   * Kokoro voices are picked by id (`KOKORO_VOICE_PACKS`), so the bundle's
+   * per-user speaker preset is not used. Mutually exclusive with
+   * `useFfiBackend: true` and `backendOverride`. Lifecycle loaders
+   * default to no-op handles (ORT owns the model memory; nothing to
+   * mmap-evict).
+   */
+  kokoroOnly?: KokoroEngineDiscoveryResult;
 }
 
 /**
@@ -614,6 +627,15 @@ export class EngineVoiceBridge {
    * the call throws.
    */
   static start(opts: EngineVoiceBridgeOptions): EngineVoiceBridge {
+    if (opts.kokoroOnly) {
+      if (opts.useFfiBackend || opts.backendOverride) {
+        throw new VoiceStartupError(
+          "missing-fused-build",
+          "[voice] kokoroOnly cannot be combined with useFfiBackend or backendOverride. Caller must pick exactly one backend path.",
+        );
+      }
+      return EngineVoiceBridge.startKokoroOnly(opts);
+    }
     if (!opts.bundleRoot || !existsSync(opts.bundleRoot)) {
       throw new VoiceStartupError(
         "missing-bundle-root",
@@ -745,6 +767,94 @@ export class EngineVoiceBridge {
       ffiHandle,
       ffiContextRef,
       asrAvailable,
+      phraseCache,
+      opts.whisper,
+    );
+  }
+
+  /**
+   * Kokoro-only path. Skips bundle-root / speaker-preset / FFI checks
+   * (Kokoro picks voices by id against `KOKORO_VOICE_PACKS`) and
+   * synthesizes a minimal `SpeakerPreset` keyed to the discovered voice
+   * id. Defaults lifecycle loaders to no-op handles since ORT owns the
+   * model memory. `asrAvailable` is `false`: callers needing ASR
+   * construct `createStreamingTranscriber` directly.
+   */
+  private static startKokoroOnly(opts: EngineVoiceBridgeOptions): EngineVoiceBridge {
+    if (!opts.kokoroOnly) {
+      throw new VoiceStartupError(
+        "missing-bundle-root",
+        "[voice] startKokoroOnly called without `kokoroOnly` config — this is an internal error.",
+      );
+    }
+    const kokoro = opts.kokoroOnly;
+    const sampleRate = opts.sampleRate ?? kokoro.layout.sampleRate;
+    const workDir =
+      opts.bundleRoot && existsSync(opts.bundleRoot)
+        ? opts.bundleRoot
+        : localInferenceRoot();
+
+    // Synthesize a minimal preset. Kokoro's `resolveVoice(preset)` looks
+    // up `preset.voiceId` against `KOKORO_VOICE_PACKS`; the embedding +
+    // bytes fields are ignored on this path (voice cloning is OmniVoice-only).
+    const preset: SpeakerPreset = {
+      voiceId: kokoro.defaultVoiceId,
+      embedding: new Float32Array(0),
+      bytes: new Uint8Array(0),
+    };
+
+    const runtime = new KokoroOnnxRuntime({
+      layout: kokoro.layout,
+      expectedSha256: null,
+    });
+    const backend = new KokoroTtsBackend({
+      layout: kokoro.layout,
+      runtime,
+      defaultVoiceId: kokoro.defaultVoiceId,
+    });
+
+    const phraseCache = new PhraseCache();
+    for (const entry of opts.prewarmedPhrases ?? []) {
+      phraseCache.put(entry);
+    }
+
+    const config: SchedulerConfig = {
+      chunkerConfig: {
+        maxTokensPerPhrase:
+          opts.maxTokensPerPhrase ??
+          readPositiveIntEnv("ELIZA_VOICE_MAX_TOKENS_PER_PHRASE") ??
+          PHRASE_MAX_TOKENS_DEFAULT,
+      },
+      preset,
+      ringBufferCapacity:
+        opts.ringBufferCapacity ?? RING_BUFFER_CAPACITY_DEFAULT,
+      sampleRate,
+      maxInFlightPhrases:
+        opts.maxInFlightPhrases ??
+        readPositiveIntEnv("ELIZA_VOICE_MAX_IN_FLIGHT_PHRASES"),
+    };
+
+    const sinkOverride = opts.sink;
+    const scheduler = new VoiceScheduler(
+      config,
+      sinkOverride
+        ? { backend, sink: sinkOverride, phraseCache }
+        : { backend, phraseCache },
+      opts.events ?? {},
+    );
+
+    const registry = opts.sharedResources ?? new SharedResourceRegistry();
+    const loaders = opts.lifecycleLoaders ?? kokoroOnlyLifecycleLoaders();
+    const lifecycle = new VoiceLifecycle({ registry, loaders });
+
+    return new EngineVoiceBridge(
+      scheduler,
+      backend,
+      workDir,
+      lifecycle,
+      null, // no FFI handle on Kokoro-only
+      null, // no FFI context on Kokoro-only
+      false, // ASR is not served from this path
       phraseCache,
       opts.whisper,
     );
@@ -1258,6 +1368,39 @@ function ensureContext(
   if (ref === null) return null;
   if (typeof ref === "object" && "ensure" in ref) return ref.ensure();
   return ref;
+}
+
+/**
+ * No-op lifecycle loaders for the Kokoro-only bridge. ORT owns the
+ * model memory; nothing to mmap-acquire or evict. ASR is not served
+ * from this path — callers that need ASR construct
+ * `createStreamingTranscriber` directly (the chain in `transcriber.ts`
+ * supports `openvino-whisper` and `whisper.cpp` without a bundle).
+ */
+function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
+  const noopMmap = (id: string): MmapRegionHandle => ({
+    id,
+    path: "",
+    sizeBytes: 0,
+    async evictPages() {
+      // Nothing to evict — ORT owns the model bytes.
+    },
+    async release() {
+      // No mmap region to release.
+    },
+  });
+  return {
+    loadTtsRegion: async () => noopMmap("kokoro:tts"),
+    loadAsrRegion: async () => noopMmap("kokoro:asr"),
+    loadVoiceCaches: async () => ({
+      id: "kokoro:voice-caches",
+      async release() {},
+    }),
+    loadVoiceSchedulerNodes: async () => ({
+      id: "kokoro:voice-scheduler-nodes",
+      async release() {},
+    }),
+  };
 }
 
 function defaultLifecycleLoaders(

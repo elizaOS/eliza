@@ -70,6 +70,7 @@ import {
   type EngineVoiceBridgeOptions,
   VoiceStartupError,
 } from "./voice/engine-bridge";
+import { resolveKokoroEngineConfig } from "./voice/kokoro/kokoro-engine-discovery";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import {
   type DflashTextRunner,
@@ -1317,6 +1318,17 @@ export class LocalInferenceEngine {
   }
 
   /**
+   * True when a voice session is currently active on the engine. Callers
+   * use this to decide whether to lazy-start one (e.g. the TTS model
+   * handler in `ensure-local-inference-handler.ts`, which auto-starts a
+   * Kokoro-only bridge on the first TEXT_TO_SPEECH invocation when the
+   * Kokoro artifacts are on disk and no Eliza-1 bundle has activated).
+   */
+  hasActiveVoiceBridge(): boolean {
+    return this.voiceBridge !== null;
+  }
+
+  /**
    * Arm the voice lifecycle on the active bridge — lazily loads the TTS
    * mmap region, optional ASR region when present, voice caches, and
    * voice scheduler nodes via the shared resource registry. Throws
@@ -1350,16 +1362,28 @@ export class LocalInferenceEngine {
     let bridge = this.voiceBridge;
     if (!bridge) {
       const bundle = this.activeEliza1Bundle;
-      if (!bundle) {
-        throw new VoiceStartupError(
-          "missing-bundle-root",
-          "[voice] Cannot start local voice: no active Eliza-1 bundle is loaded.",
-        );
+      if (bundle) {
+        bridge = this.startVoice({
+          bundleRoot: bundle.root,
+          useFfiBackend: true,
+        });
+      } else {
+        // No Eliza-1 bundle. Fall back to the Kokoro-only path when its
+        // artifacts are staged. No silent degrade: when both are absent
+        // the error names both staging options.
+        const kokoro = resolveKokoroEngineConfig();
+        if (!kokoro) {
+          throw new VoiceStartupError(
+            "missing-bundle-root",
+            "[voice] Cannot start local voice: no active Eliza-1 bundle is loaded and no Kokoro artifacts are staged under ~/.eliza/local-inference/models/kokoro/. Install an Eliza-1 bundle, or stage the Kokoro ONNX + at least one voice .bin to enable local TTS.",
+          );
+        }
+        bridge = this.startVoice({
+          bundleRoot: "",
+          useFfiBackend: false,
+          kokoroOnly: kokoro,
+        });
       }
-      bridge = this.startVoice({
-        bundleRoot: bundle.root,
-        useFfiBackend: true,
-      });
     }
     await bridge.arm();
     return bridge;
