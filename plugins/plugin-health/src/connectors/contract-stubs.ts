@@ -1,11 +1,8 @@
 /**
- * Wave-1 stubs for the W1-F connector / channel / signal-bus contracts.
+ * Canonical contract types for connector / channel / signal-bus consumers.
  *
- * These mirror `wave1-interfaces.md` §3 byte-identically. When W1-F lands the
- * concrete `ConnectorRegistry` / `AnchorRegistry` / `ActivitySignalBus` types
- * in their owning module, every `import` from this file should be replaced
- * with the real path; nothing else needs to change because the shapes here
- * are the frozen contract.
+ * Defines the frozen `ConnectorRegistry`, `AnchorRegistry`, and
+ * `ActivitySignalBus` shapes. Reference: `docs/audit/wave1-interfaces.md` §3.
  *
  * No runtime behaviour lives here — types only.
  */
@@ -75,14 +72,14 @@ export interface ConnectorRegistry {
 }
 
 /**
- * Registry surface exposed by W1-A's `ScheduledTask` runner for anchor key
+ * Registry surface exposed by the `ScheduledTask` runner for anchor key
  * registration. plugin-health contributes `wake.observed`, `wake.confirmed`,
- * `bedtime.target`, `nap.start` per `wave1-interfaces.md` §5.2.
+ * `bedtime.target`, `nap.start` (see `docs/audit/wave1-interfaces.md` §5.2).
  *
- * `wake.observed` and `wake.confirmed` are intentionally separate (per
- * `IMPLEMENTATION_PLAN.md` §3.2): `observed` = first signal that fits a wake
- * pattern, `confirmed` = sustained signal that survives the
- * `WAKE_CONFIRM_WINDOW_MS` hysteresis window in `circadian-rules.ts`.
+ * `wake.observed` and `wake.confirmed` are intentionally separate:
+ * `observed` = first signal that fits a wake pattern; `confirmed` = sustained
+ * signal that survives the `WAKE_CONFIRM_WINDOW_MS` hysteresis window in
+ * `circadian-rules.ts`.
  */
 export interface AnchorRegistry {
   register(anchor: AnchorContribution): void;
@@ -98,7 +95,7 @@ export interface AnchorContribution {
 
 /**
  * Bus-family registry for `ActivitySignalBus`. plugin-health publishes the
- * health-prefixed families documented in `wave1-interfaces.md` §5.3.
+ * health-prefixed families documented in `docs/audit/wave1-interfaces.md` §5.3.
  */
 export interface BusFamilyRegistry {
   register(family: BusFamilyContribution): void;
@@ -113,9 +110,8 @@ export interface BusFamilyContribution {
 
 /**
  * The runtime surface plugin-health expects to find on `IAgentRuntime`. All
- * four registries are optional (`undefined` when W1-A / W1-F have not landed
- * yet); registration callers tolerate a missing registry by logging a one-
- * line skip reason.
+ * registries are optional; registration callers tolerate a missing registry
+ * by logging a one-line skip reason.
  */
 export interface RuntimeWithHealthRegistries {
   connectorRegistry?: ConnectorRegistry;

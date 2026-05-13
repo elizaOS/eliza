@@ -49,7 +49,7 @@ export type LifeOpsFeatureKey =
  * `FeatureFlagRegistry` is the source of truth for what flags exist —
  * including 3rd-party plugin contributions — so anywhere that ingests a
  * key from outside (chat input, REST routes, dev-registries view) uses
- * `LifeOpsFeatureFlagKey`. Parallel to W2-D's
+ * `LifeOpsFeatureFlagKey`. Parallel to
  * `LifeOpsBusFamily = LifeOpsTelemetryFamily | string`.
  */
 export type LifeOpsFeatureFlagKey = LifeOpsFeatureKey | string;
