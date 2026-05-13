@@ -1,0 +1,41 @@
+{
+    "$schema": "https://schema.tauri.app/config/2",
+    "productName": "elizad",
+    "version": "0.0.1",
+    "identifier": "dev.usbeliza.elizad",
+    "build": {
+        "frontendDist": "ui"
+    },
+    "app": {
+        "windows": [
+            {
+                "label": "main",
+                "title": "Eliza",
+                "width": 1280,
+                "height": 800,
+                "fullscreen": false,
+                "resizable": true,
+                "decorations": false,
+                "transparent": false,
+                "alwaysOnTop": false
+            }
+        ],
+        "withGlobalTauri": true,
+        "security": {
+            "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'"
+        }
+    },
+    "bundle": {
+        "active": true,
+        "targets": "all",
+        "icon": [
+            "icons/32x32.png",
+            "icons/128x128.png",
+            "icons/128x128@2x.png",
+            "icons/icon.png"
+        ],
+        "category": "Utility",
+        "shortDescription": "The usbeliza shell process",
+        "longDescription": "elizad is the Tauri-based shell for usbeliza: chat UI, agent supervisor, per-app capability bus broker, sandbox launcher."
+    }
+}

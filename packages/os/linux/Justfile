@@ -1,0 +1,358 @@
+# usbeliza task runner. See AGENTS.md for the contract.
+# Recipes are intentionally short: each is one observable behavior.
+
+set shell := ["bash", "-uc"]
+set dotenv-load := true
+
+# -------- top-level helpers --------
+
+default:
+    @just --list
+
+# One-time setup after a fresh clone.
+setup:
+    rustup component add clippy rustfmt
+    cargo install --locked tauri-cli@^2 || true
+    cd agent && bun install --frozen-lockfile
+    @echo "Run 'just vm-build-base' next if you want the QEMU harness ready."
+
+# -------- developer loops --------
+
+# Full dev stack on the host (NOT in VM) — fastest iteration.
+dev:
+    @echo "Starting eliza-agent (Bun) and elizad (Tauri). Ctrl+C to stop both."
+    bun --cwd agent run dev & \
+        AGENT_PID=$! ; \
+        trap "kill $AGENT_PID 2>/dev/null" EXIT ; \
+        cargo tauri dev --manifest-path crates/elizad/Cargo.toml
+
+# Full dev stack inside the QEMU harness — slower, catches sandbox/Wayland bugs.
+dev-vm: vm-up vm-deploy
+
+# -------- quality gates --------
+
+lint: lint-rust lint-ts lint-license
+
+lint-rust:
+    cargo fmt --all -- --check
+    cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+lint-ts:
+    cd agent && bun run lint
+
+lint-license:
+    ./scripts/check-license-headers.sh
+
+# Unit + integration tests on the host.
+test:
+    cargo test --workspace --all-features
+    cd agent && bun test
+
+# Auto-fix what can be auto-fixed.
+fmt:
+    cargo fmt --all
+    cd agent && bun run lint -- --fix || true
+
+# -------- VM harness --------
+
+# Build the qcow2 base image (slow; cached locally; rebuilt nightly in CI).
+vm-build-base:
+    sudo vm/scripts/build-base.sh
+
+# Boot a snapshot of the base image headless.
+vm-up:
+    vm/scripts/boot.sh --headless --snapshot
+
+# Sync current crates/ + agent/ build artifacts into the running VM.
+vm-deploy:
+    vm/scripts/deploy.sh
+
+# Full integration: boot, run smoke scenarios, assert.
+vm-test:
+    vm/scripts/run-tests.sh
+
+vm-down:
+    vm/scripts/teardown.sh
+
+# -------- CI mirror --------
+
+# Exactly what GitHub Actions runs. If this is green locally, CI should be too.
+ci: lint test
+    @echo "CI gate: local quality checks passed."
+
+# -------- ISO build (Phase 1, live-build) --------
+
+# Stage host-built artifacts (elizad release binary + agent source)
+# into the includes.chroot_after_packages tree so live-build copies
+# them into the chroot. Run before iso-build.
+iso-stage:
+    @echo "==> building elizad (release)"
+    cargo build -p elizad --release
+    @echo "==> bun install (agent)"
+    cd agent && bun install --frozen-lockfile
+    @echo "==> staging /opt/usbeliza into includes.chroot_after_packages"
+    mkdir -p live-build/config/includes.chroot_after_packages/opt/usbeliza/bin
+    mkdir -p live-build/config/includes.chroot_after_packages/opt/usbeliza/agent
+    cp -f target/release/elizad live-build/config/includes.chroot_after_packages/opt/usbeliza/bin/elizad
+    # Trim ~1 GB of node-llama-cpp prebuilts we don't need: CUDA (NVIDIA-only
+    # — we ship for CPU + Vulkan), and ARM/armv7 (x86_64-only ISO). Vulkan is
+    # kept because the Lunar Lake laptops we target have an iGPU that benefits.
+    # @elizaos/agent dynamic-imports plugins we don't load (onnxruntime-* for
+    # vision models, viem for EVM wallets, pdfjs-dist for PDF reading) — these
+    # are exclude candidates if size pressure increases; for now keep them so
+    # the runtime singleton doesn't surprise-fail on a missing optional dep.
+    rsync -a --delete \
+        --exclude=node_modules/.cache \
+        --exclude='*.tsbuildinfo' \
+        --exclude='node_modules/@node-llama-cpp/linux-x64-cuda' \
+        --exclude='node_modules/@node-llama-cpp/linux-x64-cuda-ext' \
+        --exclude='node_modules/@node-llama-cpp/linux-arm64' \
+        --exclude='node_modules/@node-llama-cpp/linux-armv7l' \
+        --exclude='node_modules/@node-llama-cpp/mac-*' \
+        --exclude='node_modules/@node-llama-cpp/win-*' \
+        agent/ live-build/config/includes.chroot_after_packages/opt/usbeliza/agent/
+    @echo "==> staged $$(du -sh live-build/config/includes.chroot_after_packages/opt/usbeliza | cut -f1) into chroot includes"
+    # When `--cache-stages` includes "chroot", lb restores the chroot
+    # tarball wholesale on subsequent builds and skips chroot_local-includes
+    # AND chroot_includes_after_packages. Every staged file (agent source,
+    # sway config, systemd units, GRUB theme) silently freezes at the first
+    # build's content. Mirror the WHOLE includes.chroot_after_packages/
+    # tree into the cached chroot so each rebuild's mksquashfs sees the
+    # current files. Idempotent; no-op on first build (no chroot/ yet).
+    @if [ -d live-build/chroot ]; then \
+        echo "==> mirroring fresh includes.chroot_after_packages → cached chroot/ (lb chroot-cache workaround)"; \
+        sudo rsync -a \
+            live-build/config/includes.chroot_after_packages/ \
+            live-build/chroot/; \
+    fi
+
+# Configure live-build's working dir (creates config/binary, etc).
+# Run inside live-build/ so live-build's relative paths line up.
+iso-config:
+    cd live-build && auto/config
+
+# Pre-build config validation. Catches the bugs we hit in v1-v4
+# (missing boot=live, missing eliza user, etc.) in ~1s instead of
+# 30 min of build + boot + diagnose. Wired into iso-build.
+iso-check:
+    ./scripts/check-iso-config.sh
+
+# Pre-fetch the Ollama tarball into ~/.cache/usbeliza-build/ and stage
+# it inside the chroot includes tree (where lb_chroot will rsync it
+# into the chroot at the start of the hook stage). Saves ~5 min/build
+# + dodges ollama.com flake (the bug that killed v4). The staged file
+# is gitignored — sources of truth stay in ~/.cache.
+# Pre-fetch the Llama-3.2-1B-Instruct Q4_K_M GGUF for the local-llama-plugin
+# stack (Shaw's node-llama-cpp). The agent loads it directly at runtime via
+# libllama.so — no Ollama daemon. ~770 MB one-time download cached in
+# ~/.cache/usbeliza-build/models; the chroot copy is gitignored.
+#
+# Source: bartowski quants (public). Pinned URL; if it 404s, bump
+# USBELIZA_GGUF_URL.
+USBELIZA_GGUF_URL := "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+USBELIZA_GGUF_FILE := "llama-3.2-1b-instruct-q4_k_m.gguf"
+
+iso-cache-model:
+    @mkdir -p ~/.cache/usbeliza-build/models
+    @if [ ! -s ~/.cache/usbeliza-build/models/{{USBELIZA_GGUF_FILE}} ] || [ "$(stat -c%s ~/.cache/usbeliza-build/models/{{USBELIZA_GGUF_FILE}} 2>/dev/null || echo 0)" -lt 100000000 ]; then \
+        echo "==> downloading {{USBELIZA_GGUF_FILE}} (~770 MB, one-time)"; \
+        curl -fL --connect-timeout 30 --max-time 1800 \
+            "{{USBELIZA_GGUF_URL}}" \
+            -o ~/.cache/usbeliza-build/models/{{USBELIZA_GGUF_FILE}}; \
+    else \
+        echo "==> GGUF already cached: $$(ls -lh ~/.cache/usbeliza-build/models/{{USBELIZA_GGUF_FILE}} | awk '{print $$5}')"; \
+    fi
+    @mkdir -p live-build/config/includes.chroot_after_packages/usr/share/usbeliza/models
+    @cp -f ~/.cache/usbeliza-build/models/{{USBELIZA_GGUF_FILE}} \
+        live-build/config/includes.chroot_after_packages/usr/share/usbeliza/models/{{USBELIZA_GGUF_FILE}}
+    @echo "==> staged at /usr/share/usbeliza/models/{{USBELIZA_GGUF_FILE}} (in chroot)"
+
+# Pre-fetch the Claude Code + OpenAI Codex CLIs into ~/.cache/usbeliza-build/
+# and stage them into the chroot includes tree. Both ship as native ELF
+# binaries (no Node), so this is just two downloads. Same pattern as
+# iso-cache-ollama: cache source-of-truth lives in ~/.cache; the chroot
+# copy is gitignored. The chroot hook prefers the cached copies and only
+# falls back to upstream installers if they're absent.
+#
+# Versions are pinned for reproducibility — bump these intentionally.
+# Claude versions: https://downloads.claude.ai/claude-code-releases/latest
+# Codex versions:  https://github.com/openai/codex/releases
+USBELIZA_CLAUDE_VERSION := "2.1.138"
+USBELIZA_CODEX_VERSION := "0.130.0"
+
+iso-cache-cli:
+    @mkdir -p ~/.cache/usbeliza-build/cli
+    @if [ ! -s ~/.cache/usbeliza-build/cli/claude-{{USBELIZA_CLAUDE_VERSION}}-linux-x64 ]; then \
+        echo "==> downloading Claude Code {{USBELIZA_CLAUDE_VERSION}} (linux-x64)"; \
+        curl -fL --connect-timeout 30 --max-time 600 \
+            "https://downloads.claude.ai/claude-code-releases/{{USBELIZA_CLAUDE_VERSION}}/linux-x64/claude" \
+            -o ~/.cache/usbeliza-build/cli/claude-{{USBELIZA_CLAUDE_VERSION}}-linux-x64; \
+    else \
+        echo "==> claude {{USBELIZA_CLAUDE_VERSION}} already cached: $$(ls -lh ~/.cache/usbeliza-build/cli/claude-{{USBELIZA_CLAUDE_VERSION}}-linux-x64 | awk '{print $$5}')"; \
+    fi
+    @# Verify SHA256 against Anthropic's signed manifest (fetched on every run
+    @# so a corrupt cache is caught even if the file already existed).
+    @scripts/verify-claude-sha256.sh \
+        {{USBELIZA_CLAUDE_VERSION}} \
+        ~/.cache/usbeliza-build/cli/claude-{{USBELIZA_CLAUDE_VERSION}}-linux-x64
+    @if [ ! -s ~/.cache/usbeliza-build/cli/codex-{{USBELIZA_CODEX_VERSION}}-x86_64-linux-musl.tar.gz ]; then \
+        echo "==> downloading Codex {{USBELIZA_CODEX_VERSION}} (x86_64-linux-musl)"; \
+        curl -fL --connect-timeout 30 --max-time 600 \
+            "https://github.com/openai/codex/releases/download/rust-v{{USBELIZA_CODEX_VERSION}}/codex-x86_64-unknown-linux-musl.tar.gz" \
+            -o ~/.cache/usbeliza-build/cli/codex-{{USBELIZA_CODEX_VERSION}}-x86_64-linux-musl.tar.gz; \
+    else \
+        echo "==> codex {{USBELIZA_CODEX_VERSION}} already cached: $$(ls -lh ~/.cache/usbeliza-build/cli/codex-{{USBELIZA_CODEX_VERSION}}-x86_64-linux-musl.tar.gz | awk '{print $$5}')"; \
+    fi
+    @mkdir -p live-build/config/includes.chroot_after_packages/var/cache/usbeliza
+    @cp -f ~/.cache/usbeliza-build/cli/claude-{{USBELIZA_CLAUDE_VERSION}}-linux-x64 \
+        live-build/config/includes.chroot_after_packages/var/cache/usbeliza/claude
+    @cp -f ~/.cache/usbeliza-build/cli/codex-{{USBELIZA_CODEX_VERSION}}-x86_64-linux-musl.tar.gz \
+        live-build/config/includes.chroot_after_packages/var/cache/usbeliza/codex-x86_64-linux-musl.tar.gz
+    @echo "==> staged claude + codex into /var/cache/usbeliza/ (in chroot)"
+
+# Build the live ISO. Needs sudo (live-build uses chroot/debootstrap).
+# Output: live-build/live-image-amd64.hybrid.iso
+iso-build: iso-stage iso-cache-model iso-cache-cli iso-check iso-config
+    cd live-build && sudo auto/build
+    @echo "==> ISO at $$(pwd)/live-build/live-image-amd64.hybrid.iso"
+
+# Fast-iterate the chroot WITHOUT a full ISO build. Extracts the latest
+# /out/usbeliza-*.iso's squashfs, applies build-time fixups (eliza user,
+# authorized_keys), and boots it in systemd-nspawn. You can then
+# systemctl / journalctl / curl /api/chat from a shell — 30s per cycle
+# vs 30 min for a full rebuild.
+#
+# Usage:
+#   just iso-debug          # boot the latest ISO's rootfs as a container
+#   just iso-debug-shell    # open a shell into the running container
+#   just iso-debug-stop     # poweroff the container
+iso-debug:
+    @bash -c '\
+        latest=$(ls -t out/usbeliza-v*-amd64.iso 2>/dev/null | head -1); \
+        if [ -z "$latest" ]; then echo "no ISO in out/; run just iso-build first"; exit 1; fi; \
+        echo "==> extracting squashfs from $latest"; \
+        mkdir -p /var/tmp/usbeliza-nspawn; sudo rm -rf /var/tmp/usbeliza-nspawn/rootfs; \
+        mkdir -p /var/tmp/usbeliza-iso-mnt; sudo mount -o loop,ro "$latest" /var/tmp/usbeliza-iso-mnt; \
+        sudo unsquashfs -q -d /var/tmp/usbeliza-nspawn/rootfs /var/tmp/usbeliza-iso-mnt/live/filesystem.squashfs; \
+        sudo umount /var/tmp/usbeliza-iso-mnt; \
+        echo "==> patching: eliza user + authorized_keys"; \
+        sudo chroot /var/tmp/usbeliza-nspawn/rootfs /bin/bash -c "id eliza >/dev/null 2>&1 || useradd --create-home --shell /bin/bash --uid 1000 eliza"; \
+        sudo chroot /var/tmp/usbeliza-nspawn/rootfs /bin/bash -c "usermod -aG audio,cdrom,video,plugdev,netdev,sudo,render,input eliza"; \
+        sudo chroot /var/tmp/usbeliza-nspawn/rootfs /bin/bash -c "echo eliza:eliza | chpasswd"; \
+        sudo chroot /var/tmp/usbeliza-nspawn/rootfs /bin/bash -c "install -d -o eliza -g eliza -m 0700 /home/eliza/.ssh"; \
+        sudo install -m 0600 vm/.ssh/usbeliza_dev_ed25519.pub /var/tmp/usbeliza-nspawn/rootfs/home/eliza/.ssh/authorized_keys; \
+        sudo chown 1000:1000 /var/tmp/usbeliza-nspawn/rootfs/home/eliza/.ssh/authorized_keys; \
+        echo "==> booting via systemd-nspawn"; \
+        sudo systemd-nspawn -D /var/tmp/usbeliza-nspawn/rootfs -b --machine=usbeliza-rootfs >/var/tmp/usbeliza-nspawn/console.log 2>&1 & \
+        echo "    pid: $!"; \
+        sleep 12; \
+        machinectl list | grep usbeliza || { echo "container failed to start; see /var/tmp/usbeliza-nspawn/console.log"; exit 1; }; \
+        echo "==> ready. shell in with: just iso-debug-shell"; \
+    '
+
+iso-debug-shell:
+    sudo machinectl shell --setenv=TERM=xterm usbeliza-rootfs /bin/bash
+
+iso-debug-stop:
+    sudo machinectl poweroff usbeliza-rootfs 2>/dev/null || true
+    sleep 3
+    sudo rm -rf /var/tmp/usbeliza-nspawn /var/tmp/usbeliza-iso-mnt 2>/dev/null || true
+    @echo "==> stopped + cleaned"
+
+# Wipe the live-build working dir.
+iso-clean:
+    cd live-build && sudo auto/clean
+
+# Aggressive clean for live-build/ after a killed-mid-stage build. Runs
+# `lb clean` then forcibly unmounts leftover chroot binds (proc, sys,
+# dev/pts, run) and removes the .build/ stage markers + .iso/.files
+# artifacts that otherwise block `lb config` from re-running. Idempotent:
+# safe to run twice; we've hit this 5+ times.
+# Aggressive clean of live-build/ (unmount + remove stage markers).
+iso-clean-deep:
+    @./scripts/iso-clean-deep.sh
+
+# Show the state of an in-flight ISO build: build pid, current stage,
+# chroot size, last few meaningful log lines. Run this when you're not
+# sure whether the background build is alive, stuck, or finished. Logic
+# lives in scripts/iso-status.sh — the inline grep + $$ escaping was a
+# recurring foot-gun.
+# Show pid/stage/log of an in-flight ISO build.
+iso-status:
+    @./scripts/iso-status.sh
+
+# Boot the freshly-built ISO in QEMU at a usable 1920x1080. Uses
+# virtio-vga (with explicit xres/yres) + gtk display zoom-to-fit so the
+# window scales to the host monitor; -m 6G / -smp 4 matches a reasonable
+# laptop. SSH on 2223 to avoid clashing with vm-up's qcow2 VM (2222).
+# Prefers out/usbeliza-v*.iso over live-build/*.iso (which iso-clean wipes).
+# Boot the latest ISO in QEMU (1920x1080, SSH on 2223).
+iso-boot:
+    @./scripts/iso-boot.sh
+
+# Headless boot for CI / automation. Same RAM/CPU as iso-boot but the
+# display goes nowhere; the QMP socket (vm/snapshots/iso-qmp.sock) and
+# the serial chardev (iso-serial.sock) are how the harness drives the
+# guest. SSH on 2223 — same as iso-boot, so the harness never collides
+# with vm-up's 2222.
+# Headless ISO boot for CI; driven via QMP + serial sockets.
+iso-boot-headless:
+    @iso=$$(ls -t out/usbeliza-v*-amd64.iso live-build/*.iso 2>/dev/null | head -1); \
+        if [ -z "$$iso" ]; then echo "no ISO; run 'just iso-build' first" >&2; exit 1; fi; \
+        echo "==> headless booting $$iso (1920x1080, SSH on 2223)"; \
+        mkdir -p vm/snapshots; \
+        rm -f vm/snapshots/iso-qmp.sock vm/snapshots/iso-serial.sock; \
+        qemu-system-x86_64 \
+            -enable-kvm -cpu host -m 6G -smp 4 \
+            -cdrom "$$iso" \
+            -boot d \
+            -netdev user,id=net0,hostfwd=tcp::2223-:22 \
+            -device virtio-net-pci,netdev=net0 \
+            -display none \
+            -vga none \
+            -device virtio-vga,xres=1920,yres=1080 \
+            -qmp unix:vm/snapshots/iso-qmp.sock,server,nowait \
+            -chardev socket,id=serial0,path=vm/snapshots/iso-serial.sock,server=on,wait=off \
+            -serial chardev:serial0
+
+# Boot the latest ISO with -kernel/-initrd/-append extracted from the
+# image. The ISO is still attached as a CD so live-boot finds the
+# squashfs at /live/filesystem.squashfs. Use this when you need to
+# override the kernel cmdline at the QEMU layer (e.g. add console=ttyS0,
+# systemd.log_level=debug) without rebuilding. Extra args are appended
+# to the cmdline, e.g.:
+#   just iso-boot-direct console=ttyS0 systemd.log_level=debug
+# Extracts kernel/initrd to /var/tmp/usbeliza-isoboot/ (NOT /tmp).
+# Boot ISO via -kernel/-initrd/-append (overridable cmdline).
+iso-boot-direct *EXTRA:
+    @./scripts/iso-boot-direct.sh {{EXTRA}}
+
+# Capture a PNG screenshot of the running ISO QEMU via QMP. The QEMU
+# must have been started by `just iso-boot-headless` (which exposes the
+# QMP socket at vm/snapshots/iso-qmp.sock). Usage:
+#   just iso-qemu-screenshot vm/snapshots/iso-debug.png
+# Save a PNG screenshot of the running ISO QEMU.
+iso-qemu-screenshot path:
+    @./scripts/iso-qmp.sh screenshot {{path}}
+
+# Send a single keystroke to the running ISO QEMU via QMP. Used by the
+# harness to skip the GRUB menu and drive the live session. qcode is
+# QEMU's key name (ret, esc, spc, tab, up, down, left, right, f1-f12,
+# a-z, 0-9). Usage:
+#   just iso-qemu-send-key ret
+# Send one QMP keystroke to the running ISO QEMU.
+iso-qemu-send-key qcode:
+    @./scripts/iso-qmp.sh send-key {{qcode}}
+
+# Write the ISO to a USB stick. Asks before destroying anything.
+# Usage: just iso-usb /dev/sdX
+iso-usb device:
+    @iso=$$(ls live-build/*.iso 2>/dev/null | head -1); \
+        if [ -z "$$iso" ]; then echo "no ISO; run 'just iso-build' first" >&2; exit 1; fi; \
+        if [ ! -b "{{device}}" ]; then echo "{{device}} is not a block device" >&2; exit 1; fi; \
+        echo "About to dd $$iso → {{device}}. This DESTROYS all data on {{device}}."; \
+        read -p "Type the device path again to confirm: " confirm; \
+        [ "$$confirm" = "{{device}}" ] || { echo "aborted"; exit 1; }; \
+        sudo dd if="$$iso" of="{{device}}" bs=4M status=progress conv=fsync; \
+        sync; \
+        echo "==> ISO written to {{device}}"

@@ -1,0 +1,21 @@
+# Copyright (C) 2009-2026 Tails developers <tails@boum.org>
+# Licensed under the GNU General Public License v3.0 or later — see LICENSE
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+[Unit]
+Description=Wipe memory on live media removal
+Documentation=https://tails.net/contribute/design/memory_erasure/
+After=memlockd.service initramfs-shutdown.service
+ConditionKernelCommandLine=!toram
+
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/udev-watchdog-wrapper
+CapabilityBoundingSet=~CAP_SYS_ADMIN
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

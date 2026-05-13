@@ -1,0 +1,195 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Install Bun (eliza-agent runtime), Ollama (local LLM), Claude Code CLI,
+# and OpenAI Codex CLI into the live ISO chroot. These come from upstream
+# installers, not Debian repos, so they're a separate hook from the
+# systemd one.
+#
+# Bun + Ollama are also installed into the qcow2 by vm/scripts/build-base.sh —
+# this file is the live-ISO-side mirror.
+#
+# Claude + Codex are needed by the agent's codegen plugin
+# (agent/src/plugins/usbeliza-codegen/) which shells out to `claude --print`
+# / `codex` to generate real apps. Both ship as self-contained native
+# ELF binaries — no Node.js, no npm — so they just drop into
+# /usr/local/bin and that's the whole install. Neither bakes credentials:
+# the user logs in via OAuth at first boot (`claude` / `codex login`).
+
+set -e
+set -u
+
+echo "==> usbeliza chroot hook: installing Bun + Ollama + Claude + Codex"
+
+# --- Bun ---
+# system-wide install under /usr/local. The installer needs unzip
+# (already in package-lists). HOME=/root prevents the installer from
+# writing ~/.bashrc / ~/.zshrc additions inside /root that would leak.
+if ! command -v bun >/dev/null 2>&1; then
+    BUN_INSTALL=/usr/local HOME=/root \
+        bash -c "curl -fsSL https://bun.com/install | bash" || {
+            curl -fsSL https://bun.com/install -o /tmp/bun-install.sh
+            BUN_INSTALL=/usr/local HOME=/root bash /tmp/bun-install.sh
+            rm -f /tmp/bun-install.sh
+        }
+    chmod +x /usr/local/bin/bun /usr/local/bin/bunx 2>/dev/null || true
+fi
+
+test -x /usr/local/bin/bun || {
+    echo "ERROR: bun did not install to /usr/local/bin" >&2
+    exit 1
+}
+echo "==> bun installed: $(/usr/local/bin/bun --version)"
+
+# --- Local LLM via Shaw's node-llama-cpp stack ---
+# We dropped Ollama (separate daemon, separate HTTP API, separate model
+# manager) in favor of in-process libllama.so via `node-llama-cpp@3.x` —
+# the same stack `@elizaos/plugin-local-ai` uses. The agent process loads
+# the GGUF directly via `agent/src/runtime/local-llama-plugin.ts`.
+#
+# Why this is simpler:
+#   - One subprocess (the agent), not two (agent + ollama).
+#   - No systemd unit, no service user, no port to manage.
+#   - The GGUF is just a file in /usr/share/usbeliza/models/.
+#   - node-llama-cpp's prebuilt libllama.so + addon ship under its
+#     `@node-llama-cpp/linux-x64{,-vulkan}` peer packages; we cache them
+#     via `just iso-cache-llama-bins` into the agent's node_modules path.
+#
+# The chroot layout this hook materializes:
+#   /usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf  (~800 MB)
+#   /opt/usbeliza/agent/node_modules/@node-llama-cpp/linux-x64/  (~50 MB)
+#
+# Both are staged via `just iso-cache-*` recipes into the includes.chroot
+# tree at build time — this hook only verifies presence + sets perms.
+
+echo "==> local-llm: verifying GGUF + node-llama-cpp bins"
+
+gguf_path="/usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf"
+if [ -s "$gguf_path" ]; then
+    gguf_bytes="$(stat -c%s "$gguf_path")"
+    echo "==> GGUF present at $gguf_path ($gguf_bytes bytes)"
+    chown root:root "$gguf_path"
+    chmod 0644 "$gguf_path"
+else
+    echo "==> WARN: GGUF missing at $gguf_path"
+    echo "==> WARN: stage one via `just iso-cache-model` before building."
+    echo "==> WARN: ISO will boot; first chat turn will surface the missing-model error."
+fi
+
+# Sanity check the node-llama-cpp linux-x64 bins arrived with the agent
+# stage. The actual import path is the agent's own node_modules tree
+# (whichever it landed at — `/opt/usbeliza/agent/node_modules` for the
+# canonical iso-stage layout).
+nlc_bin="/opt/usbeliza/agent/node_modules/@node-llama-cpp/linux-x64/bins/linux-x64/libllama.so"
+if [ -s "$nlc_bin" ]; then
+    echo "==> node-llama-cpp bins present ($nlc_bin)"
+else
+    echo "==> WARN: $nlc_bin missing — run `just iso-stage` to refresh."
+fi
+
+# --- Claude Code CLI ---
+# Self-contained native ELF binary from the Anthropic releases bucket.
+# Cache hot-path mirrors the Ollama pattern: `just iso-cache-cli` stages
+# the pinned-version binary into /var/cache/usbeliza/claude. If present
+# we install it directly; otherwise we fall back to the upstream
+# installer (curl claude.ai/install.sh) with the same 3-attempt retry +
+# WARN-and-continue policy as Ollama.
+claude_installed=0
+cached_claude="/var/cache/usbeliza/claude"
+if [ -s "$cached_claude" ]; then
+    echo "==> using cached Claude Code binary ($cached_claude)"
+    install -m 0755 "$cached_claude" /usr/local/bin/claude
+    rm -f "$cached_claude"
+    claude_installed=1
+fi
+
+if [ "$claude_installed" -ne 1 ]; then
+    # The upstream installer plants to $HOME/.local/bin and runs the
+    # binary's own `install` subcommand. We point HOME at a scratch dir
+    # so it doesn't pollute /root, then symlink the resulting binary
+    # into /usr/local/bin so services on the live ISO find it via PATH.
+    for attempt in 1 2 3; do
+        echo "==> claude install attempt $attempt/3 (cache miss)"
+        rm -rf /tmp/claude-install
+        mkdir -p /tmp/claude-install
+        if HOME=/tmp/claude-install \
+                bash -c "curl -fsSL --connect-timeout 30 --max-time 600 https://claude.ai/install.sh | bash" \
+                && [ -x /tmp/claude-install/.local/bin/claude ]; then
+            install -m 0755 /tmp/claude-install/.local/bin/claude /usr/local/bin/claude
+            claude_installed=1
+            break
+        fi
+        echo "==> claude install attempt $attempt failed; retrying in 10s"
+        sleep 10
+    done
+    rm -rf /tmp/claude-install
+fi
+
+if [ "$claude_installed" -ne 1 ]; then
+    echo "==> WARN: claude install failed after 3 attempts."
+    echo "==> WARN: ISO will boot; user can run 'curl -fsSL https://claude.ai/install.sh | bash'"
+    echo "==> WARN: from chat on first boot to recover."
+else
+    echo "==> claude installed: $(/usr/local/bin/claude --version 2>&1 | head -1)"
+fi
+
+# --- OpenAI Codex CLI ---
+# Self-contained native musl ELF from openai/codex GitHub releases.
+# Same cache-then-fallback pattern as claude/ollama.
+codex_installed=0
+cached_codex="/var/cache/usbeliza/codex-x86_64-linux-musl.tar.gz"
+if [ -s "$cached_codex" ]; then
+    echo "==> using cached Codex tarball ($cached_codex)"
+    # The tarball contains one entry like `codex-x86_64-unknown-linux-musl`;
+    # extract to a scratch dir, then move the single binary into place
+    # under the canonical name.
+    rm -rf /tmp/codex-extract
+    mkdir -p /tmp/codex-extract
+    if tar -C /tmp/codex-extract -xzf "$cached_codex"; then
+        codex_bin="$(find /tmp/codex-extract -maxdepth 2 -type f -name 'codex*' -executable | head -1)"
+        if [ -n "$codex_bin" ]; then
+            install -m 0755 "$codex_bin" /usr/local/bin/codex
+            codex_installed=1
+            rm -f "$cached_codex"
+        fi
+    fi
+    rm -rf /tmp/codex-extract
+fi
+
+if [ "$codex_installed" -ne 1 ]; then
+    # No upstream installer script for codex — fall back to npm-less
+    # direct download of the same musl tarball the Justfile recipe uses,
+    # pinned to a known-good version. If the user wants a different
+    # version they can run `npm install -g @openai/codex` from chat on
+    # first boot (after `apt install nodejs npm`); we don't ship nodejs
+    # in the base ISO.
+    codex_fallback_url="https://github.com/openai/codex/releases/download/rust-v0.130.0/codex-x86_64-unknown-linux-musl.tar.gz"
+    for attempt in 1 2 3; do
+        echo "==> codex install attempt $attempt/3 (cache miss)"
+        rm -rf /tmp/codex-extract /tmp/codex-fallback.tar.gz
+        mkdir -p /tmp/codex-extract
+        if curl -fL --connect-timeout 30 --max-time 600 \
+                "$codex_fallback_url" -o /tmp/codex-fallback.tar.gz \
+                && tar -C /tmp/codex-extract -xzf /tmp/codex-fallback.tar.gz; then
+            codex_bin="$(find /tmp/codex-extract -maxdepth 2 -type f -name 'codex*' -executable | head -1)"
+            if [ -n "$codex_bin" ]; then
+                install -m 0755 "$codex_bin" /usr/local/bin/codex
+                codex_installed=1
+                break
+            fi
+        fi
+        echo "==> codex install attempt $attempt failed; retrying in 10s"
+        sleep 10
+    done
+    rm -rf /tmp/codex-extract /tmp/codex-fallback.tar.gz
+fi
+
+if [ "$codex_installed" -ne 1 ]; then
+    echo "==> WARN: codex install failed after 3 attempts."
+    echo "==> WARN: ISO will boot; user can install via chat on first boot."
+else
+    echo "==> codex installed: $(/usr/local/bin/codex --version 2>&1 | head -1)"
+fi
+
+echo "==> usbeliza chroot hook: runtimes done"
