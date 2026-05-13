@@ -152,6 +152,31 @@ export interface SearchMessagesFilters {
 	limit?: number;
 }
 
+export type ManageOperationKind =
+	| "archive"
+	| "trash"
+	| "spam"
+	| "mark_read"
+	| "label_add"
+	| "label_remove"
+	| "tag_add"
+	| "tag_remove"
+	| "mute_thread"
+	| "unsubscribe";
+
+export const MANAGE_OPERATION_KINDS: readonly ManageOperationKind[] = [
+	"archive",
+	"trash",
+	"spam",
+	"mark_read",
+	"label_add",
+	"label_remove",
+	"tag_add",
+	"tag_remove",
+	"mute_thread",
+	"unsubscribe",
+] as const;
+
 export type ManageOperation =
 	| { kind: "archive" }
 	| { kind: "trash" }

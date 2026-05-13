@@ -35,7 +35,11 @@ import type {
 	TargetInfo,
 	UUID,
 } from "../../../types/index.ts";
-import { ChannelType, ModelType } from "../../../types/index.ts";
+import {
+	CANONICAL_MESSAGE_TARGET_KINDS,
+	ChannelType,
+	ModelType,
+} from "../../../types/index.ts";
 import { hasActionContext } from "../../../utils/action-validation.ts";
 import { getActiveRoutingContextsForTurn } from "../../../utils/context-routing.ts";
 import { stringToUuid } from "../../../utils.ts";
@@ -48,6 +52,7 @@ import { scheduleDraftSendAction } from "../../messaging/triage/actions/schedule
 import { searchMessagesAction as searchInboxMessagesAction } from "../../messaging/triage/actions/searchMessages.ts";
 import { sendDraftAction } from "../../messaging/triage/actions/sendDraft.ts";
 import { triageMessagesAction } from "../../messaging/triage/actions/triageMessages.ts";
+import { MANAGE_OPERATION_KINDS } from "../../messaging/triage/types.ts";
 import { refreshMessageConnectorActionDescription } from "./connectorActionUtils.ts";
 
 // ---------------------------------------------------------------------------
@@ -3196,7 +3201,10 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Target kind for op=send: user, contact, channel, room, thread, group, server, email, or phone.",
 		required: false,
-		schema: { type: "string" },
+		schema: {
+			type: "string",
+			enum: [...CANONICAL_MESSAGE_TARGET_KINDS],
+		},
 	},
 	{
 		name: "channel",
@@ -3415,7 +3423,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 		description:
 			"Management operation for op=manage: archive, trash, spam, mark_read, label_add, label_remove, tag_add, tag_remove, mute_thread, unsubscribe.",
 		required: false,
-		schema: { type: "string" },
+		schema: { type: "string", enum: [...MANAGE_OPERATION_KINDS] },
 	},
 	{
 		name: "label",
