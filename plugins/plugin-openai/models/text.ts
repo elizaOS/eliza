@@ -913,6 +913,26 @@ async function generateTextByModelType(
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
         : { prompt: promptText };
+  // elizaOS callers pass `responseFormat: { type: "json_object" | "text" }`
+  // (see `GenerateTextParams` in @elizaos/core). The AI SDK's equivalent
+  // is `responseFormat: { type: "json" }` (which translates to
+  // `response_format: { type: "json_object" }` at the OpenAI wire layer).
+  // Translate the shape so the param actually reaches the API call —
+  // before this, callers asking for json_object were silently ignored
+  // and Cerebras returned plain text, dropping us into the simple-reply
+  // fallback every turn.
+  const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown }).responseFormat;
+  const wireResponseFormat: { type: "json" } | { type: "text" } | undefined =
+    callerResponseFormat &&
+    typeof callerResponseFormat === "object" &&
+    "type" in callerResponseFormat
+      ? (callerResponseFormat as { type: string }).type === "json_object"
+        ? { type: "json" }
+        : (callerResponseFormat as { type: string }).type === "text"
+          ? { type: "text" }
+          : undefined
+      : undefined;
+
   const generateParams: NativeTextParams = {
     model,
     ...promptOrMessages,
@@ -930,6 +950,7 @@ async function generateTextByModelType(
     ...(paramsWithAttachments.responseSchema && !isCerebrasMode(runtime)
       ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
       : {}),
+    ...(wireResponseFormat ? { responseFormat: wireResponseFormat } : {}),
     ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),
   };
 
