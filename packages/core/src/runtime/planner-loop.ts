@@ -62,6 +62,8 @@ import type {
 } from "./planner-types";
 import {
 	buildPlannerActionGrammar,
+	buildPlannerActionGrammarStrict,
+	strictPlannerActionGrammarEnabled,
 	withGuidedDecodeProviderOptions,
 } from "./response-grammar";
 import type {
@@ -1161,14 +1163,23 @@ async function callPlanner(params: {
 		// `providerOptions.eliza.plannerActionSchemas` — `tools` carries the
 		// equivalent unforced contract for them.
 		const exposedTools = collectExposedTools(params.context);
-		const plannerActionGrammar = buildPlannerActionGrammar(
-			exposedTools.map((tool) => ({
-				name: tool.name,
-				parameters: tool.action?.parameters ?? [],
-				allowAdditionalParameters:
-					tool.action?.allowAdditionalParameters === true,
-			})),
-		);
+		const plannerActions = exposedTools.map((tool) => ({
+			name: tool.name,
+			parameters: tool.action?.parameters ?? [],
+			allowAdditionalParameters:
+				tool.action?.allowAdditionalParameters === true,
+		}));
+		// MILADY_PLANNER_STRICT_PARAMS=1 swaps in the single-call per-action
+		// union grammar (P2-4): the GBNF root is the alternation of per-action
+		// branches, each with literal action name + a sub-grammar for that
+		// action's parameter shape. The chosen `action` and the parameter
+		// shape are co-determined by the grammar in one call; the
+		// validate-tool-args.ts re-plan round becomes a no-op when the model
+		// lands inside the strict grammar. Off by default so production
+		// continues on the loose grammar + coercion path.
+		const plannerActionGrammar = strictPlannerActionGrammarEnabled()
+			? buildPlannerActionGrammarStrict(plannerActions)
+			: buildPlannerActionGrammar(plannerActions);
 		if (plannerActionGrammar) {
 			modelParams.responseSkeleton = plannerActionGrammar.responseSkeleton;
 			modelParams.grammar = plannerActionGrammar.grammar;
