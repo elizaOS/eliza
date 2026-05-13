@@ -1184,7 +1184,7 @@ export function createBenchmarkPlugin(): Plugin {
         ) => {
           const params = extractActionParameters(options);
 
-          console.log("[BENCHMARK_ACTION] params:", JSON.stringify(params));
+          logger.debug("[BENCHMARK_ACTION] params:", JSON.stringify(params));
 
           const capturedAction = recordCapturedAction(
             captureBenchmarkAction(params),
@@ -1303,7 +1303,7 @@ export function createBenchmarkPlugin(): Plugin {
         validate: async () => true,
         handler: async (_runtime, _message, _state, options) => {
           const params = extractActionParameters(options);
-          console.log(`[${name}] params:`, JSON.stringify(params));
+          logger.debug(`[${name}] params:`, JSON.stringify(params));
           const capturedAction = recordCapturedAction(
             captureLifeOpsBenchmarkToolAction(name, params),
           );

@@ -1,5 +1,5 @@
 /**
- * Default pack: `followup-starter` — cadence watcher per GAP §3.13.
+ * Default pack: `followup-starter` — cadence watcher.
  *
  * Ships a single `kind: "watcher"` `ScheduledTask` whose prompt scans
  * `RelationshipStore.list({ cadenceOverdueAsOf: now })` and creates child
@@ -9,11 +9,7 @@
  *   - `completionCheck.kind: "subject_updated"` so any new interaction on
  *     the edge resolves the followup.
  *
- * Cadence lives on the edge (per wave1-interfaces.md §7.2 and GAP §3.13);
- * the watcher reads the edge, not the entity.
- *
- * Stub status: see `contract-stubs.ts` — `RelationshipStore` is declared
- * locally until W1-E ships the real store.
+ * Cadence lives on the relationship edge, not the entity.
  */
 
 import type {
@@ -30,12 +26,11 @@ export const FOLLOWUP_STARTER_RECORD_IDS = {
 
 /**
  * Fallback cadence used by the RelationshipStore overdue resolver when an
- * edge does not carry its own `metadata.cadenceDays`. Per IMPL §7.1: 14 days
- * keeps "stay-in-touch" cadence loose enough for the long tail of
- * relationships while leaving room for tighter overrides on closer edges
- * (e.g. `colleague_of` may carry `cadenceDays: 7`, `friend_of` may stay at
- * 14). The W3-A 7-day simulation supports 14 as the default — the followup
- * watcher fires daily but emits zero children when no edge is overdue.
+ * edge does not carry its own `metadata.cadenceDays`. 14 days keeps
+ * "stay-in-touch" cadence loose enough for the long tail of relationships
+ * while leaving room for tighter overrides on closer edges (e.g. `colleague_of`
+ * may carry `cadenceDays: 7`). The watcher fires daily but emits zero children
+ * when no edge is overdue.
  */
 export const DEFAULT_FOLLOWUP_CADENCE_DAYS = 14;
 
