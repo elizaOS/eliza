@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "comment": "Index of per-GPU autotune configs. Consumed by gpu-autotune.ts.",
+  "configs": [
+    { "id": "rtx-3090", "file": "3090.json" },
+    { "id": "rtx-4090", "file": "4090.json" },
+    { "id": "rtx-5090", "file": "5090.json" },
+    { "id": "h200", "file": "h200.json" }
+  ],
+  "fallback_buckets": [
+    { "max_vram_gb": 12, "config_id": null, "label": "tiny" },
+    { "max_vram_gb": 18, "config_id": "rtx-3090", "label": "small", "parallel_scale": 0.5 },
+    { "max_vram_gb": 28, "config_id": "rtx-3090", "label": "mid" },
+    { "max_vram_gb": 40, "config_id": "rtx-5090", "label": "mid-plus", "parallel_scale": 0.5 },
+    { "max_vram_gb": 80, "config_id": "rtx-5090", "label": "large" },
+    { "max_vram_gb": 9999, "config_id": "h200", "label": "huge" }
+  ]
+}

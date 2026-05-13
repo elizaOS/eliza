@@ -231,10 +231,10 @@ def main() -> int:
         "--max-seq-len", type=int, default=4096,
         help="Training sequence length. When `--registry-key` is set and the "
              "user did not pass `--max-seq-len`, the registry's `seq_len` "
-             "default is used (e.g. 8k for 2B, 16k for 9B, 64k for 27B). "
+             "default is used (e.g. 4k for 0.8B, 8k for 2B, 16k for 4B). "
              "Pass `--max-seq-len <N>` to override the registry default for "
-             "a single run — useful for long-context experiments on the 27B "
-             "(validate VRAM with `memory_calc.py --shape qwen3.6-27b` first)."
+             "a single run — useful for long-context experiments "
+             "(validate VRAM with `memory_calc.py --shape qwen3.5-4b` first)."
     )
     ap.add_argument("--full-finetune", action="store_true",
                     help="Compatibility no-op; this entrypoint is always full-parameter APOLLO SFT.")
@@ -387,10 +387,8 @@ def main() -> int:
     # launch under `accelerate launch` (RANK env set), every rank loads
     # to CPU with low_cpu_mem_usage=True; the FSDP launcher's
     # `cpu_ram_efficient_loading=True` plus `sync_module_states=True` keeps
-    # peak host RAM low. (Each rank still allocates the full ~50 GB of
-    # weights on CPU then they get sharded — this 503 GB Vast instance
-    # has plenty.) Without this, each rank would push the full 27B to
-    # its own GPU before FSDP shards, OOMing at ~95 GB / 96 GB.
+    # peak host RAM low. Without this, each rank would push a full copy
+    # to its own GPU before FSDP shards, causing avoidable OOM risk.
     in_distributed = "RANK" in os.environ
     use_device_map = device == "cuda" and not in_distributed
     model_kwargs = dict(

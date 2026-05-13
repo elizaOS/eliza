@@ -42,6 +42,8 @@ class TestVendingBenchRunner:
         # May end early if bankrupt
         assert result.simulation_days <= 3
         assert result.initial_cash == Decimal("500.00")
+        assert result.starter_baseline_revenue >= Decimal("0")
+        assert result.incremental_revenue == result.total_revenue - result.starter_baseline_revenue
 
     @pytest.mark.asyncio
     async def test_run_benchmark_multiple_runs(self) -> None:
@@ -88,6 +90,7 @@ class TestVendingBenchRunner:
         assert metrics.max_net_worth >= metrics.min_net_worth
         assert 0 <= metrics.success_rate <= 1
         assert 0 <= metrics.coherence_score <= 1
+        assert metrics.avg_incremental_revenue == metrics.avg_revenue - metrics.avg_starter_baseline_revenue
 
     @pytest.mark.asyncio
     async def test_leaderboard_comparison(self) -> None:
@@ -212,6 +215,7 @@ class TestReportOutput:
             assert "metrics" in results_dict
             assert "results" in results_dict
             assert "summary" in results_dict
+            assert "avg_incremental_revenue" in results_dict["metrics"]
 
     @pytest.mark.asyncio
     async def test_markdown_report_generation(self) -> None:

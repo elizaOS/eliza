@@ -56,6 +56,7 @@ declare module "./client-base" {
     searchHuggingFaceGguf(
       query: string,
       limit?: number,
+      hub?: "huggingface" | "modelscope",
     ): Promise<{ models: CatalogModel[] }>;
     cancelLocalInferenceDownload(
       modelId: string,
@@ -131,9 +132,11 @@ ElizaClient.prototype.searchHuggingFaceGguf = async function (
   this: ElizaClient,
   query: string,
   limit?: number,
+  hub: "huggingface" | "modelscope" = "huggingface",
 ) {
   const params = new URLSearchParams({ q: query });
   if (limit != null) params.set("limit", String(limit));
+  params.set("hub", hub);
   return this.fetch(`/api/local-inference/hf-search?${params.toString()}`);
 };
 

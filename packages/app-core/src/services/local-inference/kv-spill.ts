@@ -106,8 +106,9 @@ const QUANTIZED_KV_BYTES_PER_TOKEN_BY_PARAMS: Readonly<Record<string, number>> =
   {
     "0.6B": 1_200,
     "0.8B": 1_400,
-    "1.7B": 2_400,
+    "1.7B": 2_200,
     "2B": 2_400,
+    "4B": 4_800,
     "9B": 9_000,
     "27B": 22_000,
   };

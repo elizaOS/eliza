@@ -281,7 +281,7 @@ export const PREMADE_VOICES: VoicePreset[] = [
 ];
 
 export const VOICE_PROVIDERS: Array<{
-  id: "elevenlabs" | "edge";
+  id: "elevenlabs" | "edge" | "local-inference";
   label: string;
   labelKey: string;
   hint: string;
@@ -295,6 +295,14 @@ export const VOICE_PROVIDERS: Array<{
     hint: "High quality, realistic voices",
     hintKey: "voice.provider.elevenlabs.hint",
     needsKey: true,
+  },
+  {
+    id: "local-inference",
+    label: "Local inference",
+    labelKey: "voice.provider.localInference",
+    hint: "On-device OmniVoice",
+    hintKey: "voice.provider.localInference.hint",
+    needsKey: false,
   },
   {
     id: "edge",

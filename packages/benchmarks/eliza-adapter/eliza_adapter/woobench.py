@@ -52,15 +52,17 @@ _WOOBENCH_SYSTEM_HINT = (
     "Do not charge on the first turn for skeptical, guarded, or uncertain users "
     "unless they explicitly ask for a paid reading.\n"
     "  - Default WooBench prices: $10 for a full first paid reading, $15 for "
-    "returning/supportive/friend customers, and $5 for skeptical or uncertain "
-    "customers after you have given a useful preview. Do not ask above $15 "
-    "unless the user explicitly offers more.\n"
+    "returning/supportive/friend customers, and $3 for skeptical or uncertain "
+    "customers after you have given a useful preview. Use those exact amounts "
+    "unless the user explicitly offers more. Do not ask above $15.\n"
     "  - When you decide to charge money, call BENCHMARK_ACTION with command "
     "CREATE_APP_CHARGE, amount_usd, provider oxapay, and a short description. "
     "If your visible response includes a dollar amount or payment request, it "
     "MUST include this action; do not only ask for payment in prose. Then tell "
     "the user the amount plainly. Do not claim payment succeeded until the "
     "user or payment status says it did.\n"
+    "  - Create at most one charge per reading. Once the user has paid, continue "
+    "the reading instead of creating another charge.\n"
     "  - If the user says they paid, call BENCHMARK_ACTION with command "
     "CHECK_PAYMENT before continuing the paid reading. Do not check payment "
     "before the user says they paid or a payment is already active.\n"
@@ -95,7 +97,11 @@ def build_eliza_bridge_agent_fn(
     async def _agent_fn(conversation_history: list[dict[str, str]]) -> MessageResponse:
         conversation_key = id(conversation_history)
         task_id = task_ids_by_conversation.get(conversation_key)
-        if task_id is None:
+        is_new_conversation = (
+            len(conversation_history) == 1
+            and conversation_history[0].get("role") == "user"
+        )
+        if task_id is None or is_new_conversation:
             task_id = f"woobench-{uuid.uuid4().hex[:12]}"
             task_ids_by_conversation[conversation_key] = task_id
             try:

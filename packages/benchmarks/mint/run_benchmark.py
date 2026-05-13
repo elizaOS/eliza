@@ -432,6 +432,7 @@ async def run_benchmark(
                 "[mint] using direct %s model provider", runtime_provider
             )
         else:
+            runner.agent.allow_ground_truth_mock = runtime_provider == "mock"
             logging.getLogger(__name__).info("[mint] using local mock MINTAgent")
         _ = enable_trajectory_logging  # trajectory logging now lives in the bridge
         results = await runner.run_benchmark()

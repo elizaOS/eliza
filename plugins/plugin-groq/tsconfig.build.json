@@ -6,6 +6,7 @@
 		"declaration": true,
 		"declarationMap": true,
 		"emitDeclarationOnly": true,
+		"noEmit": false,
 		"composite": false,
 		"incremental": false,
 		"tsBuildInfoFile": null,

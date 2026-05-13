@@ -20,5 +20,6 @@ export default defineConfig({
     "node-llama-cpp",
     "onnxruntime-node",
     "@huggingface/transformers",
+    "@elizaos/plugin-local-inference",
   ],
 });

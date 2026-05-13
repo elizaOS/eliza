@@ -299,16 +299,14 @@ export function enumToEmotion(
 }
 
 // ---------------------------------------------------------------------------
-// Perceiver mapping — Qwen3-ASR emotion labels ↔ the tag vocab
+// Optional ASR emotion metadata mapping
 // ---------------------------------------------------------------------------
 
 /**
- * Qwen3-ASR's documented emotion-recognition label set (per QwenLM/Qwen3-ASR,
- * Jan 2026): the seven core labels DashScope's real-time API surfaces. The
- * GGUF-converted model may or may not emit these in the transcript — WS-4
- * probes `eliza-1-asr-mmproj.gguf`'s special-token map. When it doesn't, the
- * `emotionFidelity` metric records `"perceiver: fallback-classifier"` (or
- * `null` if no classifier is available) — recorded, not faked.
+ * Candidate labels a connector or explicitly emotion-aware ASR adapter may
+ * surface as structured metadata. The local fused ASR path must not be treated
+ * as model-native emotion recognition unless that backend explicitly advertises
+ * such a field; callers should record heuristic attribution separately.
  */
 export const QWEN3_ASR_EMOTION_LABELS = [
   "surprise",

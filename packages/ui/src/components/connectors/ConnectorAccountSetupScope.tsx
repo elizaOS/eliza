@@ -1,14 +1,14 @@
+import type { ReactNode } from "react";
+import type { ConnectorAccountRecord } from "../../api/client-agent";
+import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
+import { Badge } from "../ui/badge";
 import {
-  Badge,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/ui";
-import type { ReactNode } from "react";
-import type { ConnectorAccountRecord } from "../../api/client-agent";
-import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
+} from "../ui/select";
 
 export interface ConnectorAccountSetupScopeProps {
   provider: string;

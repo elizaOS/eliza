@@ -104,7 +104,7 @@ _REFUSAL_MARKERS = (
 
 @dataclass(frozen=True)
 class ValidHitResult:
-    """Official and conservative adjusted score for one CompactBench item."""
+    """Raw lexical and repaired benchmark score for one CompactBench item."""
 
     official_score: float
     adjusted_score: float
@@ -117,7 +117,7 @@ class ValidHitResult:
 
 
 def run_check(expected: dict[str, Any], response: str) -> float:
-    """Run CompactBench's official check, with a lightweight local fallback."""
+    """Run CompactBench's raw lexical check, with a lightweight local fallback."""
 
     if _compactbench_run_check is not None:
         return float(_compactbench_run_check(expected, response))
@@ -219,12 +219,22 @@ def _evaluate_contains(
     value = expected.get("value", "")
     if not isinstance(value, str) or not value:
         return ValidHitResult(official, official, "official")
-    if official >= 1.0:
-        return ValidHitResult(official, official, "official")
 
     expected_tokens = tokens(value)
     response_tokens = tokens(response)
     phrase_start = _find_ordered_phrase_start(expected_tokens, response_tokens)
+    if official >= 1.0:
+        if phrase_start is not None and _is_denied_contains_answer(
+            response_tokens, phrase_start
+        ):
+            return ValidHitResult(
+                official,
+                0.0,
+                "negated_expected_present",
+                semantic_false_positive=True,
+            )
+        return ValidHitResult(official, official, "official")
+
     if phrase_start is not None and not _is_denied_contains_answer(
         response_tokens, phrase_start
     ):
@@ -298,7 +308,7 @@ def _evaluate_set_match(
     expected: dict[str, Any], response: str, official: float
 ) -> ValidHitResult:
     raw_values = expected.get("values", [])
-    if not isinstance(raw_values, list) or official >= 1.0:
+    if not isinstance(raw_values, list):
         return ValidHitResult(official, official, "official")
 
     values = [value for value in raw_values if isinstance(value, str)]
@@ -307,11 +317,20 @@ def _evaluate_set_match(
 
     response_tokens = tokens(response)
     matched = 0
+    denied = 0
     for value in values:
         expected_tokens = tokens(value)
-        if _ordered_phrase_present(expected_tokens, response_tokens) or _content_words_present_in_response(
-            expected_tokens, response
-        ):
+        phrase_start = _find_ordered_phrase_start(expected_tokens, response_tokens)
+        if phrase_start is not None:
+            if _is_denied_contains_answer(response_tokens, phrase_start):
+                denied += 1
+                continue
+            matched += 1
+            continue
+        if _content_words_present_in_response(expected_tokens, response):
+            if _is_denied_content_answer(expected_tokens, response_tokens):
+                denied += 1
+                continue
             matched += 1
 
     adjusted = matched / len(values)
@@ -321,6 +340,13 @@ def _evaluate_set_match(
             adjusted,
             "set_match_valid_hits",
             valid_false_negative=True,
+        )
+    if adjusted < official or denied:
+        return ValidHitResult(
+            official,
+            adjusted,
+            "set_match_negated_expected_present",
+            semantic_false_positive=True,
         )
     return ValidHitResult(official, official, "official_failure")
 
@@ -652,6 +678,8 @@ def _is_denied_contains_answer(response_tokens: list[str], phrase_start: int) ->
     joined_before = " ".join(before)
     return (
         "not responsible for" in joined_before
+        or "not responsible to" in joined_before
+        or "not supposed to" in joined_before
         or "does not handle" in joined_before
         or "do not handle" in joined_before
         or "not handle" in joined_before

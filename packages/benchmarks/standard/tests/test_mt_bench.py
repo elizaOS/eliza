@@ -15,6 +15,7 @@ from benchmarks.standard.mt_bench import (
     MTBenchRunner,
     _extract_rating,
     _build_judge_prompt,
+    _build_strict_judge_prompt,
     _MTBenchFactory,
 )
 
@@ -46,6 +47,13 @@ def test_build_judge_prompt_includes_turn_marker() -> None:
     prompt = _build_judge_prompt("Q?", "A.", turn=2)
     assert "turn 2" in prompt
     assert "Q?" in prompt and "A." in prompt
+    assert 'First line only: "Rating: [[N]]"' in prompt
+
+
+def test_build_strict_judge_prompt_requests_rating_only() -> None:
+    prompt = _build_strict_judge_prompt("Q?", "A.", turn=1)
+    assert "return only the rating line" in prompt
+    assert '"Rating: [[N]]"' in prompt
 
 
 def test_mt_bench_runner_scores_mean_rating(tmp_path: Path) -> None:
@@ -99,7 +107,11 @@ def test_mt_bench_runner_skips_invalid_judge(tmp_path: Path) -> None:
     candidate = MockClient(["x"])
     # Judge returns malformed ratings sometimes; runner must drop them but
     # still emit a result if any valid rating survives.
-    judge_responses = ["Rating: [[5]]", "garbage with no rating"] * len(SMOKE_QUESTIONS)
+    judge_responses = [
+        "Rating: [[5]]",
+        "garbage with no rating",
+        "still garbage with no rating",
+    ] * len(SMOKE_QUESTIONS)
     runner = MTBenchRunner(
         judge=MockClient(judge_responses),
         judge_model="judge",
@@ -115,6 +127,27 @@ def test_mt_bench_runner_skips_invalid_judge(tmp_path: Path) -> None:
     # Only the turn-1 ratings (5) survived; turn-2 were dropped.
     assert result.metrics["mean_rating"] == 5.0
     assert result.metrics["turn_2_mean"] == 0.0
+
+
+def test_mt_bench_runner_retries_unparseable_judge_rating(tmp_path: Path) -> None:
+    candidate = MockClient(["x", "y"])
+    judge = MockClient(["not parseable", "Rating: [[6]]", "still not parseable", "Rating: [[8]]"])
+    runner = MTBenchRunner(
+        judge=judge,
+        judge_model="judge",
+        questions=list(SMOKE_QUESTIONS[:1]),
+    )
+
+    result = runner.run(
+        client=candidate,
+        model="cand",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
+
+    assert result.n == 2
+    assert result.metrics["mean_rating"] == 7.0
 
 
 def test_mt_bench_cli_end_to_end(tmp_path: Path) -> None:

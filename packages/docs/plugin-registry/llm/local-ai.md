@@ -18,9 +18,9 @@ eliza plugins install local-ai
 
 | Environment Variable | Required | Default | Description |
 |---------------------|----------|---------|-------------|
-| `LOCAL_LARGE_MODEL` | No | `text/eliza-1-desktop-9b-64k.gguf` | Filename of the large local model |
-| `LOCAL_SMALL_MODEL` | No | `text/eliza-1-mobile-1_7b-32k.gguf` | Filename of the small local model |
-| `LOCAL_EMBEDDING_MODEL` | No | `text/eliza-1-lite-0_6b-32k.gguf` | Filename of the embedding model |
+| `LOCAL_LARGE_MODEL` | No | `text/eliza-1-9b-64k.gguf` | Filename of the large local model |
+| `LOCAL_SMALL_MODEL` | No | `text/eliza-1-2b-32k.gguf` | Filename of the small local model |
+| `LOCAL_EMBEDDING_MODEL` | No | `text/eliza-1-0_8b-32k.gguf` | Filename of the embedding model |
 | `LOCAL_EMBEDDING_DIMENSIONS` | No | `1024` | Number of embedding dimensions |
 | `MODELS_DIR` | No | — | Directory where model files are stored |
 | `CACHE_DIR` | No | — | Cache directory for model assets |
@@ -44,9 +44,9 @@ eliza plugins install local-ai
 
 | elizaOS Model Type | Default Model |
 |-------------------|--------------|
-| `TEXT_SMALL` | `text/eliza-1-mobile-1_7b-32k.gguf` |
-| `TEXT_LARGE` | `text/eliza-1-desktop-9b-64k.gguf` |
-| `TEXT_EMBEDDING` | `text/eliza-1-lite-0_6b-32k.gguf` |
+| `TEXT_SMALL` | `text/eliza-1-2b-32k.gguf` |
+| `TEXT_LARGE` | `text/eliza-1-9b-64k.gguf` |
+| `TEXT_EMBEDDING` | `text/eliza-1-0_8b-32k.gguf` |
 
 ## Features
 

@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { PermissionId } from "../../api";
 import {
@@ -10,6 +9,7 @@ import { useBootConfig } from "../../config/boot-config-react";
 import { isDesktopPlatform, isNative, isWebPlatform } from "../../platform";
 import { useApp } from "../../state";
 import { StreamingPermissionsSettingsView } from "../permissions/StreamingPermissions";
+import { Button } from "../ui/button";
 import {
   CapabilityToggle,
   PermissionRow,

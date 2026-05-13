@@ -1,6 +1,7 @@
-import { Button, Input } from "@elizaos/ui";
 import { Loader2, Plus } from "lucide-react";
 import { useCallback, useState } from "react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import {
   useCreateTrainingJob,
   useTrainingJobs,

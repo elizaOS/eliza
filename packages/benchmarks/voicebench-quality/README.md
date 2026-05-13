@@ -47,10 +47,7 @@ through STT.
 ## CLI
 
 ```bash
-# Smoke run: bundled fixtures, no network.
-python -m elizaos_voicebench --suite openbookqa --limit 2 --mock
-
-# Full suite against a live adapter.
+# Run against a live adapter.
 python -m elizaos_voicebench \
     --agent eliza \
     --suite all \
@@ -60,14 +57,12 @@ python -m elizaos_voicebench \
 
 Arguments:
 
-* `--agent {eliza,hermes,openclaw,echo}` — adapter under test. `echo`
-  is a deterministic adapter used by smoke tests.
+* `--agent {eliza,hermes,openclaw}` — adapter under test.
 * `--suite {all,alpacaeval,commoneval,sd-qa,ifeval,advbench,openbookqa,mmsu,bbh}`
 * `--limit N` — cap samples per suite.
 * `--stt-provider groq` — STT for cascaded voice→text input.
 * `--judge-model` — Cerebras model for the LLM judge.
 * `--output` — directory for the results JSON.
-* `--mock` — bundled fixtures + stub judge; no HF download, no API key.
 
 ## Output
 
@@ -101,8 +96,6 @@ equally regardless of sample count, matching upstream).
 * `CEREBRAS_MODEL` — override the judge model (default `gpt-oss-120b`).
 * `VOICEBENCH_STT_MODEL` — override the STT model (default
   `whisper-large-v3-turbo`).
-
-`--mock` mode reads neither.
 
 ## Tests
 

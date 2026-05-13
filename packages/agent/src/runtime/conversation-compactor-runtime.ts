@@ -19,19 +19,24 @@
  * `ELIZA_CONVERSATION_COMPACTOR=off|none|false|0|disabled` to disable, or set
  * it to a named strategy to override.
  *
- * TODO(message-level): the cleanest integration is a message-level hook
- * upstream in @elizaos/core that hands the compactor a real transcript
- * before string assembly. Until that exists, the parse/serialize step
- * here is best-effort and intentionally conservative.
+ * The preferred path is the message-history hook installed at runtime,
+ * which compacts structured RECENT_MESSAGES state before prompt rendering.
+ * The string parse/serialize path remains as a conservative fallback for
+ * direct prompt calls that do not pass through message-state composition.
  */
 
 import type {
   AgentRuntime,
   JsonValue,
+  Memory,
+  MessageHistoryCompactionHookResult,
+  MessageHistoryCompactionTelemetry,
   Metadata,
   MetadataValue,
+  State,
   UUID,
 } from "@elizaos/core";
+import { registerMessageHistoryCompactionHook } from "@elizaos/core";
 import {
   compactors,
   findSafeCompactionBoundary,
@@ -93,6 +98,21 @@ const SECRET_VALUE_RE =
   /\b(?:sk|csk|pk|ghp|gho|ghu|ghs|github_pat)-[A-Za-z0-9_-]{16,}\b/g;
 const SECRET_ASSIGNMENT_RE =
   /\b((?:api[_\s-]?key|secret|password|access[_\s-]?token|refresh[_\s-]?token|private[_\s-]?key)\s*[:=]\s*)([^\s,;]+)/gi;
+
+function isProtectedPrefixRole(role: CompactorMessage["role"]): boolean {
+  return role === "system" || role === "developer";
+}
+
+function protectedPrefixLength(messages: readonly CompactorMessage[]): number {
+  let index = 0;
+  while (
+    index < messages.length &&
+    isProtectedPrefixRole(messages[index].role)
+  ) {
+    index++;
+  }
+  return index;
+}
 
 type ConversationCompactionMetadata = Metadata & {
   priorLedger?: string;
@@ -501,6 +521,8 @@ function renderCompactedMessage(m: CompactorMessage): string {
   switch (m.role) {
     case "system":
       return `[system summary${tag}] ${m.content}`;
+    case "developer":
+      return `[system summary${tag}] ${m.content}`;
     case "assistant":
       return `[Agent${tag}] ${m.content}`;
     case "tool":
@@ -532,8 +554,8 @@ export function serializeTranscriptToPrompt(
 
   const parts: string[] = [];
   for (const m of compacted.messages) {
-    if (m.role === "system") {
-      // System-role messages were pulled from the prefix or were synthesized
+    if (isProtectedPrefixRole(m.role)) {
+      // System/developer-role messages were pulled from the prefix or were synthesized
       // by the compactor. Either way they belong in the system prefix area,
       // not in the conversation region — but we don't have a clean home for
       // them here, so we render them as a summary marker inline.
@@ -689,7 +711,7 @@ export async function applyConversationCompaction(
     };
   }
 
-  const systemOffset = transcript.messages[0]?.role === "system" ? 1 : 0;
+  const systemOffset = protectedPrefixLength(transcript.messages);
   const hasActiveSuffix = Boolean(
     locateConversationRegion(args.prompt)?.suffix.trim().length,
   );
@@ -701,7 +723,7 @@ export async function applyConversationCompaction(
     transcript.messages,
     preserveTail,
   );
-  const systemPrefix = systemOffset === 1 ? [transcript.messages[0]] : [];
+  const systemPrefix = transcript.messages.slice(0, systemOffset);
   const preservedTail = transcript.messages.slice(boundary);
   const nonCompactableTokens = approxCountTokens(
     [...systemPrefix, ...preservedTail].map((m) => m.content).join("\n"),
@@ -819,10 +841,10 @@ export async function applyConversationMessageCompaction(
     messages: args.messages,
     ...(args.metadata ? { metadata: args.metadata } : {}),
   };
-  const systemOffset = args.messages[0]?.role === "system" ? 1 : 0;
+  const systemOffset = protectedPrefixLength(args.messages);
   const preserveTail = args.preserveTailMessages ?? 6;
   const boundary = findSafeCompactionBoundary(args.messages, preserveTail);
-  const systemPrefix = systemOffset === 1 ? [args.messages[0]] : [];
+  const systemPrefix = args.messages.slice(0, systemOffset);
   const preservedTail = args.messages.slice(boundary);
   const nonCompactableTokens = approxCountTokens(
     [...systemPrefix, ...preservedTail].map((m) => m.content).join("\n"),
@@ -915,4 +937,576 @@ export async function applyConversationMessageCompaction(
       stats: artifact.stats,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// Message-history hook: structured `RECENT_MESSAGES` state -> compacted state
+// ---------------------------------------------------------------------------
+
+const DEFAULT_MESSAGE_HISTORY_THRESHOLD_TOKENS = 12_000;
+const DEFAULT_MESSAGE_HISTORY_TARGET_TOKENS = 4_000;
+const DEFAULT_MESSAGE_HISTORY_TAIL = 10;
+const MEMORY_TAG_PREFIX = "memory-id:";
+const installedMessageHistoryHooks = new WeakSet<object>();
+
+type RuntimeWithSettings = AgentRuntime & {
+  getSetting?: (key: string) => unknown;
+};
+
+type RecentMessagesProviderRecord = {
+  text?: string;
+  values?: Record<string, State["values"][string]>;
+  data?: Record<string, State["data"][string]>;
+  providerName?: string;
+};
+
+function runtimeSettingText(
+  runtime: RuntimeWithSettings,
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting?.(key);
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return undefined;
+}
+
+function positiveIntegerFromConfig(
+  runtime: RuntimeWithSettings,
+  envKey: string,
+  settingKey: string,
+  fallback: number,
+): number {
+  const raw = process.env[envKey] ?? runtimeSettingText(runtime, settingKey);
+  const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  return fallback;
+}
+
+function safeMemoryText(memory: Memory): string {
+  return typeof memory.content?.text === "string"
+    ? memory.content.text.trim()
+    : "";
+}
+
+function memoryDisplayName(runtime: AgentRuntime, memory: Memory): string {
+  if (memory.entityId === runtime.agentId) {
+    return runtime.character?.name ?? "Agent";
+  }
+  const metadata = memory.metadata;
+  if (metadata && typeof metadata === "object") {
+    const named = (metadata as Record<string, unknown>).entityName;
+    if (typeof named === "string" && named.trim().length > 0) {
+      return named.trim();
+    }
+  }
+  return "User";
+}
+
+function memoryTimestamp(memory: Memory): string {
+  const date = new Date(memory.createdAt || Date.now());
+  const hours = date.getHours().toString().padStart(2, "0");
+  const minutes = date.getMinutes().toString().padStart(2, "0");
+  return `${hours}:${minutes}`;
+}
+
+function memoryToCompactorMessage(
+  runtime: AgentRuntime,
+  memory: Memory,
+): CompactorMessage | null {
+  const text = safeMemoryText(memory);
+  if (!text) return null;
+  const role: CompactorMessage["role"] =
+    memory.entityId === runtime.agentId ? "assistant" : "user";
+  const speaker = memoryDisplayName(runtime, memory);
+  const content = `${memoryTimestamp(memory)} [${memory.entityId}] ${speaker}: ${text}`;
+  return {
+    role,
+    content,
+    timestamp: memory.createdAt,
+    tags: memory.id ? [`${MEMORY_TAG_PREFIX}${memory.id}`] : undefined,
+  };
+}
+
+function memoryIdFromCompactorMessage(
+  message: CompactorMessage,
+): string | null {
+  for (const tag of message.tags ?? []) {
+    if (tag.startsWith(MEMORY_TAG_PREFIX)) {
+      return tag.slice(MEMORY_TAG_PREFIX.length);
+    }
+  }
+  return null;
+}
+
+function syntheticMemoryId(createdAt: number): UUID {
+  const cryptoApi = globalThis.crypto;
+  if (typeof cryptoApi?.randomUUID === "function") {
+    return cryptoApi.randomUUID() as UUID;
+  }
+  const suffix = String(Math.abs(createdAt % 1_000_000_000_000)).padStart(
+    12,
+    "0",
+  );
+  return `00000000-0000-4000-8000-${suffix}` as UUID;
+}
+
+function syntheticCompactionMemory(args: {
+  runtime: AgentRuntime;
+  roomId: UUID;
+  text: string;
+  createdAt: number;
+  strategy: StrategyName;
+  source: string;
+  telemetry: MessageHistoryCompactionTelemetry;
+}): Memory {
+  return {
+    id: syntheticMemoryId(args.createdAt),
+    entityId: args.runtime.agentId,
+    agentId: args.runtime.agentId,
+    roomId: args.roomId,
+    createdAt: args.createdAt,
+    content: {
+      text: args.text,
+      source: "conversation-compaction",
+    },
+    metadata: {
+      source: "conversation-compaction",
+      tags: ["compaction", "conversation-summary"],
+      strategy: args.strategy,
+      hookSource: args.source,
+      telemetry: args.telemetry as unknown as JsonValue,
+    },
+  };
+}
+
+function renderMemoryForProvider(
+  runtime: AgentRuntime,
+  memory: Memory,
+): string {
+  const text = safeMemoryText(memory);
+  if (!text) return "";
+  const speaker = memoryDisplayName(runtime, memory);
+  const entityId = memory.entityId ?? "unknown";
+  const thought =
+    typeof memory.content?.thought === "string" &&
+    memory.content.thought.trim().length > 0
+      ? `\n(${speaker}'s internal thought: ${memory.content.thought.trim()})`
+      : "";
+  const actions = Array.isArray(memory.content?.actions)
+    ? memory.content.actions
+        .map((action) => String(action).trim())
+        .filter(Boolean)
+    : [];
+  const actionLine =
+    actions.length > 0 ? `\n(${speaker}'s actions: ${actions.join(", ")})` : "";
+  return `${memoryTimestamp(memory)} [${entityId}] ${speaker}: ${text}${thought}${actionLine}`;
+}
+
+function renderCompactedRecentMessagesProvider(args: {
+  runtime: AgentRuntime;
+  message: Memory;
+  memories: Memory[];
+  priorLedger?: string | null;
+}): string {
+  const currentId = args.message.id;
+  const historyLines = args.memories
+    .filter((memory) => !(currentId && memory.id === currentId))
+    .map((memory) => renderMemoryForProvider(args.runtime, memory))
+    .filter(Boolean);
+  const sections: string[] = [];
+  if (args.priorLedger && args.priorLedger.trim().length > 0) {
+    sections.push(`# Conversation Compact Ledger\n${args.priorLedger.trim()}`);
+  }
+  if (historyLines.length > 0) {
+    sections.push(`# Conversation Messages\n${historyLines.join("\n")}`);
+  }
+  const receivedText = safeMemoryText(args.message);
+  if (receivedText) {
+    sections.push(
+      `# Received Message\n${memoryDisplayName(args.runtime, args.message)}: ${receivedText}`,
+    );
+    sections.push(
+      `# Focus your response\nYou are replying to the above message from **${memoryDisplayName(
+        args.runtime,
+        args.message,
+      )}**. Keep your answer relevant to that message, but include as context any previous messages in the thread from after your last reply.`,
+    );
+  }
+  return sections.join("\n\n");
+}
+
+function getRecentMessagesProvider(
+  state: State,
+): RecentMessagesProviderRecord | null {
+  const providers = state.data?.providers;
+  if (!providers || typeof providers !== "object") return null;
+  const provider = (providers as Record<string, unknown>).RECENT_MESSAGES;
+  if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
+    return null;
+  }
+  return provider as RecentMessagesProviderRecord;
+}
+
+function readRecentMessageMemories(state: State): Memory[] {
+  const provider = getRecentMessagesProvider(state);
+  const recentMessages = provider?.data?.recentMessages;
+  if (!Array.isArray(recentMessages)) return [];
+  return recentMessages.filter(
+    (memory): memory is Memory =>
+      Boolean(memory) &&
+      typeof memory === "object" &&
+      !Array.isArray(memory) &&
+      "content" in memory &&
+      "roomId" in memory,
+  );
+}
+
+function rewriteStateRecentMessages(args: {
+  runtime: AgentRuntime;
+  message: Memory;
+  state: State;
+  memories: Memory[];
+  telemetry: MessageHistoryCompactionTelemetry;
+  priorLedger?: string | null;
+}): State {
+  const provider = getRecentMessagesProvider(args.state);
+  if (!provider) return args.state;
+  const rendered = renderCompactedRecentMessagesProvider({
+    runtime: args.runtime,
+    message: args.message,
+    memories: args.memories,
+    priorLedger: args.priorLedger,
+  });
+  const nextProvider: RecentMessagesProviderRecord = {
+    ...provider,
+    text: rendered,
+    data: {
+      ...(provider.data ?? {}),
+      recentMessages: args.memories,
+    },
+    values: {
+      ...(provider.values ?? {}),
+      recentMessages: rendered,
+      recentPosts: rendered,
+      recentMessage: args.memories.at(-1)
+        ? renderMemoryForProvider(args.runtime, args.memories.at(-1) as Memory)
+        : "",
+      messageHistoryCompaction: args.telemetry,
+    },
+  };
+  const providers = {
+    ...(args.state.data?.providers ?? {}),
+    RECENT_MESSAGES: nextProvider,
+  };
+  const nextValues = {
+    ...(args.state.values ?? {}),
+    recentMessages: rendered,
+    recentPosts: rendered,
+    messageHistoryCompaction: args.telemetry as unknown as JsonValue,
+  };
+  const previousText = typeof provider.text === "string" ? provider.text : "";
+  const nextText =
+    previousText && typeof args.state.text === "string"
+      ? args.state.text.replace(previousText, rendered)
+      : args.state.text;
+  return {
+    ...args.state,
+    values: nextValues,
+    data: {
+      ...args.state.data,
+      providers,
+      messageHistoryCompaction: args.telemetry as unknown as JsonValue,
+    },
+    text: nextText,
+  };
+}
+
+function buildCompactorModelCallFromRuntime(
+  runtime: AgentRuntime,
+  originalUseModel: AgentRuntime["useModel"] | null,
+): CompactorModelCall {
+  const useModel = (originalUseModel ?? runtime.useModel.bind(runtime)) as (
+    modelType: string,
+    payload: unknown,
+  ) => Promise<unknown>;
+  return async ({ systemPrompt, messages, maxOutputTokens }) => {
+    const result = await useModel("TEXT_LARGE", {
+      system: systemPrompt,
+      prompt: messages.map((message) => message.content).join("\n"),
+      ...(maxOutputTokens !== undefined ? { maxTokens: maxOutputTokens } : {}),
+      providerOptions: {
+        eliza: {
+          purpose: "conversation-message-history-compaction",
+          skipConversationCompaction: true,
+        },
+      },
+    });
+    if (typeof result === "string") return result;
+    if (result == null) return "";
+    try {
+      return JSON.stringify(result);
+    } catch {
+      return String(result);
+    }
+  };
+}
+
+export async function applyMessageHistoryCompactionToState(args: {
+  runtime: AgentRuntime;
+  message: Memory;
+  state: State;
+  source?:
+    | "compose-response-state"
+    | "provider-grounded-state"
+    | "continuation-state";
+  callModel: CompactorModelCall;
+}): Promise<MessageHistoryCompactionHookResult> {
+  const source = args.source ?? "compose-response-state";
+  const startedAt = Date.now();
+  let strategy: StrategyName | null;
+  try {
+    strategy = selectStrategyFromEnv();
+  } catch (error) {
+    args.runtime.logger?.warn?.(String((error as Error).message));
+    strategy = null;
+  }
+
+  const thresholdTokens = positiveIntegerFromConfig(
+    args.runtime as RuntimeWithSettings,
+    "ELIZA_CONVERSATION_MESSAGE_COMPACTION_THRESHOLD_TOKENS",
+    "CONVERSATION_MESSAGE_COMPACTION_THRESHOLD_TOKENS",
+    DEFAULT_MESSAGE_HISTORY_THRESHOLD_TOKENS,
+  );
+  const targetTokens = positiveIntegerFromConfig(
+    args.runtime as RuntimeWithSettings,
+    "ELIZA_CONVERSATION_MESSAGE_COMPACTION_TARGET_TOKENS",
+    "CONVERSATION_MESSAGE_COMPACTION_TARGET_TOKENS",
+    Math.min(DEFAULT_MESSAGE_HISTORY_TARGET_TOKENS, thresholdTokens),
+  );
+  const preserveTailMessages = positiveIntegerFromConfig(
+    args.runtime as RuntimeWithSettings,
+    "ELIZA_CONVERSATION_MESSAGE_COMPACTION_TAIL_MESSAGES",
+    "CONVERSATION_MESSAGE_COMPACTION_TAIL_MESSAGES",
+    DEFAULT_MESSAGE_HISTORY_TAIL,
+  );
+  const originalMemories = readRecentMessageMemories(args.state).sort(
+    (a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0),
+  );
+  const compactorPairs = originalMemories.flatMap((memory) => {
+    const compactorMessage = memoryToCompactorMessage(args.runtime, memory);
+    return compactorMessage ? [{ memory, compactorMessage }] : [];
+  });
+  const compactorMessages = compactorPairs.map((pair) => pair.compactorMessage);
+  const originalTokens = countTranscriptTokens(
+    { messages: compactorMessages },
+    approxCountTokens,
+  );
+  const baseTelemetry: Omit<
+    MessageHistoryCompactionTelemetry,
+    "didCompact" | "compactedTokens" | "compactedMessageCount" | "latencyMs"
+  > = {
+    source: "message-history",
+    strategy,
+    thresholdTokens,
+    targetTokens,
+    originalTokens,
+    originalMessageCount: originalMemories.length,
+    preserveTailMessages,
+    conversationKey: args.message.roomId,
+  };
+
+  const finish = (
+    telemetry: Pick<
+      MessageHistoryCompactionTelemetry,
+      "didCompact" | "compactedTokens" | "compactedMessageCount"
+    > &
+      Partial<MessageHistoryCompactionTelemetry>,
+    state = args.state,
+  ): MessageHistoryCompactionHookResult => ({
+    state,
+    telemetry: {
+      ...baseTelemetry,
+      ...telemetry,
+      latencyMs: Date.now() - startedAt,
+    },
+  });
+
+  if (!strategy) {
+    return finish({
+      didCompact: false,
+      compactedTokens: originalTokens,
+      compactedMessageCount: originalMemories.length,
+      skipReason: "disabled",
+    });
+  }
+  if (originalMemories.length <= preserveTailMessages + 1) {
+    return finish({
+      didCompact: false,
+      compactedTokens: originalTokens,
+      compactedMessageCount: originalMemories.length,
+      skipReason: "not-enough-history",
+    });
+  }
+  if (originalTokens <= thresholdTokens) {
+    return finish({
+      didCompact: false,
+      compactedTokens: originalTokens,
+      compactedMessageCount: originalMemories.length,
+      skipReason: "below-threshold",
+    });
+  }
+
+  const priorLedger = await getConversationCompactionLedger(
+    args.runtime,
+    args.message.roomId,
+  );
+  const compactionBoundary = findSafeCompactionBoundary(
+    compactorMessages,
+    preserveTailMessages,
+  );
+  const compactedThroughMemory =
+    compactionBoundary > protectedPrefixLength(compactorMessages)
+      ? compactorPairs[compactionBoundary - 1]?.memory
+      : undefined;
+  const result = await applyConversationMessageCompaction({
+    messages: compactorMessages,
+    strategy,
+    currentTokens: originalTokens,
+    targetTokens,
+    callModel: args.callModel,
+    preserveTailMessages,
+    metadata: {
+      conversationKey: args.message.roomId,
+      source,
+      ...(priorLedger ? { priorLedger } : {}),
+    },
+  });
+
+  if (!result.didCompact) {
+    return finish({
+      didCompact: false,
+      compactedTokens: result.compactedTokens,
+      compactedMessageCount: originalMemories.length,
+      skipReason: result.skipReason ?? "not-compacted",
+      replacementMessageCount: result.artifact?.replacementMessageCount,
+    });
+  }
+
+  const memoryById = new Map(
+    originalMemories
+      .filter((memory) => memory.id)
+      .map((memory) => [String(memory.id), memory] as const),
+  );
+  const compactedMemories: Memory[] = [];
+  let syntheticCount = 0;
+  for (const message of result.messages) {
+    const memoryId = memoryIdFromCompactorMessage(message);
+    const originalMemory = memoryId ? memoryById.get(memoryId) : undefined;
+    if (originalMemory) {
+      compactedMemories.push(originalMemory);
+      continue;
+    }
+    const telemetry: MessageHistoryCompactionTelemetry = {
+      ...baseTelemetry,
+      didCompact: true,
+      compactedTokens: result.compactedTokens,
+      compactedMessageCount: result.messages.length,
+      latencyMs: result.latencyMs,
+      replacementMessageCount: result.artifact?.replacementMessageCount,
+    };
+    compactedMemories.push(
+      syntheticCompactionMemory({
+        runtime: args.runtime,
+        roomId: args.message.roomId,
+        text: message.content,
+        createdAt: Date.now() + syntheticCount++,
+        strategy,
+        source,
+        telemetry,
+      }),
+    );
+  }
+
+  const renderedLedger = result.artifact?.stats.extra?.renderedLedger;
+  const ledgerToPersist =
+    typeof renderedLedger === "string" && renderedLedger.trim().length > 0
+      ? renderedLedger
+      : result.messages
+          .filter((message) => !memoryIdFromCompactorMessage(message))
+          .map((message) => message.content)
+          .join("\n\n");
+  if (ledgerToPersist.trim().length > 0) {
+    await setConversationCompactionLedger(
+      args.runtime,
+      args.message.roomId,
+      ledgerToPersist,
+      {
+        strategy,
+        source: "message-history",
+        lastCompactionAt:
+          typeof compactedThroughMemory?.createdAt === "number"
+            ? compactedThroughMemory.createdAt + 1
+            : Date.now(),
+        historyEntry: {
+          source,
+          strategy,
+          originalTokens,
+          compactedTokens: result.compactedTokens,
+          originalMessageCount: originalMemories.length,
+          compactedMessageCount: compactedMemories.length,
+        },
+      },
+    );
+  }
+
+  const telemetry: MessageHistoryCompactionTelemetry = {
+    ...baseTelemetry,
+    didCompact: true,
+    compactedTokens: result.compactedTokens,
+    compactedMessageCount: compactedMemories.length,
+    latencyMs: Date.now() - startedAt,
+    replacementMessageCount: result.artifact?.replacementMessageCount,
+  };
+  const nextState = rewriteStateRecentMessages({
+    runtime: args.runtime,
+    message: args.message,
+    state: args.state,
+    memories: compactedMemories,
+    telemetry,
+    priorLedger: ledgerToPersist || priorLedger,
+  });
+
+  args.runtime.logger?.info?.(
+    `[eliza] message-history-compaction strategy=${strategy} originalTokens=${telemetry.originalTokens} compactedTokens=${telemetry.compactedTokens} messages=${telemetry.originalMessageCount}->${telemetry.compactedMessageCount} latencyMs=${telemetry.latencyMs}`,
+  );
+  return { state: nextState, telemetry };
+}
+
+export function installMessageHistoryCompactionHook(
+  runtime: AgentRuntime,
+  options?: {
+    originalUseModel?: AgentRuntime["useModel"] | null;
+  },
+): void {
+  if (installedMessageHistoryHooks.has(runtime as object)) return;
+  installedMessageHistoryHooks.add(runtime as object);
+  const callModel = buildCompactorModelCallFromRuntime(
+    runtime,
+    options?.originalUseModel ?? null,
+  );
+  registerMessageHistoryCompactionHook(runtime, async (args) =>
+    applyMessageHistoryCompactionToState({
+      runtime,
+      message: args.message,
+      state: args.state,
+      source: args.source,
+      callModel,
+    }),
+  );
 }

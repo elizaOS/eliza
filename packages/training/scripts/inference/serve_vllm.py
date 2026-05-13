@@ -3,7 +3,7 @@
 Wraps `vllm serve` with the canonical flag set per (registry-key, GPU target)
 tuple. Stack composition assembled from:
 
-    - vLLM Recipes Qwen3.6 docs   (recipes.vllm.ai)
+    - vLLM Recipes Qwen3.5 docs   (recipes.vllm.ai)
     - vLLM optimization guide     (docs.vllm.ai/en/stable/configuration/optimization/)
     - vLLM Speculative Decoding   (docs.vllm.ai/en/v0.10.1/features/spec_decode.html)
     - vLLM PR #38479              (turboquant_*_nc kv-cache-dtype family)
@@ -33,22 +33,22 @@ Usage:
     uv run --extra serve python scripts/inference/serve_vllm.py \\
         --registry-key qwen3.5-2b --port 8000
 
-    # eliza-1-9b on workstation H100, EAGLE-3 drafter
+    # eliza-1-4b on a 24 GB workstation GPU, EAGLE-3 drafter
     uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key qwen3.5-9b \\
-        --eagle3 RedHatAI/Qwen3.5-9B-EAGLE3-head \\
+        --registry-key qwen3.5-4b \\
+        --eagle3 RedHatAI/Qwen3.5-4B-EAGLE3-head \\
         --port 8000
 
-    # eliza-1-27b on 2x H200, DFlash drafter (AEON-7 fork required)
+    # eliza-1-4b with DFlash drafter (AEON-7 fork required)
     ELIZA_VLLM_DFLASH=1 \\
     uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key qwen3.6-27b \\
-        --dflash z-lab/Qwen3.6-27B-DFlash \\
+        --registry-key qwen3.5-4b \\
+        --dflash elizaos/eliza-1-dflash-4b \\
         --port 8000
 
     # Print the assembled command without executing (audit / CI)
     uv run --extra serve python scripts/inference/serve_vllm.py \\
-        --registry-key qwen3.6-27b --dry-run
+        --registry-key qwen3.5-4b --dry-run
 
 The MoE expert-parallel + qwen3_next_mtp + --language-model-only branches
 are kept intact for forward compatibility with future MoE entries (gated on
@@ -214,11 +214,11 @@ def _build_speculative_config(
     return None
 
 
-_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "Qwen/Qwen3.6", "elizaos/eliza-1")
+_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "elizaos/eliza-1")
 
 
 def _is_hybrid_qwen(model_id: str) -> bool:
-    """All Qwen3.5/3.6 ship the 3-GDN-:-1-GA hybrid attention pattern, and our
+    """Qwen3.5 ships the 3-GDN-:-1-GA hybrid attention pattern, and our
     eliza-1 series is a fine-tune of those bases. omlx#825 is gated to this
     arch family."""
     return any(model_id.startswith(p) for p in _HYBRID_QWEN_PREFIXES)
@@ -234,7 +234,7 @@ def build_command(args, *, entry) -> list[str]:
     kv_dtype = args.kv_cache_dtype or target["default_kv_cache_dtype"]
     max_model_len = args.max_model_len or (entry.infer_max_in + entry.infer_max_out)
 
-    # Safety gate against omlx#825: DFlash drafter + APC + Qwen3.5/3.6 hybrid
+    # Safety gate against omlx#825: DFlash drafter + APC + Qwen3.5 hybrid
     # attention is a known failure surface (linear-attn conv_state/ssm_state
     # don't replay correctly on prefix-cache hits, breaks tool calling). If
     # all three are set without an explicit acknowledgement that A/B parity
@@ -247,7 +247,7 @@ def build_command(args, *, entry) -> list[str]:
         and os.environ.get("ELIZA_APC_DRAFTER_VERIFIED") not in ("1", "true", "yes")
     ):
         log.warning(
-            "APC + drafter on a Qwen3.5/3.6 hybrid model is gated by "
+            "APC + drafter on a Qwen3.5 hybrid model is gated by "
             "omlx#825 — disabling --enable-prefix-caching for this serve. "
             "Run scripts/inference/test_apc_dflash_tool_calls.py against "
             "this build, then set ELIZA_APC_DRAFTER_VERIFIED=1 to re-enable."
@@ -271,7 +271,7 @@ def build_command(args, *, entry) -> list[str]:
         #                     (amax/1.51), no calibration needed.
         #   * fp8_*         - add ONLY for non-hybrid attention models.
         #                     vllm#37554: --calculate-kv-scales on hybrid
-        #                     attention + recurrent (Qwen3.5/3.6 GDN) breaks
+        #                     attention + recurrent (Qwen3.5 GDN) breaks
         #                     under prefix caching because the recurrent
         #                     state isn't profiled the same way.
         if (
@@ -383,7 +383,7 @@ def main() -> int:
     )
     ap.add_argument("--registry-key", required=True,
                     help="Pull defaults from training/model_registry.py "
-                         "(e.g. qwen3.5-2b, qwen3.5-9b, qwen3.6-27b).")
+                         "(e.g. qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b).")
     ap.add_argument("--model", default=None,
                     help="Override model id (default: registry hf_id).")
     ap.add_argument("--gpu-target", default=_detect_default_target(),
@@ -416,7 +416,7 @@ def main() -> int:
                     default=True,
                     help="Hash 16-token blocks of the prefix; reuse across "
                          "requests. Caveat: known omlx#825 bug — prefix-cache + "
-                         "Qwen3.5/3.6 hybrid attention + drafter can break tool "
+                         "Qwen3.5 hybrid attention + drafter can break tool "
                          "calling on cache hits. A/B test before enabling on "
                          "production agent traffic.")
     ap.add_argument("--prefix-block-size", type=int, default=16,
@@ -438,7 +438,7 @@ def main() -> int:
 
     # Speculative decoder. Mutually exclusive — pick at most one.
     ap.add_argument("--eagle3", default=None,
-                    help="HF id or local path to a Qwen3.6-EAGLE3 head. "
+                    help="HF id or local path to a Qwen3.5-EAGLE3 head. "
                          "Stock vLLM, ~2x decode speedup. Mutually exclusive "
                          "with --dflash and --use-mtp-native.")
     ap.add_argument("--dflash", default=None,

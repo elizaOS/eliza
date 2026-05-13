@@ -1,9 +1,11 @@
 import type { CustomActionDef } from "@elizaos/shared";
-import { Button, Input, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
 import { confirmDesktopAction } from "../../utils/desktop-dialogs";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 
 interface CustomActionsPanelProps {
   open: boolean;

@@ -57,6 +57,7 @@
     "@ai-sdk/openai": "^3.0.9",
     "@elizaos/cloud-sdk": "2.0.0-beta.1",
     "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1",
     "ai": "^6.0.30",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",

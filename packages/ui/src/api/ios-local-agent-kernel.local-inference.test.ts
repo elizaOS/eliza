@@ -227,16 +227,14 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
   vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: RequestInfo | URL) =>
-      Response.json(
-        eliza1MobileManifest(
-          String(input).includes("eliza-1-4b") ? "eliza-1-4b" : "eliza-1-2b",
-        ),
-        {
-          status: 200,
-        },
-      ),
-    ),
+    vi.fn(async (input: string | URL | Request) => {
+      const modelId = String(input).includes("eliza-1-4b")
+        ? "eliza-1-4b"
+        : "eliza-1-2b";
+      return Response.json(eliza1MobileManifest(modelId), {
+        status: 200,
+      });
+    }),
   );
 
   await handleIosLocalAgentRequest(

@@ -121,7 +121,7 @@ export function streamLlamaPrompt(args: StreamLlamaPromptArgs): TextStreamResult
           queue.push(chunk);
           drain();
         },
-      });
+      } as never);
       return result;
     } catch (err) {
       // Capture the error BEFORE the `finally` flips `promptDone` so the

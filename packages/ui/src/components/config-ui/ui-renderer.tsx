@@ -1,12 +1,3 @@
-import {
-  Button,
-  Checkbox,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@elizaos/ui";
 import React, {
   createContext,
   useCallback,
@@ -27,6 +18,15 @@ import type {
 } from "../../config/ui-spec";
 import { useApp } from "../../state";
 import { confirmDesktopAction, resolveAppAssetUrl } from "../../utils";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
 import {
   ConfigFieldErrors,
   getConfigInputClassName,

@@ -46,6 +46,39 @@ class TestVendingAgent:
         assert params["column"] == 1
         assert params["price"] == 1.50
 
+    def test_parse_action_strips_action_name_whitespace(self) -> None:
+        """Test parsing harness-style JSON with whitespace in action names."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"action": " RESTOCK_SLOT", "row": 0, "column": 1, "product_id": "water", "quantity": 5}'
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.RESTOCK_SLOT
+        assert params["product_id"] == "water"
+
+    def test_parse_action_strips_control_characters(self) -> None:
+        """Test parsing harness-style JSON with raw control characters."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"\\naction": "\\nADVANCE_DAY"}'.replace("\\n", "\n")
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.ADVANCE_DAY
+        assert params == {}
+
+    def test_parse_action_ignores_trailing_harness_noise(self) -> None:
+        """Test parsing the first JSON object from noisy harness output."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"action":"VIEW_SUPPLIERS"} NO_REPLY'
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.VIEW_SUPPLIERS
+        assert params == {}
+
     def test_parse_action_place_order(self) -> None:
         """Test parsing place order action."""
         env = VendingEnvironment(seed=42)
@@ -54,6 +87,20 @@ class TestVendingAgent:
         response = (
             '{"action": "PLACE_ORDER", "supplier_id": "beverage_dist", "items": {"water": 12}}'
         )
+        action_type, params = agent._parse_action(response)
+
+        assert action_type == ActionType.PLACE_ORDER
+        assert params["supplier_id"] == "beverage_dist"
+        items = params["items"]
+        assert isinstance(items, dict)
+        assert items["water"] == 12
+
+    def test_parse_action_tool_call_shape(self) -> None:
+        """Test parsing OpenAI-style action payloads."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        response = '{"name": "PLACE_ORDER", "arguments": {"supplier_id": "beverage_dist", "items": {"water": 12}}}'
         action_type, params = agent._parse_action(response)
 
         assert action_type == ActionType.PLACE_ORDER
@@ -104,6 +151,19 @@ class TestVendingAgent:
         assert success
         assert "Collected" in result
         assert env.state.machine.cash_in_machine == Decimal("0")
+
+    def test_execute_action_error_result_is_not_successful(self) -> None:
+        """Test environment-level Error strings are surfaced as failed actions."""
+        env = VendingEnvironment(seed=42)
+        agent = VendingAgent(environment=env)
+
+        result, success = agent._execute_action(
+            ActionType.PLACE_ORDER,
+            {"supplier_id": "missing", "items": {"water": 12}},
+        )
+
+        assert not success
+        assert result.startswith("Error:")
 
     def test_execute_action_advance_day(self) -> None:
         """Test executing ADVANCE_DAY action."""

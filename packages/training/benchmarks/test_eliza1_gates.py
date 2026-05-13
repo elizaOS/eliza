@@ -52,16 +52,14 @@ def test_v2_yaml_loads() -> None:
     # The v2 gate metadata carries the op vocabulary.
     assert doc["gates"]["text_eval"]["op"] == ">="
     assert doc["gates"]["thirty_turn_ok"]["op"] == "bool"
-    # Structural parsable-output gate (full mode only).
-    assert doc["gates"]["format_ok"]["op"] == ">="
-    assert doc["tiers"]["0_6b"]["format_ok"]["threshold"] == 0.70
-    assert doc["tiers"]["0_6b"]["format_ok"]["required"] is True
+    assert doc["tiers"]["0_8b"]["text_eval"]["threshold"] == 0.55
+    assert doc["tiers"]["2b"]["text_eval"]["required"] is True
 
 
 def test_normalize_tier() -> None:
     assert normalize_tier("0_8b") == "0_8b"
     assert normalize_tier("eliza-1-0_8b") == "0_8b"
-    assert normalize_tier("eliza-1-27b-256k") == "27b-256k"
+    assert normalize_tier("eliza-1-2b") == "2b"
     with pytest.raises(ValueError):
         normalize_tier("not-a-tier")
 
@@ -119,7 +117,7 @@ def test_bool_gate_requires_true() -> None:
 
 
 def test_non_required_gate_failure_does_not_block() -> None:
-    # first_token_latency_ms is required:false for 0_8b → failing it must not
+    # first_token_latency_ms is required:false for 0_8b -> failing it must not
     # flip the verdict.
     rep = apply_gates({"tier": "0_8b", "mode": "full", "results": _full_results(first_token_latency_ms=99999.0)})
     assert rep.passed is True
@@ -152,8 +150,8 @@ def test_report_to_dict_shape() -> None:
 
 
 def test_different_tiers_have_different_thresholds() -> None:
-    # 2b text_eval threshold (0.60) is tighter than 0_8b (0.55); 0.58
+    # 2b text_eval threshold (0.60) is tighter than 0_8b (0.55); 0.57
     # passes 0_8b but fails 2b.
-    res = _full_results(text_eval=0.58)
+    res = _full_results(text_eval=0.57)
     assert apply_gates({"tier": "0_8b", "mode": "full", "results": res}).passed is True
     assert apply_gates({"tier": "2b", "mode": "full", "results": res}).passed is False

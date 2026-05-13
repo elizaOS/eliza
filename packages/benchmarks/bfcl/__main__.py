@@ -18,11 +18,17 @@ Usage:
 import argparse
 import asyncio
 import logging
+import os
 import sys
 
 # Load environment variables from .env file at project root
 # This must happen before other imports that may use env vars
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover - lean benchmark envs may omit python-dotenv
+    def load_dotenv(*_args: object, **_kwargs: object) -> bool:
+        return False
+
 load_dotenv()
 
 from benchmarks.bfcl.runner import BFCLRunner  # noqa: E402
@@ -85,8 +91,25 @@ Environment Variables:
     run_parser.add_argument(
         "--provider",
         type=str,
-        choices=["groq", "openai", "anthropic", "google-genai", "openrouter", "xai", "ollama", "local-ai", "cerebras", "eliza"],
-        help="Model provider (default: groq if GROQ_API_KEY set; 'eliza' routes through the elizaOS TS bridge)",
+        choices=[
+            "groq",
+            "openai",
+            "anthropic",
+            "google-genai",
+            "openrouter",
+            "xai",
+            "ollama",
+            "local-ai",
+            "cerebras",
+            "eliza",
+            "hermes",
+            "openclaw",
+        ],
+        help=(
+            "Model provider (default: groq if GROQ_API_KEY set; 'eliza' routes "
+            "through the elizaOS TS bridge; 'hermes'/'openclaw' route through "
+            "their source-loaded adapters)"
+        ),
     )
     run_parser.add_argument(
         "--model",
@@ -222,7 +245,21 @@ async def run_benchmark(args: argparse.Namespace) -> int:
     try:
         # Show which model is being used
         if not args.mock:
-            if getattr(args, 'provider', None) == "eliza":
+            harness = (
+                os.environ.get("BENCHMARK_HARNESS")
+                or os.environ.get("BENCHMARK_AGENT")
+                or ""
+            ).strip().lower()
+            arg_provider = getattr(args, 'provider', None)
+            display_provider = (
+                "hermes"
+                if harness == "hermes" and arg_provider == "eliza"
+                else arg_provider
+            )
+            if display_provider == "hermes":
+                print(f"\n🤖 Model: {args.model or 'gpt-oss-120b'}")
+                print("   Provider: hermes (hermes-adapter)")
+            elif display_provider == "eliza":
                 print(f"\n🤖 Model: {args.model or 'eliza-ts-bridge'}")
                 print("   Provider: eliza (elizaOS TypeScript benchmark bridge)")
             else:

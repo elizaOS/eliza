@@ -159,6 +159,7 @@ class VendingEnvironment:
         location: str = "Office Building Lobby",
         daily_base_fee: Decimal = Decimal("5.00"),
         slot_fee: Decimal = Decimal("0.50"),
+        starter_inventory: bool = False,
     ) -> None:
         """Initialize the vending environment."""
         self.economic_model = EconomicModel(seed)
@@ -178,6 +179,8 @@ class VendingEnvironment:
             columns=columns,
             location=location,
         )
+        if starter_inventory:
+            self._seed_starter_inventory()
 
     def _initialize_state(
         self,
@@ -226,6 +229,38 @@ class VendingEnvironment:
             daily_history=[],
             notes={},
             kv_store={},
+        )
+
+    def _seed_starter_inventory(self) -> None:
+        """Seed short revenue smokes with stocked slots at cost-neutral net worth."""
+        product_ids = [
+            "water",
+            "soda_cola",
+            "chips_regular",
+            "candy_bar",
+            "juice_orange",
+            "cookies",
+            "energy_drink",
+            "protein_bar",
+            "crackers",
+            "trail_mix",
+            "dried_fruit",
+            "nuts_almonds",
+        ]
+        total_cost = Decimal("0")
+        for slot, product_id in zip(self.state.machine.slots, product_ids, strict=False):
+            product = self.products.get(product_id)
+            if product is None:
+                continue
+            quantity = min(5, slot.max_capacity)
+            slot.product = product
+            slot.quantity = quantity
+            slot.price = product.suggested_retail
+            slot.last_restocked = self.state.current_date
+            total_cost += product.cost_price * quantity
+        self.state.cash_on_hand -= total_cost
+        self.state.notes["starter_inventory"] = (
+            "Seeded initial stock for short revenue smoke; cash reduced by cost."
         )
 
     def _initialize_products(self) -> dict[str, Product]:
@@ -514,8 +549,11 @@ class VendingEnvironment:
         )
         self.state.cash_on_hand -= fees
 
-        # Calculate inventory value
-        inventory_value = self.state.machine.get_total_inventory_value(self.products)
+        # Calculate inventory value, including delivered inventory not yet restocked.
+        inventory_value = (
+            self.state.machine.get_total_inventory_value(self.products)
+            + self.get_delivered_inventory_value()
+        )
 
         # Calculate net worth
         net_worth = self.state.cash_on_hand + self.state.machine.cash_in_machine + inventory_value
@@ -547,8 +585,20 @@ class VendingEnvironment:
 
     def get_net_worth(self) -> Decimal:
         """Calculate current net worth."""
-        inventory_value = self.state.machine.get_total_inventory_value(self.products)
+        inventory_value = (
+            self.state.machine.get_total_inventory_value(self.products)
+            + self.get_delivered_inventory_value()
+        )
         return self.state.cash_on_hand + self.state.machine.cash_in_machine + inventory_value
+
+    def get_delivered_inventory_value(self) -> Decimal:
+        """Calculate cost value of delivered inventory waiting to be restocked."""
+        total = Decimal("0")
+        for delivered in self.state.delivered_inventory:
+            product = self.products.get(delivered.product_id)
+            if product is not None and delivered.quantity > 0:
+                total += product.cost_price * delivered.quantity
+        return total
 
     # ============== Agent Actions ==============
 

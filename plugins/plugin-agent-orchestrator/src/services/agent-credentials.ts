@@ -205,7 +205,7 @@ export function buildOpencodeSpawnConfig(
     const baseURL = customBaseUrl?.trim() || OPENCODE_LOCAL_DEFAULT_BASE_URL;
     const apiKey = readConfigEnvKey("PARALLAX_OPENCODE_API_KEY");
     const providerId = "eliza-local";
-    const powerful = userPowerful?.trim() || "eliza-1-9b";
+    const powerful = userPowerful?.trim() || "eliza-1-4b";
     const fast = userFast?.trim();
     const config = {
       $schema: "https://opencode.ai/config.json",

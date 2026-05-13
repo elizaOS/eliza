@@ -19,10 +19,9 @@ assertions at the end verify the *whole point* of the Triton kernel:
   - fused-turboquant peak VRAM ≤ pure-PyTorch peak VRAM, and
   - fused-turboquant tokens/sec ≥ 1.5x pure-PyTorch tokens/sec.
 
-Default model is ``Qwen/Qwen3-0.8B``. ``Qwen/Qwen3.5-0.8B`` is a hybrid linear
-attention + Gated Attention multimodal checkpoint that is **not** in the
-upstream KNOWN_COMPATIBLE set; we only run it if ``check_model_compatibility``
-returns ``compatible=True`` and skip it otherwise (logged, not failed).
+Default model is ``Qwen/Qwen3.5-0.8B``. It is a hybrid linear
+attention + Gated Attention multimodal checkpoint, so compatibility with
+the fused path is a release requirement rather than an optional bonus.
 
 Usage::
 
@@ -454,7 +453,7 @@ def _print_table(result: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
-    ap.add_argument("--model", default="Qwen/Qwen3-0.8B")
+    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
     ap.add_argument(
         "--bonus-model",
         default="Qwen/Qwen3.5-0.8B",

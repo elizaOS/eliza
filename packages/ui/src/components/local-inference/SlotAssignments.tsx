@@ -33,6 +33,16 @@ const SLOTS: Array<{
     description:
       "Vector search and memory when a local embedding handler exists.",
   },
+  {
+    slot: "TEXT_TO_SPEECH",
+    label: "Voice output",
+    description: "Local Eliza-1 TTS for agent speech and voice mode replies.",
+  },
+  {
+    slot: "TRANSCRIPTION",
+    label: "Transcription",
+    description: "Local Eliza-1 ASR for microphone and voice message input.",
+  },
 ];
 
 /**

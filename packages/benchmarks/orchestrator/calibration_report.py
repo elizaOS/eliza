@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 from .db import connect_database, initialize_database, list_runs
-from .random_baseline_runner import CALIBRATION_HARNESSES, CALIBRATION_SPEC_VERSION
+from .random_baseline_runner import (
+    CALIBRATION_HARNESSES,
+    CALIBRATION_SPEC_VERSION,
+    SYNTHETIC_HARNESSES,
+)
 
 REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
 NON_LEADERBOARD_AGENTS: set[str] = {
@@ -51,6 +56,32 @@ def _expected_for(agent: str) -> float:
     raise ValueError(f"not a calibration agent: {agent}")
 
 
+def _comparison_signature_for_run(run: dict[str, Any]) -> str:
+    """Match runner comparison signatures without importing runner internals."""
+
+    extra_config = dict(run.get("extra_config") or {})
+    comparable_agents = set(REAL_HARNESSES) | set(SYNTHETIC_HARNESSES)
+    injected_agent = str(extra_config.get("agent") or "").strip().lower()
+    injected_harness = str(extra_config.get("harness") or "").strip().lower()
+    if injected_agent in comparable_agents:
+        extra_config.pop("agent", None)
+    if injected_harness in comparable_agents:
+        extra_config.pop("harness", None)
+    agent = str(run.get("agent") or "").strip().lower()
+    if agent in CALIBRATION_HARNESSES:
+        extra_config["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    payload = {
+        "benchmark_id": run.get("benchmark_id"),
+        "benchmark_directory": run.get("benchmark_directory") or run.get("benchmark_id"),
+        "provider": run.get("provider") or "",
+        "model": run.get("model") or "",
+        "extra_config": extra_config,
+    }
+    return hashlib.sha256(
+        json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+    ).hexdigest()
+
+
 def build_calibration_report(
     *,
     workspace_root: Path,
@@ -71,7 +102,8 @@ def build_calibration_report(
         calibration: dict[str, dict[str, Any]] = {}
         calibration_status = "valid"
         missing_calibration: list[str] = []
-        scorer_only = False
+        scorer_payload = False
+        direct_score = False
         flat_scores: list[float] = []
         for agent in CALIBRATION_HARNESSES:
             run = latest.get((benchmark_id, agent))
@@ -89,8 +121,11 @@ def build_calibration_report(
             score = run.get("score")
             score_f = float(score) if isinstance(score, (int, float)) else None
             metrics = dict(run.get("metrics") or {})
-            if str(metrics.get("calibration_depth") or "").startswith("scorer_payload"):
-                scorer_only = True
+            calibration_depth = str(metrics.get("calibration_depth") or "")
+            if calibration_depth.startswith("scorer_payload"):
+                scorer_payload = True
+            elif calibration_depth == "direct_score":
+                direct_score = True
             flat_scores.append(score_f if score_f is not None else float("nan"))
             ok = _is_close(score_f, expected, tolerance)
             calibration[agent] = {
@@ -107,7 +142,12 @@ def build_calibration_report(
             calibration.get(agent, {}).get("ok") is True
             for agent in CALIBRATION_HARNESSES
         ):
-            calibration_status = "valid_scorer_only" if scorer_only else "valid"
+            if direct_score:
+                calibration_status = "valid_direct_score"
+            elif scorer_payload:
+                calibration_status = "valid_scorer_payload"
+            else:
+                calibration_status = "valid"
         else:
             wrong_score = calibration.get("wrong_v1", {}).get("score")
             perfect_score = calibration.get("perfect_v1", {}).get("score")
@@ -143,6 +183,15 @@ def build_calibration_report(
             agent: (float(run["score"]) if run and isinstance(run.get("score"), (int, float)) else None)
             for agent, run in real_runs.items()
         }
+        real_comparison_signatures = {
+            agent: _comparison_signature_for_run(run)
+            for agent, run in real_runs.items()
+            if run and run.get("status") == "succeeded"
+        }
+        mixed_real_config = (
+            len(real_comparison_signatures) == len(REAL_HARNESSES)
+            and len(set(real_comparison_signatures.values())) > 1
+        )
         real_pattern = "incomplete"
         if len(real_scores) == len(REAL_HARNESSES):
             if all(_is_close(score, real_scores[0], tolerance) for score in real_scores):
@@ -154,6 +203,8 @@ def build_calibration_report(
                     real_pattern = "all_real_equal"
             else:
                 real_pattern = "real_differ"
+            if mixed_real_config:
+                real_pattern = f"{real_pattern}_mixed_config"
         counts[real_pattern] += 1
 
         extra_db_agents = sorted(
@@ -171,6 +222,7 @@ def build_calibration_report(
                 "real_pattern": real_pattern,
                 "real_scores": real_score_map,
                 "real_statuses": real_statuses,
+                "real_comparison_signatures": real_comparison_signatures,
                 "calibration": calibration,
                 "non_leaderboard_db_labels": extra_db_agents,
             }
@@ -199,6 +251,7 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         for row in rows
         if row.get("calibration_status") not in {"valid"}
         or row.get("real_pattern") in {"all_real_zero", "all_real_one", "all_real_equal"}
+        or str(row.get("real_pattern") or "").endswith("_mixed_config")
         or row.get("non_leaderboard_db_labels")
     ]
     if not interesting:
@@ -214,6 +267,10 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         extras = row.get("non_leaderboard_db_labels") or []
         if extras:
             print(f"  non-leaderboard DB labels: {', '.join(extras)}")
+        signatures = row.get("real_comparison_signatures") or {}
+        if str(row.get("real_pattern") or "").endswith("_mixed_config") and signatures:
+            short = {agent: str(value)[:12] for agent, value in signatures.items()}
+            print(f"  mixed comparison signatures: {json.dumps(short, sort_keys=True)}")
 
 
 __all__ = ["build_calibration_report", "print_calibration_report"]

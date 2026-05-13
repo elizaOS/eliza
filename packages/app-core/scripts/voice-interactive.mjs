@@ -1179,7 +1179,24 @@ async function bootStandaloneRuntime({ roomId }) {
     const entityId = `${roomId}-user`;
     const incoming = {
       id: `${roomId}-${Date.now()}`,
-      content: { text: request.transcript, source: "voice-interactive" },
+      content: {
+        text: request.transcript,
+        source: "voice-interactive",
+        channelType: "VOICE_DM",
+        ...(request.turnSignal
+          ? {
+              voiceTurnSignal: {
+                endOfTurnProbability:
+                  request.turnSignal.endOfTurnProbability,
+                nextSpeaker: request.turnSignal.nextSpeaker,
+                agentShouldSpeak: request.turnSignal.agentShouldSpeak,
+                source: request.turnSignal.source,
+                model: request.turnSignal.model,
+                latencyMs: request.turnSignal.latencyMs,
+              },
+            }
+          : {}),
+      },
       entityId,
       agentId: runtime.agentId,
       roomId,

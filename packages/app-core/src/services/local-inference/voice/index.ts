@@ -5,6 +5,25 @@ export {
   type CancelSignal,
 } from "./barge-in";
 export {
+  type CheckpointHandle,
+  CheckpointHandleInvalidError,
+  CheckpointManager,
+  type CheckpointManagerLike,
+  type CheckpointManagerOptions,
+  MockCheckpointManager,
+  type MockCheckpointSnapshot,
+  type MockSnapshotSource,
+} from "./checkpoint-manager";
+export {
+  type BuildDeterministicFn,
+  type BuildMessageDependentFn,
+  type ContextPartial,
+  EagerContextBuilder,
+  type EagerContextBuilderOptions,
+  type FullContext,
+  mergeContext,
+} from "./eager-context-builder";
+export {
   buildLocalEmbeddingRoute,
   EMBEDDING_DIR_REL_PATH,
   EMBEDDING_FULL_DIM,
@@ -21,6 +40,15 @@ export {
   embeddingServerForRoute,
 } from "./embedding-server";
 export {
+  attributeVoiceEmotion,
+  type VoiceEmotionAsrFeatures,
+  type VoiceEmotionAttribution,
+  type VoiceEmotionAttributionInput,
+  type VoiceEmotionAttributionMethod,
+  type VoiceEmotionAudioFeatures,
+  type VoiceEmotionEvidence,
+} from "./emotion-attribution";
+export {
   decodeMonoPcm16Wav,
   defaultLifecycleLoaders,
   EngineVoiceBridge,
@@ -29,6 +57,25 @@ export {
   FfiOmniVoiceBackend,
   StubOmniVoiceBackend,
 } from "./engine-bridge";
+export {
+  createBundledLiveKitTurnDetector,
+  DEFAULT_LIVEKIT_TURN_DETECTOR_DIR,
+  EOT_COMMIT_SILENCE_MS,
+  EOT_COMMIT_THRESHOLD,
+  EOT_HANGOVER_EXTENSION_MS,
+  EOT_MID_CLAUSE_THRESHOLD,
+  EOT_TENTATIVE_SILENCE_MS,
+  EOT_TENTATIVE_THRESHOLD,
+  type EotClassifier,
+  HeuristicEotClassifier,
+  LiveKitTurnDetector,
+  type LiveKitTurnDetectorOptions,
+  RemoteEotClassifier,
+  type RemoteEotClassifierOptions,
+  turnSignalFromProbability,
+  type VoiceNextSpeaker,
+  type VoiceTurnSignal,
+} from "./eot-classifier";
 export { VoiceStartupError } from "./errors";
 export {
   type ArmedResources,
@@ -75,6 +122,17 @@ export {
   LlamaServerTargetVerifier,
   MissingAsrTranscriber,
 } from "./pipeline-impls";
+export {
+  type PrefillOptimisticArgs,
+  type PrefillOptimisticOptions,
+  type PrefillOptimisticResult,
+  prefillOptimistic,
+} from "./prefill-client";
+export {
+  PrefixPreservingQueue,
+  type RollbackResult,
+  type TaggedAudioChunk,
+} from "./prefix-preserving-queue";
 export { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 export { type RollbackEvent, RollbackQueue } from "./rollback-queue";
 export {
@@ -183,6 +241,32 @@ export {
   type VoicePresetSeedPhrase,
   writeVoicePresetFile,
 } from "./voice-preset-format";
+export {
+  analyzeVoiceProfileWav,
+  canonicalVoiceProfileJson,
+  createVoiceProfileArtifact,
+  VOICE_PROFILE_ARTIFACT_SCHEMA_VERSION,
+  VOICE_PROFILE_FEATURE_EMBEDDING_MODEL,
+  type VoiceProfileArtifact,
+  type VoiceProfileArtifactSample,
+  type VoiceProfileArtifactStatus,
+  type VoiceProfileArtifactVerification,
+  type VoiceProfileAudioFeatures,
+  type VoiceProfileConsent,
+  type VoiceProfileReferenceMetadata,
+  type VoiceProfileSampleInput,
+  verifyVoiceProfileArtifact,
+} from "./voice-profile-artifact";
+export {
+  type DrafterAbortReason,
+  type DrafterHandle,
+  type StartDrafterFn,
+  type VoiceState,
+  type VoiceStateEvent,
+  VoiceStateMachine,
+  type VoiceStateMachineEvents,
+  type VoiceStateMachineOptions,
+} from "./voice-state-machine";
 export {
   isPlaceholderWakeWordHead,
   loadBundledWakeWordModel,

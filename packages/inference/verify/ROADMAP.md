@@ -154,7 +154,7 @@ GPU-runner or the existing device-lab.
 
 ## Extension 4 — Adreno on-device runner
 
-**Status:** blocks `1_7b` Vulkan claim on Snapdragon devices
+**Status:** blocks `2b` Vulkan claim on Snapdragon devices
 (Pixel 8/9, Galaxy S23/24/25).
 
 **Current state.** No on-device runner. `vulkan_verify` is a
@@ -184,7 +184,7 @@ doesn't have an `android-vulkan` recipe.
 
 ## Extension 5 — Mali on-device runner
 
-**Status:** blocks `1_7b` Vulkan claim on Tensor / non-Snapdragon
+**Status:** blocks `2b` Vulkan claim on Tensor / non-Snapdragon
 Galaxy / MediaTek devices.
 
 **Current state.** Same as #4. Mali's subgroup behavior differs from
@@ -203,7 +203,7 @@ Exynos-based Galaxy.
 
 ## Extension 6 — iOS on-device runner
 
-**Status:** blocks `0_6b` and `1_7b` Metal claim on iOS
+**Status:** blocks `0_8b` and `2b` Metal claim on iOS
 hardware. **Has a hard prerequisite:** the `ios-arm64-metal` archive
 must actually be linked into the app first (see
 [`../DEVICE_SUPPORT_GAP_2026-05-10.md`](../DEVICE_SUPPORT_GAP_2026-05-10.md)

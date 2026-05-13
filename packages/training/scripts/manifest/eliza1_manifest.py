@@ -30,21 +30,12 @@ from typing import Any, Final, Iterable, Mapping, Sequence
 
 ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
-    "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json"
+    "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
 
-# `0_8b` and `2b` are the Qwen3.5 small/mid local tiers (the eliza-1 line is
-# Qwen3.5-only per the 2026-05-12 operator directive — the Qwen3 dense bases
-# don't work with the eliza-1 dflash spec-decode path). `0_6b` / `1_7b` /
-# `4b` remain in this list as **deprecated** tier ids — the corresponding
-# elizaos/eliza-1-{0_6b,1_7b,4b} HF repos stay public for existing downloads,
-# but their cards are marked DEPRECATED and no new SFT runs target them.
-# See packages/shared/src/local-inference/catalog.ts +
-# packages/training/scripts/training/model_registry.py.
+# The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "0_8b",
-    "0_6b",
-    "1_7b",
     "2b",
     "4b",
     "9b",
@@ -110,13 +101,30 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
     "vision",
     "drafter",
 )
+QWEN3_ASR_GGUF_REPOS: Final[tuple[str, ...]] = (
+    "ggml-org/Qwen3-ASR-0.6B-GGUF",
+    "ggml-org/Qwen3-ASR-1.7B-GGUF",
+)
+QWEN3_EMBEDDING_GGUF_REPOS: Final[tuple[str, ...]] = (
+    "Qwen/Qwen3-Embedding-0.6B-GGUF",
+    "Qwen/Qwen3-Embedding-4B-GGUF",
+    "Qwen/Qwen3-Embedding-8B-GGUF",
+)
+QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
+    "asr": QWEN3_ASR_GGUF_REPOS,
+    "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
+}
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "0_6b": ("turboquant_q3", "qjl", "polarquant", "dflash"),
-    "1_7b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "4b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "4b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
     "9b": (
         "turboquant_q4",
         "qjl",
@@ -149,24 +157,16 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("metal", "vulkan", "cpu"),
-    "0_6b": ("metal", "vulkan", "cpu"),
-    "1_7b": ("metal", "vulkan", "cpu"),
     "2b": ("metal", "vulkan", "cpu"),
-    "4b": ("metal", "vulkan", "cpu"),
+    "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    # 1M context is only practical on very large unified/HBM memory
-    # (GH200-class). CUDA is the only backend whose v1.0.0-eliza binary
-    # covers the full runtime path at that window today; the others stay
-    # off the supported list for this variant until verified.
     "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q4_K_M",
-    "0_6b": "Q4_K_M",
-    "1_7b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q8_0",
@@ -175,15 +175,45 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "27b-1m": "Q8_0",
 }
 
+VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("kokoro",),
+    "2b": ("kokoro",),
+    "4b": ("kokoro",),
+    "9b": ("kokoro", "omnivoice"),
+    "27b": ("omnivoice",),
+    "27b-256k": ("omnivoice",),
+    "27b-1m": ("omnivoice",),
+}
 
-def required_voice_artifacts_for_tier(tier: str) -> tuple[str, str]:
-    """Return the frozen OmniVoice GGUF pair required for ``tier``."""
+KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
+    "kokoro/model_q4.onnx",
+    "kokoro/tokenizer.json",
+    "kokoro/voices/af_bella.bin",
+)
 
-    quant = VOICE_QUANT_BY_TIER[tier]
-    return (
-        f"omnivoice-base-{quant}.gguf",
-        f"omnivoice-tokenizer-{quant}.gguf",
-    )
+
+def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
+    """Return the frozen TTS artifacts required for ``tier``.
+
+    Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
+    release line keeps small/mobile tiers on Kokoro, overlaps 9B with both
+    Kokoro and OmniVoice, and uses OmniVoice only for the 27B long-context
+    tiers.
+    """
+
+    out: list[str] = []
+    backends = VOICE_BACKENDS_BY_TIER[tier]
+    if "kokoro" in backends:
+        out.extend(KOKORO_REQUIRED_ARTIFACTS)
+    if "omnivoice" in backends:
+        quant = VOICE_QUANT_BY_TIER[tier]
+        out.extend(
+            (
+                f"omnivoice-base-{quant}.gguf",
+                f"omnivoice-tokenizer-{quant}.gguf",
+            )
+        )
+    return tuple(out)
 
 _SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 _SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$")
@@ -827,10 +857,17 @@ def validate_manifest(
                             f"provenance.sourceModels.{slot}: must be an object"
                         )
                         continue
-                    if not isinstance(source.get("repo"), str) or not source.get("repo"):
+                    repo = source.get("repo")
+                    if not isinstance(repo, str) or not repo:
                         errors.append(
                             f"provenance.sourceModels.{slot}.repo: required non-empty string"
                         )
+                    elif rs == "base-v1":
+                        repo_error = canonical_qwen_source_repo_error(slot, repo)
+                        if repo_error is not None:
+                            errors.append(
+                                f"provenance.sourceModels.{slot}.repo: {repo_error}"
+                            )
                     # `file` is optional (some sources are a whole repo dir);
                     # `convertedVia` records the converter path used.
                     for opt_field in ("file", "convertedVia", "note"):
@@ -1011,6 +1048,24 @@ def validate_manifest(
     return tuple(errors)
 
 
+def canonical_qwen_source_repo_error(slot: str, repo: str) -> str | None:
+    """Return an error for known Qwen ASR/embedding provenance misspellings.
+
+    Text tiers are Qwen3.5, but ASR and embedding are separate Qwen3
+    components with their own published GGUF repos. The release pipeline must
+    not invent matching Qwen3.5 or tier-mirrored ASR/embedding names.
+    """
+
+    allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
+    if allowed is None or repo in allowed:
+        return None
+    allowed_list = ", ".join(allowed)
+    return (
+        f"must be one of the published upstream GGUF repos [{allowed_list}], "
+        f"got {repo!r}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------
@@ -1085,7 +1140,7 @@ def build_manifest(
     recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
     # Optional provenance block. Pass for a `base-v1` bundle:
     #   {"releaseState": "base-v1", "finetuned": False,
-    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-9B", "file": "..."},
+    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-4B", "file": "..."},
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
     bundle_id: str | None = None,

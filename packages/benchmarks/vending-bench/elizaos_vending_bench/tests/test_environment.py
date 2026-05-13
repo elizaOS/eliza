@@ -200,6 +200,19 @@ class TestVendingEnvironment:
         # Initial net worth should equal initial cash (no inventory)
         assert env.get_net_worth() == Decimal("500.00")
 
+    def test_starter_inventory_preserves_initial_net_worth(self) -> None:
+        """Starter inventory should create sellable stock without free value."""
+        env = VendingEnvironment(
+            initial_cash=Decimal("500.00"),
+            seed=42,
+            starter_inventory=True,
+        )
+
+        assert env.get_net_worth() == Decimal("500.00")
+        assert env.state.cash_on_hand < Decimal("500.00")
+        assert sum(slot.quantity for slot in env.state.machine.slots) > 0
+        assert env.state.notes["starter_inventory"]
+
     def test_simulate_day(self) -> None:
         """Test simulating a single day."""
         env = VendingEnvironment(initial_cash=Decimal("500.00"), seed=42)

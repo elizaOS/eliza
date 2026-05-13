@@ -14,7 +14,6 @@ import {
   type Memory,
   ModelType,
   type Plugin,
-  type State,
   type UUID,
 } from "@elizaos/core";
 
@@ -211,6 +210,10 @@ type ModelOutputInspection = {
 };
 type GroqPluginModule = { groqPlugin?: Plugin; default?: Plugin };
 type ElevenLabsPluginModule = { elevenLabsPlugin?: Plugin; default?: Plugin };
+type LocalEmbeddingPluginModule = {
+  localEmbeddingPlugin?: Plugin;
+  default?: Plugin;
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VOICEBENCH_DIR = resolve(__dirname, "../..");
@@ -220,109 +223,6 @@ const AGENT_ID = "00000000-0000-0000-0000-000000000101" as UUID;
 const USER_ENTITY_ID = "00000000-0000-0000-0000-000000000102" as UUID;
 const ROOM_ID = "00000000-0000-0000-0000-000000000103" as UUID;
 const WORLD_ID = "00000000-0000-0000-0000-000000000104" as UUID;
-
-const MOCK_TRANSCRIPT = "Hello there. This is a short voice benchmark sample.";
-const MOCK_TEXT_RESPONSE = "Mock voicebench response is ready.";
-const MOCK_MESSAGE_HANDLER_JSON = JSON.stringify({
-  thought: "Running deterministic voicebench mock response.",
-  actions: [{ name: "REPLY", params: {} }],
-  providers: [],
-  text: MOCK_TEXT_RESPONSE,
-  simple: true,
-});
-const MOCK_NON_SIMPLE_HANDLER_JSON = JSON.stringify({
-  thought: "Running deterministic voicebench mock response with provider context.",
-  actions: [{ name: "REPLY", params: {} }],
-  providers: ["VOICEBENCH_CONTEXT"],
-  text: MOCK_TEXT_RESPONSE,
-  simple: false,
-});
-const MOCK_REPLY_JSON = JSON.stringify({
-  thought: "Generating deterministic benchmark dialog.",
-  text: MOCK_TEXT_RESPONSE,
-});
-const MOCK_SHOULD_RESPOND_JSON = JSON.stringify({
-  name: "VoicebenchAgent",
-  reasoning: "Voicebench messages should receive a benchmark response.",
-  action: "RESPOND",
-});
-const ZERO_EMBEDDING = Object.freeze(
-  new Array(384).fill(0),
-) as readonly number[];
-
-function mockTextHandler(params: Record<string, unknown>): string {
-  const prompt = String(params.prompt ?? "");
-  if (
-    prompt.includes("should respond") ||
-    prompt.includes("RESPOND | IGNORE | STOP")
-  ) {
-    return MOCK_SHOULD_RESPOND_JSON;
-  }
-  if (prompt.includes("Generate dialog for the character")) {
-    return MOCK_REPLY_JSON;
-  }
-  if (prompt.includes("Voicebench non-simple path")) {
-    return MOCK_NON_SIMPLE_HANDLER_JSON;
-  }
-  return MOCK_MESSAGE_HANDLER_JSON;
-}
-
-function readModelParams(params: unknown): Record<string, unknown> {
-  return params && typeof params === "object"
-    ? (params as Record<string, unknown>)
-    : {};
-}
-
-const mockVoicebenchPlugin: Plugin = {
-  name: "voicebench-mock-models",
-  description:
-    "Deterministic voicebench model handlers for credential-free smoke tests",
-  providers: [
-    {
-      name: "VOICEBENCH_CONTEXT",
-      description: "Static provider context for voicebench mock runs",
-      get: async (
-        _runtime: IAgentRuntime,
-        _message: Memory,
-        _state?: State,
-      ) => ({
-        text: "Voicebench mock provider context.",
-        values: { voicebenchContext: "mock" },
-        data: {},
-      }),
-    },
-  ],
-  models: {
-    [ModelType.TEXT_SMALL]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.TEXT_LARGE]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.RESPONSE_HANDLER]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.ACTION_PLANNER]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.TEXT_COMPLETION]: async (_runtime, params) =>
-      mockTextHandler(readModelParams(params)),
-    [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
-    [ModelType.TRANSCRIPTION]: async () => MOCK_TRANSCRIPT,
-    [ModelType.TEXT_TO_SPEECH]: async (_runtime, input) => {
-      const text =
-        typeof input === "string"
-          ? input
-          : String((input as { text?: unknown })?.text ?? "");
-      return new TextEncoder().encode(`voicebench-mock-audio:${text}`);
-    },
-  },
-};
-
-const voicebenchEmbeddingFallbackPlugin: Plugin = {
-  name: "voicebench-embedding-fallback",
-  description:
-    "Deterministic embedding handler for VoiceBench providers without embeddings",
-  models: {
-    [ModelType.TEXT_EMBEDDING]: async () => [...ZERO_EMBEDDING],
-  },
-};
 
 function parseArg(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -535,13 +435,6 @@ function loadDatasetSamples(datasetPath: string): {
         return remapped;
       }
     }
-    const fallbackAudio = process.env.VOICEBENCH_AUDIO_PATH;
-    if (fallbackAudio) {
-      const fallback = resolve(fallbackAudio);
-      if (existsSync(fallback)) {
-        return fallback;
-      }
-    }
     throw new Error(`Dataset audio file not found: ${direct}`);
   };
   const samples: DatasetSample[] = rawSamples.map((sample, idx) => {
@@ -603,7 +496,12 @@ async function seedRuntimeGraph(
 
 async function resolvePlugins(profile: string): Promise<Plugin[]> {
   if (profile === "mock") {
-    return [mockVoicebenchPlugin];
+    throw new Error(
+      "VoiceBench mock profile has been removed. Use groq or elevenlabs with real credentials and real audio.",
+    );
+  }
+  if (profile !== "groq" && profile !== "elevenlabs") {
+    throw new Error(`Unsupported VoiceBench real profile: ${profile}`);
   }
 
   // Try the npm-published packages first (the workspace install path), then
@@ -621,8 +519,26 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error("Failed to load Groq TypeScript plugin");
   }
 
+  let embeddingModule: LocalEmbeddingPluginModule;
+  try {
+    embeddingModule = (await import(
+      "@elizaos/plugin-local-embedding"
+    )) as LocalEmbeddingPluginModule;
+  } catch {
+    embeddingModule = (await import(
+      "../../../../../plugins/plugin-local-embedding/src/index.ts"
+    )) as LocalEmbeddingPluginModule;
+  }
+  const localEmbedding =
+    embeddingModule?.localEmbeddingPlugin ?? embeddingModule?.default;
+  if (!localEmbedding) {
+    throw new Error(
+      "Failed to load local embedding plugin. VoiceBench no longer registers zero-vector fallback embeddings.",
+    );
+  }
+
   if (profile !== "elevenlabs") {
-    return [groq, voicebenchEmbeddingFallbackPlugin];
+    return [groq, localEmbedding];
   }
 
   let elevenLabsModule: ElevenLabsPluginModule;
@@ -641,7 +557,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error("Failed to load ElevenLabs TypeScript plugin");
   }
 
-  return [groq, elevenLabs, voicebenchEmbeddingFallbackPlugin];
+  return [groq, elevenLabs, localEmbedding];
 }
 
 async function createRuntime(
@@ -730,8 +646,11 @@ async function main(): Promise<void> {
   const output = parseArg("output");
   const timestamp = parseArg("timestamp") ?? `${Date.now()}`;
 
-  if (!audioPath) {
-    throw new Error("--audio is required");
+  if (!audioPath && !datasetPath) {
+    throw new Error("--audio is required when --dataset is not provided");
+  }
+  if (audioPath && !existsSync(resolve(audioPath))) {
+    throw new Error(`--audio file not found: ${resolve(audioPath)}`);
   }
   if (!output) {
     throw new Error("--output is required");
@@ -760,18 +679,14 @@ async function main(): Promise<void> {
   const datasetName = dataset ? dataset.datasetName : "single-audio";
   const samples: DatasetSample[] = dataset
     ? dataset.samples
-    : [{ id: "single-audio", audioPath, expectedText: null }];
+    : [{ id: "single-audio", audioPath: audioPath!, expectedText: null }];
 
   const sttProvider =
-    profile === "mock"
-      ? "voicebench-mock-models"
-      : profile === "elevenlabs"
+    profile === "elevenlabs"
         ? "elevenLabs"
         : "groq";
   const ttsProvider =
-    profile === "mock"
-      ? "voicebench-mock-models"
-      : profile === "elevenlabs"
+    profile === "elevenlabs"
         ? "elevenLabs"
         : "groq";
 
@@ -874,16 +789,26 @@ async function main(): Promise<void> {
           const responseTtftMs =
             (firstResponseAt ?? responseEnd) - responseStart;
           const speechToResponseStartMs = transcriptionMs + responseTtftMs;
-          const rawResponseText =
+          const rawResponseText = (
             callbackText ||
             responseResult.responseContent?.text ||
-            "Voicebench fallback response.";
+            ""
+          ).trim();
+          if (!rawResponseText) {
+            throw new Error(
+              `VoiceBench sample ${sample.id} produced no agent response text`,
+            );
+          }
           const boundedResponse = enforceResponseBudget(
             rawResponseText,
             responseMaxChars,
           );
-          const responseText =
-            boundedResponse.text || "Voicebench fallback response.";
+          const responseText = boundedResponse.text.trim();
+          if (!responseText) {
+            throw new Error(
+              `VoiceBench sample ${sample.id} response became empty after budget enforcement`,
+            );
+          }
 
           const segmented = splitFirstSentence(responseText);
           const firstSentence = segmented.firstSentence || responseText;

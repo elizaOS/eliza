@@ -113,6 +113,12 @@ const LOCAL_INFERENCE_PROVIDER = "eliza-local-inference";
 const DEVICE_BRIDGE_PROVIDER = "eliza-device-bridge";
 const CAPACITOR_LLAMA_PROVIDER = "capacitor-llama";
 const AOSP_LLAMA_PROVIDER = "eliza-aosp-llama";
+const LOCAL_INFERENCE_HANDLER_INSTALLED = Symbol.for(
+  "elizaos.local-inference.handlers-installed",
+);
+type RuntimeWithLocalInferenceFlag = RuntimeWithModelRegistration & {
+  [LOCAL_INFERENCE_HANDLER_INSTALLED]?: boolean;
+};
 /**
  * Same band as cloud / direct provider plugins. Tie-breaks between
  * candidates live in `routing-policy.ts`, not in this number — the
@@ -255,13 +261,51 @@ function engineGenerateArgsFromParams(
   stopSequences?: string[];
   cacheKey?: string;
   signal?: AbortSignal;
+  maxTokens?: number;
+  temperature?: number;
+  topP?: number;
   prefill?: string;
   responseSkeleton?: GenerateTextParams["responseSkeleton"];
   grammar?: string;
   streamStructured?: boolean;
   elizaSchema?: ElizaHarnessSchema;
   onTextChunk?: (chunk: string) => void | Promise<void>;
+  voiceOutput?: "user-visible" | "internal";
 } {
+  const renderContent = (content: unknown): string => {
+    if (typeof content === "string") return content;
+    if (Array.isArray(content)) {
+      return content
+        .map((part) => {
+          if (typeof part === "string") return part;
+          if (
+            part &&
+            typeof part === "object" &&
+            typeof (part as { text?: unknown }).text === "string"
+          ) {
+            return (part as { text: string }).text;
+          }
+          return "";
+        })
+        .filter(Boolean)
+        .join("\n");
+    }
+    return "";
+  };
+  const promptFromSegments =
+    params.promptSegments && params.promptSegments.length > 0
+      ? params.promptSegments.map((segment) => segment.content ?? "").join("")
+      : "";
+  const promptFromMessages =
+    !promptFromSegments && params.messages && params.messages.length > 0
+      ? params.messages
+          .map((message) => {
+            const content = renderContent(message.content);
+            return content ? `${message.role}:\n${content}` : "";
+          })
+          .filter(Boolean)
+          .join("\n\n")
+      : "";
   const streamStructured = params.streamStructured === true;
   // Surface per-token chunks to the caller. The runtime passes the agent
   // reply path's `onStreamChunk` here when it wants the LLM→TTS handoff —
@@ -274,16 +318,22 @@ function engineGenerateArgsFromParams(
       ? (chunk: string) => params.onStreamChunk?.(chunk)
       : undefined;
   return {
-    prompt: params.prompt ?? "",
+    prompt: params.prompt ?? (promptFromSegments || promptFromMessages),
     stopSequences: params.stopSequences,
     cacheKey,
     signal: params.signal,
+    maxTokens: params.maxTokens,
+    temperature: params.temperature,
+    topP: params.topP,
     prefill: params.prefill,
     responseSkeleton: params.responseSkeleton,
     grammar: params.grammar,
     streamStructured: streamStructured || undefined,
     elizaSchema: elizaHarnessSchemaFromParams(params),
     onTextChunk,
+    voiceOutput:
+      params.voiceOutput ??
+      (typeof params.onStreamChunk === "function" ? "user-visible" : undefined),
   };
 }
 
@@ -416,7 +466,7 @@ function makeEmbeddingHandler(): EmbeddingHandler {
  * path: the engine has no `embed()` on the `LocalInferenceLoader` service
  * surface (that's only the AOSP / device-bridge loaders), but when an
  * Eliza-1 bundle is active it serves embeddings through the bundle's
- * local embedding model — pooled text on `0_8b`, the dedicated
+ * local embedding model — pooled text on `0_8b` / `2b`, the dedicated
  * `embedding/` GGUF on larger tiers — via a lazily-started embedding
  * `llama-server` sidecar. Throws (→ runtime falls through to the
  * operator-configured provider) when no Eliza-1 bundle is loaded; no
@@ -457,6 +507,7 @@ function makeTextToSpeechHandler(): TextToSpeechHandler {
     // Do not filter singing, emotion tags, or lyrical phrasing here. The
     // local voice bundle advertises its expressive capability in the
     // manifest; runtime safety policy lives above this model adapter.
+    await localInferenceEngine.ensureActiveBundleVoiceReady();
     return localInferenceEngine.synthesizeSpeech(text);
   };
 }
@@ -694,11 +745,17 @@ export async function ensureLocalInferenceHandler(
     return;
   }
 
-  const runtimeWithRegistration = runtime as RuntimeWithModelRegistration;
+  const runtimeWithRegistration = runtime as RuntimeWithLocalInferenceFlag;
   if (
     typeof runtimeWithRegistration.getModel !== "function" ||
     typeof runtimeWithRegistration.registerModel !== "function"
   ) {
+    return;
+  }
+  if (runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED]) {
+    logger.debug(
+      "[local-inference] Local model handlers already registered on this runtime; skipping duplicate registration",
+    );
     return;
   }
 
@@ -809,7 +866,7 @@ export async function ensureLocalInferenceHandler(
   //   - The desktop/server `LocalInferenceEngine` path has no loader
   //     `embed()`, but when an Eliza-1 bundle is loaded it serves
   //     embeddings through the bundle's local embedding model (pooled text
-  //     on `0_8b`, the dedicated `embedding/` GGUF on larger tiers) via a
+  //     on `0_8b` / `2b`, the dedicated `embedding/` GGUF on larger tiers) via a
   //     lazily-started embedding `llama-server` sidecar.
   // In neither case do we register a handler that would serve a silent
   // zero-vector — both throw when there's nothing real to call, so the
@@ -891,6 +948,7 @@ export async function ensureLocalInferenceHandler(
   logger.info(
     "[local-inference] Installed top-priority router for cross-provider routing",
   );
+  runtimeWithRegistration[LOCAL_INFERENCE_HANDLER_INSTALLED] = true;
 
   // Warm-on-load (item I3): if a local model is already resident, KV-prefill
   // the Stage-1 stable prefix onto the deterministic system-prefix slot so

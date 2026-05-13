@@ -576,7 +576,7 @@ static int eliza_load_asr(EliInferenceContext * ctx, char ** out_error) {
         eliza_set_error(out_error, "[libelizainference] ASR mmproj does not report audio support");
         return ELIZA_ERR_BUNDLE_INVALID;
     }
-    ctx->asr_sample_rate = mtmd_get_audio_bitrate(ctx->asr_mtmd);
+    ctx->asr_sample_rate = mtmd_get_audio_sample_rate(ctx->asr_mtmd);
     if (ctx->asr_sample_rate <= 0) {
         eliza_free_asr(ctx);
         eliza_set_error(out_error, "[libelizainference] ASR mmproj returned an invalid audio sample rate");
@@ -1613,6 +1613,21 @@ function applyElizaQwen3AsrMtmdSupport({ llamaCppRoot }) {
 
   const clipPath = path.join(llamaCppRoot, "tools", "mtmd", "clip.cpp");
   let clip = fs.readFileSync(clipPath, "utf8");
+  const qwen3aDispatchBlock = `        case PROJECTOR_TYPE_QWEN3A:
+            {
+                builder = std::make_unique<clip_graph_qwen3a>(ctx, img);
+            } break;
+`;
+  const firstQwen3aDispatch = clip.indexOf(qwen3aDispatchBlock);
+  const secondQwen3aDispatch =
+    firstQwen3aDispatch >= 0
+      ? clip.indexOf(qwen3aDispatchBlock, firstQwen3aDispatch + qwen3aDispatchBlock.length)
+      : -1;
+  if (secondQwen3aDispatch >= 0) {
+    clip =
+      clip.slice(0, secondQwen3aDispatch) +
+      clip.slice(secondQwen3aDispatch + qwen3aDispatchBlock.length);
+  }
   if (!clip.includes("clip_graph_qwen3a")) {
     clip = replaceRequired(
       clip,

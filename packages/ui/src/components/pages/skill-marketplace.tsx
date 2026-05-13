@@ -4,19 +4,17 @@
  * Extracted from SkillsView.tsx to keep individual files under ~500 LOC.
  */
 
+import { useState } from "react";
+import type { SkillInfo, SkillMarketplaceResult } from "../../api";
+import { useApp } from "../../state";
 import {
   AdminDialog,
   AdminDialogContent,
   AdminDialogHeader,
   AdminInput,
-  Button,
-  Dialog,
-  DialogDescription,
-  DialogTitle,
-} from "@elizaos/ui";
-import { useState } from "react";
-import type { SkillInfo, SkillMarketplaceResult } from "../../api";
-import { useApp } from "../../state";
+} from "../ui/admin-dialog";
+import { Button } from "../ui/button";
+import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
 
 /* ── Marketplace Result Card ────────────────────────────────────────── */
 

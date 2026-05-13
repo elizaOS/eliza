@@ -1348,6 +1348,16 @@ export async function startMockApiServer(
       return;
     }
 
+    if (method === "GET" && pathname === "/api/runtime/mode") {
+      json(res, 200, {
+        mode: "local",
+        deploymentRuntime: "local",
+        isRemoteController: false,
+        remoteApiBaseConfigured: false,
+      });
+      return;
+    }
+
     if (method === "GET" && pathname === "/api/database/status") {
       json(res, 200, {
         provider: "pglite",

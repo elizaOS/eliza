@@ -8,4 +8,11 @@ describe("Vast pricing", () => {
     expect(cost.outputCost).toBeGreaterThan(8);
     expect(cost.totalCost).toBeCloseTo(cost.inputCost + cost.outputCost, 6);
   });
+
+  test("prices the 27B 256K Vast lane from the internal snapshot", async () => {
+    const cost = await calculateCost("eliza-1-27b-256k", "vast", 1_000_000, 1_000_000, "vast");
+    expect(cost.inputCost).toBeGreaterThan(5);
+    expect(cost.outputCost).toBeGreaterThan(10);
+    expect(cost.totalCost).toBeCloseTo(cost.inputCost + cost.outputCost, 6);
+  });
 });

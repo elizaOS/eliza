@@ -238,16 +238,16 @@ if [ "${SKIP_MODELS}" = "0" ]; then
       fi
     done < <(
       {
-        find "${HOME}/.cache/eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
-        find "${HOME}/.eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
-        find "${HOME}/.eliza/local-inference/models" -maxdepth 5 -type f -iname '*eliza-1-mobile*.gguf' 2>/dev/null
+        find "${HOME}/.cache/eliza/local-inference/models" -maxdepth 6 -type f -iname '*eliza-1-2b*.gguf' 2>/dev/null
+        find "${HOME}/.eliza/local-inference/models" -maxdepth 6 -type f -iname '*eliza-1-2b*.gguf' 2>/dev/null
+        find "${HOME}/.eliza/local-inference/models" -maxdepth 6 -type f -iname '*eliza-1-2b*.gguf' 2>/dev/null
       } | head -1
     )
   fi
   if [ -z "${ELIZA1_GGUF}" ]; then
-    log "WARN: Eliza-1 mobile GGUF not found."
+    log "WARN: Eliza-1 2B GGUF not found."
     log "      Set ANDROID_RUNNER_ELIZA1_GGUF or download via:"
-    log "        hf download elizaos/eliza-1-mobile-1_7b text/eliza-1-mobile-1_7b-32k.gguf --local-dir ~/.cache/eliza/local-inference/models/eliza-1-mobile-1_7b"
+    log "        hf download elizaos/eliza-1 bundles/2b/text/eliza-1-2b-32k.gguf --local-dir ~/.cache/eliza/local-inference/models/eliza-1-2b"
     SKIP_MODELS=1
   else
     log "models: eliza1=${ELIZA1_GGUF} ($(du -h "${ELIZA1_GGUF}" | awk '{print $1}'))"
@@ -344,8 +344,8 @@ if [ "${HEALTH_OK}" = "1" ] && [ "${NO_CHAT}" = "0" ]; then
     p="${PROMPTS[$i]}"
     log "chat: prompt ${pidx}/5: ${p}"
     started=$(date +%s%3N)
-    body="$(jq -nc --arg p "${p}" '{messages:[{role:"user",content:$p}], stream:false, max_tokens:48, model:"eliza-1-mobile-1_7b"}' 2>/dev/null \
-        || printf '{"messages":[{"role":"user","content":"%s"}],"stream":false,"max_tokens":48,"model":"eliza-1-mobile-1_7b"}' "${p}")"
+    body="$(jq -nc --arg p "${p}" '{messages:[{role:"user",content:$p}], stream:false, max_tokens:48, model:"eliza-1-2b"}' 2>/dev/null \
+        || printf '{"messages":[{"role":"user","content":"%s"}],"stream":false,"max_tokens":48,"model":"eliza-1-2b"}' "${p}")"
     out=$(curl -sf --max-time 1800 \
         -H 'Content-Type: application/json' \
         -X POST \

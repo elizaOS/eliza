@@ -33,12 +33,12 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
-    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.3",
     "@elizaos/capacitor-messages": "2.0.0-beta.1",
     "@elizaos/capacitor-system": "2.0.0-beta.1",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
@@ -61,6 +61,8 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
   }
 }

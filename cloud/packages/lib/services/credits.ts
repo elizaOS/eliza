@@ -55,7 +55,16 @@ export class InsufficientCreditsError extends Error {
 
 export interface CreditReservation {
   reservedAmount: number;
-  reconcile: (actualCost: number) => Promise<void>;
+  reservationTransactionId?: string | null;
+  reconcile: (actualCost: number) => Promise<CreditReconciliationResult | void>;
+}
+
+export interface CreditReconciliationResult {
+  reservedAmount: number;
+  actualCost: number;
+  reservationTransactionId?: string | null;
+  settlementTransactionIds: string[];
+  adjustmentType: "none" | "refund" | "overage";
 }
 
 export interface ReserveCreditsParams {
@@ -685,12 +694,21 @@ export class CreditsService {
     actualCost: number;
     description: string;
     metadata?: Record<string, unknown>;
-  }): Promise<void> {
+  }): Promise<CreditReconciliationResult> {
     const { organizationId, reservedAmount, actualCost, description, metadata } = params;
     const difference = reservedAmount - actualCost;
 
     if (Math.abs(difference) < EPSILON) {
-      return;
+      return {
+        reservedAmount,
+        actualCost,
+        reservationTransactionId:
+          typeof metadata?.reservation_transaction_id === "string"
+            ? metadata.reservation_transaction_id
+            : null,
+        settlementTransactionIds: [],
+        adjustmentType: "none",
+      };
     }
 
     const baseMetadata = {
@@ -705,7 +723,7 @@ export class CreditsService {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         if (difference > 0) {
-          await this.refundCredits({
+          const refund = await this.refundCredits({
             organizationId,
             amount: difference,
             description: `${description} (refund)`,
@@ -717,11 +735,20 @@ export class CreditsService {
             actual: actualCost,
             refunded: difference,
           });
-          return;
+          return {
+            reservedAmount,
+            actualCost,
+            reservationTransactionId:
+              typeof metadata?.reservation_transaction_id === "string"
+                ? metadata.reservation_transaction_id
+                : null,
+            settlementTransactionIds: [refund.transaction.id],
+            adjustmentType: "refund",
+          };
         }
 
         const overage = -difference;
-        await this.deductCredits({
+        const overageResult = await this.deductCredits({
           organizationId,
           amount: overage,
           description: `${description} (overage)`,
@@ -733,7 +760,16 @@ export class CreditsService {
           actual: actualCost,
           overage,
         });
-        return;
+        return {
+          reservedAmount,
+          actualCost,
+          reservationTransactionId:
+            typeof metadata?.reservation_transaction_id === "string"
+              ? metadata.reservation_transaction_id
+              : null,
+          settlementTransactionIds: overageResult.transaction ? [overageResult.transaction.id] : [],
+          adjustmentType: "overage",
+        };
       } catch (error) {
         if (attempt === MAX_RETRIES) {
           logger.error("[Credits] Reconciliation failed after retries", {
@@ -744,7 +780,16 @@ export class CreditsService {
             error: error instanceof Error ? error.message : "Unknown error",
           });
           // Don't throw - operation completed, just log for manual review
-          return;
+          return {
+            reservedAmount,
+            actualCost,
+            reservationTransactionId:
+              typeof metadata?.reservation_transaction_id === "string"
+                ? metadata.reservation_transaction_id
+                : null,
+            settlementTransactionIds: [],
+            adjustmentType: "none",
+          };
         }
         logger.warn("[Credits] Reconciliation retry", {
           attempt,
@@ -754,6 +799,17 @@ export class CreditsService {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt));
       }
     }
+
+    return {
+      reservedAmount,
+      actualCost,
+      reservationTransactionId:
+        typeof metadata?.reservation_transaction_id === "string"
+          ? metadata.reservation_transaction_id
+          : null,
+      settlementTransactionIds: [],
+      adjustmentType: "none",
+    };
   }
 
   // ============================================================================
@@ -825,6 +881,10 @@ export class CreditsService {
       });
       throw new InsufficientCreditsError(reservedAmount, result.newBalance, result.reason);
     }
+    if (!result.transaction) {
+      throw new Error("[Credits] Reservation did not return a credit transaction");
+    }
+    const reservationTransactionId = result.transaction.id;
 
     logger.info("[Credits] Reserved", {
       organizationId,
@@ -834,13 +894,18 @@ export class CreditsService {
 
     return {
       reservedAmount,
+      reservationTransactionId,
       reconcile: async (actualCost: number) => {
-        await this.reconcile({
+        return await this.reconcile({
           organizationId,
           reservedAmount,
           actualCost,
           description,
-          metadata: { user_id: userId, ...(model && { model }) },
+          metadata: {
+            user_id: userId,
+            reservation_transaction_id: reservationTransactionId,
+            ...(model && { model }),
+          },
         });
       },
     };
@@ -852,6 +917,7 @@ export class CreditsService {
   createAnonymousReservation(): CreditReservation {
     return {
       reservedAmount: 0,
+      reservationTransactionId: null,
       reconcile: async () => {},
     };
   }

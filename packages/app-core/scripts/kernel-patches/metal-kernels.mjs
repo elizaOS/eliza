@@ -70,6 +70,7 @@ export const METAL_KERNEL_FILES = [
   "turbo4.metal",
   "turbo3_tcq.metal",
   "qjl.metal",
+  "qjl_set_rows.metal",
   "polar.metal",
   "polar_preht.metal",
   "fused_attn_qjl_tbq.metal",
@@ -119,6 +120,7 @@ const SENTINEL = "# ELIZA-KERNEL-PATCH-V1";
 const SENTINEL_EMBED = "# ELIZA-KERNEL-EMBED-PATCH-V1";
 const SENTINEL_EMBED_LOADER = "// ELIZA-EMBEDDED-METALLIB-LOADER-V1";
 const SENTINEL_QJL_ATTN = "// ELIZA-QJL-ATTN-DISPATCH-V1";
+const SENTINEL_QJL_SET_ROWS = "// ELIZA-QJL-SET-ROWS-V1";
 const SENTINEL_TBQ_POLAR_ATTN = "// ELIZA-TBQ-POLAR-ATTN-DISPATCH-V1";
 
 function inForkRelpath(name) {
@@ -330,6 +332,35 @@ ${elizaAirLines}
         COMMENT "Compiling Metal kernels (ggml-metal + eliza-shipped: ${METAL_KERNEL_FILES.join(", ")})"
         )`;
     patched = patched.replace(anchor, replacement);
+    changed = true;
+  }
+
+  if (
+    patched.includes(SENTINEL) &&
+    patched.includes(SENTINEL_EMBED) &&
+    !patched.includes("qjl_set_rows.metal")
+  ) {
+    patched = patched
+      .replaceAll(
+        "COMMAND xcrun -sdk ${METAL_SDK} metal ${XC_FLAGS} -c ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl.metal -o ${CMAKE_CURRENT_BINARY_DIR}/qjl.air",
+        "COMMAND xcrun -sdk ${METAL_SDK} metal ${XC_FLAGS} -c ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl.metal -o ${CMAKE_CURRENT_BINARY_DIR}/qjl.air\n        COMMAND xcrun -sdk ${METAL_SDK} metal ${XC_FLAGS} -c ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl_set_rows.metal -o ${CMAKE_CURRENT_BINARY_DIR}/qjl_set_rows.air",
+      )
+      .replaceAll(
+        "COMMAND xcrun -sdk macosx metal ${XC_FLAGS} -c ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl.metal -o ${CMAKE_CURRENT_BINARY_DIR}/qjl.air",
+        "COMMAND xcrun -sdk macosx metal ${XC_FLAGS} -c ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl.metal -o ${CMAKE_CURRENT_BINARY_DIR}/qjl.air\n        COMMAND xcrun -sdk macosx metal ${XC_FLAGS} -c ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl_set_rows.metal -o ${CMAKE_CURRENT_BINARY_DIR}/qjl_set_rows.air",
+      )
+      .replaceAll(
+        "${CMAKE_CURRENT_BINARY_DIR}/qjl.air ${CMAKE_CURRENT_BINARY_DIR}/polar.air",
+        "${CMAKE_CURRENT_BINARY_DIR}/qjl.air ${CMAKE_CURRENT_BINARY_DIR}/qjl_set_rows.air ${CMAKE_CURRENT_BINARY_DIR}/polar.air",
+      )
+      .replaceAll(
+        "${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl.metal ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/polar.metal",
+        "${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl.metal ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/qjl_set_rows.metal ${CMAKE_CURRENT_SOURCE_DIR}/eliza-shipped/polar.metal",
+      )
+      .replaceAll(
+        "qjl.metal, polar.metal",
+        "qjl.metal, qjl_set_rows.metal, polar.metal",
+      );
     changed = true;
   }
 
@@ -1052,16 +1083,18 @@ export function patchGgmlTbqPolarAttnOps(cacheDir, { dryRun }) {
     "attn_score_polar(q, packed_k)",
     "fused_attn_qjl_tbq(q, packed_k, packed_v)",`,
     );
-    c = c.replace(
-      `    [GGML_TYPE_QJL1_256] = {`,
-      `    [GGML_TYPE_TBQ3_TCQ] = {
+    if (!c.includes(`    [GGML_TYPE_TBQ3_TCQ] = {`)) {
+      c = c.replace(
+        `    [GGML_TYPE_QJL1_256] = {`,
+        `    [GGML_TYPE_TBQ3_TCQ] = {
         .type_name                = "tbq3_tcq",
         .blck_size                = QK_TBQ3_TCQ,
         .type_size                = sizeof(block_tbq3_tcq),
         .is_quantized             = true,
     },
     [GGML_TYPE_QJL1_256] = {`,
-    );
+      );
+    }
     c = c.replaceAll(
       `static_assert(GGML_OP_COUNT == 97, "GGML_OP_COUNT != 97");`,
       `static_assert(GGML_OP_COUNT == 99, "GGML_OP_COUNT != 99");`,
@@ -1986,6 +2019,100 @@ function patchMetalTbqPolarAttnDispatch(cacheDir, { dryRun }) {
   return { ggmlOps, deviceHeader, deviceCpp, opsHeader, opsCpp, supportsOp };
 }
 
+function patchMetalQjlSetRowsSupportsOp(cacheDir, { dryRun }) {
+  const deviceMPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-device.m",
+  );
+  const original = fs.readFileSync(deviceMPath, "utf8");
+  if (original.includes(SENTINEL_QJL_SET_ROWS)) {
+    return { changed: false, path: deviceMPath };
+  }
+  const anchor = `                    case GGML_TYPE_IQ4_NL:
+                        return true;`;
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[metal-qjl-set-rows] supports_op SET_ROWS anchor not found at ${deviceMPath}`,
+    );
+  }
+  const patched = original.replace(
+    anchor,
+    `                    case GGML_TYPE_IQ4_NL:
+                    case GGML_TYPE_QJL1_256:
+                        // ${SENTINEL_QJL_SET_ROWS}
+                        return true;`,
+  );
+  if (!dryRun) fs.writeFileSync(deviceMPath, patched, "utf8");
+  return { changed: !dryRun, path: deviceMPath };
+}
+
+function patchMetalQjlSetRowsOps(cacheDir, { dryRun }) {
+  const opsPath = path.join(
+    cacheDir,
+    "ggml",
+    "src",
+    "ggml-metal",
+    "ggml-metal-ops.cpp",
+  );
+  const original = fs.readFileSync(opsPath, "utf8");
+  if (original.includes(SENTINEL_QJL_SET_ROWS)) {
+    return { changed: false, path: opsPath };
+  }
+  const anchor = `    const int32_t nk0 = ne0/ggml_blck_size(op->type);
+
+    int nth = 32; // SIMD width`;
+  if (!original.includes(anchor)) {
+    throw new Error(
+      `[metal-qjl-set-rows] op_set_rows anchor not found at ${opsPath}`,
+    );
+  }
+  const insert = `    const int32_t nk0 = ne0/ggml_blck_size(op->type);
+
+    if (op->type == GGML_TYPE_QJL1_256) {
+        // ${SENTINEL_QJL_SET_ROWS}
+        ggml_metal_kargs_set_rows args = {
+            /*.nk0  =*/ nk0,
+            /*.ne01 =*/ ne01,
+            /*.nb01 =*/ nb01,
+            /*.nb02 =*/ nb02,
+            /*.nb03 =*/ nb03,
+            /*.ne11 =*/ ne11,
+            /*.ne12 =*/ ne12,
+            /*.nb10 =*/ nb10,
+            /*.nb11 =*/ nb11,
+            /*.nb12 =*/ nb12,
+            /*.nb1  =*/ nb1,
+            /*.nb2  =*/ nb2,
+            /*.nb3  =*/ nb3,
+        };
+
+        ggml_metal_encoder_set_pipeline(enc, pipeline);
+        ggml_metal_encoder_set_bytes   (enc, &args, sizeof(args), 0);
+        ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[0]), 1);
+        ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op->src[1]), 2);
+        ggml_metal_encoder_set_buffer  (enc, ggml_metal_get_buffer_id(op),         3);
+
+        ggml_metal_encoder_dispatch_threadgroups(enc, ne01, ne02, ne03, 32, 1, 1);
+
+        return 1;
+    }
+
+    int nth = 32; // SIMD width`;
+  const patched = original.replace(anchor, insert);
+  if (!dryRun) fs.writeFileSync(opsPath, patched, "utf8");
+  return { changed: !dryRun, path: opsPath };
+}
+
+function patchMetalQjlSetRows(cacheDir, { dryRun }) {
+  return {
+    supportsOp: patchMetalQjlSetRowsSupportsOp(cacheDir, { dryRun }),
+    ops: patchMetalQjlSetRowsOps(cacheDir, { dryRun }),
+  };
+}
+
 export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
   const patchedFiles = [
     path.join(cacheDir, "ggml", "src", "ggml-metal", "ggml-metal-device.h"),
@@ -2030,6 +2157,7 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
     dryRun && !qjlAnchorsAlreadyPresent
       ? { deferredUntilQjlPatchWrites: true }
       : patchMetalTbqPolarAttnDispatch(cacheDir, { dryRun });
+  const qjlSetRows = patchMetalQjlSetRows(cacheDir, { dryRun });
   console.log(
     `[metal-dispatch] ${dryRun ? "(dry-run) " : ""}wired dedicated GGML_OP_ATTN_SCORE_QJL dispatch via kernel_attn_score_qjl1_256_multi`,
   );
@@ -2053,6 +2181,7 @@ export function patchMetalDispatch(cacheDir, { dryRun = false } = {}) {
     unsafePatchPresent: patchedFiles,
     qjlAttn,
     tbqPolarAttn,
+    qjlSetRows,
   };
 }
 

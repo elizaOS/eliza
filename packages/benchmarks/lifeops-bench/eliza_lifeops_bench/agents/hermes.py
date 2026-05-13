@@ -9,6 +9,9 @@ cost/latency telemetry attached.
 """
 
 from __future__ import annotations
+
+import importlib.util
+import os
 from typing import Any, Awaitable, Callable
 
 from ..types import MessageTurn
@@ -78,12 +81,13 @@ def build_hermes_agent(
             "(packages/benchmarks/hermes-adapter). Install it in the active env."
         ) from exc
 
-    # Use in_process mode by default: the parent Python already has openai
-    # installed (the bench depends on litellm/openai), so we can drive the
-    # OpenAI-compatible Cerebras endpoint directly without requiring a
-    # hermes-agent venv subprocess.
+    requested_mode = os.environ.get("HERMES_ADAPTER_MODE", "").strip()
+    if requested_mode in {"in_process", "subprocess"}:
+        mode = requested_mode
+    else:
+        mode = "in_process" if importlib.util.find_spec("openai") else "subprocess"
     client_kwargs: dict[str, Any] = {
-        "mode": "in_process",
+        "mode": mode,
         "temperature": temperature,
         "reasoning_effort": reasoning_effort,
         "max_tokens": max_tokens,

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { formatBytes } from "../../../lib/format-bytes";
 
 interface ElizaAgentBackupsPanelProps {
   agentId: string;
@@ -37,13 +38,6 @@ const SNAPSHOT_TYPE_STYLES: Record<BackupRecord["snapshotType"], string> = {
   manual: "border-[#FF5800]/40 bg-[#FF5800]/10 text-[#FF9B66]",
   "pre-shutdown": "border-purple-500/40 bg-purple-500/10 text-purple-400",
 };
-
-function formatBytes(bytes: number | null): string {
-  if (bytes == null || Number.isNaN(bytes)) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function formatTimestamp(value: string): {
   absolute: string;
@@ -342,7 +336,7 @@ export function ElizaAgentBackupsPanel({
 
                         <div className="flex flex-wrap items-center gap-4 text-xs text-white/50">
                           <span style={{ fontFamily: "var(--font-roboto-mono)" }}>
-                            Size: {formatBytes(backup.sizeBytes)}
+                            Size: {formatBytes(backup.sizeBytes, { precision: 1 })}
                           </span>
                           <span style={{ fontFamily: "var(--font-roboto-mono)" }}>
                             Backup ID: {backup.id.slice(0, 8)}

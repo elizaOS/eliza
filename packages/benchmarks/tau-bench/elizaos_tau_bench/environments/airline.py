@@ -220,7 +220,11 @@ class AirlineEnvironment(DomainEnvironment):
             try:
                 result = await handler(tool_call.arguments)
                 tool_call.result = result
-                tool_call.status = ToolCallStatus.CORRECT
+                if isinstance(result, dict) and "error" in result:
+                    tool_call.status = ToolCallStatus.EXECUTION_ERROR
+                    tool_call.error_message = str(result["error"])
+                else:
+                    tool_call.status = ToolCallStatus.CORRECT
                 return result
             except Exception as e:
                 tool_call.status = ToolCallStatus.EXECUTION_ERROR

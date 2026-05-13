@@ -5,12 +5,6 @@
  */
 
 import {
-  ConfirmDialog,
-  PromptDialog,
-  useConfirm,
-  usePrompt,
-} from "@elizaos/ui";
-import {
   type ReactNode,
   useCallback,
   useEffect,
@@ -19,6 +13,12 @@ import {
   useState,
 } from "react";
 import { client } from "../api";
+import {
+  ConfirmDialog,
+  PromptDialog,
+  useConfirm,
+  usePrompt,
+} from "../components/ui/confirm-dialog";
 import { AppBootContext } from "../config/boot-config-react";
 import { getBootConfig } from "../config/boot-config-store";
 import { BrandingContext, DEFAULT_BRANDING } from "../config/branding";

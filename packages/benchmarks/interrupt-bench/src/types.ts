@@ -75,12 +75,12 @@ export interface ScenarioScriptStep {
 // Expected state
 // ---------------------------------------------------------------------------
 
-export interface CountBounds {
+interface CountBounds {
   min: number;
   max: number;
 }
 
-export interface ExpectedReplies {
+interface ExpectedReplies {
   count: CountBounds;
   mustContain?: string[];
   shortAck?: boolean;
@@ -102,7 +102,7 @@ export interface ExpectedThread {
   count?: number;
 }
 
-export interface ExpectedScheduledTask {
+interface ExpectedScheduledTask {
   owner?: string;
   descriptionContains?: string[];
   descriptionExcludes?: string[];

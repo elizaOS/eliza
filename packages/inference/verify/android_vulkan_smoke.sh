@@ -2,6 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$SCRIPT_DIR"
 
 ANDROID_API="${ANDROID_API:-28}"
@@ -79,7 +80,7 @@ print_android_usb_hint() {
   matches="$(system_profiler SPUSBDataType 2>/dev/null | grep -Ei -B3 -A8 'android|pixel|google|samsung|oneplus|motorola|moto|qualcomm|xiaomi|huawei|adb|mtp' || true)"
   if [[ -n "$matches" ]]; then
     echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=present"
-    printf '%s\n' "$matches" | head -120
+    printf '%s\n' "$matches" | awk 'NR <= 120 { print }'
     return 0
   fi
 
@@ -232,13 +233,16 @@ echo "[android-vulkan-smoke] compiling verifier for arm64-v8a API ${ANDROID_API}
   -static-libstdc++ -lvulkan -lm -o "$OUT_DIR/vulkan_verify"
 
 echo "[android-vulkan-smoke] compiling SPIR-V with $GLSLC"
-for shader in turbo3 turbo4 turbo3_tcq qjl polar polar_preht; do
+for shader in turbo3 turbo4 turbo3_tcq qjl polar polar_preht fused_attn_qjl_tbq fused_attn_qjl_polar; do
   "$GLSLC" --target-env=vulkan1.1 --target-spv=spv1.3 \
     -fshader-stage=compute "../vulkan/${shader}.comp" -o "$OUT_DIR/spv/${shader}.spv"
 done
 
 cp fixtures/turbo3.json fixtures/turbo4.json fixtures/turbo3_tcq.json \
-  fixtures/qjl.json fixtures/polar.json fixtures/polar_qjl.json "$OUT_DIR/fixtures/"
+  fixtures/qjl.json fixtures/polar.json fixtures/polar_qjl.json \
+  fixtures/fused_attn_qjl_tbq.json fixtures/fused_attn_qjl_tbq_causal.json \
+  fixtures/fused_attn_qjl_polar.json fixtures/fused_attn_qjl_polar_causal.json \
+  "$OUT_DIR/fixtures/"
 
 adb_cmd() {
   if [[ -n "$ADB_SERIAL" ]]; then
@@ -267,7 +271,7 @@ fi
 VKJSON="$(adb_cmd shell cmd gpu vkjson 2>/dev/null || true)"
 if [[ -n "$VKJSON" ]]; then
   echo "[android-vulkan-smoke] cmd gpu vkjson:"
-  printf '%s\n' "$VKJSON" | head -120
+  printf '%s\n' "$VKJSON" | awk 'NR <= 120 { print }'
 else
   echo "[android-vulkan-smoke] cmd gpu vkjson unavailable; fixture harness will enumerate Vulkan directly"
 fi
@@ -295,6 +299,10 @@ run_remote polar polar
 run_remote polar polar_qjl
 run_remote polar_preht polar
 run_remote polar_preht polar_qjl
+run_remote fused_attn_qjl_tbq fused_attn_qjl_tbq
+run_remote fused_attn_qjl_tbq fused_attn_qjl_tbq_causal
+run_remote fused_attn_qjl_polar fused_attn_qjl_polar
+run_remote fused_attn_qjl_polar fused_attn_qjl_polar_causal
 
 echo "[android-vulkan-smoke] standalone Vulkan fixtures passed on Android device."
 
@@ -306,7 +314,20 @@ fi
 
 GRAPH_EVIDENCE="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE:-}"
 if [[ -z "$GRAPH_EVIDENCE" ]]; then
-  fail 4 "missing ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE. Standalone SPIR-V fixture success does not prove built-fork/app graph dispatch and cannot flip runtime-ready capability bits"
+  echo "[android-vulkan-smoke] no ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE supplied; running built-fork graph-dispatch smoke"
+  ANDROID_SERIAL="$ADB_SERIAL" \
+  ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN="$ALLOW_EMULATOR" \
+  ELIZA_ALLOW_SOFTWARE_VULKAN="$ALLOW_SOFTWARE" \
+    ./android_vulkan_graph_smoke.sh
+  GRAPH_EVIDENCE="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE_OUT:-$SCRIPT_DIR/vulkan-runtime-dispatch-evidence.json}"
+fi
+if [[ -n "$GRAPH_EVIDENCE" && ! -f "$GRAPH_EVIDENCE" && "$GRAPH_EVIDENCE" != /* ]]; then
+  for candidate in "$SCRIPT_DIR/$GRAPH_EVIDENCE" "$REPO_ROOT/$GRAPH_EVIDENCE"; do
+    if [[ -f "$candidate" ]]; then
+      GRAPH_EVIDENCE="$candidate"
+      break
+    fi
+  done
 fi
 if [[ ! -f "$GRAPH_EVIDENCE" ]]; then
   fail 4 "ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE does not exist: $GRAPH_EVIDENCE"
@@ -315,7 +336,8 @@ fi
 node - "$GRAPH_EVIDENCE" <<'NODE'
 const fs = require("node:fs");
 const p = process.argv[2];
-const data = JSON.parse(fs.readFileSync(p, "utf8"));
+const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+const data = raw?.targets?.["android-arm64-vulkan"] ?? raw;
 const failures = [];
 const requiredRoutes = [
   "GGML_OP_ATTN_SCORE_QJL",
@@ -324,6 +346,7 @@ const requiredRoutes = [
   "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq",
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0",
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1",
+  "GGML_OP_FUSED_ATTN_QJL_TBQ",
 ];
 const requiredCapabilities = [
   "turbo3",
@@ -331,6 +354,7 @@ const requiredCapabilities = [
   "turbo3_tcq",
   "qjl_full",
   "polarquant",
+  "fused_attn_qjl_tbq",
 ];
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 if (data.backend !== "vulkan") failures.push(`backend=${data.backend}`);
@@ -380,7 +404,7 @@ const kernelEvidenceOk =
 
 if (!routeEvidenceOk && !kernelEvidenceOk) {
   failures.push(
-    "missing full six-route graphRoutes evidence or five-capability kernels evidence with finite maxDiff",
+    "missing full seven-route graphRoutes evidence or six-capability kernels evidence with finite maxDiff",
   );
 }
 if (failures.length) {

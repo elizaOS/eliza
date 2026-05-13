@@ -21,10 +21,10 @@ Eliza can download and run Eliza-1 GGUF models locally for text generation and e
 
 | ID | Name | Size |
 |----|------|------|
-| `elizaos/eliza-1-lite-0_6b` | Eliza-1 Lite Embedding | varies |
-| `elizaos/eliza-1-mobile-1_7b` | Eliza-1 Mobile Chat | varies |
-| `elizaos/eliza-1-desktop-9b` | Eliza-1 Desktop Chat | varies |
-| `elizaos/eliza-1-pro-27b` | Eliza-1 Pro Chat | varies |
+| `elizaos/eliza-1-0_8b` | Eliza-1 Lite Embedding | varies |
+| `elizaos/eliza-1-2b` | Eliza-1 Mobile Chat | varies |
+| `elizaos/eliza-1-9b` | Eliza-1 Desktop Chat | varies |
+| `elizaos/eliza-1-27b` | Eliza-1 Pro Chat | varies |
 
 ### Text-to-Speech Models
 
@@ -53,9 +53,9 @@ Models are cached at `~/.cache/eliza/models/`. A `manifest.json` file tracks all
     "downloadedAt": "2026-01-15T10:00:00.000Z",
     "path": "/Users/name/.cache/eliza/models/Salesforce_blip-image-captioning-base"
   },
-  "elizaos/eliza-1-mobile-1_7b": {
+  "elizaos/eliza-1-2b": {
     "downloadedAt": "2026-01-15T10:00:00.000Z",
-    "path": "/Users/name/.cache/eliza/models/elizalabs_eliza-1-mobile-1_7b/text/eliza-1-mobile-1_7b-32k.gguf"
+    "path": "/Users/name/.cache/eliza/models/elizalabs_eliza-1-2b/text/eliza-1-2b-32k.gguf"
   }
 }
 ```

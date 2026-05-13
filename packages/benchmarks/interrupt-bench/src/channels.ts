@@ -16,11 +16,11 @@ import type { FakeClock } from "./clock.ts";
 import type { Trace } from "./trace.ts";
 import type { Scenario, ScenarioScriptStep, TraceEvent } from "./types.ts";
 
-export interface ChannelDelivery {
+interface ChannelDelivery {
   step: ScenarioScriptStep;
 }
 
-export type OnMessageCallback = (delivery: ChannelDelivery) => Promise<void>;
+type OnMessageCallback = (delivery: ChannelDelivery) => Promise<void>;
 
 export class ChannelSimulator {
   readonly queue = new RoomHandlerQueue();

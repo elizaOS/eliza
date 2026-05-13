@@ -12,7 +12,7 @@ const MODELS_ROOT = path.join(
   "models",
 );
 
-const VISION_TIERS = new Set(["9b", "27b", "27b-256k"]);
+const VISION_TIERS = new Set(["4b", "9b", "27b", "27b-256k"]);
 const TEXT_VOICE_ONLY_TIERS = new Set(["0_6b", "1_7b"]);
 
 function usage() {
@@ -25,6 +25,7 @@ function usage() {
     "  --image <path>            Image to pass to llama-mtmd-cli when vision exists",
     "  --mtmd-cli <path>         llama-mtmd-cli binary; defaults to ELIZA_LLAMA_MTMD_CLI or build/bin candidates",
     "  --ctx-size <n>            Smoke context size; default 2048 to avoid full long-context KV allocation",
+    "  --batch-size <n>          Prompt/image batch size; default 2048 so image tokens fit",
     "  --n-predict <n>           Tokens to generate; default 64",
     "  --gpu-layers <n|auto|all> Optional -ngl value; default auto",
     "  --timeout-ms <n>          Smoke subprocess timeout; default 600000",
@@ -40,6 +41,7 @@ function parseArgs(argv) {
     image: "",
     mtmdCli: process.env.ELIZA_LLAMA_MTMD_CLI?.trim() || "",
     ctxSize: 2048,
+    batchSize: 2048,
     nPredict: 64,
     gpuLayers: "",
     timeoutMs: 600_000,
@@ -57,6 +59,7 @@ function parseArgs(argv) {
     else if (arg === "--image") args.image = next();
     else if (arg === "--mtmd-cli") args.mtmdCli = next();
     else if (arg === "--ctx-size") args.ctxSize = Number.parseInt(next(), 10);
+    else if (arg === "--batch-size") args.batchSize = Number.parseInt(next(), 10);
     else if (arg === "--n-predict") args.nPredict = Number.parseInt(next(), 10);
     else if (arg === "--gpu-layers") args.gpuLayers = next();
     else if (arg === "--timeout-ms") args.timeoutMs = Number.parseInt(next(), 10);
@@ -71,6 +74,7 @@ function parseArgs(argv) {
   if (!args.bundleDir) throw new Error("--bundle-dir is required");
   for (const [name, value] of [
     ["--ctx-size", args.ctxSize],
+    ["--batch-size", args.batchSize],
     ["--n-predict", args.nPredict],
     ["--timeout-ms", args.timeoutMs],
   ]) {
@@ -285,6 +289,7 @@ function runVisionSmoke({
   mmproj,
   image,
   ctxSize,
+  batchSize,
   nPredict,
   gpuLayers,
   timeoutMs,
@@ -321,6 +326,10 @@ function runVisionSmoke({
     image,
     "-c",
     String(ctxSize),
+    "-b",
+    String(batchSize),
+    "--image-min-tokens",
+    "1024",
     "-p",
     "Describe this image in one short sentence.",
     "-n",
@@ -417,6 +426,7 @@ function buildReport(args) {
     smokeConfig: {
       image: args.image ? path.resolve(args.image) : "",
       ctxSize: args.ctxSize,
+      batchSize: args.batchSize,
       nPredict: args.nPredict,
       gpuLayers: args.gpuLayers || "auto",
       timeoutMs: args.timeoutMs,
@@ -525,6 +535,7 @@ function buildReport(args) {
     mmproj: mmprojPath,
     image: args.image,
     ctxSize: args.ctxSize,
+    batchSize: args.batchSize,
     nPredict: args.nPredict,
     gpuLayers: args.gpuLayers,
     timeoutMs: args.timeoutMs,

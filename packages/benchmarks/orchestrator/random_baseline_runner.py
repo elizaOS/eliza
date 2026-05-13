@@ -66,7 +66,7 @@ def _bfcl_payload(score: float) -> dict[str, Any]:
             "ast_accuracy": score,
             "exec_accuracy": score,
             "relevance_accuracy": score,
-            "total_tests": 0,
+            "total_tests": 1,
         }
     }
 

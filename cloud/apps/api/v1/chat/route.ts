@@ -29,6 +29,7 @@ import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { contentModerationService } from "@/lib/services/content-moderation";
 import { conversationsService } from "@/lib/services/conversations";
 import {
+  type CreditReconciliationResult,
   type CreditReservation,
   creditsService,
   InsufficientCreditsError,
@@ -119,7 +120,9 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.post("/", async (c) => {
-  let settleReservation: ((actualCost: number) => Promise<void>) | null = null;
+  let settleReservation:
+    | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
+    | null = null;
 
   try {
     let user: ChatBillingUser;

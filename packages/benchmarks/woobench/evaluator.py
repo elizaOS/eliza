@@ -280,6 +280,8 @@ Respond ONLY with the rephrased response, nothing else."""
         revenue_payment_action: str | None = None
         revenue_payment_action_source: str | None = None
         revenue_payment_checkout_url: str | None = None
+        revenue_amount_requested_total: float = 0.0
+        revenue_extra_payment_requests: int = 0
         active_payment: dict[str, Any] | None = None
         persona_asked_for_free: bool = False
         # Tracks whether the agent emitted any substantive reply at all.
@@ -345,11 +347,14 @@ Respond ONLY with the rephrased response, nothing else."""
 
             if requested_payment is not None:
                 revenue_payment_requested = True
+                revenue_amount_requested_total += requested_payment.amount_usd
                 revenue_payment_action = requested_payment.action_name
                 revenue_payment_action_source = requested_payment.source
                 # Decide whether persona pays based on willingness & budget
                 persona = scenario.persona
-                if (
+                if revenue_payment_received:
+                    revenue_extra_payment_requests += 1
+                elif (
                     random.random() < persona.payment_willingness
                     and requested_payment.amount_usd <= persona.max_payment
                 ):
@@ -493,6 +498,8 @@ Respond ONLY with the rephrased response, nothing else."""
             payment_action=revenue_payment_action,
             payment_action_source=revenue_payment_action_source,
             payment_checkout_url=revenue_payment_checkout_url,
+            amount_requested_total=revenue_amount_requested_total,
+            extra_payment_requests=revenue_extra_payment_requests,
         )
 
         return ScenarioResult(

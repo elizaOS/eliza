@@ -58,6 +58,15 @@ function isIosLocalIttpRunner(config) {
   );
 }
 
+function isIosLocalBunHostIpcRunner(config) {
+  return (
+    config &&
+    config.mode === "local" &&
+    config.platform === "ios" &&
+    config.localRouteKernel === "bun-host-ipc"
+  );
+}
+
 async function runWake(args) {
   const firedAt = new Date().toISOString();
   const details = eventDetails(args);
@@ -78,6 +87,17 @@ async function runWake(args) {
       ok: true,
       skipped: true,
       reason: "ios_ittp_route_kernel_unavailable_in_background_jscontext",
+    };
+    kvSetJson(LAST_RESULT_KEY, skipped);
+    return skipped;
+  }
+
+  if (!endpoint && isIosLocalBunHostIpcRunner(config)) {
+    const skipped = {
+      ...wake,
+      ok: true,
+      skipped: true,
+      reason: "ios_bun_host_ipc_unavailable_in_background_jscontext",
     };
     kvSetJson(LAST_RESULT_KEY, skipped);
     return skipped;

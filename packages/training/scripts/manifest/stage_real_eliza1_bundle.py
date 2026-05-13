@@ -82,17 +82,19 @@ except ImportError:  # pragma: no cover - direct script execution path
 
 from benchmarks.eliza1_gates import apply_gates
 
-VISION_TIERS: Final[set[str]] = {"4b", "9b", "27b", "27b-256k", "27b-1m"}
-EMBEDDING_TIERS: Final[set[str]] = {"2b", "4b", "9b", "27b", "27b-256k", "27b-1m"}
+VISION_TIERS: Final[set[str]] = {"4b"}
+EMBEDDING_TIERS: Final[set[str]] = {"4b"}
+EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
+EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
-    "0_8b": (1800, 2400),
-    "2b": (3500, 5000),
+    "0_8b": (2500, 3700),
+    "2b": (4000, 5500),
     "4b": (6000, 8000),
-    "9b": (7000, 9500),
+    "9b": (10000, 14000),
     "27b": (24000, 32000),
-    "27b-256k": (48000, 64000),
-    "27b-1m": (96000, 128000),
+    "27b-256k": (36000, 48000),
+    "27b-1m": (64000, 96000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "singing")
 CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
@@ -223,8 +225,8 @@ def _publish_blocking_reasons(*, tier: str, text_substituted: bool, drafter_stam
     reasons: list[str] = []
     if text_substituted:
         reasons.append(
-            f"text backbone for {tier} is the closest publicly-available Qwen3 base (Qwen3.5/3.6 not "
-            "publicly resolvable); the substitution is recorded in the manifest lineage block"
+            f"text backbone for {tier} is a substituted upstream GGUF artifact; "
+            "the exact source repository, file, and revision are recorded in the manifest lineage block"
         )
     if drafter_stamp_only:
         reasons.append(
@@ -502,7 +504,7 @@ def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str
     if has_vision and "vision" not in data:
         data["vision"] = {"base": f"{text_repo}-vision-tower@{text_rev}", "license": "apache-2.0"}
     if has_embedding:
-        data["embedding"] = {"base": "Qwen/Qwen3-Embedding-0.6B", "license": "apache-2.0"}
+        data["embedding"] = {"base": EMBEDDING_REPO, "license": "apache-2.0"}
     _json_write(path, data)
     out: dict[str, LineageEntry] = {}
     for slot, spec in data.items():
@@ -574,7 +576,7 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
         license_files.append("licenses/LICENSE.embedding")
     _json_write(bundle_dir / "evidence" / "release.json", {
         "schemaVersion": 1, "generatedAt": generated_at, "tier": tier,
-        "repoId": f"elizaos/eliza-1-{tier}", "releaseState": "weights-staged",
+        "repoId": "elizaos/eliza-1", "repoPath": f"bundles/{tier}", "releaseState": "weights-staged",
         "publishEligible": False, "defaultEligible": False,
         "final": {
             "weights": True,             # the real release weights are in the bundle
@@ -596,7 +598,7 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
         "licenseFiles": license_files,
         "kernelDispatchReports": {b: f"evals/{b}_dispatch.json" for b in SUPPORTED_BACKENDS_BY_TIER[tier]},
         "platformEvidence": {"linux-x64-cpu": "evidence/platform/linux-x64-cpu.json"},
-        "hf": {"repoId": f"elizaos/eliza-1-{tier}", "status": "blocked-weights-staged"},
+        "hf": {"repoId": "elizaos/eliza-1", "pathPrefix": f"bundles/{tier}", "status": "blocked-weights-staged"},
         "publishBlockingReasons": list(reasons),
     })
 
@@ -646,15 +648,15 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         )
         assets_mod.stage_assets(assets_args)
 
-    # 2. Stage embedding (non-0_8b) — Qwen3-Embedding-0.6B GGUF.
+    # 2. Stage embedding (non-lite) — Qwen3-Embedding-0.6B GGUF.
     has_embedding = tier in EMBEDDING_TIERS
     if has_embedding and not args.skip_assets:
         try:
             from huggingface_hub import HfApi, hf_hub_download
             api = HfApi()
-            rev = str(api.model_info("Qwen/Qwen3-Embedding-0.6B-GGUF").sha)
-            cached = Path(hf_hub_download(repo_id="Qwen/Qwen3-Embedding-0.6B-GGUF",
-                                          filename="Qwen3-Embedding-0.6B-Q8_0.gguf", revision=rev,
+            rev = str(api.model_info(EMBEDDING_REPO).sha)
+            cached = Path(hf_hub_download(repo_id=EMBEDDING_REPO,
+                                          filename=EMBEDDING_FILE, revision=rev,
                                           repo_type="model"))
             dest = bundle_dir / "embedding" / "eliza-1-embedding.gguf"
             dest.parent.mkdir(parents=True, exist_ok=True)

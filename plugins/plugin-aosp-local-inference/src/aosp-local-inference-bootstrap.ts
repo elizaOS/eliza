@@ -352,14 +352,14 @@ type AospRecommendedModel = {
 
 const AOSP_RECOMMENDED_MODELS: Record<"chat" | "embedding", AospRecommendedModel> = {
   chat: {
-    id: "eliza-1-mobile-1_7b",
-    hfRepo: "elizaos/eliza-1-mobile-1_7b",
-    ggufFile: "text/eliza-1-mobile-1_7b-32k.gguf",
+    id: "eliza-1-1_7b",
+    hfRepo: "elizaos/eliza-1",
+    ggufFile: "bundles/2b/text/eliza-1-1_7b-32k.gguf",
   },
   embedding: {
-    id: "eliza-1-lite-0_6b",
-    hfRepo: "elizaos/eliza-1-lite-0_6b",
-    ggufFile: "text/eliza-1-lite-0_6b-32k.gguf",
+    id: "eliza-1-embedding",
+    hfRepo: "elizaos/eliza-1",
+    ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
   },
 };
 
@@ -450,12 +450,9 @@ function fallbackFindBundledModels(modelsDir: string): {
     if (!name.endsWith(".gguf")) continue;
     const abs = path.join(modelsDir, name);
     const lower = name.toLowerCase();
-    // Embedding match runs first so the lite tier is assigned to embeddings
+    // Embedding match runs first so a dedicated embedding GGUF is assigned
     // before the broader Eliza-1 chat rule below.
-    if (
-      !embedding &&
-      (lower.includes("eliza-1-lite") || lower.includes("embedding"))
-    ) {
+    if (!embedding && lower.includes("embedding")) {
       embedding = abs;
     } else if (
       !chat &&

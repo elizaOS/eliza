@@ -1,0 +1,26 @@
+{
+  "id": "rtx-4090",
+  "display_name": "NVIDIA RTX 4090",
+  "vram_gb": 24,
+  "cuda_compute": "8.9",
+  "features": ["fp16", "bf16", "int8", "int4", "fp8"],
+  "recommended_tiers": {
+    "primary": "7b-q8",
+    "secondary": "14b-q4",
+    "heavy": null
+  },
+  "llama_cpp_flags": {
+    "n_gpu_layers": 99,
+    "tensor_split": null,
+    "flash_attn": true,
+    "use_mmap": true,
+    "numa": false
+  },
+  "dflash": {
+    "enabled": true,
+    "drafter_tier": "0_8b",
+    "speculative_window": 6
+  },
+  "ctx_size_tokens": 65536,
+  "notes": "24 GB GDDR6X, Ada Lovelace. FP8 available. Fits 7B Q8 fully; 14B Q4 with KV cache compression. Higher memory bandwidth than 3090."
+}

@@ -42,6 +42,8 @@
     "@elizaos/core": "workspace:*",
     "@tanstack/react-query": "^5.90.16",
     "clsx": "^2.1.1",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.18",
     "vite": "^7.3.1",
@@ -49,11 +51,14 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.18",
+    "@types/node": "^25.0.3",
     "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^11.0.0",
     "@vitejs/plugin-react-swc": "^4.2.2",
-    "dotenv": "^17.2.3",
     "tailwindcss-animate": "^1.0.7",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "uuid": "^14.0.0",
+    "vitest": "^4.1.4"
   },
   "scripts": {
     "dev": "bun run build:watch",
@@ -61,12 +66,10 @@
     "lint": "bunx @biomejs/biome check --write --unsafe ./src",
     "lint:check": "bunx @biomejs/biome check ./src",
     "typecheck": "tsc --noEmit",
-    "test:component": "vitest run",
-    "test:e2e": "vitest run",
-    "test:e2e:manual": "bun run test:install && node scripts/test-e2e-manual.js",
-    "test:cypress": "bun run test:install && cypress run --component",
-    "test": "vitest run",
-    "test:install": "echo 'No extra test dependencies required'",
+    "test:component": "vitest run src/__tests__",
+    "test:e2e": "vitest run src/e2e",
+    "test:e2e:manual": "bun run test:e2e",
+    "test": "bun run test:component && bun run test:e2e",
     "format": "bunx @biomejs/biome format --write ./src",
     "format:check": "bunx @biomejs/biome format ./src",
     "build:watch": "bun run build.ts --watch"

@@ -1,0 +1,162 @@
+name: Build libelizainference (macOS, FFI)
+
+# Builds the in-process bun:ffi shared library `libelizainference.dylib`
+# for darwin-arm64 (Apple Silicon Metal). The FFI streaming runner
+# (`packages/app-core/src/services/local-inference/ffi-streaming-runner.ts`)
+# dlopens this artifact and binds the streaming-LLM symbols declared in
+# `scripts/omnivoice-fuse/ffi-streaming-llm.h`.
+#
+# Mobile (iOS) ships the same C ABI built as a static library and linked
+# into the app bundle — see `build-llama-ffi-ios.yml`. Desktop uses this
+# dynamic library for the FFI path; the spawn / llama-server path stays
+# the historical default on desktop and is unaffected by this workflow.
+#
+# STATUS: SCAFFOLD. The build steps are wired against the same patterns
+# the omnivoice workflow uses, but the artifact path on disk and the
+# fused-build entry point have not yet been verified end-to-end. The
+# top-level `if: false` keeps the workflow out of the default
+# event-trigger fan-out until that verification lands. Run manually via
+# workflow_dispatch once verified.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real_build:
+        description: "Bypass the if:false guard once the build is verified"
+        required: false
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "llama-ffi-*"
+
+concurrency:
+  group: build-llama-ffi-macos-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.13"
+
+jobs:
+  build:
+    name: macos-14 metal
+    # SCAFFOLD GUARD — flip this off via workflow_dispatch input once the
+    # build steps have been smoke-tested end-to-end on a runner.
+    if: ${{ false }}
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install macOS build deps
+        run: |
+          set -euo pipefail
+          if ! command -v cmake >/dev/null 2>&1; then
+            brew install cmake
+          fi
+          if ! command -v ninja >/dev/null 2>&1; then
+            brew install ninja
+          fi
+          cmake --version
+          ninja --version
+
+      - name: Cache llama.cpp cmake build dir
+        uses: actions/cache@v4
+        with:
+          path: packages/inference/llama.cpp/build
+          key: llama-ffi-macos-${{ hashFiles('packages/inference/llama.cpp/CMakeLists.txt') }}
+          restore-keys: |
+            llama-ffi-macos-
+
+      - name: Configure llama.cpp (Metal, shared, no server)
+        run: |
+          set -euo pipefail
+          cmake -S packages/inference/llama.cpp \
+                -B packages/inference/llama.cpp/build \
+                -G Ninja \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=ON \
+                -DLLAMA_BUILD_EXAMPLES=OFF \
+                -DLLAMA_BUILD_TOOLS=OFF \
+                -DLLAMA_BUILD_TESTS=OFF \
+                -DLLAMA_BUILD_SERVER=OFF \
+                -DGGML_METAL=ON \
+                -DGGML_METAL_EMBED_LIBRARY=ON \
+                -DGGML_NATIVE=OFF \
+                -DGGML_OPENMP=OFF
+
+      - name: Build llama.cpp shared library
+        run: |
+          set -euo pipefail
+          # -j4 cap to stay friendly on hosted runners and predictable on
+          # self-hosted runners that share the box with other jobs.
+          cmake --build packages/inference/llama.cpp/build --target llama -j 4
+
+      - name: Verify artifact
+        run: |
+          set -euo pipefail
+          ART_DIR="packages/inference/llama.cpp/build"
+          if [ -f "$ART_DIR/libllama.dylib" ]; then
+            ART="$ART_DIR/libllama.dylib"
+          elif [ -f "$ART_DIR/bin/libllama.dylib" ]; then
+            ART="$ART_DIR/bin/libllama.dylib"
+          else
+            echo "no libllama.dylib found under $ART_DIR"
+            ls -la "$ART_DIR"
+            exit 1
+          fi
+          ls -lh "$ART"
+          file "$ART"
+
+      - name: Stage artifact (darwin-arm64-metal)
+        id: stage
+        run: |
+          set -euo pipefail
+          STAGE_DIR="artifacts/libelizainference/darwin-arm64-metal"
+          mkdir -p "$STAGE_DIR"
+          # The artifact lands at one of two paths depending on cmake
+          # generator output dir conventions. Take whichever is present.
+          for cand in \
+            packages/inference/llama.cpp/build/libllama.dylib \
+            packages/inference/llama.cpp/build/bin/libllama.dylib; do
+            if [ -f "$cand" ]; then
+              cp "$cand" "$STAGE_DIR/libelizainference.dylib"
+              break
+            fi
+          done
+          {
+            echo "target=darwin-arm64-metal"
+            echo "backend=metal"
+            echo "lib_name=libelizainference.dylib"
+            echo "ref=${{ github.ref }}"
+            echo "sha=${{ github.sha }}"
+            echo "runner=macos-14"
+            echo "llama_sha=$(git -C packages/inference/llama.cpp rev-parse HEAD || echo n/a)"
+          } > "$STAGE_DIR/BUILD_INFO.txt"
+          echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload libelizainference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libelizainference-darwin-arm64-metal
+          path: ${{ steps.stage.outputs.stage_dir }}/*
+          if-no-files-found: error
+          retention-days: 30

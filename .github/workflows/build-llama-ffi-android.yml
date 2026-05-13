@@ -1,0 +1,194 @@
+name: Build libelizainference (Android, FFI)
+
+# Builds the Android NDK shared library `libelizainference.so` for the
+# four supported ABIs and ships them as a per-ABI JNI bundle. The FFI
+# streaming runner (`ffi-streaming-runner.ts`) dlopens this artifact
+# from the APK's `lib/<abi>/` directory.
+#
+# Why FFI on Android: same reason as iOS — `child_process.spawn` is
+# unavailable inside the app sandbox, the Play Store policy forbids
+# downloading native binaries at runtime, and a 10–30ms HTTP round-trip
+# per token is unacceptable on a battery-constrained device. See
+# `runtime-target.ts` for the decision rules.
+#
+# STATUS: SCAFFOLD. The Android NDK + cmake toolchain is wired but the
+# resulting `.so` install path under `lib/<abi>` has not been validated
+# against Electrobun's APK packaging flow. Top-level `if: false` keeps
+# the workflow out of the default fan-out.
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_real_build:
+        description: "Bypass the if:false guard once the build is verified"
+        required: false
+        type: boolean
+        default: false
+      abi_filter:
+        description: "Comma-separated subset of ABIs to build (default: all)"
+        required: false
+        type: string
+        default: "arm64-v8a,armeabi-v7a,x86_64"
+  push:
+    tags:
+      - "llama-ffi-android-*"
+
+concurrency:
+  group: build-llama-ffi-android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  BUN_VERSION: "1.3.13"
+  ANDROID_API: "26"
+  # Pinned to the NDK r26d-equivalent the rest of the app builds against;
+  # bumping this requires syncing with `packages/app/electrobun/android/`.
+  ANDROID_NDK_VERSION: "26.3.11579264"
+
+jobs:
+  prepare-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - uses: actions/github-script@v7
+        id: set
+        with:
+          script: |
+            const inputs = context.payload.inputs ?? {};
+            const filterRaw = (inputs.abi_filter ?? "arm64-v8a,armeabi-v7a,x86_64").trim();
+            const filter = new Set(filterRaw.split(",").map((s) => s.trim()).filter(Boolean));
+
+            const all = [
+              { abi: "arm64-v8a",   target: "android-arm64-v8a" },
+              { abi: "armeabi-v7a", target: "android-armeabi-v7a" },
+              { abi: "x86_64",      target: "android-x86_64" },
+            ];
+            const include = all.filter((m) => filter.has(m.abi));
+            core.setOutput("matrix", JSON.stringify({ include }));
+
+  build:
+    name: ${{ matrix.abi }}
+    needs: prepare-matrix
+    if: ${{ false }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare-matrix.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install build deps
+        run: |
+          set -euo pipefail
+          sudo apt-get update -o Acquire::Retries=5 -o Acquire::http::Timeout=30
+          sudo apt-get install -y cmake ninja-build build-essential git python3
+          cmake --version
+
+      - name: Install Android NDK
+        uses: nttld/setup-ndk@v1
+        id: setup-ndk
+        with:
+          ndk-version: r26d
+          add-to-path: false
+
+      - name: Cache llama.cpp android build dir
+        uses: actions/cache@v4
+        with:
+          path: packages/inference/llama.cpp/build-android-${{ matrix.abi }}
+          key: llama-ffi-android-${{ matrix.abi }}-${{ hashFiles('packages/inference/llama.cpp/CMakeLists.txt') }}
+          restore-keys: |
+            llama-ffi-android-${{ matrix.abi }}-
+
+      - name: Configure llama.cpp (Android NDK, ${{ matrix.abi }})
+        env:
+          ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
+        run: |
+          set -euo pipefail
+          cmake -S packages/inference/llama.cpp \
+                -B packages/inference/llama.cpp/build-android-${{ matrix.abi }} \
+                -G Ninja \
+                -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+                -DANDROID_ABI=${{ matrix.abi }} \
+                -DANDROID_PLATFORM=android-${{ env.ANDROID_API }} \
+                -DCMAKE_BUILD_TYPE=Release \
+                -DBUILD_SHARED_LIBS=ON \
+                -DLLAMA_BUILD_EXAMPLES=OFF \
+                -DLLAMA_BUILD_TOOLS=OFF \
+                -DLLAMA_BUILD_TESTS=OFF \
+                -DLLAMA_BUILD_SERVER=OFF \
+                -DGGML_NATIVE=OFF \
+                -DGGML_OPENMP=OFF
+
+      - name: Build llama.cpp shared library
+        run: |
+          set -euo pipefail
+          cmake --build packages/inference/llama.cpp/build-android-${{ matrix.abi }} --target llama -j 4
+
+      - name: Verify artifact
+        run: |
+          set -euo pipefail
+          ART_DIR="packages/inference/llama.cpp/build-android-${{ matrix.abi }}"
+          if [ -f "$ART_DIR/libllama.so" ]; then
+            ART="$ART_DIR/libllama.so"
+          elif [ -f "$ART_DIR/bin/libllama.so" ]; then
+            ART="$ART_DIR/bin/libllama.so"
+          else
+            echo "no libllama.so found under $ART_DIR"
+            find "$ART_DIR" -maxdepth 2 -name "*.so" || true
+            exit 1
+          fi
+          ls -lh "$ART"
+          file "$ART"
+
+      - name: Stage artifact (${{ matrix.target }})
+        id: stage
+        run: |
+          set -euo pipefail
+          STAGE_DIR="artifacts/libelizainference/${{ matrix.target }}"
+          mkdir -p "$STAGE_DIR/lib/${{ matrix.abi }}"
+          for cand in \
+            packages/inference/llama.cpp/build-android-${{ matrix.abi }}/libllama.so \
+            packages/inference/llama.cpp/build-android-${{ matrix.abi }}/bin/libllama.so; do
+            if [ -f "$cand" ]; then
+              cp "$cand" "$STAGE_DIR/lib/${{ matrix.abi }}/libelizainference.so"
+              break
+            fi
+          done
+          {
+            echo "target=${{ matrix.target }}"
+            echo "abi=${{ matrix.abi }}"
+            echo "android_api=${{ env.ANDROID_API }}"
+            echo "lib_name=libelizainference.so"
+            echo "ref=${{ github.ref }}"
+            echo "sha=${{ github.sha }}"
+            echo "runner=ubuntu-22.04"
+            echo "llama_sha=$(git -C packages/inference/llama.cpp rev-parse HEAD || echo n/a)"
+          } > "$STAGE_DIR/BUILD_INFO.txt"
+          echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Upload libelizainference artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libelizainference-${{ matrix.target }}
+          path: ${{ steps.stage.outputs.stage_dir }}/**
+          if-no-files-found: error
+          retention-days: 30

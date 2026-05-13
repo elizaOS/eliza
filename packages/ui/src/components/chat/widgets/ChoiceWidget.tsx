@@ -9,9 +9,9 @@
  * agent only ever sees one decision per prompt.
  */
 
-import { Button } from "@elizaos/ui";
 import { Check } from "lucide-react";
 import { useCallback, useState } from "react";
+import { Button } from "../../ui/button";
 
 export type ChoiceOption = {
   value: string;

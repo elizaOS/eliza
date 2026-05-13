@@ -18,24 +18,20 @@ import {
 } from "./ram-budget";
 import type {
   CatalogModel,
+  CatalogQuantizationVariant,
   HardwareFitLevel,
   HardwareProbe,
   InstalledModel,
   TextGenerationSlot,
 } from "./types";
 
-// Local tier-id constants derived once from the manifest-driven catalog
-// type so the ladder definitions can't drift from the canonical list.
-// Adding a tier requires extending the manifest module; this file picks
-// it up automatically.
 const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
-const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
-const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
 const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
+const TIER_27B_1M: Eliza1TierId = "eliza-1-27b-1m";
 
 export type RecommendationPlatformClass =
   | "mobile"
@@ -67,37 +63,37 @@ const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
-  // Per the 2026-05-12 operator directive, the Qwen3.5 line is the
-  // default — eliza-1-0_8b (Qwen3.5-0.8B) is the small default;
-  // eliza-1-2b (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers
-  // (eliza-1-0_6b / eliza-1-1_7b) stay in the ladders as DEPRECATED
-  // fallbacks so existing user bundles still resolve — but they sit
-  // BELOW the Qwen3.5 tiers in the preference order (a host that
-  // could run 0_8b or 2b should never get pushed onto the deprecated
-  // Qwen3 tiers).
   mobile: {
-    TEXT_SMALL: [TIER_0_8B, TIER_0_6B, TIER_2B, TIER_1_7B],
-    TEXT_LARGE: [TIER_2B, TIER_0_8B, TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_0_8B],
+    TEXT_LARGE: [TIER_4B, TIER_2B, TIER_0_8B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [
+      TIER_27B_1M,
+      TIER_27B_256K,
+      TIER_27B,
+      TIER_9B,
+      TIER_4B,
+      TIER_2B,
+      TIER_0_8B,
+    ],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
 };
 
@@ -148,6 +144,21 @@ export function catalogDownloadSizeBytes(
   catalog: CatalogModel[] = MODEL_CATALOG,
 ): number {
   return Math.round(catalogDownloadSizeGb(model, catalog) * BYTES_PER_GB);
+}
+
+export function selectBestQuantizationVariant(
+  model: CatalogModel,
+): CatalogQuantizationVariant | null {
+  const quantization = model.quantization;
+  if (!quantization) return null;
+  return (
+    quantization.variants.find(
+      (variant) => variant.id === quantization.defaultVariantId,
+    ) ??
+    quantization.variants.find((variant) => variant.status === "published") ??
+    quantization.variants[0] ??
+    null
+  );
 }
 
 const MB_PER_GB = 1024;

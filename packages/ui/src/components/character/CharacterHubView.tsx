@@ -1,12 +1,5 @@
 import type { MessageExampleGroup } from "@elizaos/core";
 import {
-  Button,
-  PageLayout,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
-import {
   BookOpen,
   Brain,
   LayoutDashboard,
@@ -33,6 +26,7 @@ import type {
   RelationshipsActivityItem,
 } from "../../api/client-types";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import {
   getWindowNavigationPath,
   shouldUseHashNavigation,
@@ -41,10 +35,14 @@ import { useApp } from "../../state/useApp";
 // Direct sub-path import to avoid the widgets/index.ts ↔ WidgetHost.tsx
 // chunk-level circular dependency.
 import { WidgetHost } from "../../widgets/WidgetHost";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { DocumentsView } from "../pages/DocumentsView";
 import { RelationshipsWorkspaceView } from "../pages/relationships/RelationshipsWorkspaceView";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
 import {
   CharacterExamplesPanel,
   CharacterIdentityPanel,

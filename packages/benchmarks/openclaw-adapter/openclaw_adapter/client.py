@@ -219,6 +219,60 @@ def _is_gpt_oss_model(model: str) -> bool:
     return model.rsplit("/", 1)[-1].startswith("gpt-oss")
 
 
+_TELEMETRY_TURN_COUNTER = 0
+_TELEMETRY_FALLBACK_PATH: str | None = None
+
+
+def _resolve_telemetry_path() -> str | None:
+    """Resolve the per-turn telemetry JSONL path.
+
+    Precedence: ``BENCHMARK_TELEMETRY_JSONL`` -> ``BENCHMARK_RUN_DIR/telemetry.jsonl``
+    -> a process-local ``tempfile.mkdtemp`` fallback (logged once). Always returns a
+    path so per-turn usage records are never silently dropped.
+    """
+    explicit = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    if explicit:
+        return explicit
+    run_dir = os.environ.get("BENCHMARK_RUN_DIR", "").strip()
+    if run_dir:
+        return str(Path(run_dir) / "telemetry.jsonl")
+    global _TELEMETRY_FALLBACK_PATH
+    if _TELEMETRY_FALLBACK_PATH is None:
+        import tempfile
+
+        _TELEMETRY_FALLBACK_PATH = str(
+            Path(tempfile.mkdtemp(prefix="openclaw-adapter-telemetry-")) / "telemetry.jsonl"
+        )
+        logger.info(
+            "BENCHMARK_RUN_DIR not set; writing per-turn telemetry to %s",
+            _TELEMETRY_FALLBACK_PATH,
+        )
+    return _TELEMETRY_FALLBACK_PATH
+
+
+def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
+    def pick(*keys: str) -> int | None:
+        for key in keys:
+            value = usage.get(key)
+            if isinstance(value, (int, float)) and value:
+                return int(value)
+        return None
+
+    return {
+        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
+        "completion_tokens": pick(
+            "completion_tokens", "completionTokens", "output_tokens"
+        ),
+        "total_tokens": pick("total_tokens", "totalTokens"),
+        "cache_read_input_tokens": pick(
+            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
+        ),
+        "cache_creation_input_tokens": pick(
+            "cache_creation_input_tokens", "cacheCreationInputTokens"
+        ),
+    }
+
+
 def _write_telemetry(
     *,
     harness: str,
@@ -232,10 +286,10 @@ def _write_telemetry(
     response: MessageResponse | None = None,
     error: str | None = None,
 ) -> None:
-    telemetry_path = os.environ.get("BENCHMARK_TELEMETRY_JSONL", "").strip()
+    telemetry_path = _resolve_telemetry_path()
     if not telemetry_path:
         return
-    usage: object = {}
+    usage: dict[str, object] = {}
     if response is not None:
         usage_raw = response.params.get("usage")
         if isinstance(usage_raw, Mapping):
@@ -245,21 +299,37 @@ def _write_telemetry(
             if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
                 usage = dict(meta_raw["usage"])  # type: ignore[index]
     prompt = _prompt_text(text, context)
+    global _TELEMETRY_TURN_COUNTER
+    turn_index = _TELEMETRY_TURN_COUNTER
+    _TELEMETRY_TURN_COUNTER += 1
+    tokens = _extract_usage_tokens(usage) if usage else {
+        "prompt_tokens": None,
+        "completion_tokens": None,
+        "total_tokens": None,
+        "cache_read_input_tokens": None,
+        "cache_creation_input_tokens": None,
+    }
     record: dict[str, Any] = {
         "harness": harness,
         "provider": provider,
         "model": model,
         "benchmark": benchmark,
         "task_id": task_id,
+        "turn_index": turn_index,
         "prompt_text": prompt,
         "prompt_chars": len(prompt),
         "latency_ms": latency_ms,
         "usage": _jsonable(usage),
+        "prompt_tokens": tokens["prompt_tokens"],
+        "completion_tokens": tokens["completion_tokens"],
+        "total_tokens": tokens["total_tokens"],
+        "cache_read_input_tokens": tokens["cache_read_input_tokens"],
+        "cache_creation_input_tokens": tokens["cache_creation_input_tokens"],
         "actions": list(response.actions) if response is not None else [],
+        "params": _jsonable(response.params) if response is not None else {},
         "response_text": response.text if response is not None else "",
+        "error_if_any": error,
     }
-    if error:
-        record["error"] = error
     try:
         path = Path(telemetry_path)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -294,6 +364,7 @@ class OpenClawClient:
         reasoning_effort: str | None = None,
         max_tokens: int | None = None,
         direct_openai_compatible: bool = False,
+        allow_text_tool_calls: bool = False,
     ) -> None:
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
@@ -321,6 +392,9 @@ class OpenClawClient:
             else _env_optional_int("BENCHMARK_MAX_TOKENS", "MAX_TOKENS")
         )
         self.direct_openai_compatible = bool(direct_openai_compatible)
+        self.allow_text_tool_calls = bool(allow_text_tool_calls) or (
+            os.environ.get("OPENCLAW_ALLOW_TEXT_TOOL_CALLS", "").strip() == "1"
+        )
         self._task_id: str | None = None
         self._benchmark: str | None = None
 
@@ -475,7 +549,18 @@ class OpenClawClient:
             )
 
         payload = _extract_json_blob(result.stdout or "", result.stderr or "")
-        response = _response_from_payload(payload)
+        response = _response_from_payload(
+            payload,
+            allow_text_tool_calls=self.allow_text_tool_calls,
+        )
+        _annotate_response(
+            response,
+            transport="openclaw_cli",
+            path_label="openclaw-cli-one-shot",
+            preserves_full_messages=False,
+            passes_benchmark_tools=False,
+            counts_text_embedded_tool_calls=self.allow_text_tool_calls,
+        )
         _write_telemetry(
             harness="openclaw",
             provider=self.provider,
@@ -507,7 +592,22 @@ class OpenClawClient:
                 api_key=self.api_key or _default_api_key(self.provider, self.api_key_env),
                 timeout_s=self.timeout_s,
             )
-            response = _response_from_openai_completion(payload)
+            response = _response_from_openai_completion(
+                payload,
+                allow_text_tool_calls=self.allow_text_tool_calls,
+            )
+            _annotate_response(
+                response,
+                transport="direct_openai_compatible",
+                path_label="openclaw-direct-openai-compatible-provider",
+                preserves_full_messages=True,
+                passes_benchmark_tools=bool(
+                    context
+                    and isinstance(context.get("tools"), list)
+                    and context.get("tools")
+                ),
+                counts_text_embedded_tool_calls=self.allow_text_tool_calls,
+            )
         except Exception as exc:
             _write_telemetry(
                 harness="openclaw",
@@ -547,7 +647,7 @@ class OpenClawClient:
         model_id = self.model
         if self.provider and "/" not in model_id:
             model_id = f"{self.provider}/{model_id}"
-        message_text = _prompt_text(text, context)
+        message_text = _cli_prompt_text(text, context)
         argv: list[str] = [
             str(self.binary_path),
             "agent",
@@ -610,29 +710,30 @@ class OpenClawClient:
         context: Mapping[str, object] | None,
     ) -> dict[str, object]:
         """Build the direct OpenAI-compatible request body."""
+        ctx = context or {}
         body: dict[str, object] = {
             "model": self.model,
-            "messages": [{"role": "user", "content": _prompt_text(text, context)}],
+            "messages": _messages_from_context(text, ctx),
         }
-        if context:
-            tools = context.get("tools")
+        if ctx:
+            tools = ctx.get("tools")
             if isinstance(tools, list) and tools:
                 body["tools"] = tools
-                tool_choice = context.get("tool_choice")
+                tool_choice = ctx.get("tool_choice")
                 if isinstance(tool_choice, str) and tool_choice in _ALLOWED_TOOL_CHOICES:
                     body["tool_choice"] = tool_choice
             temperature = _coerce_optional_float(
-                context.get("temperature"), fallback=self.temperature
+                ctx.get("temperature"), fallback=self.temperature
             )
             if temperature is not None:
                 body["temperature"] = temperature
             max_tokens = _coerce_optional_int(
-                context.get("max_tokens"), fallback=self.max_tokens
+                ctx.get("max_tokens"), fallback=self.max_tokens
             )
             if max_tokens is not None and max_tokens > 0:
                 body["max_completion_tokens"] = max_tokens
             reasoning_effort = _coerce_optional_str(
-                context.get("reasoning_effort"), fallback=self.reasoning_effort
+                ctx.get("reasoning_effort"), fallback=self.reasoning_effort
             )
             if reasoning_effort and _is_gpt_oss_model(self.model):
                 body["reasoning_effort"] = reasoning_effort
@@ -807,7 +908,11 @@ def _extract_json_blob(stdout: str, stderr: str) -> dict[str, object]:
     return parsed
 
 
-def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
+def _response_from_payload(
+    payload: Mapping[str, object],
+    *,
+    allow_text_tool_calls: bool = False,
+) -> MessageResponse:
     """Map a parsed OpenClaw payload to :class:`MessageResponse`.
 
     OpenClaw's JSON shape is not fully stable across releases — we look up the
@@ -825,7 +930,7 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
         if isinstance(meta, Mapping):
             text = _first_str(meta, ("finalAssistantVisibleText", "finalAssistantRawText"))
     raw_tool_calls = _collect_tool_calls(payload)
-    if text:
+    if text and allow_text_tool_calls:
         visible_text, embedded_tool_calls = parse_openclaw_tool_calls(text)
         if embedded_tool_calls:
             text = visible_text
@@ -862,15 +967,28 @@ def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
     if raw_tool_calls:
         params.setdefault("tool_calls", raw_tool_calls)
 
-    return MessageResponse(
+    response = MessageResponse(
         text=text or "",
         thought=thought or None,
         actions=actions,
         params=params,
     )
+    _annotate_response(
+        response,
+        transport="parsed_payload",
+        path_label="openclaw-payload",
+        preserves_full_messages=False,
+        passes_benchmark_tools=False,
+        counts_text_embedded_tool_calls=allow_text_tool_calls,
+    )
+    return response
 
 
-def _response_from_openai_completion(payload: Mapping[str, object]) -> MessageResponse:
+def _response_from_openai_completion(
+    payload: Mapping[str, object],
+    *,
+    allow_text_tool_calls: bool = False,
+) -> MessageResponse:
     """Map an OpenAI-compatible chat completion to :class:`MessageResponse`."""
     choices = payload.get("choices")
     choice: object = (
@@ -887,7 +1005,40 @@ def _response_from_openai_completion(payload: Mapping[str, object]) -> MessageRe
     usage = payload.get("usage")
     if isinstance(usage, Mapping):
         normalized["usage"] = dict(usage)
-    return _response_from_payload(normalized)
+    return _response_from_payload(
+        normalized,
+        allow_text_tool_calls=allow_text_tool_calls,
+    )
+
+
+def _annotate_response(
+    response: MessageResponse,
+    *,
+    transport: str,
+    path_label: str,
+    preserves_full_messages: bool,
+    passes_benchmark_tools: bool,
+    counts_text_embedded_tool_calls: bool,
+) -> None:
+    """Attach adapter metadata used by harness conformance tests.
+
+    Native cross-agent claims must be based on OpenAI-compatible
+    ``messages`` plus ``tools``/``tool_calls``. The CLI path is still useful
+    for OpenClaw smoke coverage, but it flattens benchmark payloads into
+    ``--message`` and is therefore marked partial.
+    """
+    meta = response.params.get("_meta")
+    if not isinstance(meta, dict):
+        meta = {}
+        response.params["_meta"] = meta
+    meta["openclaw_adapter"] = {
+        "transport": transport,
+        "path_label": path_label,
+        "native_openai_tool_calls": transport == "direct_openai_compatible",
+        "preserves_full_messages": preserves_full_messages,
+        "passes_benchmark_tools": passes_benchmark_tools,
+        "counts_text_embedded_tool_calls": counts_text_embedded_tool_calls,
+    }
 
 
 def _first_str(payload: Mapping[str, object], keys: Sequence[str]) -> str:
@@ -1145,17 +1296,16 @@ def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
     }
 
 
-def _messages_from_context(text: str, ctx: Mapping[str, object]) -> list[dict[str, str]]:
+def _messages_from_context(text: str, ctx: Mapping[str, object]) -> list[dict[str, object]]:
     raw_messages = ctx.get("messages")
-    messages: list[dict[str, str]] = []
+    messages: list[dict[str, object]] = []
     if isinstance(raw_messages, Sequence) and not isinstance(raw_messages, (str, bytes)):
         for item in raw_messages:
             if not isinstance(item, Mapping):
                 continue
-            role = item.get("role")
-            content = item.get("content")
-            if role in {"system", "user", "assistant", "tool"}:
-                messages.append({"role": str(role), "content": "" if content is None else str(content)})
+            message = _openai_message_from_raw(item)
+            if message is not None:
+                messages.append(message)
     if not messages:
         sys_prompt = ctx.get("system_prompt")
         if isinstance(sys_prompt, str) and sys_prompt.strip():
@@ -1164,12 +1314,79 @@ def _messages_from_context(text: str, ctx: Mapping[str, object]) -> list[dict[st
     return messages
 
 
+def _openai_message_from_raw(raw: Mapping[str, object]) -> dict[str, object] | None:
+    role = raw.get("role")
+    if role not in {"system", "user", "assistant", "tool"}:
+        return None
+    message: dict[str, object] = {"role": str(role)}
+    raw_tool_calls = raw.get("tool_calls") or raw.get("toolCalls")
+    tool_calls = _openai_tool_calls_from_raw(raw_tool_calls)
+    content = raw.get("content")
+    if content is None and role == "assistant" and tool_calls:
+        message["content"] = None
+    else:
+        message["content"] = _jsonable(content) if content is not None else ""
+    name = raw.get("name")
+    if isinstance(name, str) and name:
+        message["name"] = name
+    tool_call_id = raw.get("tool_call_id") or raw.get("toolCallId")
+    if isinstance(tool_call_id, str) and tool_call_id:
+        message["tool_call_id"] = tool_call_id
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+    return message
+
+
+def _openai_tool_calls_from_raw(raw: object) -> list[dict[str, object]]:
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)):
+        return []
+    calls: list[dict[str, object]] = []
+    for index, item in enumerate(raw):
+        normalized = _normalize_tool_call(item, fallback_index=index)
+        if normalized is None:
+            continue
+        args = normalized.get("arguments", {})
+        if not isinstance(args, str):
+            args = json.dumps(args if args is not None else {}, ensure_ascii=True)
+        calls.append(
+            {
+                "id": str(normalized.get("id") or f"call_{index}"),
+                "type": "function",
+                "function": {
+                    "name": str(normalized["name"]),
+                    "arguments": args,
+                },
+            }
+        )
+    return calls
+
+
+def _cli_prompt_text(text: str, context: Mapping[str, object] | None) -> str:
+    """Flatten benchmark chat/tool context for the OpenClaw CLI message flag."""
+    if not context:
+        return text
+    parts: list[str] = []
+    tools = context.get("tools")
+    if isinstance(tools, list) and tools:
+        parts.append(_openclaw_system_prompt(tools))
+    context_prompt = context_to_prompt(context)
+    if context_prompt:
+        parts.append(f"Benchmark context:\n{context_prompt}")
+    messages = _messages_from_context(text, context)
+    for message in messages:
+        role = message.get("role", "user")
+        content = message.get("content", "")
+        parts.append(f"{role}: {content}")
+    return "\n\n".join(part for part in parts if part.strip()) or text
+
+
 def _openclaw_system_prompt(tools: list[object] | None) -> str:
     prompt = (
         "You are operating through the OpenClaw benchmark harness. "
-        "Use concise reasoning. When a tool is required, emit exactly one "
-        "<tool_call>{\"tool\":\"NAME\",\"args\":{...}}</tool_call> block. "
-        "Otherwise answer normally."
+        "Use concise reasoning. This CLI transport can only pass a flattened "
+        "message, so benchmark-provided tools below are context only and are "
+        "not counted as native OpenAI tool_calls. Answer normally unless the "
+        "native direct transport is explicitly enabled."
     )
     if tools:
         prompt += "\nAvailable tools:\n" + json.dumps(tools, ensure_ascii=True)

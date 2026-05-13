@@ -131,10 +131,10 @@ offline eval gates before publishing and before assigning a new GGUF.
 
 ## D. Adding the catalog entry (the shipping path)
 
-When the model is published to `elizaos/eliza-1-<tier>` on HuggingFace
-and you want it in the curated catalog (so the downloader and the
-recommendation engine surface it), emit the `MODEL_CATALOG` row from the
-manifest:
+When the model bundle is published to `elizaos/eliza-1` under
+`bundles/<tier>/` on Hugging Face and you want it in the curated catalog
+(so the downloader and the recommendation engine surface it), emit the
+`MODEL_CATALOG` row from the manifest:
 
 ```bash
 # Print the entry + where it goes (recommended):

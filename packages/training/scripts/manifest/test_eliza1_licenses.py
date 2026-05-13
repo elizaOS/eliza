@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import sys
 from pathlib import Path
 
@@ -68,6 +69,18 @@ def test_eliza_1_umbrella_is_cc_by_nc_sa() -> None:
     assert "Attribution-NonCommercial-ShareAlike 4.0 International" in rendered
 
 
+def test_qwen3_asr_and_embedding_remain_upstream_exceptions() -> None:
+    asr = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.asr")
+    embedding = next(a for a in ATTESTATIONS if a.bundle_file == "LICENSE.embedding")
+
+    assert "Qwen3-ASR-0.6B-GGUF" in asr.upstream_repo
+    assert "Qwen3-ASR-1.7B-GGUF" in asr.upstream_repo
+    assert "Qwen3 upstream exception" in asr.render()
+    assert "Qwen3.5-ASR" not in asr.render()
+    assert "Qwen3-Embedding-0.6B-GGUF" in embedding.upstream_repo
+    assert "Qwen3.5-Embedding" not in embedding.render()
+
+
 # --- evidence finalizer -----------------------------------------------------
 
 from scripts.manifest.finalize_eliza1_evidence import finalize  # noqa: E402
@@ -75,8 +88,60 @@ from scripts.manifest.finalize_eliza1_evidence import finalize  # noqa: E402
 
 def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     bundle = root / f"eliza-1-{tier}.bundle"
-    (bundle / "text").mkdir(parents=True)
-    (bundle / "text" / f"eliza-1-{tier}-32k.gguf").write_bytes(b"\x00gguf\x00")
+    payloads = {
+        f"text/eliza-1-{tier}-32k.gguf": b"\x00gguf\x00",
+        "tts/omnivoice-base-Q4_K_M.gguf": b"voice",
+        f"dflash/drafter-{tier}.gguf": b"drafter",
+        "asr/eliza-1-asr.gguf": b"asr",
+        "vad/silero-vad-v5.1.2.ggml.bin": b"vad",
+        "cache/voice-preset-default.bin": b"cache",
+    }
+    for rel, payload in payloads.items():
+        path = bundle / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(payload)
+    sha = {rel: hashlib.sha256(payload).hexdigest() for rel, payload in payloads.items()}
+    (bundle / "eliza-1.manifest.json").write_text(json.dumps({
+        "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
+        "id": f"eliza-1-{tier}",
+        "tier": tier,
+        "version": "0.0.0-local.test",
+        "publishedAt": "2026-05-12T00:00:00Z",
+        "lineage": {
+            "text": {"base": "local-text", "license": "apache-2.0"},
+            "voice": {"base": "local-voice", "license": "apache-2.0"},
+            "drafter": {"base": "local-drafter", "license": "apache-2.0"},
+            "asr": {"base": "local-asr", "license": "apache-2.0"},
+            "vad": {"base": "local-vad", "license": "mit"},
+        },
+        "files": {
+            "text": [{"path": f"text/eliza-1-{tier}-32k.gguf", "sha256": sha[f"text/eliza-1-{tier}-32k.gguf"], "ctx": 32768}],
+            "voice": [{"path": "tts/omnivoice-base-Q4_K_M.gguf", "sha256": sha["tts/omnivoice-base-Q4_K_M.gguf"]}],
+            "asr": [{"path": "asr/eliza-1-asr.gguf", "sha256": sha["asr/eliza-1-asr.gguf"]}],
+            "vision": [],
+            "dflash": [{"path": f"dflash/drafter-{tier}.gguf", "sha256": sha[f"dflash/drafter-{tier}.gguf"]}],
+            "cache": [{"path": "cache/voice-preset-default.bin", "sha256": sha["cache/voice-preset-default.bin"]}],
+            "vad": [{"path": "vad/silero-vad-v5.1.2.ggml.bin", "sha256": sha["vad/silero-vad-v5.1.2.ggml.bin"]}],
+        },
+        "kernels": {
+            "required": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+            "optional": [],
+            "verifiedBackends": {
+                b: {"status": "skipped", "atCommit": "test", "report": "test"}
+                for b in ("metal", "vulkan", "cuda", "rocm", "cpu")
+            },
+        },
+        "evals": {
+            "textEval": {"score": 0.0, "passed": False},
+            "voiceRtf": {"rtf": 1.0, "passed": False},
+            "asrWer": {"wer": 1.0, "passed": False},
+            "vadLatencyMs": {"median": 0.0, "passed": False},
+            "e2eLoopOk": False,
+            "thirtyTurnOk": False,
+        },
+        "ramBudgetMb": {"min": 1, "recommended": 2},
+        "defaultEligible": False,
+    }), encoding="utf-8")
     (bundle / "evals").mkdir(parents=True)
     # Eval aggregate with a failing gate (mirrors the real staged state).
     (bundle / "evals" / "aggregate.json").write_text(json.dumps({
@@ -93,7 +158,8 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     }))
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "evidence" / "release.json").write_text(json.dumps({
-        "schemaVersion": 1, "tier": tier, "repoId": f"elizaos/eliza-1-{tier}",
+        "schemaVersion": 1, "tier": tier, "repoId": "elizaos/eliza-1",
+        "repoPath": f"bundles/{tier}",
         "releaseState": "weights-staged",
         "final": {"weights": True, "hashes": False, "evals": False, "licenses": False,
                   "kernelDispatchReports": False, "platformEvidence": False, "sizeFirstRepoIds": False},

@@ -20,7 +20,7 @@ import {
 const SESSION_DIR = ".eliza-code";
 const SESSION_FILE = "session.json";
 
-export interface SessionData {
+interface SessionData {
   version: 1;
   savedAt: number;
   currentRoomId: string;
@@ -40,7 +40,7 @@ export interface SessionData {
   showFinishedTasks?: boolean;
 }
 
-export interface SerializedRoom {
+interface SerializedRoom {
   id: string;
   name: string;
   messages: SerializedMessage[];
@@ -49,7 +49,7 @@ export interface SerializedRoom {
   elizaRoomId: string;
 }
 
-export interface SerializedMessage {
+interface SerializedMessage {
   id: string;
   role: "user" | "assistant" | "system";
   content: string;
@@ -321,25 +321,3 @@ export async function loadSession(): Promise<SessionState | null> {
 /**
  * Clear session file
  */
-export async function clearSession(): Promise<void> {
-  try {
-    const sessionPath = getSessionPath();
-    await fs.unlink(sessionPath);
-  } catch {
-    // Ignore if doesn't exist
-  }
-}
-
-// ============================================================================
-// Exports for Testing
-// ============================================================================
-
-export {
-  deserializeRoom,
-  getSessionPath,
-  isValidSessionData,
-  sanitizeRole,
-  serializeRoom,
-  toDate,
-  toEpoch,
-};

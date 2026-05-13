@@ -333,6 +333,22 @@ export function createMobilePolicy(): PlatformPolicy {
 }
 
 /**
+ * Stock iOS builds are cloud-first at the picker, but the local/full-Bun path
+ * starts an embedded backend in-process. Give restored local sessions the same
+ * cold-start budget as desktop/ElizaOS so first-run PGlite setup is not treated
+ * as a backend failure.
+ */
+export function createIosPolicy(): PlatformPolicy {
+  return {
+    supportsLocalRuntime: true,
+    backendTimeoutMs: 180_000,
+    agentReadyTimeoutMs: 300_000,
+    probeForExistingInstall: false,
+    defaultTarget: "cloud-managed",
+  };
+}
+
+/**
  * Stock Android APKs can also host the bundled on-device agent when the user
  * picks Local. Keep the picker behaviour cloud-first for fresh installs, but
  * give restored local-agent sessions the same cold-start budget as ElizaOS.

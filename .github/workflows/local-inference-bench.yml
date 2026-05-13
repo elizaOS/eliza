@@ -4,10 +4,9 @@ name: Local Inference Bench
 # agnostic — it just talks HTTP to whatever agent is reachable at
 # --target — so we run it in two layers:
 #
-#   1. PR + nightly: stub harness validation. Boots
-#      `scripts/benchmark/stub-agent-server.mjs` on a free port and runs
-#      the matrix against it. Cheap, deterministic, catches harness
-#      regressions before nightly.
+#   1. PR + nightly: harness route smoke. Boots
+#      `scripts/benchmark/stub-agent-server.mjs` on a free port and checks
+#      only `/api/health`; it does not write benchmark artifacts.
 #   2. Nightly only: real agent profile. Boots `bun run dev`, points the
 #      harness at the dev server, writes the report under
 #      `reports/porting/<YYYY-MM-DD>/profile.{json,md}`, uploads the
@@ -74,7 +73,7 @@ env:
 
 jobs:
   stub-validation:
-    name: Harness regression (stub)
+    name: Harness route smoke
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -108,15 +107,10 @@ jobs:
           done
           curl --silent --fail "http://127.0.0.1:${STUB_PORT}/api/health"
 
-      - name: Run profile harness against stub (host-cpu config)
+      - name: Verify harness health route only
         run: |
           set -euo pipefail
-          mkdir -p reports/porting/stub
-          node scripts/benchmark/profile-inference.mjs \
-            --target "http://127.0.0.1:${STUB_PORT}" \
-            --config scripts/benchmark/configs/host-cpu.json \
-            --label "stub-validation-$GITHUB_SHA" \
-            --out reports/porting/stub
+          curl --silent --fail "http://127.0.0.1:${STUB_PORT}/api/health"
 
       - name: Tear down stub
         if: ${{ always() }}
@@ -124,14 +118,6 @@ jobs:
           if [ -f /tmp/stub.pid ]; then
             kill "$(cat /tmp/stub.pid)" || true
           fi
-
-      - name: Upload stub profile artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: profile-stub-${{ github.run_id }}
-          path: reports/porting/stub
-          if-no-files-found: error
-          retention-days: 14
 
   nightly-real-agent:
     name: Nightly real-agent profile

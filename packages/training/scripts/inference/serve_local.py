@@ -105,8 +105,8 @@ def main() -> int:
         log.info("applying PolarQuant weights from %s", args.polarquant)
         apply_sidecar_to_model(model, Path(args.polarquant))
 
-    # KV-cache backend selection. For hybrid linear+full-attention models
-    # (Qwen3.5 / Qwen3.6) we MUST build a layer-type-aware cache or HF's
+    # KV-cache backend selection. For active hybrid linear+full-attention
+    # Qwen3.5 models, we MUST build a layer-type-aware cache or HF's
     # parent Cache.has_previous_state crashes when the linear-attention
     # layers index into a cache that only knows about full-attention slots.
     # ElizaHybridCache handles that and dispatches the full-attention

@@ -1,7 +1,7 @@
-import { Button } from "@elizaos/ui";
 import { Copy, RefreshCw, Server } from "lucide-react";
 import { useMemo } from "react";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
 import { buildPairingCodeCommandInfo } from "./pairing-command";
 
 export function PairingCommandHint({ remoteUrl }: { remoteUrl?: string }) {

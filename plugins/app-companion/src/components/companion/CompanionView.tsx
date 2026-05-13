@@ -2,6 +2,7 @@
 // browser entry, so the previous lazy() was eagerly merged back into the
 // main chunk. Drop the wrapper to silence the dynamic↔static collision
 // warning and remove the unnecessary Suspense boundary overhead.
+import { PtyConsoleSidePanel } from "@elizaos/app-task-coordinator";
 import {
   CharacterEditor,
   ChatModalView,
@@ -17,7 +18,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { PtyConsoleSidePanel } from "../../../../app-task-coordinator/src/PtyConsoleSidePanel";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { CompanionSettingsPanel } from "./CompanionSettingsPanel";

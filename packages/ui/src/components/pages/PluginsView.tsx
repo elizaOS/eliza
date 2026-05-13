@@ -25,16 +25,14 @@ import {
 
 export { paramsToSchema } from "./plugin-list-utils";
 
-import {
-  Button,
-  PageLayoutHeader,
-  PagePanel,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useLinkedSidebarSelection,
-} from "@elizaos/ui";
+import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
+import { PageLayoutHeader } from "../../layouts/page-layout/page-layout-header";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
 import { PluginCard } from "./PluginCard";
 import {
   ConnectorPluginGroups,
@@ -791,7 +789,12 @@ function PluginListView({
         return;
       }
       // Materialize current sorted order, then splice
-      if (!allowCustomOrder) return;
+      if (!allowCustomOrder) {
+        dragRef.current = null;
+        setDraggingId(null);
+        setDragOverId(null);
+        return;
+      }
       setPluginOrder(() => {
         // Build full order: items in custom order first, then any new ones
         const allIds = nonDbPlugins.map((p: PluginInfo) => p.id);

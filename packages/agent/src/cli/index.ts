@@ -8,13 +8,15 @@ Usage:
   eliza-autonomous serve
   eliza-autonomous runtime
   eliza-autonomous ios-bridge --stdio
+  eliza-autonomous android-bridge
   eliza-autonomous benchmark [options]
 
 Commands:
-  serve      Start the autonomous backend in server-only mode
-  runtime    Boot the runtime without entering the API/CLI wrapper
-  ios-bridge Run the iOS full-engine stdio bridge
-  benchmark  Run a benchmark task headlessly against the agent
+  serve          Start the autonomous backend in server-only mode
+  runtime        Boot the runtime without entering the API/CLI wrapper
+  ios-bridge     Run the iOS full-engine stdio bridge
+  android-bridge Boot the Android local-backend (HTTP server on 127.0.0.1:31337)
+  benchmark      Run a benchmark task headlessly against the agent
 
 Benchmark options:
   --task <path>    Path to task JSON file
@@ -94,6 +96,12 @@ export async function runAutonomousCli(
         `[cli] ensureMobileDeviceBridgeInferenceHandlers returned ${ok}`,
       );
     }
+    return;
+  }
+
+  if (command === "android-bridge") {
+    const { runAndroidBridgeCli } = await import("./android-mobile-bridge.ts");
+    await runAndroidBridgeCli();
     return;
   }
 

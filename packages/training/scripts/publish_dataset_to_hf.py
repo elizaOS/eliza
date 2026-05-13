@@ -254,7 +254,6 @@ def _card_training() -> str:
         "license: cc-by-4.0\n"
         "task_categories:\n"
         "  - text-generation\n"
-        "  - conversational\n"
         "language:\n"
         "  - en\n"
         "tags:\n"
@@ -270,12 +269,11 @@ def _card_training() -> str:
         "\n"
         "# eliza-1 training corpus\n"
         "\n"
-        "Active SFT corpus for the elizaOS **eliza-1** Qwen-based model series\n"
-        "([`elizaos/eliza-1-0_8b`](https://huggingface.co/elizaos/eliza-1-0_8b),\n"
-        "[`elizaos/eliza-1-2b`](https://huggingface.co/elizaos/eliza-1-2b),\n"
-        "[`elizaos/eliza-1-4b`](https://huggingface.co/elizaos/eliza-1-4b),\n"
-        "[`elizaos/eliza-1-9b`](https://huggingface.co/elizaos/eliza-1-9b),\n"
-        "[`elizaos/eliza-1-27b`](https://huggingface.co/elizaos/eliza-1-27b)).\n"
+        "Active SFT corpus for the elizaOS **eliza-1** Qwen-based model series.\n"
+        "All app-facing runtime bundles live in the single model repo\n"
+        "[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) under\n"
+        "`bundles/<tier>/` paths for the active `eliza-1-0_8b`,\n"
+        "`eliza-1-2b`, and `eliza-1-4b` tiers.\n"
         "\n"
         "## Files\n"
         "\n"
@@ -326,7 +324,7 @@ def _card_training() -> str:
         "\n"
         "## Intended use\n"
         "\n"
-        "Supervised fine-tuning of small-to-medium Qwen causal LMs (0.8B-27B)\n"
+        "Supervised fine-tuning of small-to-medium Qwen3.5 causal LMs (0.8B-4B)\n"
         "for agent / tool-use workloads on mobile, local desktop, and\n"
         "workstation hardware.\n"
         "\n"
@@ -668,12 +666,17 @@ def validate_hf_loadable(spec: DatasetSpec) -> bool:
         split: repr(dataset.features)
         for split, dataset in ds.items()
     }
+    row_counts = {split: int(ds[split].num_rows) for split in ds}
+    empty = {split: count for split, count in row_counts.items() if count <= 0}
+    if empty:
+        log.error("HF load preflight found empty split(s): %s", empty)
+        return False
     if len(set(feature_fingerprints.values())) != 1:
         log.error("HF load preflight found split feature drift: %s", feature_fingerprints)
         return False
     log.info(
         "HF load preflight ok: %s",
-        {split: int(ds[split].num_rows) for split in ds},
+        row_counts,
     )
     return True
 

@@ -19,5 +19,9 @@
     "@elizaos/plugin-browser": "2.0.0-beta.1",
     "@elizaos/shared": "2.0.0-beta.1"
   },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "vitest": "^4.0.17"
+  },
   "private": true
 }

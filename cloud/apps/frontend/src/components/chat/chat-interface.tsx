@@ -273,7 +273,13 @@ export function ChatInterface({
 
   const handleUpgrade = () => {
     toast.info("Redirecting to signup...");
-    navigate(`/login?redirect=/chat/${character.id}&session=${session?.token}`);
+    const params = new URLSearchParams({
+      returnTo: `/chat/${character.id}`,
+    });
+    if (session?.token) {
+      params.set("session", session.token);
+    }
+    navigate(`/login?${params.toString()}`);
   };
 
   // Paywall view

@@ -41,9 +41,8 @@ async def run_suite(
     adapter: VoiceAdapter,
     judge: Judge,
     limit: int | None,
-    mock: bool,
 ) -> SuiteResult:
-    samples = load_samples(suite, limit=limit, mock=mock)
+    samples = load_samples(suite, limit=limit)
     if not samples:
         raise RuntimeError(f"suite {suite!r} loaded zero samples")
 
@@ -74,7 +73,6 @@ async def run(
     judge: Judge,
     suites: Sequence[SuiteId],
     limit: int | None,
-    mock: bool,
     output_dir: Path,
     agent_name: str,
     stt_provider: str,
@@ -91,7 +89,6 @@ async def run(
             adapter=adapter,
             judge=judge,
             limit=limit,
-            mock=mock,
         )
         suite_details.append(result)
         per_suite[suite] = round(result.score, 4)

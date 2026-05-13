@@ -26,16 +26,43 @@ mic → ASR → drafter ∥ verifier → chunker → TTS pipeline (see
 ## Running
 
 ```bash
-# Run all scenarios against the mock driver and write JSON
-bun run --cwd packages/inference/voice-bench bench \
-  --bundle eliza-1-1.7b --backend mock --scenario all --runs 3 \
-  --output run.json
+# The mock-only CLI path is disabled. Use the real VoiceBench runner:
+packages/benchmarks/voicebench/run.sh --profile=groq \
+  --dataset=packages/benchmarks/voicebench/fixtures/manifest-groq.json
 
 # Compare to a recorded baseline; exit 1 on regression
-bun run --cwd packages/inference/voice-bench bench \
-  --baseline baselines/M4Max-metal.json \
-  --output run.json
+packages/benchmarks/voicebench/run.sh --profile=elevenlabs \
+  --dataset=packages/benchmarks/voicebench/fixtures/manifest-elevenlabs.json
 ```
+
+### Running on GPU (single-GPU tier)
+
+For Linux + NVIDIA hosts, the harness ships per-GPU autotune profiles
+under `packages/inference/configs/gpu/` (3090, 4090, 5090, H200). The
+inference engine for this tier is **llama.cpp / llama-server** — not
+vLLM or SGLang.
+
+Detect the host card and print the resolved autotune plan:
+
+```bash
+bun run --cwd packages/inference/voice-bench bench gpu
+# Or narrowed to a specific bundle:
+bun run --cwd packages/inference/voice-bench bench gpu --bundle eliza-1-9b
+```
+
+The subcommand calls `nvidia-smi --query-gpu=name,memory.total` and
+loads the matching JSON config file. On a CPU-only host (e.g. CI without
+a GPU runner) it prints `{ "nvidiaPresent": false }` and exits 0.
+
+Once a real `PipelineDriver` is wired for `--backend cuda`, the GPU
+matrix in `configs/gpu/matrix.json` enumerates the (GPU, bundle,
+ctx_size) tuples we benchmark. Each row maps to one autotune config.
+
+Per-GPU expected metrics live in the config JSON files and are flagged
+`"_provenance": "extrapolated"` until a real run replaces them. The
+override mechanism + per-GPU known limits are documented in
+[`packages/inference/configs/gpu/SPECS.md`](../configs/gpu/SPECS.md) and
+[`docs/inference/gpu-tier.md`](../../../docs/inference/gpu-tier.md).
 
 Unit tests:
 
@@ -59,10 +86,20 @@ fixtures by default and only writes WAVs when you ask it to.
 |---|---|---|
 | `short-turn` | 1.5 s utterance | Baseline TTFA on a healthy pipeline |
 | `long-turn` | 8 s utterance | Verifier coverage; no token drop |
-| `false-end-of-speech` | utterance with 400 ms mid-clause pause | Optimistic decode rollback |
+| `false-end-of-speech` | utterance with 400 ms mid-clause pause | Voice state machine `PAUSE_TENTATIVE → LISTENING` rollback (C1 discard) |
 | `barge-in` | utterance + overlay at t=3 s | Hard-stop within 200 ms |
+| `barge-in-mid-response` | utterance + overlay at t=5 s | Voice state machine `SPEAKING → LISTENING` rollback (C1 restore) |
 | `cold-start` | first turn on a fresh process | Load-side latency |
 | `warm-start` | second turn after prewarm | Steady-state TTFA |
+
+Rollback scenarios report two extra fields on top of the per-fixture
+`BenchMetrics`:
+
+- `rollbackCount` — number of `rollback-drop` events the pipeline emitted
+  (one per C1 discard or C1 restore).
+- `rollbackWasteTokens` — drafter tokens thrown away because the state
+  machine rolled back. The driver may supply this directly; otherwise the
+  harness sums `data.tokens` from each `rollback-drop` event.
 
 ## Eval gates
 
@@ -86,7 +123,7 @@ baseline:
 
 ```bash
 bun run --cwd packages/inference/voice-bench bench \
-  --bundle eliza-1-1.7b --backend metal --runs 5 \
+  --bundle eliza-1-2b --backend metal --runs 5 \
   --output packages/inference/voice-bench/baselines/M4Max-metal.json
 ```
 
@@ -94,7 +131,8 @@ Commit the JSON. Future PRs compare against it.
 
 ## Wiring the real pipeline (follow-up)
 
-The current build ships **only** the `MockPipelineDriver`. The real
+The runnable mock-only CLI is disabled and `runBench()` rejects mock/fake/stub
+drivers. The `MockPipelineDriver` remains test-only scaffolding; the real
 pipeline driver is a follow-up — the contract is the
 `PipelineDriver` interface in `src/types.ts`. To wire it:
 
@@ -121,8 +159,9 @@ pipeline driver is a follow-up — the contract is the
 5. Register the driver under a backend name (`metal`, `cuda`, `vulkan`,
    `cpu`) and add a case in `bin/voice-bench`.
 
-`MockPipelineDriver` is a faithful skeleton of the timing model — copy
-its structure for the real driver.
+The real driver should emit the same event sequence as the unit-test
+driver, but benchmark artifacts produced by test drivers are not release
+evidence.
 
 ## Known limitations
 
@@ -132,8 +171,8 @@ its structure for the real driver.
   corpus.
 - **GPU utilization is not yet sampled.** The Metal/Vulkan counter hooks
   are TBD; the field is optional in `BenchMetrics`.
-- **DFlash stats are driver-supplied.** The mock returns dummy values;
-  the real driver must hook into `dflash-server`.
+- **DFlash stats are driver-supplied.** The real driver must hook into
+  `dflash-server`; mock values are not accepted for release evidence.
 - **Single-process only.** The harness runs the driver in-process. For
   cold-start measurement that includes shell startup, the runner needs a
   subprocess wrapper — a follow-up.

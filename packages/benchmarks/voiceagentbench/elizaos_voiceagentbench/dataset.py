@@ -6,8 +6,7 @@ The canonical dataset is hosted on Hugging Face under
 sources, in priority order:
 
   1. ``--data-path /path/to/local.jsonl`` - explicit local override.
-  2. Bundled fixtures under ``fixtures/`` for ``--mock`` smoke runs.
-  3. Hugging Face datasets pull (real runs only).
+  2. Hugging Face datasets pull.
 """
 
 from __future__ import annotations
@@ -27,7 +26,6 @@ from .types import (
 )
 
 HF_REPO = "ServiceNow-AI/VoiceAgentBench"
-FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
 
 
 class DatasetError(RuntimeError):
@@ -114,11 +112,6 @@ def load_jsonl(path: Path) -> list[VoiceTask]:
     return tasks
 
 
-def load_mock_fixtures() -> list[VoiceTask]:
-    """Load the bundled mock fixtures (no network, no HF)."""
-    return load_jsonl(FIXTURES_DIR / "mock_tasks.jsonl")
-
-
 def load_from_huggingface() -> list[VoiceTask]:
     """Pull the canonical dataset from Hugging Face (lazy import)."""
     try:
@@ -126,8 +119,8 @@ def load_from_huggingface() -> list[VoiceTask]:
     except ImportError as exc:
         raise DatasetError(
             "Real VoiceAgentBench runs require the `datasets` package. "
-            "Install it (`pip install datasets`) or pass --mock for smoke "
-            "runs."
+            "Install it (`pip install datasets`) and authenticate to Hugging Face "
+            "if the dataset is gated."
         ) from exc
 
     repo = os.environ.get("VOICEAGENTBENCH_HF_REPO") or HF_REPO
@@ -140,7 +133,6 @@ def load_from_huggingface() -> list[VoiceTask]:
 
 def load_tasks(
     *,
-    mock: bool = False,
     data_path: Path | None = None,
     suite_filter: Suite | None = None,
     limit: int | None = None,
@@ -148,8 +140,6 @@ def load_tasks(
     """Load tasks from the configured source, optionally filtered."""
     if data_path is not None:
         tasks = load_jsonl(data_path)
-    elif mock:
-        tasks = load_mock_fixtures()
     else:
         tasks = load_from_huggingface()
 

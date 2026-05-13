@@ -257,5 +257,38 @@ def test_agent_fn_handles_no_user_message_safely() -> None:
     assert turn.tool_calls is None
 
 
+def test_agent_fn_starts_managed_server_when_no_bridge_env(monkeypatch) -> None:
+    ready_client, _ = _make_fake_client({})
+    started: list[str] = []
+
+    class _InitialClient:
+        _delegate = None
+
+    class _FakeServerManager:
+        def __init__(self) -> None:
+            self.client = ready_client
+
+        def start(self) -> None:
+            started.append("start")
+
+    import eliza_adapter.lifeops_bench as lifeops_mod
+    import eliza_adapter.server_manager as server_manager_mod
+
+    monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
+    monkeypatch.delenv("ELIZA_BENCH_TOKEN", raising=False)
+    monkeypatch.setenv("BENCHMARK_HARNESS", "eliza")
+    monkeypatch.setattr(lifeops_mod, "ElizaClient", lambda: _InitialClient())
+    monkeypatch.setattr(server_manager_mod, "ElizaServerManager", _FakeServerManager)
+
+    agent_fn = build_lifeops_bench_agent_fn(
+        world_snapshot_path="/tmp/world.json",
+        now_iso="2026-05-10T12:00:00Z",
+    )
+
+    assert started == ["start"]
+    assert getattr(agent_fn, "_eliza_server_manager") is not None
+    ready_client.wait_until_ready.assert_called_once_with(timeout=120)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

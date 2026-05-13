@@ -1,11 +1,4 @@
 import {
-  Button,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@elizaos/ui";
-import {
   Crown,
   Fingerprint,
   Frown,
@@ -32,6 +25,13 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
+import { Button } from "../ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 
 const GRAPH_WIDTH = 1320;
 const GRAPH_HEIGHT = 760;

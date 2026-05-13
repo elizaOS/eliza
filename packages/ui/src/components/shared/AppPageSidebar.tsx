@@ -1,7 +1,8 @@
-import { Sidebar, type SidebarProps } from "@elizaos/ui";
 import { PanelLeftClose } from "lucide-react";
 import * as React from "react";
 import { useCallback, useMemo, useState } from "react";
+import { Sidebar } from "../composites/sidebar/sidebar-root";
+import type { SidebarProps } from "../composites/sidebar/sidebar-types";
 
 const DEFAULT_PAGE_SIDEBAR_WIDTH = 240;
 const DEFAULT_PAGE_SIDEBAR_MIN_WIDTH = 200;

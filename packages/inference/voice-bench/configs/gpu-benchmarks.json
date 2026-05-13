@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "comment": "Per-GPU benchmark configs for single-GPU Eliza-1 deployments. Consumed by the voice-bench harness; each profile picks a representative bundle, a context-length sweep, and a TTFA target. Single-GPU only — no NVLink, no tensor-parallel splits. The TTFA target column is the budget for the *first audio sample* of a turn (Whisper-VAD endpoint + LLM TTFT + TTS first phrase). Numbers are budgets, not measured.",
+  "profiles": {
+    "rtx-3090": {
+      "displayName": "NVIDIA GeForce RTX 3090",
+      "bundles": [
+        {
+          "id": "eliza-1-9b",
+          "contextSweep": [4096, 16384, 32768, 65536],
+          "ttfaTargetMs": 550,
+          "voiceBackend": "kokoro",
+          "notes": "Ampere fits 9B Q4_K_M with KV at 64k under 12 GiB total. flash-attn pays off."
+        },
+        {
+          "id": "eliza-1-4b",
+          "contextSweep": [4096, 32768, 65536],
+          "ttfaTargetMs": 400,
+          "voiceBackend": "kokoro"
+        }
+      ]
+    },
+    "rtx-4090": {
+      "displayName": "NVIDIA GeForce RTX 4090",
+      "bundles": [
+        {
+          "id": "eliza-1-9b",
+          "contextSweep": [4096, 32768, 65536, 131072],
+          "ttfaTargetMs": 450,
+          "voiceBackend": "kokoro"
+        },
+        {
+          "id": "eliza-1-27b",
+          "contextSweep": [4096, 16384, 32768],
+          "ttfaTargetMs": 700,
+          "voiceBackend": "kokoro",
+          "notes": "27B Q4_K_M at 32k is tight on 24 GiB; verify KV residency."
+        }
+      ]
+    },
+    "rtx-5090": {
+      "displayName": "NVIDIA GeForce RTX 5090",
+      "bundles": [
+        {
+          "id": "eliza-1-27b",
+          "contextSweep": [4096, 32768, 65536, 131072],
+          "ttfaTargetMs": 450,
+          "voiceBackend": "kokoro"
+        },
+        {
+          "id": "eliza-1-9b",
+          "contextSweep": [4096, 65536, 131072, 262144],
+          "ttfaTargetMs": 350,
+          "voiceBackend": "kokoro"
+        },
+        {
+          "id": "eliza-1-27b-256k",
+          "contextSweep": [4096, 65536, 131072, 262144],
+          "ttfaTargetMs": 600,
+          "voiceBackend": "kokoro",
+          "notes": "Blackwell sm_120 — verify the Polar/QJL kernels build in CAPABILITIES.json before claiming pass."
+        }
+      ]
+    },
+    "h200": {
+      "displayName": "NVIDIA H200 (SXM 141 GiB)",
+      "bundles": [
+        {
+          "id": "eliza-1-27b-1m",
+          "contextSweep": [
+            4096,
+            65536,
+            131072,
+            262144,
+            524288,
+            1048576
+          ],
+          "ttfaTargetMs": 400,
+          "voiceBackend": "kokoro",
+          "notes": "Marquee config: 27B at 1M context. KV at 1M with QJL+Polar is ~80 GiB; rest of the 141 GiB host is activations + drafter + 16 parallel slots."
+        },
+        {
+          "id": "eliza-1-27b-256k",
+          "contextSweep": [4096, 65536, 131072, 262144],
+          "ttfaTargetMs": 350,
+          "voiceBackend": "kokoro"
+        }
+      ]
+    }
+  },
+  "harness": {
+    "warmupTurns": 3,
+    "measureTurns": 20,
+    "promptCorpus": "scenarios/standard-mix",
+    "audioFixture": "fixtures/16khz-mono-3s.wav",
+    "passCriteria": {
+      "ttfaP95UnderTargetMs": true,
+      "barginCancelMs": 200,
+      "rttMaxMs": 60000
+    }
+  }
+}

@@ -26,7 +26,10 @@ import uuid
 from pathlib import Path
 from typing import Tuple
 
-import regex as re
+try:
+    import regex as re
+except ModuleNotFoundError:  # pragma: no cover - benchmark env fallback
+    import re
 
 from gem.tools.base_tool import BaseTool
 

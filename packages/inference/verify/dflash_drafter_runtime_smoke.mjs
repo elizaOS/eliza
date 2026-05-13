@@ -21,15 +21,13 @@ const MODELS_ROOT = path.join(
   "local-inference",
   "models",
 );
-const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-1_7b.bundle");
+const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_6b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", "eliza-1-1_7b-64k.gguf"),
-  path.join(MODELS_ROOT, "qwen3.5-4b-dflash.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_6b-64k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_6b-32k.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
-  path.join(DEFAULT_BUNDLE, "dflash", "drafter-1_7b.gguf"),
-  path.join(MODELS_ROOT, "qwen3.5-4b-dflash-drafter-q4.repaired.gguf"),
-  path.join(MODELS_ROOT, "qwen3.5-4b-dflash-drafter-q4.gguf"),
+  path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_6b.gguf"),
 );
 const DEFAULT_BIN = path.join(
   process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza"),
@@ -120,7 +118,7 @@ function parseArgs(argv) {
           "Usage: node packages/inference/verify/dflash_drafter_runtime_smoke.mjs [options]",
           "",
           "Options:",
-          "  --target-model <path>          Target GGUF (default: local qwen3.5 DFlash target)",
+          "  --target-model <path>          Target GGUF (default: local eliza-1-0_6b bundle)",
           "  --drafter-model <path>         DFlash drafter GGUF",
           "  --spec-binary <path>           llama-speculative-simple binary to test",
           "  --reference-binary <path>      Optional known-DFlash binary to compare loader errors",
@@ -209,6 +207,88 @@ function pushOptionalFlag(args, skippedCliFlags, features, flag, ...values) {
   });
 }
 
+function pushFirstSupportedFlag(args, skippedCliFlags, features, flags, ...values) {
+  const supported = flags.find((flag) => supportsCliFlag(features, flag));
+  if (supported) {
+    args.push(supported, ...values);
+    return supported;
+  }
+  skippedCliFlags.push({
+    flag: flags[0],
+    alternatives: flags.slice(1),
+    values,
+    reason: "not advertised by binary --help",
+  });
+  return null;
+}
+
+function pushDraftContextFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--ctx-size-draft", "--spec-draft-ctx-size", "-cd"],
+    value,
+  );
+}
+
+function pushDraftMinFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--spec-draft-n-min", "--draft-min", "--draft-n-min"],
+    value,
+  );
+}
+
+function pushDraftMaxFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--spec-draft-n-max", "--draft-max", "--draft-n"],
+    value,
+  );
+}
+
+function pushDraftProbabilityFlag(args, skippedCliFlags, features, value) {
+  return pushFirstSupportedFlag(
+    args,
+    skippedCliFlags,
+    features,
+    ["--spec-draft-p-min", "--draft-p-min"],
+    value,
+  );
+}
+
+const GGUF_READ_LIMIT_BYTES = 512 * 1024 * 1024;
+
+function readGgufPrefix(file) {
+  const stat = fs.statSync(file);
+  const size = Math.min(stat.size, GGUF_READ_LIMIT_BYTES);
+  const fd = fs.openSync(file, "r");
+  try {
+    const out = Buffer.allocUnsafe(size);
+    const read = fs.readSync(fd, out, 0, size, 0);
+    return {
+      buffer: read === size ? out : out.subarray(0, read),
+      sizeBytes: stat.size,
+    };
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+function assertAvailable(buf, offset, bytes, file) {
+  if (offset + bytes <= buf.length) return;
+  throw new Error(
+    `${file} GGUF metadata/tensor directory exceeds ${Math.floor(
+      GGUF_READ_LIMIT_BYTES / 1024 / 1024,
+    )} MiB verifier read window`,
+  );
+}
+
 function serializeCliFeatures(features) {
   if (!features) return null;
   return {
@@ -217,9 +297,15 @@ function serializeCliFeatures(features) {
     supportedOptionalFlags: [
       "--device",
       "--device-draft",
+      "--ctx-size-draft",
+      "--spec-draft-ctx-size",
+      "-cd",
       "--draft",
+      "--spec-draft-n-min",
       "--draft-min",
+      "--spec-draft-n-max",
       "--draft-max",
+      "--spec-draft-p-min",
       "--draft-p-min",
       "--spec-type",
       "--temp",
@@ -232,6 +318,7 @@ function serializeCliFeatures(features) {
 }
 
 function readU64(buf, off) {
+  assertAvailable(buf, off.value, 8, "GGUF");
   const value = buf.readBigUInt64LE(off.value);
   off.value += 8;
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
@@ -244,6 +331,7 @@ function readString(buf, off) {
   const len = readU64(buf, off);
   const start = off.value;
   const end = start + len;
+  assertAvailable(buf, start, len, "GGUF");
   off.value = end;
   return buf.toString("utf8", start, end);
 }
@@ -253,15 +341,18 @@ function skipScalar(buf, off, type) {
     case 0:
     case 1:
     case 7:
+      assertAvailable(buf, off.value, 1, "GGUF");
       off.value += 1;
       return;
     case 2:
     case 3:
+      assertAvailable(buf, off.value, 2, "GGUF");
       off.value += 2;
       return;
     case 4:
     case 5:
     case 6:
+      assertAvailable(buf, off.value, 4, "GGUF");
       off.value += 4;
       return;
     case 8:
@@ -270,6 +361,7 @@ function skipScalar(buf, off, type) {
     case 10:
     case 11:
     case 12:
+      assertAvailable(buf, off.value, 8, "GGUF");
       off.value += 8;
       return;
     default:
@@ -280,41 +372,49 @@ function skipScalar(buf, off, type) {
 function readScalar(buf, off, type) {
   switch (type) {
     case 0: {
+      assertAvailable(buf, off.value, 1, "GGUF");
       const value = buf.readUInt8(off.value);
       off.value += 1;
       return value;
     }
     case 1: {
+      assertAvailable(buf, off.value, 1, "GGUF");
       const value = buf.readInt8(off.value);
       off.value += 1;
       return value;
     }
     case 2: {
+      assertAvailable(buf, off.value, 2, "GGUF");
       const value = buf.readUInt16LE(off.value);
       off.value += 2;
       return value;
     }
     case 3: {
+      assertAvailable(buf, off.value, 2, "GGUF");
       const value = buf.readInt16LE(off.value);
       off.value += 2;
       return value;
     }
     case 4: {
+      assertAvailable(buf, off.value, 4, "GGUF");
       const value = buf.readUInt32LE(off.value);
       off.value += 4;
       return value;
     }
     case 5: {
+      assertAvailable(buf, off.value, 4, "GGUF");
       const value = buf.readInt32LE(off.value);
       off.value += 4;
       return value;
     }
     case 6: {
+      assertAvailable(buf, off.value, 4, "GGUF");
       const value = buf.readFloatLE(off.value);
       off.value += 4;
       return value;
     }
     case 7: {
+      assertAvailable(buf, off.value, 1, "GGUF");
       const value = buf.readUInt8(off.value) !== 0;
       off.value += 1;
       return value;
@@ -326,6 +426,7 @@ function readScalar(buf, off, type) {
       return value;
     }
     case 11: {
+      assertAvailable(buf, off.value, 8, "GGUF");
       const value = buf.readBigInt64LE(off.value);
       off.value += 8;
       return value >= BigInt(Number.MIN_SAFE_INTEGER) &&
@@ -334,6 +435,7 @@ function readScalar(buf, off, type) {
         : value.toString();
     }
     case 12: {
+      assertAvailable(buf, off.value, 8, "GGUF");
       const value = buf.readDoubleLE(off.value);
       off.value += 8;
       return value;
@@ -352,6 +454,7 @@ function readValue(buf, off, type, capture = true) {
     return readScalar(buf, off, type);
   }
 
+  assertAvailable(buf, off.value, 4, "GGUF");
   const innerType = buf.readUInt32LE(off.value);
   off.value += 4;
   const len = readU64(buf, off);
@@ -372,8 +475,9 @@ function readValue(buf, off, type, capture = true) {
 }
 
 function parseGguf(file) {
-  const buf = fs.readFileSync(file);
+  const { buffer: buf, sizeBytes } = readGgufPrefix(file);
   const off = { value: 0 };
+  assertAvailable(buf, 0, 16, file);
   const magic = buf.toString("utf8", 0, 4);
   off.value += 4;
   if (magic !== "GGUF") {
@@ -389,6 +493,7 @@ function parseGguf(file) {
 
   for (let i = 0; i < kvCount; i += 1) {
     const key = readString(buf, off);
+    assertAvailable(buf, off.value, 4, file);
     const type = buf.readUInt32LE(off.value);
     off.value += 4;
     const valueStart = off.value;
@@ -408,12 +513,14 @@ function parseGguf(file) {
   const tensors = [];
   for (let i = 0; i < tensorCount; i += 1) {
     const name = readString(buf, off);
+    assertAvailable(buf, off.value, 4, file);
     const nDims = buf.readUInt32LE(off.value);
     off.value += 4;
     const dims = [];
     for (let d = 0; d < nDims; d += 1) {
       dims.push(readU64(buf, off));
     }
+    assertAvailable(buf, off.value, 4, file);
     const type = buf.readUInt32LE(off.value);
     off.value += 4;
     const tensorOffset = readU64(buf, off);
@@ -422,7 +529,7 @@ function parseGguf(file) {
 
   return {
     file,
-    sizeBytes: fs.statSync(file).size,
+    sizeBytes,
     version,
     tensorCount,
     kvCount,
@@ -454,6 +561,7 @@ function tokenizerSummary(parsed) {
     bosTokenId: metadata["tokenizer.ggml.bos_token_id"] ?? null,
     paddingTokenId: metadata["tokenizer.ggml.padding_token_id"] ?? null,
     addBosToken: metadata["tokenizer.ggml.add_bos_token"] ?? null,
+    addEosToken: metadata["tokenizer.ggml.add_eos_token"] ?? null,
     hashes: {
       model: hashes["tokenizer.ggml.model"] ?? null,
       pre: hashes["tokenizer.ggml.pre"] ?? null,
@@ -464,37 +572,50 @@ function tokenizerSummary(parsed) {
       bosTokenId: hashes["tokenizer.ggml.bos_token_id"] ?? null,
       paddingTokenId: hashes["tokenizer.ggml.padding_token_id"] ?? null,
       addBosToken: hashes["tokenizer.ggml.add_bos_token"] ?? null,
+      addEosToken: hashes["tokenizer.ggml.add_eos_token"] ?? null,
     },
   };
 }
 
 function compareTokenizers(target, drafter) {
+  const boolValue = (value) => value === true;
   const compared = [
     ["tokenizer.ggml.model", target.hashes.model, drafter.hashes.model],
     ["tokenizer.ggml.pre", target.hashes.pre, drafter.hashes.pre],
     ["tokenizer.ggml.tokens", target.hashes.tokens, drafter.hashes.tokens],
-    [
-      "tokenizer.ggml.token_type",
-      target.hashes.tokenType,
-      drafter.hashes.tokenType,
-    ],
-    ["tokenizer.ggml.merges", target.hashes.merges, drafter.hashes.merges],
-    [
-      "tokenizer.ggml.eos_token_id",
-      target.hashes.eosTokenId,
-      drafter.hashes.eosTokenId,
-    ],
-    [
+  ];
+  const targetAddBos = boolValue(target.addBosToken);
+  const drafterAddBos = boolValue(drafter.addBosToken);
+  if (targetAddBos !== drafterAddBos) {
+    compared.push([
+      "tokenizer.ggml.add_bos_token",
+      target.hashes.addBosToken,
+      drafter.hashes.addBosToken,
+    ]);
+  }
+  if (targetAddBos || drafterAddBos) {
+    compared.push([
       "tokenizer.ggml.bos_token_id",
       target.hashes.bosTokenId,
       drafter.hashes.bosTokenId,
-    ],
-    [
-      "tokenizer.ggml.padding_token_id",
-      target.hashes.paddingTokenId,
-      drafter.hashes.paddingTokenId,
-    ],
-  ];
+    ]);
+  }
+  const targetAddEos = boolValue(target.addEosToken);
+  const drafterAddEos = boolValue(drafter.addEosToken);
+  if (targetAddEos !== drafterAddEos) {
+    compared.push([
+      "tokenizer.ggml.add_eos_token",
+      target.hashes.addEosToken,
+      drafter.hashes.addEosToken,
+    ]);
+  }
+  if (targetAddEos || drafterAddEos) {
+    compared.push([
+      "tokenizer.ggml.eos_token_id",
+      target.hashes.eosTokenId,
+      drafter.hashes.eosTokenId,
+    ]);
+  }
   const mismatches = compared
     .filter(([, targetHash, drafterHash]) => targetHash !== drafterHash)
     .map(([key, targetHash, drafterHash]) => ({
@@ -549,13 +670,12 @@ function buildRuntimeArgs(targetModel, drafterModel, options) {
     "1",
     "-c",
     "128",
-    "-cd",
-    "128",
     "-ngl",
     options.ngl,
     "-ngld",
     options.ngld,
   ];
+  pushDraftContextFlag(args, skippedCliFlags, features, "128");
   if (options.deviceNone) {
     pushOptionalFlag(args, skippedCliFlags, features, "--device", "none");
     pushOptionalFlag(
@@ -566,9 +686,9 @@ function buildRuntimeArgs(targetModel, drafterModel, options) {
       "none",
     );
   }
-  pushOptionalFlag(args, skippedCliFlags, features, "--draft", "1");
-  pushOptionalFlag(args, skippedCliFlags, features, "--draft-min", "1");
-  pushOptionalFlag(args, skippedCliFlags, features, "--draft-p-min", "0.1");
+  pushDraftMinFlag(args, skippedCliFlags, features, "1");
+  pushDraftMaxFlag(args, skippedCliFlags, features, "1");
+  pushDraftProbabilityFlag(args, skippedCliFlags, features, "0.1");
   if (options.specType) {
     pushOptionalFlag(
       args,
@@ -817,25 +937,22 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     n,
     "-c",
     "2048",
-    "-cd",
-    "2048",
     "-ngl",
     options.ngl,
     "-ngld",
     options.ngld,
   ];
-  pushOptionalFlag(
+  pushDraftContextFlag(args, skippedCliFlags, options.cliFeatures, "2048");
+  pushDraftMinFlag(
     args,
     skippedCliFlags,
     options.cliFeatures,
-    "--draft-min",
     withDrafter ? "2" : "0",
   );
-  pushOptionalFlag(
+  pushDraftMaxFlag(
     args,
     skippedCliFlags,
     options.cliFeatures,
-    "--draft-max",
     withDrafter ? "6" : "0",
   );
   if (options.deviceNone) {
@@ -1120,7 +1237,9 @@ function main() {
     !isUpstreamDflashArch &&
     typeof architecture === "string" &&
     architecture.length > 0 &&
-    tensorNames.has("token_embd.weight");
+    (tensorNames.has("token_embd.weight") ||
+      (tensorNames.has("blk.0.attn_q.weight") &&
+        tensorNames.has("blk.0.attn_k.weight")));
   const requiresTrueDflashDrafting = upstreamShapeOk;
   report.runtimePolicy = {
     requiresTrueDflashDrafting,

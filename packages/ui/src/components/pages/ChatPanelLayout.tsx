@@ -1,5 +1,5 @@
-import { cn } from "@elizaos/ui";
 import * as React from "react";
+import { cn } from "../../lib/utils";
 
 export type ChatPanelLayoutVariant = "full-overlay" | "companion-dock";
 

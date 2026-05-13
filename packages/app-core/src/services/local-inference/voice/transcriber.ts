@@ -88,6 +88,7 @@ export class AsrUnavailableError extends Error {
  * ==================================================================== */
 
 const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'-]*/gu;
+const VAD_PREROLL_MAX_FRAMES = 10;
 
 function extractWords(text: string): string[] {
   const out = text.match(WORD_RE);
@@ -134,6 +135,7 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
   private wordsEmitted = false;
   /** When set, frames are only forwarded while the VAD is in an active speech window. */
   private vadActive: boolean | null = null;
+  private readonly vadPrerollFrames: PcmFrame[] = [];
   private vadUnsub: (() => void) | null = null;
   private disposed = false;
 
@@ -155,11 +157,12 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
       throw new Error("[asr] feed() called on a disposed transcriber");
     }
     if (frame.pcm.length === 0) return;
-    // VAD gating: when a VAD source is wired, only decode while speech is
-    // active. Frames arriving outside an active window are dropped — the
-    // VAD's pre-roll buffer (W1) is responsible for the leading context,
-    // not this layer.
-    if (this.vadActive === false) return;
+    // VAD gating: while the async VAD is still deciding, retain a tiny
+    // leading pre-roll so the first voiced frames are not lost.
+    if (this.vadActive === false) {
+      this.rememberVadPreroll(frame);
+      return;
+    }
     if (!this.segmentOpen) {
       this.segmentOpen = true;
       this.wordsEmitted = false;
@@ -194,6 +197,26 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
   /** Subclass hook: release native resources. */
   protected abstract onDispose(): void;
 
+  private rememberVadPreroll(frame: PcmFrame): void {
+    this.vadPrerollFrames.push({
+      ...frame,
+      pcm: frame.pcm.slice(),
+    });
+    while (this.vadPrerollFrames.length > VAD_PREROLL_MAX_FRAMES) {
+      this.vadPrerollFrames.shift();
+    }
+  }
+
+  private drainVadPreroll(): void {
+    if (this.vadPrerollFrames.length === 0) return;
+    const frames = this.vadPrerollFrames.splice(0);
+    if (!this.segmentOpen) {
+      this.segmentOpen = true;
+      this.wordsEmitted = false;
+    }
+    for (const frame of frames) this.onFrame(frame);
+  }
+
   /** Emit a running-partial event and (the first time it has words) a `words` event. */
   protected emitPartial(update: TranscriptUpdate): void {
     const enriched = this.withMetadata(update);
@@ -217,6 +240,8 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
     }
     const source = update.source ?? this.metadata.source;
     const speaker = update.speaker ?? this.metadata.speaker;
+    const segments =
+      update.segments ?? update.turn?.segments ?? this.metadata.turn?.segments;
     const turn =
       update.turn || this.metadata.turn
         ? {
@@ -238,6 +263,7 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
       ...update,
       ...(source ? { source } : {}),
       ...(speaker ? { speaker } : {}),
+      ...(segments ? { segments } : {}),
       ...(turn ? { turn } : {}),
     };
   }
@@ -251,6 +277,7 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
       case "speech-start":
       case "speech-active":
         this.vadActive = true;
+        this.drainVadPreroll();
         break;
       case "speech-pause":
         // Pause keeps the segment "armed" but stops accepting new audio
@@ -260,6 +287,7 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
         break;
       case "speech-end":
         this.vadActive = false;
+        this.vadPrerollFrames.length = 0;
         break;
       case "blip":
         // A blip never opens a speech window — ignore.

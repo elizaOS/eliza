@@ -1,7 +1,7 @@
 # fused_turboquant vendor notice
 
 This directory vendors the upstream `fused-turboquant` package so we can
-patch it in-place to support Qwen3.5 / Qwen3.6 gated attention without
+patch it in-place to support active Qwen3.5 gated attention without
 waiting on an upstream release.
 
 ## Source
@@ -36,7 +36,7 @@ Per Apache 2.0 §4(b), the changes made on top of upstream `0.1.0` are:
 
 * **`hf/fused_cache.py` — gated-attention support.** The upstream
   `make_fused_attention_forward` assumes a vanilla `q_proj` of shape
-  `num_heads * head_dim`. Qwen3.5 / Qwen3.6 use a gated variant:
+  `num_heads * head_dim`. Active Qwen3.5 models use a gated variant:
   `q_proj.out_features == 2 * num_heads * head_dim` (chunked along the
   last dim into `(query, gate)`) and the post-attention output is
   multiplied by `sigmoid(gate)` before `o_proj`. Three changes:
@@ -58,9 +58,9 @@ Per Apache 2.0 §4(b), the changes made on top of upstream `0.1.0` are:
            `sigmoid(gate)` (reshaped to `(B, T, n_heads*head_dim)`)
            before `o_proj`.
          - When non-gated: behavior unchanged.
-    3. `KNOWN_COMPATIBLE` now includes the hybrid Qwen3.5 / Qwen3.6
+    3. `KNOWN_COMPATIBLE` now includes the hybrid Qwen3.5
        text decoders (`Qwen3_5ForCausalLM`, `Qwen3_5MoeForCausalLM`,
-       `Qwen3_6ForCausalLM`, `Qwen3_6MoeForCausalLM`).
+       `Qwen3_5ForConditionalGeneration`).
 
   The K/V projection paths are untouched — gating affects only Q in the
   Qwen3.5 layout, and `cache.store_compressed_key` /

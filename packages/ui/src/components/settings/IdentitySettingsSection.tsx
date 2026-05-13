@@ -1,16 +1,3 @@
-import {
-  Button,
-  Input,
-  SaveFooter,
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectLabel,
-  SelectTrigger,
-  SelectValue,
-  Textarea,
-} from "@elizaos/ui";
 import { Volume2, VolumeX } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client, type VoiceConfig } from "../../api";
@@ -28,6 +15,19 @@ import {
   EDGE_VOICE_GROUPS,
   ELEVENLABS_VOICE_GROUPS,
 } from "../character/character-voice-config";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { SaveFooter } from "../ui/save-footer";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Textarea } from "../ui/textarea";
 import {
   SettingsField,
   SettingsFieldLabel,

@@ -10,9 +10,11 @@ import threading
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
 
-from eliza_adapter.client import ElizaClient
-
 logger = logging.getLogger(__name__)
+
+
+class UnsupportedHarnessPath(RuntimeError):
+    """Raised when a requested cross-agent harness path is not comparable."""
 
 
 class HarnessOpenAIProxy:
@@ -25,6 +27,7 @@ class HarnessOpenAIProxy:
     """
 
     def __init__(self, host: str = "127.0.0.1") -> None:
+        self.harness_name = _selected_harness_name()
         self.client = _build_client()
         self.client.reset("loca-bench", "loca_bench")
         self.session_id = f"loca-bench-{uuid4().hex[:12]}"
@@ -33,6 +36,7 @@ class HarnessOpenAIProxy:
             _HarnessHandler,
             self.client,
             self.session_id,
+            self.harness_name,
         )
         self._thread = threading.Thread(
             target=self._server.serve_forever,
@@ -59,12 +63,14 @@ class _HarnessHTTPServer(ThreadingHTTPServer):
         self,
         server_address: tuple[str, int],
         request_handler_class: type[BaseHTTPRequestHandler],
-        client: ElizaClient,
+        client: Any,
         session_id: str,
+        harness_name: str,
     ) -> None:
         super().__init__(server_address, request_handler_class)
         self.client = client
         self.session_id = session_id
+        self.harness_name = harness_name
 
 
 class _HarnessHandler(BaseHTTPRequestHandler):
@@ -76,17 +82,19 @@ class _HarnessHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = self._read_json()
+            context = _context_from_payload(payload, self.server.session_id)
             response = self.server.client.send_message(
-                _last_user_text(payload.get("messages")),
-                context={
-                    "benchmark": "loca_bench",
-                    "messages": payload.get("messages", []),
-                    "system_prompt": _first_system_text(payload.get("messages")),
-                    "tools": payload.get("tools", []),
-                    "session_id": self.server.session_id,
-                },
+                _eliza_prompt_from_payload(payload),
+                context=context,
             )
-            self._write_json(200, _chat_completion_payload(payload, response))
+            self._write_json(
+                200,
+                _chat_completion_payload(
+                    payload,
+                    response,
+                    harness_name=self.server.harness_name,
+                ),
+            )
         except Exception as exc:  # pragma: no cover - exercised by live harnesses
             logger.exception("LOCA harness proxy failed")
             self._write_json(500, {"error": {"message": str(exc)}})
@@ -111,7 +119,12 @@ class _HarnessHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
-def _chat_completion_payload(payload: Mapping[str, Any], response: Any) -> dict[str, Any]:
+def _chat_completion_payload(
+    payload: Mapping[str, Any],
+    response: Any,
+    *,
+    harness_name: str = "",
+) -> dict[str, Any]:
     tool_calls = _openai_tool_calls(response.params.get("tool_calls"))
     message: dict[str, Any] = {
         "role": "assistant",
@@ -121,10 +134,13 @@ def _chat_completion_payload(payload: Mapping[str, Any], response: Any) -> dict[
     if tool_calls:
         message["tool_calls"] = tool_calls
         finish_reason = "tool_calls"
+    metadata = response.params.get("eliza_metadata")
+    if isinstance(metadata, Mapping):
+        message["metadata"] = dict(metadata)
     usage = response.params.get("usage") if isinstance(response.params, Mapping) else None
     if not isinstance(usage, Mapping):
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-    return {
+    out = {
         "id": "chatcmpl-loca-harness",
         "object": "chat.completion",
         "created": 0,
@@ -137,6 +153,163 @@ def _chat_completion_payload(payload: Mapping[str, Any], response: Any) -> dict[
             }
         ],
         "usage": dict(usage),
+    }
+    metadata = _response_metadata(harness_name, response)
+    if metadata:
+        out["benchmark_metadata"] = metadata
+    return out
+
+
+def _selected_harness_name() -> str:
+    return (
+        os.environ.get("BENCHMARK_HARNESS")
+        or os.environ.get("ELIZA_BENCH_HARNESS")
+        or "eliza"
+    ).strip().lower()
+
+
+def _context_from_payload(
+    payload: Mapping[str, Any],
+    session_id: str,
+) -> dict[str, object]:
+    messages = payload.get("messages", [])
+    tools = _normalize_tool_manifest(
+        payload.get("tools", payload.get("functions", []))
+    )
+    if not tools:
+        tools = _default_loca_tool_manifest()
+    context: dict[str, object] = {
+        "benchmark": "loca_bench",
+        "task_id": session_id,
+        "messages": messages if isinstance(messages, list) else [],
+        "system_prompt": _first_system_text(messages),
+        "tools": tools,
+        "session_id": session_id,
+    }
+    for key in (
+        "tool_choice",
+        "temperature",
+        "top_p",
+        "max_tokens",
+        "max_completion_tokens",
+        "reasoning_effort",
+    ):
+        value = payload.get(key)
+        if value is not None:
+            context[key] = value
+    return context
+
+
+def _normalize_tool_manifest(raw_tools: object) -> list[dict[str, Any]]:
+    """Return OpenAI function tools as a flat list.
+
+    LOCA's wrapper normally sends ``tools`` as a list of function definitions,
+    but some upstream paths use ``functions`` or accidentally pass a nested
+    ``[tools]`` shape. The benchmark proxy is the last bridge before Eliza, so
+    it normalizes those equivalent OpenAI-compatible shapes instead of letting
+    the planner see an empty tool inventory and invent helper calls.
+    """
+
+    if isinstance(raw_tools, Mapping):
+        nested = raw_tools.get("tools")
+        if nested is None:
+            nested = raw_tools.get("functions")
+        if nested is not None:
+            return _normalize_tool_manifest(nested)
+        return [dict(raw_tools)] if _tool_name(raw_tools) else []
+    if not isinstance(raw_tools, Sequence) or isinstance(
+        raw_tools, (str, bytes, bytearray)
+    ):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in raw_tools:
+        if isinstance(item, Mapping):
+            normalized.append(dict(item))
+        elif isinstance(item, Sequence) and not isinstance(
+            item, (str, bytes, bytearray)
+        ):
+            for nested in item:
+                if isinstance(nested, Mapping):
+                    normalized.append(dict(nested))
+    return normalized
+
+
+def _schema(properties: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": dict(properties),
+        "additionalProperties": True,
+    }
+
+
+def _tool(name: str, description: str, properties: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": _schema(properties),
+        },
+    }
+
+
+def _default_loca_tool_manifest() -> list[dict[str, Any]]:
+    """Conservative fallback for LOCA debug/config runs with empty tool schemas.
+
+    LOCA's MCP discovery can be slow or produce legacy shapes in benchmark
+    harness mode. These are the core tools exposed by the debug Canvas task:
+    filesystem, memory, python_execute, and claim_done. Supplying this fallback
+    keeps Eliza/Hermes/OpenClaw on the real LOCA execution path instead of
+    prompting them to invent aggregate helper functions.
+    """
+
+    path = {"type": "string", "description": "Path inside the LOCA task workspace."}
+    content = {"type": "string", "description": "File content to write."}
+    pattern = {"type": "string", "description": "Search pattern."}
+    query = {"type": "string", "description": "Memory search query."}
+    code = {"type": "string", "description": "Python code to execute."}
+    return [
+        _tool("claim_done", "Signal that all required LOCA files have been updated.", {"answer": {"type": "string"}}),
+        _tool("python_execute", "Execute Python in the LOCA task workspace.", {"code": code}),
+        _tool("filesystem_list_directory", "List files in a workspace directory.", {"path": path}),
+        _tool("filesystem_directory_tree", "Return a recursive directory tree.", {"path": path}),
+        _tool("filesystem_read_file", "Read a file from the workspace.", {"path": path}),
+        _tool("filesystem_read_text_file", "Read a text file from the workspace.", {"path": path}),
+        _tool("filesystem_read_multiple_files", "Read several files from the workspace.", {"paths": {"type": "array", "items": {"type": "string"}}}),
+        _tool("filesystem_write_file", "Write a file in the workspace.", {"path": path, "content": content}),
+        _tool("filesystem_edit_file", "Patch or replace a file in the workspace.", {"path": path, "content": content}),
+        _tool("filesystem_search_files", "Search files in the workspace.", {"path": path, "pattern": pattern}),
+        _tool("filesystem_get_file_info", "Get file metadata.", {"path": path}),
+        _tool("filesystem_list_allowed_directories", "List allowed filesystem roots.", {}),
+        _tool("memory_read_graph", "Read benchmark memory graph.", {}),
+        _tool("memory_search_nodes", "Search benchmark memory nodes.", {"query": query}),
+        _tool("memory_open_nodes", "Open named memory nodes.", {"names": {"type": "array", "items": {"type": "string"}}}),
+        _tool("memory_create_entities", "Create memory entities.", {"entities": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_create_relations", "Create memory relations.", {"relations": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_add_observations", "Add memory observations.", {"observations": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_delete_entities", "Delete memory entities.", {"entityNames": {"type": "array", "items": {"type": "string"}}}),
+        _tool("memory_delete_relations", "Delete memory relations.", {"relations": {"type": "array", "items": {"type": "object"}}}),
+        _tool("memory_delete_observations", "Delete memory observations.", {"deletions": {"type": "array", "items": {"type": "object"}}}),
+    ]
+
+
+def _response_metadata(harness_name: str, response: Any) -> dict[str, Any]:
+    if harness_name == "hermes":
+        from eliza_loca.hermes_harness import hermes_loca_metadata
+
+        return hermes_loca_metadata(response)
+    if harness_name == "openclaw":
+        params = getattr(response, "params", {})
+        meta = params.get("_meta") if isinstance(params, Mapping) else {}
+        adapter_meta = meta.get("openclaw_adapter") if isinstance(meta, Mapping) else None
+        return {
+            "benchmark_harness": "openclaw",
+            "adapter": "openclaw-adapter",
+            "openclaw_adapter": adapter_meta if isinstance(adapter_meta, Mapping) else {},
+        }
+    return {
+        "benchmark_harness": harness_name or "eliza",
+        "adapter": f"{harness_name or 'eliza'}-adapter",
     }
 
 
@@ -155,18 +328,35 @@ def _build_client() -> Any:
         or "gpt-oss-120b"
     ).strip()
     if harness == "hermes":
-        from hermes_adapter.client import HermesClient
+        from eliza_loca.hermes_harness import build_hermes_loca_client
 
-        return HermesClient(provider=provider, model=model, timeout_s=timeout_s)
+        return build_hermes_loca_client(
+            provider=provider,
+            model=model,
+            timeout_s=timeout_s,
+        )
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient
 
+        mode = os.environ.get("LOCA_OPENCLAW_MODE", "").strip().lower()
+        if mode not in {"direct-openai-compatible", "native-openai", "native"}:
+            raise UnsupportedHarnessPath(
+                "OpenClaw LOCA native path is not enabled: the documented "
+                "OpenClaw CLI accepts a single --message turn and does not "
+                "preserve LOCA's full OpenAI messages/tools payload. Set "
+                "LOCA_OPENCLAW_MODE=direct-openai-compatible only for an "
+                "explicit provider-level smoke path; do not score it as "
+                "OpenClaw agent parity."
+            )
         return OpenClawClient(
             provider=provider,
             model=model,
             thinking_level=os.environ.get("LOCA_OPENCLAW_THINKING", "low"),
             timeout_s=timeout_s,
+            direct_openai_compatible=True,
         )
+    from eliza_adapter.client import ElizaClient
+
     return ElizaClient()
 
 
@@ -210,6 +400,39 @@ def _first_system_text(messages: object) -> str | None:
     return None
 
 
+def _eliza_prompt_from_payload(payload: Mapping[str, Any]) -> str:
+    messages = payload.get("messages")
+    user_text = _last_user_text(messages)
+    tools = _normalize_tool_manifest(payload.get("tools", payload.get("functions", [])))
+    tool_names = [_tool_name(tool) for tool in tools]
+    tool_names = [name for name in tool_names if name]
+    if not tool_names:
+        return user_text
+
+    return "\n\n".join(
+        [
+            user_text,
+            "LOCA tool contract: call only one of the exact available function tool names below. "
+            "Do not invent aggregate helper tools such as process_assignments_and_quizzes. "
+            "If work remains, call a filesystem, memory, Canvas, python_execute, or claim_done tool.",
+            "LOCA completion protocol: existing workspace files may contain examples or placeholders. "
+            "Use them for schema and formatting only; do not treat existing rows as proof that the task is complete. "
+            "Derive the required final state from the provided tools, local_db files, workspace files, and memory records. "
+            "For CSV-output tasks, overwrite or edit every requested CSV file with the derived final rows before any final reply or claim_done call.",
+            "Available LOCA function tools:\n" + "\n".join(f"- {name}" for name in tool_names),
+        ]
+    )
+
+
+def _tool_name(tool: Mapping[str, Any]) -> str:
+    function = tool.get("function")
+    if isinstance(function, Mapping):
+        name = function.get("name")
+        return name if isinstance(name, str) else ""
+    name = tool.get("name")
+    return name if isinstance(name, str) else ""
+
+
 def _last_user_text(messages: object) -> str:
     if not isinstance(messages, Sequence) or isinstance(messages, (str, bytes)):
         return ""
@@ -239,4 +462,4 @@ def _content_text(value: object) -> str:
     return str(value)
 
 
-__all__ = ["HarnessOpenAIProxy"]
+__all__ = ["HarnessOpenAIProxy", "UnsupportedHarnessPath"]

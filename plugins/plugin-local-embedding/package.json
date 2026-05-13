@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-local-embedding",
   "version": "2.0.0-beta.1",
-  "description": "Local AI model embedding and inference plugin for ElizaOS",
+  "description": "Deprecated compatibility shim for the unified Eliza-1 local inference provider.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -34,10 +34,7 @@
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-beta.1",
-    "@huggingface/transformers": "^4.0.0",
-    "node-llama-cpp": "3.18.1",
-    "uuid": "^14.0.0",
-    "zod": "^4.4.3"
+    "@elizaos/plugin-local-inference": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
@@ -49,102 +46,5 @@
   },
   "publishConfig": {
     "access": "public"
-  },
-  "agentConfig": {
-    "pluginType": "elizaos:plugin:1.0.0",
-    "pluginParameters": {
-      "MODELS_DIR": {
-        "type": "string",
-        "description": "Filesystem path to the directory where AI models are stored; required for initializing the LocalAI plugin during tests.",
-        "required": true,
-        "sensitive": false
-      },
-      "CACHE_DIR": {
-        "type": "string",
-        "description": "Filesystem path to the cache directory for model assets used by the LocalAI plugin during tests.",
-        "required": true,
-        "sensitive": false
-      },
-      "LOCAL_SMALL_MODEL": {
-        "type": "string",
-        "description": "Filename of the small local AI model; overrides the built-in default model if provided.",
-        "required": false,
-        "default": "text/eliza-1-mobile-1_7b-32k.gguf",
-        "sensitive": false
-      },
-      "LOCAL_LARGE_MODEL": {
-        "type": "string",
-        "description": "Filename of the large local AI model; overrides the built-in default model if provided.",
-        "required": false,
-        "default": "text/eliza-1-desktop-9b-64k.gguf",
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_MODEL": {
-        "type": "string",
-        "description": "Filename of the embedding model used for vector embeddings; overrides the default if supplied.",
-        "required": false,
-        "default": "text/eliza-1-lite-0_6b-32k.gguf",
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_MODEL_REPO": {
-        "type": "string",
-        "description": "Optional HuggingFace repo used to resolve LOCAL_EMBEDDING_MODEL downloads.",
-        "required": false,
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_DIMENSIONS": {
-        "type": "number",
-        "description": "Optional embedding dimension override; when omitted, dimensions are inferred from model defaults/hints.",
-        "required": false,
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_CONTEXT_SIZE": {
-        "type": "number",
-        "description": "Optional embedding context size override; when omitted, context size is inferred from model defaults/hints.",
-        "required": false,
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_BATCH_SIZE": {
-        "type": "number",
-        "description": "Number of inputs processed per batch when callers pass arrays. Defaults to 16.",
-        "required": false,
-        "default": 16,
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_CHUNK_OVERLAP": {
-        "type": "number",
-        "description": "Token overlap between sliding-window chunks for inputs that exceed the model's context window. Defaults to 64.",
-        "required": false,
-        "default": 64,
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_POOLING": {
-        "type": "string",
-        "description": "Pooling strategy for chunked inputs: 'mean' (default), 'cls', or 'last'.",
-        "required": false,
-        "default": "mean",
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_NORMALIZE": {
-        "type": "string",
-        "description": "L2-normalize the output embedding. Set to 'false' or '0' to disable. Defaults to true.",
-        "required": false,
-        "default": "true",
-        "sensitive": false
-      },
-      "LOCAL_EMBEDDING_FORCE_CPU": {
-        "type": "string",
-        "description": "Force CPU backend even when GPU is available. Set to '1' to enable.",
-        "required": false,
-        "default": "false",
-        "sensitive": false
-      },
-      "CUDA_VISIBLE_DEVICES": {
-        "type": "string",
-        "description": "Used to detect if CUDA-enabled GPUs are available and configure device and data type settings for model components accordingly.",
-        "required": false,
-        "sensitive": false
-      }
-    }
   }
 }

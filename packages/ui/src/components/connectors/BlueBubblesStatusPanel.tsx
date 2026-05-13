@@ -1,7 +1,8 @@
-import { Button, PagePanel } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
 
 type BlueBubblesStatus = Awaited<
   ReturnType<typeof client.getBlueBubblesStatus>

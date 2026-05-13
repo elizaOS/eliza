@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 1,
+  "metric": "vision_smoke",
+  "generatedAt": "2026-05-12T13:45:41.433Z",
+  "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle",
+  "tier": "9b",
+  "expectedVisionTier": true,
+  "textVoiceOnlyTier": false,
+  "supported": true,
+  "passed": true,
+  "status": "pass",
+  "action": "vision-smoke-passed",
+  "smokeConfig": {
+    "image": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/reports/local-e2e/2026-05-12/image-fixtures/red-dot.png",
+    "ctxSize": 512,
+    "nPredict": 8,
+    "gpuLayers": "99",
+    "timeoutMs": 600000
+  },
+  "manifest": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/eliza-1.manifest.json",
+    "filesText": [
+      {
+        "ctx": 131072,
+        "path": "text/eliza-1-9b-128k.gguf",
+        "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+        "sizeBytes": 5680522464,
+        "sizeGiB": 5.29
+      },
+      {
+        "ctx": 65536,
+        "path": "text/eliza-1-9b-64k.gguf",
+        "sha256": "03b74727a860a56338e042c4420bb3f04b2fec5734175f4cb9fa853daf52b7e8",
+        "sizeBytes": 5680522464,
+        "sizeGiB": 5.29
+      }
+    ],
+    "filesVision": [
+      {
+        "path": "vision/mmproj-9b.gguf",
+        "sha256": "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f",
+        "sizeBytes": 918166080,
+        "sizeGiB": 0.855
+      }
+    ],
+    "lineageVisionPresent": true
+  },
+  "mtmdCli": {
+    "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+    "candidates": [
+      {
+        "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+        "exists": true,
+        "executable": true,
+        "helpExitCode": 0,
+        "compatible": true,
+        "helpSignals": {
+          "mmproj": true,
+          "image": true,
+          "mtmd": true,
+          "metal": true
+        },
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+      },
+      {
+        "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
+        "exists": true,
+        "executable": true,
+        "helpExitCode": 0,
+        "compatible": true,
+        "helpSignals": {
+          "mmproj": true,
+          "image": true,
+          "mtmd": true,
+          "metal": true
+        },
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+      }
+    ],
+    "buildCommands": [
+      "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+      "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+    ]
+  },
+  "visionAssetCommands": {
+    "stageSource": "python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier 9b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle --link-mode hardlink",
+    "consolidateLocalBundle": "python packages/training/scripts/manifest/stage_local_eliza1_bundle.py --tier 9b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle --force"
+  },
+  "inventory": {
+    "visionFiles": [
+      "vision/mmproj-9b.gguf"
+    ],
+    "sourceVisionFiles": [
+      "source/vision/qwen3.5-9b-mmproj-f16.gguf"
+    ],
+    "asrMmprojFiles": [
+      "asr/eliza-1-asr-mmproj.gguf"
+    ],
+    "borrowedVisionArtifactsSeen": [
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle/vision/mmproj-27b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle/vision/mmproj-27b-256k.gguf"
+    ]
+  },
+  "appCorePath": {
+    "spawnArg": "--mmproj",
+    "envOverride": "ELIZA_LOCAL_MMPROJ",
+    "optimizationField": "runtime.optimizations.mmproj",
+    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+  },
+  "memoryImplications": {
+    "largestTextBytes": 5680522464,
+    "largestVisionBytes": 918166080,
+    "largestTextGiB": 5.29,
+    "largestVisionGiB": 0.855,
+    "minimumMappedWeightsGiB": 6.146,
+    "note": "Smoke uses a small --ctx-size, so KV cache allocation is much smaller than the tier's long-context runtime budget. Operational RAM still needs text weights + mmproj + KV cache + Metal/CPU working buffers."
+  },
+  "imageAnalysis": {
+    "attempted": true,
+    "status": "pass",
+    "startedAt": "2026-05-12T13:45:41.932Z",
+    "command": [
+      "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/text/eliza-1-9b-128k.gguf",
+      "--mmproj",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+      "--image",
+      "packages/inference/reports/local-e2e/2026-05-12/image-fixtures/red-dot.png",
+      "-c",
+      "512",
+      "-p",
+      "Describe this image in one short sentence.",
+      "-n",
+      "8",
+      "-ngl",
+      "99"
+    ],
+    "timeoutMs": 600000,
+    "exitCode": 0,
+    "signal": null,
+    "detection": {
+      "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "candidates": [
+        {
+          "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+          "exists": true,
+          "executable": true,
+          "helpExitCode": 0,
+          "compatible": true,
+          "helpSignals": {
+            "mmproj": true,
+            "image": true,
+            "mtmd": true,
+            "metal": true
+          },
+          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+        },
+        {
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/llama-mtmd-cli",
+          "exists": true,
+          "executable": true,
+          "helpExitCode": 0,
+          "compatible": true,
+          "helpSignals": {
+            "mmproj": true,
+            "image": true,
+            "mtmd": true,
+            "metal": true
+          },
+          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/eliza-workspace/milady/eliza/packages/inference/llama.cpp/build/darwin-arm64-metal-fused/bin/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+        }
+      ],
+      "buildCommands": [
+        "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+        "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+      ]
+    },
+    "timings": {
+      "loadMs": 2039.97,
+      "promptEvalMs": 231.28,
+      "promptTokens": 27,
+      "promptTokPerSec": 116.74,
+      "evalMs": 156.64,
+      "evalRuns": 7,
+      "evalTokPerSec": 44.69,
+      "totalMs": 633.48,
+      "imageEncodeMs": 79,
+      "imageDecodeMs": 3
+    },
+    "stdoutTail": "\n<think>\n\n</think>\n\nThe image is completely\n\n",
+    "stderrTail": "d_reserve: graph splits = 2\nsched_reserve: reserve took 20.23 ms, sched copies = 1\ncommon_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)\nmtmd_cli_context: chat template example:\n<|im_start|>system\nYou are a helpful assistant<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi there<|im_end|>\n<|im_start|>user\nHow are you?<|im_end|>\n<|im_start|>assistant\n\nclip_model_loader: model name:   Qwen3.5-9B\nclip_model_loader: description:  \nclip_model_loader: GGUF version: 3\nclip_model_loader: alignment:    32\nclip_model_loader: n_tensors:    334\nclip_model_loader: n_kv:         32\n\nclip_model_loader: has vision encoder\nggml_metal_init: allocating\nggml_metal_init: found device: Apple M4 Max\nggml_metal_init: picking default device: Apple M4 Max\nggml_metal_init: use fusion         = true\nggml_metal_init: use concurrency    = true\nggml_metal_init: use graph optimize = true\nclip_ctx: CLIP using MTL0 backend\nload_hparams: Qwen-VL models require at minimum 1024 image tokens to function correctly on grounding tasks\nload_hparams: if you encounter problems with accuracy, try adding --image-min-tokens 1024\nload_hparams: more info: https://github.com/ggml-org/llama.cpp/issues/16842\n\nload_hparams: projector:          qwen3vl_merger\nload_hparams: n_embd:             1152\nload_hparams: n_head:             16\nload_hparams: n_ff:               4304\nload_hparams: n_layer:            27\nload_hparams: ffn_op:             gelu\nload_hparams: projection_dim:     4096\n\n--- vision hparams ---\nload_hparams: image_size:         768\nload_hparams: patch_size:         16\nload_hparams: has_llava_proj:     0\nload_hparams: minicpmv_version:   0\nload_hparams: n_merge:            2\nload_hparams: n_wa_pattern: 0\nload_hparams: image_min_pixels:   8192\nload_hparams: image_max_pixels:   4194304\n\nload_hparams: model size:         875.61 MiB\nload_hparams: metadata size:      0.14 MiB\nwarmup: warmup with image size = 1472 x 1472\nalloc_compute_meta:       MTL0 compute buffer size =   241.90 MiB\nalloc_compute_meta:        CPU compute buffer size =    62.12 MiB\nalloc_compute_meta: graph splits = 3, nodes = 823\nwarmup: flash attention is enabled\nwarmup: *****************************************************************\nwarmup: WARNING: the CLIP graph uses unsupported operators by the backend\nwarmup:          the performance will be suboptimal                      \nwarmup:          list of unsupported ops (backend=MTL0):\nwarmup:          UPSCALE: type = f32, ne = [92 92 1152 1]\nwarmup: flash attention is enabled\nwarmup: please report this on github as an issue\nwarmup: ref: https://github.com/ggml-org/llama.cpp/pull/16837#issuecomment-3461676118\nwarmup: *****************************************************************\nmain: loading model: /Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/text/eliza-1-9b-128k.gguf\nWARN: This is an experimental CLI for testing multimodal capability.\n      For normal use cases, please use the standard llama-cli\nencoding image slice...\nimage slice encoded in 79 ms\ndecoding image batch 1/1, n_tokens_batch = 9\nfind_slot: non-consecutive token position 4 after 3 for sequence 0 with 9 new tokens\nfind_slot: non-consecutive token position 4 after 3 for sequence 0 with 9 new tokens\nimage decoded (batch 1/1) in 3 ms\nfind_slot: non-consecutive token position 20 after 4 for sequence 0 with 14 new tokens\nfind_slot: non-consecutive token position 20 after 4 for sequence 0 with 14 new tokens\nllama_perf_context_print:        load time =    2039.97 ms\nllama_perf_context_print: prompt eval time =     231.28 ms /    27 tokens (    8.57 ms per token,   116.74 tokens per second)\nllama_perf_context_print:        eval time =     156.64 ms /     7 runs   (   22.38 ms per token,    44.69 tokens per second)\nllama_perf_context_print:       total time =     633.48 ms /    34 tokens\nllama_perf_context_print:    graphs reused =          7\nggml_metal_free: deallocating\nggml_metal_free: deallocating\n"
+  },
+  "mmproj": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+    "sha256": "f70dc3509053962b0d0d3ee8a7eacebf5d60aa560cad78254ae8698516ae029f",
+    "sizeBytes": 918166080
+  },
+  "textModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/text/eliza-1-9b-128k.gguf",
+  "reason": "tier-compatible mmproj loaded and image analysis command completed"
+}

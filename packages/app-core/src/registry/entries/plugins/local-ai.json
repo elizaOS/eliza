@@ -34,7 +34,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text/eliza-1-desktop-9b-64k.gguf",
+      "default": "text/eliza-1-9b-64k.gguf",
       "label": "Large Model",
       "help": "Filename of the large local AI model.",
       "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
@@ -44,7 +44,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text/eliza-1-2b-32k.gguf",
+      "default": "text/eliza-1-1_7b-32k.gguf",
       "label": "Small Model",
       "help": "Filename of the small local AI model.",
       "placeholder": "e.g., gpt-4o, claude-sonnet-4-20250514",
@@ -62,7 +62,7 @@
       "type": "string",
       "required": false,
       "sensitive": false,
-      "default": "text/eliza-1-0_8b-32k.gguf",
+      "default": "text/eliza-1-0_6b-32k.gguf",
       "label": "Embedding Model",
       "help": "Filename of the embedding model used for vector embeddings.",
       "placeholder": "e.g., text-embedding-3-small",
@@ -85,7 +85,7 @@
       "help": "Select a published Eliza-1 fine-tune. The runtime auto-picks the right quant flavor (gguf/polarquant/fp8/bf16) for your detected GPU and pulls it from HuggingFace on first use.",
       "options": [
         {
-          "value": "eliza-1-2b",
+          "value": "eliza-1-1_7b",
           "label": "Eliza-1 2B (16 GB GPU)",
           "description": "Local-tier fine-tune, fits 16 GB consumer GPUs at Q4_K_M."
         },

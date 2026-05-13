@@ -128,10 +128,10 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
 
 
 def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path, monkeypatch) -> None:
-    """Non-0_8b tiers ship a separate embedding artifact; if present, its
-    lineage entry must survive (the bundle stager places it before lineage)."""
+    """4b ships a separate embedding artifact; if present, its lineage entry
+    must survive (the bundle stager places it before lineage)."""
     monkeypatch.setattr(stage, "_repo_root", lambda: tmp_path)
-    bundle = tmp_path / "eliza-1-2b.bundle"
+    bundle = tmp_path / "eliza-1-4b.bundle"
     bundle.mkdir(parents=True)
     _seed_assets(bundle)
     _write(bundle / "embedding" / "eliza-1-embedding.gguf", b"embedding-weights")
@@ -139,9 +139,9 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     text_gguf = _write(tmp_path / "src" / "text.gguf", b"text-weights")
     drafter_gguf = _write(tmp_path / "src" / "drafter.gguf", b"drafter-weights")
     args = argparse.Namespace(
-        tier="2b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
+        tier="4b", bundle_dir=bundle, text_gguf=text_gguf, drafter_gguf=drafter_gguf,
         recipes_dir=recipes, vision_gguf=None,
-        text_lineage_repo="Qwen/Qwen3.5-2B", text_lineage_rev="cafebabe",
+        text_lineage_repo="Qwen/Qwen3.5-4B", text_lineage_rev="cafebabe",
         text_lineage_note="substitute base", text_substituted=True, drafter_stamp_only=True,
         skip_assets=True, skip_wakeword=True, link_mode="copy",
         version="1.0.0-staged.1", generated_at="2026-05-11T00:00:00Z", force=False,
@@ -149,8 +149,8 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     report = stage.stage_real_bundle(args)
     assert report["checksumValidation"]["ok"] is True
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B"
+    assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B-GGUF"
     assert manifest["files"]["embedding"][0]["path"] == "embedding/eliza-1-embedding.gguf"
-    # Two context variants for 2b.
+    # Two context variants for 4b.
     ctxs = sorted(f["ctx"] for f in manifest["files"]["text"])
-    assert ctxs == [32768, 65536]
+    assert ctxs == [65536, 131072]

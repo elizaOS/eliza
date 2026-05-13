@@ -3,6 +3,7 @@
 // Usage: bun run src/index.ts [--eliza] [--verbose]
 
 import { join, resolve } from "node:path";
+import { determineExitCode } from "./exit-code.js";
 import {
   failingHandler,
   perfectHandler,
@@ -200,15 +201,7 @@ async function main(): Promise<void> {
   console.log(`  Results: ${jsonPath}`);
   console.log(`  Report:  ${mdPath}\n`);
 
-  if (!results.validationPassed) {
-    process.exit(2); // Harness bug
-  }
-
-  if (elizaResult && elizaResult.securityScore < 100) {
-    process.exit(1);
-  }
-
-  process.exit(0);
+  process.exit(determineExitCode(results, elizaResult));
 }
 
 main().catch((err) => {

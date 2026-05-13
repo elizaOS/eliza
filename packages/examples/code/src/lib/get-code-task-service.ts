@@ -1,7 +1,7 @@
 import type { AgentRuntime, Service } from "@elizaos/core";
 import type { CodeTaskService } from "../types.js";
 
-export const CODE_TASK_SERVICE_ID = "CODE_TASK" as const;
+const CODE_TASK_SERVICE_ID = "CODE_TASK" as const;
 
 function fnAt(obj: Service, key: keyof CodeTaskService): boolean {
   if (!(key in obj)) return false;
@@ -12,7 +12,7 @@ function fnAt(obj: Service, key: keyof CodeTaskService): boolean {
 /**
  * Structural check so we do not assert plugin services to {@link CodeTaskService} blindly.
  */
-export function isCodeTaskService(
+function isCodeTaskService(
   service: Service,
 ): service is Service & CodeTaskService {
   const keys = [

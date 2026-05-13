@@ -28,12 +28,12 @@ function getCuratedAppRegistryStore(): CuratedAppRegistryStore {
 /**
  * Register an additional curated app definition at runtime.
  *
- * This is plugin-facing runtime API surface, so plugins can depend only on
- * `@elizaos/core` while app/shared consumers read the same global registry.
+ * Symbol-keyed global so core/shared/app-core/plugin consumers read the same
+ * registry regardless of which package they import from.
  */
 export function registerCuratedApp(def: ElizaCuratedAppDefinition): void {
 	const store = getCuratedAppRegistryStore();
-	const existing = store.entries.findIndex((d) => d.slug === def.slug);
+	const existing = store.entries.findIndex((entry) => entry.slug === def.slug);
 	if (existing >= 0) {
 		store.entries[existing] = def;
 	} else {
