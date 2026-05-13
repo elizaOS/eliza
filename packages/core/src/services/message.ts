@@ -1450,6 +1450,18 @@ function appendPriorDialogueEvents(
 	if (!Array.isArray(recentMessages)) {
 		return;
 	}
+	// Hard cap on prior-dialogue events: the RECENT_MESSAGES provider
+	// already renders the most recent N as a formatted text block, and
+	// the runtime's stored `conversationLength` setting controls the DB
+	// fetch limit. Without this cap each prior dialogue turn ALSO becomes
+	// an individual `message:user` / `message:assistant` prompt segment,
+	// duplicating the same content with extra formatting overhead. On a
+	// busy room (3-day Discord channel) this dropped a single
+	// HANDLE_RESPONSE call to 140K input tokens — past the gpt-oss-120b
+	// context window and well past Cerebras's TPM ceiling. Last-N cap
+	// makes the duplicate prompt segments O(1) per turn regardless of
+	// how big the room's history is.
+	const PRIOR_DIALOGUE_EVENT_CAP = 10;
 	const dialogue = recentMessages
 		.filter((memory): memory is Memory => {
 			if (!memory || typeof memory !== "object") return false;
@@ -1464,7 +1476,8 @@ function appendPriorDialogueEvents(
 				typeof m.content?.text === "string" ? m.content.text.trim() : "";
 			return text.length > 0;
 		})
-		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+		.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+		.slice(-PRIOR_DIALOGUE_EVENT_CAP);
 	for (const memory of dialogue) {
 		const isAgent = memory.entityId === runtime.agentId;
 		events.push({

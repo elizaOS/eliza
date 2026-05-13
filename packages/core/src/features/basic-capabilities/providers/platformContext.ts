@@ -25,7 +25,15 @@ export const PLATFORM_USER_CONTEXT_PROVIDER_NAME = "PLATFORM_USER_CONTEXT";
 
 const PLATFORM_CONTEXTS: AgentContext[] = ["social", "phone", "connectors"];
 const MAX_CONNECTOR_CONTEXTS = 8;
-const MAX_RECENT_MESSAGES = 10;
+// Lower bound on what we ship per connector — RECENT_MESSAGES provider
+// already renders the canonical conversation history. PLATFORM_CHAT_CONTEXT
+// adds a per-connector view of the same conversation (so the model can
+// see e.g. that the same room is bridged across Discord and Telegram).
+// Five messages is enough to disambiguate the connector source without
+// re-shipping the full history twice. Was 10, lowered because two-connector
+// rooms (e.g. Discord default account + Discord stealth account) were
+// double-counting and pushing ~130K extra characters into the prompt.
+const MAX_RECENT_MESSAGES = 5;
 
 type RuntimeWithMessageConnectors = IAgentRuntime & {
 	getMessageConnectors?: () => MessageConnector[];
