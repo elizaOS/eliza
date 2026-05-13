@@ -370,9 +370,6 @@
     "packages/benchmarks/eliza-1": {
       "name": "@elizaos/bench-eliza-1",
       "version": "0.1.0",
-      "dependencies": {
-        "@anthropic-ai/sdk": "^0.95.2",
-      },
       "devDependencies": {
         "@types/node": "^25.0.3",
         "typescript": "^6.0.3",

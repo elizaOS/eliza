@@ -8,7 +8,7 @@
  */
 export type TaskName = "should_respond" | "planner" | `action:${string}`;
 
-export type ModeName = "unguided" | "guided" | "haiku";
+export type ModeName = "unguided" | "guided" | "cerebras";
 
 /** JSON value type — minimal local definition to avoid pulling @elizaos/core. */
 export type JsonValue =
@@ -154,7 +154,7 @@ export interface ModeRequest {
   jsonSchema: JsonValue;
   /**
    * The grammar-friendly skeleton hint. Modes that compile to GBNF use
-   * this; the haiku mode uses the JSON schema directly via tool-use.
+   * this; the cerebras mode uses the JSON schema directly via tool-use.
    */
   skeletonHint: SkeletonHint;
   /** Max output tokens for this call. */
