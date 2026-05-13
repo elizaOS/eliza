@@ -194,12 +194,56 @@ function defaultModelPath(name) {
   return path.join(stateDir(), "local-inference", "models", name);
 }
 
-function parseArgs(argv) {
-  const backend = detectBackend();
+const QUICK_VARIANTS = [
+  "baseline_f16_kv",
+  "turbo4_polar_kv",
+  "qjl_tcq_forced",
+  "dflash_only",
+];
+
+const OPTION_ALIASES = new Map([
+  ["-b", "--batch-size"],
+  ["-ub", "--ubatch-size"],
+]);
+
+const NUMBER_OPTIONS = new Map([
+  ["--runs", "runs"],
+  ["--max-tokens", "maxTokens"],
+  ["--warmup-tokens", "warmupTokens"],
+  ["--ctx-size", "contextSize"],
+  ["--ctx-size-draft", "draftContextSize"],
+  ["--draft-min", "draftMin"],
+  ["--draft-max", "draftMax"],
+  ["--batch-size", "batchSize"],
+  ["--ubatch-size", "ubatchSize"],
+  ["--gpu-layers", "gpuLayers"],
+  ["--draft-gpu-layers", "draftGpuLayers"],
+  ["--timeout-ms", "timeoutMs"],
+  ["--start-timeout-ms", "startTimeoutMs"],
+]);
+
+const PATH_OPTIONS = new Map([
+  ["--binary", "binary"],
+  ["--model", "model"],
+  ["--drafter", "drafter"],
+  ["--out-dir", "outDir"],
+  ["--config", "config"],
+  ["--gate", "gate"],
+]);
+
+const VALUE_OPTIONS = new Set([
+  ...NUMBER_OPTIONS.keys(),
+  ...PATH_OPTIONS.keys(),
+  "--backend",
+  "--prompt",
+  "--variants",
+]);
+
+function defaultArgsForBackend(backend) {
   const defaultGpuLayers = backend === "cpu" ? 0 : 99;
-  const args = {
+  return {
     backend,
-    binary: defaultBinary(backend),
+    binary: null,
     model: defaultModelPath("eliza-1-mobile-1_7b.gguf"),
     drafter: defaultModelPath("eliza-1-mobile-1_7b-drafter-q4.repaired.gguf"),
     runs: 3,
@@ -222,68 +266,80 @@ function parseArgs(argv) {
     gate: null,
     requireAll: false,
   };
+}
+
+function requireArgValue(argv, index, arg) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${arg} requires a value`);
+  }
+  return value;
+}
+
+function setNumberOption(args, key, value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) throw new Error(`${key} must be a number`);
+  args[key] = parsed;
+}
+
+function applyValueOption(args, option, value) {
+  if (option === "--backend") {
+    args.backend = value;
+    return;
+  }
+  if (option === "--prompt") {
+    args.prompt = value;
+    return;
+  }
+  if (option === "--variants") {
+    args.variants = value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    return;
+  }
+  const numberKey = NUMBER_OPTIONS.get(option);
+  if (numberKey) {
+    setNumberOption(args, numberKey, value);
+    return;
+  }
+  const pathKey = PATH_OPTIONS.get(option);
+  if (pathKey) {
+    args[pathKey] = path.resolve(value);
+    return;
+  }
+  throw new Error(`Unknown argument: ${option}`);
+}
+
+function applyFlagOption(args, arg) {
+  if (arg === "--require-all") {
+    args.requireAll = true;
+    return true;
+  }
+  if (arg === "--quick") {
+    args.runs = 1;
+    args.maxTokens = 96;
+    args.warmupTokens = 16;
+    args.variants = QUICK_VARIANTS;
+    return true;
+  }
+  if (arg === "--help" || arg === "-h") {
+    printHelp();
+    process.exit(0);
+  }
+  return false;
+}
+
+function parseArgs(argv) {
+  const args = defaultArgsForBackend(detectBackend());
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    const next = () => {
-      const value = argv[i + 1];
-      if (!value || value.startsWith("--"))
-        throw new Error(`${arg} requires a value`);
-      i += 1;
-      return value;
-    };
-    if (arg === "--backend") args.backend = next();
-    else if (arg === "--binary") args.binary = path.resolve(next());
-    else if (arg === "--model") args.model = path.resolve(next());
-    else if (arg === "--drafter") args.drafter = path.resolve(next());
-    else if (arg === "--runs") args.runs = Number.parseInt(next(), 10);
-    else if (arg === "--max-tokens")
-      args.maxTokens = Number.parseInt(next(), 10);
-    else if (arg === "--warmup-tokens")
-      args.warmupTokens = Number.parseInt(next(), 10);
-    else if (arg === "--ctx-size")
-      args.contextSize = Number.parseInt(next(), 10);
-    else if (arg === "--ctx-size-draft")
-      args.draftContextSize = Number.parseInt(next(), 10);
-    else if (arg === "--draft-min") args.draftMin = Number.parseInt(next(), 10);
-    else if (arg === "--draft-max") args.draftMax = Number.parseInt(next(), 10);
-    else if (arg === "--batch-size" || arg === "-b")
-      args.batchSize = Number.parseInt(next(), 10);
-    else if (arg === "--ubatch-size" || arg === "-ub")
-      args.ubatchSize = Number.parseInt(next(), 10);
-    else if (arg === "--gpu-layers")
-      args.gpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--draft-gpu-layers")
-      args.draftGpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--timeout-ms")
-      args.timeoutMs = Number.parseInt(next(), 10);
-    else if (arg === "--start-timeout-ms")
-      args.startTimeoutMs = Number.parseInt(next(), 10);
-    else if (arg === "--prompt") args.prompt = next();
-    else if (arg === "--variants")
-      args.variants = next()
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean);
-    else if (arg === "--out-dir") args.outDir = path.resolve(next());
-    else if (arg === "--config") args.config = path.resolve(next());
-    else if (arg === "--gate") args.gate = path.resolve(next());
-    else if (arg === "--require-all") args.requireAll = true;
-    else if (arg === "--quick") {
-      args.runs = 1;
-      args.maxTokens = 96;
-      args.warmupTokens = 16;
-      args.variants = [
-        "baseline_f16_kv",
-        "turbo4_polar_kv",
-        "qjl_tcq_forced",
-        "dflash_only",
-      ];
-    } else if (arg === "--help" || arg === "-h") {
-      printHelp();
-      process.exit(0);
-    } else {
-      throw new Error(`Unknown argument: ${arg}`);
-    }
+    if (applyFlagOption(args, arg)) continue;
+    const option = OPTION_ALIASES.get(arg) ?? arg;
+    if (!VALUE_OPTIONS.has(option)) throw new Error(`Unknown argument: ${arg}`);
+    const value = requireArgValue(argv, i, option);
+    applyValueOption(args, option, value);
+    i += 1;
   }
   args.binary = args.binary || defaultBinary(args.backend);
   return args;
