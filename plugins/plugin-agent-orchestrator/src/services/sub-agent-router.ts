@@ -239,6 +239,32 @@ export class SubAgentRouter {
     const subAgentEntityId = deriveUuidFromString(
       `${this.runtime.agentId}:${SUB_AGENT_ENTITY_NAMESPACE}:${sessionId}`,
     );
+    // The synthetic sub-agent entityId is a deterministic UUID for the
+    // session — but it doesn't exist in the entities table yet, so the
+    // FK on memories.entity_id rejects the insert and the router post
+    // dies before the planner ever sees it. Register the entity (and
+    // its participation in the origin room/world) before saving.
+    await this.runtime
+      .ensureConnection({
+        entityId: subAgentEntityId,
+        roomId: origin.roomId,
+        ...(origin.worldId ? { worldId: origin.worldId } : {}),
+        userName: `sub-agent-${session.agentType}`,
+        name: `sub-agent: ${origin.label}`,
+        source: ACPX_ROUTER_SOURCE,
+        metadata: {
+          subAgent: true,
+          subAgentSessionId: sessionId,
+          subAgentAgentType: session.agentType,
+        },
+      })
+      .catch((err) => {
+        this.log("warn", "ensureConnection for sub-agent entity failed", {
+          sessionId,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
     const text = capExceeded
       ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
       : composeNarration(event, origin.label, session, data);
