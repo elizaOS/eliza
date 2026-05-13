@@ -3216,7 +3216,32 @@ export function extractPlanActionsCallFromText(text: unknown): {
 			!Array.isArray(obj.params)
 				? (obj.params as Record<string, unknown>)
 				: {};
-		return { name: action, params };
+		return { name: action, params: dropNullParams(params) };
+	}
+	// OpenAI-style function-call shape recovery: when Cerebras-served
+	// instruct models (qwen-3-235b, llama, etc.) emit a tool call as
+	// JSON content (because the function-call API roundtrip didn't
+	// happen), they typically use the literal `{name, arguments}` shape
+	// from the OpenAI tools schema. The parent action name + sub-action
+	// pattern combines to e.g. `TASKS_SPAWN_AGENT`.
+	const callName = typeof obj.name === "string" ? obj.name.trim() : "";
+	const callArguments =
+		obj.arguments && typeof obj.arguments === "object" && !Array.isArray(obj.arguments)
+			? (obj.arguments as Record<string, unknown>)
+			: null;
+	if (callName && callArguments) {
+		const subAction =
+			typeof callArguments.action === "string"
+				? callArguments.action.trim()
+				: "";
+		if (subAction) {
+			// Compose the canonical parent_subaction name. e.g. parent=TASKS,
+			// subaction=spawn_agent → TASKS_SPAWN_AGENT.
+			const composed = `${callName.toUpperCase()}_${subAction.toUpperCase()}`;
+			const { action: _, ...paramsRest } = callArguments;
+			return { name: composed, params: dropNullParams(paramsRest) };
+		}
+		return { name: callName.toUpperCase(), params: dropNullParams(callArguments) };
 	}
 	// Bare-params recovery: in native-tools mode, the response handler
 	// often emits ONLY the params object (no outer `action`/`params`
@@ -3244,9 +3269,27 @@ export function extractPlanActionsCallFromText(text: unknown): {
 		rawAgentType &&
 		KNOWN_ADAPTER_TYPES.has(rawAgentType.toLowerCase())
 	) {
-		return { name: "TASKS_SPAWN_AGENT", params: obj };
+		return { name: "TASKS_SPAWN_AGENT", params: dropNullParams(obj) };
 	}
 	return null;
+}
+
+// Strip `null` and `undefined` values from a params object. The model
+// sometimes fills required-with-default fields with literal `null`
+// (e.g. `approvalPreset: null` when it can't pick a value), and the
+// downstream enum validator then rejects the call with
+// `Argument 'approvalPreset' value null is not one of [...]`. Letting
+// the registered default apply is safer than shipping the rejection
+// to the user.
+function dropNullParams(
+	params: Record<string, unknown>,
+): Record<string, unknown> {
+	const out: Record<string, unknown> = {};
+	for (const [key, value] of Object.entries(params)) {
+		if (value === null || value === undefined) continue;
+		out[key] = value;
+	}
+	return out;
 }
 
 /**
