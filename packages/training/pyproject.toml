@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.11,<3.13"
 
 dependencies = [
-  "huggingface-hub>=0.27.0",
+  # 1.13.0 has a one-file LFS upload typo in _upload_lfs_files
+  # (`filtered_tool_calls` vs `filtered_actions`) that breaks large GGUF
+  # publishes when Xet is disabled. Keep Hub publishing on the fixed line.
+  "huggingface-hub>=1.14.0",
   "datasets>=3.2.0",
   "pandas>=2.2.0",
   "pyyaml>=6.0.2",
