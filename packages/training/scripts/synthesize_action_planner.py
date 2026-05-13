@@ -1,4 +1,4 @@
-"""Synthesize TOON message_handler training records for every elizaOS action.
+"""Synthesize native JSON message_handler training records for every elizaOS action.
 
 For every action in `/tmp/action_inventory_enriched.json`, this script
 produces N=30 supervised records (configurable) where:
@@ -10,7 +10,7 @@ produces N=30 supervised records (configurable) where:
     sees both short DMs and long group threads.
   - availableActions includes the target action plus a sample of 6-12
     other actions (so the planner has to choose).
-  - expectedResponse is a TOON message_handler document selecting that
+  - expectedResponse is a native JSON message_handler document selecting that
     action, with templated params when the parameter shape is known.
 
 Output: data/synthesized/action_planner_coverage.jsonl
@@ -79,7 +79,7 @@ UNIVERSAL_ACTIONS = ["REPLY", "IGNORE", "STOP", "NONE"]
 # Per-action heuristic param schemas. These are conservative — most
 # actions get empty `params` in the synthesized output. Only common
 # parametric shapes are templated here. The student learns *that the
-# planner emits TOON, with the right action name, and with params iff
+# planner emits native JSON, with the right action name, and with params iff
 # they are clearly mentioned in the user message*.
 PARAM_TEMPLATES: dict[str, list[dict[str, Any]]] = {
     "MESSAGE": [
@@ -225,15 +225,15 @@ def make_memory(rng: random.Random, length: int, agent: str,
     return out
 
 
-def encode_action_planner_toon(
+def encode_action_planner_payload(
     *, thought: str, actions: list[dict[str, Any]],
     providers: list[str], text: str, simple: bool,
 ) -> str:
-    """Render a TOON message_handler document.
+    """Render a native JSON message_handler document.
 
     Format:
       thought: <text>
-      actions[N]:
+      tool_calls[]
         - name: ACTION_NAME
           params:
             key: value
@@ -300,7 +300,7 @@ def synthesize_for_action(
         sample = rng.sample(other_actions, k=min(8, len(other_actions)))
         avail = list(dict.fromkeys([name] + sample + UNIVERSAL_ACTIONS))
 
-        # Plan the TOON output. Most cases just call the target action;
+        # Plan the native JSON output. Most cases just call the target action;
         # a fraction also chain a REPLY for natural conversation.
         params_template = rng.choice(param_templates)
         params = fill_slots(params_template, rng, agent, user) if params_template else {}
@@ -325,7 +325,7 @@ def synthesize_for_action(
             providers = rng.sample(["FACTS", "RECENT_MESSAGES", "TIME", "ENTITIES"],
                                    k=rng.randint(1, 2))
 
-        toon = encode_action_planner_toon(
+        payload = encode_action_planner_payload(
             thought=thought, actions=actions_list,
             providers=providers, text=text_field,
             simple=(not chain_reply and len(actions_list) == 1),
@@ -341,7 +341,7 @@ def synthesize_for_action(
             agentId=agent.lower(),
             memoryEntries=memory,
             currentMessage=current,
-            expectedResponse=toon,
+            expectedResponse=payload,
             availableActions=avail,
             task_type="message_handler",
             source_dataset="synth-action-planner",

@@ -26,6 +26,7 @@ export interface Bindings {
   ELEVENLABS_API_KEY?: string;
 
   // ---- AI providers ----
+  CEREBRAS_API_KEY?: string;
   OPENROUTER_API_KEY?: string;
   OPENAI_API_KEY?: string;
   OPENAI_BASE_URL?: string;

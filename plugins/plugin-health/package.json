@@ -34,7 +34,8 @@
     "lint:check": "bunx @biomejs/biome check ."
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1"
+    "@elizaos/core": "2.0.0-beta.1",
+    "@elizaos/shared": "2.0.0-beta.1"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",

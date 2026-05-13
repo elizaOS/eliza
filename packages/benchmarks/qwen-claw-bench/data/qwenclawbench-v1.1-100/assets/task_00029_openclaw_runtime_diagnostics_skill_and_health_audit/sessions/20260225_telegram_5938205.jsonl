@@ -1,0 +1,66 @@
+{"type": "session_start", "session_id": "telegram_5938205", "model": "deepseek-r1", "created_at": "2026-02-25T00:24:05.356065", "user_id": "system", "channel": "telegram"}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-25T00:28:17.170496", "session_id": "telegram_5938205", "seq": 1, "usage": {"prompt_tokens": 3015, "completion_tokens": 2369, "total_tokens": 2905}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-25T00:32:46.239949", "session_id": "telegram_5938205", "seq": 2, "usage": {"prompt_tokens": 2309, "completion_tokens": 1674, "total_tokens": 7879}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-25T00:34:19.550625", "session_id": "telegram_5938205", "seq": 3}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T00:34:34.715921", "session_id": "telegram_5938205", "seq": 4, "usage": {"prompt_tokens": 3851, "completion_tokens": 3230, "total_tokens": 951}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T00:36:06.846969", "session_id": "telegram_5938205", "seq": 5}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-25T00:39:05.613734", "session_id": "telegram_5938205", "seq": 6}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-25T00:39:59.341249", "session_id": "telegram_5938205", "seq": 7, "usage": {"prompt_tokens": 2059, "completion_tokens": 3867, "total_tokens": 288}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T00:41:15.802683", "session_id": "telegram_5938205", "seq": 8, "usage": {"prompt_tokens": 5861, "completion_tokens": 3384, "total_tokens": 11462}}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-25T00:41:58.260068", "session_id": "telegram_5938205", "seq": 9, "usage": {"prompt_tokens": 219, "completion_tokens": 1218, "total_tokens": 4906}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-25T00:45:47.142208", "session_id": "telegram_5938205", "seq": 10}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-25T00:48:02.309357", "session_id": "telegram_5938205", "seq": 11, "usage": {"prompt_tokens": 324, "completion_tokens": 3941, "total_tokens": 8348}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-25T00:50:02.151515", "session_id": "telegram_5938205", "seq": 12}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T00:54:04.248991", "session_id": "telegram_5938205", "seq": 13, "usage": {"prompt_tokens": 6548, "completion_tokens": 2073, "total_tokens": 5113}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T00:57:32.006785", "session_id": "telegram_5938205", "seq": 14}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-25T00:58:24.452661", "session_id": "telegram_5938205", "seq": 15}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T01:00:35.267981", "session_id": "telegram_5938205", "seq": 16}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T01:04:03.057444", "session_id": "telegram_5938205", "seq": 17, "usage": {"prompt_tokens": 3734, "completion_tokens": 2495, "total_tokens": 3340}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-25T01:08:37.317189", "session_id": "telegram_5938205", "seq": 18}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-25T01:09:40.404261", "session_id": "telegram_5938205", "seq": 19}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-25T01:12:56.653494", "session_id": "telegram_5938205", "seq": 20, "usage": {"prompt_tokens": 3810, "completion_tokens": 3746, "total_tokens": 3619}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T01:16:13.281937", "session_id": "telegram_5938205", "seq": 21, "usage": {"prompt_tokens": 3574, "completion_tokens": 2526, "total_tokens": 5258}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-25T01:18:18.745653", "session_id": "telegram_5938205", "seq": 22}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T01:23:03.779233", "session_id": "telegram_5938205", "seq": 23, "usage": {"prompt_tokens": 4300, "completion_tokens": 2227, "total_tokens": 5228}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-25T01:26:21.802226", "session_id": "telegram_5938205", "seq": 24}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-25T01:30:51.782702", "session_id": "telegram_5938205", "seq": 25, "usage": {"prompt_tokens": 7266, "completion_tokens": 459, "total_tokens": 7212}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-25T01:33:23.201591", "session_id": "telegram_5938205", "seq": 26}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-25T01:33:38.018789", "session_id": "telegram_5938205", "seq": 27, "usage": {"prompt_tokens": 6653, "completion_tokens": 1919, "total_tokens": 5426}}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-25T01:33:46.596626", "session_id": "telegram_5938205", "seq": 28}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-25T01:36:26.430058", "session_id": "telegram_5938205", "seq": 29, "usage": {"prompt_tokens": 1550, "completion_tokens": 3635, "total_tokens": 11559}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-25T01:38:01.602126", "session_id": "telegram_5938205", "seq": 30, "usage": {"prompt_tokens": 814, "completion_tokens": 1462, "total_tokens": 7713}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-25T01:40:11.408676", "session_id": "telegram_5938205", "seq": 31, "usage": {"prompt_tokens": 7063, "completion_tokens": 2886, "total_tokens": 8686}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-25T01:41:38.972461", "session_id": "telegram_5938205", "seq": 32}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-25T01:45:11.813234", "session_id": "telegram_5938205", "seq": 33, "usage": {"prompt_tokens": 1940, "completion_tokens": 2682, "total_tokens": 5600}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-25T01:49:17.484689", "session_id": "telegram_5938205", "seq": 34}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-25T01:54:01.854486", "session_id": "telegram_5938205", "seq": 35}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-25T01:56:55.098042", "session_id": "telegram_5938205", "seq": 36}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-25T01:59:19.249604", "session_id": "telegram_5938205", "seq": 37}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-25T02:03:05.255847", "session_id": "telegram_5938205", "seq": 38}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-25T02:04:12.187628", "session_id": "telegram_5938205", "seq": 39, "usage": {"prompt_tokens": 6187, "completion_tokens": 2377, "total_tokens": 2179}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-25T02:04:57.041711", "session_id": "telegram_5938205", "seq": 40}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-25T02:06:48.529330", "session_id": "telegram_5938205", "seq": 41}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-25T02:08:19.444260", "session_id": "telegram_5938205", "seq": 42}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-25T02:13:08.765385", "session_id": "telegram_5938205", "seq": 43}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-25T02:15:38.061470", "session_id": "telegram_5938205", "seq": 44}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-25T02:18:32.958495", "session_id": "telegram_5938205", "seq": 45}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T02:20:48.138735", "session_id": "telegram_5938205", "seq": 46, "usage": {"prompt_tokens": 3480, "completion_tokens": 1865, "total_tokens": 10701}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-25T02:25:34.838092", "session_id": "telegram_5938205", "seq": 47, "usage": {"prompt_tokens": 1237, "completion_tokens": 292, "total_tokens": 1319}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-25T02:26:11.720981", "session_id": "telegram_5938205", "seq": 48, "usage": {"prompt_tokens": 6782, "completion_tokens": 3689, "total_tokens": 8922}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-25T02:30:32.266075", "session_id": "telegram_5938205", "seq": 49, "usage": {"prompt_tokens": 4464, "completion_tokens": 409, "total_tokens": 8045}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T02:33:03.199562", "session_id": "telegram_5938205", "seq": 50, "usage": {"prompt_tokens": 3087, "completion_tokens": 1180, "total_tokens": 6114}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-25T02:33:07.137764", "session_id": "telegram_5938205", "seq": 51}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T02:37:03.076518", "session_id": "telegram_5938205", "seq": 52, "usage": {"prompt_tokens": 1992, "completion_tokens": 269, "total_tokens": 5032}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-25T02:38:02.318875", "session_id": "telegram_5938205", "seq": 53, "usage": {"prompt_tokens": 6319, "completion_tokens": 2649, "total_tokens": 7184}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-25T02:41:06.478598", "session_id": "telegram_5938205", "seq": 54, "usage": {"prompt_tokens": 6737, "completion_tokens": 539, "total_tokens": 1448}}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-25T02:43:34.535265", "session_id": "telegram_5938205", "seq": 55}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T02:46:48.481816", "session_id": "telegram_5938205", "seq": 56}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-25T02:49:01.604442", "session_id": "telegram_5938205", "seq": 57}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-25T02:50:09.965883", "session_id": "telegram_5938205", "seq": 58, "usage": {"prompt_tokens": 3705, "completion_tokens": 1214, "total_tokens": 2134}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T02:50:16.438549", "session_id": "telegram_5938205", "seq": 59, "usage": {"prompt_tokens": 5070, "completion_tokens": 2150, "total_tokens": 3013}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-25T02:52:30.082599", "session_id": "telegram_5938205", "seq": 60}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T02:53:06.517738", "session_id": "telegram_5938205", "seq": 61, "usage": {"prompt_tokens": 1394, "completion_tokens": 2534, "total_tokens": 2200}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-25T02:54:03.665422", "session_id": "telegram_5938205", "seq": 62}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T02:55:57.106419", "session_id": "telegram_5938205", "seq": 63, "usage": {"prompt_tokens": 2709, "completion_tokens": 3371, "total_tokens": 3190}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-25T02:59:35.271018", "session_id": "telegram_5938205", "seq": 64, "usage": {"prompt_tokens": 7786, "completion_tokens": 1669, "total_tokens": 6547}}
+{"type": "session_end", "session_id": "telegram_5938205", "ended_at": "2026-02-25T02:59:45.271018", "total_messages": 64, "status": "completed"}

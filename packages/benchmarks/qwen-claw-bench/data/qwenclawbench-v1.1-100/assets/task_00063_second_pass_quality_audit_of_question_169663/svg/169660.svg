@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="350" viewBox="0 0 400 350">
+  <!-- Background -->
+  <rect x="0" y="0" width="400" height="350" fill="white" stroke="none"/>
+
+  <!-- Triangle -->
+  <polygon points="200,50 80,280 320,280" fill="none" stroke="black" stroke-width="2"/>
+
+  <!-- Side labels -->
+  <!-- Left side: 4cm -->
+  <text x="125" y="170" text-anchor="middle" font-size="15" fill="black" font-family="sans-serif" transform="rotate(-58, 125, 170)">4cm</text>
+
+  <!-- Right side: 5cm -->
+  <text x="275" y="170" text-anchor="middle" font-size="15" fill="black" font-family="sans-serif" transform="rotate(52, 275, 170)">5cm</text>
+
+  <!-- Bottom side: 3cm -->
+  <text x="200" y="305" text-anchor="middle" font-size="15" fill="black" font-family="sans-serif">3cm</text>
+
+  <!-- Right angle marker at bottom-left -->
+  <polyline points="80,260 100,260 100,280" fill="none" stroke="black" stroke-width="1.5"/>
+
+  <!-- Title -->
+  <text x="200" y="30" text-anchor="middle" font-size="16" fill="black" font-family="sans-serif">Triangle</text>
+</svg>

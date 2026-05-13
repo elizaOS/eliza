@@ -1,0 +1,18 @@
+{
+  "gate": "one_hour_soak",
+  "status": "pass",
+  "completedAt": "2026-05-12T19:48:02.413Z",
+  "baseUrl": "http://ssh3.vast.ai:11983",
+  "model": "vast/eliza-1-27b-256k",
+  "standIn": true,
+  "modelArtifact": "unsloth/Qwen3.6-27B-GGUF/Qwen3.6-27B-UD-Q3_K_XL.gguf",
+  "durationMs": 3583139,
+  "requests": 116,
+  "crashFree": true,
+  "rssLeakWithinBudget": true,
+  "startRssBytes": 2709290000,
+  "endRssBytes": 2709290000,
+  "rssDeltaBytes": 0,
+  "p95Ms": 1221,
+  "summary": "soak 3583s; requests 116; crash-free true; rss budget true"
+}

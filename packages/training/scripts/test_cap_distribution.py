@@ -90,7 +90,7 @@ def test_primary_action_routing_uses_available_actions_first():
     assert primary_action(rec) == "REPLY"
 
 
-def test_primary_action_tool_call_uses_toon():
+def test_primary_action_tool_call_uses_payload():
     er = "thought: do thing\nactions[1]{name,params}:\n  - name: TASK_CALL\n    params: ...\n"
     rec = _record(source="x", action="ignored", task_type="tool_call",
                   expected_response=er, available_actions=["TASK_CALL"])

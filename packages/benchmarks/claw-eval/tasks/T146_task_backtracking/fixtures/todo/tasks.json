@@ -1,0 +1,10 @@
+[
+  {"task_id":"TODO-801","title":"Write Q1 summary report","status":"in_progress","priority":"high","due_date":"2026-03-28","progress":60,"notes":"Data collection and preliminary analysis completed; still need to add March data and write summary section","created_at":"2026-03-10"},
+  {"task_id":"TODO-802","title":"Dingxin Software customization proposal","status":"pending","priority":"high","due_date":"2026-03-20","progress":30,"notes":"Waiting for client to confirm final requirements; after the March 15 meeting the client said they need internal discussion","blocked_by":"Waiting for client requirement confirmation","created_at":"2026-03-01"},
+  {"task_id":"TODO-803","title":"Submit performance evaluation form","status":"completed","priority":"medium","due_date":"2026-03-25","progress":100,"notes":"Completed and submitted to the system on March 23","completed_at":"2026-03-23","created_at":"2026-03-15"},
+  {"task_id":"TODO-804","title":"Update product documentation","status":"in_progress","priority":"medium","due_date":"2026-03-31","progress":40,"created_at":"2026-03-12"},
+  {"task_id":"TODO-805","title":"Compile team weekly report","status":"pending","priority":"low","due_date":"2026-03-28","created_at":"2026-03-20"},
+  {"task_id":"TODO-806","title":"Plan quarterly team-building activity","status":"pending","priority":"low","due_date":"2026-04-10","created_at":"2026-03-18"},
+  {"task_id":"TODO-807","title":"Organize meeting room booking process","status":"completed","priority":"low","due_date":"2026-03-20","completed_at":"2026-03-19","created_at":"2026-03-10"},
+  {"task_id":"TODO-808","title":"Study new API documentation","status":"pending","priority":"medium","due_date":"2026-04-05","created_at":"2026-03-22"}
+]

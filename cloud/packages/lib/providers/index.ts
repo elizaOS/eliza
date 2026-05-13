@@ -15,6 +15,7 @@ import { OpenRouterProvider } from "./openrouter";
 import { getProviderKey, getRequiredProviderKey } from "./provider-env";
 import type { AIProvider } from "./types";
 import { VastProvider } from "./vast";
+import { resolveVastEndpointConfig, resolveVastFallbackModel } from "./vast-endpoints";
 import { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 export { AnthropicDirectProvider } from "./anthropic-direct";
@@ -28,6 +29,7 @@ export { OpenAIDirectProvider } from "./openai-direct";
 export { OpenRouterProvider } from "./openrouter";
 export * from "./types";
 export { VastProvider } from "./vast";
+export * from "./vast-endpoints";
 export { VercelAIGatewayProvider } from "./vercel-ai-gateway";
 
 interface ProviderSingleton {
@@ -44,7 +46,7 @@ let groqProviderInstance: ProviderSingleton | null = null;
 let openAIDirectProviderInstance: OpenAIDirectProviderSingleton | null = null;
 let anthropicDirectProviderInstance: ProviderSingleton | null = null;
 let vercelAIGatewayProviderInstance: ProviderSingleton | null = null;
-let vastProviderInstance: { apiKey: string; baseUrl: string; provider: AIProvider } | null = null;
+let vastProviderInstances = new Map<string, AIProvider>();
 
 /**
  * Gets the principal AI provider instance (OpenRouter).
@@ -125,25 +127,23 @@ function getAnthropicDirectProvider(): AIProvider {
   return anthropicDirectProviderInstance.provider;
 }
 
-export function hasVastProviderConfigured(): boolean {
-  return Boolean(getProviderKey("VAST_API_KEY") && getProviderKey("VAST_BASE_URL"));
+export function hasVastProviderConfigured(model = "vast/eliza-1-27b"): boolean {
+  return resolveVastEndpointConfig(model) !== null;
 }
 
-export function getVastProvider(): AIProvider {
-  const apiKey = getRequiredProviderKey("VAST_API_KEY");
-  const baseUrl = getRequiredProviderKey("VAST_BASE_URL");
-  if (
-    !vastProviderInstance ||
-    vastProviderInstance.apiKey !== apiKey ||
-    vastProviderInstance.baseUrl !== baseUrl
-  ) {
-    vastProviderInstance = {
-      apiKey,
-      baseUrl,
-      provider: new VastProvider(apiKey, baseUrl),
-    };
+export function getVastProvider(model = "vast/eliza-1-27b"): AIProvider {
+  const config = resolveVastEndpointConfig(model);
+  if (!config) {
+    throw new Error(`Vast endpoint is not configured for ${model}`);
   }
-  return vastProviderInstance.provider;
+  const cacheKey = `${config.model}|${config.apiKey}|${config.baseUrl}|${config.apiModelId}`;
+  const cached = vastProviderInstances.get(cacheKey);
+  if (cached) return cached;
+  const provider = new VastProvider(config.apiKey, config.baseUrl, {
+    apiModelId: config.apiModelId,
+  });
+  vastProviderInstances.set(cacheKey, provider);
+  return provider;
 }
 
 function getVercelAIGatewayApiKey(): string | null {
@@ -179,7 +179,7 @@ export function getProviderForModel(model: string): AIProvider {
   }
 
   if (isVastNativeModel(model)) {
-    return getVastProvider();
+    return getVastProvider(model);
   }
 
   if (hasOpenRouterProviderConfigured()) {
@@ -201,7 +201,8 @@ export function getProviderForModel(model: string): AIProvider {
  *
  * Fallback rules:
  *   - Groq native models: no fallback (Groq runs through its own provider).
- *   - Vast native models: no fallback (Vast Serverless is the only host for these self-hosted ids).
+ *   - Vast native models: fallback to a smaller dedicated Vast endpoint when
+ *     configured (27B -> 9B -> 2B by default).
  *   - `openai/*`: OpenAI direct fallback when OPENAI_API_KEY is set.
  *   - `anthropic/*`: Anthropic direct fallback when ANTHROPIC_API_KEY is set.
  *   - All other models (xai, google, mistral, …): no fallback.
@@ -215,7 +216,11 @@ export function getProviderForModelWithFallback(model: string): {
   }
 
   if (isVastNativeModel(model)) {
-    return { primary: getVastProvider(), fallback: null };
+    const fallbackModel = resolveVastFallbackModel(model);
+    return {
+      primary: getVastProvider(model),
+      fallback: fallbackModel ? getVastProvider(fallbackModel) : null,
+    };
   }
 
   const primary = hasOpenRouterProviderConfigured() ? getProvider() : getVercelAIGatewayProvider();

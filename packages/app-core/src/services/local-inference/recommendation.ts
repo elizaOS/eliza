@@ -18,21 +18,20 @@ import {
 } from "./ram-budget";
 import type {
   CatalogModel,
+  CatalogQuantizationVariant,
   HardwareFitLevel,
   HardwareProbe,
   InstalledModel,
   TextGenerationSlot,
 } from "./types";
 
-// Local tier-id constants derived once from the manifest-driven catalog
-// type so the ladder definitions can't drift from the canonical list.
-// Adding a tier requires extending the manifest module; this file picks
-// it up automatically.
-const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
-const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
+const TIER_2B: Eliza1TierId = "eliza-1-2b";
+const TIER_4B: Eliza1TierId = "eliza-1-4b";
 const TIER_9B: Eliza1TierId = "eliza-1-9b";
 const TIER_27B: Eliza1TierId = "eliza-1-27b";
 const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
+const TIER_27B_1M: Eliza1TierId = "eliza-1-27b-1m";
 
 export type RecommendationPlatformClass =
   | "mobile"
@@ -65,28 +64,36 @@ const SLOT_LADDERS: Record<
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
   mobile: {
-    TEXT_SMALL: [TIER_0_6B, TIER_1_7B],
-    TEXT_LARGE: [TIER_1_7B, TIER_0_6B],
+    TEXT_SMALL: [TIER_0_8B],
+    TEXT_LARGE: [TIER_4B, TIER_2B, TIER_0_8B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [
+      TIER_27B_1M,
+      TIER_27B_256K,
+      TIER_27B,
+      TIER_9B,
+      TIER_4B,
+      TIER_2B,
+      TIER_0_8B,
+    ],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_1_7B, TIER_0_6B],
-    TEXT_LARGE: [TIER_9B, TIER_1_7B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
 };
 
@@ -137,6 +144,21 @@ export function catalogDownloadSizeBytes(
   catalog: CatalogModel[] = MODEL_CATALOG,
 ): number {
   return Math.round(catalogDownloadSizeGb(model, catalog) * BYTES_PER_GB);
+}
+
+export function selectBestQuantizationVariant(
+  model: CatalogModel,
+): CatalogQuantizationVariant | null {
+  const quantization = model.quantization;
+  if (!quantization) return null;
+  return (
+    quantization.variants.find(
+      (variant) => variant.id === quantization.defaultVariantId,
+    ) ??
+    quantization.variants.find((variant) => variant.status === "published") ??
+    quantization.variants[0] ??
+    null
+  );
 }
 
 const MB_PER_GB = 1024;
@@ -447,9 +469,6 @@ export type BundleDefaultEligibility =
   | { canBeDefault: true }
   | {
       canBeDefault: false;
-      /** Distinct, machine-readable reason — surfaced to the UI alongside
-       * the `BundleIncompatibleError` the downloader raises for the same
-       * conditions. */
       reason:
         | "no-manifest"
         | "not-default-eligible"
@@ -465,8 +484,8 @@ export type BundleDefaultEligibility =
  * not default):
  *
  *  - the bundle ships a validated `eliza-1.manifest.json`,
- *  - the manifest is `defaultEligible` AND contract-valid (which in turn
- *    means every required kernel is verified AND every required eval passed —
+ *  - the manifest is contract-valid (every required kernel declared, every
+ *    required eval green for a strict release, lineage/files consistent —
  *    enforced by `canSetAsDefault` → `collectContractErrors`),
  *  - the device exposes at least one backend the manifest verified `pass` on
  *    out of the tier's supported set,
@@ -474,6 +493,11 @@ export type BundleDefaultEligibility =
  *  - the bundle has passed the one-time on-device verify pass
  *    (`InstalledModel.bundleVerifiedAt` is set) — a materialized-but-unverified
  *    bundle is never auto-selected, per AGENTS.md §7.
+ *
+ * `manifest.defaultEligible: true` is NOT required at the gate level — a
+ * `base-v1-candidate` bundle that passes every above condition is allowed
+ * to fill an empty default slot. The recommender prefers a strict release
+ * (`defaultEligible: true`) over a candidate when both are installed.
  */
 export function canBundleBeDefaultOnDevice(
   installed: InstalledModel,
@@ -500,13 +524,6 @@ export function canBundleBeDefaultOnDevice(
   if (canSetAsDefault(manifest, caps)) return { canBeDefault: true };
 
   // canSetAsDefault returned false — disambiguate why so the UI/log is precise.
-  if (!manifest.defaultEligible) {
-    return {
-      canBeDefault: false,
-      reason: "not-default-eligible",
-      detail: `${installed.id}: manifest defaultEligible is false (evals/kernels not all green at publish time)`,
-    };
-  }
   if (manifest.ramBudgetMb.min > caps.ramMb) {
     return {
       canBeDefault: false,
@@ -530,13 +547,14 @@ export function canBundleBeDefaultOnDevice(
       detail: `${installed.id}: no backend the device exposes (${deviceBackends}) has a 'pass' kernel-verify report in the manifest`,
     };
   }
-  // Contract-valid manifest, RAM ok, backend ok — but canSetAsDefault still
-  // said no. That can only be a contract-error path (e.g. an eval gate not
-  // passed) the manifest validator caught; surface it as not-default-eligible.
+  // RAM ok, backend ok — the failure must be a manifest-contract path the
+  // validator caught (e.g. a required-eval gate not passed for a strict
+  // release, a lineage/files mismatch, an inconsistent provenance block).
+  // All contract failures make the bundle ineligible to be the device default.
   return {
     canBeDefault: false,
     reason: "not-default-eligible",
-    detail: `${installed.id}: manifest failed the default-eligibility contract check (an eval gate or kernel-coverage rule)`,
+    detail: `${installed.id}: manifest failed the contract check (an eval gate, kernel-coverage rule, or lineage/files consistency rule)`,
   };
 }
 

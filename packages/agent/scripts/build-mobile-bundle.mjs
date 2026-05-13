@@ -218,6 +218,7 @@ console.log("[build-mobile] pglite dist:", pgliteDist);
 // because its on-device inference goes through llama-cpp-capacitor in the
 // WebView, not node-llama-cpp.
 const nativeStubs = {
+  "@elizaos/app-core": path.join(stubsDir, "app-core-runtime.cjs"),
   // `node:sqlite` is a Node.js 22+ built-in (DatabaseSync) that
   // `packages/app-core/src/api/training-benchmarks.ts` imports at module
   // top level. Bun 1.3.x on arm64-Android does not yet implement it, so
@@ -257,6 +258,13 @@ const nativeStubs = {
     stubsDir,
     "huggingface-transformers.cjs",
   ),
+  mammoth: path.join(stubsDir, "mammoth.cjs"),
+  "source-map": path.join(stubsDir, "source-map.cjs"),
+  // PDF extraction pulls in pdfjs (~2 MB of parser/runtime code) through
+  // core document utilities. The iOS full-Bun startup path only needs chat
+  // and API dispatch, so keep PDF parsing behind a clear mobile runtime error
+  // instead of paying that no-JIT parse cost on every app launch.
+  unpdf: path.join(stubsDir, "unpdf.cjs"),
   "puppeteer-core": path.join(stubsDir, "puppeteer-core.cjs"),
   "pty-manager": path.join(stubsDir, "pty-manager.cjs"),
   sharp: path.join(stubsDir, "sharp.cjs"),
@@ -316,7 +324,7 @@ if (TARGET === "ios" || TARGET === "ios-jsc") {
     stubsDir,
     "ios-child-process.cjs",
   );
-  nativeStubs.child_process = path.join(stubsDir, "ios-child-process.cjs");
+  nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
   nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
   // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the
   // ios-ffi.cjs stub only loads in dev/desktop fallbacks where this bundle
@@ -333,17 +341,17 @@ if (TARGET === "ios-jsc") {
   const throwStub = path.join(stubsDir, "ios-jsc-throw.cjs");
   const dnsStub = path.join(stubsDir, "ios-jsc-dns.cjs");
   nativeStubs["node:net"] = throwStub;
-  nativeStubs.net = throwStub;
+  nativeStubs["net"] = throwStub;
   nativeStubs["node:tls"] = throwStub;
-  nativeStubs.tls = throwStub;
+  nativeStubs["tls"] = throwStub;
   nativeStubs["node:dgram"] = throwStub;
-  nativeStubs.dgram = throwStub;
+  nativeStubs["dgram"] = throwStub;
   nativeStubs["node:cluster"] = throwStub;
-  nativeStubs.cluster = throwStub;
+  nativeStubs["cluster"] = throwStub;
   nativeStubs["node:worker_threads"] = throwStub;
-  nativeStubs.worker_threads = throwStub;
+  nativeStubs["worker_threads"] = throwStub;
   nativeStubs["node:dns"] = dnsStub;
-  nativeStubs.dns = dnsStub;
+  nativeStubs["dns"] = dnsStub;
   nativeStubs["node:dns/promises"] = dnsStub;
   nativeStubs["dns/promises"] = dnsStub;
   nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");
@@ -366,6 +374,17 @@ if (TARGET === "ios-jsc") {
 // runtime load set, so they don't try to register at boot.
 const optionalPluginStubs = {
   "@elizaos/plugin-cli": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-agent-orchestrator": path.join(
+    stubsDir,
+    "null-plugin.cjs",
+  ),
+  "@elizaos/plugin-shell": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-coding-tools": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-commands": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-video": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-mlx": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-pdf": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-computeruse": path.join(stubsDir, "null-plugin.cjs"),
   // Browser bridge can still be resolved through workspace/plugin fallback
   // paths when core plugins are collected. Mobile doesn't run a headless
   // browser, and the runtime's plugin filter strips browser-bridge from the
@@ -390,6 +409,9 @@ const optionalPluginStubs = {
   // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
   // find module '@elizaos/plugin-streaming'` on every chat turn.
   "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
+  // plugin-device-filesystem uses native fs APIs and is not available
+  // in the mobile bundle — stub it so the runtime skips it gracefully.
+  "@elizaos/plugin-device-filesystem": path.join(stubsDir, "null-plugin.cjs"),
 };
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
@@ -446,6 +468,35 @@ const stubResolverPlugin = {
       if (best === null) return undefined;
       return { path: stubAliases[best], namespace: "file" };
     });
+  },
+};
+
+const iosFsSandboxPlugin = {
+  name: "eliza-ios-fs-sandbox-proxy",
+  setup(build) {
+    if (TARGET !== "ios") return;
+    const fsProxy = path.join(agentRoot, "src", "cli", "mobile-fs-proxy.ts");
+    const fsPromisesProxy = path.join(
+      agentRoot,
+      "src",
+      "cli",
+      "mobile-fs-promises-proxy.ts",
+    );
+    const proxyFiles = new Set([
+      fsProxy,
+      fsPromisesProxy,
+      path.join(agentRoot, "src", "cli", "mobile-fs-shim.ts"),
+    ]);
+    build.onResolve(
+      { filter: /^(node:fs|fs|node:fs\/promises|fs\/promises)$/ },
+      (args) => {
+        if (proxyFiles.has(args.importer)) return undefined;
+        if (args.path === "node:fs/promises" || args.path === "fs/promises") {
+          return { path: fsPromisesProxy, namespace: "file" };
+        }
+        return { path: fsProxy, namespace: "file" };
+      },
+    );
   },
 };
 
@@ -587,6 +638,63 @@ const zodCjsResolverPlugin = {
       }
       return undefined;
     });
+  },
+};
+
+function findEthersCommonJsIndex() {
+  const candidates = [];
+  const directPackageRoots = [
+    path.resolve(repoRoot, "node_modules", "ethers"),
+    path.resolve(agentRoot, "node_modules", "ethers"),
+  ];
+  for (const pkgRoot of directPackageRoots) {
+    candidates.push(path.join(pkgRoot, "lib.commonjs", "index.js"));
+  }
+
+  const bunDirs = [
+    path.resolve(repoRoot, "node_modules", ".bun"),
+    path.resolve(agentRoot, "node_modules", ".bun"),
+  ];
+  for (const bunDir of bunDirs) {
+    for (const entry of readdirSyncSafe(bunDir)) {
+      if (!entry.startsWith("ethers@")) continue;
+      candidates.push(
+        path.join(
+          bunDir,
+          entry,
+          "node_modules",
+          "ethers",
+          "lib.commonjs",
+          "index.js",
+        ),
+      );
+    }
+  }
+
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+const ethersCommonJsIndex = findEthersCommonJsIndex();
+if (!ethersCommonJsIndex) {
+  console.error(
+    "[build-mobile] FATAL: could not locate ethers/lib.commonjs/index.js. " +
+      "Run `bun install` first.",
+  );
+  process.exit(1);
+}
+
+// Bun.build's large mobile ESM graph can lower `import { ethers }` or
+// `import * as ethers` to bare identifiers like `id2`, `keccak256`, and
+// `JsonRpcProvider` without emitting the corresponding bindings. Resolve
+// ethers through its CommonJS entry so Bun packages the real module object
+// with stable properties instead of relying on fragile ESM namespace lowering.
+const ethersCjsResolverPlugin = {
+  name: "eliza-mobile-ethers-cjs",
+  setup(build) {
+    build.onResolve({ filter: /^ethers$/ }, () => ({
+      path: ethersCommonJsIndex,
+      namespace: "file",
+    }));
   },
 };
 
@@ -869,9 +977,18 @@ const buildResult = await Bun.build({
   format: "esm",
   ...(iosJscExternals ? { external: iosJscExternals } : {}),
   tsconfig: bundlerTsconfig,
-  // Don't minify. Bundling is already significant — this is a debugging step
-  // to keep stack traces readable. Re-enable selectively if APK size matters.
-  minify: false,
+  // Keep Android debuggable, but compact the real iOS Bun payload. Static
+  // JavaScriptCore no-JIT spends a lot of time parsing this file; syntax +
+  // whitespace minification reduces launch cost without identifier mangling,
+  // preserving the post-build undeclared-identifier scan below.
+  minify:
+    TARGET === "ios"
+      ? {
+          syntax: true,
+          whitespace: true,
+          identifiers: false,
+        }
+      : false,
   define: {
     "process.env.ELIZA_PLATFORM": JSON.stringify(platformDefineValue),
     // Disable the `isDirectRun` self-invocation guard in the agent's
@@ -883,6 +1000,7 @@ const buildResult = await Bun.build({
     // the whole process down. Defining the marker as `false` flattens the
     // branch at build time.
     "process.env.ELIZA_DISABLE_DIRECT_RUN": JSON.stringify("1"),
+    "globalThis.__ELIZA_MOBILE_BUNDLE__": JSON.stringify(true),
     // ios-jsc-only defines. Code can branch on ELIZA_RUNTIME='ios-jsc'
     // to detect the JSContext + bridge runtime, and the global flags let
     // the polyfill prefix flip behaviour without re-reading process.env
@@ -896,8 +1014,10 @@ const buildResult = await Bun.build({
       : {}),
   },
   plugins: [
+    iosFsSandboxPlugin,
     coreTestingStripPlugin,
     zodCjsResolverPlugin,
+    ethersCjsResolverPlugin,
     stubCssPlugin,
     dedupePlugin,
     nativeCapacitorPlugin,

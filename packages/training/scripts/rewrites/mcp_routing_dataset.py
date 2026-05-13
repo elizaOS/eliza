@@ -1,7 +1,7 @@
 """Rewriter for mcp-routing-dataset.
 
 Original shape (mis-classified as `reply`):
-    expectedResponse TOON:
+    expectedResponse native JSON:
         thought: "<outer wrapper thought>"
         text: "{\"thought\": ..., \"tool_calls\": [{\"name\":..., \"parameters\":...}]}"
 
@@ -62,7 +62,7 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
             "text": raw_text,
         }
         try:
-            new_toon = encoder.encode(new_payload)
+            new_payload = encoder.encode(new_payload)
         except Exception:
             return None
         new_md = dict(md)
@@ -70,7 +70,7 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
         new_md["_rewriter"] = "mcp_routing_dataset"
         new_md["_rewriter_branch"] = "natural_reply"
         new_record = dict(record)
-        new_record["expectedResponse"] = new_toon
+        new_record["expectedResponse"] = new_payload
         new_record["metadata"] = new_md
         return new_record
 
@@ -98,7 +98,7 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
 
     new_payload = {"thought": new_thought, "tool_calls": tool_calls}
     try:
-        new_toon = encoder.encode(new_payload)
+        new_payload = encoder.encode(new_payload)
     except Exception:
         return None
 
@@ -107,6 +107,6 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     new_md["_rewriter"] = "mcp_routing_dataset"
 
     new_record = dict(record)
-    new_record["expectedResponse"] = new_toon
+    new_record["expectedResponse"] = new_payload
     new_record["metadata"] = new_md
     return new_record

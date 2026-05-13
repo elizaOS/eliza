@@ -1,0 +1,15 @@
+sample_rate: 200        # Hz — control loop and simulation rate; time_step = 1/sample_rate
+mass: 0.770
+gravity: 9.80665
+arm_length: 0.1103
+motor_spread_angle: 0.925
+thrust_coefficient: 8.07e-9
+moment_scale: 1.3719e-10
+motor_constant: 36.5
+rpm_min: 3000
+rpm_max: 20000
+inertia: [0.0033, 0.0033, 0.005]  # diagonal elements; loaded as np.diag(inertia)
+COM_vertical_offset: 0.05
+accel_limit_up: 6.962      # m/s²  max upward acceleration   (T_max - mg) / m
+accel_limit_down: 9.429    # m/s²  max downward acceleration (mg - T_min) / m
+accel_limit_horiz: 13.602  # m/s²  max horizontal acceleration sqrt(T_max² - (mg)²) / m

@@ -59,6 +59,7 @@ export class AgentNotReadyError extends Error {
 import type {
 	AuthMeSnapshot,
 	AuthStatusSnapshot,
+	ConfigSchemaSnapshot,
 	ConfigSnapshot,
 } from "./rpc-schema";
 
@@ -105,6 +106,49 @@ export async function composeConfigSnapshot(
 		// surfaces the same kind of transport error to its polling loop.
 		throw new AgentNotReadyError("getConfig");
 	}
+	return value;
+}
+
+// ── getConfigSchema ─────────────────────────────────────────────────
+
+export type ConfigSchemaReader = (
+	port: number,
+) => Promise<ConfigSchemaSnapshot | null>;
+
+export const readConfigSchemaViaHttp: ConfigSchemaReader = async (port) => {
+	const raw = await fetchJsonRaw(port, "/api/config/schema");
+	if (!raw || raw.status < 200 || raw.status >= 300) return null;
+	if (!raw.body || typeof raw.body !== "object" || Array.isArray(raw.body)) {
+		return null;
+	}
+	const body = raw.body as Record<string, unknown>;
+	if (
+		!body.schema ||
+		typeof body.schema !== "object" ||
+		Array.isArray(body.schema) ||
+		!body.uiHints ||
+		typeof body.uiHints !== "object" ||
+		Array.isArray(body.uiHints) ||
+		typeof body.version !== "string" ||
+		typeof body.generatedAt !== "string"
+	) {
+		return null;
+	}
+	return {
+		schema: body.schema as Record<string, unknown>,
+		uiHints: body.uiHints as Record<string, unknown>,
+		version: body.version,
+		generatedAt: body.generatedAt,
+	};
+};
+
+export async function composeConfigSchemaSnapshot(
+	port: number | null,
+	read: ConfigSchemaReader,
+): Promise<ConfigSchemaSnapshot> {
+	if (port === null) throw new AgentNotReadyError("getConfigSchema");
+	const value = await read(port);
+	if (value === null) throw new AgentNotReadyError("getConfigSchema");
 	return value;
 }
 

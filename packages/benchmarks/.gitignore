@@ -43,13 +43,9 @@ Thumbs.db
 # Generated Benchmark Run Outputs
 # =============================================================
 
-# Any directory starting with "benchmark_results" (everywhere). The only
-# committed source of truth is the idempotent latest snapshot set.
+# Any directory starting with "benchmark_results" (everywhere).
+# Benchmark snapshots are generated run output and should not be committed.
 **/benchmark_results*/
-!/benchmark_results/
-/benchmark_results/*
-!/benchmark_results/latest/
-!/benchmark_results/latest/**
 
 # Trajectory exports
 **/trajectories/

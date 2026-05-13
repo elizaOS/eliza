@@ -23,10 +23,31 @@ import {
   checkForbiddenPhrases,
   checkMetricUnits,
   checkNoEmojis,
+  checkNoExclamation,
+  checkNoLists,
+  checkNoQuestionsBack,
   checkPrefersShort,
   checkRequiredCodeBlock,
 } from "../checks/phrase.ts";
 import { combineVerdict } from "../verdict.ts";
+
+// P2-13: exact-match vacuous probe list (lowercase).
+const VACUOUS_PROBE_EXACT: ReadonlySet<string> = new Set([
+  "ok",
+  "got it",
+  "k",
+  "sure",
+  "thanks",
+  "yes",
+  "no",
+  "maybe",
+  "alright",
+  "cool",
+]);
+
+function isVacuousProbe(userMessage: string): boolean {
+  return VACUOUS_PROBE_EXACT.has(userMessage.trim().toLowerCase());
+}
 
 type Trait =
   | "no-emojis"
@@ -35,7 +56,10 @@ type Trait =
   | "forbidden-phrases"
   | "first_name_only"
   | "metric_units"
-  | "prefers_short";
+  | "prefers_short"
+  | "no_exclamation"
+  | "no_questions_back"
+  | "no_lists";
 
 interface TraitOptions {
   trait: Trait;
@@ -102,6 +126,12 @@ function phraseLayerFor(
         passUpTo: extras.shortPassUpTo,
         failOver: extras.shortFailOver,
       });
+    case "no_exclamation":
+      return checkNoExclamation(response);
+    case "no_questions_back":
+      return checkNoQuestionsBack(response);
+    case "no_lists":
+      return checkNoLists(response);
     default:
       return {
         layer: "phrase",
@@ -136,6 +166,10 @@ export async function gradeTraitRespected(
     );
   }
 
+  // Collect per-turn phrase results before pushing to layers so we can apply
+  // P2-11 multi-turn consistency weighting below.
+  const turnResults: Array<{ t: number; result: LayerResult }> = [];
+
   for (const t of checkTurns) {
     const turn = scenario.trajectory[t - 1];
     if (!turn || turn.role !== "assistant") {
@@ -147,15 +181,81 @@ export async function gradeTraitRespected(
       });
       continue;
     }
+
+    // P2-13: vacuous probe carve-out — skip turns where the preceding user
+    // message is a vacuous acknowledgement. These turns don't test the trait.
+    const precedingUserTurn = scenario.trajectory[t - 2];
+    if (
+      precedingUserTurn &&
+      precedingUserTurn.role === "user" &&
+      isVacuousProbe(precedingUserTurn.content)
+    ) {
+      layers.push({
+        layer: "phrase",
+        verdict: "NEEDS_REVIEW",
+        confidence: 0.0,
+        reason: `turn ${t}: vacuous probe — user message "${precedingUserTurn.content.trim()}" skipped (N/A)`,
+        evidence: { vacuous: true },
+      });
+      continue;
+    }
+
     const phrase = phraseLayerFor(trait, forbiddenPhrases, turn.content, {
       lastName,
       shortPassUpTo,
       shortFailOver,
     });
-    layers.push({
-      ...phrase,
-      reason: `turn ${t} (${trait}): ${phrase.reason}`,
-    });
+    turnResults.push({ t, result: phrase });
+  }
+
+  // P2-11: multi-turn consistency weighting.
+  // If the agent fails on turn 1 but passes on ≥ 50% of the subsequent turns,
+  // the overall signal for the first-turn failure is upgraded to NEEDS_REVIEW
+  // (confidence 0.7) rather than FAIL. This avoids penalising an agent that
+  // recovered quickly after an initial slip.
+  if (turnResults.length > 1) {
+    const first = turnResults[0];
+    const rest = turnResults.slice(1);
+    const restPassCount = rest.filter(
+      (r) => r.result.verdict === "PASS",
+    ).length;
+    const restPassRate = rest.length > 0 ? restPassCount / rest.length : 0;
+    const firstFailed = first !== undefined && first.result.verdict === "FAIL";
+    for (const { t, result } of turnResults) {
+      if (
+        firstFailed &&
+        result.verdict === "FAIL" &&
+        t === (first?.t ?? -1) &&
+        restPassRate >= 0.5
+      ) {
+        // Downgrade the first-turn fail to NEEDS_REVIEW — the agent held the
+        // trait on the majority of subsequent turns.
+        layers.push({
+          layer: "phrase",
+          verdict: "NEEDS_REVIEW",
+          confidence: 0.7,
+          reason: `turn ${t} (${trait}): recovered — failed on first checked turn but passed ${restPassCount}/${rest.length} subsequent turns`,
+          evidence: {
+            firstTurnVerdict: result.verdict,
+            restPassCount,
+            restTotal: rest.length,
+          },
+        });
+      } else {
+        layers.push({
+          ...result,
+          reason: `turn ${t} (${trait}): ${result.reason}`,
+        });
+      }
+    }
+  } else {
+    // Single turn or no results — push directly.
+    for (const { t, result } of turnResults) {
+      layers.push({
+        ...result,
+        reason: `turn ${t} (${trait}): ${result.reason}`,
+      });
+    }
   }
 
   if (options.enableLlm) {

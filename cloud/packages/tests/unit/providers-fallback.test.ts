@@ -6,6 +6,9 @@ const ENV_KEYS = [
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
   "GROQ_API_KEY",
+  "VAST_API_KEY",
+  "VAST_BASE_URL_ELIZA_1_27B",
+  "VAST_BASE_URL_ELIZA_1_9B",
 ] as const;
 
 let saved: Record<(typeof ENV_KEYS)[number], string | undefined>;
@@ -37,6 +40,16 @@ describe("getProviderForModelWithFallback", () => {
     const { primary, fallback } = getProviderForModelWithFallback("groq/compound");
     expect(primary.name).toBe("groq");
     expect(fallback).toBeNull();
+  });
+
+  test("vast native model returns a smaller Vast fallback when dedicated endpoints exist", () => {
+    process.env.VAST_API_KEY = "vast-key";
+    process.env.VAST_BASE_URL_ELIZA_1_27B = "https://openai.vast.ai/eliza-cloud-eliza-1-27b";
+    process.env.VAST_BASE_URL_ELIZA_1_9B = "https://openai.vast.ai/eliza-cloud-eliza-1-9b";
+
+    const { primary, fallback } = getProviderForModelWithFallback("vast/eliza-1-27b");
+    expect(primary.name).toBe("vast");
+    expect(fallback?.name).toBe("vast");
   });
 
   test("openai/* with OPENAI_API_KEY set returns openrouter + openai fallback", () => {

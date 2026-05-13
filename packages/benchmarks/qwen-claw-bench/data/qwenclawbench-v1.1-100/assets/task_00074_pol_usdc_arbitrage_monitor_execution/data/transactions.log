@@ -1,0 +1,8 @@
+2026-02-10T00:12:33Z | TX 0xabc123 | BUY POL | 250.5 USDC -> 312.1 POL | gas: 45.2 gwei | status: SUCCESS
+2026-02-10T00:45:11Z | TX 0xdef456 | SELL POL | 312.1 POL -> 252.8 USDC | gas: 52.1 gwei | status: SUCCESS
+2026-02-10T01:22:07Z | TX 0xghi789 | BUY POL | 200.0 USDC -> 248.7 POL | gas: 88.3 gwei | status: SUCCESS
+2026-02-10T02:05:44Z | TX 0xjkl012 | SELL POL | 248.7 POL -> 201.3 USDC | gas: 67.9 gwei | status: SUCCESS
+2026-02-10T03:33:19Z | TX 0xmno345 | BUY POL | 500.0 USDC -> 621.4 POL | gas: 112.5 gwei | status: FAILED
+2026-02-10T04:10:55Z | TX 0xpqr678 | BUY POL | 500.0 USDC -> 623.8 POL | gas: 78.4 gwei | status: SUCCESS
+2026-02-10T05:48:22Z | TX 0xstu901 | SELL POL | 623.8 POL -> 504.2 USDC | gas: 91.0 gwei | status: SUCCESS
+2026-02-10T07:15:38Z | TX 0xvwx234 | BUY POL | 300.0 USDC -> 374.5 POL | gas: 125.3 gwei | status: SUCCESS

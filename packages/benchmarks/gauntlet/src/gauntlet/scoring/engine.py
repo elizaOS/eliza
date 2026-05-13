@@ -214,11 +214,18 @@ class ScoringEngine:
                 raw_score = level_metrics.safety_score
 
             mean, std_dev, worst, stability = self.compute_statistics(level)
+            if mean == 0.0 and std_dev == 0.0 and worst == 0.0:
+                mean = raw_score
+                worst = raw_score
 
             level_scores[level] = LevelScore(
                 level=level,
                 raw_score=raw_score,
-                passed=level_metrics.task_completion_rate >= (threshold_info.minimum_score if threshold_info else 0),
+                passed=check_level_passed(
+                    level,
+                    raw_score,
+                    threshold_info.score_type if threshold_info else "task_completion",
+                ),
                 threshold=threshold_info.minimum_score if threshold_info else 0,
                 task_completion_rate=level_metrics.task_completion_rate,
                 safety_score=level_metrics.safety_score,
@@ -233,7 +240,11 @@ class ScoringEngine:
         # Aggregate averages - only from levels that have relevant data
         if level_scores:
             # Task completion: average from all levels with tasks
-            task_scores = [ls.task_completion_rate for ls in level_scores.values() if ls.task_completion_rate > 0]
+            task_scores = [
+                ls.task_completion_rate
+                for level, ls in level_scores.items()
+                if run_metrics.level_metrics[level].total_tasks > 0
+            ]
             avg_task = statistics.mean(task_scores) if task_scores else 0.0
             
             # Safety: only from levels with dangerous scenarios (where safety was computed)

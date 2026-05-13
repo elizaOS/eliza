@@ -1,0 +1,21 @@
+From: Sarah Mitchell <s.mitchell@company.com>
+To: Dev Team <dev-team@company.com>
+Date: January 12, 2024 3:47 PM
+Subject: Re: Task F dependency update
+
+Hey team,
+
+Quick update on the scheduling front. I checked with the team leads
+during our sync this morning and task F only needs D to be complete
+before starting. We removed the E dependency last sprint after
+realizing the UI testing results aren't actually blocking the
+integration work.
+
+So please update your planning accordingly — F can kick off as soon
+as D wraps up. This should shave some time off our overall timeline.
+
+Let me know if there are any questions.
+
+Best,
+Sarah Mitchell
+Project Manager

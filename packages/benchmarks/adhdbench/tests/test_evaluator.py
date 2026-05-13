@@ -7,6 +7,7 @@ from elizaos_adhdbench.evaluator import (
 )
 from elizaos_adhdbench.types import (
     ExpectedOutcome,
+    OutcomeResult,
     OutcomeType,
     TurnResult,
 )
@@ -218,6 +219,46 @@ def test_turn_score_weighted() -> None:
         ),
     ]
     assert compute_turn_score(results) == 0.75
+
+
+def test_scenario_score_skips_runtime_only_turns_without_runtime_signal() -> None:
+    runtime_only = _make_turn()
+    runtime_only.outcome_results = [
+        OutcomeResult(
+            outcome=ExpectedOutcome(OutcomeType.PROVIDERS_REQUESTED, ["KNOWLEDGE"]),
+            passed=False,
+            actual_value="",
+            detail="provider trace unavailable",
+        )
+    ]
+    failed_action = _make_turn()
+    failed_action.outcome_results = [
+        OutcomeResult(
+            outcome=ExpectedOutcome(OutcomeType.ACTION_MATCH, "REPLY"),
+            passed=False,
+            actual_value="MESSAGE",
+            detail="wrong action",
+        )
+    ]
+
+    assert compute_scenario_score(
+        [runtime_only, failed_action],
+        has_runtime_signal=False,
+    ) == 0.0
+
+
+def test_scenario_score_all_runtime_only_without_signal_is_neutral() -> None:
+    runtime_only = _make_turn()
+    runtime_only.outcome_results = [
+        OutcomeResult(
+            outcome=ExpectedOutcome(OutcomeType.PROVIDERS_REQUESTED, ["KNOWLEDGE"]),
+            passed=False,
+            actual_value="",
+            detail="provider trace unavailable",
+        )
+    ]
+
+    assert compute_scenario_score([runtime_only], has_runtime_signal=False) == 1.0
 
 
 def test_turn_score_empty() -> None:

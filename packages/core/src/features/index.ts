@@ -103,10 +103,7 @@ const secretsCapability = {
 		onboardingSettingsProvider,
 		missingSecretsProvider,
 	] as Provider[],
-	actions: [
-		...promoteSubactionsToActions(secretsAction),
-		onboardingUpdateSettingsAction,
-	] as Action[],
+	actions: [secretsAction, onboardingUpdateSettingsAction] as Action[],
 	services: [
 		createService("SECRETS")
 			.withDescription("Secrets manager")

@@ -1,0 +1,129 @@
+@prefix : <http://www.example.org/product-review#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+# ---- Product Instances ----
+
+:product1 a :Product ;
+    :productName "iPhone 15 Pro" .
+
+:product2 a :Product ;
+    :productName "Galaxy S24" .
+
+:product3 a :Product ;
+    :productName "iPhone 14" .
+
+:product4 a :Product ;
+    :productName "Pixel 8" .
+
+:product5 a :Product ;
+    :productName "iPad Air" .
+
+# ---- Review Instances ----
+
+:review1001 a :Review ;
+    :reviewId 1001 ;
+    :hasProduct :product1 ;
+    :reviewerName "alex_tech_fan" ;
+    :reviewTitle "Amazing camera quality" ;
+    :reviewText "The iPhone 15 Pro has the best camera I have ever used on a smartphone. Night mode is incredible." ;
+    :reviewDate "2023-10-13"^^xsd:date .
+
+:review1002 a :Review ;
+    :reviewId 1002 ;
+    :hasProduct :product1 ;
+    :reviewerName "sarah_buys_stuff" ;
+    :reviewTitle "Great upgrade from 14" ;
+    :reviewText "Switched from the iPhone 14 to the 15 Pro and the titanium design feels premium. Worth every penny." ;
+    :reviewDate "2023-10-17"^^xsd:date .
+
+:review1003 a :Review ;
+    :reviewId 1003 ;
+    :hasProduct :product1 ;
+    :reviewerName "daily_driver_2023" ;
+    :reviewTitle "Battery life could be better" ;
+    :reviewText "Love the iPhone 15 Pro overall but the battery drains faster than expected during heavy use." ;
+    :reviewDate "2023-11-05"^^xsd:date .
+
+:review1004 a :Review ;
+    :reviewId 1004 ;
+    :hasProduct :product2 ;
+    :reviewTitle "Best Android phone of 2024" ;
+    :reviewText "The Galaxy S24 is a powerhouse. Samsung really nailed the display and performance this year." ;
+    :reviewDate "2023-11-29"^^xsd:date .
+
+:review1005 a :Review ;
+    :reviewId 1005 ;
+    :hasProduct :product2 ;
+    :reviewTitle "Solid but pricey" ;
+    :reviewText "Galaxy S24 does everything well but at this price point I expected more innovation." ;
+    :reviewDate "2023-12-11"^^xsd:date .
+
+:review1006 a :Review ;
+    :reviewId 1006 ;
+    :hasProduct :product3 ;
+    :reviewTitle "Still a great phone" ;
+    :reviewText "The iPhone 14 holds up really well even after a year. Reliable and fast for everyday tasks." ;
+    :reviewDate "2023-12-20"^^xsd:date .
+
+:review1007 a :Review ;
+    :reviewId 1007 ;
+    :hasProduct :product3 ;
+    :reviewTitle "Good value now" ;
+    :reviewText "Picked up the iPhone 14 at a discount and it is an excellent deal. Camera and performance are top notch." ;
+    :reviewDate "2024-01-12"^^xsd:date .
+
+:review1008 a :Review ;
+    :reviewId 1008 ;
+    :hasProduct :product3 ;
+    :reviewTitle "Dependable daily driver" ;
+    :reviewText "Using the iPhone 14 as my main phone for over a year now. No complaints at all." ;
+    :reviewDate "2024-01-14"^^xsd:date .
+
+:review1009 a :Review ;
+    :reviewId 1009 ;
+    :hasProduct :product4 ;
+    :reviewTitle "Pure Android experience" ;
+    :reviewText "The Pixel 8 gives you the cleanest Android experience with timely updates. Love the AI features." ;
+    :reviewDate "2024-02-12"^^xsd:date .
+
+:review1010 a :Review ;
+    :reviewId 1010 ;
+    :hasProduct :product4 ;
+    :reviewTitle "Impressive for the price" ;
+    :reviewText "Pixel 8 punches above its weight. Great camera and smooth software for under 700 dollars." ;
+    :reviewDate "2024-02-15"^^xsd:date .
+
+:review1011 a :Review ;
+    :reviewId 1011 ;
+    :hasProduct :product4 ;
+    :reviewTitle "Good but not perfect" ;
+    :reviewText "Pixel 8 has a few quirks with Bluetooth connectivity but otherwise a solid phone." ;
+    :reviewDate "2024-03-01"^^xsd:date .
+
+:review1012 a :Review ;
+    :reviewId 1012 ;
+    :hasProduct :product5 ;
+    :reviewTitle "Perfect tablet for students" ;
+    :reviewText "The iPad Air is lightweight and powerful enough for note-taking and light creative work." ;
+    :reviewDate "2024-03-18"^^xsd:date .
+
+:review1013 a :Review ;
+    :reviewId 1013 ;
+    :hasProduct :product5 ;
+    :reviewTitle "Love the M1 chip" ;
+    :reviewText "iPad Air with the M1 chip handles everything I throw at it. Great for drawing and video editing." ;
+    :reviewDate "2024-04-05"^^xsd:date .
+
+:review1014 a :Review ;
+    :reviewId 1014 ;
+    :hasProduct :product1 ;
+    :reviewTitle "Overpriced but excellent" ;
+    :reviewText "The iPhone 15 Pro is expensive but you get what you pay for. Build quality is second to none." ;
+    :reviewDate "2024-04-21"^^xsd:date .
+
+:review1015 a :Review ;
+    :reviewId 1015 ;
+    :hasProduct :product2 ;
+    :reviewTitle "Galaxy AI is impressive" ;
+    :reviewText "The AI features on the Galaxy S24 are genuinely useful. Circle to Search is a game changer." ;
+    :reviewDate "2024-04-28"^^xsd:date .

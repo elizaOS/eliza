@@ -1,0 +1,32 @@
+[
+  {
+    "message_id": "msg_301",
+    "from": "director@partner-corp.com",
+    "to": "me@company.com",
+    "subject": "项目评审会议邀请",
+    "date": "2026-02-27T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "你好，\n\n我们希望在下周安排一次联合项目评审会议，讨论Q1进度和Q2计划。\n\n请邀请以下人员参加：\n- 你方工程部的赵磊\n- 你方产品部的李明\n- 我方会有3人参加\n\n会议时长约2小时，请查看各位下周三（2026年3月4日）下午的空闲时间，告知可行的时段。\n\n如果周三不行，周四下午也可以。\n\n谢谢，\n陈总监\nPartner Corp"
+  },
+  {
+    "message_id": "msg_302",
+    "from": "zhaolei@company.com",
+    "to": "me@company.com",
+    "subject": "Re: 本周工作总结",
+    "date": "2026-02-27T16:30:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "收到，工作总结已提交。\n\n另外提醒一下，下周三下午我2点到3点有个内部技术分享会，其他时间都OK。\n\n赵磊"
+  },
+  {
+    "message_id": "msg_303",
+    "from": "liming@company.com",
+    "to": "me@company.com",
+    "subject": "下周日程",
+    "date": "2026-02-28T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hi，\n\n下周三我全天有空，周四下午3点后有个客户拜访，3点前都OK。\n\n李明"
+  }
+]

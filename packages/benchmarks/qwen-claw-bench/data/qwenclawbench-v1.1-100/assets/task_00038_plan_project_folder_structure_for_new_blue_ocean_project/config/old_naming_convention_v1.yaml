@@ -1,0 +1,45 @@
+# Project Folder Naming Convention (LEGACY)
+# Version: 1.0
+# Date: 2021-03-15
+# Status: SUPERSEDED - Do NOT use for new projects
+# Replaced By: Version 2.3 (folder_naming_convention.yaml)
+
+naming_convention:
+  version: "1.0"
+  status: "superseded"
+  date: "2021-03-15"
+  superseded_by: "version 2.3"
+
+folder_structure:
+  root_drive: "D"
+  main_folder: "Project Files"
+  year_folder_pattern: "{year}"
+  project_folder_pattern: "{project_name}_{project_code}"
+
+  mandatory_subfolders:
+    - "01_PM"
+    - "02_Design"
+    - "03_Calc"
+    - "04_Dwg"
+    - "05_Procurement"
+    - "06_Corr"
+    - "07_Minutes"
+    - "08_QC"
+
+policies:
+  isolation_policy: "recommended"
+  cross_project_reference: "allowed with approval"
+  readme_required: false
+
+hierarchy_example: |
+  D:\Project Files\
+    2021\
+      Greenfield Expansion Phase I_01TK21005A\
+        01_PM\
+        02_Design\
+        ...
+
+notes:
+  - "This convention was used from 2019 to 2023."
+  - "Projects created under v1.0 do not need to be migrated."
+  - "All new projects starting from 2023-09-01 must follow v2.3."

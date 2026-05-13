@@ -152,4 +152,77 @@ describe("trait-respected rubric", () => {
     const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
     expect(v.verdict).toBe("PASS");
   });
+
+  describe("P2-11: multi-turn consistency weighting", () => {
+    it("NEEDS_REVIEW (not FAIL) when first turn fails but ≥50% subsequent turns pass", async () => {
+      // Turn 2 (first check): agent says "buddy" — FAIL
+      // Turn 4 (second check): agent doesn't say "buddy" — PASS
+      // Turn 6 (third check): agent doesn't say "buddy" — PASS
+      // restPassRate = 2/2 = 1.0 ≥ 0.5 → first-turn failure → NEEDS_REVIEW
+      const s = scenario(
+        [
+          { role: "user", content: "Don't call me buddy." },
+          { role: "assistant", content: "Sure thing, buddy." },
+          { role: "user", content: "What day is it?" },
+          { role: "assistant", content: "Monday." },
+          { role: "user", content: "Time?" },
+          { role: "assistant", content: "3pm." },
+        ],
+        { trait: "no-buddy" },
+        [2, 4, 6],
+      );
+      const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+      expect(v.verdict).toBe("NEEDS_REVIEW");
+    });
+
+    it("still FAILs when the agent fails on all turns", async () => {
+      const s = scenario(
+        [
+          { role: "user", content: "Don't call me buddy." },
+          { role: "assistant", content: "Sure, buddy." },
+          { role: "user", content: "Time?" },
+          { role: "assistant", content: "Hey buddy, it's 3pm." },
+        ],
+        { trait: "no-buddy" },
+        [2, 4],
+      );
+      const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+      expect(v.verdict).toBe("FAIL");
+    });
+  });
+
+  describe("P2-13: vacuous probe carve-out", () => {
+    it("skips scoring when the preceding user message is vacuous ('ok')", async () => {
+      // Turn 4 is checked but the preceding user message (turn 3) is "ok" —
+      // this is a vacuous probe, so the turn should be marked N/A (not scored).
+      const s = scenario(
+        [
+          { role: "user", content: "Don't use emojis." },
+          { role: "assistant", content: "Got it." },
+          { role: "user", content: "ok" },
+          { role: "assistant", content: "Great! 😊" },
+        ],
+        { trait: "no-emojis" },
+        [4],
+      );
+      const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+      // The vacuous probe layer has confidence=0 — it should not produce FAIL.
+      expect(v.verdict).not.toBe("FAIL");
+    });
+
+    it("still FAILs when preceding user message is substantive", async () => {
+      const s = scenario(
+        [
+          { role: "user", content: "Don't use emojis." },
+          { role: "assistant", content: "Got it." },
+          { role: "user", content: "How are you doing today?" },
+          { role: "assistant", content: "Great! 😊" },
+        ],
+        { trait: "no-emojis" },
+        [4],
+      );
+      const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
+      expect(v.verdict).toBe("FAIL");
+    });
+  });
 });

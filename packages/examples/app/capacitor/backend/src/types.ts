@@ -105,7 +105,7 @@ export type ChatMessage = {
   timestamp: number;
 };
 
-export function hasValidCredentials(config: AppConfig): boolean {
+function hasValidCredentials(config: AppConfig): boolean {
   switch (config.mode) {
     case "elizaClassic":
       return true;
@@ -131,27 +131,4 @@ export function hasValidCredentials(config: AppConfig): boolean {
 export function getEffectiveMode(config: AppConfig): ProviderMode {
   if (config.mode === "elizaClassic") return "elizaClassic";
   return hasValidCredentials(config) ? config.mode : "elizaClassic";
-}
-
-export function getModeLabel(mode: ProviderMode): string {
-  switch (mode) {
-    case "elizaClassic":
-      return "ELIZA (offline)";
-    case "openai":
-      return "OpenAI";
-    case "anthropic":
-      return "Claude";
-    case "xai":
-      return "Grok (xAI)";
-    case "gemini":
-      return "Gemini";
-    case "groq":
-      return "Groq";
-    case "openrouter":
-      return "OpenRouter";
-    case "ollama":
-      return "Ollama";
-    default:
-      return "ELIZA (offline)";
-  }
 }

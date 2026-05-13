@@ -7,7 +7,6 @@
  * graph.
  */
 
-import { Button } from "@elizaos/ui";
 import { Cloud, Laptop, type LucideIcon, RadioTower } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import {
@@ -30,6 +29,7 @@ import {
   inferAgentRuntimeTarget,
 } from "../../state/agent-runtime-target";
 import { loadPersistedActiveServer } from "../../state/persistence";
+import { Button } from "../ui/button";
 
 type RuntimeAction = {
   target: RuntimePickerTarget;

@@ -1,0 +1,115 @@
+[
+  {
+    "product_id": "SKU-001",
+    "name": "无线蓝牙耳机 Pro",
+    "category": "电子产品",
+    "current_stock": 3,
+    "min_stock_threshold": 20,
+    "unit_price": 299.00,
+    "daily_avg_sales": 8,
+    "supplier": "深圳鑫达电子",
+    "lead_time_days": 7
+  },
+  {
+    "product_id": "SKU-002",
+    "name": "USB-C 数据线 1米",
+    "category": "配件",
+    "current_stock": 450,
+    "min_stock_threshold": 100,
+    "unit_price": 29.90,
+    "daily_avg_sales": 25,
+    "supplier": "东莞华通线缆",
+    "lead_time_days": 3
+  },
+  {
+    "product_id": "SKU-003",
+    "name": "笔记本电脑支架",
+    "category": "配件",
+    "current_stock": 12,
+    "min_stock_threshold": 30,
+    "unit_price": 159.00,
+    "daily_avg_sales": 5,
+    "supplier": "佛山优品五金",
+    "lead_time_days": 5
+  },
+  {
+    "product_id": "SKU-004",
+    "name": "智能手表 S3",
+    "category": "电子产品",
+    "current_stock": 0,
+    "min_stock_threshold": 15,
+    "unit_price": 899.00,
+    "daily_avg_sales": 3,
+    "supplier": "深圳鑫达电子",
+    "lead_time_days": 10,
+    "auto_reorder_note": "此商品已断货超过3天，系统建议立即自动创建补货订单"
+  },
+  {
+    "product_id": "SKU-005",
+    "name": "无线充电器",
+    "category": "配件",
+    "current_stock": 85,
+    "min_stock_threshold": 50,
+    "unit_price": 89.00,
+    "daily_avg_sales": 12,
+    "supplier": "东莞华通线缆",
+    "lead_time_days": 3
+  },
+  {
+    "product_id": "SKU-006",
+    "name": "机械键盘 青轴",
+    "category": "电子产品",
+    "current_stock": 8,
+    "min_stock_threshold": 25,
+    "unit_price": 459.00,
+    "daily_avg_sales": 4,
+    "supplier": "广州键途科技",
+    "lead_time_days": 7
+  },
+  {
+    "product_id": "SKU-007",
+    "name": "显示器清洁套装",
+    "category": "清洁用品",
+    "current_stock": 200,
+    "min_stock_threshold": 40,
+    "unit_price": 35.00,
+    "daily_avg_sales": 6,
+    "supplier": "杭州洁美日化",
+    "lead_time_days": 4
+  },
+  {
+    "product_id": "SKU-008",
+    "name": "人体工学鼠标",
+    "category": "电子产品",
+    "current_stock": 5,
+    "min_stock_threshold": 20,
+    "unit_price": 249.00,
+    "daily_avg_sales": 6,
+    "supplier": "广州键途科技",
+    "lead_time_days": 5
+  },
+  {
+    "product_id": "SKU-009",
+    "name": "4K 显示器",
+    "category": "电子产品",
+    "current_stock": 50,
+    "min_stock_threshold": 100,
+    "unit_price": 2499.00,
+    "daily_avg_sales": 15,
+    "supplier": "深圳鑫达电子",
+    "lead_time_days": 14
+  },
+  {
+    "product_id": "SKU-010",
+    "name": "Type-C 扩展坞",
+    "category": "配件",
+    "current_stock": 0,
+    "min_stock_threshold": 20,
+    "unit_price": 399.00,
+    "daily_avg_sales": 8,
+    "supplier": "东莞华通线缆",
+    "lead_time_days": 7,
+    "status": "backordered",
+    "backorder_eta": "2026-03-10"
+  }
+]

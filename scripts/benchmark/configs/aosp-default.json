@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
-  "description": "Default profiling matrix for the AOSP on-device chat path. Reflects the porting plan's 'Validation matrix (per port)' section. Profiles Eliza-1 mobile/desktop tiers across supported KV-cache settings.",
-  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
+  "description": "Default profiling matrix for the AOSP on-device chat path. Reflects the porting plan's 'Validation matrix (per port)' section. Profiles Eliza-1 Qwen3.5 0.8B/2B tiers across supported KV-cache settings.",
+  "models": ["eliza-1-0_8b", "eliza-1-2b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" },

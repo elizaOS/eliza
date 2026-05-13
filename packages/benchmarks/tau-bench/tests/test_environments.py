@@ -3,7 +3,7 @@ Tests for domain environments.
 """
 
 import pytest
-from elizaos_tau_bench.types import TauBenchTask, TauDomain, ToolCall
+from elizaos_tau_bench.types import TauBenchTask, TauDomain, ToolCall, ToolCallStatus
 from elizaos_tau_bench.environments.retail import RetailEnvironment
 from elizaos_tau_bench.environments.airline import AirlineEnvironment
 
@@ -73,6 +73,8 @@ class TestRetailEnvironment:
         result = await env.execute_tool(call)
 
         assert "error" in result
+        assert call.status == ToolCallStatus.EXECUTION_ERROR
+        assert call.error_message == result["error"]
 
     @pytest.mark.asyncio
     async def test_cancel_order(self, retail_task):
@@ -256,3 +258,19 @@ class TestAirlineEnvironment:
         assert "cancel_booking" in tool_names
         assert "search_flights" in tool_names
         assert "select_seat" in tool_names
+
+    @pytest.mark.asyncio
+    async def test_get_booking_not_found_marks_execution_error(self, airline_task):
+        """Test getting non-existent booking."""
+        env = AirlineEnvironment(airline_task)
+        await env.initialize()
+
+        call = ToolCall(
+            tool_name="get_booking_details",
+            arguments={"booking_id": "INVALID"},
+        )
+        result = await env.execute_tool(call)
+
+        assert "error" in result
+        assert call.status == ToolCallStatus.EXECUTION_ERROR
+        assert call.error_message == result["error"]

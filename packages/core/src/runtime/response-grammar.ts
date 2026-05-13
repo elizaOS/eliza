@@ -57,13 +57,12 @@ import type {
 const SHOULD_RESPOND_VALUES = ["RESPOND", "IGNORE", "STOP"] as const;
 
 /**
- * Channel types that drop the explicit `shouldRespond` flag (DM / API /
- * VOICE_DM / SELF) — the agent always responds, so the schema (and skeleton)
- * omit the key entirely. Mirrors `HANDLE_RESPONSE_DIRECT_SCHEMA`.
+ * Channel types that drop the explicit `shouldRespond` flag (DM / API / SELF).
+ * Voice is intentionally excluded: turn-taking can be IGNORE when VAD/STT says
+ * the user is mid-utterance or the next speaker is not the agent.
  */
 const DIRECT_CHANNEL_TYPES: ReadonlySet<string> = new Set([
 	"DM",
-	"VOICE_DM",
 	"API",
 	"SELF",
 ]);
@@ -148,8 +147,8 @@ export interface BuildResponseGrammarOptions {
 	contexts: ReadonlyArray<string>;
 	/**
 	 * The inbound message's channel type (`ChannelType.*` string). On
-	 * DM/API/VOICE_DM/SELF the `shouldRespond` span is dropped (the agent always
-	 * responds), matching `HANDLE_RESPONSE_DIRECT_SCHEMA`.
+	 * DM/API/SELF drop the `shouldRespond` span. Voice channels keep it because
+	 * semantic turn-taking can choose IGNORE.
 	 */
 	channelType?: string;
 	/**
@@ -337,14 +336,26 @@ function spanKindForFieldSchema(
 ): ResponseSkeletonSpan["kind"] {
 	const type = (schema as { type?: unknown }).type;
 	if (type === "string") {
-		// A single-value enum lowers to a literal at compile time; multi-value
-		// enums could be `enum` spans, but we keep it simple — free-string is a
-		// safe superset and W4 collapses single-value enums anyway.
 		const enumValues = (schema as { enum?: unknown }).enum;
 		if (Array.isArray(enumValues) && enumValues.length === 1) return "literal";
+		if (
+			Array.isArray(enumValues) &&
+			enumValues.length > 1 &&
+			enumValues.every((v): v is string => typeof v === "string")
+		) {
+			return "enum";
+		}
 		return "free-string";
 	}
 	return "free-json";
+}
+
+function stringEnumValuesForFieldSchema(schema: JSONSchema): string[] {
+	const enumValues = (schema as { enum?: unknown }).enum;
+	return Array.isArray(enumValues) &&
+		enumValues.every((v): v is string => typeof v === "string")
+		? enumValues.map(String)
+		: [];
 }
 
 /** GBNF rule reference for an envelope key's value. */
@@ -500,6 +511,13 @@ export function buildResponseGrammar(
 				const value = JSON.stringify(String(enumValues[0] ?? ""));
 				spans.push({ kind: "literal", key: field.name, value });
 				rootParts.push(gbnfLiteral(value));
+			} else if (kind === "enum") {
+				spans.push({
+					kind,
+					key: field.name,
+					enumValues: stringEnumValuesForFieldSchema(field.schema),
+				});
+				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
 			} else {
 				spans.push({ kind, key: field.name });
 				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
@@ -593,6 +611,13 @@ export function buildResponseGrammar(
 			const value = JSON.stringify(String(enumValues[0] ?? ""));
 			spans.push({ kind: "literal", key: field.name, value });
 			rootParts.push(gbnfLiteral(value));
+		} else if (kind === "enum") {
+			spans.push({
+				kind,
+				key: field.name,
+				enumValues: stringEnumValuesForFieldSchema(field.schema),
+			});
+			rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
 		} else {
 			spans.push({ kind, key: field.name });
 			rootParts.push(gbnfRefForFieldSchema(builder, field.schema));

@@ -5,8 +5,8 @@
 #define WARP_SIZE 32
 #define WARPS_PER_BLOCK 32
 // EMB_DIM is a compile-time template parameter on the kernel and the
-// host wrapper below. Upstream hard-coded EMB_DIM=128 (Llama/Qwen3 sub-9B
-// head_dim). To support Qwen3.6-27B / 35B-A3B we instantiate {128, 256}.
+// host wrapper below. Upstream hard-coded EMB_DIM=128. Active Qwen3.5
+// text models use head_dim=256, so we instantiate {128, 256}.
 
 template <typename T>
 __device__ float convert_to_float(T value) {
@@ -293,7 +293,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     py::arg("rand_prj"),
     py::arg("outlier_sketch_dim"));
 
-    // EMB_DIM=256 (Qwen3.6-27B / Qwen3.6-35B-A3B head_dim=256)
+    // EMB_DIM=256 (active Qwen3.5 text head_dim=256)
     m.def("qjl_quant_half_half_h256", &QJLQuantCudaTemplate<c10::Half, c10::Half, 256>, "Quantize using Half precision (head_dim=256)",
     py::arg("key_states"),
     py::arg("outlier_indices"),

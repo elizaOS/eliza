@@ -1,0 +1,21 @@
+{
+  "btc_price": 91250,
+  "btc_24h_change": "-1.2%",
+  "eth_price": 3180,
+  "eth_24h_change": "-0.8%",
+  "market_sentiment": "neutral-bearish",
+  "fear_greed_index": 52,
+  "altcoin_season_index": 38,
+  "total_crypto_mcap": "3.15T",
+  "btc_dominance": "53.2%",
+  "dominant_narrative": "BTC consolidation after new ATH, altcoins lagging",
+  "la_usdt_rsi_4h": 28.5,
+  "la_usdt_rsi_source": "TradingSignals API",
+  "notable_events": [
+    "BTC hit new ATH of $93,400 on Nov 18",
+    "Fed minutes release expected Nov 21",
+    "ETH ETF inflows slowing"
+  ],
+  "timestamp": "2024-11-20T14:00:00Z",
+  "source": "CryptoMarketAggregator"
+}

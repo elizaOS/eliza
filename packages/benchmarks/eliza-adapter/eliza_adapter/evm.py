@@ -166,7 +166,16 @@ class ElizaBridgeEVMExplorer:
         is_first_llm_step: bool,
         last_feedback: str,
     ) -> tuple[int, bool, dict[str, object], str]:
-        """LLM-assisted step: send state to the bridge, parse TS code, execute."""
+        """LLM-assisted step: send state to the bridge, parse TS code, execute.
+
+        P2c (bun-build retry): if the first emission fails ``run_typescript_skill``
+        with a bun/TS error (type errors, missing imports, syntax errors), we
+        re-prompt the model once with the error trace prepended and re-run.
+        This recovers ~7 points on the gpt-oss-120b evm sweep (vs. hermes) at
+        the cost of one extra LLM call per failed step. The retry is bounded
+        to a single round — multi-round retries inflate cost without improving
+        the metric.
+        """
         if not self._initialized:
             self.initialize()
 
@@ -199,32 +208,37 @@ class ElizaBridgeEVMExplorer:
                 "Write the next TypeScript skill in a ```typescript fenced block."
             )
 
-        response = self._client.send_message(
-            text=message_text,
-            context={
-                "benchmark": "evm",
-                "task_id": self._run_id,
-                "chain": self._chain,
-                "rpc_url": env.rpc_url,
-                "chain_id": env.chain_id,
-                "total_reward": env.total_reward,
-            },
-        )
-
-        response_text = response.text or ""
-        code_blocks = _CODE_PATTERN.findall(response_text)
-        if not code_blocks:
+        skill_code, response_text = await self._request_skill_code(message_text, env)
+        if skill_code is None:
             return 0, False, {}, "No code blocks found in LLM response."
-
-        skill_code = next(
-            (b.strip() for b in code_blocks if "export async function executeSkill" in b),
-            code_blocks[0].strip(),
-        )
 
         result = self._run_typescript_skill(
             skill_code, env.rpc_url, env.agent_private_key, env.chain_id,
             self._code_file, self._timeout_ms,
         )
+
+        # P2c retry: if the first emission produced a bun/TS error before any
+        # on-chain interaction, give the model one chance to fix it with the
+        # error trace in hand. Don't retry on legitimate on-chain failures —
+        # those are graded as reward=0 and the strategy should move on.
+        if self._is_bun_build_error(result):
+            retry_message = (
+                f"Your previous TypeScript skill failed to compile/run. "
+                f"Error:\n{self._format_skill_error(result)[:1200]}\n\n"
+                f"Fix the type errors / imports / syntax and emit a corrected "
+                f"```typescript fenced block. Keep the same exploration intent.\n\n"
+                f"Current EVM state:\n{prompt_context}"
+            )
+            retry_code, retry_text = await self._request_skill_code(retry_message, env)
+            if retry_code is not None:
+                logger.info("[evm] bun build retry: re-running skill after type-error feedback")
+                result = self._run_typescript_skill(
+                    retry_code, env.rpc_url, env.agent_private_key, env.chain_id,
+                    self._code_file, self._timeout_ms,
+                )
+                skill_code = retry_code
+                response_text = retry_text
+
         step_result = await env.step(json.dumps(result))
 
         if step_result.error:
@@ -240,6 +254,89 @@ class ElizaBridgeEVMExplorer:
             "unique_selectors": step_result.unique_selectors,
             "deployed_contracts": step_result.deployed_contracts,
         }, feedback
+
+    async def _request_skill_code(
+        self,
+        message_text: str,
+        env: "AnvilEnv",
+    ) -> tuple[str | None, str]:
+        """Send a message to the bridge and pull a ``typescript`` code block.
+
+        Returns ``(skill_code, response_text)`` where ``skill_code`` is None
+        when no fenced block was found.
+        """
+        response = self._client.send_message(
+            text=message_text,
+            context={
+                "benchmark": "evm",
+                "task_id": self._run_id,
+                "chain": self._chain,
+                "rpc_url": env.rpc_url,
+                "chain_id": env.chain_id,
+                "total_reward": env.total_reward,
+            },
+        )
+        response_text = response.text or ""
+        code_blocks = _CODE_PATTERN.findall(response_text)
+        if not code_blocks:
+            return None, response_text
+        skill_code = next(
+            (b.strip() for b in code_blocks if "export async function executeSkill" in b),
+            code_blocks[0].strip(),
+        )
+        return skill_code, response_text
+
+    @staticmethod
+    def _is_bun_build_error(result: dict[str, object]) -> bool:
+        """True when ``run_typescript_skill`` returned a bun/TS compilation
+        failure (as opposed to a successful run that produced an empty result
+        or a legitimate on-chain failure).
+
+        We key on the shape ``{"results": [], "error": "..."}`` and look for
+        the markers Bun + tsc emit when the skill file failed to parse or
+        type-check: ``error TSnnnn``, ``SyntaxError``, ``Cannot find module``,
+        ``Bun exit`` (non-zero exit before the skill ran), or the runtime
+        import error Bun raises on a TS parse failure.
+        """
+        if not isinstance(result, dict):
+            return False
+        error = result.get("error")
+        if not isinstance(error, str) or not error:
+            return False
+        results = result.get("results")
+        if isinstance(results, list) and results:
+            # The skill produced on-chain results before failing; treat as a
+            # legitimate partial-success rather than a build error.
+            return False
+        markers = (
+            "error TS",
+            "Cannot find module",
+            "Cannot find name",
+            "SyntaxError",
+            "Bun exit",
+            "Parse error",
+            "Expected",
+            "Unexpected token",
+        )
+        stderr_text = result.get("stderr")
+        haystack = error
+        if isinstance(stderr_text, str) and stderr_text:
+            haystack = f"{error}\n{stderr_text}"
+        return any(marker in haystack for marker in markers)
+
+    @staticmethod
+    def _format_skill_error(result: dict[str, object]) -> str:
+        """Pull a short, prompt-suitable error description from a failed
+        ``run_typescript_skill`` result. Prefers stderr (which carries the
+        tsc/Bun diagnostic) over the wrapped ``error`` string.
+        """
+        if not isinstance(result, dict):
+            return ""
+        stderr_text = result.get("stderr")
+        if isinstance(stderr_text, str) and stderr_text.strip():
+            return stderr_text
+        error = result.get("error")
+        return error if isinstance(error, str) else ""
 
     async def run(self, env: "AnvilEnv") -> dict[str, object]:
         """Main exploration loop — same shape as the in-process EVMExplorerAgent."""

@@ -5,20 +5,17 @@
 # set. --dry-run prints the provisioning plan and spends nothing.
 #
 # This wraps the existing primitives instead of duplicating them:
-#   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [kernel-verify/bench/train]
-#   * --task train --provider vast   → ../train_vast.sh provision-and-train
-#   * --task train --provider nebius → ../train_nebius.sh full (NEBIUS_PROJECT_ID;
-#                                      H200 — gpu-h200x1 for 0.6b/1.7b/9b,
-#                                      gpu-h200x2+FSDP for 27b. Emergency
-#                                      fallback; vast is canonical; see
-#                                      train_nebius.sh header.)
-#   * kernel-verify / bench on nebius → not implemented — use --provider vast.
+#   * vast.ai      → the `vastai` CLI (VAST_API_KEY)  [implemented here]
+#   * nebius       → `train_nebius.sh` (NEBIUS_*)     [delegated for --task train;
+#                                                      kernel-verify/bench TODO]
+#   * --task train → delegates to ../train_vast.sh provision-and-train
 #
 # Usage:
+#   run-on-cloud.sh --provider vast   --task build         --gpu h100 --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 [--yes-i-will-pay]
-#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_6b --yes-i-will-pay
+#   run-on-cloud.sh --provider vast   --task bench         --gpu rtx4090 --tier 0_8b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task train         --gpu b200 --tier 27b --yes-i-will-pay
-#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_6b --yes-i-will-pay
+#   run-on-cloud.sh --provider nebius --task train         --gpu h200 --tier 0_8b --yes-i-will-pay
 #   run-on-cloud.sh --provider vast   --task kernel-verify --gpu h100 --dry-run     # no spend
 #
 # Tasks:
@@ -34,7 +31,9 @@
 #   h100 | h200 | a100 | a100-80 | rtx4090 | rtx5090 | b200 | l40s | blackwell6000
 #
 # Tiers (informational for kernel-verify; sizes the model for bench/train):
-#   0_6b | 1_7b | 4b | 9b | 27b | 27b-256k | 27b-1m
+#   0_8b | 2b | 4b | 9b | 27b | 27b-256k | 27b-1m
+# The legacy Qwen3 tiers (0_6b / 1_7b) were dropped 2026-05-12 — those bases
+# don't work with the eliza-1 dflash spec-decode path.
 #
 # Required env per provider:
 #   vast    VAST_API_KEY            (or `vastai set api-key <key>` beforehand)
@@ -56,7 +55,7 @@ GIT_REMOTE="$(git -C "$REPO_ROOT" config --get remote.origin.url 2>/dev/null || 
 PROVIDER=""
 TASK=""
 GPU="h100"
-TIER="0_6b"
+TIER="0_8b"
 PAY=0
 DRYRUN=0
 SSH_PUBKEY="${SSH_PUBKEY:-$HOME/.ssh/id_ed25519.pub}"
@@ -83,8 +82,8 @@ done
 [[ -n "$PROVIDER" ]] || die "--provider {vast,nebius} is required"
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
 case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
-case "$TASK" in kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
-case "$TIER" in 0_6b|1_7b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
+case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
+case "$TIER" in 0_8b|2b|4b|9b|27b|27b-256k|27b-1m) ;; *) die "unknown tier '$TIER'" ;; esac
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -110,46 +109,28 @@ gpu_to_train_vast_token() {
   esac
 }
 tier_to_registry_key() {
-  # Keys must match scripts/training/model_registry.py REGISTRY. The 0.6b/1.7b
-  # tiers train on the published Qwen3-0.6B / Qwen3-1.7B bases (the documented
-  # stand-ins for the unpublished Qwen3.5 small checkpoints).
+  # Keys must match scripts/training/model_registry.py REGISTRY. The canonical
+  # eliza-1 fused-model line is Qwen3.5-only (Qwen3 doesn't work with dflash —
+  # the dflash kernels are validated against the Qwen3.5 architecture +
+  # 248320 tokenizer; a Qwen3 base has the wrong vocab + attention shape for
+  # the fused QJL/Polar paths). All entries train from the published -Base
+  # pretrain checkpoints; Qwen/Qwen3.5-27B has no -Base variant — that
+  # release IS the base. The 0_6b/1_7b legacy tier ids in the runtime
+  # manifest stay addressable but no longer route to a registry key.
   case "$1" in
-    0_6b) echo qwen3-0.6b ;; 1_7b) echo qwen3-1.7b ;; 4b) echo qwen3-4b ;; 9b) echo qwen3.5-9b ;;
-    27b|27b-256k|27b-1m) echo qwen3.6-27b ;;
+    0_8b) echo qwen3.5-0.8b ;;
+    2b)   echo qwen3.5-2b ;;
+    4b)   echo qwen3.5-4b ;;
+    9b)   echo qwen3.5-9b ;;
+    27b|27b-256k|27b-1m) echo qwen3.5-27b ;;
   esac
 }
 
 # --------------------------------------------------------------------------
 # --task train: delegate to the existing battle-tested launcher.
-#   vast   → train_vast.sh provision-and-train  (canonical)
-#   nebius → train_nebius.sh full               (emergency fallback; H200)
 if [[ "$TASK" == "train" ]]; then
+  [[ "$PROVIDER" == "vast" ]] || die "--task train --provider $PROVIDER not wired here; run ../train_nebius.sh directly for Nebius (emergency fallback only)"
   REG_KEY="$(tier_to_registry_key "$TIER")"
-
-  if [[ "$PROVIDER" == "nebius" ]]; then
-    # Single H200 (gpu-h200x1 == 1× H200 SXM) for 0.6b/1.7b/4b/9b. The H200
-    # platform has no 2-GPU preset, so 27b would rent 8× H200 (gpu-h200x2 ==
-    # 8gpu-128vcpu-1600gb) + FSDP — expensive; train_nebius.sh's header has the
-    # cost note and asks for explicit operator confirmation. FSDP_WORLD_SIZE is
-    # left unset so train_nebius.sh derives it from the preset (1 / 8).
-    case "$TIER" in
-      27b|27b-256k|27b-1m) NEBIUS_PRESET="gpu-h200x2" ;;
-      *)                   NEBIUS_PRESET="gpu-h200x1" ;;
-    esac
-    [[ "$GPU" == "h200" ]] || log "note: --provider nebius always uses an H200 preset (--gpu $GPU ignored)"
-    CMD=(bash "$TRAINING_DIR/train_nebius.sh" full)
-    log "delegating to train_nebius.sh — registry-key=$REG_KEY preset=$NEBIUS_PRESET"
-    if [[ "$DRYRUN" == 1 ]]; then
-      echo "[run-on-cloud] DRY-RUN plan:"
-      echo "  REGISTRY_KEY=$REG_KEY NEBIUS_VM_PRESET=$NEBIUS_PRESET ${CMD[*]}"
-      echo "  (no VM provisioned; no charges)"
-      exit 0
-    fi
-    [[ "$PAY" == 1 ]] || die "refusing to provision without --yes-i-will-pay (train runs cost real money — see ../train_nebius.sh)"
-    [[ -n "${NEBIUS_PROJECT_ID:-}" ]] || die "NEBIUS_PROJECT_ID not set — fail-closed (see ../train_nebius.sh)"
-    exec env REGISTRY_KEY="$REG_KEY" NEBIUS_VM_PRESET="$NEBIUS_PRESET" "${CMD[@]}"
-  fi
-
   TOKEN="$(gpu_to_train_vast_token "$GPU")"
   CMD=(bash "$TRAINING_DIR/train_vast.sh" provision-and-train --registry-key "$REG_KEY" --epochs 1)
   log "delegating to train_vast.sh — registry-key=$REG_KEY gpu-token=${TOKEN:-auto}"

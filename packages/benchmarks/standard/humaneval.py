@@ -27,12 +27,14 @@ in env vars; prefer a container for production sweeps.
 from __future__ import annotations
 
 import argparse
+import ast
 import contextlib
 import io
 import logging
 import multiprocessing as mp
 import re
 import signal
+import textwrap
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 
@@ -87,7 +89,7 @@ SMOKE_FIXTURES: tuple[dict[str, object], ...] = (
 )
 
 
-_FENCE_RE = re.compile(r"```(?:python)?\n?(.*?)```", re.DOTALL)
+_FENCE_RE = re.compile(r"```[^\n`]*\n?(.*?)```", re.DOTALL)
 
 
 def _strip_code_fence(text: str) -> str:
@@ -99,13 +101,79 @@ def _strip_code_fence(text: str) -> str:
     return match.group(1) if match else text
 
 
+def _defines_entry_point(code: str, entry_point: str) -> bool:
+    try:
+        tree = ast.parse(textwrap.dedent(code))
+    except SyntaxError:
+        return False
+    return any(
+        isinstance(node, ast.FunctionDef) and node.name == entry_point
+        for node in tree.body
+    )
+
+
+def _reindent_function_body(body: str, indent: str = "    ") -> str:
+    """Normalize a function body so every non-blank line has at least ``indent``.
+
+    Models (especially eliza's REPLY action emitting code via gpt-oss-120b)
+    sometimes drop the leading 4-space indent on the first line of a function
+    body while indenting subsequent lines correctly, producing source like::
+
+        numbers = sorted(numbers)
+            if len(numbers) < 2:
+                return False
+
+    Concatenated after a ``def foo():\\n`` prompt this raises
+    ``IndentationError: unexpected indent`` on the second line. We detect that
+    pattern — body has at least one non-blank line with no leading indent AND
+    at least one non-blank line that does start with ``indent`` — and prepend
+    ``indent`` to the under-indented lines so the body is uniformly nested.
+
+    Blank lines and lines that are already at >= ``indent`` columns of leading
+    whitespace are left alone.
+    """
+
+    lines = body.splitlines()
+    if not lines:
+        return body
+    has_unindented = False
+    has_indented = False
+    for line in lines:
+        if not line.strip():
+            continue
+        if line.startswith(indent):
+            has_indented = True
+        elif not line.startswith((" ", "\t")):
+            has_unindented = True
+    if not (has_unindented and has_indented):
+        return body
+    fixed: list[str] = []
+    for line in lines:
+        if not line.strip():
+            fixed.append(line)
+            continue
+        if line.startswith((" ", "\t")):
+            fixed.append(line)
+        else:
+            fixed.append(indent + line)
+    # Preserve trailing newline if present in input.
+    suffix = "\n" if body.endswith("\n") else ""
+    return "\n".join(fixed) + suffix
+
+
 def _build_program(prompt: str, completion: str, test: str, entry_point: str) -> str:
     """Assemble the full program: prompt + completion + test suite."""
 
-    completion = _strip_code_fence(completion)
-    # Re-indent to 4 spaces if model emitted a fully-qualified function.
-    body = completion
-    return f"{prompt}{body}\n{test}\ncheck({entry_point})\n"
+    completion = _strip_code_fence(completion).strip("\n")
+    if _defines_entry_point(completion, entry_point):
+        candidate = textwrap.dedent(completion).rstrip()
+        return f"{candidate}\n{test}\ncheck({entry_point})\n"
+    # IndentationError fix: some models emit the function body with the
+    # first line at column 0 and subsequent lines correctly indented. Detect
+    # and re-indent before splicing onto the prompt (which ends with the
+    # function signature + docstring).
+    completion = _reindent_function_body(completion)
+    return f"{prompt}{completion}\n{test}\ncheck({entry_point})\n"
 
 
 def _humaneval_worker(

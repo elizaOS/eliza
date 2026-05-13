@@ -1,0 +1,49 @@
+task_id: M067_video_tennis_long_rally
+task_name: Video Tennis Long Rally Analysis
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Find the point in the video where the two players hit 10 or more total shots. What is the start time (minutes:seconds) of this point? How many total shots were hit? Who served? Who won the point? Did the winner score by hitting a winner or did the opponent make an error?
+
+    Note: A winner is a shot that lands in the valid area of the opponent's court and the opponent fails to touch the ball. An error is when a player hits the ball out of bounds or into the net.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the tennis match video.
+  The rally with >=10 shots starts at 00:20, has 10 total shots.
+  Server: Gauff. Winner: Sabalenka. Won by hitting a winner.
+
+primary_dimensions:
+  - completion
+  - robustness

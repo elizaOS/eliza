@@ -2,14 +2,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$SCRIPT_DIR"
 
 ANDROID_API="${ANDROID_API:-28}"
 REMOTE_DIR="${ELIZA_ANDROID_VULKAN_REMOTE_DIR:-/data/local/tmp/eliza-kernels}"
 OUT_DIR="${ELIZA_ANDROID_VULKAN_OUT_DIR:-android-vulkan-smoke}"
-ADB="${ADB:-adb}"
+ADB_HINT="${ADB:-adb}"
 ALLOW_EMULATOR="${ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN:-0}"
 ALLOW_SOFTWARE="${ELIZA_ALLOW_SOFTWARE_VULKAN:-0}"
+PREFLIGHT_ONLY="${ELIZA_ANDROID_VULKAN_PREFLIGHT_ONLY:-0}"
 REPORT_DIR="${ELIZA_DFLASH_HARDWARE_REPORT_DIR:-$SCRIPT_DIR/hardware-results}"
 mkdir -p "$REPORT_DIR"
 REPORT_PATH="$REPORT_DIR/android-vulkan-smoke-$(date -u +%Y%m%dT%H%M%SZ).log"
@@ -47,6 +49,45 @@ resolve_ndk() {
   return 1
 }
 
+resolve_adb() {
+  local candidate
+  for candidate in \
+    "$ADB_HINT" \
+    "${ANDROID_HOME:-}/platform-tools/adb" \
+    "${ANDROID_SDK_ROOT:-}/platform-tools/adb" \
+    "$HOME/Library/Android/sdk/platform-tools/adb" \
+    "$HOME/Android/Sdk/platform-tools/adb"; do
+    [[ -z "$candidate" ]] && continue
+    if command -v "$candidate" >/dev/null 2>&1; then
+      command -v "$candidate"
+      return 0
+    fi
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+print_android_usb_hint() {
+  if [[ "$(uname -s)" != "Darwin" ]] || ! command -v system_profiler >/dev/null 2>&1; then
+    echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=unavailable"
+    return 1
+  fi
+
+  local matches
+  matches="$(system_profiler SPUSBDataType 2>/dev/null | grep -Ei -B3 -A8 'android|pixel|google|samsung|oneplus|motorola|moto|qualcomm|xiaomi|huawei|adb|mtp' || true)"
+  if [[ -n "$matches" ]]; then
+    echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=present"
+    printf '%s\n' "$matches" | awk 'NR <= 120 { print }'
+    return 0
+  fi
+
+  echo "[android-vulkan-smoke] PREFLIGHT usb_android_hint=absent"
+  return 1
+}
+
 NDK="$(resolve_ndk || true)"
 if [[ -z "$NDK" || ! -d "$NDK/toolchains/llvm/prebuilt" ]]; then
   fail 2 "Android NDK not found. Set ANDROID_NDK_HOME"
@@ -74,15 +115,48 @@ fi
 if [[ ! -x "$GLSLC" ]]; then
   fail 2 "glslc not found at $GLSLC"
 fi
-if ! command -v "$ADB" >/dev/null 2>&1; then
-  fail 2 "adb not found. Set ADB=/path/to/adb"
+ADB="$(resolve_adb || true)"
+if [[ -z "$ADB" ]]; then
+  fail 2 "missing-adb: adb not found. Set ADB=/path/to/adb, ANDROID_HOME, or ANDROID_SDK_ROOT"
 fi
+echo "[android-vulkan-smoke] adb=${ADB}"
+echo "[android-vulkan-smoke] ndk=${NDK} host_tag=${HOST_TAG} glslc=${GLSLC}"
 
 ADB_SERIAL="${ANDROID_SERIAL:-}"
 ADB_DEVICES=()
-while IFS= read -r serial; do
-  [[ -n "$serial" ]] && ADB_DEVICES+=("$serial")
-done < <("$ADB" devices | awk '$2 == "device" { print $1 }')
+ADB_UNAUTHORIZED=()
+ADB_OFFLINE=()
+ADB_OTHER=()
+ADB_LIST="$("$ADB" devices -l || true)"
+printf '%s\n' "$ADB_LIST"
+while read -r serial status rest; do
+  [[ -z "$serial" ]] && continue
+  case "$status" in
+    device) ADB_DEVICES+=("$serial") ;;
+    unauthorized) ADB_UNAUTHORIZED+=("$serial") ;;
+    offline) ADB_OFFLINE+=("$serial") ;;
+    *) ADB_OTHER+=("$serial:$status") ;;
+  esac
+done < <(printf '%s\n' "$ADB_LIST" | awk 'NR > 1 && NF >= 2 { print $1, $2 }')
+
+if [[ "$PREFLIGHT_ONLY" == "1" ]]; then
+  echo "[android-vulkan-smoke] PREFLIGHT adb_device=${#ADB_DEVICES[@]} unauthorized=${#ADB_UNAUTHORIZED[@]} offline=${#ADB_OFFLINE[@]} other=${#ADB_OTHER[@]}"
+  echo "[android-vulkan-smoke] PREFLIGHT standalone_only=${ELIZA_ANDROID_VULKAN_STANDALONE_ONLY:-0} graph_evidence=${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE:-<unset>}"
+  if [[ "${#ADB_UNAUTHORIZED[@]}" -gt 0 ]]; then
+    fail 2 "unauthorized-device: unlock the Android device and accept the RSA debugging prompt (${ADB_UNAUTHORIZED[*]})"
+  fi
+  if [[ "${#ADB_OFFLINE[@]}" -gt 0 ]]; then
+    fail 2 "offline-device: reconnect USB, toggle USB debugging, or run 'adb kill-server; adb start-server' (${ADB_OFFLINE[*]})"
+  fi
+  if [[ "${#ADB_DEVICES[@]}" -eq 0 ]]; then
+    if print_android_usb_hint; then
+      fail 2 "usb-visible-no-adb-device: Android-like USB hardware is visible, but adb has no 'device' entry. Unlock the phone, select File Transfer/PTP if prompted, enable USB debugging, and accept the RSA prompt"
+    fi
+    fail 2 "no-device: no physical Android device is in adb 'device' state, and no Android-like USB hardware is visible to macOS"
+  fi
+  echo "[android-vulkan-smoke] PREFLIGHT PASS"
+  exit 0
+fi
 
 if [[ -n "${ANDROID_SERIAL:-}" ]]; then
   ADB_SERIAL="$ANDROID_SERIAL"
@@ -94,11 +168,20 @@ if [[ -n "${ANDROID_SERIAL:-}" ]]; then
     fi
   done
   if [[ "$found_serial" != "1" ]]; then
-    fail 2 "ANDROID_SERIAL=$ADB_SERIAL is not listed by adb devices"
+    fail 2 "ANDROID_SERIAL=$ADB_SERIAL is not listed by adb devices in 'device' state"
   fi
 else
   if [[ "${#ADB_DEVICES[@]}" -eq 0 ]]; then
-    fail 2 "no adb devices in 'device' state. Connect a physical Adreno/Mali device or set ANDROID_SERIAL"
+    if [[ "${#ADB_UNAUTHORIZED[@]}" -gt 0 ]]; then
+      fail 2 "unauthorized-device: unlock the Android device and accept the RSA debugging prompt (${ADB_UNAUTHORIZED[*]})"
+    fi
+    if [[ "${#ADB_OFFLINE[@]}" -gt 0 ]]; then
+      fail 2 "offline-device: reconnect USB, toggle USB debugging, or run 'adb kill-server; adb start-server' (${ADB_OFFLINE[*]})"
+    fi
+    if print_android_usb_hint; then
+      fail 2 "usb-visible-no-adb-device: Android-like USB hardware is visible, but adb has no 'device' entry. Unlock the phone, select File Transfer/PTP if prompted, enable USB debugging, and accept the RSA prompt"
+    fi
+    fail 2 "no-device: no adb devices in 'device' state. Connect a physical Adreno/Mali device or set ANDROID_SERIAL"
   elif [[ "${#ADB_DEVICES[@]}" -eq 1 ]]; then
     ADB_SERIAL="${ADB_DEVICES[0]}"
     echo "[android-vulkan-smoke] auto-selected only attached device ${ADB_SERIAL}"
@@ -150,13 +233,16 @@ echo "[android-vulkan-smoke] compiling verifier for arm64-v8a API ${ANDROID_API}
   -static-libstdc++ -lvulkan -lm -o "$OUT_DIR/vulkan_verify"
 
 echo "[android-vulkan-smoke] compiling SPIR-V with $GLSLC"
-for shader in turbo3 turbo4 turbo3_tcq qjl polar polar_preht; do
+for shader in turbo3 turbo4 turbo3_tcq qjl polar polar_preht fused_attn_qjl_tbq fused_attn_qjl_polar; do
   "$GLSLC" --target-env=vulkan1.1 --target-spv=spv1.3 \
     -fshader-stage=compute "../vulkan/${shader}.comp" -o "$OUT_DIR/spv/${shader}.spv"
 done
 
 cp fixtures/turbo3.json fixtures/turbo4.json fixtures/turbo3_tcq.json \
-  fixtures/qjl.json fixtures/polar.json fixtures/polar_qjl.json "$OUT_DIR/fixtures/"
+  fixtures/qjl.json fixtures/polar.json fixtures/polar_qjl.json \
+  fixtures/fused_attn_qjl_tbq.json fixtures/fused_attn_qjl_tbq_causal.json \
+  fixtures/fused_attn_qjl_polar.json fixtures/fused_attn_qjl_polar_causal.json \
+  "$OUT_DIR/fixtures/"
 
 adb_cmd() {
   if [[ -n "$ADB_SERIAL" ]]; then
@@ -185,7 +271,7 @@ fi
 VKJSON="$(adb_cmd shell cmd gpu vkjson 2>/dev/null || true)"
 if [[ -n "$VKJSON" ]]; then
   echo "[android-vulkan-smoke] cmd gpu vkjson:"
-  printf '%s\n' "$VKJSON" | head -120
+  printf '%s\n' "$VKJSON" | awk 'NR <= 120 { print }'
 else
   echo "[android-vulkan-smoke] cmd gpu vkjson unavailable; fixture harness will enumerate Vulkan directly"
 fi
@@ -213,6 +299,10 @@ run_remote polar polar
 run_remote polar polar_qjl
 run_remote polar_preht polar
 run_remote polar_preht polar_qjl
+run_remote fused_attn_qjl_tbq fused_attn_qjl_tbq
+run_remote fused_attn_qjl_tbq fused_attn_qjl_tbq_causal
+run_remote fused_attn_qjl_polar fused_attn_qjl_polar
+run_remote fused_attn_qjl_polar fused_attn_qjl_polar_causal
 
 echo "[android-vulkan-smoke] standalone Vulkan fixtures passed on Android device."
 
@@ -224,7 +314,20 @@ fi
 
 GRAPH_EVIDENCE="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE:-}"
 if [[ -z "$GRAPH_EVIDENCE" ]]; then
-  fail 4 "missing ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE. Standalone SPIR-V fixture success does not prove built-fork/app graph dispatch and cannot flip runtime-ready capability bits"
+  echo "[android-vulkan-smoke] no ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE supplied; running built-fork graph-dispatch smoke"
+  ANDROID_SERIAL="$ADB_SERIAL" \
+  ELIZA_ALLOW_ANDROID_EMULATOR_VULKAN="$ALLOW_EMULATOR" \
+  ELIZA_ALLOW_SOFTWARE_VULKAN="$ALLOW_SOFTWARE" \
+    ./android_vulkan_graph_smoke.sh
+  GRAPH_EVIDENCE="${ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE_OUT:-$SCRIPT_DIR/vulkan-runtime-dispatch-evidence.json}"
+fi
+if [[ -n "$GRAPH_EVIDENCE" && ! -f "$GRAPH_EVIDENCE" && "$GRAPH_EVIDENCE" != /* ]]; then
+  for candidate in "$SCRIPT_DIR/$GRAPH_EVIDENCE" "$REPO_ROOT/$GRAPH_EVIDENCE"; do
+    if [[ -f "$candidate" ]]; then
+      GRAPH_EVIDENCE="$candidate"
+      break
+    fi
+  done
 fi
 if [[ ! -f "$GRAPH_EVIDENCE" ]]; then
   fail 4 "ELIZA_ANDROID_VULKAN_GRAPH_EVIDENCE does not exist: $GRAPH_EVIDENCE"
@@ -233,7 +336,8 @@ fi
 node - "$GRAPH_EVIDENCE" <<'NODE'
 const fs = require("node:fs");
 const p = process.argv[2];
-const data = JSON.parse(fs.readFileSync(p, "utf8"));
+const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+const data = raw?.targets?.["android-arm64-vulkan"] ?? raw;
 const failures = [];
 const requiredRoutes = [
   "GGML_OP_ATTN_SCORE_QJL",
@@ -242,6 +346,7 @@ const requiredRoutes = [
   "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq",
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0",
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1",
+  "GGML_OP_FUSED_ATTN_QJL_TBQ",
 ];
 const requiredCapabilities = [
   "turbo3",
@@ -249,6 +354,7 @@ const requiredCapabilities = [
   "turbo3_tcq",
   "qjl_full",
   "polarquant",
+  "fused_attn_qjl_tbq",
 ];
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 if (data.backend !== "vulkan") failures.push(`backend=${data.backend}`);
@@ -298,7 +404,7 @@ const kernelEvidenceOk =
 
 if (!routeEvidenceOk && !kernelEvidenceOk) {
   failures.push(
-    "missing full six-route graphRoutes evidence or five-capability kernels evidence with finite maxDiff",
+    "missing full seven-route graphRoutes evidence or six-capability kernels evidence with finite maxDiff",
   );
 }
 if (failures.length) {

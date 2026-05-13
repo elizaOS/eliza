@@ -1,0 +1,39 @@
+# Daily Reports Configuration
+# Jarvis scheduled briefings for Feishu users
+
+reports:
+  weather:
+    enabled: true
+    schedule: "0 7 * * *"        # 7:00 AM daily (GMT+8)
+    timezone: "Asia/Shanghai"
+    target_user: "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01"
+    city: "Beijing"
+    source: "wttr.in"
+    template: "templates/weather-briefing.md"
+    include_forecast: true
+    forecast_days: 3
+
+  ai_news:
+    enabled: true
+    schedule: "5 7 * * *"        # 7:05 AM daily (GMT+8)
+    timezone: "Asia/Shanghai"
+    target_user: "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa01"
+    sources:
+      - name: "TechCrunch AI"
+        url: "https://techcrunch.com/category/artificial-intelligence/"
+        max_items: 5
+      - name: "The Verge AI"
+        url: "https://www.theverge.com/ai-artificial-intelligence"
+        max_items: 3
+      - name: "AI News Daily"
+        url: "https://www.artificialintelligence-news.com/"
+        max_items: 3
+    template: "templates/ai-news-briefing.md"
+    summary_model: "gpt-4"
+    max_stories: 8
+
+feishu:
+  app_id: "${FEISHU_APP_ID}"
+  app_secret: "${FEISHU_APP_SECRET}"
+  message_type: "interactive"     # Use card messages for rich formatting
+  fallback_type: "text"           # Fallback if card fails

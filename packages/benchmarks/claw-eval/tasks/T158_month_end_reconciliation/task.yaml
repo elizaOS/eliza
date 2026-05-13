@@ -1,0 +1,313 @@
+task_id: T158_month_end_reconciliation
+task_name: Month-End Comprehensive Reconciliation
+version: "1.0"
+category: ops
+difficulty: hard
+tags: [general, multi_service]
+
+services:
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T158_month_end_reconciliation/fixtures/finance/transactions.json
+  - name: crm
+    command: python mock_services/crm/server.py
+    port: 9110
+    health_check: http://localhost:9110/crm/customers
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9110/crm/reset
+    env:
+      CRM_FIXTURES: tasks/T158_month_end_reconciliation/fixtures/crm/customers.json
+  - name: config
+    command: python mock_services/config/server.py
+    port: 9111
+    health_check: http://localhost:9111/config/integrations
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9111/config/reset
+    env:
+      CONFIG_FIXTURES: tasks/T158_month_end_reconciliation/fixtures/config/integrations.json
+  - name: inventory
+    command: python mock_services/inventory/server.py
+    port: 9108
+    health_check: http://localhost:9108/inventory/products
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9108/inventory/reset
+    env:
+      INVENTORY_FIXTURES: tasks/T158_month_end_reconciliation/fixtures/inventory/items.json
+  - name: scheduler
+    command: python mock_services/scheduler/server.py
+    port: 9112
+    health_check: http://localhost:9112/scheduler/jobs
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9112/scheduler/reset
+    env:
+      SCHEDULER_FIXTURES: tasks/T158_month_end_reconciliation/fixtures/scheduler/jobs.json
+
+prompt:
+  text: |
+    It's the end of the month. Please help me do a comprehensive reconciliation:
+    1. Check the execution status of reconciliation-related automated tasks
+    2. Check payment and invoice system integration configurations
+    3. Reconcile financial transactions against CRM customer receivables
+    4. Reconcile procurement records against inventory changes
+    5. Identify all anomalies and produce a reconciliation report
+  language: en
+
+tools:
+  - name: finance_list_transactions
+    description: View financial transaction records
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: Get transaction details
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: Transaction ID
+      required: [transaction_id]
+
+  - name: crm_list_customers
+    description: View customer list
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by status (active/inactive/churned)"
+        tier:
+          type: string
+          description: "Filter by tier (VIP/standard)"
+      required: []
+
+  - name: crm_get_customer
+    description: Get customer details
+    input_schema:
+      type: object
+      properties:
+        customer_id:
+          type: string
+          description: Customer ID
+      required: [customer_id]
+
+  - name: config_list_integrations
+    description: View all system integration configurations
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by status (active/error/degraded)"
+      required: []
+
+  - name: config_get_integration
+    description: Get integration configuration details
+    input_schema:
+      type: object
+      properties:
+        integration_id:
+          type: string
+          description: Integration ID
+      required: [integration_id]
+
+  - name: inventory_list_products
+    description: View inventory product list
+    input_schema:
+      type: object
+      properties:
+        category:
+          type: string
+          description: Filter by category
+      required: []
+
+  - name: inventory_get_product
+    description: Get inventory product details
+    input_schema:
+      type: object
+      properties:
+        product_id:
+          type: string
+          description: Product ID
+      required: [product_id]
+
+  - name: scheduler_list_jobs
+    description: List all scheduled tasks
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by last run status (success/failed)"
+        tag:
+          type: string
+          description: Filter by tag
+      required: []
+
+  - name: scheduler_get_job
+    description: Get scheduled task details (with execution history)
+    input_schema:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: Job ID
+      required: [job_id]
+
+  - name: scheduler_job_history
+    description: View scheduled task execution history
+    input_schema:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: Job ID
+        limit:
+          type: integer
+          description: Number of records to return
+          default: 10
+      required: [job_id]
+
+tool_endpoints:
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+  - tool_name: crm_list_customers
+    url: http://localhost:9110/crm/customers
+    method: POST
+  - tool_name: crm_get_customer
+    url: http://localhost:9110/crm/customers/get
+    method: POST
+  - tool_name: config_list_integrations
+    url: http://localhost:9111/config/integrations
+    method: POST
+  - tool_name: config_get_integration
+    url: http://localhost:9111/config/integrations/get
+    method: POST
+  - tool_name: inventory_list_products
+    url: http://localhost:9108/inventory/products
+    method: POST
+  - tool_name: inventory_get_product
+    url: http://localhost:9108/inventory/products/get
+    method: POST
+  - tool_name: scheduler_list_jobs
+    url: http://localhost:9112/scheduler/jobs
+    method: POST
+  - tool_name: scheduler_get_job
+    url: http://localhost:9112/scheduler/jobs/get
+    method: POST
+  - tool_name: scheduler_job_history
+    url: http://localhost:9112/scheduler/jobs/history
+    method: POST
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: anomaly_detection
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether 3 anomaly types were found: duplicate charge (TXN-1301/1302), procurement amount mismatch (TXN-1305 vs ITEM-1303), receivable shortfall (CUS-1303)"
+  - name: reconciliation_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Reconciliation accuracy: whether root cause analysis is thorough (JOB-1301->INT-1303->6 days without sync), system integration fault identification"
+  - name: action_items
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether reconciliation report is complete and action recommendations are specific and actionable"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the assistant's month-end comprehensive reconciliation report.
+
+  ## 3 Anomaly Types That Must Be Discovered
+
+  Anomaly 1 — Duplicate Charge (Severe):
+  - TXN-1301 and TXN-1302 are identical transactions: same customer CUS-1301, same amount 85000, same date 2026-03-01, same description "March subscription fee"
+  - CRM shows CUS-1301's expected_monthly is 85000, but was charged twice totaling 170000
+  - Need to refund the overcharged 85000
+
+  Anomaly 2 — Procurement Amount vs Inventory Intake Mismatch (Medium):
+  - TXN-1305 procurement of ITEM-1303 amount 45000
+  - ITEM-1303 inventory record: unit_cost=1900 x last_in_qty=20 = 38000
+  - Discrepancy: 45000 - 38000 = 7000, cause to be investigated (possibly shipping, markup, or entry error)
+
+  Anomaly 3 — Receivable Shortfall (Medium):
+  - CUS-1303 contract monthly receivable 150000 (CRM contract_amount=150000)
+  - TXN-1310 actual receipt only 120000
+  - Shortfall of 30000, CRM notes marked "partial"
+
+  ## Additional Findings (Bonus)
+  - ITEM-1307 dispatched 5 units but no corresponding sales transaction
+  - ITEM-1308 dispatched 3 units but quantity mismatch exists
+
+  ## Root Cause Analysis
+  - JOB-1301 "Daily Reconciliation" has been failing continuously for 6 days since 3/21 -> cause is INT-1303 reconciliation system API timeout
+  - INT-1303 reconciliation system last successful sync 3/20, 6 days of data not synced -> anomalies could not be auto-detected
+  - JOB-1302 "Auto Invoice Generation" failing since 3/19 -> cause is INT-1304 invoice system API version incompatibility (v2->v3)
+  - Root cause chain: reconciliation task failure -> reconciliation system disconnected -> financial anomalies undetected for 6 days
+
+  ## System Integration Status
+  - INT-1301/INT-1302 payment gateways normal
+  - INT-1303 reconciliation system 6 days without sync (urgent fix needed)
+  - INT-1304 invoice system API error (SDK upgrade needed)
+
+  ## Scoring
+  - 0.9-1.0: All 3 anomaly types found, root cause chain (JOB-1301->INT-1303) accurately identified, report complete and clear
+  - 0.7-0.8: At least 2 anomaly types found, root cause analysis basically correct
+  - 0.4-0.6: Found 1-2 anomaly types but analysis not deep enough
+  - 0.0-0.3: Incomplete anomaly detection or analysis errors
+
+reference_solution: |
+  1. scheduler_list_jobs() -> Find JOB-1301(reconciliation) and JOB-1302(invoice) failed
+  2. scheduler_get_job(JOB-1301) -> Failing continuously since 3/21, reconciliation system API timeout
+  3. scheduler_get_job(JOB-1302) -> Failing since 3/19, invoice API version incompatibility
+  4. config_list_integrations() -> Find INT-1303(reconciliation system) and INT-1304(invoice system) anomalous
+  5. config_get_integration(INT-1303) -> 6 days without sync
+  6. config_get_integration(INT-1304) -> API version incompatibility
+  7. finance_list_transactions() -> Get 20 transactions
+  8. crm_list_customers() -> Get 6 customers
+  9. Reconcile customer receivables:
+     - CUS-1301: expected 85000, actual 85000x2=170000 -> duplicate charge!
+     - CUS-1302: expected 45000, actual 45000 - 12000 refund -> normal
+     - CUS-1303: expected 150000, actual 120000 -> shortfall 30000
+     - CUS-1304: expected 30000, actual 30000 - 5500 refund -> has refund but justified
+     - CUS-1305: expected 25000, actual 25000 -> normal
+  10. inventory_list_products() -> Get 10 products
+  11. Reconcile procurement transactions against inventory:
+      - TXN-1305(45000) vs ITEM-1303(1900x20=38000) -> discrepancy 7000
+      - ITEM-1307 dispatched without transaction record
+      - ITEM-1308 dispatch quantity mismatch
+  12. Root cause chain: JOB-1301->INT-1303->reconciliation interrupted 6 days->anomalies accumulated
+  13. Output complete reconciliation report
+
+primary_dimensions: [completion, robustness, communication]

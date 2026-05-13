@@ -180,6 +180,89 @@ describe("JsonFileTrajectoryRecorder", () => {
 		expect(parsed.metrics.totalLatencyMs).toBe(300 + 600 + 110 + 270);
 	});
 
+	it("recordStage stores bounded JSON-safe copies of rich stage payloads", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const id = recorder.startTrajectory({
+			agentId: "agent-test",
+			rootMessage: { id: "msg-1", text: "hello" },
+		});
+		const circular: Record<string, unknown> = {
+			long: "x".repeat(120_000),
+			values: Array.from({ length: 400 }, (_, index) => index),
+			buffer: new Uint8Array(1024),
+		};
+		circular.self = circular;
+
+		await recorder.recordStage(id, {
+			stageId: "stage-sanitize",
+			kind: "messageHandler",
+			startedAt: 1,
+			endedAt: 2,
+			latencyMs: 1,
+			model: {
+				modelType: "RESPONSE_HANDLER",
+				provider: "test",
+				messages: [
+					{
+						role: "user",
+						content: "m".repeat(120_000),
+						meta: circular,
+					},
+				],
+				tools: Array.from({ length: 400 }, (_, index) => ({
+					name: `tool-${index}`,
+				})),
+				providerOptions: circular,
+				response: "ok",
+			},
+		} as RecordedStage);
+
+		const reloaded = await recorder.load(id);
+		const stage = reloaded?.stages[0] as
+			| (RecordedStage & { model?: Record<string, unknown> })
+			| undefined;
+		const model = stage?.model as
+			| {
+					messages?: Array<{
+						content?: string;
+						meta?: Record<string, unknown>;
+					}>;
+					tools?: unknown[];
+					providerOptions?: Record<string, unknown>;
+			  }
+			| undefined;
+
+		expect(model?.messages?.[0]?.content?.endsWith("...[truncated]")).toBe(
+			true,
+		);
+		expect(model?.messages?.[0]?.meta?.self).toBe("[Circular]");
+		expect(model?.providerOptions?.self).toBe("[Circular]");
+		expect(model?.tools).toHaveLength(251);
+		expect(model?.providerOptions?.long).toMatch(/\.{3}\[truncated\]$/);
+	});
+
+	it("startTrajectory stores a bounded copy of the root message", async () => {
+		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
+		const rootMessage = {
+			id: "msg-root",
+			text: "r".repeat(120_000),
+			sender: "user-1",
+		};
+		const id = recorder.startTrajectory({
+			agentId: "agent-test",
+			rootMessage,
+		});
+		rootMessage.text = "mutated after start";
+
+		await recorder.endTrajectory(id, "finished");
+
+		const reloaded = await recorder.load(id);
+		expect(reloaded?.rootMessage.id).toBe("msg-root");
+		expect(reloaded?.rootMessage.text).not.toBe("mutated after start");
+		expect(reloaded?.rootMessage.text.endsWith("...[truncated]")).toBe(true);
+		expect(reloaded?.rootMessage.sender).toBe("user-1");
+	});
+
 	it("does not count an interim CONTINUE evaluation as an evaluator failure", async () => {
 		const recorder = createJsonFileTrajectoryRecorder({ rootDir: tmpDir });
 		const id = recorder.startTrajectory({

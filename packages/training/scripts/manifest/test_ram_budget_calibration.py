@@ -4,7 +4,7 @@
 is what the 30-turn endurance gate (`thirtyTurnOk`) compares the fused
 llama-server's peak RSS against. The 2026-05-11 e2e voice-loop benchmark
 (`packages/inference/verify/bench_results/e2e_loop_2026-05-11.json`) measured
-~3132 MB (0_6b) and ~4828 MB (1_7b) server peak RSS in voice-on mode — the
+~3132 MB (0_8b) and ~4828 MB (2b) server peak RSS in voice-on mode — the
 fused process keeps text + DFlash drafter + OmniVoice (base/tokenizer/DAC/
 HuBERT/sem-enc) + Qwen3-ASR + mmproj all resident. The budgets in
 `DEFAULT_RAM_BUDGET_MB` must therefore (a) be identical across the three
@@ -25,33 +25,28 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import stage_local_eliza1_bundle as stage_local
 from scripts.manifest import stage_real_eliza1_bundle as stage_real
-from scripts.publish import orchestrator as orch
 
 # Measured server peak RSS (MB) from the 2026-05-11 e2e voice-loop bench.
 # Source: packages/inference/verify/bench_results/e2e_loop_2026-05-11.json
 #         (30-turn run for each tier).
-_E2E_PEAK_RSS_MB = {"0_6b": 3132, "1_7b": 4828}
+_E2E_PEAK_RSS_MB = {"0_8b": 3132, "2b": 4828}
 
 
 def test_default_ram_budget_is_consistent_across_staging_entry_points() -> None:
-    """orchestrator + stage_local + stage_real must agree tier-for-tier."""
-    base = dict(orch.DEFAULT_RAM_BUDGET_MB)
+    """stage_local + stage_real must agree tier-for-tier."""
     local = dict(stage_local.DEFAULT_RAM_BUDGET_MB)
     real = dict(stage_real.DEFAULT_RAM_BUDGET_MB)
-    # `stage_real` carries the extra `27b-1m` tier; otherwise they match.
-    for tier, budget in base.items():
-        assert local[tier] == budget, (tier, local[tier], budget)
-        assert real[tier] == budget, (tier, real[tier], budget)
+    assert local == real
 
 
 def test_voice_tier_budgets_clear_the_measured_e2e_peak_rss() -> None:
-    """recommended >= measured fused-server peak RSS (+ headroom) for 0_6b/1_7b.
+    """recommended >= measured fused-server peak RSS (+ headroom) for 0_8b/2b.
 
     This is the invariant that makes the 30-turn `thirtyTurnOk` gate
     achievable: the bench derives it from `peakRss <= ramBudgetMb.recommended`.
     """
     for tier, peak in _E2E_PEAK_RSS_MB.items():
-        ram_min, ram_rec = orch.DEFAULT_RAM_BUDGET_MB[tier]
+        ram_min, ram_rec = stage_real.DEFAULT_RAM_BUDGET_MB[tier]
         assert ram_rec >= peak, (tier, ram_rec, peak)
         # At least ~5% headroom so a noisier run still passes.
         assert ram_rec >= peak * 1.05, (tier, ram_rec, peak)

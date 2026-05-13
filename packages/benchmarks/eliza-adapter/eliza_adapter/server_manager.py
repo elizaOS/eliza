@@ -248,6 +248,10 @@ class ElizaServerManager:
                 if self._client.is_ready():
                     health = self._client.health()
                     if health.get("status") == "ready":
+                        self._client.reset(
+                            task_id="__benchmark_readiness__",
+                            benchmark="readiness",
+                        )
                         print("DEBUG: Server is ready!", flush=True)
                         return
                     last_err = f"Server health status not ready: {health}"

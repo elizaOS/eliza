@@ -1,0 +1,17 @@
+[
+  {"transaction_id":"TXN-901","customer_id":"CUS-901","amount":85000,"type":"subscription","date":"2026-01-15","status":"completed","description":"1月订阅费"},
+  {"transaction_id":"TXN-902","customer_id":"CUS-901","amount":90000,"type":"subscription","date":"2026-02-15","status":"completed","description":"2月订阅费"},
+  {"transaction_id":"TXN-903","customer_id":"CUS-901","amount":95000,"type":"subscription","date":"2026-03-15","status":"completed","description":"3月订阅费+增值服务"},
+  {"transaction_id":"TXN-904","customer_id":"CUS-902","amount":45000,"type":"subscription","date":"2026-01-10","status":"completed","description":"1月订阅费"},
+  {"transaction_id":"TXN-905","customer_id":"CUS-902","amount":45000,"type":"subscription","date":"2026-02-10","status":"completed","description":"2月订阅费"},
+  {"transaction_id":"TXN-906","customer_id":"CUS-902","amount":45000,"type":"subscription","date":"2026-03-10","status":"completed","description":"3月订阅费"},
+  {"transaction_id":"TXN-907","customer_id":"CUS-903","amount":120000,"type":"subscription","date":"2026-01-20","status":"completed","description":"1月订阅费"},
+  {"transaction_id":"TXN-908","customer_id":"CUS-903","amount":120000,"type":"subscription","date":"2026-02-20","status":"completed","description":"2月订阅费"},
+  {"transaction_id":"TXN-909","customer_id":"CUS-903","amount":115000,"type":"subscription","date":"2026-03-20","status":"completed","description":"3月订阅费(促销折扣)"},
+  {"transaction_id":"TXN-910","customer_id":"CUS-904","amount":30000,"type":"subscription","date":"2026-01-05","status":"completed","description":"1月订阅费"},
+  {"transaction_id":"TXN-911","customer_id":"CUS-904","amount":30000,"type":"subscription","date":"2026-02-05","status":"completed","description":"2月订阅费"},
+  {"transaction_id":"TXN-912","customer_id":"CUS-904","amount":25000,"type":"subscription","date":"2026-03-05","status":"completed","description":"3月订阅费(降级)"},
+  {"transaction_id":"TXN-913","customer_id":"CUS-905","amount":60000,"type":"subscription","date":"2026-01-25","status":"completed","description":"1月订阅费"},
+  {"transaction_id":"TXN-914","customer_id":"CUS-905","amount":65000,"type":"subscription","date":"2026-02-25","status":"completed","description":"2月订阅费+新模块"},
+  {"transaction_id":"TXN-915","customer_id":"CUS-905","amount":70000,"type":"subscription","date":"2026-03-25","status":"completed","description":"3月订阅费+增值"}
+]

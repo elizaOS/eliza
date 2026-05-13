@@ -1,0 +1,39 @@
+{
+  "query": "github clone",
+  "results": [
+    {
+      "name": "github",
+      "version": "2.1.0",
+      "description": "Interact with GitHub using the gh CLI — issues, PRs, CI runs, and API queries.",
+      "downloads": 1843,
+      "rating": 4.2,
+      "author": "clawd-team"
+    },
+    {
+      "name": "gh",
+      "version": "1.3.2",
+      "description": "GitHub CLI core operations: auth, repo, issues, PRs, releases.",
+      "downloads": 2567,
+      "rating": 4.5,
+      "author": "clawd-team"
+    },
+    {
+      "name": "git-tools",
+      "version": "0.8.1",
+      "description": "Git utilities for diff analysis, blame, log formatting, and branch management.",
+      "downloads": 892,
+      "rating": 3.9,
+      "author": "dev-community"
+    },
+    {
+      "name": "code-reader",
+      "version": "1.1.0",
+      "description": "Read and analyze code from local repositories with syntax-aware search.",
+      "downloads": 456,
+      "rating": 4.0,
+      "author": "dev-community"
+    }
+  ],
+  "total": 4,
+  "page": 1
+}

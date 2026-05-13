@@ -30,8 +30,8 @@ or drop for each.
 | `casual_reply`                  | 2     | rewrites/casual_reply_shorten               | KEEP — slim phase-2 plan |
 | `tool_call`                     | 2     | hermes-fc, glaive, bitagent, toucan         | KEEP — phase-2 plan whose action[0]=TASK_CALL |
 | `mcp_tool_call`                 | 2     | mcp-agent, mcp-routing                      | KEEP |
-| `mcp_routing`                   | 2     | mcp-routing                                 | TRANSFORM — wrap `{server,tool,arguments}` into the phase-2 envelope under `actions[0].params` |
-| `shell_command`                 | 2     | nemotron-terminal, agent-trove (shell)      | KEEP — phase-2 plan whose action[0]=SHELL_COMMAND |
+| `mcp_routing`                   | 2     | mcp-routing                                 | TRANSFORM — wrap `{server,tool,arguments}` into the phase-2 envelope under `tool_calls[0].params` |
+| `shell_command`                 | 2     | nemotron-terminal, agent-trove (shell)      | KEEP — phase-2 plan whose action[0]=SHELL |
 | `mobile_action`                 | 2     | mobile traces                               | KEEP — phase-2 plan |
 | `scam_defense`                  | 2     | scambench, scam-defense-corpus              | KEEP — phase-2 plan |
 | `n8n_workflow_generation`       | 2*    | n8n-workflow                                | DROP from main mix; route to a separate fine-tune. The runtime never emits an n8n workflow as part of a phase-2 plan. |
@@ -99,7 +99,7 @@ Volume: ~129k records.
 
 What it currently teaches: literal `<think>...</think>final-answer`
 envelope from Claude Sonnet/Opus. Useful for thinking-mode shape but
-NOT for runtime alignment — the runtime emits `thought` as a TOON field,
+NOT for runtime alignment — the runtime emits `thought` as a native JSON field,
 not a `<think>` XML block.
 
 **Transform**:
@@ -169,7 +169,7 @@ After applying the master mapping above:
 Concrete next step: extend `scripts/synthesize_core_prompts.py` to emit
 these missing files. Each follows the same pattern — read the template
 from `eliza/packages/core/src/prompts.ts`, generate ~5k synthetic input
-contexts per template, feed through a teacher model (Opus 4.7), TOON-
+contexts per template, feed through a teacher model (Opus 4.7), native JSON-
 encode the output, write to `data/synthesized/core_prompts/<action>.jsonl`.
 
 ---
@@ -200,7 +200,7 @@ emits one JSONL per evaluator template. For each:
 3. Render the template with the input context.
 4. Run a teacher model (Opus 4.7) to produce the structured output.
 5. Wrap as canonical `ElizaRecord` with `task_type=<evaluator_name>` and
-   `expectedResponse` = JSON-or-TOON output of the template.
+   `expectedResponse` = JSON-or-native JSON output of the template.
 
 Output target: ~3k × 7 = **~21k phase-4 records**, lifting evaluation
 coverage from <0.1% to ~3% of corpus, sufficient for the model to learn

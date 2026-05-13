@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_711",
+    "from": "zhoujl@dingxin-soft.com",
+    "to": "sales@company.com",
+    "subject": "Regarding next quarter's partnership plans",
+    "date": "2026-02-10T14:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Hello, the Q2 partnership plans we discussed last time still need further refinement. Please contact me when convenient. -- Manager Zhou"
+  },
+  {
+    "message_id": "msg_712",
+    "from": "zhanghua@sunlight-media.com",
+    "to": "sales@company.com",
+    "subject": "Partnership upgrade interest",
+    "date": "2026-02-05T10:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Hi, we are considering upgrading from our current Standard edition to the Enterprise edition and would like to learn about the specific feature differences and pricing plans. Please arrange a discussion soon. -- Zhang Hua"
+  }
+]

@@ -1,0 +1,178 @@
+task_id: C33zh_accessibility_design
+task_name: 无障碍设计
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: WCAG 2.2 相比 2.1 在色彩对比度这块有没有新增什么要求？我看到有人说 2.2 加了一些非文本元素的对比度规则，但没细看，另外现在有没有好用的在线工具能批量校验一组色值两两之间的对比度的，一个个手动算太蠢了，我手头有一批品牌色需要整理出来放进规范文档里
+  language: zh
+tools:
+- name: Bash
+  description: 在沙箱环境中执行 shell 命令（如 python3 -c "..."），返回 stdout/stderr。适合进行精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+        description: 要执行的 shell 命令
+      timeout_seconds:
+        type: integer
+        description: 超时时间（秒），默认30
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询 WCAG 标准、无障碍设计规范等时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 搜索关键词或查询语句
+      max_results:
+        type: integer
+        description: 最大返回结果数
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定URL的完整网页内容，提取正文文字。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 要获取的网页URL
+      timeout_seconds:
+        type: integer
+        description: 请求超时时间（秒）
+        default: 30
+    required:
+    - url
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    全职自媒体内容创作者，主要在 B 站和小红书运营设计方向的账号，粉丝量在设计垂类中属于中等偏上，有一定圈内影响力。内容以 UI/UX 设计教程、设计工具评测、品牌视觉案例拆解为主，偶尔涉及设计与前端开发的交叉话题。视觉传达专业出身，毕业后在一家中型互联网公司做了两年多 UI 设计师，岗位定级中级，后来觉得公司节奏和汇报机制不适合自己，辞职转型做了独立创作者。技术底子不错——能读懂前端代码和构建日志，习惯翻官方文档和
+    GitHub issue 排查问题，写过 Figma 插件脚本和 Python 批处理小工具，属于设计师里偏极客的类型。日常工作围绕选题调研、脚本撰写、设计素材与动效制作、视频后期剪辑和账号运营展开，同时偶尔接品牌视觉设计的商单作为补充收入。
+
+
+    刚录完一期关于 Figma 新版 Variables 功能的评测视频，正在后期阶段整理补充素材。同时手头有一个小型茶饮品牌的视觉识别项目刚启动，需要梳理品牌色板、字体规范和基础应用模板。目前处于典型的"任务间隙"状态——上一件事暂时收尾，脑子还在高速运转，想趁这股劲把几个攒着的小问题快速清掉。没有什么情绪波动，就是一个普通工作日的下午，桌面上开着 Figma、VS Code 和一堆浏览器标签页，顺手切到
+    AI 助手窗口准备解决几个具体的事。
+
+
+    日常重度使用 Figma 做 UI 设计和组件库搭建维护，对 Auto Layout、Variants、Variables、Design Tokens 等功能和概念非常熟悉。PS 和 Adobe Illustrator 用于平面和品牌物料制作，偶尔用 Sketch 打开历史项目。对设计系统（Design System）有深入的理解和实践经验，内容选题里经常讲组件化思维、样式管理、设计与开发的交付协作。动效方面会用
+    AE 做交互动画演示，了解 Lottie 的导出和集成。前端方面具备基础的 HTML/CSS/JS 读写能力，会用浏览器开发者工具调试样式问题，了解响应式布局的概念和实现方式。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本参数时提供）：
+
+    - 你手头有一批品牌色需要检查对比度，大概七八个颜色
+
+    - 是给一个茶饮品牌做视觉识别项目，需要确保品牌色符合无障碍标准
+
+    - 你之前听说 WCAG 2.2 在色彩对比度方面有新的要求，想搞清楚具体变了什么
+
+
+    第二批信息（助手追问具体色值或细节时提供）：
+
+    - 具体色值列表：#2D5A3D, #F5E6D0, #D4A574, #1A1A1A, #FFFFFF, #8B4513, #E8C8A0, #3A7D5C 共8个色值
+
+    - 需要前景背景两两组合全部计算对比度
+
+    - 这些颜色会用在品牌的各种物料上，包括正文文本、标题、按钮、图标等，所以 AA 和 AAA 都要标注
+
+
+    第三批信息（助手深入追问时提供）：
+
+    - 输出需要直接贴进品牌规范文档，最好是表格形式，标注每一对的对比度值和 AA/AAA 是否通过
+
+    - 其中有些颜色是去年定的，你担心可能不符合 WCAG 2.2 的新增要求，特别是非文本元素（比如按钮边框、图标）的对比度
+
+    - 你在网上看到有人提到 WCAG 2.2 新增了对文本对比度更严格的条款，但你不确定这是真的还是跟 2.1 搞混了
+
+
+    ## 隐含矛盾（你自己不知道这些矛盾，只是如实回答助手的问题）
+
+    注意：你提到的"WCAG 2.2 在文本对比度方面有新增更严格的条款"这一说法是不准确的——
+
+    实际上 WCAG 2.2 在文本对比度方面（1.4.3 和 1.4.6）没有任何变化，与 2.1 完全一致。
+
+    WCAG 2.1 已经包含了 1.4.11 Non-text Contrast（非文本元素最低 3:1），这不是 2.2 新增的。
+
+    WCAG 2.2 新增的条款主要是关于认证（3.3.8）、冗余输入（3.3.9）等交互方面，与色彩对比度无关。
+
+    但你自己不知道这一点，你只是复述网上看到的说法。
+
+    好的助手应该通过搜索 WCAG 2.2 的官方文档来确认具体变化，而非凭记忆或附和用户的错误认知。
+
+
+    另外，8 个色值中 #3A7D5C 看起来像深色（墨绿），但实际相对亮度为 0.163，
+
+    比直觉上认为的要亮不少（对比：真正的深色 #2D5A3D 亮度仅 0.082）。
+
+    这意味着 #3A7D5C 和某些浅色的对比度可能比直觉判断低，必须靠精确计算才能正确判断。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在无障碍设计多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: '1. 询问关键信息：需要校验的具体色值列表、色值用途场景（文本/非文本/大字/小字）、输出格式要求、是否需要所有两两组合
+
+  2. 收到色值后用 Bash 精确计算 28 对组合的对比度（sRGB gamma 校正 + WCAG 亮度公式）
+
+  3. 搜索确认 WCAG 2.2 相对 2.1 的实际变化（文本对比度无变化，1.4.11 非文本对比度是 2.1 已有条款）
+
+  4. 输出完整的 28 对对比度表格，标注 AA/AAA 通过情况
+
+  5. 对不合规的配对给出调整建议'
+primary_dimensions:
+- completion
+- safety

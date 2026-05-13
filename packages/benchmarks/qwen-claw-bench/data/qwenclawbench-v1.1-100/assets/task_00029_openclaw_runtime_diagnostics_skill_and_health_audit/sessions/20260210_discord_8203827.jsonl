@@ -1,0 +1,10 @@
+{"type": "session_start", "session_id": "discord_8203827", "model": "gpt-4o-2025-01-10", "created_at": "2026-02-10T16:24:05.777671", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "discord"}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-10T16:24:30.416630", "session_id": "discord_8203827", "seq": 1}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-10T16:26:03.944537", "session_id": "discord_8203827", "seq": 2, "usage": {"prompt_tokens": 5525, "completion_tokens": 2502, "total_tokens": 1994}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-10T16:28:51.111437", "session_id": "discord_8203827", "seq": 3}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-10T16:33:05.547488", "session_id": "discord_8203827", "seq": 4}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-10T16:33:21.976892", "session_id": "discord_8203827", "seq": 5, "usage": {"prompt_tokens": 2416, "completion_tokens": 870, "total_tokens": 3608}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-10T16:33:24.656776", "session_id": "discord_8203827", "seq": 6}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-10T16:37:48.641428", "session_id": "discord_8203827", "seq": 7}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-10T16:40:53.703684", "session_id": "discord_8203827", "seq": 8, "usage": {"prompt_tokens": 7638, "completion_tokens": 3276, "total_tokens": 4790}}
+{"type": "session_end", "session_id": "discord_8203827", "ended_at": "2026-02-10T16:41:03.703684", "total_messages": 8, "status": "completed"}

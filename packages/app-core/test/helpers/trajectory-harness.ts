@@ -150,7 +150,7 @@ function isTrajectoryMarkdownReviewEnabled(
   const raw = (
     env.ELIZA_TRAJECTORY_REVIEW_MODE ??
     env.ELIZA_TRAJECTORY_MARKDOWN ??
-    env.MILADY_TRAJECTORY_MARKDOWN
+    env.ELIZA_TRAJECTORY_MARKDOWN
   )
     ?.trim()
     .toLowerCase();

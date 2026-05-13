@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .db import list_run_groups, list_runs, summarize_latest_scores
+from .random_baseline_runner import CALIBRATION_HARNESSES
 
 
 def _iso_now() -> str:
@@ -75,6 +76,7 @@ def build_viewer_dataset(conn) -> dict[str, Any]:
     benchmark_summary.sort(key=lambda x: x["benchmark_id"])
     model_summary.sort(key=lambda x: x["model_key"])
     agent_summary.sort(key=lambda x: x["agent"])
+    calibration_summary = _build_calibration_summary(runs)
 
     return {
         "generated_at": _iso_now(),
@@ -84,4 +86,37 @@ def build_viewer_dataset(conn) -> dict[str, Any]:
         "benchmark_summary": benchmark_summary,
         "model_summary": model_summary,
         "agent_summary": agent_summary,
+        "calibration_summary": calibration_summary,
     }
+
+
+def _build_calibration_summary(runs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in runs:
+        benchmark_id = str(row.get("benchmark_id") or "")
+        agent = str(row.get("agent") or "")
+        if not benchmark_id or agent not in CALIBRATION_HARNESSES:
+            continue
+        key = (benchmark_id, agent)
+        if key not in latest:
+            latest[key] = row
+
+    rows: list[dict[str, Any]] = []
+    for benchmark_id in sorted({key[0] for key in latest}):
+        scores = {
+            agent: latest.get((benchmark_id, agent), {}).get("score")
+            for agent in CALIBRATION_HARNESSES
+        }
+        statuses = {
+            agent: latest.get((benchmark_id, agent), {}).get("status")
+            for agent in CALIBRATION_HARNESSES
+        }
+        rows.append(
+            {
+                "benchmark_id": benchmark_id,
+                "scores": scores,
+                "statuses": statuses,
+                "complete": all(statuses.get(agent) == "succeeded" for agent in CALIBRATION_HARNESSES),
+            }
+        )
+    return rows

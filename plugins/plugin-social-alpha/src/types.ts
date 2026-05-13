@@ -99,9 +99,7 @@ type ToSQLiteType<T> = T extends boolean
  * @typedef ToSQLiteRecord
  * @type {object}
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- Required for generic SQLite mapping
-export type ToSQLiteRecord<T extends Record<string, any>> = {
-	// biome-ignore: TS interfaces lack index sigs
+export type ToSQLiteRecord<T extends object> = {
 	[K in keyof T]: ToSQLiteType<T[K]>;
 };
 

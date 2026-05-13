@@ -41,6 +41,10 @@ type RawStructuredClarification = Partial<WorkflowClarificationRequest> & {
   question: string;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 const VALID_KINDS: ReadonlySet<WorkflowClarificationRequest['kind']> = new Set([
   'target_channel',
   'target_server',
@@ -330,24 +334,25 @@ function appendUserNote(draft: Record<string, unknown>, value: string): void {
 
 export function applyResolutions(
   draft: Record<string, unknown>,
-  resolutions: ReadonlyArray<WorkflowClarificationResolution>
+  resolutions: ReadonlyArray<unknown>
 ): { ok: true } | { ok: false; error: string; paramPath?: string } {
   for (const r of resolutions) {
-    if (!r || typeof r.paramPath !== 'string') {
+    if (!isRecord(r) || typeof r.paramPath !== 'string') {
       return { ok: false, error: 'resolution missing paramPath' };
     }
-    if (typeof r.value !== 'string') {
+    const { paramPath, value } = r;
+    if (typeof value !== 'string') {
       return {
         ok: false,
         error: 'resolution value must be a string',
-        paramPath: r.paramPath,
+        paramPath,
       };
     }
-    if (r.paramPath.length === 0) {
+    if (paramPath.length === 0) {
       // Free-form clarification with no field to wire into. Record the user's
       // answer under draft._meta.userNotes so subsequent LLM iterations can
       // consume the context, but don't mutate the workflow itself.
-      appendUserNote(draft, r.value);
+      appendUserNote(draft, value);
       continue;
     }
     // Surface structural parse errors (unterminated bracket, empty
@@ -355,18 +360,18 @@ export function applyResolutions(
     // malformed LLM emission and cannot be silently recovered into
     // userNotes without losing the failure mode in the metrics pipeline.
     try {
-      parseParamPath(r.paramPath);
+      parseParamPath(paramPath);
     } catch (err) {
       return {
         ok: false,
         error: `paramPath is structurally invalid: ${
           err instanceof Error ? err.message : String(err)
         }`,
-        paramPath: r.paramPath,
+        paramPath,
       };
     }
     try {
-      setByDotPath(draft, r.paramPath, r.value);
+      setByDotPath(draft, paramPath, value);
     } catch (err) {
       // Lookup-time failure: the path parsed cleanly but didn't resolve
       // against the current draft (e.g. references a node the LLM didn't
@@ -380,11 +385,11 @@ export function applyResolutions(
         {
           src: 'plugin:workflow:clarification:applyResolutions',
           err: errMsg,
-          paramPath: r.paramPath,
+          paramPath,
         },
-        `setByDotPath failed for paramPath "${r.paramPath}"; recording "${r.value}" as a free-form note instead`
+        `setByDotPath failed for paramPath "${paramPath}"; recording "${value}" as a free-form note instead`
       );
-      appendUserNote(draft, r.value);
+      appendUserNote(draft, value);
     }
   }
   return { ok: true };

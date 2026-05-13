@@ -1,0 +1,67 @@
+[
+  {
+    "message_id": "msg_1001",
+    "from": "boss@company.com",
+    "to": "me@company.com",
+    "subject": "How is the Q1 summary report coming along?",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "I need this report by Monday next week. Please give me a progress update ASAP. -- Director Wang",
+    "labels": [
+      "inbox",
+      "follow-up"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1002",
+    "from": "client_zhangming@dingxin.com",
+    "to": "me@company.com",
+    "subject": "When can the customization proposal be delivered?",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "Hello, the customization proposal we discussed at our last meeting was originally due on March 20, but we still haven't received it. Please confirm the delivery date as soon as possible. -- Zhang Ming, Dingxin Software",
+    "labels": [
+      "inbox",
+      "client",
+      "follow-up"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1003",
+    "from": "hr_liwei@company.com",
+    "to": "me@company.com",
+    "subject": "Performance evaluation form not yet submitted",
+    "date": "2026-03-24T09:00:00Z",
+    "body": "Please note that the deadline for this quarter's performance evaluation form is March 25, and yours has not been submitted yet. Please complete it as soon as possible. -- Li Wei, HR Department",
+    "labels": [
+      "inbox",
+      "follow-up"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1004",
+    "from": "colleague@company.com",
+    "to": "me@company.com",
+    "subject": "Sharing a great article",
+    "date": "2026-03-24T09:00:00Z",
+    "body": "I recommend you check out this article about AI trends, very interesting.",
+    "labels": [
+      "inbox"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1005",
+    "from": "system@company.com",
+    "to": "me@company.com",
+    "subject": "System maintenance notice",
+    "date": "2026-03-23T09:00:00Z",
+    "body": "System maintenance this Sunday from 2:00 AM to 6:00 AM.",
+    "labels": [
+      "inbox",
+      "notification"
+    ],
+    "is_read": true
+  }
+]

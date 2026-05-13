@@ -186,8 +186,14 @@ describe("residentKvBudgetFromRamBudget", () => {
 
 describe("estimateQuantizedKvBytesPerToken", () => {
   it("returns the per-tier figure for known param strings", () => {
-    expect(estimateQuantizedKvBytesPerToken("0.6B")).toBeLessThan(
+    expect(estimateQuantizedKvBytesPerToken("0.8B")).toBeLessThan(
       estimateQuantizedKvBytesPerToken("9B"),
+    );
+    expect(estimateQuantizedKvBytesPerToken("2B")).toBeGreaterThan(
+      estimateQuantizedKvBytesPerToken("0.8B"),
+    );
+    expect(estimateQuantizedKvBytesPerToken("4B")).toBeGreaterThan(
+      estimateQuantizedKvBytesPerToken("2B"),
     );
     expect(estimateQuantizedKvBytesPerToken("27B")).toBeGreaterThan(
       estimateQuantizedKvBytesPerToken("9B"),

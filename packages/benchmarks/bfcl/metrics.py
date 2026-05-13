@@ -69,7 +69,9 @@ class MetricsCalculator:
         
         if not valid_results:
             logger.warning("No valid results with ground truth available for metrics")
-            return self._empty_metrics()
+            metrics = self._empty_metrics()
+            metrics.error_counts["no_ground_truth"] = len(results)
+            return metrics
 
         # Calculate per-category metrics (using valid results only)
         category_metrics = self._calculate_category_metrics(valid_results)

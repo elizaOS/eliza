@@ -1,0 +1,49 @@
+{
+  "version": "1.0.0",
+  "skills_directory": "./skills",
+  "installed": [
+    {
+      "name": "github",
+      "version": "2.1.0",
+      "path": "./skills/github",
+      "description": "Interact with GitHub using the gh CLI — issues, PRs, CI runs, and API queries.",
+      "enabled": true
+    },
+    {
+      "name": "gh",
+      "version": "1.3.2",
+      "path": "./skills/gh",
+      "description": "GitHub CLI core operations: auth, repo, issues, PRs, releases.",
+      "enabled": true
+    },
+    {
+      "name": "weather",
+      "version": "1.0.1",
+      "path": "./skills/weather",
+      "description": "Get current weather and forecasts via wttr.in or Open-Meteo.",
+      "enabled": true
+    },
+    {
+      "name": "skill-creator",
+      "version": "1.5.0",
+      "path": "./skills/skill-creator",
+      "description": "Create or update AgentSkills with proper structure.",
+      "enabled": true
+    },
+    {
+      "name": "clawdhub",
+      "version": "0.9.3",
+      "path": "./skills/clawdhub",
+      "description": "Search, install, update, and publish agent skills from clawdhub.com.",
+      "enabled": true
+    },
+    {
+      "name": "bluebubbles",
+      "version": "0.4.0",
+      "path": "./skills/bluebubbles",
+      "description": "BlueBubbles iMessage channel plugin for Moltbot.",
+      "enabled": false
+    }
+  ],
+  "registry": "https://clawdhub.com/api/v1"
+}

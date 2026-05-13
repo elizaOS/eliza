@@ -1,0 +1,27 @@
+{
+  "version": "1.2.0",
+  "indexName": "qmd-file-index",
+  "description": "Quarto Markdown file indexing configuration",
+  "scanRoots": [
+    "/Users/laixiang/projects/research",
+    "/Users/laixiang/projects/teaching",
+    "/Users/laixiang/projects/blog",
+    "/Users/laixiang/projects/data-analysis"
+  ],
+  "filePatterns": ["*.qmd", "*.Qmd", "*.QMD"],
+  "excludePatterns": ["_freeze/**", "_site/**", ".quarto/**", "node_modules/**"],
+  "indexStorePath": "/Users/laixiang/openclaw/.index/qmd_manifest.json",
+  "indexDbPath": "/Users/laixiang/openclaw/.index/qmd_index.db",
+  "scheduling": {
+    "fullRescanIntervalHours": 24,
+    "incrementalCheckMinutes": 30
+  },
+  "metadata": {
+    "extractYamlFrontmatter": true,
+    "trackFileSize": true,
+    "trackModifiedTime": true,
+    "computeChecksum": true
+  },
+  "lastFullScan": "2026-02-09T18:30:00+08:00",
+  "lastIncrementalCheck": "2026-02-10T07:00:00+08:00"
+}

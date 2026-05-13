@@ -24,6 +24,11 @@ const RETIRED_REGISTERED_NAMES = [
   "LIFEOPS",
   "LIFEOPS_THREAD_CONTROL",
   "SCHEDULED_TASK",
+  // Scheduling sub-handlers converted to plain functions in Task F cleanup;
+  // dispatched from CALENDAR umbrella (action=propose_times|check_availability|update_preferences).
+  "PROPOSE_MEETING_TIMES",
+  "CHECK_AVAILABILITY",
+  "UPDATE_MEETING_PREFERENCES",
 ] as const;
 
 const CANONICAL_OWNER_PARENTS = [

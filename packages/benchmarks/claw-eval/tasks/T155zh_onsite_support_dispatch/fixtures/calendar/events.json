@@ -1,0 +1,46 @@
+[
+  {
+    "event_id": "evt_1201",
+    "title": "技术部周例会",
+    "start_time": "2026-03-26T09:00:00+08:00",
+    "end_time": "2026-03-26T10:00:00+08:00",
+    "location": "会议室A",
+    "organizer": "王明",
+    "attendees": ["马强", "李华", "周明", "王明"],
+    "description": "技术部门每周例会，回顾上周工作和本周计划",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_1202",
+    "title": "系统架构评审",
+    "start_time": "2026-03-26T10:30:00+08:00",
+    "end_time": "2026-03-26T12:00:00+08:00",
+    "location": "会议室B",
+    "organizer": "李华",
+    "attendees": ["马强", "李华"],
+    "description": "新微服务架构方案评审，马强和李华参加",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_1203",
+    "title": "深圳客户现场实施",
+    "start_time": "2026-03-26T09:00:00+08:00",
+    "end_time": "2026-03-26T17:00:00+08:00",
+    "location": "深圳南山区-客户现场",
+    "organizer": "周明",
+    "attendees": ["周明"],
+    "description": "周明全天在深圳客户现场进行系统部署实施，无法远程调配",
+    "status": "confirmed"
+  },
+  {
+    "event_id": "evt_1204",
+    "title": "午餐",
+    "start_time": "2026-03-26T12:00:00+08:00",
+    "end_time": "2026-03-26T13:00:00+08:00",
+    "location": "",
+    "organizer": "",
+    "attendees": [],
+    "description": "午休时间",
+    "status": "confirmed"
+  }
+]

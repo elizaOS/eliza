@@ -1,0 +1,7 @@
+{
+  "msgtype": "markdown",
+  "markdown": {
+    "title": "收款机告警",
+    "text": "## 收款机连接失败告警\n\n**告警时间:** {{.NotifyTime}}\n\n---\n\n{{range (index .QueryResult 0)}}{{if or .sn .shopNo .message}}\n### 设备 {{.sn}}\n\n- **门店名:** {{.shopName}}\n- **门店NO:** {{.shopNo}}\n- **日志时间:** {{.logTime}}\n- **告警信息:** {{.message}}\n\n---\n\n{{end}}{{end}}\n\n> [查看告警详情]({{.DetailUrl}})\n\n**通知类型:** {{.NotifyType}}"
+  }
+}

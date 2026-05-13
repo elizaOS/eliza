@@ -1,6 +1,6 @@
-import { Button } from "@elizaos/ui";
 import { type ReactNode, useState } from "react";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
 
 type ConfirmDeleteControlProps = {
   onConfirm: () => void;

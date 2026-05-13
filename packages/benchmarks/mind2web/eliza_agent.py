@@ -228,18 +228,24 @@ class OpenAICompatibleMind2WebAgent:
 
         if provider not in self._BASE_URLS:
             if provider:
-                logger.warning(
-                    "Mind2Web provider %r is not OpenAI-compatible in the local runner; "
-                    "using heuristic actions",
-                    provider,
+                raise RuntimeError(
+                    f"Mind2Web provider {provider!r} is not supported by the local "
+                    "OpenAI-compatible runner; use --provider eliza for the TS bridge "
+                    "or --mock for offline smoke tests."
                 )
-            return None
+            raise RuntimeError(
+                "No OpenAI-compatible Mind2Web provider is configured. Set "
+                "GROQ_API_KEY, OPENROUTER_API_KEY, or OPENAI_API_KEY with a matching "
+                "provider, use --provider eliza for the TS bridge, or use --mock."
+            )
 
         key_var = self._KEY_VARS[provider]
         api_key = os.environ.get(key_var)
         if not api_key:
-            logger.warning("%s is not set; Mind2Web will use heuristic actions", key_var)
-            return None
+            raise RuntimeError(
+                f"{key_var} is not set; use --mock for offline smoke tests or "
+                "--provider eliza for the TS bridge."
+            )
 
         self.provider = provider
         self.key_var = key_var
@@ -258,10 +264,30 @@ class OpenAICompatibleMind2WebAgent:
                     response = await asyncio.to_thread(self._chat_completion, prompt)
                     action = self._parse_provider_action(response)
                 except Exception as exc:
-                    logger.warning("Mind2Web provider call failed; using heuristic action: %s", exc)
+                    logger.warning("Mind2Web provider call failed at step %d: %s", step_index, exc)
+                    predictions.append(
+                        Mind2WebAction(
+                            operation=Mind2WebOperation.CLICK,
+                            element_id="",
+                            value="",
+                            reasoning=f"Provider call failed: {exc}",
+                        )
+                    )
+                    break
+            else:
+                raise RuntimeError("Mind2Web local provider agent was not initialized")
 
             if action is None:
-                action = self._heuristic_action(step, "Heuristic local Mind2Web action.")
+                logger.warning("Mind2Web provider returned no parseable action at step %d", step_index)
+                predictions.append(
+                    Mind2WebAction(
+                        operation=Mind2WebOperation.CLICK,
+                        element_id="",
+                        value="",
+                        reasoning="Provider returned no parseable action.",
+                    )
+                )
+                break
             else:
                 action = self._normalize_action(step, action)
 
@@ -390,22 +416,15 @@ class OpenAICompatibleMind2WebAgent:
 
     def _normalize_action(self, step: Any, action: Mind2WebAction) -> Mind2WebAction:
         candidates = step.pos_candidates + step.neg_candidates
-        candidate_ids = {elem.backend_node_id for elem in candidates}
         element_id = action.element_id.strip()
         if element_id.isdigit():
             index = int(element_id) - 1
             if 0 <= index < len(candidates):
                 element_id = candidates[index].backend_node_id
-        if candidate_ids and element_id not in candidate_ids:
-            target = step.target_element or (step.pos_candidates[0] if step.pos_candidates else candidates[0])
-            element_id = target.backend_node_id
-        value = action.value
-        if not value and step.value and action.operation in {Mind2WebOperation.TYPE, Mind2WebOperation.SELECT}:
-            value = step.value
         return Mind2WebAction(
             operation=action.operation,
             element_id=element_id,
-            value=value,
+            value=action.value,
             reasoning=action.reasoning or "Provider-generated Mind2Web action.",
         )
 
@@ -444,7 +463,7 @@ def parse_mind2web_action(text: str) -> Mind2WebAction | None:
             try:
                 operation = Mind2WebOperation(op_raw)
             except ValueError:
-                operation = Mind2WebOperation.CLICK
+                return None
             return Mind2WebAction(
                 operation=operation,
                 element_id=str(data.get("element_id", "")),
@@ -464,7 +483,7 @@ def parse_mind2web_action(text: str) -> Mind2WebAction | None:
     try:
         operation = Mind2WebOperation(op_raw)
     except ValueError:
-        operation = Mind2WebOperation.CLICK
+        return None
     return Mind2WebAction(
         operation=operation,
         element_id=_tag("element_id"),

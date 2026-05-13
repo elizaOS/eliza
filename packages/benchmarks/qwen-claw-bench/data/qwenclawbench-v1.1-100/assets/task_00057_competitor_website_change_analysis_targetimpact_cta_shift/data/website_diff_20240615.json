@@ -1,0 +1,132 @@
+{
+  "tool": "SiteWatch Pro v3.2",
+  "scan_id": "sw-20240615-083200-targetimpact",
+  "url": "https://targetimpact.com/",
+  "page_path": "/",
+  "scan_date": "2024-06-15T08:32:00Z",
+  "previous_scan": "2024-06-14T08:30:00Z",
+  "change_magnitude": 0.0074,
+  "total_elements_scanned": 1842,
+  "elements_changed": 14,
+  "sections_changed": [
+    {
+      "section_id": "cta-marketing-expert",
+      "element": "h2+p.cta-subtext",
+      "change_type": "text_modification",
+      "old_text": "Speak with a Marketing Expert — Schedule your free 15-minute consultation today",
+      "new_text": "Speak with a Marketing Expert — Book your complimentary 30-minute strategy session with our team",
+      "confidence": 0.98
+    },
+    {
+      "section_id": "hero-tagline",
+      "element": "div.hero h1 span.sub",
+      "change_type": "text_modification",
+      "old_text": "Email campaigns that convert",
+      "new_text": "Email campaigns that drive enterprise growth",
+      "confidence": 0.95
+    },
+    {
+      "section_id": "nav-resources",
+      "element": "nav ul.main-nav li:nth-child(4) a",
+      "change_type": "text_modification",
+      "old_text": "Resources",
+      "new_text": "Resources & Guides",
+      "confidence": 0.99
+    },
+    {
+      "section_id": "footer-contact",
+      "element": "footer div.contact-info p.phone",
+      "change_type": "text_modification",
+      "old_text": "Questions? Email us at hello@targetimpact.com",
+      "new_text": "Questions? Call us at (800) 555-0142 or email hello@targetimpact.com",
+      "confidence": 0.97
+    },
+    {
+      "section_id": "social-proof-counter",
+      "element": "section.social-proof span.customer-count",
+      "change_type": "text_modification",
+      "old_text": "Trusted by 8,500+ businesses",
+      "new_text": "Trusted by 9,200+ businesses",
+      "confidence": 0.99
+    },
+    {
+      "section_id": "cta-bottom-banner",
+      "element": "div.bottom-cta a.btn-primary",
+      "change_type": "text_modification",
+      "old_text": "Start Free Trial",
+      "new_text": "Start Free Trial or Talk to Sales",
+      "confidence": 0.96
+    },
+    {
+      "section_id": "product-feature-3",
+      "element": "div.features div:nth-child(3) p",
+      "change_type": "text_modification",
+      "old_text": "Segment your audience with AI-powered targeting",
+      "new_text": "Segment your audience with AI-powered targeting and dedicated support",
+      "confidence": 0.94
+    },
+    {
+      "section_id": "css-asset-main",
+      "element": "link[rel=stylesheet][href*=main]",
+      "change_type": "attribute_modification",
+      "old_text": "main.css?v=4.12.1",
+      "new_text": "main.css?v=4.13.0",
+      "confidence": 1.0
+    },
+    {
+      "section_id": "js-bundle",
+      "element": "script[src*=bundle]",
+      "change_type": "attribute_modification",
+      "old_text": "bundle.js?v=4.12.1",
+      "new_text": "bundle.js?v=4.13.0",
+      "confidence": 1.0
+    },
+    {
+      "section_id": "meta-description",
+      "element": "meta[name=description]",
+      "change_type": "attribute_modification",
+      "old_text": "TargetImpact: Email marketing platform for growing businesses",
+      "new_text": "TargetImpact: Email marketing platform for growing and enterprise businesses",
+      "confidence": 0.99
+    },
+    {
+      "section_id": "og-image",
+      "element": "meta[property=og:image]",
+      "change_type": "attribute_modification",
+      "old_text": "/assets/og-home-v3.png",
+      "new_text": "/assets/og-home-v4.png",
+      "confidence": 1.0
+    },
+    {
+      "section_id": "testimonial-carousel-item-2",
+      "element": "div.testimonials div.item:nth-child(2)",
+      "change_type": "element_added",
+      "old_text": null,
+      "new_text": "\"TargetImpact's strategy team helped us increase open rates by 34%\" — VP Marketing, Acme Corp",
+      "confidence": 0.92
+    },
+    {
+      "section_id": "chat-widget-config",
+      "element": "script#intercom-config",
+      "change_type": "attribute_modification",
+      "old_text": "{\"show_launcher\":true,\"custom_launcher_selector\":null}",
+      "new_text": "{\"show_launcher\":true,\"custom_launcher_selector\":\".talk-to-sales\"}",
+      "confidence": 0.88
+    },
+    {
+      "section_id": "schema-org-markup",
+      "element": "script[type=application/ld+json]",
+      "change_type": "text_modification",
+      "old_text": "\"@type\":\"SoftwareApplication\"",
+      "new_text": "\"@type\":\"SoftwareApplication\",\"offers\":{\"@type\":\"AggregateOffer\"}",
+      "confidence": 0.91
+    }
+  ],
+  "alerts": [
+    {
+      "level": "info",
+      "message": "Change magnitude 0.0074 exceeds alert threshold 0.005"
+    }
+  ],
+  "scan_duration_ms": 3421
+}

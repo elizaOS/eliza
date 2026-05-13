@@ -156,6 +156,18 @@ def test_at_least_30_percent_have_first_question_fallback() -> None:
     )
 
 
+def test_live_scenarios_are_unscripted() -> None:
+    from eliza_lifeops_bench.types import ScenarioMode
+
+    live = [s for s in ALL_SCENARIOS if s.mode == ScenarioMode.LIVE]
+    assert live, "expected at least one LIVE scenario in the corpus"
+    assert all(s.ground_truth_actions == [] for s in live)
+    assert all(s.required_outputs == [] for s in live)
+    assert all(s.first_question_fallback is None for s in live)
+    assert all(getattr(s, "success_criteria", []) for s in live)
+    assert all(getattr(s, "world_assertions", []) for s in live)
+
+
 def test_persona_shape_sane() -> None:
     bad: list[str] = []
     for scenario in ALL_SCENARIOS:

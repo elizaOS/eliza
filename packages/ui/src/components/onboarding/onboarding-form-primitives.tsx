@@ -1,11 +1,6 @@
-import {
-  cn,
-  Field,
-  FieldDescription,
-  FieldLabel,
-  FieldMessage,
-} from "@elizaos/ui";
 import type * as React from "react";
+import { cn } from "../../lib/utils";
+import { Field, FieldDescription, FieldLabel, FieldMessage } from "../ui/field";
 
 export const onboardingDetailStackClassName =
   "flex w-full flex-col gap-4 text-left";

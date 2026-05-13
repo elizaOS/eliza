@@ -1,0 +1,30 @@
+[
+  {
+    "id": 1,
+    "name": "www.fzw.best",
+    "path": "/www/wwwroot/www.fzw.best",
+    "status": "1",
+    "ssl": {
+      "status": true,
+      "type": "lets_encrypt",
+      "expiry": "2025-09-15"
+    },
+    "php_version": "80",
+    "backup": "daily",
+    "addtime": "2024-06-12 14:30:22"
+  },
+  {
+    "id": 2,
+    "name": "auth.wslf.cc",
+    "path": "/www/wwwroot/auth.wslf.cc",
+    "status": "1",
+    "ssl": {
+      "status": true,
+      "type": "lets_encrypt",
+      "expiry": "2025-08-22"
+    },
+    "php_version": "80",
+    "backup": "weekly",
+    "addtime": "2024-08-03 09:15:41"
+  }
+]

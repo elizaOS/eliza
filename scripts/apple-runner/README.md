@@ -66,14 +66,14 @@ report still includes everything that ran. To enable the smoke step
 deterministically:
 
 ```bash
-APPLE_RUNNER_SMOKE_MODEL=/abs/path/to/eliza-1-mobile-1_7b-32k.gguf ./run-mac.sh
+APPLE_RUNNER_SMOKE_MODEL=/abs/path/to/eliza-1-2b-32k.gguf ./run-mac.sh
 ```
 
 `run-ios.sh` requires explicit GGUF paths because the simulator can't
 auto-discover models inside the host's home directory:
 
 ```bash
-APPLE_RUNNER_ELIZA1_GGUF=/abs/path/to/eliza-1-mobile-1_7b-32k.gguf ./run-ios.sh
+APPLE_RUNNER_ELIZA1_GGUF=/abs/path/to/eliza-1-2b-32k.gguf ./run-ios.sh
 ```
 
 ## Expected outputs

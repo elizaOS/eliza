@@ -1,11 +1,3 @@
-/**
- * Convex HTTP router — exposes the elizaOS agent over HTTP.
- *
- * Routes:
- *   POST /chat   — send a message and receive a response
- *   GET  /health — health-check / readiness probe
- */
-
 import { httpRouter } from "convex/server";
 import { api, internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -23,13 +15,7 @@ function jsonResponse(data: Record<string, unknown>, status = 200): Response {
   });
 }
 
-// ============================================================================
-// Routes
-// ============================================================================
-
 const http = httpRouter();
-
-// -- CORS preflight ----------------------------------------------------------
 
 http.route({
   path: "/chat",
@@ -38,8 +24,6 @@ http.route({
     return new Response(null, { status: 204, headers: CORS_HEADERS });
   }),
 });
-
-// -- POST /chat --------------------------------------------------------------
 
 http.route({
   path: "/chat",
@@ -86,8 +70,6 @@ http.route({
   }),
 });
 
-// -- GET /health -------------------------------------------------------------
-
 http.route({
   path: "/health",
   method: "GET",
@@ -99,8 +81,6 @@ http.route({
     });
   }),
 });
-
-// -- GET /messages -----------------------------------------------------------
 
 http.route({
   path: "/messages",

@@ -108,8 +108,17 @@ class ElizaMind2WebAgent:
                 m = re.search(rf"<{tag}>(.*?)</{tag}>", text, re.DOTALL)
                 return m.group(1).strip() if m else ""
 
-            # Try params first, then fall back to XML tags in text
+            # Try params first, then fall back to XML tags in text. The TS
+            # benchmark server may capture multiple BENCHMARK_ACTION calls
+            # from one model turn; score the first decisive action instead of
+            # silently overwriting it with a later correction/extra action.
             params = response.params
+            action_candidates = params.get("BENCHMARK_ACTIONS")
+            if isinstance(action_candidates, list):
+                for candidate in action_candidates:
+                    if isinstance(candidate, dict):
+                        params = {**params, **candidate}
+                        break
             bench_params = params.get("BENCHMARK_ACTION")
             if isinstance(bench_params, dict):
                 params = {**params, **bench_params}
@@ -135,13 +144,10 @@ class ElizaMind2WebAgent:
 
             if not element_id:
                 logger.warning(
-                    "Step %d: eliza returned no element_id, using first positive candidate",
+                    "Step %d: eliza returned no element_id; marking action invalid",
                     step_idx,
                 )
-                if current_step.pos_candidates:
-                    element_id = current_step.pos_candidates[0].backend_node_id
-                else:
-                    element_id = "unknown"
+                element_id = "unknown"
 
             action = Mind2WebAction(
                 operation=operation,

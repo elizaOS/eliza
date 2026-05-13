@@ -39,17 +39,10 @@ Hermes runs are cost-comparable.
 
 ### openclaw
 
-- 3 zero-score scenarios all share the same pattern: the model emitted
-  a `<tool_call>{...}` JSON block with no closing `</tool_call>`, so
-  the OpenClaw text parser dropped the call. Example, from
-  `mail.archive_thread_by_subject`:
-
-  ```
-  We need to call MESSAGE search.We'll search inbox.<tool_call>{"tool": "MESSAGE", "args": {"operation": "search_inbox", "source": "gmail", "query": "subject:\"Quarterly Review\""}}The task is complete.
-  ```
-
-  Real LLM behavior under Cerebras + gpt-oss-120b. The OpenClaw adapter
-  parser is strict — it requires balanced tags.
+- 3 zero-score scenarios were caused by OpenClaw's legacy text-embedded
+  tool-call protocol. Current Eliza-native benchmarks do not use that
+  protocol; they require OpenAI-compatible `tools` and returned
+  `tool_calls`.
 - 22 partial-credit scenarios mostly land at 0.20 or 0.70 — same
   story as hermes: the agent emits `MESSAGE` correctly but doesn't
   match the scenario's expected sub-operation argument (`manage`,
@@ -106,8 +99,8 @@ Hermes runs are cost-comparable.
   parent Python (the hermes-adapter's in-process mode bypasses the
   hermes-agent venv subprocess; the openclaw adapter is OpenAI-compat
   by default).
-- Cerebras key in `/Users/shawwalters/milaidy/eliza/.env` confirmed at
-  prefix `csk-8c9hf68j` (matches the expected new key).
+- Cerebras key in `/Users/shawwalters/milaidy/eliza/.env` confirmed present
+  without recording the secret or prefix in this audit.
 - Saved JSON manifests confirm `model_name=gpt-oss-120b` and
   `judge_model_name=claude-opus-4-7`. No mocked content. Each
   scenario's `turns[*].agent_message` contains real natural-language

@@ -12,7 +12,10 @@ let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
 let globalFetchBridgeInstalled = false;
 let originalFetch: typeof fetch | null = null;
-let fullBunRuntime: Promise<FullBunRuntimePlugin | null> | null = null;
+let fullBunRuntime:
+  | Promise<FullBunRuntimePlugin | null>
+  | PrimedFullBunRuntime
+  | null = null;
 
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
@@ -46,9 +49,26 @@ interface FullBunRuntimePlugin {
   }): Promise<{ result: unknown }>;
 }
 
+interface PrimedFullBunRuntime {
+  kind: "primed";
+  runtime: FullBunRuntimePlugin | null;
+}
+
+function isPrimedFullBunRuntime(
+  value: typeof fullBunRuntime,
+): value is PrimedFullBunRuntime {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as { kind?: unknown }).kind === "primed"
+  );
+}
+
 interface FullBunRuntimeModule {
   ElizaBunRuntime: FullBunRuntimePlugin;
 }
+
+type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
   interface Window {
@@ -56,6 +76,46 @@ declare global {
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
   }
+}
+
+function viteEnv(): ImportMetaEnvRecord {
+  return (import.meta as ImportMeta & { env?: ImportMetaEnvRecord }).env ?? {};
+}
+
+function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
+  return value === true || /^(1|true|yes|on)$/i.test(String(value ?? ""));
+}
+
+function shouldRequireFullBunRuntime(): boolean {
+  const env = viteEnv();
+  const iosRuntimeMode = env.VITE_ELIZA_IOS_RUNTIME_MODE;
+  return (
+    isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
+    isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
+    hasIosFullBunSmokeRequest() ||
+    (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local")
+  );
+}
+
+function hasIosFullBunSmokeRequest(): boolean {
+  try {
+    return (
+      globalThis.localStorage?.getItem("eliza:ios-full-bun-smoke:request") ===
+      "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
+function fullBunStartupError(message: string, cause?: unknown): Error {
+  const causeMessage =
+    cause instanceof Error ? cause.message : cause ? String(cause) : "";
+  return new Error(
+    `[ios-local-agent] Full Bun iOS runtime required but ${message}${
+      causeMessage ? `: ${causeMessage}` : ""
+    }`,
+  );
 }
 
 function isNativeIos(): boolean {
@@ -75,6 +135,16 @@ function isFullBunRuntimePluginAvailable(): boolean {
   } catch {
     return false;
   }
+}
+
+function wrapFullBunRuntime(
+  runtime: FullBunRuntimePlugin,
+): FullBunRuntimePlugin {
+  return {
+    start: runtime.start.bind(runtime),
+    getStatus: runtime.getStatus.bind(runtime),
+    call: runtime.call.bind(runtime),
+  };
 }
 
 export function isIosInProcessLocalAgentUrl(url: string): boolean {
@@ -139,8 +209,17 @@ function normalizeNativeResult(
 }
 
 async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
-  if (!isNativeIos()) return null;
-  if (!isFullBunRuntimePluginAvailable()) return null;
+  const strict = shouldRequireFullBunRuntime();
+  if (!isNativeIos() && !strict) return null;
+  if (!isFullBunRuntimePluginAvailable() && !strict) {
+    if (strict) {
+      throw fullBunStartupError("the ElizaBunRuntime plugin is unavailable");
+    }
+    return null;
+  }
+  if (isPrimedFullBunRuntime(fullBunRuntime)) {
+    return fullBunRuntime.runtime;
+  }
   fullBunRuntime ??= (async () => {
     try {
       // Resolve via a variable so the typechecker doesn't require the (often
@@ -150,7 +229,11 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       const mod = (await import(
         /* @vite-ignore */ fullBunRuntimePluginId
       )) as FullBunRuntimeModule;
-      const runtime = mod.ElizaBunRuntime;
+      const runtime = wrapFullBunRuntime(mod.ElizaBunRuntime);
+      const currentStatus = await runtime.getStatus().catch(() => null);
+      if (currentStatus?.ready && currentStatus.engine === "bun") {
+        return runtime;
+      }
       const started = await runtime.start({
         engine: "bun",
         argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
@@ -159,19 +242,47 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
           ELIZA_MOBILE_PLATFORM: "ios",
           ELIZA_IOS_LOCAL_BACKEND: "1",
           ELIZA_HEADLESS: "1",
-          ELIZA_API_BIND: "127.0.0.1",
           LOG_LEVEL: "error",
         },
       });
-      if (!started.ok) return null;
+      if (!started.ok) {
+        throw new Error(started.error ?? "runtime start returned ok=false");
+      }
       const status = await runtime.getStatus();
-      if (!status.ready || status.engine !== "bun") return null;
+      if (!status.ready || status.engine !== "bun") {
+        throw new Error(
+          `runtime status was ready=${String(status.ready)} engine=${
+            status.engine ?? "unknown"
+          }`,
+        );
+      }
       return runtime;
-    } catch {
+    } catch (error) {
+      if (strict) {
+        throw fullBunStartupError("startup failed", error);
+      }
       return null;
     }
   })();
-  return fullBunRuntime;
+  try {
+    if (isPrimedFullBunRuntime(fullBunRuntime)) {
+      return fullBunRuntime.runtime;
+    }
+    const runtime = await fullBunRuntime;
+    if (!runtime) fullBunRuntime = null;
+    return runtime;
+  } catch (error) {
+    fullBunRuntime = null;
+    throw error;
+  }
+}
+
+export function primeIosFullBunRuntime(runtime: unknown): void {
+  const candidate = runtime as FullBunRuntimePlugin | null;
+  fullBunRuntime = {
+    kind: "primed",
+    runtime: candidate ? wrapFullBunRuntime(candidate) : null,
+  };
 }
 
 async function tryFullBunNativeRequest(

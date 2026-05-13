@@ -27,6 +27,12 @@ def test_parse_final_answer_with_commas() -> None:
     assert _parse_final_answer("#### 1,234") == 1234
 
 
+def test_parse_final_answer_accepts_only_integral_decimals() -> None:
+    assert _parse_final_answer("#### 42.0") == 42
+    assert _parse_final_answer("#### 42.5") is None
+    assert _parse_final_answer("The final value is 42.5") is None
+
+
 def test_parse_final_answer_negative() -> None:
     assert _parse_final_answer("#### -7") == -7
 

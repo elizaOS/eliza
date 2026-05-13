@@ -119,6 +119,17 @@ function resolveVoiceSkeletonStreamFields(
   return fields;
 }
 
+function skeletonHasFreeStringKey(
+  skeleton: ResponseSkeleton | undefined,
+  key: string,
+): boolean {
+  return (
+    skeleton?.spans.some(
+      (span) => span.kind === "free-string" && span.key === key,
+    ) ?? false
+  );
+}
+
 /**
  * Idle-unload timeout (J3). After this long with no `useModel` activity
  * (text generation, embeddings, voice turns) the engine unloads the active
@@ -765,7 +776,7 @@ export class LocalInferenceEngine {
     null;
   /**
    * Lazily-started embedding `llama-server` sidecar for the active bundle
-   * (over the text GGUF on `0_6b`, over the `embedding/` GGUF on larger
+   * (over the text GGUF on `0_8b` / `2b`, over the `embedding/` GGUF on larger
    * tiers). `null` until the first `embed()` call. Torn down on `unload()`.
    */
   private embeddingServer: EmbeddingServer | null = null;
@@ -1330,6 +1341,31 @@ export class LocalInferenceEngine {
   }
 
   /**
+   * Lazily start + arm voice for the active Eliza-1 bundle. Runtime model
+   * handlers use this when visible chat text needs local speech output; direct
+   * engine callers still use `startVoice()` / `armVoice()` explicitly when they
+   * need custom sinks or test backends.
+   */
+  async ensureActiveBundleVoiceReady(): Promise<EngineVoiceBridge> {
+    let bridge = this.voiceBridge;
+    if (!bridge) {
+      const bundle = this.activeEliza1Bundle;
+      if (!bundle) {
+        throw new VoiceStartupError(
+          "missing-bundle-root",
+          "[voice] Cannot start local voice: no active Eliza-1 bundle is loaded.",
+        );
+      }
+      bridge = this.startVoice({
+        bundleRoot: bundle.root,
+        useFfiBackend: true,
+      });
+    }
+    await bridge.arm();
+    return bridge;
+  }
+
+  /**
    * Assemble + run the full live voice loop on top of `startVoice()` /
    * `armVoice()`: mic → (`pipeMicToRingBuffer` + `VadDetector.pushFrame`)
    * per frame → `StreamingTranscriber.feed` (VAD-gated) → `VoiceTurnController`
@@ -1363,6 +1399,14 @@ export class LocalInferenceEngine {
     generate: (
       request: import("./voice/turn-controller").VoiceGenerateRequest,
     ) => Promise<import("./voice/turn-controller").VoiceTurnOutcome>;
+    /**
+     * Semantic turn detector layered with VAD/STT. Defaults to the local
+     * LiveKit ONNX model when installed, otherwise the deterministic heuristic.
+     * Pass `false` only for tests/manual troubleshooting.
+     */
+    turnDetector?: import("./voice/eot-classifier").EotClassifier | false;
+    /** Optional local LiveKit turn-detector directory override. */
+    turnDetectorModelDir?: string;
     /** KV-prefill / response-handler-prefix prewarm. Defaults to `prewarmConversation`. */
     prewarm?: (roomId: string) => void | Promise<void>;
     speculatePauseMs?: number;
@@ -1408,31 +1452,74 @@ export class LocalInferenceEngine {
       vadMod,
       { VoiceTurnController },
       { InMemoryAudioSink },
+      eotMod,
     ] = await Promise.all([
       import("./voice/mic-source"),
       import("./voice/vad"),
       import("./voice/turn-controller"),
       import("./voice/ring-buffer"),
+      import("./voice/eot-classifier"),
     ]);
 
     const micSource = opts.micSource ?? new DesktopMicSource();
-    const vad = opts.vad ?? (await vadMod.createSileroVadDetector());
+    const vad =
+      opts.vad ??
+      (await vadMod.createSileroVadDetector({
+        bundleRoot: bridge.bundlePath(),
+        ffi: bridge.ffi,
+        ctx: bridge.ffi
+          ? () => {
+              const ctx = bridge.ffiCtx;
+              if (ctx === null) {
+                throw new VoiceStartupError(
+                  "missing-ffi",
+                  "[voice] Cannot initialize native VAD: fused FFI context is not loaded.",
+                );
+              }
+              return ctx;
+            }
+          : undefined,
+      }));
 
     // ASR — throws `AsrUnavailableError` when neither the fused decoder nor
     // whisper.cpp is present. Gated on the VAD so silent frames aren't
     // decoded.
     const transcriber = bridge.createStreamingTranscriber({ vad });
+    const turnDetector =
+      opts.turnDetector === false
+        ? undefined
+        : (opts.turnDetector ??
+          (await eotMod.createBundledLiveKitTurnDetector({
+            ...(opts.turnDetectorModelDir
+              ? { modelDir: opts.turnDetectorModelDir }
+              : {}),
+          })) ??
+          new eotMod.HeuristicEotClassifier());
+    if (turnDetector) {
+      try {
+        // Load tokenizer/ONNX and warm one short pass while the session is
+        // arming, so the first real user pause does not pay model-load latency.
+        await turnDetector.score("yes");
+      } catch (err) {
+        throw new VoiceStartupError(
+          "missing-turn-detector",
+          `[voice] Cannot initialize semantic turn detector: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
 
     const controller = new VoiceTurnController(
       {
         vad,
         transcriber,
         scheduler: bridge.scheduler,
+        ...(turnDetector ? { turnDetector } : {}),
         prewarm:
           opts.prewarm ??
           ((roomId: string) => {
             void this.prewarmConversation(roomId, "");
           }),
+        playFirstAudioFiller: () => this.playFirstAudioFiller(),
         generate: opts.generate,
       },
       {
@@ -1564,9 +1651,14 @@ export class LocalInferenceEngine {
 
   async synthesizeSpeech(text: string): Promise<Uint8Array> {
     this.markActivity();
-    return this.requireVoiceBridge("synthesize speech").synthesizeTextToWav(
-      text,
-    );
+    const bridge = this.requireVoiceBridge("synthesize speech");
+    if ((bridge.backend as { id?: string }).id === "stub") {
+      throw new VoiceStartupError(
+        "missing-fused-build",
+        "[voice] Cannot synthesize speech with StubOmniVoiceBackend (it emits silence). Start voice with useFfiBackend:true or inject a real backend.",
+      );
+    }
+    return bridge.synthesizeTextToWav(text);
   }
 
   async prewarmVoicePhrases(
@@ -1659,10 +1751,10 @@ export class LocalInferenceEngine {
 
   /**
    * Build the local-embedding route for an activated Eliza-1 bundle.
-   * On `0_6b` the embedding model is the text backbone with `--pooling
-   * last` (no separate GGUF); on `1_7b`/`9b`/`27b`/`27b-256k`/`27b-1m` a
-   * dedicated 1024-dim Matryoshka `embedding/` region is used. See
-   * AGENTS.md §1. Throws `VoiceStartupError` when a non-`0_6b` tier is
+   * On `0_8b` / `2b` the embedding model is the text backbone with
+   * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`/
+   * `27b-1m` a dedicated 1024-dim Matryoshka `embedding/` region is used.
+   * See AGENTS.md §1. Throws `VoiceStartupError` when a larger tier is
    * missing its dedicated region — no fallback to pooled text (which would
    * regress the dimension contract).
    */
@@ -1698,9 +1790,9 @@ export class LocalInferenceEngine {
   /**
    * Embed text via the active Eliza-1 bundle's local embedding model.
    *
-   * The first call lazily starts a dedicated embedding `llama-server`
-   * sidecar (over the text backbone GGUF on `0_6b`, over the dedicated
-   * `embedding/eliza-1-embedding.gguf` on `1_7b`+) launched with
+   * The first call lazily starts an embedding `llama-server` sidecar (over
+   * the text backbone GGUF on `0_8b` / `2b`, over the dedicated
+   * `embedding/eliza-1-embedding.gguf` on larger tiers) launched with
    * `--embeddings --pooling last`; subsequent calls reuse it. The result
    * is Matryoshka-truncated to `dim` (default 1024) and L2-normalized.
    *
@@ -1761,7 +1853,23 @@ export class LocalInferenceEngine {
 
     const bridge = this.voiceBridge;
     const voiceOn = bridge?.lifecycle.current().kind === "voice-on";
-    if (!voiceOn || !bridge) {
+    const structuredVoiceFields =
+      args.streamStructured === true
+        ? resolveVoiceSkeletonStreamFields(args.responseSkeleton)
+        : [];
+    const hasShouldRespondGate =
+      args.streamStructured === true &&
+      skeletonHasFreeStringKey(args.responseSkeleton, "shouldRespond");
+    const extractorStreamFields =
+      hasShouldRespondGate && !structuredVoiceFields.includes("shouldRespond")
+        ? ["shouldRespond", ...structuredVoiceFields]
+        : structuredVoiceFields;
+    const userVisibleVoice =
+      args.voiceOutput === "user-visible" ||
+      (args.voiceOutput === undefined &&
+        (typeof args.onTextChunk === "function" ||
+          structuredVoiceFields.length > 0));
+    if (!voiceOn || !bridge || !userVisibleVoice) {
       return {
         args,
         finish: async () => {},
@@ -1799,23 +1907,56 @@ export class LocalInferenceEngine {
     const callerOnTextChunk = args.onTextChunk;
     const callerOnVerifierEvent = args.onVerifierEvent;
     let structuredVoicePush = Promise.resolve();
-    const structuredVoiceFields =
-      args.streamStructured === true
-        ? resolveVoiceSkeletonStreamFields(args.responseSkeleton)
-        : [];
+    let shouldRespondText = "";
+    let shouldRespondAllowsVoice: boolean | null = hasShouldRespondGate
+      ? null
+      : true;
+    const pendingStructuredReplyChunks: string[] = [];
+    const pushStructuredVoiceChunk = (chunk: string) => {
+      streamedAny = true;
+      const token: TextToken = { index: nextIndex++, text: chunk };
+      structuredVoicePush = structuredVoicePush.then(() =>
+        bridge.pushAcceptedToken(token),
+      );
+    };
     const structuredVoiceExtractor =
       structuredVoiceFields.length > 0 && args.responseSkeleton
         ? new ResponseSkeletonStreamExtractor({
             skeleton: args.responseSkeleton,
-            streamFields: structuredVoiceFields,
+            streamFields: extractorStreamFields,
             abortSignal: bargeAbort.signal,
-            onChunk: (chunk: string) => {
+            onChunk: (chunk: string, field?: string) => {
               if (chunk.length === 0) return;
-              streamedAny = true;
-              const token: TextToken = { index: nextIndex++, text: chunk };
-              structuredVoicePush = structuredVoicePush.then(() =>
-                bridge.pushAcceptedToken(token),
-              );
+              if (field === "shouldRespond") {
+                shouldRespondText += chunk;
+                const normalized = shouldRespondText
+                  .trim()
+                  .toUpperCase()
+                  .replace(/^[^A-Z]+/, "");
+                if (
+                  normalized.startsWith("IG") ||
+                  normalized.startsWith("ST")
+                ) {
+                  shouldRespondAllowsVoice = false;
+                  pendingStructuredReplyChunks.length = 0;
+                } else if (normalized.startsWith("RE")) {
+                  shouldRespondAllowsVoice = true;
+                  for (const pending of pendingStructuredReplyChunks.splice(
+                    0,
+                  )) {
+                    pushStructuredVoiceChunk(pending);
+                  }
+                }
+                return;
+              }
+              if (hasShouldRespondGate) {
+                if (shouldRespondAllowsVoice === false) return;
+                if (shouldRespondAllowsVoice !== true) {
+                  pendingStructuredReplyChunks.push(chunk);
+                  return;
+                }
+              }
+              pushStructuredVoiceChunk(chunk);
             },
           })
         : null;

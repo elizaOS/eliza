@@ -63,16 +63,14 @@ const LOCAL_PROVIDER: ProviderDefinition = {
   label: "Eliza-1 local runtime",
   kind: "local",
   description:
-    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The local embedding companion serves TEXT_EMBEDDING; the voice bridge registers TEXT_TO_SPEECH by default and TRANSCRIPTION only when an ASR-capable local runtime is explicitly enabled.",
-  // TEXT_EMBEDDING is served by the plugin-local-embedding plugin, which
-  // registers its own model handler against the runtime. We advertise the
-  // slot here so the providers panel reports it as supported by the local
-  // path; actual handler-presence is reflected in `registeredSlots` via
-  // `getRegisteredSlotsForProvider`.
-  // The shared `AgentModelSlot` type does not include voice model types yet,
-  // so TEXT_TO_SPEECH / TRANSCRIPTION support is reported through
-  // `registeredSlots` rather than this UI-facing slot list.
-  supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+    "On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The bundle serves text, embeddings, TTS, and transcription from one local provider.",
+  supportedSlots: [
+    "TEXT_SMALL",
+    "TEXT_LARGE",
+    "TEXT_EMBEDDING",
+    "TEXT_TO_SPEECH",
+    "TRANSCRIPTION",
+  ],
   async getEnableState(): Promise<ProviderEnableState> {
     // Enabled when at least one model file lives under our root and the
     // binding is loadable. We don't force-load node-llama-cpp here — that
@@ -82,7 +80,9 @@ const LOCAL_PROVIDER: ProviderDefinition = {
         withFileTypes: true,
       });
       const hasModel = entries.some(
-        (e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"),
+        (e) =>
+          (e.isFile() && e.name.toLowerCase().endsWith(".gguf")) ||
+          (e.isDirectory() && e.name.toLowerCase().endsWith(".bundle")),
       );
       if (!hasModel)
         return { enabled: false, reason: "No local model installed" };
@@ -136,7 +136,7 @@ const DEVICE_BRIDGE_PROVIDER: ProviderDefinition = {
 
 const CAPACITOR_LLAMA_PROVIDER: ProviderDefinition = {
   id: "capacitor-llama",
-  label: "eliza-1-1_7b runtime",
+  label: "eliza-1-2b runtime",
   kind: "local",
   description:
     "Runs Eliza-1 natively on iOS or Android via Capacitor. Only available in mobile builds.",

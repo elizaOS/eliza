@@ -1,9 +1,12 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { KaminoLiquidityService } from "../services/kaminoLiquidityService";
+import type {
+  KaminoLiquidityService,
+  KaminoPoolByAddressResult,
+} from "../services/kaminoLiquidityService";
 
 const KAMINO_POOL_TEXT_LIMIT = 4000;
+type KaminoPoolReportData = NonNullable<KaminoPoolByAddressResult>;
 
 /**
  * Kamino Pool-Specific Provider
@@ -107,7 +110,7 @@ export const kaminoPoolProvider: Provider = {
 
     return {
       data,
-      values: {} as Record<string, unknown>,
+      values: {},
       text,
     };
   },
@@ -221,7 +224,7 @@ function formatPromptValue(value: unknown): string {
  */
 async function generatePoolReport(
   runtime: IAgentRuntime,
-  poolData: unknown,
+  poolData: KaminoPoolReportData,
   _kaminoLiquidityService: KaminoLiquidityService,
 ): Promise<string> {
   let report = "";
@@ -232,7 +235,7 @@ async function generatePoolReport(
     report += `   📍 Address: ${poolData.address}\n`;
     report += `   📅 Last Updated: ${new Date(poolData.timestamp).toLocaleString()}\n\n`;
 
-    if (poolData.strategy) {
+    if ("strategy" in poolData) {
       const strategy = poolData.strategy;
 
       report += `📊 STRATEGY DETAILS:\n`;
@@ -284,7 +287,7 @@ async function generatePoolReport(
     }
 
     // Metrics summary
-    if (poolData.metrics) {
+    if ("metrics" in poolData) {
       const metrics = poolData.metrics;
       report += `📈 PERFORMANCE METRICS:\n`;
       report += `   💰 Total Value Locked: $${metrics.totalValueLocked.toLocaleString()}\n`;
@@ -323,7 +326,7 @@ async function generatePoolReport(
  */
 async function generateEnhancedPoolAnalysis(
   runtime: IAgentRuntime,
-  poolData: unknown,
+  poolData: KaminoPoolReportData,
 ): Promise<string> {
   try {
     // Create a focused prompt for the LLM

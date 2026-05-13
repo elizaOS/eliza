@@ -1,0 +1,57 @@
+# News sources configuration for morning digest
+# Priority: 1 (highest) to 5 (lowest)
+
+sources:
+  - name: Hacker News
+    type: skill
+    skill_name: hn
+    sections: [top, best]
+    max_stories: 5
+    priority: 1
+
+  - name: Reuters World
+    type: web_fetch
+    url: https://www.reuters.com/world/
+    extract_mode: markdown
+    max_chars: 8000
+    priority: 1
+
+  - name: TechCrunch
+    type: web_fetch
+    url: https://techcrunch.com/
+    extract_mode: markdown
+    max_chars: 5000
+    priority: 2
+
+  - name: BBC News
+    type: web_fetch
+    url: https://www.bbc.com/news
+    extract_mode: markdown
+    max_chars: 6000
+    priority: 2
+
+  - name: Financial Times
+    type: web_fetch
+    url: https://www.ft.com/
+    extract_mode: markdown
+    max_chars: 5000
+    priority: 3
+
+  - name: 36Kr
+    type: web_fetch
+    url: https://36kr.com/
+    extract_mode: markdown
+    max_chars: 5000
+    priority: 3
+    notes: Chinese tech/startup news
+
+digest_settings:
+  language: zh-CN
+  max_headlines: 8
+  max_tech_stories: 5
+  include_weather: true
+  weather_location: Beijing
+  include_markets: true
+  markets: [SSE Composite, Hang Seng, NASDAQ, S&P 500]
+  output_format: markdown
+  feishu_doc_folder: "Morning Digests"

@@ -1,0 +1,110 @@
+{
+  "version": "2.1",
+  "entries": [
+    {
+      "id": "mem_001",
+      "keywords": ["视频编辑", "video editing", "Premiere Pro", "时间线"],
+      "summary": "User discussed Premiere Pro timeline optimization strategies for multi-track projects",
+      "timestamp": "2026-03-17T10:15:00Z",
+      "relevance_score": 0.95
+    },
+    {
+      "id": "mem_002",
+      "keywords": ["技能优化", "skill optimization", "技能方案", "迭代"],
+      "summary": "Iterative skill scheme development focusing on video production competencies",
+      "timestamp": "2026-03-16T09:30:00Z",
+      "relevance_score": 0.92
+    },
+    {
+      "id": "mem_003",
+      "keywords": ["项目分析", "project analysis", "project_v3.prproj", "渲染"],
+      "summary": "Detailed analysis of project_v3.prproj including render settings and sequence structure",
+      "timestamp": "2026-03-15T14:45:00Z",
+      "relevance_score": 0.90
+    },
+    {
+      "id": "mem_004",
+      "keywords": ["motion graphics", "动态图形", "MoGraph", "模板"],
+      "summary": "Discussion about motion graphics template creation and reuse patterns",
+      "timestamp": "2026-03-14T11:20:00Z",
+      "relevance_score": 0.88
+    },
+    {
+      "id": "mem_005",
+      "keywords": ["After Effects", "AE", "合成", "特效"],
+      "summary": "After Effects compositing workflow and integration with Premiere Pro via Dynamic Link",
+      "timestamp": "2026-03-13T16:00:00Z",
+      "relevance_score": 0.85
+    },
+    {
+      "id": "mem_006",
+      "keywords": ["color grading", "调色", "LUT", "色彩校正"],
+      "summary": "Color grading techniques using Lumetri Color panel and custom LUT application",
+      "timestamp": "2026-03-12T13:10:00Z",
+      "relevance_score": 0.82
+    },
+    {
+      "id": "mem_007",
+      "keywords": ["关键帧", "keyframe", "animation", "动画曲线"],
+      "summary": "Keyframe animation techniques including Bezier curves and expression controls",
+      "timestamp": "2026-03-18T08:50:00Z",
+      "relevance_score": 0.96
+    },
+    {
+      "id": "mem_008",
+      "keywords": ["skill_matrix", "技能矩阵", "评估", "xlsx"],
+      "summary": "Skill matrix spreadsheet review with proficiency scoring across video production domains",
+      "timestamp": "2026-03-17T15:30:00Z",
+      "relevance_score": 0.91
+    },
+    {
+      "id": "mem_009",
+      "keywords": ["视频项目", "video project", "剪辑流程", "workflow"],
+      "summary": "End-to-end video project workflow from ingest to final export",
+      "timestamp": "2026-03-11T09:00:00Z",
+      "relevance_score": 0.78
+    },
+    {
+      "id": "mem_010",
+      "keywords": ["渲染设置", "render settings", "export", "编码"],
+      "summary": "Optimal render and export settings for different delivery platforms",
+      "timestamp": "2026-02-20T10:45:00Z",
+      "relevance_score": 0.65
+    },
+    {
+      "id": "mem_011",
+      "keywords": ["音频编辑", "audio editing", "混音", "音效"],
+      "summary": "Audio mixing and sound design principles for video projects",
+      "timestamp": "2026-02-15T14:20:00Z",
+      "relevance_score": 0.55
+    },
+    {
+      "id": "mem_012",
+      "keywords": ["字幕", "subtitle", "caption", "文字动画"],
+      "summary": "Subtitle creation and text animation techniques in Premiere Pro",
+      "timestamp": "2026-02-10T11:30:00Z",
+      "relevance_score": 0.50
+    },
+    {
+      "id": "mem_013",
+      "keywords": ["素材管理", "media management", "代理", "proxy"],
+      "summary": "Media management best practices including proxy workflow setup",
+      "timestamp": "2026-02-05T16:15:00Z",
+      "relevance_score": 0.48
+    },
+    {
+      "id": "mem_014",
+      "keywords": ["插件", "plugin", "效果", "third-party"],
+      "summary": "Third-party plugin recommendations for motion graphics and visual effects",
+      "timestamp": "2026-01-28T09:40:00Z",
+      "relevance_score": 0.42
+    },
+    {
+      "id": "mem_015",
+      "keywords": ["项目模板", "project template", "预设", "preset"],
+      "summary": "Project template and preset library organization for faster project setup",
+      "timestamp": "2026-01-20T13:55:00Z",
+      "relevance_score": 0.38
+    }
+  ]
+}

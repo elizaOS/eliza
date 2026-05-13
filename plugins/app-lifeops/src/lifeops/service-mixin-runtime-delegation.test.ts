@@ -1,8 +1,10 @@
-// @ts-nocheck
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { LifeOpsConnectorGrant } from "@elizaos/shared";
+import type {
+  CreateLifeOpsXPostRequest,
+  LifeOpsConnectorGrant,
+} from "@elizaos/shared";
 import { describe, expect, it, vi } from "vitest";
 import { LifeOpsServiceBase } from "./service-mixin-core.js";
 import { withSignal } from "./service-mixin-signal.js";
@@ -14,6 +16,21 @@ import { withXRead } from "./service-mixin-x-read.js";
 const TestMessagingService = withX(
   withXRead(withWhatsApp(withSignal(withTelegram(LifeOpsServiceBase)))),
 );
+
+type PrimaryChannelPolicy = {
+  allowPosts: boolean;
+  requireConfirmationForActions: boolean;
+};
+
+type TestMessagingServiceInstance = InstanceType<typeof TestMessagingService> & {
+  resolvePrimaryChannelPolicy(
+    provider: "x",
+  ): Promise<PrimaryChannelPolicy | null>;
+};
+
+type XPostRequestWithAccountId = CreateLifeOpsXPostRequest & {
+  accountId: string;
+};
 
 function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
   const settings = new Map<string, unknown>();
@@ -29,7 +46,7 @@ function runtimeWithServices(services: Record<string, unknown>): IAgentRuntime {
         settings.set(key, value);
       }
     }),
-  } as IAgentRuntime;
+  } as unknown as IAgentRuntime;
 }
 
 function connectorGrant(
@@ -71,10 +88,10 @@ function connectorGrant(
 function serviceWithConnectorGrants(args: {
   services?: Record<string, unknown>;
   grants?: Record<string, LifeOpsConnectorGrant | null>;
-}) {
+}): TestMessagingServiceInstance {
   const service = new TestMessagingService(
     runtimeWithServices(args.services ?? {}),
-  );
+  ) as TestMessagingServiceInstance;
   service.repository.getConnectorGrant = vi.fn(
     async (_agentId: string, provider: string) =>
       args.grants?.[provider] ?? null,
@@ -83,6 +100,7 @@ function serviceWithConnectorGrants(args: {
   service.repository.upsertConnectorGrant = vi.fn(async () => undefined);
   service.recordConnectorAudit = vi.fn(async () => undefined);
   service.recordXPostAudit = vi.fn(async () => undefined);
+  service.resolvePrimaryChannelPolicy = vi.fn(async () => null);
   service.logLifeOpsWarn = vi.fn();
   return service;
 }
@@ -270,7 +288,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       ok: true,
       status: 201,
       postId: "tweet-123",
-      category: "plugin_runtime",
+      category: "success",
     });
     expect(createPostForAccount).toHaveBeenCalledWith("acct-x-secondary", {
       text: "public hello",
@@ -279,13 +297,24 @@ describe("LifeOps messaging mixin runtime delegation", () => {
   });
 
   it("honors requested X account ids over grant defaults for runtime delegation", async () => {
-    const fetchDirectMessagesForAccount = vi.fn(async () => []);
-    const sendDirectMessageForAccount = vi.fn(async () => ({
+    const fetchDirectMessagesForAccount = vi.fn(
+      async (
+        _accountId: string,
+        _opts: { participantId?: string; limit?: number },
+      ) => [],
+    );
+    const sendDirectMessageForAccount = vi.fn(async (
+      _accountId: string,
+      _message: { participantId: string; text: string },
+    ) => ({
       ok: true,
       status: 201,
       messageId: "dm-requested",
     }));
-    const createPostForAccount = vi.fn(async () => ({
+    const createPostForAccount = vi.fn(async (
+      _accountId: string,
+      _request: { text: string; replyToTweetId?: string },
+    ) => ({
       id: "tweet-requested",
       metadata: { messageIdFull: "tweet-requested" },
     }));
@@ -317,7 +346,7 @@ describe("LifeOps messaging mixin runtime delegation", () => {
       accountId: "acct-x-requested",
       text: "requested post",
       side: "owner",
-    });
+    } as XPostRequestWithAccountId);
 
     expect(fetchDirectMessagesForAccount.mock.calls[0]?.[0]).toBe(
       "acct-x-requested",

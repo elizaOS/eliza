@@ -115,6 +115,13 @@ TARGETS: dict[str, dict[str, Any]] = {
         "min_per_gpu_ram_gb": 130,
         "description": "1× H200 SXM (141 GB) — 9B SFT or 27B at low seq_len",
     },
+    "b200-1x": {
+        "gpu_names": ["B200"],
+        "num_gpus": 1,
+        # B200 = 180 GB HBM3e per GPU; gpu_ram>=170 robust to ECC reserve.
+        "min_per_gpu_ram_gb": 170,
+        "description": "1× NVIDIA B200 (≈183 GB) — qwen3.5-27b SFT default (130 GB budget @ seq=32k fits with headroom)",
+    },
     # ─── multi-GPU targets (27B+) ───
     "blackwell6000-2x": {
         # Both Server (S) and Workstation (WS) editions are 96 GB GDDR7

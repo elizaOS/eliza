@@ -162,11 +162,12 @@ export async function installOnboardingDeepLinkListener(options: {
 
   let capacitorApp: CapacitorAppShape;
   try {
+    const capacitorAppPackage = "@capacitor/app";
     const mod = (await import(
       // `@capacitor/app` is not a declared dependency of `@elizaos/ui` — the
       // host app brings the native bridge. Dynamic import means web bundles
       // skip this branch when the package is not installed.
-      /* @vite-ignore */ "@capacitor/app"
+      /* @vite-ignore */ capacitorAppPackage
     )) as { App: CapacitorAppShape };
     capacitorApp = mod.App;
   } catch (error) {

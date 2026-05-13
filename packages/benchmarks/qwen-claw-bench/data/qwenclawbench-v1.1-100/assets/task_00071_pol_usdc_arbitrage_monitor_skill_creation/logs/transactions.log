@@ -1,0 +1,10 @@
+2026-02-10T08:15:01Z | SWAP | POL->USDC | amount_in=50.00 | amount_out=46.72 | tx=0xa1b2c3d4e5f60001 | status=SUCCESS | profit_usdc=0.47 | gas_pol=0.021
+2026-02-10T08:15:55Z | SWAP | USDC->POL | amount_in=46.72 | amount_out=50.81 | tx=0xa1b2c3d4e5f60002 | status=SUCCESS | profit_usdc=0.00 | gas_pol=0.019
+2026-02-10T09:30:10Z | SWAP | POL->USDC | amount_in=100.00 | amount_out=93.48 | tx=0xa1b2c3d4e5f60003 | status=SUCCESS | profit_usdc=0.52 | gas_pol=0.023
+2026-02-10T09:30:52Z | SWAP | USDC->POL | amount_in=93.48 | amount_out=101.04 | tx=0xa1b2c3d4e5f60004 | status=FAILED | profit_usdc=0.00 | gas_pol=0.018
+2026-02-10T09:31:08Z | SWAP | USDC->POL | amount_in=93.48 | amount_out=100.87 | tx=0xa1b2c3d4e5f60005 | status=SUCCESS | profit_usdc=0.00 | gas_pol=0.022
+2026-02-10T10:45:30Z | SWAP | POL->USDC | amount_in=75.00 | amount_out=70.11 | tx=0xa1b2c3d4e5f60006 | status=SUCCESS | profit_usdc=0.31 | gas_pol=0.025
+2026-02-10T10:46:15Z | SWAP | USDC->POL | amount_in=70.11 | amount_out=75.38 | tx=0xa1b2c3d4e5f60007 | status=SUCCESS | profit_usdc=0.00 | gas_pol=0.020
+2026-02-10T11:55:00Z | SWAP | POL->USDC | amount_in=200.00 | amount_out=187.40 | tx=0xa1b2c3d4e5f60008 | status=FAILED | profit_usdc=0.00 | gas_pol=0.020
+2026-02-10T12:10:22Z | SWAP | POL->USDC | amount_in=200.00 | amount_out=187.25 | tx=0xa1b2c3d4e5f60009 | status=SUCCESS | profit_usdc=0.48 | gas_pol=0.021
+2026-02-10T12:11:05Z | SWAP | USDC->POL | amount_in=187.25 | amount_out=200.42 | tx=0xa1b2c3d4e5f60010 | status=SUCCESS | profit_usdc=0.00 | gas_pol=0.022

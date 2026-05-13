@@ -1,29 +1,39 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { Connection, PublicKey } from "@solana/web3.js";
 import type { JupiterQuoteResponse } from "../types.ts";
 
 type RaydiumRegisteredProvider = { name: string };
 type RaydiumPositionInfo = { id: PublicKey; [key: string]: unknown };
-type ClmmPoolInfo = Record<string, unknown>;
+type ClmmPoolInfo = {
+  id: PublicKey;
+  tokenAccountA: PublicKey;
+  tokenAccountB: PublicKey;
+  [key: string]: unknown;
+};
+type UnsupportedRaydiumPositionMethod = (..._args: unknown[]) => never;
 
-const Position = {
+const Position: Record<
+  "getPositionsByOwner" | "create" | "close" | "update",
+  UnsupportedRaydiumPositionMethod
+> = {
   getPositionsByOwner: unsupportedRaydiumPositionMethod,
   create: unsupportedRaydiumPositionMethod,
   close: unsupportedRaydiumPositionMethod,
   update: unsupportedRaydiumPositionMethod,
 };
 
-function unsupportedRaydiumPositionMethod(): never {
+function unsupportedRaydiumPositionMethod(..._args: unknown[]): never {
   throw new Error("Raydium position helpers are unavailable in the installed Raydium SDK");
 }
 
 export class RaydiumService extends Service {
+  [key: string]: unknown;
+
   private isRunning = false;
   private registry: Record<number, RaydiumRegisteredProvider> = {};
 
   static serviceType = "RAYDIUM_SERVICE";
-  capabilityDescription = "Provides Raydium DEX integration for token swaps";
+  capabilityDescription = "Provides standardized access to DEX liquidity pools." as const;
 
   // Configuration constants
   private readonly CONFIRMATION_CONFIG = {
@@ -66,17 +76,14 @@ export class RaydiumService extends Service {
 
       if (!quoteResponse.ok) {
         const error = await quoteResponse.text();
-        logger.warn("Quote request failed:", {
-          status: quoteResponse.status,
-          error,
-        });
+        logger.warn(`Quote request failed: status=${quoteResponse.status}; error=${error}`);
         throw new Error(`Failed to get quote: ${error}`);
       }
 
       const quoteData = await quoteResponse.json();
       return quoteData;
     } catch (error) {
-      logger.error("Error getting Raydium quote:", error);
+      logger.error(`Error getting Raydium quote: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -113,7 +120,7 @@ export class RaydiumService extends Service {
 
       return await swapResponse.json();
     } catch (error) {
-      logger.error("Error executing Raydium swap:", error);
+      logger.error(`Error executing Raydium swap: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -132,7 +139,7 @@ export class RaydiumService extends Service {
         const delay = this.CONFIRMATION_CONFIG.getDelayForAttempt(i);
         await new Promise((resolve) => setTimeout(resolve, delay));
       } catch (error) {
-        logger.warn(`Confirmation check ${i + 1} failed:`, error);
+        logger.warn(`Confirmation check ${i + 1} failed: ${formatUnknownError(error)}`);
 
         if (i === this.CONFIRMATION_CONFIG.MAX_ATTEMPTS - 1) {
           throw new Error("Could not confirm transaction status");
@@ -161,7 +168,7 @@ export class RaydiumService extends Service {
       });
       return Number(quote.outAmount) / 10 ** inputDecimals; // Convert using same decimals
     } catch (error) {
-      logger.error("Failed to get token price:", error);
+      logger.error(`Failed to get token price: ${formatUnknownError(error)}`);
       return 0;
     }
   }
@@ -185,7 +192,7 @@ export class RaydiumService extends Service {
       });
       return quote.routePlan;
     } catch (error) {
-      logger.error("Failed to get best route:", error);
+      logger.error(`Failed to get best route: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -208,7 +215,7 @@ export class RaydiumService extends Service {
       });
       return Number(quote.priceImpactPct);
     } catch (error) {
-      logger.error("Failed to get price impact:", error);
+      logger.error(`Failed to get price impact: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -235,7 +242,7 @@ export class RaydiumService extends Service {
       const minReceived = Number(quote.outAmount) * (1 - slippageBps / 10000);
       return minReceived;
     } catch (error) {
-      logger.error("Failed to calculate minimum received:", error);
+      logger.error(`Failed to calculate minimum received: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -262,7 +269,7 @@ export class RaydiumService extends Service {
         sol: estimatedFee / 1e9, // Convert lamports to SOL
       };
     } catch (error) {
-      logger.error("Failed to estimate gas fees:", error);
+      logger.error(`Failed to estimate gas fees: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -298,7 +305,7 @@ export class RaydiumService extends Service {
 
       return recommendedSlippage;
     } catch (error) {
-      logger.error("Failed to find best slippage:", error);
+      logger.error(`Failed to find best slippage: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -327,7 +334,7 @@ export class RaydiumService extends Service {
 
       return await response.json();
     } catch (error) {
-      logger.error("Failed to get token pair information:", error);
+      logger.error(`Failed to get token pair information: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -353,7 +360,7 @@ export class RaydiumService extends Service {
 
       return await response.json();
     } catch (error) {
-      logger.error("Failed to get historical prices:", error);
+      logger.error(`Failed to get historical prices: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -434,7 +441,7 @@ export class RaydiumService extends Service {
       // Sort by expected return (highest first)
       return paths.sort((a, b) => b.expectedReturn - a.expectedReturn);
     } catch (error) {
-      logger.error("Failed to find arbitrage paths:", error);
+      logger.error(`Failed to find arbitrage paths: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -447,7 +454,7 @@ export class RaydiumService extends Service {
       const positions = await Position.getPositionsByOwner(connection, ownerAddress);
       return positions;
     } catch (error) {
-      logger.error("Error fetching positions:", error);
+      logger.error(`Error fetching positions: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -478,7 +485,7 @@ export class RaydiumService extends Service {
 
       return positionInfo;
     } catch (error) {
-      logger.error("Error creating position:", error);
+      logger.error(`Error creating position: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -493,7 +500,7 @@ export class RaydiumService extends Service {
 
       return closePositionTx;
     } catch (error) {
-      logger.error("Error closing position:", error);
+      logger.error(`Error closing position: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -514,7 +521,7 @@ export class RaydiumService extends Service {
 
       return updatePositionTx;
     } catch (error) {
-      logger.error("Error updating position:", error);
+      logger.error(`Error updating position: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -546,7 +553,7 @@ export class RaydiumService extends Service {
       this.isRunning = true;
       logger.info("Raydium service started successfully");
     } catch (error) {
-      logger.error("Error starting Raydium service:", error);
+      logger.error(`Error starting Raydium service: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -562,7 +569,7 @@ export class RaydiumService extends Service {
       this.isRunning = false;
       logger.info("Raydium service stopped successfully");
     } catch (error) {
-      logger.error("Error stopping Raydium service:", error);
+      logger.error(`Error stopping Raydium service: ${formatUnknownError(error)}`);
       throw error;
     }
   }
@@ -570,4 +577,8 @@ export class RaydiumService extends Service {
   isServiceRunning(): boolean {
     return this.isRunning;
   }
+}
+
+function formatUnknownError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

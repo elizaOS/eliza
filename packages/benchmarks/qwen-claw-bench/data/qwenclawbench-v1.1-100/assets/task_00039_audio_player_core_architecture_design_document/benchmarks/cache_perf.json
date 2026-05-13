@@ -1,0 +1,77 @@
+{
+  "benchmark_metadata": {
+    "date": "2024-05-10",
+    "runner": "criterion 0.5.1",
+    "machine": {
+      "cpu": "AMD Ryzen 9 7950X",
+      "cores": 16,
+      "ram_gb": 64,
+      "os": "Ubuntu 24.04",
+      "rust_version": "1.78.0"
+    },
+    "test_conditions": {
+      "total_tracks": 10000,
+      "cache_size_mb": 512,
+      "access_patterns": ["sequential", "random", "zipf_0.8"],
+      "track_size_distribution": {
+        "mean_mb": 8.5,
+        "std_dev_mb": 4.2,
+        "min_mb": 0.5,
+        "max_mb": 45.0
+      },
+      "warmup_iterations": 1000,
+      "measurement_iterations": 50000
+    }
+  },
+  "results": {
+    "LRU": {
+      "description": "Least Recently Used — standard doubly-linked list + hashmap",
+      "hit_rate_percent": 87.3,
+      "avg_lookup_ns": 45,
+      "p99_lookup_ns": 120,
+      "avg_insert_ns": 62,
+      "avg_eviction_ns": 38,
+      "memory_overhead_percent": 2.1,
+      "prefetch_improvement_percent": 12.4,
+      "sequential_hit_rate": 94.1,
+      "random_hit_rate": 72.8,
+      "zipf_hit_rate": 91.2,
+      "implementation_crate": "lru 0.11",
+      "notes": "Best balance of performance and simplicity. Recommended for production."
+    },
+    "LFU": {
+      "description": "Least Frequently Used — frequency-based eviction with aging",
+      "hit_rate_percent": 82.1,
+      "avg_lookup_ns": 120,
+      "p99_lookup_ns": 340,
+      "avg_insert_ns": 185,
+      "avg_eviction_ns": 95,
+      "memory_overhead_percent": 5.3,
+      "prefetch_improvement_percent": 8.9,
+      "sequential_hit_rate": 78.4,
+      "random_hit_rate": 76.2,
+      "zipf_hit_rate": 88.7,
+      "implementation_crate": "custom (frequency counter + min-heap)",
+      "notes": "Higher overhead, worse for sequential access. Better for repeat-heavy workloads."
+    },
+    "ARC": {
+      "description": "Adaptive Replacement Cache — self-tuning between recency and frequency",
+      "hit_rate_percent": 89.7,
+      "avg_lookup_ns": 85,
+      "p99_lookup_ns": 210,
+      "avg_insert_ns": 130,
+      "avg_eviction_ns": 72,
+      "memory_overhead_percent": 8.7,
+      "prefetch_improvement_percent": 14.2,
+      "sequential_hit_rate": 92.3,
+      "random_hit_rate": 81.5,
+      "zipf_hit_rate": 93.1,
+      "implementation_crate": "custom (dual LRU lists with ghost entries)",
+      "notes": "Best hit rate but highest memory overhead. Patent concerns (IBM) may apply."
+    }
+  },
+  "recommendation": {
+    "chosen_strategy": "LRU",
+    "rationale": "LRU provides the best trade-off between hit rate (87.3%), lookup latency (45ns avg), and memory overhead (2.1%). While ARC achieves a slightly higher hit rate (89.7%), its 4x memory overhead and patent concerns make it unsuitable. The 12.4% prefetch improvement with LRU is competitive with ARC's 14.2%."
+  }
+}

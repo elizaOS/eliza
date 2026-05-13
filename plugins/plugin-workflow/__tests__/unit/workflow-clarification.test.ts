@@ -200,10 +200,7 @@ describe('applyResolutions', () => {
 
   test('non-string value still rejects the batch (validation, not path failure)', () => {
     const draft: Record<string, unknown> = { nodes: [] };
-    const result = applyResolutions(draft, [
-      // @ts-expect-error — testing runtime guard
-      { paramPath: 'x', value: 42 },
-    ]);
+    const result = applyResolutions(draft, [{ paramPath: 'x', value: 42 }]);
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error).toContain('must be a string');

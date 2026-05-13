@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>LocTool.App</RootNamespace>
+    <AssemblyName>LocTool.App</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Dependency Injection -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Project References -->
+    <ProjectReference Include="..\LocTool.ViewModel\LocTool.ViewModel.csproj" />
+    <ProjectReference Include="..\LocTool.Core\LocTool.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -77,7 +77,7 @@ Environment variables (or character `settings` with the same keys—**why:** let
 |----------|---------|---------|
 | `OLLAMA_API_ENDPOINT` | `http://localhost:11434` (normalized to `…/api`) | Ollama HTTP API base. |
 | `OLLAMA_SMALL_MODEL` / `SMALL_MODEL` | `eliza-1-2b` | Small / fast text model. |
-| `OLLAMA_LARGE_MODEL` / `LARGE_MODEL` | `eliza-1-9b` | Larger text model. |
+| `OLLAMA_LARGE_MODEL` / `LARGE_MODEL` | `eliza-1-4b` | Larger text model. |
 | `OLLAMA_EMBEDDING_MODEL` | `eliza-1-2b` | Embedding model id. |
 | `OLLAMA_DISABLE_STRUCTURED_OUTPUT` | _unset_ | If `1` / `true` / `yes` / `on`, **disables** JSON-schema structured text (see below). |
 
@@ -88,7 +88,7 @@ Optional model overrides: `OLLAMA_NANO_MODEL`, `OLLAMA_MEDIUM_MODEL`, `OLLAMA_ME
 ```
 OLLAMA_API_ENDPOINT=http://localhost:11434/api
 OLLAMA_SMALL_MODEL=eliza-1-2b
-OLLAMA_LARGE_MODEL=eliza-1-9b
+OLLAMA_LARGE_MODEL=eliza-1-4b
 OLLAMA_EMBEDDING_MODEL=eliza-1-2b
 ```
 
@@ -99,7 +99,7 @@ OLLAMA_EMBEDDING_MODEL=eliza-1-2b
   "settings": {
     "OLLAMA_API_ENDPOINT": "http://localhost:11434/api",
     "OLLAMA_SMALL_MODEL": "eliza-1-2b",
-    "OLLAMA_LARGE_MODEL": "eliza-1-9b",
+    "OLLAMA_LARGE_MODEL": "eliza-1-4b",
     "OLLAMA_EMBEDDING_MODEL": "eliza-1-2b"
   }
 }

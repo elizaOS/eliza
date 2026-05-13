@@ -14,7 +14,7 @@ name/handle/ping signals so the trained agent learns:
   * speaker IS the agent (echo of self) → IGNORE
   * name appears as quoted/referenced context, not address → IGNORE
 
-Each record is one canonical eliza row with TOON-encoded
+Each record is one canonical eliza row with native JSON-encoded
 ``expectedResponse`` keyed ``{name, reasoning, action, primaryContext,
 secondaryContexts, evidenceTurnIds}`` and ``task_type =
 should_respond_with_context``.

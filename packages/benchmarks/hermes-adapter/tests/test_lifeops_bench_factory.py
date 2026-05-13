@@ -189,12 +189,6 @@ def test_clawbench_agent_fn_includes_model_name(fake_client: HermesClient) -> No
 
 def _install_lifeops_stub() -> None:
     if "eliza_lifeops_bench" in sys.modules:
-        # If something else stubbed the module without
-        # ``attach_usage_cache_fields``, top it up so the lazy import in
-        # ``hermes_adapter.lifeops_bench`` resolves cleanly.
-        existing = sys.modules.get("eliza_lifeops_bench.types")
-        if existing is not None and not hasattr(existing, "attach_usage_cache_fields"):
-            existing.attach_usage_cache_fields = _stub_attach_usage_cache_fields  # type: ignore[attr-defined]
         return
     pkg = types.ModuleType("eliza_lifeops_bench")
     types_mod = types.ModuleType("eliza_lifeops_bench.types")
@@ -206,24 +200,9 @@ def _install_lifeops_stub() -> None:
             self.tool_calls = tool_calls
 
     types_mod.MessageTurn = MessageTurn
-    types_mod.attach_usage_cache_fields = _stub_attach_usage_cache_fields
+    types_mod.attach_usage_cache_fields = lambda _turn, _usage: None
     sys.modules["eliza_lifeops_bench"] = pkg
     sys.modules["eliza_lifeops_bench.types"] = types_mod
-
-
-def _stub_attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
-    """Minimal mirror of ``eliza_lifeops_bench.types.attach_usage_cache_fields``.
-
-    The factory tests don't exercise cache accounting, but the lazy import in
-    ``hermes_adapter.lifeops_bench`` references the symbol unconditionally, so
-    the stub must surface a callable to import successfully.
-    """
-    prompt = usage.get("prompt_tokens", usage.get("input_tokens"))
-    completion = usage.get("completion_tokens", usage.get("output_tokens"))
-    if isinstance(prompt, (int, float)):
-        setattr(turn, "input_tokens", int(prompt))
-    if isinstance(completion, (int, float)):
-        setattr(turn, "output_tokens", int(completion))
 
 
 def test_build_lifeops_bench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:
@@ -265,3 +244,45 @@ def test_lifeops_agent_fn_maps_tool_calls_to_openai_shape(fake_client: HermesCli
     assert tc["function"]["name"] == "RUN"
     assert tc["function"]["arguments"] == '{"k": 1}'
     assert turn.model_name == "m"
+
+
+def test_lifeops_agent_fn_recovers_json_text_tool_call(fake_client: HermesClient) -> None:
+    """Hermes sometimes emits its action channel as JSON text.
+
+    LifeOps-style benchmark runners still need to execute that action instead
+    of scoring it as an empty assistant response.
+    """
+    _install_lifeops_stub()
+    from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
+
+    with patch.object(HermesClient, "wait_until_ready", return_value=None):
+        agent_fn = build_lifeops_bench_agent_fn(client=fake_client)
+
+    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+        return MessageResponse(
+            text='{"tool":"get_weather","parameters":{"city":"Paris","when":"tomorrow"}}',
+            thought=None,
+            actions=[],
+            params={},
+        )
+
+    with patch.object(HermesClient, "send_message", _fake_send):
+        turn = _run(
+            agent_fn(
+                [{"role": "user", "content": "weather"}],
+                [
+                    {
+                        "name": "get_weather",
+                        "parameters": {
+                            "type": "object",
+                            "properties": {"city": {"type": "string"}},
+                        },
+                    }
+                ],
+            )
+        )
+
+    assert turn.tool_calls is not None
+    tc = turn.tool_calls[0]
+    assert tc["function"]["name"] == "get_weather"
+    assert tc["function"]["arguments"] == {"city": "Paris", "when": "tomorrow"}

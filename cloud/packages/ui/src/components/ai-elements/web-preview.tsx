@@ -151,7 +151,7 @@ export const WebPreviewUrl = ({ value, onChange, onKeyDown, ...props }: WebPrevi
   return (
     <Input
       className="h-8 flex-1 text-sm"
-      onChange={onChange ?? handleChange}
+      onChange={handleChange}
       onKeyDown={handleKeyDown}
       placeholder="Enter URL..."
       value={value ?? inputValue}
@@ -164,15 +164,30 @@ export type WebPreviewBodyProps = ComponentProps<"iframe"> & {
   loading?: ReactNode;
 };
 
+function normalizePreviewUrl(value: unknown): string | undefined {
+  if (typeof value !== "string" || value.trim().length === 0) return undefined;
+  if (value === "about:blank") return value;
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.href;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export const WebPreviewBody = ({ className, loading, src, ...props }: WebPreviewBodyProps) => {
   const { url } = useWebPreview();
+  const previewUrl = normalizePreviewUrl(src ?? url);
 
   return (
     <div className="flex-1">
       <iframe
         className={cn("size-full", className)}
-        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-presentation"
-        src={(src ?? url) || undefined}
+        sandbox="allow-scripts allow-forms allow-popups allow-presentation"
+        src={previewUrl}
         title="Preview"
         {...props}
       />

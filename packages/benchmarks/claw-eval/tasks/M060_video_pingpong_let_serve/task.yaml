@@ -1,0 +1,46 @@
+task_id: M060_video_pingpong_let_serve
+task_name: Video Ping Pong Let Serve Count
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Please carefully watch this video of the first game of a table tennis match. How many let serves (where the ball clips the net and the serve is replayed) occurred in total during this game? Please list the score at the time of each let serve, with the Brazilian player's score first.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the ping pong match video.
+  3 let serves total. Scores (Brazilian player first): 3:1, 3:1, 10:5.
+
+primary_dimensions:
+  - completion
+  - robustness

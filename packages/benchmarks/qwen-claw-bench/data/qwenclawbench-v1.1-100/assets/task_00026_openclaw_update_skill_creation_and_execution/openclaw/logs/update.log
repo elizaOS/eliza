@@ -1,0 +1,26 @@
+2025-12-10T14:22:15Z [INFO] Update check started
+2025-12-10T14:22:15Z [INFO] Current version: 2025.11.15
+2025-12-10T14:22:16Z [INFO] Latest version: 2025.12.8
+2025-12-10T14:22:16Z [INFO] Stopping gateway...
+2025-12-10T14:22:18Z [INFO] Gateway stopped (PID 48231)
+2025-12-10T14:22:18Z [INFO] Creating backup...
+2025-12-10T14:22:20Z [INFO] Backup saved: .backups/openclaw-2025.11.15-20251210142218.tar.gz
+2025-12-10T14:22:20Z [INFO] Running: npm install -g openclaw@latest
+2025-12-10T14:22:35Z [INFO] npm: added 12 packages, changed 47 packages in 15s
+2025-12-10T14:22:36Z [INFO] Restarting gateway...
+2025-12-10T14:22:38Z [INFO] Gateway started (PID 48519)
+2025-12-10T14:22:38Z [INFO] Update complete: v2025.11.15 → v2025.12.8
+2025-12-28T09:00:01Z [INFO] Update check started (cron)
+2025-12-28T09:00:02Z [INFO] Current version: 2025.12.8
+2025-12-28T09:00:03Z [INFO] Latest version: 2025.12.8
+2025-12-28T09:00:03Z [INFO] Already up to date. No action taken.
+2026-01-15T09:00:01Z [INFO] Update check started (cron)
+2026-01-15T09:00:02Z [INFO] Current version: 2025.12.8
+2026-01-15T09:00:03Z [INFO] Latest version: 2026.1.10
+2026-01-15T09:00:03Z [WARN] New version available: 2026.1.10 (current: 2025.12.8)
+2026-01-15T09:00:03Z [INFO] Auto-update disabled. Notifying user.
+2026-02-01T09:00:01Z [INFO] Update check started (cron)
+2026-02-01T09:00:02Z [INFO] Current version: 2025.12.8
+2026-02-01T09:00:03Z [INFO] Latest version: 2026.2.5
+2026-02-01T09:00:03Z [WARN] New version available: 2026.2.5 (current: 2025.12.8)
+2026-02-01T09:00:03Z [INFO] Auto-update disabled. Notifying user.

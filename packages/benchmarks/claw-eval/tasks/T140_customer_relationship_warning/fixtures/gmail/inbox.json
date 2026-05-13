@@ -1,0 +1,41 @@
+[
+  {
+    "message_id": "msg_901",
+    "from": "wangtong_liuwei@wantong.com",
+    "to": "me@company.com",
+    "subject": "Inquiry about renewal terms",
+    "date": "2026-03-20T09:00:00Z",
+    "body": "Hello, our contract is expiring soon and we would like to learn about the renewal terms and pricing in advance. We are quite satisfied with the current service, but hope to get a discount on pricing. Please arrange a time to discuss at your earliest convenience. — Liu Wei, Wantong Logistics",
+    "labels": [
+      "inbox",
+      "client"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_902",
+    "from": "dingxin_lina@dingxin.com",
+    "to": "me@company.com",
+    "subject": "Interest in service upgrade",
+    "date": "2026-02-10T09:00:00Z",
+    "body": "Hi, we have been using your product and would like to learn about higher-tier service plans. Our business is scaling up and the current plan may no longer be sufficient. — Li Na, Dingxin Software",
+    "labels": [
+      "inbox",
+      "client"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_903",
+    "from": "admin@company.com",
+    "to": "all@company.com",
+    "subject": "Qingming Festival holiday notice",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "Dear colleagues, the Qingming Festival holiday is scheduled for April 4-6, a total of 3 days. Please plan your work accordingly. — Admin Department",
+    "labels": [
+      "inbox",
+      "notice"
+    ],
+    "is_read": true
+  }
+]

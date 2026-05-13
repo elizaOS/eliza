@@ -28,7 +28,7 @@ import { afterAll, describe, expect, it } from "vitest";
 function elizaStateDir(): string {
   return (
     process.env.ELIZA_STATE_DIR?.trim() ||
-    process.env.MILADY_STATE_DIR?.trim() ||
+    process.env.ELIZA_STATE_DIR?.trim() ||
     path.join(os.homedir(), ".eliza")
   );
 }
@@ -66,7 +66,7 @@ function findSmallTextGguf(): string | null {
   // Prefer an explicit small stand-in; fall back to any *.gguf that isn't a
   // drafter / tokenizer / repaired sidecar.
   const explicit = entries.find(
-    (e) => /smol|360m|0_6b|0\.6b|1_7b/i.test(e) && e.endsWith(".gguf"),
+    (e) => /smol|360m|0_8b|0\.6b|2b/i.test(e) && e.endsWith(".gguf"),
   );
   if (explicit) return path.join(dir, explicit);
   const generic = entries.find(

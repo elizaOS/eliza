@@ -714,7 +714,11 @@ export interface AutomationNodeCatalogResponse {
 export type { LifeOpsOccurrenceActionResult } from "@elizaos/shared";
 
 // Voice / TTS config
-export type VoiceProvider = "elevenlabs" | "robot-voice" | "edge";
+export type VoiceProvider =
+  | "elevenlabs"
+  | "robot-voice"
+  | "edge"
+  | "local-inference";
 export type VoiceMode = "cloud" | "own-key";
 
 export interface VoiceConfig {

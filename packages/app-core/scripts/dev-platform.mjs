@@ -181,7 +181,7 @@ Environment (CI / automation; flags override where noted):
   ELIZA_DESKTOP_API_WATCH=0             Disable bun --watch for the API server
   ELIZA_DESKTOP_PREWARM=0               Disable desktop startup API prewarming
   ELIZA_DESKTOP_PREWARM_BLOCKING=1      Wait for API prewarming before Electrobun launch
-  ELIZA_API_PORT / ELIZA_API_PORT / ELIZA_PORT   API port (first non-empty wins)
+  ELIZA_API_PORT / ELIZA_PORT                    API port (first non-empty wins)
   ELIZA_PORT                            UI port (Vite dev)
 
 Docs: docs/apps/desktop-local-development.md

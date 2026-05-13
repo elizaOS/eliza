@@ -1,0 +1,176 @@
+# Threading Model Specification
+# Audio Player Core v2.0
+# Last Updated: 2024-05-15
+
+threading_model:
+  description: >
+    The audio player core uses a hybrid threading model combining tokio async
+    tasks for I/O-bound work with dedicated OS threads for real-time audio
+    processing. This ensures that audio playback is never blocked by async
+    task scheduling.
+
+threads:
+  main_thread:
+    name: "main / tokio runtime"
+    purpose: "Hosts the tokio async runtime, processes UI commands, coordinates actors"
+    runtime: tokio
+    runtime_config:
+      flavor: multi_thread
+      worker_threads: 4
+      max_blocking_threads: 16
+    actors_hosted:
+      - QueueActor
+      - CacheActor
+      - StateActor
+    priority: normal
+    cpu_affinity: null  # OS-managed
+    notes: >
+      All async actors run as tokio tasks on this runtime. The PlaybackActor
+      also runs here but delegates real-time work to the decode and audio threads.
+
+  audio_thread:
+    name: "audio-output"
+    purpose: "Runs the audio output callback, consumes decoded samples from ring buffer"
+    managed_by: cpal
+    priority: realtime
+    cpu_affinity: null  # Managed by audio subsystem
+    allocation_policy: zero_allocation
+    notes: >
+      This thread is created and managed by the cpal audio backend. The callback
+      reads from the ring buffer and writes to the hardware. MUST NOT allocate,
+      lock mutexes, or perform any blocking operations. If the ring buffer is
+      empty, output silence and set an underrun flag.
+    buffer_config:
+      buffer_size_frames: 4096
+      ring_buffer_capacity_frames: 16384  # 4x callback buffer
+      sample_format: f32
+      channels: 2
+
+  decode_thread:
+    name: "audio-decode"
+    purpose: "Decodes audio files and feeds samples into the ring buffer"
+    spawned_by: PlaybackActor
+    spawn_method: "std::thread::Builder::new().name('audio-decode').spawn()"
+    priority: above_normal
+    cpu_affinity: null
+    allocation_policy: pre_allocated
+    notes: >
+      Uses symphonia for decoding. All decode buffers are pre-allocated at
+      thread start. The thread reads encoded data from the cache or disk,
+      decodes it, applies resampling if needed (via rubato), and writes
+      decoded PCM samples to the ring buffer. Communicates with PlaybackActor
+      via crossbeam channels for commands (seek, stop, next track).
+    pre_allocated_buffers:
+      decode_buffer_size_bytes: 2097152  # 2 MB
+      resample_buffer_size_bytes: 1048576  # 1 MB
+
+  cache_thread:
+    name: "cache-io"
+    purpose: "Handles async file I/O for cache prefetch and eviction"
+    runtime: "tokio (shared with main)"
+    priority: below_normal
+    cpu_affinity: null
+    notes: >
+      Runs as a tokio task, not a dedicated OS thread. Performs file reads
+      for prefetching upcoming tracks and file deletes for cache eviction.
+      Uses tokio::fs for non-blocking file operations.
+
+  state_thread:
+    name: "state-persist"
+    purpose: "Periodically persists player state to sled database"
+    runtime: "tokio (shared with main)"
+    priority: low
+    cpu_affinity: null
+    notes: >
+      Runs as a tokio task. Receives state snapshots via mpsc channel and
+      batches writes to sled. Flush interval is configurable (default 30s).
+      On shutdown, performs a final synchronous flush.
+
+synchronization:
+  shared_state:
+    - name: "PlaybackState"
+      type: "Arc<Mutex<PlaybackState>>"
+      accessed_by: ["PlaybackActor", "UI queries"]
+      lock_contention: low
+      notes: "Only locked briefly to read/write position, volume, speed"
+
+    - name: "QueueState"
+      type: "Arc<RwLock<QueueState>>"
+      accessed_by: ["QueueActor", "PlaybackActor", "UI queries"]
+      lock_contention: low
+      notes: "RwLock allows concurrent reads from UI while QueueActor writes"
+
+  channels:
+    - name: "ui_to_queue"
+      type: "tokio::sync::mpsc::Sender<QueueCommand>"
+      capacity: 1024
+      from: "UI / main thread"
+      to: "QueueActor"
+
+    - name: "queue_to_playback"
+      type: "tokio::sync::mpsc::Sender<PlaybackCommand>"
+      capacity: 64
+      from: "QueueActor"
+      to: "PlaybackActor"
+
+    - name: "queue_to_state"
+      type: "tokio::sync::mpsc::Sender<StateSnapshot>"
+      capacity: 256
+      from: "QueueActor"
+      to: "StateActor"
+
+    - name: "playback_to_cache"
+      type: "tokio::sync::mpsc::Sender<CacheRequest>"
+      capacity: 32
+      from: "PlaybackActor"
+      to: "CacheActor"
+
+    - name: "playback_to_decode"
+      type: "crossbeam::channel::Sender<DecodeCommand>"
+      capacity: 8
+      from: "PlaybackActor"
+      to: "decode_thread"
+      notes: >
+        Uses crossbeam (sync) channel because the decode thread is a real OS
+        thread, not a tokio task. Cannot use tokio channels without a runtime.
+
+  ring_buffer:
+    type: "ringbuf::HeapRb<f32>"
+    capacity_samples: 65536  # 16384 frames * 2 channels * 2 (safety margin)
+    producer: "decode_thread"
+    consumer: "audio_thread (cpal callback)"
+    notes: >
+      Lock-free single-producer single-consumer ring buffer. The only
+      synchronization primitive used on the audio hot path. No allocation,
+      no mutex, no syscalls.
+
+platform_specific:
+  linux:
+    realtime_priority:
+      method: "sched_setscheduler(SCHED_FIFO, priority=50)"
+      requires: "CAP_SYS_NICE or rtkit"
+      fallback: "SCHED_OTHER with nice -10"
+
+  macos:
+    realtime_priority:
+      method: "thread_policy_set(THREAD_TIME_CONSTRAINT_POLICY)"
+      params:
+        period: 100000  # nanoseconds
+        computation: 50000
+        constraint: 100000
+        preemptible: true
+
+  windows:
+    realtime_priority:
+      method: "SetThreadPriority(THREAD_PRIORITY_TIME_CRITICAL)"
+      mmcss_task: "Pro Audio"
+
+  android:
+    realtime_priority:
+      method: "Handled by Oboe library internally"
+      notes: "Oboe sets SCHED_FIFO on the audio callback thread"
+
+  ios:
+    realtime_priority:
+      method: "Handled by CoreAudio internally"
+      notes: "AVAudioEngine manages thread priority for render callbacks"

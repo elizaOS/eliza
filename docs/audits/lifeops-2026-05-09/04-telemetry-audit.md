@@ -4,12 +4,12 @@ Working tree: `/Users/shawwalters/milaidy/eliza/`. All file:line citations are a
 
 ## TL;DR
 
-- A rich per-stage trajectory recorder already exists for the planner loop, evaluator, sub-planner, message-handler, and tool execution. It writes one JSON file per turn under `~/.milady/trajectories/<agentId>/<trajectoryId>.json` and persists `cache_creation_input_tokens` / `cache_read_input_tokens` per LLM stage.
+- A rich per-stage trajectory recorder already exists for the planner loop, evaluator, sub-planner, message-handler, and tool execution. It writes one JSON file per turn under `~/.eliza/trajectories/<agentId>/<trajectoryId>.json` and persists `cache_creation_input_tokens` / `cache_read_input_tokens` per LLM stage.
 - Tool-search (action retrieval / tiering) is **not** recorded anywhere. It runs once per planner turn inside `buildV5PlannerActionSurface` and the result is dropped on the floor.
 - The lifeops scenarios, e2e harness, and benchmark runner do **not** read that recorder. The `ScenarioReport` shape only carries `actionsCalled` and `durationMs` — no per-step tokens, no per-step cache hit %, no provider/model identifiers.
 - Per-step `prev_step_cache_pct` requires either (a) computing it inside the recorder when emitting the next stage, or (b) post-processing the JSON trajectory in an aggregator that writes the JSONL the user wants.
 - There is no single per-run results dir today. The best plumbing seam is:
-  1. Have the scenario CLI set `MILADY_TRAJECTORY_DIR=<runDir>/trajectories/` for the runtime.
+  1. Have the scenario CLI set `ELIZA_TRAJECTORY_DIR=<runDir>/trajectories/` for the runtime.
   2. Add a tool-search recorder hook (the only missing phase).
   3. Add a small aggregator that streams stages to a per-scenario JSONL and writes `report.md` + `steps.csv`.
 
@@ -27,8 +27,8 @@ Working tree: `/Users/shawwalters/milaidy/eliza/`. All file:line citations are a
 | `RecordedStage` shape | `packages/core/src/runtime/trajectory-recorder.ts:121-134` | model, tool, evaluation, cache, factsAndRelationships sub-blocks |
 | `RecordedTrajectoryMetrics` aggregates | `packages/core/src/runtime/trajectory-recorder.ts:136-148` | totals incl. `totalCacheReadTokens`, `totalCacheCreationTokens`, `totalCostUsd` |
 | `JsonFileTrajectoryRecorder` impl | `packages/core/src/runtime/trajectory-recorder.ts:680-893` | atomic JSON write per stage |
-| `resolveTrajectoryDir` precedence | `packages/core/src/runtime/trajectory-recorder.ts:221-232` | `MILADY_TRAJECTORY_DIR` → `MILADY_STATE_DIR/trajectories` → `ELIZA_STATE_DIR/trajectories` → `~/.milady/trajectories` |
-| Toggle | `packages/core/src/runtime/trajectory-recorder.ts:237-239` | `MILADY_TRAJECTORY_RECORDING=0` to disable; default on |
+| `resolveTrajectoryDir` precedence | `packages/core/src/runtime/trajectory-recorder.ts:221-232` | `ELIZA_TRAJECTORY_DIR` → `ELIZA_STATE_DIR/trajectories` → `ELIZA_STATE_DIR/trajectories` → `~/.eliza/trajectories` |
+| Toggle | `packages/core/src/runtime/trajectory-recorder.ts:237-239` | `ELIZA_TRAJECTORY_RECORDING=0` to disable; default on |
 
 ### A.2 Where stages are recorded today
 
@@ -50,7 +50,7 @@ Working tree: `/Users/shawwalters/milaidy/eliza/`. All file:line citations are a
 - `startTrajectory` is called once per turn at `packages/core/src/services/message.ts:3882-3894`.
 - `endTrajectory` is called at `packages/core/src/services/message.ts:4358-4361`.
 - The same recorder instance is created per turn via `createJsonFileTrajectoryRecorder({...})` at `message.ts:3876`.
-- An optional Markdown sibling can be emitted via `MILADY_TRAJECTORY_REVIEW_MODE` / `MILADY_TRAJECTORY_MARKDOWN`. (`trajectory-recorder.ts:245-256`).
+- An optional Markdown sibling can be emitted via `ELIZA_TRAJECTORY_REVIEW_MODE` / `ELIZA_TRAJECTORY_MARKDOWN`. (`trajectory-recorder.ts:245-256`).
 
 ### A.4 Anthropic/OpenAI usage normalization
 
@@ -208,14 +208,14 @@ The recorder already exists. Five concrete hook gaps:
 
 ### E.1 Existing plumbing seam
 
-- The trajectory recorder honours `MILADY_TRAJECTORY_DIR` (highest-precedence env var, see `core/src/runtime/trajectory-recorder.ts:222-224`).
+- The trajectory recorder honours `ELIZA_TRAJECTORY_DIR` (highest-precedence env var, see `core/src/runtime/trajectory-recorder.ts:222-224`).
 - The scenario CLI accepts `--report-dir` and writes the `AggregateReport` plus per-scenario JSON: `packages/scenario-runner/src/cli.ts:65-225`.
 - The lifeops live harness writes nothing structured; it tails logs and polls `/api/trajectories`.
 
 ### E.2 Proposed per-run layout
 
 ```
-~/.milady/runs/lifeops/<run-id>/
+~/.eliza/runs/lifeops/<run-id>/
   trajectories/                          # raw recorder JSON, one per turn
     <agentId>/<trajectoryId>.json
   scenarios/
@@ -281,7 +281,7 @@ Build on `scripts/analyze-trajectories.mjs:1-166` (already walks the JSON tree a
 
 **Extend.** Reasons:
 1. The JSON recorder already captures everything the user wants except tool-search.
-2. The recorder already has the right precedence chain for output dir (`MILADY_TRAJECTORY_DIR`).
+2. The recorder already has the right precedence chain for output dir (`ELIZA_TRAJECTORY_DIR`).
 3. Stage schema is the right place to add `toolSearch`.
 4. The aggregator is a standalone post-processor; we don't need a new live writer.
 
@@ -329,7 +329,7 @@ The only piece that needs a *new* writer is the per-scenario JSONL — and that'
 ### F.5 Aggregator script
 
 **New file:** `scripts/aggregate-lifeops-run.mjs`
-- Inputs: `--run-dir <runDir>` (defaults to `~/.milady/runs/lifeops/<latest>`), `--trajectory-dir <runDir>/trajectories` (defaults from env).
+- Inputs: `--run-dir <runDir>` (defaults to `~/.eliza/runs/lifeops/<latest>`), `--trajectory-dir <runDir>/trajectories` (defaults from env).
 - For each `*.json` trajectory:
   - For each stage, emit one JSONL line per the schema in §E.3.
   - Group lines by `(scenario, trajectory_id)` and write to `<runDir>/scenarios/<idx>-<scenarioId>/run.jsonl`.
@@ -341,12 +341,12 @@ Reference implementation lives in `scripts/analyze-trajectories.mjs` (already re
 ### F.6 Scenario runner: pass the run dir to the recorder
 
 **File:** `packages/scenario-runner/src/cli.ts`
-1. After parsing `--report-dir` (line 65-82), if `MILADY_TRAJECTORY_DIR` is unset, set it to `path.join(reportDir ?? defaultRunDir, "trajectories")` *before* spawning the runtime.
+1. After parsing `--report-dir` (line 65-82), if `ELIZA_TRAJECTORY_DIR` is unset, set it to `path.join(reportDir ?? defaultRunDir, "trajectories")` *before* spawning the runtime.
 2. Or, more cleanly, add a new `--run-dir <dir>` flag that controls everything: report path, trajectory dir, JSONL output.
 
 **File:** `packages/scenario-runner/src/executor.ts`
 1. Inject `runId` and `scenarioId` into the recorder's start call so the JSONL aggregator can correlate. Today, the recorder doesn't take per-trajectory metadata — extend `StartTrajectoryInput` (`trajectory-recorder.ts:166-170`) with optional `runId?: string`, `scenarioId?: string`, then propagate through `services/message.ts:3882-3894` from a runtime-level slot.
-2. For minimal patch, set `process.env.MILADY_LIFEOPS_RUN_ID` and `MILADY_LIFEOPS_SCENARIO_ID` before each scenario run, and have the recorder read them inside `startTrajectory`. Less invasive than threading params, but couples the recorder to scenario semantics — go with the explicit threading.
+2. For minimal patch, set `process.env.ELIZA_LIFEOPS_RUN_ID` and `ELIZA_LIFEOPS_SCENARIO_ID` before each scenario run, and have the recorder read them inside `startTrajectory`. Less invasive than threading params, but couples the recorder to scenario semantics — go with the explicit threading.
 
 ### F.7 Lifeops benchmark runner: surface tokens per case
 
@@ -372,7 +372,7 @@ Reference implementation lives in `scripts/analyze-trajectories.mjs` (already re
 3. Add `recordToolSearchStage` and call it from `services/message.ts:1641-1716`. Thread `recorder`/`trajectoryId` into `buildV5PlannerActionSurface`.
 4. Add `retryIdx` to `RecordedStage` and populate it from the planner retry loop (`planner-loop.ts:1252`).
 5. Add `runId` + `scenarioId` to `StartTrajectoryInput`, propagate from `services/message.ts:3882-3894`.
-6. Add `--run-dir` to `scenario-runner/src/cli.ts`; set `MILADY_TRAJECTORY_DIR` accordingly; pass `runId` to executor and into `recorder.startTrajectory`.
+6. Add `--run-dir` to `scenario-runner/src/cli.ts`; set `ELIZA_TRAJECTORY_DIR` accordingly; pass `runId` to executor and into `recorder.startTrajectory`.
 7. Build `scripts/aggregate-lifeops-run.mjs` modelled on `scripts/analyze-trajectories.mjs`. Output `run.jsonl`, `report.md`, `steps.csv`.
 8. Extend `lifeops-prompt-benchmark-runner.ts` `PromptBenchmarkResult` with cache fields.
 9. Optionally collapse `cache-observer.ts` into `cache-observation.ts` (or vice versa).

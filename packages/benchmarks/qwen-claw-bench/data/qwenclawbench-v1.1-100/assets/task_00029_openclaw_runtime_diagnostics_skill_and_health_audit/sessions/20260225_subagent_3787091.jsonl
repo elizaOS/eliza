@@ -1,0 +1,17 @@
+{"type": "session_start", "session_id": "subagent_3787091", "model": "deepseek-r1", "created_at": "2026-02-25T15:36:06.468993", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "system", "content": "Session initialized", "timestamp": "2026-02-25T15:39:26.029023", "session_id": "subagent_3787091", "seq": 1}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-25T15:39:34.231216", "session_id": "subagent_3787091", "seq": 2}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T15:42:18.696424", "session_id": "subagent_3787091", "seq": 3, "usage": {"prompt_tokens": 998, "completion_tokens": 1502, "total_tokens": 6120}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T15:42:31.121387", "session_id": "subagent_3787091", "seq": 4, "usage": {"prompt_tokens": 3176, "completion_tokens": 1637, "total_tokens": 4012}}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T15:46:47.685815", "session_id": "subagent_3787091", "seq": 5, "usage": {"prompt_tokens": 5931, "completion_tokens": 401, "total_tokens": 6391}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T15:48:03.897901", "session_id": "subagent_3787091", "seq": 6}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-25T15:53:03.274066", "session_id": "subagent_3787091", "seq": 7}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-25T15:57:56.891857", "session_id": "subagent_3787091", "seq": 8}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-02-25T16:00:49.637421", "session_id": "subagent_3787091", "seq": 9, "usage": {"prompt_tokens": 5085, "completion_tokens": 2987, "total_tokens": 1972}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-25T16:03:25.779770", "session_id": "subagent_3787091", "seq": 10, "usage": {"prompt_tokens": 7356, "completion_tokens": 2925, "total_tokens": 6338}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T16:05:16.262282", "session_id": "subagent_3787091", "seq": 11}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T16:06:26.978693", "session_id": "subagent_3787091", "seq": 12}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-25T16:08:13.113547", "session_id": "subagent_3787091", "seq": 13, "usage": {"prompt_tokens": 3952, "completion_tokens": 3518, "total_tokens": 3137}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-25T16:13:10.092947", "session_id": "subagent_3787091", "seq": 14, "usage": {"prompt_tokens": 732, "completion_tokens": 151, "total_tokens": 374}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-25T16:16:21.976412", "session_id": "subagent_3787091", "seq": 15}
+{"type": "session_end", "session_id": "subagent_3787091", "ended_at": "2026-02-25T16:16:31.976412", "total_messages": 15, "status": "completed"}

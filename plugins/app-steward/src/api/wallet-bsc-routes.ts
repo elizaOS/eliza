@@ -9,7 +9,7 @@ import type http from "node:http";
 import type { ElizaConfig } from "@elizaos/agent";
 import type { ReadJsonBodyOptions } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 
 // ---------------------------------------------------------------------------
 // Types

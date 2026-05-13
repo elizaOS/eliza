@@ -27,15 +27,15 @@ def _write_bundle(
     omit: tuple[str, ...] = (),
     include_drafters: bool = True,
 ) -> tuple[Path, Path, Path]:
-    bundle_dir = tmp_path / "eliza-1-0.6b.bundle"
+    bundle_dir = tmp_path / "eliza-1-0.8b.bundle"
     bundle_dir.mkdir(parents=True, exist_ok=True)
     weights = bundle_dir / "weights.gguf"
     drafter = bundle_dir / "drafter.gguf"
     weights.write_text("stub-gguf-bytes")
     drafter.write_text("stub-drafter-bytes")
     manifest: dict[str, Any] = {
-        "bundleId": "eliza-1-0.6b",
-        "modelSize": "0.6b",
+        "bundleId": "eliza-1-0.8b",
+        "modelSize": "0.8b",
         "releaseState": "local-standin",
         "publishEligible": False,
         "final": {"weights": False},
@@ -55,8 +55,8 @@ def _write_bundle(
 def test_read_local_standin_bundle(tmp_path: Path) -> None:
     bundle, weights, drafter = _write_bundle(tmp_path)
     m = read_eliza_one_bundle(str(bundle))
-    assert m.bundle_id == "eliza-1-0.6b"
-    assert m.model_size == "0.6b"
+    assert m.bundle_id == "eliza-1-0.8b"
+    assert m.model_size == "0.8b"
     assert m.release_state == "local-standin"
     assert m.publish_eligible is False
     assert m.final.weights is False
@@ -113,8 +113,8 @@ def _manifest(
     final_weights: bool = False,
 ) -> ElizaOneBundleManifest:
     return ElizaOneBundleManifest(
-        bundle_id="eliza-1-0.6b",
-        model_size="0.6b",  # type: ignore[arg-type]
+        bundle_id="eliza-1-0.8b",
+        model_size="0.8b",  # type: ignore[arg-type]
         release_state=release_state,  # type: ignore[arg-type]
         publish_eligible=publish_eligible,
         final=ElizaOneBundleFinal(weights=final_weights),

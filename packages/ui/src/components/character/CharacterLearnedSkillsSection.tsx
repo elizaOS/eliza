@@ -1,7 +1,9 @@
-import { Button, Card, CardContent } from "@elizaos/ui";
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api/client";
+import { useFetchData } from "../../hooks";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
 
 type CuratedStatus = "active" | "proposed" | "disabled";
 type CuratedSource = "human" | "agent-generated" | "agent-refined";
@@ -33,29 +35,24 @@ function formatDate(iso: string): string {
 }
 
 export function CharacterLearnedSkillsSection() {
-  const [skills, setSkills] = useState<CuratedSkill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(
+    null,
+  );
   const [busyName, setBusyName] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setErrorMessage(null);
-    try {
-      const res = (await client.fetch("/api/skills/curated")) as ListResponse;
-      const filtered = res.skills.filter((s) => s.source !== "human");
-      setSkills(filtered);
-    } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : String(err));
-      setSkills([]);
-    } finally {
-      setLoading(false);
-    }
+  const fetchState = useFetchData<CuratedSkill[]>(async (signal) => {
+    const res = (await client.fetch("/api/skills/curated", {
+      signal,
+    })) as ListResponse;
+    return res.skills.filter((s) => s.source !== "human");
   }, []);
 
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
+  const skills = fetchState.status === "success" ? fetchState.data : [];
+  const loading = fetchState.status === "loading";
+  const fetchErrorMessage =
+    fetchState.status === "error" ? fetchState.error.message : null;
+  const errorMessage = actionErrorMessage ?? fetchErrorMessage;
+  const refresh = fetchState.refetch;
 
   const grouped = useMemo(() => {
     const proposed = skills.filter((s) => s.status === "proposed");
@@ -71,16 +68,16 @@ export function CharacterLearnedSkillsSection() {
       action: "promote" | "disable" | "delete",
     ) => {
       setBusyName(name);
-      setErrorMessage(null);
+      setActionErrorMessage(null);
       try {
         const path =
           action === "delete"
             ? `/api/skills/curated/${encodeURIComponent(name)}`
             : `/api/skills/curated/${encodeURIComponent(name)}/${action}`;
         await client.fetch(path, { method });
-        await refresh();
+        refresh();
       } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : String(err));
+        setActionErrorMessage(err instanceof Error ? err.message : String(err));
       } finally {
         setBusyName(null);
       }
@@ -113,7 +110,8 @@ export function CharacterLearnedSkillsSection() {
           size="icon"
           className="h-8 w-8 rounded-lg"
           onClick={() => {
-            void refresh();
+            setActionErrorMessage(null);
+            refresh();
           }}
           disabled={loading}
           aria-label="Refresh learned skills"

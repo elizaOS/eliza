@@ -60,6 +60,60 @@ def test_prediction_error_forces_zero_score() -> None:
     assert result.error == "harness failed"
 
 
+def test_exact_scoring_accepts_answer_in_sentence() -> None:
+    task = VisualWebBenchTask(
+        id="webqa",
+        task_type=VisualWebBenchTaskType.WEBQA,
+        website="example.test",
+        prompt="What is the APR?",
+        answer=["4.25%", "4.25 percent"],
+    )
+    evaluator = VisualWebBenchEvaluator()
+
+    result = evaluator.evaluate(
+        task,
+        VisualWebBenchPrediction(
+            task_id=task.id,
+            task_type=task.task_type,
+            answer_text="The APR shown is 4.25%.",
+        ),
+    )
+
+    assert result.success
+
+
+def test_choice_scoring_accepts_letter_and_one_indexed_text() -> None:
+    task = VisualWebBenchTask(
+        id="choice",
+        task_type=VisualWebBenchTaskType.ACTION_PREDICTION,
+        website="example.test",
+        prompt="What action?",
+        options=["open", "submit", "clear"],
+        answer=1,
+    )
+    evaluator = VisualWebBenchEvaluator()
+
+    letter_result = evaluator.evaluate(
+        task,
+        VisualWebBenchPrediction(
+            task_id=task.id,
+            task_type=task.task_type,
+            answer_text="The answer is B.",
+        ),
+    )
+    number_result = evaluator.evaluate(
+        task,
+        VisualWebBenchPrediction(
+            task_id=task.id,
+            task_type=task.task_type,
+            answer_text="option 2",
+        ),
+    )
+
+    assert letter_result.success
+    assert number_result.success
+
+
 def test_runner_writes_required_artifacts(tmp_path) -> None:
     config = VisualWebBenchConfig(output_dir=str(tmp_path), dry_run=True, max_tasks=2)
     report = asyncio.run(VisualWebBenchRunner(config).run_benchmark())

@@ -72,6 +72,7 @@ export type {
   LifeOpsSleepCycleType,
   LifeOpsSleepDetectedFilters,
   LifeOpsSleepEndedFilters,
+  LifeOpsSleepHealthProvider,
   // Sleep / wake event filters
   LifeOpsSleepOnsetCandidateFilters,
   LifeOpsUnclearReason,

@@ -119,9 +119,9 @@ function toRequestHeaders(headers: Headers): Record<string, string> {
 
 /** Node's `Readable.toWeb` stream is valid `fetch` `BodyInit`; lib.dom and `node:stream/web` disagree in TypeScript. */
 function incomingMessageToWebBody(stream: IncomingMessage): BodyInit {
-	const webStream = Readable.toWeb(stream);
-	// @ts-expect-error Node stream/web ReadableStream is accepted by Response; DOM vs Node declarations diverge.
-	return webStream;
+	return Readable.toWeb(stream) as unknown as ReadableStream<
+		Uint8Array<ArrayBuffer>
+	>;
 }
 
 function responseFromIncomingMessage(response: IncomingMessage): Response {

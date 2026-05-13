@@ -29,7 +29,7 @@ export ELIZA_REWARD_USE_AI_JUDGE=1
 ## Smoke the reward function (CPU only)
 
 No GPU required — runs the verifiable scorer on hand-written prompts and
-catches regressions in `eliza_bench` integration.
+catches regressions in `native_tool_call_bench` integration.
 
 ```bash
 cd training
@@ -50,7 +50,7 @@ python scripts/eliza_reward_fn.py \
 
 Cheap warmup. Reads `data/synthesized/action_pairs/*.jsonl`, treats the
 synthesized `expectedResponse` as `chosen`, and synthesizes a corrupted
-`rejected` per record (perturbed action label / broken TOON envelope) so
+`rejected` per record (perturbed action label / broken native JSON envelope) so
 DPO has a clean preference signal without paying for a teacher rollout.
 
 ### Smoke (5 steps, any size, any GPU)
@@ -58,8 +58,8 @@ DPO has a clean preference signal without paying for a teacher rollout.
 ```bash
 uv run --extra train python scripts/train_dpo.py \
     --registry-key qwen3.5-2b \
-    --sft-checkpoint checkpoints/qwen3-06b-eliza-toon-v3/final \
-    --output-dir checkpoints/qwen3-06b-dpo-smoke \
+    --sft-checkpoint checkpoints/eliza-1-0_8b-sft/final \
+    --output-dir checkpoints/eliza-1-0_8b-dpo-smoke \
     --max-steps 5 --max-samples 64
 ```
 
@@ -67,10 +67,10 @@ uv run --extra train python scripts/train_dpo.py \
 
 | size | command | hardware | wall time |
 |------|---------|----------|-----------|
-| 0.6b | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-0.6b --sft-checkpoint checkpoints/eliza-1-0.6b-sft/final --output-dir checkpoints/eliza-1-0.6b-dpo` | 1× consumer 16 GB | ~10 min |
+| 0.8b | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-0.8b --sft-checkpoint checkpoints/eliza-1-0_8b-sft/final --output-dir checkpoints/eliza-1-0_8b-dpo` | 1× consumer 16 GB | ~10 min |
 | 2b   | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-2b   --sft-checkpoint checkpoints/eliza-1-2b-sft/final   --output-dir checkpoints/eliza-1-2b-dpo`   | 1× H200 SXM | ~1 h |
-| 9b   | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-9b   --sft-checkpoint checkpoints/eliza-1-9b-sft/final   --output-dir checkpoints/eliza-1-9b-dpo`   | 1× H200 SXM | ~5 h |
-| 27b  | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.6-27b  --sft-checkpoint checkpoints/eliza-1-27b-sft/final  --output-dir checkpoints/eliza-1-27b-dpo`  | 2× B200 (FSDP) | ~12 h |
+| 9b   | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-4b   --sft-checkpoint checkpoints/eliza-1-4b-sft/final   --output-dir checkpoints/eliza-1-4b-dpo`   | 1× H200 SXM | ~5 h |
+| 27b  | `uv run --extra train python scripts/train_dpo.py --registry-key qwen3.5-4b  --sft-checkpoint checkpoints/eliza-1-4b-sft/final  --output-dir checkpoints/eliza-1-4b-dpo`  | 2× B200 (FSDP) | ~12 h |
 
 ### Knobs
 
@@ -85,8 +85,8 @@ uv run --extra train python scripts/train_dpo.py \
 
 Output is consumable by the existing quant pipeline:
 ```bash
-python scripts/run_pipeline.py --registry-key qwen3.5-9b \
-    --skip-finetune --checkpoint checkpoints/eliza-1-9b-dpo/final
+python scripts/run_pipeline.py --registry-key qwen3.5-4b \
+    --skip-finetune --checkpoint checkpoints/eliza-1-4b-dpo/final
 ```
 
 ### Smoke test
@@ -112,8 +112,8 @@ trainer.
 | size | command | hardware | wall time |
 |------|---------|----------|-----------|
 | 2b   | `bash scripts/train_grpo_verl.sh --registry-key qwen3.5-2b   --dpo-checkpoint checkpoints/eliza-1-2b-dpo/final   --output-dir checkpoints/eliza-1-2b-grpo   --rollouts 8 --rollout-batch 8` | 2× H200 (1 train + 1 rollout) | ~24 h |
-| 9b   | `bash scripts/train_grpo_verl.sh --registry-key qwen3.5-9b   --dpo-checkpoint checkpoints/eliza-1-9b-dpo/final   --output-dir checkpoints/eliza-1-9b-grpo   --rollouts 8 --rollout-batch 8` | 4× H200 (1 train + 3 rollout) | ~24-48 h |
-| 27b  | `bash scripts/train_grpo_verl.sh --registry-key qwen3.6-27b  --dpo-checkpoint checkpoints/eliza-1-27b-dpo/final  --output-dir checkpoints/eliza-1-27b-grpo  --rollouts 8 --rollout-batch 8` | 8× H200 (4 train + 4 rollout) | ~48 h |
+| 9b   | `bash scripts/train_grpo_verl.sh --registry-key qwen3.5-4b   --dpo-checkpoint checkpoints/eliza-1-4b-dpo/final   --output-dir checkpoints/eliza-1-4b-grpo   --rollouts 8 --rollout-batch 8` | 4× H200 (1 train + 3 rollout) | ~24-48 h |
+| 27b  | `bash scripts/train_grpo_verl.sh --registry-key qwen3.5-4b  --dpo-checkpoint checkpoints/eliza-1-4b-dpo/final  --output-dir checkpoints/eliza-1-4b-grpo  --rollouts 8 --rollout-batch 8` | 8× H200 (4 train + 4 rollout) | ~48 h |
 
 ### Knobs
 
@@ -124,7 +124,7 @@ trainer.
 - `--kl-coef 0.001` — KL penalty vs the DPO reference. If the policy
   collapses to one mode (rewards saturate at the band's max), raise to
   0.01.
-- `--max-response-len 1024` — clamp to keep rollouts cheap. Our TOON
+- `--max-response-len 1024` — clamp to keep rollouts cheap. Our native JSON
   outputs are <500 tokens 99% of the time; this is a forward-pass cap, not
   a quality cap.
 

@@ -115,6 +115,6 @@ bun run tsc --noEmit
 ## Built With
 
 - [ElizaOS](https://elizaos.github.io/eliza/) - Agent framework
-- [Ink](https://github.com/vadimdemedes/ink) - React for CLIs
+- [@elizaos/tui](https://www.npmjs.com/package/@elizaos/tui) - Terminal UI framework
 - [Zustand](https://zustand-demo.pmnd.rs/) - State management
 - [Claude](https://anthropic.com) - AI model via Anthropic plugin

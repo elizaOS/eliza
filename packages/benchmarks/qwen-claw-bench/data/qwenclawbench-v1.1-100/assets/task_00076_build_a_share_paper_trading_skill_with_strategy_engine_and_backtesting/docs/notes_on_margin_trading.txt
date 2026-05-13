@@ -1,0 +1,77 @@
+Notes on Margin Trading (融资融券) - Internal Reference
+=========================================================
+
+Date: 2024-07-20
+Author: Risk Management Team
+
+1. MARGIN TRADING OVERVIEW
+--------------------------
+Margin trading allows investors to borrow funds (融资) to buy securities
+or borrow securities (融券) to sell short. This is a leveraged trading
+mechanism available only to qualified investors.
+
+2. ELIGIBILITY REQUIREMENTS
+----------------------------
+- Account must have been open for at least 6 months
+- Average daily assets >= 500,000 CNY over the past 20 trading days
+- Risk tolerance assessment: C4 or above
+- No significant compliance violations in the past 2 years
+- Must sign margin trading agreement
+
+3. MARGIN RATIOS
+-----------------
+- Initial margin ratio: >= 100% (as of Oct 2023, reduced from 100%)
+  * Actually the regulation allows brokers to set, typically 100%
+- Maintenance margin ratio: >= 130% (warning line)
+  * Below 130%: margin call issued
+  * Below 110%: forced liquidation may occur
+- Collateral conversion rates:
+  * Cash: 100%
+  * Government bonds: 95%
+  * ETFs: 80-90%
+  * A-share stocks: 50-70% (varies by stock)
+  * ST stocks: 0% (not accepted as collateral)
+
+4. INTEREST RATES
+------------------
+- Margin lending (融资) rate: ~5.8% - 8.0% annualized
+- Securities lending (融券) rate: ~8.0% - 10.6% annualized
+- Rates vary by broker and client tier
+- Interest calculated daily, settled monthly
+
+5. ELIGIBLE SECURITIES
+-----------------------
+- Not all stocks are eligible for margin trading
+- Exchange publishes eligible list periodically
+- Typically large-cap, liquid stocks
+- ST stocks are NOT eligible
+- New listings excluded for initial period
+
+6. RISK WARNINGS
+-----------------
+- Leverage amplifies both gains and losses
+- Forced liquidation risk during market downturns
+- Interest costs reduce net returns
+- Margin calls may require immediate action
+- Short squeeze risk for securities lending
+
+7. RELEVANCE TO PAPER TRADING
+-------------------------------
+*** IMPORTANT: Margin trading features should NOT be included in
+standard paper trading simulations. Paper trading should model
+cash-only accounts with standard T+1 settlement rules. ***
+
+Margin trading adds significant complexity:
+- Different fee structures
+- Interest calculations
+- Margin maintenance requirements
+- Short selling mechanics
+
+For paper trading purposes, focus on:
+- Cash account mechanics
+- Standard commission/tax/fee structure
+- T+1 settlement
+- Long-only positions
+
+=========================================================
+END OF NOTES

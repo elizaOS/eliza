@@ -1,0 +1,65 @@
+{
+  "channel": "whatsapp",
+  "contact": "+86188xxxxxxxx01",
+  "contactLabel": "Zhang Wei",
+  "messages": [
+    {
+      "id": "3A35C694B365E252B09E",
+      "timestamp": "2026-02-10T06:30:12Z",
+      "direction": "inbound",
+      "text": "Morning. Run the weekly backup check.",
+      "translated": null
+    },
+    {
+      "id": "out-20260210-063020",
+      "timestamp": "2026-02-10T06:30:20Z",
+      "direction": "outbound",
+      "text": "Good morning! Running backup verification now..."
+    },
+    {
+      "id": "out-20260210-063105",
+      "timestamp": "2026-02-10T06:31:05Z",
+      "direction": "outbound",
+      "text": "Weekly backup check complete. All 3 Hyper Backup tasks succeeded. Last backup: 2026-02-09 23:00 UTC. Integrity check passed."
+    },
+    {
+      "id": "3A35C694B365E252B0A1",
+      "timestamp": "2026-02-10T06:45:03Z",
+      "direction": "inbound",
+      "text": "What's the NAS status?",
+      "originalText": "NAS状态怎么样了"
+    },
+    {
+      "id": "out-20260210-064508",
+      "timestamp": "2026-02-10T06:45:08Z",
+      "direction": "outbound",
+      "text": "Checking NAS status now..."
+    },
+    {
+      "id": "out-20260210-064512",
+      "timestamp": "2026-02-10T06:45:12Z",
+      "direction": "outbound",
+      "text": "NAS array is degraded - disk 3 (WD-WCC7K0RD4215) failed at 12:30 UTC. Rebuild started on hot spare. ETA ~6 hours."
+    },
+    {
+      "id": "3A35C694B365E252B0A5",
+      "timestamp": "2026-02-10T06:46:01Z",
+      "direction": "inbound",
+      "text": "Don't touch the other disks, wait for the rebuild to finish.",
+      "originalText": "先别动其他盘，等rebuild完成"
+    },
+    {
+      "id": "out-20260210-064605",
+      "timestamp": "2026-02-10T06:46:05Z",
+      "direction": "outbound",
+      "text": "Understood. Leaving other disks untouched until rebuild completes."
+    },
+    {
+      "id": "3A35C694B365E252B0C9",
+      "timestamp": "2026-02-10T07:07:11Z",
+      "direction": "inbound",
+      "text": "Recovered yet?",
+      "originalText": "恢复了吗"
+    }
+  ]
+}

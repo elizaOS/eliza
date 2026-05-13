@@ -11,6 +11,9 @@
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/agent/services/app-session-gate": [
+        "../../packages/agent/src/services/app-session-gate.d.ts"
+      ],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"]
     }
   },

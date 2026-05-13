@@ -11,13 +11,22 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { appsRepository } from "@/db/repositories/apps";
-import { failureResponse, NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  failureResponse,
+  NotFoundError,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
+import { isAllowedOrigin } from "@/lib/security/origin-validation";
+import { issueAppAuthCode } from "@/lib/services/app-auth-codes";
+import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ConnectSchema = z.object({
   appId: z.string().uuid(),
+  redirectUri: z.string().url().optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -35,12 +44,19 @@ app.post("/", async (c) => {
       });
     }
 
-    const { appId } = parsed.data;
+    const { appId, redirectUri } = parsed.data;
 
-    const appRow = await appsRepository.findActiveApprovedById(appId);
+    const appRow = await appsRepository.findPublicInfoById(appId);
 
     if (!appRow) {
       throw NotFoundError("App not found");
+    }
+
+    if (redirectUri) {
+      const allowedOrigins = await appsService.getAllowedOrigins(appRow);
+      if (!isAllowedOrigin(allowedOrigins, redirectUri)) {
+        throw ValidationError("redirect_uri is not allowed for this app");
+      }
     }
 
     const connectionAction = await appsRepository.connectUser({
@@ -57,7 +73,25 @@ app.post("/", async (c) => {
       logger.info("Created new app user connection", { userId: user.id, appId });
     }
 
-    return c.json({ success: true, message: "Connected successfully" });
+    let authCode: Awaited<ReturnType<typeof issueAppAuthCode>>;
+    try {
+      authCode = await issueAppAuthCode({ appId, userId: user.id });
+    } catch {
+      throw new ApiError(
+        503,
+        "session_not_ready",
+        "Authorization code store is unavailable. Please try again.",
+      );
+    }
+
+    return c.json({
+      success: true,
+      message: "Connected successfully",
+      code: authCode.code,
+      codeType: "app_auth_code",
+      expiresAt: authCode.expiresAt,
+      expiresIn: authCode.expiresIn,
+    });
   } catch (error) {
     logger.error("App auth connect error:", error);
     return failureResponse(c, error);

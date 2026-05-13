@@ -1,0 +1,26 @@
+# Full fine-tune on a generic LJSpeech-format dataset.
+#
+# Resource-intensive. ~24h on a single 4090 for the 13.1k LJSpeech clips;
+# scales roughly linearly with dataset size. Stage 2 enables the WavLM
+# discriminator at step 8000 — that's the StyleTTS-2 community-validated
+# point at which the mel objective has converged enough for the
+# adversarial gradient to be useful rather than chaotic.
+
+extends: base.yaml
+
+mode: full
+learning_rate: 5.0e-5
+batch_size: 8
+grad_accum: 4
+max_steps: 20000
+eval_every: 1000
+checkpoint_every: 2000
+
+mel_loss_weight: 1.0
+duration_loss_weight: 0.01
+f0_loss_weight: 0.1
+
+# Stage 2: WavLM adversarial. Off until adversarial_warmup_step.
+adversarial_loss_weight: 0.5
+adversarial_warmup_step: 8000
+adversarial_discriminator: wavlm

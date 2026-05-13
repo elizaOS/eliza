@@ -1,0 +1,50 @@
+[
+  {
+    "transaction_id": "TXN-301",
+    "type": "Budget Allocation",
+    "description": "Q1 IT Equipment Procurement Budget",
+    "amount": 2000000,
+    "currency": "CNY",
+    "date": "2026-01-05",
+    "category": "Budget",
+    "department": "IT Department",
+    "approved_by": "CEO",
+    "notes": "2026 Q1 equipment refresh and expansion budget"
+  },
+  {
+    "transaction_id": "TXN-302",
+    "type": "Procurement Expense",
+    "description": "Q4 Network Equipment Procurement",
+    "amount": 350000,
+    "currency": "CNY",
+    "date": "2025-12-15",
+    "category": "Equipment Procurement",
+    "department": "IT Department",
+    "supplier": "Cisco",
+    "notes": "Cisco switches and routers procurement"
+  },
+  {
+    "transaction_id": "TXN-303",
+    "type": "Procurement Expense",
+    "description": "Huaxinda Q4 Server Procurement",
+    "amount": 680000,
+    "currency": "CNY",
+    "date": "2025-11-20",
+    "category": "Equipment Procurement",
+    "department": "IT Department",
+    "supplier": "Huaxinda",
+    "notes": "Dell PowerEdge R750 x 8 units"
+  },
+  {
+    "transaction_id": "TXN-304",
+    "type": "Return Refund",
+    "description": "Huaxinda DOA Product Refund",
+    "amount": 68000,
+    "currency": "CNY",
+    "date": "2025-12-28",
+    "category": "Refund",
+    "department": "IT Department",
+    "supplier": "Huaxinda",
+    "notes": "10% DOA rate, refund for defective units returned. Of 8 units originally purchased, 7 were DOA requiring return processing, only 1 unit usable."
+  }
+]

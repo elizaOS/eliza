@@ -7,35 +7,51 @@ import { buildRouteCatalog } from "./dev-route-catalog";
 
 // ── mocks ──────────────────────────────────────────────────────────────
 
-vi.mock("@elizaos/core", () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+  };
+});
 
 vi.mock("@elizaos/agent", () => ({
   loadElizaConfig: () => ({ meta: {}, agents: {} }),
 }));
 
-vi.mock("@elizaos/shared", () => ({
-  isLoopbackBindHost: () => true,
-  normalizeOnboardingProviderId: () => null,
-  resolveDeploymentTargetInConfig: () => ({}),
-  resolveServiceRoutingInConfig: () => ({}),
-  resolveDesktopApiPort: () => 31337,
-  resolveDesktopUiPort: () => null,
-}));
+vi.mock("@elizaos/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/shared")>();
+  return {
+    ...actual,
+    isLoopbackBindHost: () => true,
+    normalizeOnboardingProviderId: () => null,
+    resolveDeploymentTargetInConfig: () => ({}),
+    resolveServiceRoutingInConfig: () => ({}),
+    resolveDesktopApiPort: () => 31337,
+    resolveDesktopUiPort: () => null,
+  };
+});
 
-vi.mock("./auth", () => ({
-  ensureRouteAuthorized: vi.fn(async () => true),
-  ensureCompatSensitiveRouteAuthorized: () => true,
-  getCompatApiToken: () => null,
-  getProvidedApiToken: () => null,
-  tokenMatches: () => true,
-}));
+vi.mock("./auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth")>();
+  return {
+    ...actual,
+    ensureRouteAuthorized: vi.fn(async () => true),
+    ensureCompatSensitiveRouteAuthorized: () => true,
+    getCompatApiToken: () => null,
+    getProvidedApiToken: () => null,
+    tokenMatches: () => true,
+  };
+});
 
-vi.mock("./auth/sessions", () => ({
-  findActiveSession: vi.fn(async () => null),
-  parseSessionCookie: vi.fn(() => null),
-}));
+vi.mock("./auth/sessions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth/sessions")>();
+  return {
+    ...actual,
+    findActiveSession: vi.fn(async () => null),
+    parseSessionCookie: vi.fn(() => null),
+  };
+});
 
 const STATE: CompatRuntimeState = {
   current: null,

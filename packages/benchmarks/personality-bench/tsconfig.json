@@ -14,12 +14,16 @@
     "noImplicitOverride": true,
     "exactOptionalPropertyTypes": false,
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "../../..",
     "declaration": true,
     "resolveJsonModule": true,
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  "include": [
+    "src/**/*.ts",
+    "tests/**/*.ts",
+    "../../scenario-runner/src/cerebras-judge.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

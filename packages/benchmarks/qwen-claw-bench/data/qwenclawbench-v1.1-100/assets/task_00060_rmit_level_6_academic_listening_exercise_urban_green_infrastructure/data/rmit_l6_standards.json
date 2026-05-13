@@ -1,0 +1,38 @@
+{
+  "standard_name": "RMIT Academic English Listening Assessment",
+  "version": "3.2",
+  "last_updated": "2024-06-15",
+  "level": 6,
+  "skill": "listening",
+  "question_count_range": [10, 12],
+  "answer_word_limit": "one or two words AND/OR a number",
+  "lecture_word_range": [850, 950],
+  "t1_synonym_ratio_range": [0.35, 0.40],
+  "repetition_rate_max": 0.40,
+  "min_synonym_pairs": 1,
+  "required_sections": [
+    "expanded_lecture",
+    "fill_in_blank_questions",
+    "answer_key",
+    "trap_analysis"
+  ],
+  "grading_notes": "answers must be exact match, spelling tolerance allowed",
+  "question_type": "fill_in_the_blank",
+  "answer_format_notes": "Each blank answer must consist of no more than two words and/or a number. Hyphenated compound words count as one word. Numbers may be written as digits or words.",
+  "difficulty_parameters": {
+    "lexical_complexity": "academic",
+    "speech_rate_wpm": 145,
+    "distractor_density": "moderate",
+    "topic_familiarity": "semi-specialised"
+  },
+  "t1_classification": {
+    "T-1": "Question stem uses synonyms or paraphrases of the original lecture wording; repetition rate of content words must be below 40%",
+    "T-0": "Question stem uses the same or very similar wording as the lecture text"
+  },
+  "validation_rules": {
+    "word_count_tolerance": 10,
+    "synonym_verification_required_for_t1": true,
+    "answer_key_must_include_type_label": true,
+    "trap_analysis_required": true
+  }
+}

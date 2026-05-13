@@ -1,0 +1,16 @@
+# Feishu Bot Configuration
+# Used by services that integrate with Feishu messaging
+
+app_id: "cli_a5f8e3d72b190013"
+app_secret: "KxR7mNpQ2vYjLwBc8sDfEgHi"
+webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/a8f3e7d2-91b4-4c56-b0e3-7f8a2d4e6c01"
+
+# Bot permissions
+scopes:
+  - "im:message"
+  - "im:message:send_as_bot"
+  - "im:chat:readonly"
+
+# Notification targets
+default_chat_id: "oc_5d89b2a1e3f74c68b0912d4e7a6f8c03"
+admin_user_id: "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa03"

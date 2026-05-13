@@ -1,0 +1,65 @@
+From: Eliza Phase E <noreply@elizaos.dev>
+Subject: [PATCH 3/3] omnivoice: share llama.cpp's backend pair (example)
+Date: 2026-05-12
+
+EXAMPLE PATCH — do not apply directly. Replaces omnivoice's
+self-allocated `ggml_backend_t` pair with the shared backend owned by
+the unified llama.cpp build. This is the only invasive code change in
+the merge — every other file is move-only.
+
+Before:
+  tools/omnivoice/src/backend.h calls ggml_backend_metal_init() /
+  ggml_backend_cuda_init() / ggml_backend_vk_init() / ggml_backend_cpu_init()
+  itself, depending on which CMake flags are set.
+
+After:
+  tools/omnivoice/src/backend.h takes a ggml_backend_t pair via a
+  constructor parameter. ov_init() calls ggml_backend_load_all()
+  (already present in llama.cpp) and picks the first GPU backend +
+  the CPU fallback, the same way llama_context does internally.
+
+This is what removes the duplicate GGML build: omnivoice no longer
+needs its own ggml/ submodule, and the backend selection logic that
+was scattered across omnivoice's buildcuda.sh / buildvulkan.sh /
+buildmetal.sh becomes a single CMake-flag-driven path inherited from
+llama.cpp.
+
+---
+ tools/omnivoice/src/backend.h      | 64 +++++++++++++-----------------
+ tools/omnivoice/src/omnivoice.cpp  | 22 ++++++----
+ 2 files changed, 41 insertions(+), 45 deletions(-)
+
+diff --git a/tools/omnivoice/src/backend.h b/tools/omnivoice/src/backend.h
+--- a/tools/omnivoice/src/backend.h
++++ b/tools/omnivoice/src/backend.h
+@@ -1,40 +1,30 @@
+-// backend.h: omnivoice-private GGML backend selection.
+-// Drops its own metal/cuda/vulkan/cpu init logic.
+-// In the merged tree we receive the backend pair from llama.cpp.
++// backend.h: shared GGML backend pair from llama.cpp.
++// The merged build no longer owns its own backend init — it accepts
++// the pair the host llama_context already constructed and shares it
++// for the lifetime of the ov_context.
+ #pragma once
+ #include "ggml-backend.h"
+
+ struct backend_pair {
+-    ggml_backend_t gpu;  // metal / cuda / vulkan, or NULL
+-    ggml_backend_t cpu;  // always present
++    ggml_backend_t gpu;  // borrowed, not owned
++    ggml_backend_t cpu;  // borrowed, not owned
+ };
+
+-backend_pair backend_init_auto(void);
+-void         backend_free(backend_pair p);
++// Constructed from caller-provided handles; backend_pair_close is a no-op.
++inline backend_pair backend_from_borrowed(ggml_backend_t gpu, ggml_backend_t cpu) {
++    backend_pair p;
++    p.gpu = gpu;
++    p.cpu = cpu;
++    return p;
++}
+
+[diff body truncated for brevity — see PLAN.md for the full design.]
+--
+2.42.0

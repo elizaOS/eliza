@@ -50,6 +50,19 @@ function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
 	);
 }
 
+function hasDirectElizaElectrobunCheckout(candidateDir: string): boolean {
+	return fs.existsSync(
+		path.join(
+			candidateDir,
+			"packages",
+			"app-core",
+			"platforms",
+			"electrobun",
+			"package.json",
+		),
+	);
+}
+
 export function findElizaRepoRoot(startDir: string): string {
 	let current = path.resolve(startDir);
 	const matches: string[] = [];
@@ -59,6 +72,10 @@ export function findElizaRepoRoot(startDir: string): string {
 		}
 		const parent = path.dirname(current);
 		if (parent === current) {
+			const directRoot = matches.find(hasDirectElizaElectrobunCheckout);
+			if (directRoot) {
+				return directRoot;
+			}
 			const outerWrapperRoot = matches.find(hasOuterElizaElectrobunCheckout);
 			if (outerWrapperRoot) {
 				return outerWrapperRoot;
@@ -99,6 +116,15 @@ const rendererDistDir = path.relative(
 const runtimeBundleDistDir = path.relative(
 	electrobunDir,
 	path.join(repoRoot, "dist"),
+);
+const runtimeBundleNodeModulesDir = path.join(
+	runtimeBundleDistDir,
+	"node_modules",
+);
+const runtimeBundleNodeModulesPath = path.join(
+	repoRoot,
+	"dist",
+	"node_modules",
 );
 const repoPluginsJsonPath = path.relative(
 	electrobunDir,
@@ -341,8 +367,12 @@ export function createElectrobunConfig(): ElectrobunConfig {
 				[rendererDistDir]: "renderer",
 				"src/preload.js": "bun/preload.js",
 				[runtimeBundleDistDir]: runtimeDistDir,
-				[path.join(runtimeBundleDistDir, "node_modules")]:
-					`${runtimeDistDir}/node_modules`,
+				...(fs.existsSync(runtimeBundleNodeModulesPath)
+					? {
+							[runtimeBundleNodeModulesDir]:
+								`${runtimeDistDir}/node_modules`,
+						}
+					: {}),
 				...(fs.existsSync(path.join(repoRoot, "plugins.json"))
 					? { [repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json` }
 					: {}),

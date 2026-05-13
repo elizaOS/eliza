@@ -12,6 +12,8 @@ if (!scriptName) {
 
 const root = process.cwd();
 const roots = ["packages/examples", "packages/benchmarks"];
+const skillsbenchTasksSegments = `${path.sep}packages${path.sep}benchmarks${path.sep}skillsbench${path.sep}tasks${path.sep}`;
+const skillsbenchExperimentsSegments = `${path.sep}packages${path.sep}benchmarks${path.sep}skillsbench${path.sep}experiments${path.sep}`;
 const ignoredDirs = new Set([
   ".git",
   ".next",
@@ -44,9 +46,19 @@ function collectPackageJsons(dir, out = []) {
   return out;
 }
 
+function isIsolatedBenchmarkPackage(packageJsonPath) {
+  const normalizedPath = packageJsonPath.split(path.sep).join(path.sep);
+  return (
+    (normalizedPath.includes(skillsbenchTasksSegments) &&
+      normalizedPath.includes(`${path.sep}environment${path.sep}`)) ||
+    normalizedPath.includes(skillsbenchExperimentsSegments)
+  );
+}
+
 const packages = roots
   .flatMap((entry) => collectPackageJsons(path.join(root, entry)))
   .sort()
+  .filter((packageJsonPath) => !isIsolatedBenchmarkPackage(packageJsonPath))
   .map((packageJsonPath) => {
     const packageDir = path.dirname(packageJsonPath);
     const manifest = JSON.parse(readFileSync(packageJsonPath, "utf8"));

@@ -1,0 +1,124 @@
+[
+  {
+    "article_id": "RSS-901",
+    "title": "2026年Q1软件行业增长超预期",
+    "summary": "软件开发行业Q1整体增长12%，SaaS模式持续受到企业青睐，头部客户ARPU值提升明显。",
+    "tags": [
+      "软件",
+      "SaaS",
+      "增长"
+    ],
+    "url": "https://tech-observer.example.com/901",
+    "content": "软件开发行业Q1整体增长12%，SaaS模式持续受到企业青睐，头部客户ARPU值提升明显。",
+    "category": "软件, SaaS, 增长",
+    "source": "科技行业观察",
+    "published_at": "2026-03-20T00:00:00Z",
+    "word_count": 45
+  },
+  {
+    "article_id": "RSS-902",
+    "title": "电商平台面临流量增长放缓",
+    "summary": "多家电商运营数据显示，Q1流量增速降至个位数，中小电商加大成本控制力度。",
+    "tags": [
+      "电商",
+      "挑战"
+    ],
+    "url": "https://tech-observer.example.com/902",
+    "content": "多家电商运营数据显示，Q1流量增速降至个位数，中小电商加大成本控制力度。",
+    "category": "电商, 挑战",
+    "source": "科技行业观察",
+    "published_at": "2026-03-18T00:00:00Z",
+    "word_count": 36
+  },
+  {
+    "article_id": "RSS-903",
+    "title": "物流行业数字化转型加速",
+    "summary": "物流企业IT投入同比增长20%，但价格竞争激烈，利润率承压。头部企业更注重ROI。",
+    "tags": [
+      "物流",
+      "数字化"
+    ],
+    "url": "https://tech-observer.example.com/903",
+    "content": "物流企业IT投入同比增长20%，但价格竞争激烈，利润率承压。头部企业更注重ROI。",
+    "category": "物流, 数字化",
+    "source": "科技行业观察",
+    "published_at": "2026-03-22T00:00:00Z",
+    "word_count": 41
+  },
+  {
+    "article_id": "RSS-904",
+    "title": "制造业IT预算收紧趋势明显",
+    "summary": "受全球供应链波动影响，制造业企业普遍收紧IT预算，SaaS续约率下降5个百分点。",
+    "tags": [
+      "制造",
+      "预算"
+    ],
+    "url": "https://tech-observer.example.com/904",
+    "content": "受全球供应链波动影响，制造业企业普遍收紧IT预算，SaaS续约率下降5个百分点。",
+    "category": "制造, 预算",
+    "source": "科技行业观察",
+    "published_at": "2026-03-15T00:00:00Z",
+    "word_count": 40
+  },
+  {
+    "article_id": "RSS-905",
+    "title": "传媒广告行业迎来AI驱动增长",
+    "summary": "AI内容生成工具推动传媒行业降本增效，广告主数字化支出Q1增长18%。",
+    "tags": [
+      "传媒",
+      "AI",
+      "增长"
+    ],
+    "url": "https://market-weekly.example.com/905",
+    "content": "AI内容生成工具推动传媒行业降本增效，广告主数字化支出Q1增长18%。",
+    "category": "传媒, AI, 增长",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-21T00:00:00Z",
+    "word_count": 35
+  },
+  {
+    "article_id": "RSS-906",
+    "title": "政府机关数字化转型预算调整",
+    "summary": "多地政府部门IT预算重新分配，部分SaaS项目被暂停或缩减规模。",
+    "tags": [
+      "政府",
+      "预算"
+    ],
+    "url": "https://market-weekly.example.com/906",
+    "content": "多地政府部门IT预算重新分配，部分SaaS项目被暂停或缩减规模。",
+    "category": "政府, 预算",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-19T00:00:00Z",
+    "word_count": 32
+  },
+  {
+    "article_id": "RSS-907",
+    "title": "企业服务赛道投融资盘点",
+    "summary": "Q1企业服务领域完成融资42笔，AI相关项目占比超60%。",
+    "tags": [
+      "投融资",
+      "AI"
+    ],
+    "url": "https://market-weekly.example.com/907",
+    "content": "Q1企业服务领域完成融资42笔，AI相关项目占比超60%。",
+    "category": "投融资, AI",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-23T00:00:00Z",
+    "word_count": 29
+  },
+  {
+    "article_id": "RSS-908",
+    "title": "新能源汽车销量再创新高",
+    "summary": "新能源汽车Q1销量突破200万辆。",
+    "tags": [
+      "汽车",
+      "新能源"
+    ],
+    "url": "https://market-weekly.example.com/908",
+    "content": "新能源汽车Q1销量突破200万辆。",
+    "category": "汽车, 新能源",
+    "source": "市场动态周刊",
+    "published_at": "2026-03-24T00:00:00Z",
+    "word_count": 17
+  }
+]

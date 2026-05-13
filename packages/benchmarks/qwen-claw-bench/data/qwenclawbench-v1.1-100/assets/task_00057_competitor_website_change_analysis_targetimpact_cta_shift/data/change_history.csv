@@ -1,0 +1,46 @@
+scan_date,change_magnitude,sections_changed_count,notable_section,change_summary
+2024-03-19,0.0018,4,blog,New blog post added
+2024-03-20,0.0026,2,about,Team member bio updated
+2024-03-22,0.0028,1,product-features,Feature description minor edit
+2024-03-30,0.0008,4,case-studies,New case study published
+2024-04-01,0.0013,4,blog,Blog post updated with new stats
+2024-04-04,0.0011,2,footer,Footer links updated
+2024-04-07,0.0021,4,about,Company description updated
+2024-04-12,0.0005,1,product-features,New feature badge added
+2024-04-14,0.0025,1,blog,New blog post on deliverability
+2024-04-16,0.0009,4,case-studies,Case study metrics updated
+2024-04-18,0.0006,1,product-features,Integration list expanded
+2024-04-19,0.003,2,about,Office location added
+2024-04-20,0.002,1,blog,Blog post on email trends
+2024-04-23,0.0014,2,footer,Social media links updated
+2024-04-24,0.0018,3,product-features,Feature comparison table updated
+2024-04-25,0.008,5,pricing,Pricing tier description updated
+2024-04-26,0.0071,6,product-features,New feature announcement
+2024-04-27,0.0022,6,cta,Minor CTA button color change
+2024-04-28,0.0014,3,case-studies,New enterprise case study added
+2024-04-29,0.0074,4,blog,Blog post on enterprise email strategy
+2024-05-04,0.001,2,pricing,Enterprise tier details expanded
+2024-05-05,0.0068,6,product-features,AI targeting feature description updated
+2024-05-06,0.0038,6,cta,CTA subtext wording adjusted
+2024-05-08,0.001,6,about,Leadership team page updated
+2024-05-10,0.0022,5,case-studies,ROI metrics updated in case studies
+2024-05-12,0.0079,3,pricing,Annual pricing discount updated
+2024-05-20,0.032,12,pricing,Major pricing page restructure — new enterprise tier prominently featured with custom pricing
+2024-05-19,0.0025,4,product-features,Onboarding feature highlighted
+2024-05-22,0.0034,6,blog,Blog post on consultative selling in martech
+2024-05-24,0.0047,4,pricing,Enterprise contact form redesigned
+2024-05-25,0.0044,7,cta,CTA wording updated on pricing page
+2024-05-26,0.005,3,product-features,White-glove onboarding section added
+2024-05-27,0.0026,7,cta,Consultation CTA time slot changed
+2024-05-29,0.003,6,case-studies,Enterprise customer testimonial added
+2024-06-02,0.0057,8,cta,Main homepage CTA updated to strategy session language
+2024-06-03,0.0061,6,cta,CTA button text changed from 'Get Started' to 'Talk to Sales'
+2024-06-04,0.0079,7,product-features,Dedicated support section expanded
+2024-06-05,0.0062,3,cta,Consultation duration changed in CTA subtext
+2024-06-06,0.005,5,cta,Bottom banner CTA updated with sales option
+2024-06-07,0.0059,4,hero,Hero tagline updated with enterprise language
+2024-06-08,0.0039,11,cta,Consultation CTA updated — duration changed from 15 to 30 minutes
+2024-06-09,0.0065,14,cta,CTA button text changed to include 'Talk to Sales' option
+2024-06-13,0.0095,4,cta,Bottom page CTA banner redesigned with strategy session language
+2024-06-14,0.0082,12,hero,Hero section updated with enterprise growth messaging
+2024-06-15,0.0038,3,cta,Main CTA subtext changed to 'complimentary 30-minute strategy session'

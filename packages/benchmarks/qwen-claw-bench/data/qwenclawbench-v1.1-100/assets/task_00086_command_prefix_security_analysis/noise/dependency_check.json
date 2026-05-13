@@ -1,0 +1,109 @@
+{
+  "auditReportVersion": 2,
+  "metadata": {
+    "vulnerabilities": {
+      "info": 0,
+      "low": 0,
+      "moderate": 3,
+      "high": 3,
+      "critical": 1,
+      "total": 8
+    },
+    "dependencies": {
+      "prod": 247,
+      "dev": 583,
+      "optional": 12,
+      "peer": 34,
+      "peerOptional": 0,
+      "total": 876
+    },
+    "scan_timestamp": "2025-01-14T09:32:17Z",
+    "scanner": "npm-audit-v8.19.2",
+    "project": "webapp-frontend",
+    "node_version": "v20.11.0",
+    "npm_version": "10.2.4"
+  },
+  "vulnerabilities": [
+    {
+      "name": "lodash",
+      "version": "4.17.15",
+      "severity": "high",
+      "cve": "CVE-2020-28500",
+      "title": "Prototype Pollution in lodash",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-28500",
+      "patched_version": ">=4.17.21",
+      "dependency_of": "express"
+    },
+    {
+      "name": "minimist",
+      "version": "1.2.5",
+      "severity": "critical",
+      "cve": "CVE-2021-44906",
+      "title": "Prototype Pollution in minimist",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-44906",
+      "patched_version": ">=1.2.6",
+      "dependency_of": "mkdirp"
+    },
+    {
+      "name": "express",
+      "version": "4.17.1",
+      "severity": "medium",
+      "cve": "CVE-2022-24999",
+      "title": "Open Redirect in express",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-24999",
+      "patched_version": ">=4.18.2",
+      "dependency_of": "direct"
+    },
+    {
+      "name": "json5",
+      "version": "2.2.1",
+      "severity": "high",
+      "cve": "CVE-2022-46175",
+      "title": "Prototype Pollution in json5",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-46175",
+      "patched_version": ">=2.2.2",
+      "dependency_of": "tsconfig-paths"
+    },
+    {
+      "name": "semver",
+      "version": "7.3.7",
+      "severity": "moderate",
+      "cve": "CVE-2022-25883",
+      "title": "Regular Expression Denial of Service in semver",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-25883",
+      "patched_version": ">=7.5.2",
+      "dependency_of": "npm"
+    },
+    {
+      "name": "tough-cookie",
+      "version": "4.1.2",
+      "severity": "moderate",
+      "cve": "CVE-2023-26136",
+      "title": "Prototype Pollution in tough-cookie",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-26136",
+      "patched_version": ">=4.1.3",
+      "dependency_of": "jsdom"
+    },
+    {
+      "name": "word-wrap",
+      "version": "1.2.3",
+      "severity": "moderate",
+      "cve": "CVE-2023-26115",
+      "title": "Regular Expression Denial of Service in word-wrap",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-26115",
+      "patched_version": ">=1.2.4",
+      "dependency_of": "optionator"
+    },
+    {
+      "name": "axios",
+      "version": "0.21.1",
+      "severity": "high",
+      "cve": "CVE-2023-45857",
+      "title": "Cross-Site Request Forgery in axios",
+      "url": "https://nvd.nist.gov/vuln/detail/CVE-2023-45857",
+      "patched_version": ">=1.6.0",
+      "dependency_of": "direct"
+    }
+  ],
+  "summary": "Found 8 vulnerabilities (3 moderate, 3 high, 1 critical) in 876 scanned packages. Run 'npm audit fix' to resolve 5 of them."
+}

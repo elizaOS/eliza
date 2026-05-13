@@ -1,0 +1,56 @@
+============================================================
+INTERNAL ANALYST NOTES — COMPETITIVE INTELLIGENCE
+============================================================
+Analyst: Sarah Chen, Senior Competitive Intelligence Analyst
+Date: 2024-03-12
+Subject: TargetImpact (https://targetimpact.com/) — Quarterly Strategy Assessment
+Classification: Internal Use Only
+============================================================
+
+EXECUTIVE SUMMARY
+-----------------
+TargetImpact appears to be doubling down on self-service model. Their CTA
+still offers a 15-minute consultation which signals low-touch sales approach.
+No indication of enterprise pivot. Significance of recent changes: minimal.
+
+DETAILED OBSERVATIONS
+---------------------
+1. Website Messaging:
+   - Primary CTA remains "Schedule your free 15-minute consultation today"
+   - This is consistent with their historical positioning as a self-serve
+     platform with optional lightweight support
+   - The 15-minute window is deliberately short, suggesting they want to
+     qualify leads quickly and push them toward self-onboarding
+   - No changes to enterprise-oriented language detected
+
+2. Product Positioning:
+   - TargetImpact continues to emphasize ease-of-use and quick setup
+   - Their messaging targets small business owners and solo marketers
+   - No dedicated enterprise page or custom pricing visible
+   - Feature comparisons focus on simplicity over advanced capabilities
+
+3. Sales Model Assessment:
+   - All indicators point to continued self-service / low-touch approach
+   - No evidence of expanded sales team or account management offerings
+   - Support model appears unchanged (email + knowledge base)
+   - Consultation offering is minimal — 15 minutes is a screening call,
+     not a strategy session
+
+4. Competitive Threat Level: LOW
+   - TargetImpact is not currently positioned to compete for mid-market
+     or enterprise deals
+   - Their self-service model limits average deal size
+   - Unlikely to be a factor in enterprise RFPs
+
+RECOMMENDATION
+--------------
+Continue monitoring on standard quarterly cadence. No escalation needed.
+TargetImpact's strategy remains predictable and self-service oriented.
+Recommend focusing competitive resources on MailReach and CampaignForge
+who show more aggressive enterprise positioning.
+
+Next review scheduled: 2024-06-12
+
+============================================================
+END OF NOTES
+============================================================

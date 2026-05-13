@@ -1,22 +1,20 @@
-import {
-  Button,
-  ConfirmDelete,
-  Input,
-  PageLayout,
-  PagePanel,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  SkillSidebarItem,
-  StatusBadge,
-  Switch,
-} from "@elizaos/ui";
-import { RefreshCw } from "lucide-react";
+import { Brain, Plus, RefreshCw, Sparkles, Store } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import type { SkillInfo } from "../../api";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
+import { SkillSidebarItem } from "../composites/skills/skill-sidebar-item";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { ConfirmDelete } from "../ui/confirm-delete";
+import { Input } from "../ui/input";
+import { StatusBadge } from "../ui/status-badge";
+import { Switch } from "../ui/switch";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
 
@@ -334,40 +332,68 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
 
             <div className="bg-bg/18 px-4 py-4 sm:px-5">
               {skills.length === 0 && !skillCreateFormOpen ? (
-                <PagePanel.Empty
+                <PagePanel
                   data-testid="skills-empty-state"
                   variant="surface"
-                  className="min-h-[18rem] rounded-3xl px-6 py-12"
-                  title={t("skillsview.noSkillsInstalled", {
-                    defaultValue: "No Skills Installed",
-                  })}
-                  description={t("skillsview.noSkillsInstalledDesc", {
-                    defaultValue:
-                      "Install skills from the marketplace or create your own.",
-                  })}
-                  action={
+                  className="grid min-h-[20rem] place-items-center rounded-3xl px-6 py-10"
+                >
+                  <div className="w-full max-w-2xl text-center">
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-accent/25 bg-accent/12 text-accent">
+                      <Brain className="h-7 w-7" />
+                    </div>
+                    <h2 className="mt-4 text-base font-semibold text-txt">
+                      {t("skillsview.noSkillsInstalled", {
+                        defaultValue: "No Skills Installed",
+                      })}
+                    </h2>
+                    <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                      {[
+                        { label: "Install", icon: Store, tone: "text-info" },
+                        { label: "Create", icon: Plus, tone: "text-ok" },
+                        {
+                          label: "Review",
+                          icon: Sparkles,
+                          tone: "text-warning",
+                        },
+                      ].map((item) => {
+                        const Icon = item.icon;
+                        return (
+                          <div
+                            key={item.label}
+                            className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3"
+                          >
+                            <Icon className={`mx-auto h-4 w-4 ${item.tone}`} />
+                            <div className="mt-2 text-xs font-semibold text-muted">
+                              {item.label}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                     <div className="flex w-full flex-col justify-center gap-2 sm:w-auto sm:flex-row sm:gap-3">
                       <Button
                         variant="default"
                         size="sm"
-                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
+                        className="mt-5 h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
                         onClick={() => setInstallModalOpen(true)}
                       >
+                        <Store className="mr-2 h-4 w-4" />
                         {t("skillsview.BrowseMarketplace")}
                       </Button>
                       <Button
                         variant="outline"
                         size="sm"
-                        className="h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:w-auto"
+                        className="mt-0 h-10 w-full justify-center rounded-full px-5 font-bold tracking-[0.12em] sm:mt-5 sm:w-auto"
                         onClick={() => setState("skillCreateFormOpen", true)}
                       >
+                        <Plus className="mr-2 h-4 w-4" />
                         {t("skillsview.createSkill", {
                           defaultValue: "Create Skill",
                         })}
                       </Button>
                     </div>
-                  }
-                />
+                  </div>
+                </PagePanel>
               ) : filteredSkills.length === 0 && !skillCreateFormOpen ? (
                 <PagePanel.Empty
                   data-testid="skills-filter-empty"

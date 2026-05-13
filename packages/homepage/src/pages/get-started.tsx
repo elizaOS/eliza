@@ -14,8 +14,8 @@
  */
 
 import { animated, useSpring, useTrail } from "@react-spring/web";
-import { ArrowLeft, Check, Copy, ExternalLink, Info } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
@@ -36,6 +36,7 @@ import {
   type TelegramAuthData,
   useAuth,
 } from "@/lib/context/auth-context";
+import { useElizaAppProvisioningChat } from "@/lib/hooks/use-eliza-app-provisioning-chat";
 
 type TelegramLoginApi = {
   Login?: {
@@ -90,7 +91,8 @@ type OnboardingStep =
   | "SUCCESS"
   | "DISCORD_CALLBACK"
   | "DISCORD_PHONE_INPUT"
-  | "DISCORD_SETUP_GUIDE";
+  | "DISCORD_SETUP_GUIDE"
+  | "PROVISIONING_CHAT";
 
 // ============================================================================
 // Icons
@@ -249,6 +251,205 @@ function SuccessRedirect({
 }
 
 // ============================================================================
+// Provisioning Chat Step — live Cerebras chat while container warms up
+// ============================================================================
+
+const MONO = "'Courier New', 'Courier', 'Monaco', monospace";
+
+function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
+  const { messages, sendMessage, containerStatus, isLoading, isReady } =
+    useElizaAppProvisioningChat(true);
+  const [input, setInput] = useState("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  const handleSend = useCallback(async () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+    setInput("");
+    await sendMessage(text);
+    inputRef.current?.focus();
+  }, [input, isLoading, sendMessage]);
+
+  const statusLabel = isReady
+    ? "Ready! Connecting..."
+    : containerStatus === "error"
+      ? "Setup failed — please refresh."
+      : "Setting up your AI space...";
+
+  const statusColor = isReady
+    ? "#4ade80"
+    : containerStatus === "error"
+      ? "#f87171"
+      : "#229ED9";
+
+  return (
+    <div style={{ width: "100%", maxWidth: "420px", fontFamily: MONO }}>
+      {/* Status bar */}
+      <div className="flex items-center gap-2 mb-4">
+        <span
+          style={{
+            display: "inline-block",
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            backgroundColor: statusColor,
+            animation: isReady ? "none" : "gs-pulse 2s ease-in-out infinite",
+            flexShrink: 0,
+          }}
+        />
+        <span className="text-xs text-neutral-500 uppercase tracking-widest">
+          {statusLabel}
+        </span>
+        {!isReady && (
+          <button
+            type="button"
+            onClick={onContinue}
+            className="ml-auto text-xs text-neutral-400 hover:text-neutral-600 underline underline-offset-2"
+          >
+            Skip to dashboard
+          </button>
+        )}
+      </div>
+
+      <style>{`
+        @keyframes gs-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+      `}</style>
+
+      {/* Message list */}
+      <div
+        style={{
+          height: "min(360px, 55vh)",
+          overflowY: "auto",
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          padding: 12,
+          background: "rgba(255,255,255,0.38)",
+          backdropFilter: "blur(8px)",
+          border: "1.5px solid rgba(255,255,255,0.55)",
+          borderRadius: 12,
+          marginBottom: 10,
+        }}
+      >
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            style={{
+              display: "flex",
+              justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+            }}
+          >
+            <div
+              style={{
+                maxWidth: "80%",
+                padding: "8px 12px",
+                borderRadius:
+                  msg.role === "user"
+                    ? "14px 14px 4px 14px"
+                    : "14px 14px 14px 4px",
+                background:
+                  msg.role === "user" ? "#1a1a1a" : "rgba(255,255,255,0.72)",
+                border:
+                  msg.role === "user" ? "none" : "1px solid rgba(0,0,0,0.08)",
+                fontSize: 13,
+                lineHeight: 1.5,
+                color: msg.role === "user" ? "#ffffff" : "#1a1a1a",
+              }}
+            >
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div style={{ display: "flex", justifyContent: "flex-start" }}>
+            <div
+              style={{
+                padding: "8px 14px",
+                borderRadius: "14px 14px 14px 4px",
+                background: "rgba(255,255,255,0.72)",
+                fontSize: 12,
+                color: "#999",
+                letterSpacing: "0.1em",
+              }}
+            >
+              ...
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          ref={inputRef}
+          type="text"
+          placeholder={isReady ? "Ready!" : "Ask me anything..."}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void handleSend();
+            }
+          }}
+          disabled={isLoading}
+          style={{
+            flex: 1,
+            height: 44,
+            padding: "0 14px",
+            borderRadius: 10,
+            border: "1.5px solid rgba(0,0,0,0.15)",
+            background: "rgba(255,255,255,0.6)",
+            backdropFilter: "blur(8px)",
+            fontSize: 14,
+            fontFamily: MONO,
+            outline: "none",
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => void handleSend()}
+          disabled={isLoading || !input.trim()}
+          style={{
+            width: 44,
+            height: 44,
+            borderRadius: 10,
+            border: "none",
+            background:
+              isLoading || !input.trim() ? "rgba(0,0,0,0.15)" : "#1a1a1a",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: isLoading || !input.trim() ? "not-allowed" : "pointer",
+            transition: "background 0.15s",
+          }}
+        >
+          <Send size={16} />
+        </button>
+      </div>
+
+      {/* Continue button when ready */}
+      {isReady && (
+        <Button
+          onClick={onContinue}
+          className="w-full h-[52px] rounded-xl bg-neutral-900 text-white font-medium hover:bg-neutral-800 mt-4"
+        >
+          <Check className="size-4 mr-2" />
+          Continue to dashboard
+        </Button>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // Inner Component that uses searchParams (needs Suspense boundary)
 // ============================================================================
 
@@ -392,7 +593,7 @@ export default function GetStartedPage() {
   }, [isLinkMode]);
 
   // Redirect if already authenticated (unless suppressed for setup guide, link mode,
-  // or an unprocessed Discord callback code is present in the URL).
+  // provisioning chat, or an unprocessed Discord callback code is present in the URL).
   useEffect(() => {
     if (
       !authLoading &&
@@ -400,7 +601,8 @@ export default function GetStartedPage() {
       !suppressRedirect &&
       !guideParam &&
       !isLinkMode &&
-      !discordCode
+      !discordCode &&
+      step !== "PROVISIONING_CHAT"
     ) {
       navigate("/connected", { replace: true });
     }
@@ -412,6 +614,7 @@ export default function GetStartedPage() {
     guideParam,
     isLinkMode,
     discordCode,
+    step,
   ]);
 
   // Handle query params: method shortcut, Discord OAuth callback, or guide revisit
@@ -639,10 +842,9 @@ export default function GetStartedPage() {
 
     if (result.success) {
       if (isLinkMode) {
-        // In link mode, go back to connected page after linking
         navigate("/connected", { replace: true });
       } else {
-        setStep("SUCCESS");
+        setStep("PROVISIONING_CHAT");
       }
     } else {
       // Handle specific error codes with user-friendly messages
@@ -716,10 +918,9 @@ export default function GetStartedPage() {
 
       if (result.success) {
         if (isLinkMode) {
-          // In link mode, go back to connected page after linking
           navigate("/connected", { replace: true });
         } else {
-          setStep("DISCORD_SETUP_GUIDE");
+          setStep("PROVISIONING_CHAT");
         }
       } else {
         setSuppressRedirect(false);
@@ -839,7 +1040,8 @@ export default function GetStartedPage() {
     !suppressRedirect &&
     !isLinkMode &&
     !guideParam &&
-    !discordCode
+    !discordCode &&
+    step !== "PROVISIONING_CHAT"
   ) {
     return (
       <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
@@ -908,6 +1110,19 @@ export default function GetStartedPage() {
           {/* ============================================================ */}
           {step === "SELECT_METHOD" && (
             <>
+              {/* Chat teaser — shows the welcome message before login */}
+              <animated.div style={titleSpring} className="w-full mb-6">
+                <div className="w-full px-4 py-3 rounded-xl bg-white/40 backdrop-blur-sm border border-white/60 flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold text-white">
+                    E
+                  </div>
+                  <p className="text-sm text-neutral-700 leading-relaxed">
+                    Hi! I'm Eliza. Connect below and I'll have your personal AI
+                    space ready — we can talk while it warms up.
+                  </p>
+                </div>
+              </animated.div>
+
               <animated.div style={titleSpring}>
                 <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-2 whitespace-nowrap">
                   Anywhere you want her to be.
@@ -1202,14 +1417,21 @@ export default function GetStartedPage() {
           )}
 
           {/* ============================================================ */}
-          {/* STEP: SUCCESS (after Telegram + phone signup) */}
-          {/* Auto-redirects to Telegram after 2 seconds */}
+          {/* STEP: SUCCESS (after Telegram + phone signup, legacy fallback) */}
           {/* ============================================================ */}
           {step === "SUCCESS" && (
             <SuccessRedirect
               getTelegramBotUsername={getTelegramBotUsername}
               handleOpenMessages={handleOpenMessages}
             />
+          )}
+
+          {/* ============================================================ */}
+          {/* STEP: PROVISIONING_CHAT */}
+          {/* Live chat with Cerebras placeholder agent while container provisions */}
+          {/* ============================================================ */}
+          {step === "PROVISIONING_CHAT" && (
+            <ProvisioningChatStep onContinue={() => navigate("/connected")} />
           )}
 
           {/* ============================================================ */}

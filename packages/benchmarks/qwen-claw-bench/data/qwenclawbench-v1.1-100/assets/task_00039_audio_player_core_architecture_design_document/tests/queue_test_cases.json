@@ -1,0 +1,196 @@
+{
+  "test_suite": "queue_management",
+  "version": "2.0.0",
+  "test_cases": [
+    {
+      "test_name": "test_add_track_to_empty_queue",
+      "operation": "add",
+      "initial_queue": [],
+      "params": {
+        "track_id": "aaa-001",
+        "position": null
+      },
+      "expected_queue": ["aaa-001"],
+      "expected_result": {"ok": 0}
+    },
+    {
+      "test_name": "test_add_track_to_end",
+      "operation": "add",
+      "initial_queue": ["aaa-001", "bbb-002"],
+      "params": {
+        "track_id": "ccc-003",
+        "position": null
+      },
+      "expected_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "expected_result": {"ok": 2}
+    },
+    {
+      "test_name": "test_add_track_at_position",
+      "operation": "add",
+      "initial_queue": ["aaa-001", "ccc-003"],
+      "params": {
+        "track_id": "bbb-002",
+        "position": 1
+      },
+      "expected_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "expected_result": {"ok": 1}
+    },
+    {
+      "test_name": "test_add_track_at_beginning",
+      "operation": "add",
+      "initial_queue": ["bbb-002", "ccc-003"],
+      "params": {
+        "track_id": "aaa-001",
+        "position": 0
+      },
+      "expected_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "expected_result": {"ok": 0}
+    },
+    {
+      "test_name": "test_add_duplicate_track",
+      "operation": "add",
+      "initial_queue": ["aaa-001", "bbb-002"],
+      "params": {
+        "track_id": "aaa-001",
+        "position": null
+      },
+      "expected_queue": ["aaa-001", "bbb-002", "aaa-001"],
+      "expected_result": {"ok": 2},
+      "notes": "Duplicate tracks are allowed in the queue"
+    },
+    {
+      "test_name": "test_add_track_to_full_queue",
+      "operation": "add",
+      "initial_queue": "__FULL_QUEUE_10000__",
+      "params": {
+        "track_id": "overflow-001",
+        "position": null
+      },
+      "expected_queue": "__FULL_QUEUE_10000__",
+      "expected_result": {"err": "QueueFull"},
+      "notes": "Queue has max_queue_size of 10000"
+    },
+    {
+      "test_name": "test_remove_track_by_index",
+      "operation": "remove",
+      "initial_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "params": {
+        "target": {"ByIndex": 1}
+      },
+      "expected_queue": ["aaa-001", "ccc-003"],
+      "expected_result": {"ok": "bbb-002"}
+    },
+    {
+      "test_name": "test_remove_track_by_id",
+      "operation": "remove",
+      "initial_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "params": {
+        "target": {"ByTrackId": "bbb-002"}
+      },
+      "expected_queue": ["aaa-001", "ccc-003"],
+      "expected_result": {"ok": "bbb-002"}
+    },
+    {
+      "test_name": "test_remove_nonexistent_track_by_id",
+      "operation": "remove",
+      "initial_queue": ["aaa-001", "bbb-002"],
+      "params": {
+        "target": {"ByTrackId": "zzz-999"}
+      },
+      "expected_queue": ["aaa-001", "bbb-002"],
+      "expected_result": {"err": "TrackNotFound"}
+    },
+    {
+      "test_name": "test_remove_out_of_bounds_index",
+      "operation": "remove",
+      "initial_queue": ["aaa-001", "bbb-002"],
+      "params": {
+        "target": {"ByIndex": 5}
+      },
+      "expected_queue": ["aaa-001", "bbb-002"],
+      "expected_result": {"err": "IndexOutOfBounds"}
+    },
+    {
+      "test_name": "test_remove_from_empty_queue",
+      "operation": "remove",
+      "initial_queue": [],
+      "params": {
+        "target": {"ByIndex": 0}
+      },
+      "expected_queue": [],
+      "expected_result": {"err": "IndexOutOfBounds"}
+    },
+    {
+      "test_name": "test_reorder_move_forward",
+      "operation": "reorder",
+      "initial_queue": ["aaa-001", "bbb-002", "ccc-003", "ddd-004"],
+      "params": {
+        "from_index": 0,
+        "to_index": 2
+      },
+      "expected_queue": ["bbb-002", "ccc-003", "aaa-001", "ddd-004"],
+      "expected_result": {"ok": null}
+    },
+    {
+      "test_name": "test_reorder_move_backward",
+      "operation": "reorder",
+      "initial_queue": ["aaa-001", "bbb-002", "ccc-003", "ddd-004"],
+      "params": {
+        "from_index": 3,
+        "to_index": 1
+      },
+      "expected_queue": ["aaa-001", "ddd-004", "bbb-002", "ccc-003"],
+      "expected_result": {"ok": null}
+    },
+    {
+      "test_name": "test_reorder_same_position",
+      "operation": "reorder",
+      "initial_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "params": {
+        "from_index": 1,
+        "to_index": 1
+      },
+      "expected_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "expected_result": {"ok": null},
+      "notes": "No-op when from and to are the same"
+    },
+    {
+      "test_name": "test_reorder_out_of_bounds",
+      "operation": "reorder",
+      "initial_queue": ["aaa-001", "bbb-002"],
+      "params": {
+        "from_index": 0,
+        "to_index": 10
+      },
+      "expected_queue": ["aaa-001", "bbb-002"],
+      "expected_result": {"err": "IndexOutOfBounds"}
+    },
+    {
+      "test_name": "test_clear_populated_queue",
+      "operation": "clear",
+      "initial_queue": ["aaa-001", "bbb-002", "ccc-003"],
+      "params": {},
+      "expected_queue": [],
+      "expected_result": {"ok": ["aaa-001", "bbb-002", "ccc-003"]}
+    },
+    {
+      "test_name": "test_clear_empty_queue",
+      "operation": "clear",
+      "initial_queue": [],
+      "params": {},
+      "expected_queue": [],
+      "expected_result": {"ok": []},
+      "notes": "Clearing an empty queue is a valid no-op"
+    },
+    {
+      "test_name": "test_remove_last_track",
+      "operation": "remove",
+      "initial_queue": ["aaa-001"],
+      "params": {
+        "target": {"ByIndex": 0}
+      },
+      "expected_queue": [],
+      "expected_result": {"ok": "aaa-001"}
+    }
+  ]
+}

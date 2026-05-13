@@ -3,7 +3,7 @@ import { VrmEngine, type VrmEngineState } from "./VrmEngine";
 
 const DEFAULT_VRM_PATH = "/bot.vrm";
 
-export type VrmViewerProps = {
+type VrmViewerProps = {
   mouthOpen: number;
   onEngineState?: (state: VrmEngineState) => void;
   onEngineReady?: (engine: VrmEngine) => void;

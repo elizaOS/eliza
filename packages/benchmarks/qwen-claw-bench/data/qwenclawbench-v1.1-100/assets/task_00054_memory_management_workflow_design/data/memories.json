@@ -1,0 +1,632 @@
+[
+  {
+    "id": "b8387a54-f2f5-4b27-a2e3-86d747a098f6",
+    "type": "ad_hoc",
+    "content": "Book club meeting moved to the second Tuesday of each month",
+    "created_at": "2024-06-14T12:01:00Z",
+    "last_accessed": "2024-08-02T14:41:00Z",
+    "priority": "low",
+    "tags": [
+      "personal",
+      "social",
+      "schedule"
+    ],
+    "expired": false
+  },
+  {
+    "id": "30c506a4-f02d-457c-86d4-686f412d2d27",
+    "type": "ad_hoc",
+    "content": "Dentist recommended switching to an electric toothbrush",
+    "created_at": "2024-07-17T14:22:00Z",
+    "last_accessed": "2024-05-23T14:50:00Z",
+    "priority": "low",
+    "tags": [
+      "personal",
+      "health",
+      "dental"
+    ],
+    "expired": true
+  },
+  {
+    "id": "8e2622fa-7492-46f5-88b7-01a32db85fe5",
+    "type": "ad_hoc",
+    "content": "The standup meeting covers blockers, yesterday's progress, and today's plan",
+    "created_at": "2024-09-21T10:13:00Z",
+    "last_accessed": "2024-09-18T13:07:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "meetings",
+      "standup"
+    ],
+    "expired": false
+  },
+  {
+    "id": "7ee1f4b5-87e3-4b34-9b27-32685a4ec321",
+    "type": "ad_hoc",
+    "content": "Team lunch preference poll: Thai food won with 8 votes",
+    "created_at": "2024-06-02T21:20:00Z",
+    "last_accessed": "2024-05-12T18:39:00Z",
+    "priority": "low",
+    "tags": [
+      "work",
+      "social",
+      "food"
+    ],
+    "expired": true
+  },
+  {
+    "id": "d99e65e4-6586-4bf2-a374-c7f5f0891bea",
+    "type": "recurring",
+    "content": "Check project deadlines and update Gantt chart",
+    "created_at": "2024-03-20T21:32:00Z",
+    "last_accessed": "2024-09-22T06:09:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "projects",
+      "deadlines"
+    ],
+    "expired": false
+  },
+  {
+    "id": "aaeff385-bbcf-4c7e-8dd2-f26603c7c770",
+    "type": "recurring",
+    "content": "Water office plants every Monday morning",
+    "created_at": "2024-07-07T23:27:00Z",
+    "last_accessed": "2024-06-26T14:49:00Z",
+    "priority": "low",
+    "tags": [
+      "personal",
+      "errands",
+      "routine"
+    ],
+    "expired": true
+  },
+  {
+    "id": "21140064-8b51-4c03-9a76-baffd0990b4c",
+    "type": "ad_hoc",
+    "content": "Remember to take BP medication every morning at 8 AM",
+    "created_at": "2024-06-22T08:29:00Z",
+    "last_accessed": "2024-08-07T07:30:00Z",
+    "priority": "high",
+    "tags": [
+      "personal",
+      "health",
+      "medication"
+    ],
+    "expired": false
+  },
+  {
+    "id": "732eb978-107c-49aa-9bf9-f29ea428b53e",
+    "type": "recurring",
+    "content": "Backup local files to cloud storage every evening",
+    "created_at": "2024-07-04T07:49:00Z",
+    "last_accessed": "2024-05-11T20:22:00Z",
+    "priority": "low",
+    "tags": [
+      "personal",
+      "tech",
+      "backup"
+    ],
+    "expired": true
+  },
+  {
+    "id": "a3ceedb2-6afa-4f95-8b2f-4734fb1f0959",
+    "type": "ad_hoc",
+    "content": "Need to buy a birthday gift for Jake - he likes woodworking tools",
+    "created_at": "2024-07-29T01:23:00Z",
+    "last_accessed": "2024-08-18T21:55:00Z",
+    "priority": "medium",
+    "tags": [
+      "personal",
+      "shopping",
+      "gifts"
+    ],
+    "expired": false
+  },
+  {
+    "id": "a8999f2f-a54d-4944-a630-7de86a5e9671",
+    "type": "ad_hoc",
+    "content": "The product roadmap presentation is scheduled for October 30",
+    "created_at": "2024-08-11T04:42:00Z",
+    "last_accessed": "2024-09-15T17:57:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "meetings",
+      "product"
+    ],
+    "expired": false
+  },
+  {
+    "id": "af1ce431-38e7-4600-b9cf-d1841c92128e",
+    "type": "ad_hoc",
+    "content": "API rate limit for the analytics service is 1000 requests per minute",
+    "created_at": "2024-04-29T17:36:00Z",
+    "last_accessed": "2024-09-03T10:23:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "reference",
+      "technical"
+    ],
+    "expired": false
+  },
+  {
+    "id": "d5426821-f0d4-489a-ba25-ce305542f9e7",
+    "type": "ad_hoc",
+    "content": "Shopping list: milk, eggs, bread, avocados, chicken breast, olive oil",
+    "created_at": "2024-09-17T21:53:00Z",
+    "last_accessed": "2024-05-02T23:02:00Z",
+    "priority": "low",
+    "tags": [
+      "personal",
+      "shopping",
+      "groceries"
+    ],
+    "expired": true
+  },
+  {
+    "id": "5561be5b-371a-4b96-a41b-b39acbf0adb7",
+    "type": "ad_hoc",
+    "content": "Meeting with Sarah from marketing on Oct 15 to discuss Q4 campaign strategy",
+    "created_at": "2024-08-03T06:08:00Z",
+    "last_accessed": "2024-08-30T13:13:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "meetings",
+      "marketing"
+    ],
+    "expired": false
+  },
+  {
+    "id": "fa0dc14a-c29e-4fc3-8910-f6474203ab12",
+    "type": "ad_hoc",
+    "content": "Dr. Martinez appointment on October 22 at 3:30 PM for annual checkup",
+    "created_at": "2024-05-17T19:08:00Z",
+    "last_accessed": "2024-10-01T11:14:00Z",
+    "priority": "high",
+    "tags": [
+      "personal",
+      "health",
+      "appointments"
+    ],
+    "expired": false
+  },
+  {
+    "id": "fb0692d3-233e-4fe8-a8ea-c251a96a70d8",
+    "type": "ad_hoc",
+    "content": "Remember that Lisa in accounting prefers phone calls over email",
+    "created_at": "2024-04-06T21:53:00Z",
+    "last_accessed": "2024-08-20T02:13:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "contacts",
+      "preferences"
+    ],
+    "expired": false
+  },
+  {
+    "id": "d69e7b03-b38a-45aa-b85c-7c8cfe814b13",
+    "type": "ad_hoc",
+    "content": "Flight to Chicago on November 3, United UA-1247, departs 7:15 AM",
+    "created_at": "2024-06-19T08:27:00Z",
+    "last_accessed": "2024-09-20T03:19:00Z",
+    "priority": "high",
+    "tags": [
+      "personal",
+      "travel",
+      "flights"
+    ],
+    "expired": false
+  },
+  {
+    "id": "8771bf53-efdf-45b5-9355-2d5edf218aaa",
+    "type": "recurring",
+    "content": "Take blood pressure medication at 8:00 AM",
+    "created_at": "2024-07-09T01:02:00Z",
+    "last_accessed": "2024-09-18T12:14:00Z",
+    "priority": "high",
+    "tags": [
+      "personal",
+      "health",
+      "medication"
+    ],
+    "expired": false
+  },
+  {
+    "id": "c69ad21a-77ed-4471-9c7a-9ee8acb6e881",
+    "type": "ad_hoc",
+    "content": "Remember that the office thermostat code is 7832",
+    "created_at": "2024-04-14T10:15:00Z",
+    "last_accessed": "2024-09-07T23:07:00Z",
+    "priority": "low",
+    "tags": [
+      "work",
+      "reference",
+      "facilities"
+    ],
+    "expired": false
+  },
+  {
+    "id": "a8b8620f-5c36-4dba-bdeb-4f24e2dfeee4",
+    "type": "ad_hoc",
+    "content": "The client (Acme Corp) prefers communication via email, not Slack",
+    "created_at": "2024-08-27T08:48:00Z",
+    "last_accessed": "2024-09-04T05:48:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "contacts",
+      "preferences"
+    ],
+    "expired": false
+  },
+  {
+    "id": "72e12365-7778-4887-9044-600ccb02c38c",
+    "type": "ad_hoc",
+    "content": "Remember that Jenkins build server IP is 10.0.5.42",
+    "created_at": "2024-04-26T18:07:00Z",
+    "last_accessed": "2024-09-10T02:45:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "reference",
+      "technical"
+    ],
+    "expired": false
+  },
+  {
+    "id": "c04f9f9d-6828-454a-a539-f6e7c2b29dc2",
+    "type": "ad_hoc",
+    "content": "User's favorite coffee shop is Blue Bottle on 3rd Street",
+    "created_at": "2024-07-27T01:04:00Z",
+    "last_accessed": "2024-05-29T19:25:00Z",
+    "priority": "low",
+    "tags": [
+      "personal",
+      "preferences",
+      "food"
+    ],
+    "expired": true
+  },
+  {
+    "id": "e07f6250-c7d2-427e-be5e-e08fd1a45b5e",
+    "type": "ad_hoc",
+    "content": "Favorite restaurant for client dinners: Osteria Mozza on Highland",
+    "created_at": "2024-08-05T15:42:00Z",
+    "last_accessed": "2024-06-25T06:08:00Z",
+    "priority": "low",
+    "tags": [
+      "work",
+      "preferences",
+      "dining"
+    ],
+    "expired": true
+  },
+  {
+    "id": "51334465-ad9f-44a5-9621-bebe4c4fd920",
+    "type": "ad_hoc",
+    "content": "Need to renew car registration before November 30",
+    "created_at": "2024-05-09T18:22:00Z",
+    "last_accessed": "2024-08-05T13:52:00Z",
+    "priority": "medium",
+    "tags": [
+      "personal",
+      "errands",
+      "deadlines"
+    ],
+    "expired": false
+  },
+  {
+    "id": "c580d31a-5934-451a-9cd7-f59b6f4f971a",
+    "type": "ad_hoc",
+    "content": "Remember that the WiFi password for the conference room is 'Spark2024!'",
+    "created_at": "2024-05-14T17:21:00Z",
+    "last_accessed": "2024-08-02T00:37:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "reference",
+      "IT"
+    ],
+    "expired": false
+  },
+  {
+    "id": "def6568a-55f9-4e01-a1a7-ca802b32d2a2",
+    "type": "ad_hoc",
+    "content": "The design review for the mobile app is on October 18 at 11 AM",
+    "created_at": "2024-06-19T02:27:00Z",
+    "last_accessed": "2024-09-05T01:31:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "meetings",
+      "design"
+    ],
+    "expired": false
+  },
+  {
+    "id": "3aae9b63-457b-4731-a35e-31adadf76c98",
+    "type": "recurring",
+    "content": "Review inbox and respond to urgent emails before 10 AM",
+    "created_at": "2024-06-19T18:13:00Z",
+    "last_accessed": "2024-09-18T02:40:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "email",
+      "daily"
+    ],
+    "expired": false
+  },
+  {
+    "id": "6983c799-c6d0-418e-9d4e-f987081e08cd",
+    "type": "ad_hoc",
+    "content": "The new hire (Alex Kim) starts on October 7 - prepare onboarding docs",
+    "created_at": "2024-05-08T08:42:00Z",
+    "last_accessed": "2024-08-02T01:20:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "team",
+      "onboarding"
+    ],
+    "expired": false
+  },
+  {
+    "id": "408c2c3b-9af1-4e61-8b1a-f9389a532e9f",
+    "type": "recurring",
+    "content": "Prepare agenda for Monday morning leadership sync",
+    "created_at": "2024-04-04T03:58:00Z",
+    "last_accessed": "2024-09-25T19:03:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "meetings",
+      "leadership"
+    ],
+    "expired": false
+  },
+  {
+    "id": "4924a2e8-33ca-4530-b77b-77734f431e9a",
+    "type": "ad_hoc",
+    "content": "The quarterly budget review is scheduled for October 28",
+    "created_at": "2024-08-19T14:49:00Z",
+    "last_accessed": "2024-09-07T03:08:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "meetings",
+      "finance"
+    ],
+    "expired": false
+  },
+  {
+    "id": "8c071086-32c8-41fe-a05b-fa0c59b2502c",
+    "type": "ad_hoc",
+    "content": "Mom's birthday is December 14 - she mentioned wanting a new scarf",
+    "created_at": "2024-04-12T02:41:00Z",
+    "last_accessed": "2024-08-10T03:06:00Z",
+    "priority": "high",
+    "tags": [
+      "personal",
+      "reminders",
+      "family"
+    ],
+    "expired": false
+  },
+  {
+    "id": "3f806032-5459-4cb0-8838-506859b9aadf",
+    "type": "recurring",
+    "content": "Weekly report submission due every Friday by 5 PM",
+    "created_at": "2024-08-01T07:09:00Z",
+    "last_accessed": "2024-09-21T19:35:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "deadlines",
+      "reports"
+    ],
+    "expired": false
+  },
+  {
+    "id": "6686b9aa-da86-4ef5-9ffb-5a9f34c26f31",
+    "type": "ad_hoc",
+    "content": "Gym membership renewal is due January 15, 2025 - annual rate is $480",
+    "created_at": "2024-04-05T08:12:00Z",
+    "last_accessed": "2024-09-04T12:02:00Z",
+    "priority": "medium",
+    "tags": [
+      "personal",
+      "finance",
+      "health"
+    ],
+    "expired": false
+  },
+  {
+    "id": "664c0918-c504-47bd-ba5a-182650fd28c7",
+    "type": "recurring",
+    "content": "Team retrospective meeting every other Thursday at 2 PM",
+    "created_at": "2024-05-23T11:40:00Z",
+    "last_accessed": "2024-09-28T15:06:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "meetings",
+      "retro"
+    ],
+    "expired": false
+  },
+  {
+    "id": "098e74a2-4c19-4654-b4b2-9e18ebebed01",
+    "type": "ad_hoc",
+    "content": "Conference talk proposal deadline for TechSummit 2025 is December 1",
+    "created_at": "2024-05-31T12:43:00Z",
+    "last_accessed": "2024-09-02T12:19:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "deadlines",
+      "conferences"
+    ],
+    "expired": false
+  },
+  {
+    "id": "e1296fc4-d642-46f1-908f-884cfb0341e1",
+    "type": "ad_hoc",
+    "content": "Grocery list: bananas, yogurt, spinach, salmon, rice, soy sauce",
+    "created_at": "2024-05-09T02:43:00Z",
+    "last_accessed": "2024-09-27T08:08:00Z",
+    "priority": "low",
+    "tags": [
+      "personal",
+      "shopping",
+      "groceries"
+    ],
+    "expired": false
+  },
+  {
+    "id": "f578da13-eb09-4694-8bb1-eb609a676755",
+    "type": "ad_hoc",
+    "content": "The team agreed to use Fibonacci story points for sprint planning",
+    "created_at": "2024-08-21T07:22:00Z",
+    "last_accessed": "2024-09-24T18:14:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "projects",
+      "agile"
+    ],
+    "expired": false
+  },
+  {
+    "id": "846952e4-95f6-495f-b6cd-30963fcf31bc",
+    "type": "ad_hoc",
+    "content": "Server maintenance window is every Sunday 2-4 AM UTC",
+    "created_at": "2024-07-25T18:36:00Z",
+    "last_accessed": "2024-09-07T13:38:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "reference",
+      "technical"
+    ],
+    "expired": false
+  },
+  {
+    "id": "b35f6e92-550d-454d-88fb-990c9641cd88",
+    "type": "recurring",
+    "content": "Review and approve timesheets by end of day Wednesday",
+    "created_at": "2024-04-17T08:20:00Z",
+    "last_accessed": "2024-09-22T18:17:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "admin",
+      "timesheets"
+    ],
+    "expired": false
+  },
+  {
+    "id": "102e1001-5952-4771-8430-777a982e6454",
+    "type": "ad_hoc",
+    "content": "Vet appointment for Max (dog) on October 25 at 10 AM",
+    "created_at": "2024-05-17T09:45:00Z",
+    "last_accessed": "2024-08-14T09:15:00Z",
+    "priority": "medium",
+    "tags": [
+      "personal",
+      "pets",
+      "appointments"
+    ],
+    "expired": false
+  },
+  {
+    "id": "492fa2d9-b619-4862-83b7-0d7821f7cfce",
+    "type": "recurring",
+    "content": "Daily standup: discuss blockers, progress, and plans for the day",
+    "created_at": "2024-07-12T19:18:00Z",
+    "last_accessed": "2024-09-28T02:32:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "meetings",
+      "standup"
+    ],
+    "expired": false
+  },
+  {
+    "id": "f1919cd7-05c7-4cae-9293-ada729c6d13d",
+    "type": "ad_hoc",
+    "content": "Weekly report is due Friday by 5 PM - submit via the portal",
+    "created_at": "2024-06-04T16:40:00Z",
+    "last_accessed": "2024-08-21T18:44:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "deadlines",
+      "reports"
+    ],
+    "expired": false
+  },
+  {
+    "id": "263c35f9-e5d3-4496-b880-ca22b36c72c6",
+    "type": "ad_hoc",
+    "content": "Project Phoenix deadline moved from Nov 1 to Nov 15 per email from Dave",
+    "created_at": "2024-06-09T22:30:00Z",
+    "last_accessed": "2024-09-03T06:13:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "projects",
+      "deadlines"
+    ],
+    "expired": false
+  },
+  {
+    "id": "a757da32-6e5e-4123-92c7-70d1ce98d8fb",
+    "type": "ad_hoc",
+    "content": "Parking garage code changed to 4471# effective September 1",
+    "created_at": "2024-06-07T01:38:00Z",
+    "last_accessed": "2024-06-27T13:51:00Z",
+    "priority": "low",
+    "tags": [
+      "work",
+      "reference",
+      "access"
+    ],
+    "expired": true
+  },
+  {
+    "id": "dd64bce6-98de-4b4c-8387-09d2f82afdc5",
+    "type": "ad_hoc",
+    "content": "Client meeting notes: Acme wants to integrate with their Salesforce instance",
+    "created_at": "2024-08-26T00:40:00Z",
+    "last_accessed": "2024-09-04T11:01:00Z",
+    "priority": "high",
+    "tags": [
+      "work",
+      "meetings",
+      "clients"
+    ],
+    "expired": false
+  },
+  {
+    "id": "5e54313c-1fad-41cc-8142-52e008b5510d",
+    "type": "ad_hoc",
+    "content": "Submit expense report for September travel by October 10",
+    "created_at": "2024-09-16T15:42:00Z",
+    "last_accessed": "2024-09-20T13:48:00Z",
+    "priority": "medium",
+    "tags": [
+      "work",
+      "admin",
+      "expenses"
+    ],
+    "expired": false
+  }
+]

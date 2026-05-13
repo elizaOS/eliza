@@ -1,0 +1,20 @@
+{
+  "name": "moltbook-auto-post",
+  "version": "1.4.0",
+  "description": "Automatic posting to Moltbook with intelligent content generation and rate limiting",
+  "main": "post.js",
+  "scripts": {
+    "post": "node post.js",
+    "auth": "node auth.js",
+    "stats": "node stats.js",
+    "test": "node test/run.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "private": true,
+  "license": "UNLICENSED"
+}

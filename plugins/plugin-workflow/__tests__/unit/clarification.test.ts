@@ -66,11 +66,7 @@ describe('coerceClarificationRequests', () => {
   });
 
   test('defaults missing paramPath on structured input to empty string', () => {
-    const result = coerceClarificationRequests([
-      // @ts-expect-error — exercising defensive coercion of a malformed
-      // payload from an older or non-conforming LLM response.
-      { kind: 'value', question: 'How many?' },
-    ]);
+    const result = coerceClarificationRequests([{ kind: 'value', question: 'How many?' }]);
     expect(result[0].paramPath).toBe('');
   });
 });

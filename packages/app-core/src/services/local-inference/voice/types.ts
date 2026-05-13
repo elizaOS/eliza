@@ -293,18 +293,18 @@ export interface StreamingTranscriber {
 export interface PhraseChunkerConfig {
   /**
    * Hard word cap before a phrase is force-flushed even without a
-   * `, . ! ?` boundary. Defaults to 30 (the brief's A6 "first 30 words").
+   * `, . ! ? ; :` boundary. Defaults to 30 (the brief's A6 "first 30 words").
    */
   maxTokensPerPhrase?: number;
   /**
-   * Characters that close a phrase. Default `, . ! ?` — a comma is a
-   * boundary so the first clause reaches TTS without waiting for a
+   * Characters that close a phrase. Default `, . ! ? ; :` — punctuation
+   * boundaries let the first clause reach TTS without waiting for a
    * sentence-final mark.
    */
   sentenceTerminators?: ReadonlySet<string>;
   /**
    * Where the chunker emits a phrase boundary.
-   *   'punctuation'    — default. Wait for `, . ! ?` or the max-token cap.
+   *   'punctuation'    — default. Wait for `, . ! ? ; :` or the max-token cap.
    *   'phoneme-stream' — additionally emit a sub-phrase chunk every
    *                      `phonemesPerChunk` phonemes. Cuts first-audio
    *                      latency by handing partial phrases to TTS at
@@ -313,11 +313,27 @@ export interface PhraseChunkerConfig {
   chunkOn?: "punctuation" | "phoneme-stream";
   /** Phonemes per chunk in `phoneme-stream` mode. Default 8. */
   phonemesPerChunk?: number;
+  /**
+   * Maximum milliseconds a phrase may sit in the chunker before the
+   * scheduler force-flushes it even without punctuation / phoneme / cap
+   * boundaries. Default 700 ms. Set to 0 to disable.
+   */
+  maxAccumulationMs?: number;
 }
 
 export interface VerifierStreamEvent {
   kind: "accept" | "reject";
   tokens: TextToken[];
+  /**
+   * Optional per-event metadata. Today only the very first `accept` of a
+   * streaming completion carries `firstTokenMs` (L5 — time from the fetch
+   * being issued to the first SSE chunk arriving). Other consumers MAY
+   * ignore this field; producers MUST omit it on non-first events.
+   */
+  meta?: {
+    /** Milliseconds from request issue (`performance.now()`) to first chunk. */
+    firstTokenMs?: number;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -481,6 +497,23 @@ export interface SchedulerConfig {
    * common case (text gen leads TTS by a phrase or two).
    */
   maxInFlightPhrases?: number;
+  /**
+   * Enable the streaming-TTS path (`synthesizeStream`) for phrase
+   * synthesis. When `true` (default), the scheduler uses the chunk-by-chunk
+   * streaming ABI when the backend supports it, delivering first audio
+   * before the full phrase finishes synthesizing and enabling per-chunk
+   * prefix-preserving barge-in rollback.
+   *
+   * Previously this was implicitly gated by `ttsStreamSupported()` from the
+   * native FFI layer. On macOS, a `ggml_conv_transpose_1d` stall in the
+   * DAC codec region caused the Metal path to hang — that stall is now
+   * fixed in the llama.cpp merge (native Metal kernels for
+   * `ggml_conv_transpose_1d`; the CPU fallback causing the hang is gone).
+   * The flag is therefore `true` by default. Set to `false` only when
+   * testing against a non-streaming build stub or reproducing the pre-fix
+   * behaviour.
+   */
+  streamingTtsActive?: boolean;
 }
 
 export interface VoiceSchedulerPhraseTelemetry {
@@ -559,6 +592,22 @@ export type VoiceSchedulerTelemetryEvent =
       sinkBufferedSamplesDrained: number;
       inFlightPhrasesCancelled: number;
       wasPaused: boolean;
+    }
+  | {
+      /**
+       * Fired when the prefix-preserving rollback queue partitions
+       * in-flight audio chunks on barge-in. `retainedChunks` are replayed
+       * into the sink; `droppedChunks` are discarded. Present only when
+       * `PrefixPreservingQueue` is active (at least one chunk was tagged).
+       */
+      type: "barge-in-prefix-rollback";
+      atMs: number;
+      divergencePoint: number;
+      retainedChunks: number;
+      droppedChunks: number;
+      straddledChunks: number;
+      retainedDurationMs: number;
+      droppedDurationMs: number;
     };
 
 export type VoiceSchedulerTelemetryListener = (

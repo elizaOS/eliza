@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-2a55d2291677313c0da7e02165d0f45a38477a39-v780c413b5d63ecb16e758021dde5b1b23d8af6aa
+Repository: element-hq/element-web
+Base Commit: e644ede09e059b5130cd0358f97ee0b9187544fb
+Test Files: ["/app/test/components/views/rooms/SearchResultTile-test.ts", "test/components/views/rooms/SearchResultTile-test.tsx"]
+FAIL_TO_PASS: ["/app/test/components/views/rooms/SearchResultTile-test.tsx | SearchResultTile | Sets up appropriate callEventGrouper for m.call. events"]
+PASS_TO_PASS: []

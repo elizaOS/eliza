@@ -1,4 +1,3 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 //import { addHeader, composeActionExamples, formatActionNames, formatActions } from '@elizaos/core';
 //import type { IToken } from '../types';
@@ -7,6 +6,23 @@ import type { CacheWrapper, GetCacheTimedOptions } from "../types/shared";
 import { formatJsonScalar, formatJsonTable } from "../utils";
 
 const MARKET_ROW_LIMIT = 12;
+
+type MarketTokenSnapshot = {
+  symbol?: string;
+  priceUsd: number;
+  priceChange24h: number;
+  liquidity: number;
+};
+
+type MarketRow = {
+  chain: string;
+  address: string;
+  symbol: string;
+  priceUsd: string;
+  marketCapUsd: string;
+  change24hPct: string;
+  liquidityUsd: string;
+};
 
 export async function getCacheTimed<T>(
   runtime: IAgentRuntime,
@@ -70,7 +86,7 @@ export const marketProvider: Provider = {
         ETH: "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs", // wETH
       };
 
-      const hardcodedSolanaCA2SymbolMap = {
+      const hardcodedSolanaCA2SymbolMap: Record<string, string> = {
         So11111111111111111111111111111111111111112: "SOL",
         "3NZ9JMVBmGAqocybic2c7LQCJScmgsAZ6vQqTDzcqmJh": "BTC", // wBTC
         "7vfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs": "ETH", // wETH
@@ -85,17 +101,7 @@ export const marketProvider: Provider = {
             getTokensMarketData?: (
               chain: string,
               addresses: string[],
-            ) => Promise<
-              Record<
-                string,
-                {
-                  symbol: string;
-                  priceUsd: number;
-                  priceChange24h: number;
-                  liquidity: number;
-                }
-              >
-            >;
+            ) => Promise<Record<string, MarketTokenSnapshot | undefined>>;
           }
         | undefined;
       // want this for custom symbols
@@ -128,18 +134,17 @@ export const marketProvider: Provider = {
 
       // FIXME: cache (how fresh does this have to be? 5 mins? 1 min?)
       // get data
-      const ps = [birdeyeService.getTokensMarketData("solana", CAs)];
-      if (
-        solanaService &&
-        typeof solanaService.getTokensSymbols === "function"
-      ) {
-        ps.push(solanaService.getTokensSymbols(CAs));
-      }
+      const tokenSymbolsPromise =
+        solanaService && typeof solanaService.getTokensSymbols === "function"
+          ? solanaService.getTokensSymbols(CAs)
+          : Promise.resolve({});
 
-      const results = await Promise.all(ps);
+      const [result, tokenSymbols] = await Promise.all([
+        birdeyeService.getTokensMarketData("solana", CAs),
+        tokenSymbolsPromise,
+      ]);
 
-      const result = results[0]; // birdeye Results
-      const rows = [];
+      const rows: MarketRow[] = [];
 
       // FIXME: Market cap column is currently not populated from Birdeye API response
       // Need to calculate or fetch market cap data separately
@@ -159,18 +164,19 @@ export const marketProvider: Provider = {
         }
 
         const t = result[ca];
-        t.symbol =
-          solanaService && results[1]
-            ? results[1][ca]
-            : (hardcodedSolanaCA2SymbolMap[ca] ?? "(Not available)");
+        let symbol =
+          tokenSymbols[ca] ??
+          t.symbol ??
+          hardcodedSolanaCA2SymbolMap[ca] ??
+          "(Not available)";
         // unwrap symbols
-        if (t.symbol === "WBTC") t.symbol = "BTC";
-        if (t.symbol === "WETH") t.symbol = "ETH";
+        if (symbol === "WBTC") symbol = "BTC";
+        if (symbol === "WETH") symbol = "ETH";
         //console.log('t', t)
         rows.push({
           chain: "solana",
           address: ca,
-          symbol: t.symbol,
+          symbol,
           priceUsd: t.priceUsd.toFixed(4),
           marketCapUsd: "unknown",
           change24hPct: t.priceChange24h.toFixed(2),
@@ -183,7 +189,7 @@ export const marketProvider: Provider = {
       const boundedRows = rows.slice(0, MARKET_ROW_LIMIT);
       const data = {
         tokens: Object.fromEntries(
-          Object.entries(results[0] ?? {}).slice(0, MARKET_ROW_LIMIT),
+          Object.entries(result ?? {}).slice(0, MARKET_ROW_LIMIT),
         ),
       };
 

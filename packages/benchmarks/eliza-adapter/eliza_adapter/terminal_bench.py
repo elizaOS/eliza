@@ -74,6 +74,23 @@ def _command_from_params(params: dict) -> Optional[str]:
         raw = nested.get("command")
         if isinstance(raw, str) and raw.strip():
             return raw.strip()
+        tool_name = nested.get("tool_name")
+        arguments = nested.get("arguments")
+        if isinstance(arguments, str):
+            import json
+
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = None
+        if (
+            isinstance(tool_name, str)
+            and tool_name.strip().upper() in {"RUN_SHELL_COMMAND", "SHELL", "EXEC"}
+            and isinstance(arguments, dict)
+        ):
+            raw = arguments.get("command")
+            if isinstance(raw, str) and raw.strip():
+                return raw.strip()
     return None
 
 

@@ -1,0 +1,80 @@
+[
+  {
+    "customer_id": "CUS-1601",
+    "name": "鼎新软件",
+    "tier": "vip",
+    "status": "active",
+    "industry": "软件开发",
+    "satisfaction": 4.5,
+    "contract_end": "2026-09-30",
+    "sales_owner": "赵蕾",
+    "notes": "核心VIP客户，持续增购中，续约意向积极",
+    "contact_person": "赵蕾",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1602",
+    "name": "瀚海电商",
+    "tier": "standard",
+    "status": "active",
+    "industry": "电子商务",
+    "satisfaction": 3.2,
+    "contract_end": "2026-06-30",
+    "sales_owner": "张伟",
+    "notes": "近期有投诉，满意度偏低，合同6月底到期需关注",
+    "contact_person": "张伟",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1603",
+    "name": "万通物流",
+    "tier": "vip",
+    "status": "active",
+    "industry": "物流运输",
+    "satisfaction": 4.8,
+    "contract_end": "2026-12-31",
+    "sales_owner": "赵蕾",
+    "notes": "最大客户，满意度极高，正在讨论扩展方案",
+    "contact_person": "赵蕾",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1604",
+    "name": "前锋科技",
+    "tier": "standard",
+    "status": "active",
+    "industry": "科技制造",
+    "satisfaction": 2.5,
+    "contract_end": "2026-04-15",
+    "sales_owner": "张伟",
+    "notes": "满意度低，3月无续费记录，1月后无沟通，合同4月中旬到期，高流失风险",
+    "contact_person": "张伟",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1605",
+    "name": "阳光传媒",
+    "tier": "vip",
+    "status": "active",
+    "industry": "传媒广告",
+    "satisfaction": 4.2,
+    "contract_end": "2026-11-30",
+    "sales_owner": "赵蕾",
+    "notes": "新晋VIP客户，增长势头强劲，AI应用效果显著",
+    "contact_person": "赵蕾",
+    "annual_revenue": 0
+  },
+  {
+    "customer_id": "CUS-1606",
+    "name": "公共机构",
+    "tier": "standard",
+    "status": "active",
+    "industry": "政府机关",
+    "satisfaction": 3.8,
+    "contract_end": "2026-07-31",
+    "sales_owner": "张伟",
+    "notes": "收入稳定，无明显增长也无风险，按预算执行",
+    "contact_person": "张伟",
+    "annual_revenue": 0
+  }
+]

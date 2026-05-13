@@ -1,8 +1,8 @@
-import { Button } from "@elizaos/ui";
 import type {
   CatalogModel,
   DownloadJob,
 } from "../../api/client-local-inference";
+import { Button } from "../ui/button";
 import { DownloadProgress } from "./DownloadProgress";
 import { displayModelName, findCatalogModel } from "./hub-utils";
 
@@ -26,8 +26,8 @@ export function DownloadQueue({
   if (downloads.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-        No downloads in progress. Start one from Eliza-1 or open Custom HF
-        search explicitly.
+        No downloads in progress. Start one from Eliza-1 or use explicit custom
+        search.
       </div>
     );
   }

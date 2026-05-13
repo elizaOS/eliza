@@ -1,13 +1,4 @@
 import {
-  cn,
-  PageLayout,
-  PagePanel,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useLinkedSidebarSelection,
-} from "@elizaos/ui";
-import {
   type ComponentPropsWithoutRef,
   forwardRef,
   useCallback,
@@ -16,7 +7,14 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLinkedSidebarSelection } from "../../hooks/useLinkedSidebarSelection";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { cn } from "../../lib/utils";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import {
   readSettingsHashSection,
   replaceSettingsHash,

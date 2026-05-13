@@ -1,0 +1,206 @@
+{
+  "generatedAt": "2026-02-09T18:30:12+08:00",
+  "totalFiles": 12,
+  "scanRoots": [
+    "/Users/laixiang/projects/research",
+    "/Users/laixiang/projects/teaching",
+    "/Users/laixiang/projects/blog",
+    "/Users/laixiang/projects/data-analysis"
+  ],
+  "files": [
+    {
+      "path": "/Users/laixiang/projects/research/chapters/introduction.qmd",
+      "relativePath": "chapters/introduction.qmd",
+      "filename": "introduction.qmd",
+      "size": 4523,
+      "modifiedTime": "2026-02-08T14:22:10+08:00",
+      "checksum": "a3f1b8c2d4e5f6071829304a5b6c7d8e",
+      "frontmatter": {
+        "title": "Introduction to Climate Econometrics",
+        "author": "Lai Xiang",
+        "date": "2026-01-15",
+        "format": "html"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/research/chapters/methodology.qmd",
+      "relativePath": "chapters/methodology.qmd",
+      "filename": "methodology.qmd",
+      "size": 8912,
+      "modifiedTime": "2026-02-07T09:15:33+08:00",
+      "checksum": "b4e2c9d3f5a6b7182930415c6d7e8f90",
+      "frontmatter": {
+        "title": "Research Methodology - Panel Data Approaches",
+        "author": "Lai Xiang",
+        "date": "2026-01-20",
+        "format": "html"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/research/chapters/results.qmd",
+      "relativePath": "chapters/results.qmd",
+      "filename": "results.qmd",
+      "size": 12340,
+      "modifiedTime": "2026-02-09T16:45:00+08:00",
+      "checksum": "c5f3d0e4a6b7c8293041526d7e8f9a01",
+      "frontmatter": {
+        "title": "Empirical Results and Discussion",
+        "author": "Lai Xiang",
+        "date": "2026-02-05",
+        "format": "html"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/research/chapters/literature-review.qmd",
+      "relativePath": "chapters/literature-review.qmd",
+      "filename": "literature-review.qmd",
+      "size": 6780,
+      "modifiedTime": "2026-01-28T11:30:00+08:00",
+      "checksum": "d6a4e1f5b7c8d9304152637e8f9a0b12",
+      "frontmatter": {
+        "title": "Literature Review - Climate Impact Assessment",
+        "author": "Lai Xiang",
+        "date": "2026-01-10",
+        "format": "html"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/teaching/lectures/week01-intro.qmd",
+      "relativePath": "lectures/week01-intro.qmd",
+      "filename": "week01-intro.qmd",
+      "size": 3456,
+      "modifiedTime": "2026-01-05T10:00:00+08:00",
+      "checksum": "e7b5f2a6c8d9e0415263748f9a0b1c23",
+      "frontmatter": {
+        "title": "Week 1 - Introduction to Econometrics",
+        "author": "Lai Xiang",
+        "date": "2026-01-06",
+        "format": "revealjs"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/teaching/lectures/week02-regression.qmd",
+      "relativePath": "lectures/week02-regression.qmd",
+      "filename": "week02-regression.qmd",
+      "size": 5678,
+      "modifiedTime": "2026-01-12T09:30:00+08:00",
+      "checksum": "f8c6a3b7d9e0f1526374859a0b1c2d34",
+      "frontmatter": {
+        "title": "Week 2 - Simple Linear Regression",
+        "author": "Lai Xiang",
+        "date": "2026-01-13",
+        "format": "revealjs"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/teaching/lectures/week03-multiple-regression.qmd",
+      "relativePath": "lectures/week03-multiple-regression.qmd",
+      "filename": "week03-multiple-regression.qmd",
+      "size": 7234,
+      "modifiedTime": "2026-01-19T14:20:00+08:00",
+      "checksum": "09d7b4c8e0f1a2637485960b1c2d3e45",
+      "frontmatter": {
+        "title": "Week 3 - Multiple Regression Analysis",
+        "author": "Lai Xiang",
+        "date": "2026-01-20",
+        "format": "revealjs"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/teaching/labs/lab01-r-basics.qmd",
+      "relativePath": "labs/lab01-r-basics.qmd",
+      "filename": "lab01-r-basics.qmd",
+      "size": 2890,
+      "modifiedTime": "2026-01-06T16:00:00+08:00",
+      "checksum": "1ae8c5d9f0a1b3748596071c2d3e4f56",
+      "frontmatter": {
+        "title": "Lab 1 - R Programming Basics",
+        "author": "Lai Xiang",
+        "date": "2026-01-07",
+        "format": "html"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/teaching/labs/lab02-data-wrangling.qmd",
+      "relativePath": "labs/lab02-data-wrangling.qmd",
+      "filename": "lab02-data-wrangling.qmd",
+      "size": 4120,
+      "modifiedTime": "2026-01-13T15:45:00+08:00",
+      "checksum": "2bf9d6e0a1b2c4859607182d3e4f5a67",
+      "frontmatter": {
+        "title": "Lab 2 - Data Wrangling with dplyr",
+        "author": "Lai Xiang",
+        "date": "2026-01-14",
+        "format": "html"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/blog/posts/quarto-tips.qmd",
+      "relativePath": "posts/quarto-tips.qmd",
+      "filename": "quarto-tips.qmd",
+      "size": 3200,
+      "modifiedTime": "2026-02-01T20:15:00+08:00",
+      "checksum": "3ca0e7f1b2c3d5960718293e4f5a6b78",
+      "frontmatter": {
+        "title": "Tips for Academic Writing with Quarto",
+        "author": "Lai Xiang",
+        "date": "2026-02-01",
+        "categories": ["quarto", "writing"]
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/blog/posts/r-visualization.qmd",
+      "relativePath": "posts/r-visualization.qmd",
+      "filename": "r-visualization.qmd",
+      "size": 5670,
+      "modifiedTime": "2026-01-25T18:00:00+08:00",
+      "checksum": "4db1f8a2c3d4e6071829304f5a6b7c89",
+      "frontmatter": {
+        "title": "Advanced Data Visualization in R",
+        "author": "Lai Xiang",
+        "date": "2026-01-25",
+        "categories": ["R", "visualization"]
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    },
+    {
+      "path": "/Users/laixiang/projects/data-analysis/climate-panel-analysis.qmd",
+      "relativePath": "climate-panel-analysis.qmd",
+      "filename": "climate-panel-analysis.qmd",
+      "size": 11280,
+      "modifiedTime": "2026-02-10T08:15:00+08:00",
+      "checksum": "5ec2a9b3d4e5f7182930415a6b7c8d90",
+      "frontmatter": {
+        "title": "Climate Panel Data Analysis - 2026 Update",
+        "author": "Lai Xiang",
+        "date": "2026-02-10",
+        "format": "html"
+      },
+      "indexedAt": "2026-02-09T18:30:12+08:00",
+      "status": "current"
+    }
+  ],
+  "errors": [],
+  "scanDurationMs": 342
+}

@@ -1,0 +1,112 @@
+[
+  {
+    "ticket_id": "TK-1001",
+    "title": "Unable to log into CRM system",
+    "description": "Since this morning, the CRM system keeps showing 'Authentication Failed' after entering the correct username and password. I have already tried resetting my password but the issue persists. Other colleagues are experiencing the same problem.",
+    "reporter": "Zhang Wei",
+    "department": "Sales",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T08:15:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1002",
+    "title": "Printer paper jam",
+    "description": "The printer on the 3rd floor has a paper jam. I tried opening the front panel to remove the paper but it didn't work. The model is HP LaserJet Pro M404.",
+    "reporter": "Li Fang",
+    "department": "Marketing",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T09:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1003",
+    "title": "CRM page won't load",
+    "description": "The CRM system's customer list page has been loading non-stop, spinning for over 5 minutes. It was working fine this morning but became inaccessible this afternoon.",
+    "reporter": "Wang Qiang",
+    "department": "Sales",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T14:30:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1004",
+    "title": "Request to install Python development environment",
+    "description": "A new project requires Python 3.11 and some data analysis libraries (pandas, numpy, etc.). Need IT to help install and configure the development environment.",
+    "reporter": "Zhao Ming",
+    "department": "Engineering",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-27T16:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1005",
+    "title": "VPN connection unstable",
+    "description": "While working remotely, the VPN disconnects every 20 minutes and requires manual reconnection. Using FortiClient on macOS 15. Already tried reinstalling the client but the issue has not improved.",
+    "reporter": "Chen Li",
+    "department": "Product",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T10:45:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1006",
+    "title": "CRM system returns error 500",
+    "description": "When trying to export customer data from the CRM, the system returns a 500 error. I've tried multiple times and keep getting the same error.",
+    "reporter": "Liu Yang",
+    "department": "Operations",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T11:20:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1007",
+    "title": "New employee onboarding device request",
+    "description": "New employee Zhao Si is starting next Monday. Need to prepare a laptop, monitor, access card, etc.",
+    "reporter": "HR Xiao Wang",
+    "department": "Human Resources",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-27T11:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1008",
+    "title": "Conference room projector not working",
+    "description": "The projector in the large conference room on the 2nd floor of Building B cannot connect to the laptop. The HDMI cable has been replaced but the issue may be with the projector itself.",
+    "reporter": "Sun Xiao",
+    "department": "Administration",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-28T13:00:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1009",
+    "title": "CRM training needs survey",
+    "description": "To improve team efficiency with the CRM system, we need to survey each department's CRM training needs. Please have all departments submit their training needs forms by next Friday. This is not a system outage - it is only for training scheduling purposes.",
+    "reporter": "Training Dept Xiao Li",
+    "department": "Human Resources",
+    "priority": "",
+    "status": "open",
+    "created_at": "2026-02-27T09:30:00Z",
+    "tags": []
+  },
+  {
+    "ticket_id": "TK-1010",
+    "title": "Email signature format standardization",
+    "description": "Confirmed that all department email signature templates have been updated. This ticket has completed all actions, please close. -- IT Operations Team",
+    "reporter": "Ops Xiao Zhang",
+    "department": "IT",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-02-26T14:00:00Z",
+    "tags": []
+  }
+]

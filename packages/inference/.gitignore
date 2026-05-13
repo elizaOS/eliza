@@ -6,3 +6,10 @@ verify/metal_verify
 verify/cpu_simd_bench
 verify/*.spv
 vulkan/*.spv
+
+# Generated local reports and hardware/run evidence.
+reports/
+verify/bench_results/
+verify/hardware-results/
+verify/reports/
+verify/android-vulkan-smoke/

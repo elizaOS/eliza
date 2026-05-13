@@ -1,0 +1,67 @@
+[
+  {
+    "ticket_id": "TK-1401",
+    "title": "数据库连接池耗尽导致服务不可用",
+    "description": "万通物流（CUS-1401）紧急反馈：今天上午10点开始，仓储管理系统频繁报错「无法获取数据库连接」，大量请求超时。目前整个仓储调度模块处于不可用状态，已影响超过200个仓库的实时调度，物流配送严重延误。客户要求立即处理。",
+    "customer_id": "CUS-1401",
+    "reporter": "赵总监",
+    "department": "技术支持",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-26T10:15:00Z",
+    "tags": ["数据库", "连接池", "VIP", "紧急"],
+    "category": "系统故障"
+  },
+  {
+    "ticket_id": "TK-1402",
+    "title": "报表加载缓慢",
+    "description": "瀚海电商（CUS-1402）反馈月度销售报表加载时间超过60秒，偶尔会超时失败。影响日常运营分析。",
+    "customer_id": "CUS-1402",
+    "reporter": "林经理",
+    "department": "技术支持",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T11:30:00Z",
+    "tags": ["报表", "性能", "超时"],
+    "category": "性能问题"
+  },
+  {
+    "ticket_id": "TK-1403",
+    "title": "权限配置问题",
+    "description": "前锋科技（CUS-1403）管理员反馈部分员工权限配置不正确，新建的角色模板无法正常分配给用户组。",
+    "customer_id": "CUS-1403",
+    "reporter": "陈主管",
+    "department": "客户服务",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T14:00:00Z",
+    "tags": ["权限", "配置", "角色"],
+    "category": "功能问题"
+  },
+  {
+    "ticket_id": "TK-1404",
+    "title": "API接口偶发超时",
+    "description": "鼎新软件（CUS-1404）开发团队反馈订单查询API在高峰时段偶发超时，平均每小时出现3-5次，影响其对接系统的稳定性。",
+    "customer_id": "CUS-1404",
+    "reporter": "周工程师",
+    "department": "技术支持",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T09:45:00Z",
+    "tags": ["API", "超时", "性能"],
+    "category": "性能问题"
+  },
+  {
+    "ticket_id": "TK-1405",
+    "title": "新功能建议：批量导出支持",
+    "description": "阳光传媒（CUS-1405）建议增加报表批量导出功能，目前只能逐个下载。",
+    "customer_id": "CUS-1405",
+    "reporter": "张编辑",
+    "department": "产品反馈",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T15:20:00Z",
+    "tags": ["功能建议", "导出"],
+    "category": "需求建议"
+  }
+]

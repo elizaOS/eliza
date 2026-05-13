@@ -338,17 +338,17 @@ def test_parse_openclaw_no_tool_call_text_only() -> None:
     assert prose == text
 
 
-def test_parse_openclaw_closed_block_preferred_over_fallback() -> None:
-    """If Pass 1 finds a closed block, Pass 2 must not also fire on the same
-    text. (Avoids double-counting and reproduces the original strict
-    behavior for compliant streams.)"""
+def test_parse_openclaw_recovers_unclosed_block_after_closed_block() -> None:
+    """Closed blocks must not prevent recovery of later unclosed blocks."""
     text = (
         'p.<tool_call>{"tool": "GOOD", "args": {"a": 1}}</tool_call>'
         ' tail <tool_call>{"tool": "ALSO_UNCLOSED", "args": {}}'
     )
-    _, tool_calls = parse_openclaw_tool_calls(text)
-    assert len(tool_calls) == 1
+    prose, tool_calls = parse_openclaw_tool_calls(text)
+    assert len(tool_calls) == 2
     assert tool_calls[0]["function"]["name"] == "GOOD"
+    assert tool_calls[1]["function"]["name"] == "ALSO_UNCLOSED"
+    assert "<tool_call>" not in prose
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +432,8 @@ async def test_openclaw_agent_propagates_cost_and_token_telemetry() -> None:
     # Per-turn telemetry attributes the runner reads via getattr.
     assert getattr(turn, "input_tokens") == 200  # noqa: B009
     assert getattr(turn, "output_tokens") == 50  # noqa: B009
+    assert getattr(turn, "cache_read_input_tokens") == 0  # noqa: B009
+    assert getattr(turn, "cache_creation_input_tokens") is None  # noqa: B009
     cost_per_turn = getattr(turn, "cost_usd")  # noqa: B009
     assert cost_per_turn > 0.0
     assert getattr(turn, "latency_ms") >= 0  # noqa: B009

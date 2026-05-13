@@ -1,0 +1,157 @@
+task_id: T112_expense_email_check
+task_name: Expense Email Verification
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: gmail
+    command: python mock_services/gmail/server.py
+    port: 9100
+    health_check: http://localhost:9100/gmail/messages
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9100/gmail/reset
+    env:
+      GMAIL_FIXTURES: tasks/T112_expense_email_check/fixtures/gmail/inbox.json
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T112_expense_email_check/fixtures/finance/transactions.json
+
+prompt:
+  text: |
+    There are several expense reimbursement request emails in the inbox. Please help me:
+    1. Review all reimbursement-related emails and extract the amount and invoice number for each claim
+    2. Look up the corresponding transaction records in the finance system
+    3. Cross-verify each reimbursement: whether amounts match and whether the transaction status is complete
+    4. Produce a verification report listing: items that match correctly, items with amount discrepancies, and items with status anomalies
+  language: en
+
+tools:
+  - name: gmail_list_messages
+    description: Get inbox email list
+    input_schema:
+      type: object
+      properties:
+        days_back:
+          type: integer
+          description: Get emails from the last N days
+          default: 7
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 20
+      required: []
+
+  - name: gmail_get_message
+    description: Get email details by message ID
+    input_schema:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: Message ID
+      required: [message_id]
+
+  - name: finance_list_transactions
+    description: List transaction records
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: Get transaction details
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: Transaction ID
+      required: [transaction_id]
+
+tool_endpoints:
+  - tool_name: gmail_list_messages
+    url: http://localhost:9100/gmail/messages
+    method: POST
+  - tool_name: gmail_get_message
+    url: http://localhost:9100/gmail/messages/get
+    method: POST
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+
+environment:
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: matching_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether all 4 reimbursements are accurately and completely matched to finance records"
+  - name: discrepancy_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether the amount discrepancy (702) and status anomaly (703 pending) are accurately identified and analyzed"
+  - name: report_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether the verification report is clearly structured, properly categorized, and offers actionable recommendations"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the assistant's expense email verification report.
+
+  ## Correct Verification Results
+  1. msg_701 (Zhang Wei travel expenses 3200) <-> TXN-701 (3200 completed) -> Match OK
+  2. msg_702 (Li Hua office supplies 850) <-> TXN-702 (680 completed) -> Amount mismatch (email 850 vs finance 680, difference of 170)
+  3. msg_703 (Wang Ming training fee 5000) <-> TXN-703 (5000 pending) -> Amount matches but status incomplete
+  4. msg_704 (Chen Jing meal expenses 420) <-> TXN-704 (420 completed) -> Match OK
+  5. msg_705 is an administrative notice, not a reimbursement email, should be excluded
+
+  ## Key Findings
+  - Li Hua's office supplies reimbursement has a 170 discrepancy (email claims 850, finance records 680)
+  - Wang Ming's training fee amount is correct but transaction status is pending, payment not yet completed
+  - TXN-705 (utilities) and TXN-706 (payroll) are non-reimbursement transactions and should not be included
+
+  Scoring:
+  - 0.8-1.0: All 4 reimbursements correctly verified, 2 anomalies accurately identified, clear report
+  - 0.5-0.7: At least 3 correctly verified, at least 1 anomaly found
+  - 0.2-0.4: Partial verification with inaccurate analysis
+  - 0.0-0.1: Incomplete verification or incorrect conclusions
+
+reference_solution: |
+  1. gmail_list_messages() -> Find 5 emails, identify 4 reimbursements + 1 administrative notice
+  2. Read each reimbursement email, extract amounts and invoice numbers
+  3. finance_list_transactions() -> Get all transaction records
+  4. Cross-match by invoice number:
+     - INV-001: email 3200 vs TXN-701 3200 -> Match OK
+     - INV-002: email 850 vs TXN-702 680 -> Difference of 170
+     - INV-003: email 5000 vs TXN-703 5000 -> Amount matches but pending
+     - INV-004: email 420 vs TXN-704 420 -> Match OK
+  5. Output verification report
+
+primary_dimensions: [completion, robustness, communication]

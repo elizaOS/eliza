@@ -34,7 +34,7 @@ These should move out of manual launch QA and into CI or a one-command launch ga
 - Cloud API and eliza.ai: automate non-billing create-agent/login/migration flows with test auth, mocked or sandbox billing, API route e2e, and Playwright dashboard smoke. Existing cloud e2e/playwright structure is already present.
 - iOS/Android build integrity: run `build:ios`, `build:android`, `build:android:system`, manifest/Podfile/Info.plist validation, bundle asset checks, generated Capacitor template diffs, and Android AOSP validators in CI.
 - Local models: automate catalog schema validation, routing-policy tests, local-only mode with cloud API/RPC combinations, model assignment persistence, download error handling, and benchmark harness dry-runs without downloading full models.
-- Prompt/trajectory optimization: add golden trajectory tests, TOON/caveman compression budgets, schema validators, token/byte budgets, PII redaction checks, and action-parameter diff tests.
+- Prompt/trajectory optimization: add golden trajectory tests, native tool-call payload budgets, schema validators, token/byte budgets, PII redaction checks, and action-parameter diff tests.
 - Fine-tune suite: automate dataset export schema checks, trajectory sufficiency thresholds, train/eval dry-run jobs on tiny fixtures, redaction scans, eval report generation, and Hugging Face metadata validation without publishing.
 
 ## Human Work That Can Be Partially Automated

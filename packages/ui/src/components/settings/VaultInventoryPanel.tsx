@@ -22,7 +22,6 @@
  * 10-second auto-hide window.
  */
 
-import { Button, Input, Label } from "@elizaos/ui";
 import {
   ArrowRight,
   CheckCircle2,
@@ -43,6 +42,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import type { VaultEntryCategory, VaultEntryMeta } from "./vault-tabs/types";
 
 const CATEGORY_LABEL: Record<VaultEntryCategory, string> = {

@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "Host Metal profiling matrix (macOS / Apple Silicon). Profiles Eliza-1 on Metal with supported KV-cache settings.",
-  "models": ["eliza-1-mobile-1_7b", "eliza-1-desktop-9b"],
+  "models": ["eliza-1-2b", "eliza-1-4b", "eliza-1-4b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }

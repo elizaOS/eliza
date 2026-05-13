@@ -1,0 +1,70 @@
+# H200 — Hopper, 141 GiB HBM3e, sm_90, 4.8 TB/s, FP8 supported.
+#
+# Per-bundle recommended llama-server flags. Source of truth for the runtime
+# is `packages/shared/src/local-inference/gpu-profiles.ts`; this file extends
+# those card-level defaults with per-bundle overrides + TPS expectations.
+#
+# All TPS numbers are *estimates* — they have not been measured on real
+# hardware. Current release smoke uses Eliza-1 2B; larger recipes remain
+# hidden until final weights and release evidence exist. NVLink/SXM
+# multi-card setups are *out of scope* per the single-GPU
+# framing; see `docs/eliza-1-gpu-tier.md` for the constraint discussion.
+
+gpu_id: h200
+gpu_arch: sm_90
+vram_gb: 141
+mem_bandwidth_gbps: 4800
+fp8_supported: true
+fp4_supported: false
+nvlink: true                       # SXM has NVLink, but single-GPU only here
+
+bundle_recommendations:
+  eliza-1-0_8b:
+    n_gpu_layers: -1
+    ctx_size: 32768
+    parallel: 64
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 1100
+    estimated_prefill_tps: 90000
+    notes: "Smallest active Qwen3.5 local tier; smoke/default fallback."
+  eliza-1-2b:
+    n_gpu_layers: -1
+    ctx_size: 32768
+    parallel: 32
+    batch_size: 8192
+    ubatch_size: 2048
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
+    flash_attention: true
+    estimated_decode_tps: 780
+    estimated_prefill_tps: 56000
+    notes: "First-run active Qwen3.5 tier."
+
+dflash:
+  enabled: true
+  draft_min: 8
+  draft_max: 32
+  draft_gpu_layers: -1
+
+verify_recipe:
+  build_target: linux-x64-cuda
+  cuda_arch: 90
+  cmake_flags:
+    - "-DGGML_CUDA=ON"
+    - "-DCMAKE_CUDA_ARCHITECTURES=90a"     # `a` variant for full Hopper feature set
+    - "-DGGML_CUDA_F16=ON"
+    - "-DGGML_CUDA_FA_ALL_QUANTS=ON"
+  expected_kernels:
+    - turbo3
+    - turbo4
+    - turbo3_tcq
+    - qjl_full
+    - polarquant
+    - dflash
+  unavailable_kernels: []
+  smoke_bundle: eliza-1-2b
+  tolerance_pct: 10

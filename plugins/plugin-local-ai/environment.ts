@@ -1,13 +1,9 @@
-// @ts-nocheck — pending migration: @huggingface/transformers 3->4
-// (PreTrainedModel/Florence2 interface changes), @elizaos/core logger
-// signature drift (structured-context overload removed), and
-// GenerateTextParams.{modelType,runtime} field removal. Tracked separately.
 import { logger } from "@elizaos/core";
 import { z } from "zod";
 
-const DEFAULT_SMALL_MODEL = "text/eliza-1-mobile-1_7b-32k.gguf";
-const DEFAULT_LARGE_MODEL = "text/eliza-1-desktop-9b-64k.gguf";
-const DEFAULT_EMBEDDING_MODEL = "text/eliza-1-lite-0_6b-32k.gguf";
+const DEFAULT_SMALL_MODEL = "text/eliza-1-2b-32k.gguf";
+const DEFAULT_LARGE_MODEL = "text/eliza-1-4b-64k.gguf";
+const DEFAULT_EMBEDDING_MODEL = "text/eliza-1-0_8b-32k.gguf";
 
 export const configSchema = z.object({
   LOCAL_SMALL_MODEL: z.string().optional().default(DEFAULT_SMALL_MODEL),

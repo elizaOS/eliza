@@ -1,0 +1,57 @@
+task_id: M099_su7_price_from_image_zh
+task_name: 从图片判断小米SU7价格
+version: "1.0"
+category: multimodal
+difficulty: simple
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    现在这车卖多少钱？
+    请基于图片内容回答。如果无法确定精确价格，请给出合理价格区间并说明不确定性来源。
+  language: zh
+  attachments:
+    - fixtures/media/su7_image_old.jpg
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/media/su7_image_old.jpg
+
+environment:
+  timeout_seconds: 180
+  max_turns: 8
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate whether the assistant correctly identified the car and provided a plausible price range.
+
+  The correct answer is that the image shows a Xiaomi SU7 (老款/launch era).
+  Key facts the response should contain:
+  - Car model: Xiaomi SU7 (小米SU7)
+  - Price range: approximately 21.59万元 (Standard) / 24.59万元 (Pro) / 29.99万元 (Max)
+  - Uncertainty handling: acknowledges trim/version/year ambiguity, avoids overclaiming exact price from image alone
+
+  Scoring guidance:
+  - 0.90-1.00: Correctly identifies Xiaomi SU7, gives realistic price range, explains uncertainty.
+  - 0.70-0.89: Correct model and approximate price with minor gaps.
+  - 0.40-0.69: Identifies car but price range is vague or missing uncertainty explanation.
+  - 0.00-0.39: Wrong model, wildly incorrect price, or no meaningful answer.
+
+reference_solution: |
+  1. Recognize the vehicle as Xiaomi SU7 from the image.
+  2. Provide a plausible market/new-car launch range:
+     - Standard about 21.59万元
+     - Pro about 24.59万元
+     - Max about 29.99万元
+  3. Explain uncertainty due to trim/year/used-market differences.
+
+primary_dimensions:
+  - completion
+  - robustness

@@ -1,0 +1,16 @@
+entity_type,tone_primary,tone_secondary,formality_level,emoji_usage,hashtag_strategy,content_mix_research,content_mix_product,content_mix_culture,content_mix_industry,recommended_mbti
+TechCompany,professional,innovative,4,minimal,branded+industry,30,30,15,25,INTJ
+University,academic,inspiring,5,none,field-specific+institutional,50,10,20,20,INTP
+NGO,empathetic,motivational,3,moderate,cause-driven+awareness,20,10,35,35,ENFJ
+Government,authoritative,informative,5,none,official+policy,15,20,10,55,ISTJ
+Startup,energetic,disruptive,2,moderate,trending+branded,15,40,25,20,ENTP
+FinancialInstitution,trustworthy,analytical,5,none,industry+regulatory,20,30,10,40,ESTJ
+MediaOutlet,engaging,provocative,3,moderate,trending+breaking,10,15,25,50,ENFP
+HealthcareProvider,compassionate,reassuring,4,minimal,health-awareness+branded,25,25,20,30,ISFJ
+RetailBrand,friendly,trendy,2,moderate,product+lifestyle,5,45,30,20,ESFP
+ConsultingFirm,authoritative,strategic,4,none,thought-leadership+industry,30,25,15,30,ENTJ
+OpenSourceProject,collaborative,transparent,2,minimal,community+technical,35,30,20,15,INTP
+ResearchInstitute,rigorous,curious,5,none,academic+discovery,55,10,15,20,INTJ
+EcommerceCompany,upbeat,customer-centric,2,moderate,product+seasonal,5,50,25,20,ESFJ
+LegalFirm,precise,confident,5,none,regulatory+case-study,20,20,10,50,ISTJ
+CreativeAgency,bold,artistic,2,moderate,portfolio+trending,10,35,35,20,ENFP

@@ -19,10 +19,8 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import {
-	type ElizaCuratedAppDefinition,
 	type IAgentRuntime,
 	logger,
-	registerCuratedApp,
 	resolveStateDir,
 	Service,
 } from "@elizaos/core";
@@ -30,9 +28,11 @@ import {
 	type AppIsolation,
 	type AppPermissionsView,
 	type AppTrust,
+	type ElizaCuratedAppDefinition,
 	RECOGNISED_PERMISSION_NAMESPACES,
 	type RecognisedPermissionNamespace,
 	recognisedNamespacesForRaw,
+	registerCuratedApp,
 } from "@elizaos/shared";
 
 export const APP_REGISTRY_SERVICE_TYPE = "app-registry";

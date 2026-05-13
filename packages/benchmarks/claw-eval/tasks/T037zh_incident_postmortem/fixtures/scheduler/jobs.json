@@ -1,0 +1,122 @@
+[
+  {
+    "job_id": "JOB-301",
+    "name": "crm_data_sync",
+    "description": "执行CRM客户数据全量同步，每天20:00运行",
+    "cron_expression": "0 20 * * *",
+    "enabled": true,
+    "last_status": "stopped",
+    "last_run": "2026-02-28T20:00:00+08:00",
+    "action": "执行CRM客户数据全量同步",
+    "created_by": "data_team",
+    "tags": ["crm", "sync", "data"],
+    "notes": "上周五部署后SQL查询已修改。新查询逻辑：SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id WHERE sync_status = 'pending'。此查询未添加索引，存在全表扫描风险。",
+    "execution_history": [
+      {
+        "run_time": "2026-02-28T20:00:00+08:00",
+        "status": "stopped",
+        "duration_seconds": 5400,
+        "notes": "运行75分钟后被DBA手动终止（21:30 kill进程）。进程占用300+数据库连接，导致连接池耗尽。"
+      },
+      {
+        "run_time": "2026-02-27T20:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 180,
+        "notes": "旧查询逻辑，正常完成，耗时3分钟"
+      },
+      {
+        "run_time": "2026-02-26T20:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 175,
+        "notes": "正常完成"
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-302",
+    "name": "database_backup",
+    "description": "每日凌晨3点执行数据库增量备份",
+    "cron_expression": "0 3 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T03:00:00+08:00",
+    "action": "执行PostgreSQL增量备份",
+    "created_by": "dba_team",
+    "tags": ["database", "backup"],
+    "notes": "常规备份任务，运行稳定",
+    "execution_history": [
+      {
+        "run_time": "2026-03-01T03:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 420,
+        "notes": "备份完成，大小12.3GB"
+      },
+      {
+        "run_time": "2026-02-28T03:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 415,
+        "notes": "备份完成"
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-303",
+    "name": "monitoring_alerts",
+    "description": "每5分钟检查系统健康指标并触发告警",
+    "cron_expression": "*/5 * * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T08:00:00+08:00",
+    "action": "检查系统健康指标（API延迟、DB连接、错误率）",
+    "created_by": "ops_team",
+    "tags": ["monitoring", "alerts"],
+    "notes": "故障期间正常运行，按时触发了所有告警",
+    "execution_history": [
+      {
+        "run_time": "2026-02-28T20:15:00+08:00",
+        "status": "success",
+        "duration_seconds": 3,
+        "notes": "触发API超时告警：多个端点P99>5s"
+      },
+      {
+        "run_time": "2026-02-28T20:20:00+08:00",
+        "status": "success",
+        "duration_seconds": 3,
+        "notes": "触发数据库连接告警：连接池使用率100%"
+      },
+      {
+        "run_time": "2026-02-28T20:25:00+08:00",
+        "status": "success",
+        "duration_seconds": 3,
+        "notes": "触发支付服务503告警"
+      },
+      {
+        "run_time": "2026-02-28T21:35:00+08:00",
+        "status": "success",
+        "duration_seconds": 2,
+        "notes": "所有指标恢复正常"
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-304",
+    "name": "log_rotation",
+    "description": "每日凌晨1点执行日志轮转和压缩",
+    "cron_expression": "0 1 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T01:00:00+08:00",
+    "action": "执行日志文件轮转和压缩归档",
+    "created_by": "ops_team",
+    "tags": ["logs", "maintenance"],
+    "notes": "常规维护任务",
+    "execution_history": [
+      {
+        "run_time": "2026-03-01T01:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 30,
+        "notes": "日志轮转完成"
+      }
+    ]
+  }
+]

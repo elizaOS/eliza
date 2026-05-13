@@ -1,0 +1,1 @@
+["set AWS_DEFAULT_REGION=us-east-1","pytest --continue-on-collection-errors tests"]

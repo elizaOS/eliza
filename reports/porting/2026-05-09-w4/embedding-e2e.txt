@@ -1,9 +1,0 @@
-Embedding e2e (CPU, nomic-embed-text-v1.5.Q5_K_M.gguf)
-Date: 2026-05-09
-
-Command:
-  LOCAL_EMBEDDING_RUN_E2E=1 LOCAL_EMBEDDING_FORCE_CPU=1 bunx vitest run __tests__/e2e.real-gguf.test.ts
-
-Result: 3/3 PASS in 139.98s
-  Test Files  1 passed (1)
-  Tests       3 passed (3)

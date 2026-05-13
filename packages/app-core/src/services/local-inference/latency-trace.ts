@@ -169,6 +169,8 @@ export interface LatencyDerived {
 
 /** The derived-metric keys, in display order. */
 export const LATENCY_DERIVED_KEYS = [
+  "ttftFromUtteranceEndMs",
+  "firstAudioIntoPeerRingFromUtteranceEndMs",
   "ttftMs",
   "ttfaMs",
   "ttapMs",
@@ -177,6 +179,7 @@ export const LATENCY_DERIVED_KEYS = [
   "prewarmLatencyMs",
   "llmFirstTokenAfterAsrMs",
   "envelopeToReplyTextMs",
+  "emotionTagOverheadMs",
   "replyTextToPhrase1Ms",
   "ttsFirstChunkMs",
   "audioSinkLatencyMs",

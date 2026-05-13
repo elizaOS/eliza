@@ -175,3 +175,22 @@ Failing tests at snapshot:
 
 Skipped tests (not failures): all gated on optional API keys / external
 services (Cerebras live, Anthropic live, telegram bridge, etc.).
+
+## Post-gap-list resolution (2026-05-12)
+
+**RESOLVED — Python hermes agent import failure** (`a8849560d7`):
+`packages/benchmarks/lifeops-bench/conftest.py` added with `sys.path.insert`
+for `packages/` so `hermes_adapter.client` can resolve
+`benchmarks.lib.base_benchmark_client` when pytest runs from repo root.
+1499+ lifeops-bench Python tests now pass (was 1 remaining failure at
+gap-list time beyond P1#5/P1#6 above).
+
+**P1#5 + P1#6 status**: the two `test_scenarios_corpus.py` failures
+(116 GT action names unknown to manifest; `subaction` rejected by
+authoring validator on CALENDAR) were fixed as part of the Wave 6–7
+scorer canonicalization work (W6-1 `48ab9f1d7e`, W6-4 `82e71d3e73`,
+W7-B `137fc88b73`). All lifeops-bench Python tests green as of
+`a8849560d7`.
+
+**Final state**: 88/88 personality-bench TS, 122/122 core TS,
+1499+ Python lifeops-bench — all green.

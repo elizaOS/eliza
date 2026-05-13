@@ -1,0 +1,47 @@
+# Memory Distillation Schedule — DRAFT
+# Created: 2024-01-08
+# Status: DRAFT — needs review against project requirements
+# Author: Backend Team
+
+distillation:
+  # Working memory time-to-live: entries older than this are candidates
+  # for promotion to episodic memory or discard
+  working_memory_ttl: "24h"
+
+  # How long episodic memories are retained before being eligible
+  # for distillation into semantic memory
+  episodic_retention_days: 30
+
+  # How often the semantic memory layer is reviewed for
+  # deduplication, merging, and quality checks
+  semantic_review_interval: "weekly"
+
+  # Maximum number of entries in the semantic memory store
+  # Older/lower-relevance entries are archived when this limit is reached
+  max_semantic_entries: 500
+
+  # When the distillation batch job runs
+  distillation_trigger:
+    schedule: "daily"
+    time: "02:00"
+    timezone: "local"
+
+  # Distillation parameters
+  extraction:
+    min_episodic_mentions: 2  # Fact must appear in at least 2 episodes to be promoted
+    confidence_threshold: 0.75
+    max_facts_per_episode: 10
+    deduplication_similarity: 0.92  # Cosine similarity threshold for dedup
+
+  # Archival settings
+  archival:
+    enabled: true
+    archive_format: "gzip"
+    archive_location: "memory_store/archive/"
+    archive_after_distillation: true
+
+  # Logging
+  logging:
+    level: "INFO"
+    log_file: "logs/distillation.log"
+    log_retention_days: 90

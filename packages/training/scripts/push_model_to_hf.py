@@ -2,7 +2,9 @@
 
 Mirrors `scripts/push_to_hf.py` (which publishes the *dataset*) but for the
 *model* side: takes a finished APOLLO SFT checkpoint and uploads it to the
-canonical `elizaos/eliza-1-*` repo declared in `model_registry.py`.
+canonical `elizaos/eliza-1` repo declared in `model_registry.py`. Runtime GGUF
+bundles should normally go through `scripts/publish/publish_eliza1_model_repo.py`
+so they land under `bundles/<tier>/` instead of repo root.
 
 Usage::
 
@@ -12,31 +14,31 @@ Usage::
         --checkpoint checkpoints/eliza-1-2b-apollo/final \\
         --dry-run
 
-    # Real upload to the default repo (elizaos/eliza-1-2b).
+    # Real upload to the default repo (elizaos/eliza-1).
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final
 
-    # Upload a quantized sidecar (e.g. polarquant) to a sibling repo
-    # (elizaos/eliza-1-2b-polarquant).
+    # Upload a quantized sidecar to an explicitly named audit repo. The app
+    # runtime consumes GGUF bundles from elizaos/eliza-1/bundles/<tier>/.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final-polarquant \\
         --quant polarquant
 
     # Upload a GGUF directory (post llama.cpp convert + quantize). Use a
-    # specific quant level for the sibling repo suffix (one HF repo per
-    # quant level, matching the publish_all_eliza1.sh matrix).
+    # specific quant level for the card metadata; pass --repo-id explicitly for
+    # any non-bundle audit upload.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
-        --registry-key eliza-1-27b \\
-        --checkpoint checkpoints/eliza-1-27b-apollo/final-gguf \\
+        --registry-key eliza-1-4b \\
+        --checkpoint checkpoints/eliza-1-4b-apollo/final-gguf \\
         --quant gguf-q4_k_m
 
     # Attach evaluation results to the rendered model card.
     HF_TOKEN=hf_xxx uv run python scripts/push_model_to_hf.py \\
         --registry-key eliza-1-2b \\
         --checkpoint checkpoints/eliza-1-2b-apollo/final \\
-        --eval-results path/to/eliza_bench.json
+        --eval-results path/to/native_tool_call_bench.json
 
 The script defers the heavy upload to `huggingface_hub.HfApi.upload_folder`
 (or `upload_large_folder` for >50 GB payloads — the 27B bf16 weights hit
@@ -121,11 +123,9 @@ def resolve_repo_id(
 ) -> str:
     """Resolve the destination HF repo id.
 
-    Override > registry's eliza_repo_id / abliteration_repo_id (+ quant suffix).
-    The abliterated variant ships under a separate org so the safety-tuned
-    line's reputation is not contaminated. Eliza-1-optimized publishes
-    always pass an explicit ``--repo-id``; the registry path is only the
-    historical eliza-1 sibling-repo flow.
+    Override > registry's eliza_repo_id / abliteration_repo_id. Eliza-1 runtime
+    artifacts live in a single model repo (``elizaos/eliza-1``); do not derive
+    per-tier or per-quant sibling repos from the registry defaults.
     """
     if override:
         return override
@@ -152,6 +152,13 @@ def resolve_repo_id(
                 f"registry entry {registry_key!r} has no eliza_repo_id set; "
                 "fill it in scripts/training/model_registry.py or pass --repo-id."
             )
+    if quant and base == "elizaos/eliza-1":
+        raise SystemExit(
+            "registry default repo is elizaos/eliza-1; quantized runtime GGUFs "
+            "must be uploaded with scripts/publish/publish_eliza1_model_repo.py "
+            "under bundles/<tier>/, or pass --repo-id explicitly for an audit-only "
+            "raw checkpoint upload."
+        )
     if quant:
         return f"{base}-{quant}"
     return base
@@ -174,16 +181,15 @@ def read_optional_json(path: Path) -> dict[str, Any]:
 
 # Per-quant metadata. Drives:
 #   - --quant CLI choices (this dict's keys are the allowed values).
-#   - The sibling-repo suffix (e.g. polarquant -> elizaos/eliza-1-2b-polarquant).
+#   - Non-bundle audit uploads when --repo-id is passed explicitly.
 #   - Template placeholders in scripts/templates/model_card_quant.md.
 #
 # QJL is intentionally absent: it is a runtime-time KV-cache projection
 # (scripts/quantization/qjl_apply.py runs at serving time), not a weight
 # quantization that produces a HF checkpoint. There is nothing to ship.
 #
-# GGUF is split per K-quant level (Q4_K_M / Q5_K_M / Q6_K) so each level
-# gets its own sibling repo. The umbrella "gguf" suffix is no longer a valid
-# --quant value; use one of the level-suffixed entries instead.
+# GGUF is split per K-quant level (Q4_K_M / Q5_K_M / Q6_K) for card metadata.
+# Runtime bundles still publish into the single elizaos/eliza-1 model repo.
 QUANT_BLURBS: dict[str, dict[str, str]] = {
     "polarquant": {
         "blurb": (
@@ -197,7 +203,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "eliza local runtime, vLLM with custom kernel, scripts/quantization/polarquant_apply.py",
         "file_size": "~38% of bf16",
         "target_hw": "16 GB consumer GPU (RTX 5080 Laptop, RTX 4070 Ti)",
-        "quality_delta": "<=0.3 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "<=0.3 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "",
     },
     "turboquant": {
@@ -227,14 +233,14 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "vLLM with --quantization fp8, TensorRT-LLM, scripts/training/te_fp8.py",
         "file_size": "~50% of bf16",
         "target_hw": "Hopper (H100/H200), Blackwell (B100/B200, RTX Pro 5000+), MI300+",
-        "quality_delta": "<=0.5 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "<=0.5 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "",
     },
     "gguf-q4_k_m": {
         "blurb": (
             "GGUF Q4_K_M (4-bit K-quant, mixed precision) for llama.cpp / "
             "llama-server / Ollama. IMatrix calibrated on the "
-            "eliza-toon-v1-sft validation split."
+            "eliza-native-v1-sft validation split."
         ),
         "scheme_name": "GGUF Q4_K_M (K-quant, mixed)",
         "bits_weights": "~4.5 (mixed)",
@@ -243,7 +249,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "llama.cpp / llama-server / Ollama / LM Studio",
         "file_size": "~30% of bf16",
         "target_hw": "16 GB consumer GPU, Apple Silicon (M-series 16 GB+)",
-        "quality_delta": "~0.5 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "~0.5 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "  - llama.cpp\n  - gguf\n",
     },
     "gguf-q5_k_m": {
@@ -258,7 +264,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "llama.cpp / llama-server / Ollama / LM Studio",
         "file_size": "~37% of bf16",
         "target_hw": "24 GB workstation GPU, Apple Silicon (M-series 24 GB+)",
-        "quality_delta": "~0.2 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "~0.2 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "  - llama.cpp\n  - gguf\n",
     },
     "gguf-q6_k": {
@@ -273,7 +279,7 @@ QUANT_BLURBS: dict[str, dict[str, str]] = {
         "runtime": "llama.cpp / llama-server / Ollama / LM Studio",
         "file_size": "~44% of bf16",
         "target_hw": "32 GB workstation GPU (RTX 5090, RTX A6000), Apple Silicon (M-series 32 GB+)",
-        "quality_delta": "~0.05 PPL on the eliza-toon-v1-sft test split",
+        "quality_delta": "~0.05 PPL on the eliza-native-v1-sft test split",
         "extra_tags": "  - llama.cpp\n  - gguf\n",
     },
 }
@@ -289,8 +295,8 @@ TEMPLATES_DIR = ROOT / "scripts" / "templates"
 
 
 def _qwen_family_tag(hf_id: str) -> str:
-    """Return the HF tag string for the Qwen base family (qwen3.5 vs qwen3.6)."""
-    return "qwen3.5" if "3.5" in hf_id else "qwen3.6"
+    """Return the HF tag string for the active Qwen base family."""
+    return "qwen3.5"
 
 
 def _render_training_table(training_args: dict[str, Any], entry: Any) -> str:

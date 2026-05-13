@@ -1,0 +1,50 @@
+192.168.50.22 - - [15/Nov/2024:00:51:14 +0000] "POST / HTTP/1.1" 200 4222 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.125
+10.20.30.112 - - [15/Nov/2024:01:06:09 +0000] "PUT /static/images/logo.png HTTP/1.1" 200 821043 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.023
+10.20.30.10 - - [15/Nov/2024:01:28:03 +0000] "GET /static/images/logo.png HTTP/1.1" 403 799608 "-" "Prometheus/2.48.0" 0.029
+10.20.30.112 - - [15/Nov/2024:01:40:14 +0000] "GET /static/fonts/roboto-regular.woff2 HTTP/1.1" 201 2262312 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.006
+10.20.30.112 - - [15/Nov/2024:01:48:14 +0000] "GET /api/v2/auth/refresh HTTP/1.1" 200 7880 "-" "curl/8.4.0" 0.566
+198.51.100.17 - - [15/Nov/2024:01:51:30 +0000] "PUT /metrics HTTP/1.1" 200 42041 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15" 0.007
+10.20.30.111 - - [15/Nov/2024:02:02:26 +0000] "POST /healthz HTTP/1.1" 404 231 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.004
+198.51.100.17 - - [15/Nov/2024:02:41:49 +0000] "GET /dashboard HTTP/1.1" 200 22811 "-" "python-requests/2.31.0" 0.131
+192.168.50.22 - - [15/Nov/2024:03:03:26 +0000] "GET /dashboard HTTP/1.1" 200 6784 "https://prod-web-node03.internal.corp.local/" "kube-probe/1.28" 0.268
+172.16.5.88 - - [15/Nov/2024:03:13:14 +0000] "GET /api/v2/orders/create HTTP/1.1" 404 354 "-" "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.185
+10.20.30.151 - - [15/Nov/2024:03:15:18 +0000] "PUT /static/js/app.bundle.js HTTP/1.1" 200 894148 "https://prod-web-node03.internal.corp.local/" "Prometheus/2.48.0" 0.013
+10.20.30.131 - - [15/Nov/2024:03:48:14 +0000] "GET /health HTTP/1.1" 200 14523 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15" 0.008
+192.168.50.22 - - [15/Nov/2024:04:33:21 +0000] "GET /api/v2/auth/login HTTP/1.1" 200 41277 "https://prod-web-node03.internal.corp.local/" "curl/8.4.0" 0.062
+10.20.30.131 - - [15/Nov/2024:04:50:58 +0000] "GET /ready HTTP/1.1" 200 41371 "https://prod-web-node03.internal.corp.local/" "Prometheus/2.48.0" 0.006
+203.0.113.42 - - [15/Nov/2024:05:00:43 +0000] "GET /dashboard HTTP/1.1" 500 773 "-" "kube-probe/1.28" 0.272
+192.168.50.22 - - [15/Nov/2024:05:07:57 +0000] "GET /api/v2/users/123 HTTP/1.1" 200 12588 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.017
+10.20.30.111 - - [15/Nov/2024:05:22:57 +0000] "GET /health HTTP/1.1" 201 7281 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15" 0.009
+10.20.30.10 - - [15/Nov/2024:05:26:11 +0000] "GET / HTTP/1.1" 200 41069 "https://prod-web-node03.internal.corp.local/" "curl/8.4.0" 0.154
+192.168.50.22 - - [15/Nov/2024:05:57:58 +0000] "GET /api/v2/orders/create HTTP/1.1" 404 179 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.447
+192.168.50.22 - - [15/Nov/2024:05:58:12 +0000] "GET / HTTP/1.1" 200 10788 "https://prod-web-node03.internal.corp.local/" "python-requests/2.31.0" 0.269
+10.20.30.11 - - [15/Nov/2024:06:36:46 +0000] "GET /static/fonts/roboto-regular.woff2 HTTP/1.1" 200 2264680 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.014
+10.20.30.131 - - [15/Nov/2024:07:18:41 +0000] "POST /api/v2/orders/789 HTTP/1.1" 200 27661 "-" "Go-http-client/2.0" 0.699
+198.51.100.17 - - [15/Nov/2024:07:21:49 +0000] "GET /api/v2/auth/refresh HTTP/1.1" 304 0 "-" "curl/8.4.0" 0.295
+198.51.100.17 - - [15/Nov/2024:08:08:46 +0000] "GET /static/css/vendor.css HTTP/1.1" 201 1709155 "-" "Go-http-client/2.0" 0.014
+10.20.30.151 - - [15/Nov/2024:08:27:17 +0000] "GET /static/css/main.css HTTP/1.1" 200 221468 "-" "Prometheus/2.48.0" 0.01
+192.168.50.22 - - [15/Nov/2024:08:35:57 +0000] "GET /sitemap.xml HTTP/1.1" 404 493 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.224
+192.168.50.22 - - [15/Nov/2024:08:45:10 +0000] "GET /health HTTP/1.1" 201 44759 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.01
+10.20.30.131 - - [15/Nov/2024:09:04:48 +0000] "POST /admin/status HTTP/1.1" 200 6098 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.132
+10.20.30.112 - - [15/Nov/2024:09:29:34 +0000] "GET /api/v2/users/123 HTTP/1.1" 502 455 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.76
+10.20.30.112 - - [15/Nov/2024:09:38:01 +0000] "GET /api/v2/products/42 HTTP/1.1" 301 34334 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.697
+10.20.30.112 - - [15/Nov/2024:10:13:09 +0000] "POST /static/images/logo.png HTTP/1.1" 200 2277042 "-" "kube-probe/1.28" 0.018
+203.0.113.42 - - [15/Nov/2024:10:21:16 +0000] "GET /api/v2/users/123 HTTP/1.1" 200 34790 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.714
+10.20.30.112 - - [15/Nov/2024:10:25:34 +0000] "PUT /api/v2/products HTTP/1.1" 304 0 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.396
+10.20.30.111 - - [15/Nov/2024:10:32:49 +0000] "GET /static/js/app.bundle.js HTTP/1.1" 200 145408 "https://prod-web-node03.internal.corp.local/" "kube-probe/1.28" 0.033
+10.20.30.131 - - [15/Nov/2024:10:36:53 +0000] "GET /settings HTTP/1.1" 200 21731 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15" 0.057
+10.20.30.111 - - [15/Nov/2024:11:40:09 +0000] "GET /api/v2/products/42 HTTP/1.1" 200 42863 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.207
+10.20.30.10 - - [15/Nov/2024:11:42:03 +0000] "HEAD /static/css/vendor.css HTTP/1.1" 200 1116174 "https://prod-web-node03.internal.corp.local/" "kube-probe/1.28" 0.045
+10.20.30.11 - - [15/Nov/2024:12:11:04 +0000] "POST /ready HTTP/1.1" 404 337 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.005
+198.51.100.17 - - [15/Nov/2024:12:52:01 +0000] "POST /api/v2/products/42 HTTP/1.1" 200 34025 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.774
+10.20.30.111 - - [15/Nov/2024:13:01:56 +0000] "PUT /metrics HTTP/1.1" 304 0 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15" 0.008
+10.20.30.11 - - [15/Nov/2024:13:36:23 +0000] "GET /api/v2/products HTTP/1.1" 200 44649 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.116
+10.20.30.111 - - [15/Nov/2024:13:40:28 +0000] "GET /static/images/logo.png HTTP/1.1" 200 571334 "https://prod-web-node03.internal.corp.local/" "kube-probe/1.28" 0.019
+10.20.30.111 - - [15/Nov/2024:13:42:23 +0000] "GET /static/css/vendor.css HTTP/1.1" 301 396721 "-" "Prometheus/2.48.0" 0.025
+10.20.30.10 - - [15/Nov/2024:13:49:48 +0000] "GET /api/v2/auth/refresh HTTP/1.1" 200 854 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.657
+192.168.50.22 - - [15/Nov/2024:13:52:41 +0000] "GET /static/css/main.css HTTP/1.1" 200 1550783 "-" "kube-probe/1.28" 0.035
+10.20.30.131 - - [15/Nov/2024:13:54:16 +0000] "GET /robots.txt HTTP/1.1" 200 20823 "https://prod-web-node03.internal.corp.local/" "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0" 0.165
+10.20.30.112 - - [15/Nov/2024:13:57:01 +0000] "PUT /api/v2/products/42 HTTP/1.1" 200 35054 "https://prod-web-node03.internal.corp.local/" "python-requests/2.31.0" 0.045
+10.20.30.112 - - [15/Nov/2024:14:02:23 +0000] "GET /dashboard HTTP/1.1" 200 40608 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36" 0.24
+10.20.30.151 - - [15/Nov/2024:14:06:10 +0000] "HEAD /metrics HTTP/1.1" 200 10279 "-" "Go-http-client/2.0" 0.002
+172.16.5.88 - - [15/Nov/2024:14:26:20 +0000] "GET /ready HTTP/1.1" 200 44152 "-" "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15" 0.005

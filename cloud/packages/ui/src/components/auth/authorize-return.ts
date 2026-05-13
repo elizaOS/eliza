@@ -10,6 +10,37 @@ export function buildAppAuthorizeLoginHref(search: string): string {
   return `/login?returnTo=${encodeURIComponent(buildAppAuthorizeReturnTo(search))}`;
 }
 
+function clearAppAuthorizeResponseParams(url: URL): void {
+  url.searchParams.delete("token");
+  url.searchParams.delete("code");
+  url.searchParams.delete("error");
+  url.searchParams.delete("error_description");
+}
+
+export function buildAppAuthorizeCompletionRedirect(input: {
+  code: string;
+  redirectUri: string;
+  state?: string | null;
+}): string {
+  const url = new URL(input.redirectUri);
+  clearAppAuthorizeResponseParams(url);
+  url.searchParams.set("code", input.code);
+  if (input.state != null) url.searchParams.set("state", input.state);
+  return url.toString();
+}
+
+export function buildAppAuthorizeCancelRedirect(input: {
+  redirectUri: string;
+  state?: string | null;
+}): string {
+  const url = new URL(input.redirectUri);
+  clearAppAuthorizeResponseParams(url);
+  url.searchParams.set("error", "access_denied");
+  url.searchParams.set("error_description", "User denied authorization");
+  if (input.state != null) url.searchParams.set("state", input.state);
+  return url.toString();
+}
+
 export function storeCurrentAppAuthorizeReturnTo(): void {
   if (typeof window === "undefined") return;
   try {

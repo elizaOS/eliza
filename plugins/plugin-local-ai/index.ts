@@ -1,20 +1,28 @@
-// @ts-nocheck — pending migration: @huggingface/transformers 3->4
-// (PreTrainedModel/Florence2 interface changes), @elizaos/core logger
-// signature drift (structured-context overload removed), and
-// GenerateTextParams.{modelType,runtime} field removal. Tracked separately.
 import fs from "node:fs";
 import os from "node:os";
 import path, { basename } from "node:path";
-import { Readable } from "node:stream";
+import type { Readable } from "node:stream";
 import type {
+  DetokenizeTextParams,
   EventPayload,
   GenerateTextParams,
+  ImageDescriptionParams,
+  ImageDescriptionResult,
   JSONSchema,
   ModelTypeName,
   TextEmbeddingParams,
+  TextStreamResult,
+  TextToSpeechParams,
+  TokenizeTextParams,
+  TokenUsage,
   ToolDefinition,
+  TranscriptionParams,
 } from "@elizaos/core";
 import { EventType, type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
+import {
+  createLocalInferenceModelHandlers,
+  isLocalInferenceUnavailableError,
+} from "@elizaos/plugin-local-inference";
 import {
   getLlama,
   type Llama,
@@ -25,6 +33,7 @@ import {
 } from "node-llama-cpp";
 import { type Config, validateConfig } from "./environment";
 import { extractToolCalls, planStructuredRequest, type ToolCallResult } from "./structured-output";
+import { streamLlamaPrompt } from "./text-streaming";
 import { type EmbeddingModelSpec, MODEL_SPECS, type ModelSpec } from "./types";
 import { DownloadManager } from "./utils/downloadManager";
 import { getPlatformManager } from "./utils/platform";
@@ -46,6 +55,119 @@ interface LocalGenerationResult {
   text: string;
   toolCalls: ToolCallResult[];
   finishReason: string | undefined;
+}
+
+type LocalGenerateTextParams = GenerateTextParams & {
+  modelType?: ModelTypeName;
+};
+
+/**
+ * When the caller asked for streaming AND the request shape is plain text
+ * (no tools, no schema, no JSON-object format), `generateText` returns a
+ * `TextStreamResult` instead of a `LocalGenerationResult`. The native
+ * dispatch in the model handler unwraps this back to the runtime contract:
+ *  - return `TextStreamResult` directly so `runtime.ts:isTextStreamResult`
+ *    matches and the SSE pump drains tokens.
+ * Tool / schema requests still buffer fully (those paths require the whole
+ * response before extraction / validation).
+ */
+type LocalGenerationOutput = LocalGenerationResult | TextStreamResult;
+
+type LocalInferenceRouteResult<T> =
+  | {
+      handled: true;
+      value: T;
+    }
+  | {
+      handled: false;
+    };
+
+function isStreamResult(value: LocalGenerationOutput): value is TextStreamResult {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "textStream" in value &&
+    "text" in value &&
+    "usage" in value &&
+    "finishReason" in value
+  );
+}
+
+type LocalNativeTextModelResult = string & {
+  text: string;
+  toolCalls: ToolCallResult[];
+  finishReason?: string;
+};
+
+function getObjectField(value: unknown, key: string): unknown {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  return (value as Record<string, unknown>)[key];
+}
+
+function extractEmbeddingText(params: TextEmbeddingParams | string | null): string | null {
+  if (typeof params === "string") {
+    return params;
+  }
+  const text = getObjectField(params, "text");
+  return typeof text === "string" ? text : null;
+}
+
+function extractTokenizerPrompt(params: TokenizeTextParams): string {
+  if (typeof params.prompt === "string") {
+    return params.prompt;
+  }
+  const legacyText = getObjectField(params, "text");
+  if (typeof legacyText === "string") {
+    return legacyText;
+  }
+  throw new Error("TEXT_TOKENIZER_ENCODE requires a prompt");
+}
+
+function extractImageUrl(params: ImageDescriptionParams | string): string {
+  if (typeof params === "string") {
+    return params;
+  }
+  if (typeof params.imageUrl === "string") {
+    return params.imageUrl;
+  }
+  throw new Error("IMAGE_DESCRIPTION requires an image URL");
+}
+
+function extractTranscriptionBuffer(params: TranscriptionParams | Buffer | string): Buffer {
+  if (Buffer.isBuffer(params)) {
+    return params;
+  }
+  throw new Error("TRANSCRIPTION requires an audio Buffer for local-ai");
+}
+
+function extractSpeechText(params: TextToSpeechParams | string): string {
+  if (typeof params === "string") {
+    return params;
+  }
+  if (typeof params.text === "string") {
+    return params.text;
+  }
+  throw new Error("TEXT_TO_SPEECH requires text");
+}
+
+async function readableToBuffer(readable: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of readable as AsyncIterable<unknown>) {
+    if (typeof chunk === "string") {
+      chunks.push(Buffer.from(chunk));
+    } else if (Buffer.isBuffer(chunk)) {
+      chunks.push(chunk);
+    } else if (chunk instanceof Uint8Array) {
+      chunks.push(Buffer.from(chunk));
+    } else if (chunk instanceof ArrayBuffer) {
+      chunks.push(Buffer.from(chunk));
+    } else {
+      chunks.push(Buffer.from(String(chunk)));
+    }
+  }
+  return Buffer.concat(chunks);
 }
 
 const wordsToPunish = [
@@ -131,6 +253,20 @@ function estimateUsage(prompt: string, response: unknown): NormalizedUsage {
   };
 }
 
+/**
+ * Project the plugin-local NormalizedUsage onto the public `TokenUsage`
+ * contract that `TextStreamResult.usage` resolves to. The `estimated` flag
+ * is plugin-local bookkeeping (used to decorate `MODEL_USED` events); core
+ * `TokenUsage` has no slot for it.
+ */
+function normalizedToTokenUsage(usage: NormalizedUsage): TokenUsage {
+  return {
+    promptTokens: usage.promptTokens,
+    completionTokens: usage.completionTokens,
+    totalTokens: usage.totalTokens,
+  };
+}
+
 function estimateEmbeddingUsage(text: string): NormalizedUsage {
   const promptTokens = estimateTokenCount(text);
   return {
@@ -159,16 +295,62 @@ function wantsNativeShape(params: GenerateTextParams): boolean {
   return false;
 }
 
-function buildNativeResult(result: LocalGenerationResult): {
-  text: string;
-  toolCalls: ToolCallResult[];
-  finishReason?: string;
-} {
-  return {
+function shouldFallbackFromLocalInference(error: unknown): boolean {
+  return (
+    isLocalInferenceUnavailableError(error) &&
+    ("reason" in error
+      ? error.reason === "backend_unavailable" || error.reason === "capability_unavailable"
+      : true)
+  );
+}
+
+function legacyWhisperEnabled(): boolean {
+  const value = process.env.LOCAL_AI_ENABLE_LEGACY_WHISPER?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+function legacyVisionEnabled(): boolean {
+  const value = process.env.LOCAL_AI_ENABLE_LEGACY_VISION?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
+async function tryLocalInferenceModel<T>(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  params: unknown
+): Promise<LocalInferenceRouteResult<T>> {
+  const handler =
+    localInferenceModelHandlers[modelType as keyof typeof localInferenceModelHandlers];
+  if (typeof handler !== "function") {
+    return { handled: false };
+  }
+
+  try {
+    const value = await handler(runtime, params as never);
+    return { handled: true, value: value as T };
+  } catch (error) {
+    if (shouldFallbackFromLocalInference(error)) {
+      logger.debug(
+        {
+          modelType,
+          reason:
+            isLocalInferenceUnavailableError(error) && "reason" in error ? error.reason : "unknown",
+        },
+        "[plugin-local-ai] Unified local-inference route unavailable; falling back to legacy compatibility path."
+      );
+      return { handled: false };
+    }
+    throw error;
+  }
+}
+
+function buildNativeResult(result: LocalGenerationResult): LocalNativeTextModelResult {
+  const nativeResult = {
     text: result.text,
     toolCalls: result.toolCalls,
     ...(result.finishReason ? { finishReason: result.finishReason } : {}),
   };
+  return nativeResult as unknown as LocalNativeTextModelResult;
 }
 
 function getLocalModelLabel(runtime: IAgentRuntime, type: ModelTypeName): string {
@@ -385,12 +567,15 @@ class LocalAIManager {
     await platformManager.initialize();
     const capabilities = platformManager.getCapabilities();
 
-    logger.info("Platform capabilities detected:", {
-      platform: capabilities.platform,
-      gpu: capabilities.gpu?.type || "none",
-      recommendedModel: capabilities.recommendedModelSize,
-      supportedBackends: capabilities.supportedBackends,
-    });
+    logger.info(
+      {
+        platform: capabilities.platform,
+        gpu: capabilities.gpu?.type || "none",
+        recommendedModel: capabilities.recommendedModelSize,
+        supportedBackends: capabilities.supportedBackends,
+      },
+      "Platform capabilities detected:"
+    );
   }
 
   async initialize(modelType: ModelTypeName = ModelType.TEXT_SMALL): Promise<void> {
@@ -436,7 +621,10 @@ class LocalAIManager {
         logger.success("Embedding model initialized successfully");
       }
     } catch (error) {
-      logger.error("Failed to initialize embedding model:", error);
+      logger.error(
+        error instanceof Error ? error : String(error),
+        "Failed to initialize embedding model:"
+      );
       throw error;
     }
   }
@@ -448,7 +636,7 @@ class LocalAIManager {
       throw new Error("Failed to initialize embedding model");
     }
 
-    logger.info("Generating embedding for text", { textLength: text.length });
+    logger.info({ textLength: text.length }, "Generating embedding for text");
 
     const embeddingResult = await this.embeddingContext.getEmbeddingFor(text);
 
@@ -456,9 +644,7 @@ class LocalAIManager {
 
     const normalizedEmbedding = this.normalizeEmbedding(mutableEmbedding);
 
-    logger.info("Embedding generation complete", {
-      dimensions: normalizedEmbedding.length,
-    });
+    logger.info({ dimensions: normalizedEmbedding.length }, "Embedding generation complete");
     return normalizedEmbedding;
   }
 
@@ -501,8 +687,11 @@ class LocalAIManager {
           this.embeddingInitialized = true;
           logger.info("Embedding model initialized successfully");
         } catch (error) {
-          logger.error("Failed to initialize embedding model:", error);
-          this.embeddingInitializingPromise = undefined;
+          logger.error(
+            error instanceof Error ? error : String(error),
+            "Failed to initialize embedding model:"
+          );
+          this.embeddingInitializingPromise = null;
           throw error;
         }
       })();
@@ -531,7 +720,10 @@ class LocalAIManager {
       try {
         existing.context.dispose();
       } catch (err) {
-        logger.warn("[plugin-local-ai] Failed disposing stale context:", err);
+        logger.warn(
+          err instanceof Error ? err : String(err),
+          "[plugin-local-ai] Failed disposing stale context:"
+        );
       }
       this.chatSessions.delete(modelType);
     }
@@ -560,15 +752,18 @@ class LocalAIManager {
     });
     const entry: ChatSessionEntry = { context, session, systemPrompt };
     this.chatSessions.set(modelType, entry);
-    logger.info("[plugin-local-ai] Created new chat session", {
-      modelType,
-      contextSize,
-      systemPromptLength: systemPrompt.length,
-    });
+    logger.info(
+      {
+        modelType,
+        contextSize,
+        systemPromptLength: systemPrompt.length,
+      },
+      "[plugin-local-ai] Created new chat session"
+    );
     return entry;
   }
 
-  async generateText(params: GenerateTextParams): Promise<LocalGenerationResult> {
+  async generateText(params: LocalGenerateTextParams): Promise<LocalGenerationOutput> {
     await this.initializeEnvironment();
     const modelType = params.modelType ?? ModelType.TEXT_SMALL;
     const systemPrompt = params.system?.trim() || DEFAULT_LOCAL_SYSTEM_PROMPT;
@@ -587,12 +782,15 @@ class LocalAIManager {
     );
 
     const usedTokensBefore = entry.session.sequence?.contextTokens?.length ?? 0;
-    logger.info("[plugin-local-ai] generateText", {
-      modelType,
-      kind: plan.kind,
-      promptLength: prompt.length,
-      cachedPrefixTokens: usedTokensBefore,
-    });
+    logger.info(
+      {
+        modelType,
+        kind: plan.kind,
+        promptLength: prompt.length,
+        cachedPrefixTokens: usedTokensBefore,
+      },
+      "[plugin-local-ai] generateText"
+    );
 
     const punishModel = modelType === ModelType.TEXT_LARGE ? this.mediumModel : this.smallModel;
     const baseOptions = {
@@ -616,11 +814,14 @@ class LocalAIManager {
       const toolCalls = extractToolCalls(meta.response);
       const text = stripThinkTags(meta.responseText);
       const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
-      logger.info("[plugin-local-ai] tool-call response", {
-        toolCallCount: toolCalls.length,
-        textLength: text.length,
-        cacheGrewBy: usedTokensAfter - usedTokensBefore,
-      });
+      logger.info(
+        {
+          toolCallCount: toolCalls.length,
+          textLength: text.length,
+          cacheGrewBy: usedTokensAfter - usedTokensBefore,
+        },
+        "[plugin-local-ai] tool-call response"
+      );
       return { text, toolCalls, finishReason: meta.stopReason };
     }
 
@@ -631,21 +832,60 @@ class LocalAIManager {
       });
       const text = stripThinkTags(meta.responseText);
       const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
-      logger.info("[plugin-local-ai] structured response", {
-        kind: plan.kind,
-        textLength: text.length,
-        cacheGrewBy: usedTokensAfter - usedTokensBefore,
-      });
+      logger.info(
+        {
+          kind: plan.kind,
+          textLength: text.length,
+          cacheGrewBy: usedTokensAfter - usedTokensBefore,
+        },
+        "[plugin-local-ai] structured response"
+      );
       return { text, toolCalls: [], finishReason: meta.stopReason };
+    }
+
+    // Streaming branch — only available for the plain-text plan (no tools,
+    // no schema, no JSON-object format). Tool / schema requests need the
+    // full response before extraction or validation, so they continue to
+    // buffer through `entry.session.promptWithMeta`.
+    //
+    // The runtime decides streaming via `params.stream === true` OR by
+    // setting `params.onStreamChunk`; we honour either signal so callers
+    // that omit `stream` but pass an SSE callback still get token deltas
+    // (matches the openrouter / anthropic plugins).
+    const streamParams = params as GenerateTextParams & {
+      onStreamChunk?: unknown;
+    };
+    const wantsStreaming =
+      params.stream === true || typeof streamParams.onStreamChunk === "function";
+
+    if (wantsStreaming) {
+      logger.info(
+        {
+          modelType,
+          promptLength: prompt.length,
+          cachedPrefixTokens: usedTokensBefore,
+        },
+        "[plugin-local-ai] text response (streaming)"
+      );
+      return streamLlamaPrompt({
+        session: entry.session,
+        prompt,
+        options: baseOptions,
+        estimateUsage: (p, fullText) => normalizedToTokenUsage(estimateUsage(p, fullText)),
+        postProcess: stripThinkTags,
+      });
     }
 
     const responseText = await entry.session.prompt(prompt, baseOptions);
     const text = stripThinkTags(responseText);
     const usedTokensAfter = entry.session.sequence?.contextTokens?.length ?? 0;
-    logger.info("[plugin-local-ai] text response", {
-      textLength: text.length,
-      cacheGrewBy: usedTokensAfter - usedTokensBefore,
-    });
+    logger.info(
+      {
+        textLength: text.length,
+        cacheGrewBy: usedTokensAfter - usedTokensBefore,
+      },
+      "[plugin-local-ai] text response"
+    );
     return { text, toolCalls: [], finishReason: undefined };
   }
 
@@ -673,10 +913,13 @@ class LocalAIManager {
 
       return await this.ttsManager.generateSpeech(text);
     } catch (error) {
-      logger.error("Speech generation failed:", {
-        error: error instanceof Error ? error.message : String(error),
-        textLength: text.length,
-      });
+      logger.error(
+        {
+          error: error instanceof Error ? error.message : String(error),
+          textLength: text.length,
+        },
+        "Speech generation failed:"
+      );
       throw error;
     }
   }
@@ -752,7 +995,10 @@ class LocalAIManager {
           this.visionInitialized = true;
           logger.info("Vision model initialized successfully");
         } catch (error) {
-          logger.error("Failed to initialize vision model:", error);
+          logger.error(
+            error instanceof Error ? error : String(error),
+            "Failed to initialize vision model:"
+          );
           this.visionInitializingPromise = null;
           throw error;
         }
@@ -789,7 +1035,10 @@ class LocalAIManager {
           logger.info("Transcription prerequisites (FFmpeg) checked and ready.");
           logger.info("Transcription model initialized successfully");
         } catch (error) {
-          logger.error("Failed to initialize transcription model:", error);
+          logger.error(
+            error instanceof Error ? error : String(error),
+            "Failed to initialize transcription model:"
+          );
           this.transcriptionInitializingPromise = null;
           throw error;
         }
@@ -815,6 +1064,54 @@ class LocalAIManager {
   }
 }
 
+/**
+ * Convert the manager's `LocalGenerationOutput` (string or stream) into the
+ * shape `runtime.useModel` expects:
+ *   - **Streaming:** return the `TextStreamResult` verbatim. The runtime's
+ *     `isTextStreamResult` check (`packages/core/src/runtime.ts:417`) keys
+ *     on the same four-field shape, drains `textStream`, and forwards every
+ *     chunk to `params.onStreamChunk` / the SSE bridge. We deliberately do
+ *     NOT also call `params.onStreamChunk` from inside the handler — that
+ *     would double-deliver each token.
+ *   - **Non-streaming, native shape:** wrap in `{ text, toolCalls, ... }`
+ *     for tool / schema callers.
+ *   - **Non-streaming, plain:** return the raw string.
+ *
+ * Usage tracking for the streaming path is wired via the stream's `usage`
+ * promise (`text-streaming.ts`), with a one-shot `MODEL_USED` emit when
+ * the stream completes — same pattern as plugin-ollama's
+ * `usagePromise.then(emitModelUsed)`.
+ */
+function finalizeTextResult(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  params: GenerateTextParams,
+  result: LocalGenerationOutput
+): string | LocalNativeTextModelResult | TextStreamResult {
+  if (isStreamResult(result)) {
+    const modelLabel = getLocalModelLabel(runtime, modelType);
+    void result.usage.then((usage) => {
+      if (!usage) return;
+      emitModelUsed(runtime, modelType, modelLabel, {
+        promptTokens: usage.promptTokens,
+        completionTokens: usage.completionTokens,
+        totalTokens: usage.totalTokens,
+        estimated: true,
+      });
+    });
+    return result;
+  }
+
+  emitModelUsed(
+    runtime,
+    modelType,
+    getLocalModelLabel(runtime, modelType),
+    estimateUsage(params.prompt ?? "", result.text)
+  );
+  return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
+}
+
+const localInferenceModelHandlers = createLocalInferenceModelHandlers();
 const localAIManager = LocalAIManager.getInstance();
 
 export const localAiPlugin: Plugin = {
@@ -833,7 +1130,7 @@ export const localAiPlugin: Plugin = {
       logger.warn("- LOCAL_SMALL_MODEL: Path to small language model file");
       logger.warn("- LOCAL_LARGE_MODEL: Path to large language model file");
       logger.warn("- LOCAL_EMBEDDING_MODEL: Path to embedding model file");
-      logger.warn("Example: LOCAL_SMALL_MODEL=text/eliza-1-mobile-1_7b-32k.gguf");
+      logger.warn("Example: LOCAL_SMALL_MODEL=text/eliza-1-2b-32k.gguf");
     }
 
     const modelsDir = config.MODELS_DIR || path.join(os.homedir(), ".eliza", "models");
@@ -869,11 +1166,14 @@ export const localAiPlugin: Plugin = {
       logger.warn("Models will be downloaded on first use, which may take time");
       logger.warn("To pre-download models, run the plugin and it will fetch them automatically");
     } else {
-      logger.info("📦 Found model files:", {
-        small: modelsExist.small ? "✓" : "✗",
-        large: modelsExist.large ? "✓" : "✗",
-        embedding: modelsExist.embedding ? "✓" : "✗",
-      });
+      logger.info(
+        {
+          small: modelsExist.small ? "✓" : "✗",
+          large: modelsExist.large ? "✓" : "✗",
+          embedding: modelsExist.embedding ? "✓" : "✗",
+        },
+        "📦 Found model files:"
+      );
     }
 
     logger.success("✅ Local AI plugin initialized successfully");
@@ -881,41 +1181,49 @@ export const localAiPlugin: Plugin = {
   },
   models: {
     [ModelType.TEXT_SMALL]: async (runtime: IAgentRuntime, params: GenerateTextParams) => {
+      if (!wantsNativeShape(params)) {
+        const routed = await tryLocalInferenceModel<string>(runtime, ModelType.TEXT_SMALL, params);
+        if (routed.handled) return routed.value;
+      }
+
       await localAIManager.initializeEnvironment();
       const result = await localAIManager.generateText({
         ...params,
         modelType: ModelType.TEXT_SMALL,
       });
-      emitModelUsed(
-        runtime,
-        ModelType.TEXT_SMALL,
-        getLocalModelLabel(runtime, ModelType.TEXT_SMALL),
-        estimateUsage(params.prompt ?? "", result.text)
-      );
-      return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
+      return finalizeTextResult(runtime, ModelType.TEXT_SMALL, params, result);
     },
 
     [ModelType.TEXT_LARGE]: async (runtime: IAgentRuntime, params: GenerateTextParams) => {
+      if (!wantsNativeShape(params)) {
+        const routed = await tryLocalInferenceModel<string>(runtime, ModelType.TEXT_LARGE, params);
+        if (routed.handled) return routed.value;
+      }
+
       await localAIManager.initializeEnvironment();
       const result = await localAIManager.generateText({
         ...params,
         modelType: ModelType.TEXT_LARGE,
       });
-      emitModelUsed(
-        runtime,
-        ModelType.TEXT_LARGE,
-        getLocalModelLabel(runtime, ModelType.TEXT_LARGE),
-        estimateUsage(params.prompt ?? "", result.text)
-      );
-      return wantsNativeShape(params) ? buildNativeResult(result) : result.text;
+      return finalizeTextResult(runtime, ModelType.TEXT_LARGE, params, result);
     },
 
-    [ModelType.TEXT_EMBEDDING]: async (runtime: IAgentRuntime, params: TextEmbeddingParams) => {
-      const text = params?.text;
+    [ModelType.TEXT_EMBEDDING]: async (
+      runtime: IAgentRuntime,
+      params: TextEmbeddingParams | string | null
+    ) => {
+      const text = extractEmbeddingText(params);
       if (!text) {
         logger.debug("Null or empty text input for embedding, returning zero vector");
         return new Array(1024).fill(0);
       }
+
+      const routed = await tryLocalInferenceModel<number[]>(
+        runtime,
+        ModelType.TEXT_EMBEDDING,
+        params
+      );
+      if (routed.handled) return routed.value;
 
       const embedding = await localAIManager.generateEmbedding(text);
       emitModelUsed(
@@ -929,23 +1237,41 @@ export const localAiPlugin: Plugin = {
 
     [ModelType.TEXT_TOKENIZER_ENCODE]: async (
       _runtime: IAgentRuntime,
-      { text }: { text: string }
+      params: TokenizeTextParams
     ) => {
       const manager = localAIManager.getTokenizerManager();
       const config = localAIManager.getActiveModelConfig();
+      const text = extractTokenizerPrompt(params);
       return await manager.encode(text, config);
     },
 
     [ModelType.TEXT_TOKENIZER_DECODE]: async (
       _runtime: IAgentRuntime,
-      { tokens }: { tokens: number[] }
+      { tokens }: DetokenizeTextParams
     ) => {
       const manager = localAIManager.getTokenizerManager();
       const config = localAIManager.getActiveModelConfig();
       return await manager.decode(tokens, config);
     },
 
-    [ModelType.IMAGE_DESCRIPTION]: async (_runtime: IAgentRuntime, imageUrl: string) => {
+    [ModelType.IMAGE_DESCRIPTION]: async (
+      runtime: IAgentRuntime,
+      params: ImageDescriptionParams | string
+    ) => {
+      const routed = await tryLocalInferenceModel<ImageDescriptionResult>(
+        runtime,
+        ModelType.IMAGE_DESCRIPTION,
+        params
+      );
+      if (routed.handled) return routed.value;
+
+      if (!legacyVisionEnabled()) {
+        throw new Error(
+          "plugin-local-ai image description is a legacy Florence/Transformers.js compatibility path. Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local vision, or set LOCAL_AI_ENABLE_LEGACY_VISION=1 to opt in to the legacy path."
+        );
+      }
+
+      const imageUrl = extractImageUrl(params);
       logger.info("Processing image from URL:", imageUrl);
 
       const response = await fetch(imageUrl);
@@ -958,16 +1284,38 @@ export const localAiPlugin: Plugin = {
       return await localAIManager.describeImage(buffer, mimeType);
     },
 
-    [ModelType.TRANSCRIPTION]: async (_runtime: IAgentRuntime, audioBuffer: Buffer) => {
-      logger.info("Processing audio transcription:", {
-        bufferSize: audioBuffer.length,
-      });
+    [ModelType.TRANSCRIPTION]: async (
+      runtime: IAgentRuntime,
+      params: TranscriptionParams | Buffer | string
+    ) => {
+      const routed = await tryLocalInferenceModel<string>(runtime, ModelType.TRANSCRIPTION, params);
+      if (routed.handled) return routed.value;
+
+      if (!legacyWhisperEnabled()) {
+        throw new Error(
+          "plugin-local-ai transcription is a legacy Whisper compatibility path. Use @elizaos/plugin-local-inference with an Eliza-1 bundle for canonical local ASR, or set LOCAL_AI_ENABLE_LEGACY_WHISPER=1 to opt in to the legacy path."
+        );
+      }
+
+      const audioBuffer = extractTranscriptionBuffer(params);
+      logger.info({ bufferSize: audioBuffer.length }, "Processing audio transcription:");
 
       return await localAIManager.transcribeAudio(audioBuffer);
     },
 
-    [ModelType.TEXT_TO_SPEECH]: async (_runtime: IAgentRuntime, text: string) => {
-      return await localAIManager.generateSpeech(text);
+    [ModelType.TEXT_TO_SPEECH]: async (
+      runtime: IAgentRuntime,
+      params: TextToSpeechParams | string
+    ) => {
+      const routed = await tryLocalInferenceModel<Uint8Array>(
+        runtime,
+        ModelType.TEXT_TO_SPEECH,
+        params
+      );
+      if (routed.handled) return routed.value;
+
+      const text = extractSpeechText(params);
+      return await readableToBuffer(await localAIManager.generateSpeech(text));
     },
   },
   tests: [
@@ -998,10 +1346,13 @@ export const localAiPlugin: Plugin = {
 
               logger.success("Initialization test completed successfully");
             } catch (error) {
-              logger.error("Initialization test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "Initialization test failed:"
+              );
               throw error;
             }
           },
@@ -1030,10 +1381,13 @@ export const localAiPlugin: Plugin = {
 
               logger.success("TEXT_LARGE test completed successfully");
             } catch (error) {
-              logger.error("TEXT_LARGE test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "TEXT_LARGE test failed:"
+              );
               throw error;
             }
           },
@@ -1048,7 +1402,7 @@ export const localAiPlugin: Plugin = {
                 text: "This is a test of the text embedding model.",
               });
 
-              logger.info("Embedding generated with dimensions:", embedding.length);
+              logger.info({ dimensions: embedding.length }, "Embedding generated with dimensions:");
 
               if (!Array.isArray(embedding)) {
                 throw new Error("Embedding is not an array");
@@ -1070,10 +1424,13 @@ export const localAiPlugin: Plugin = {
 
               logger.success("TEXT_EMBEDDING test completed successfully");
             } catch (error) {
-              logger.error("TEXT_EMBEDDING test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "TEXT_EMBEDDING test failed:"
+              );
               throw error;
             }
           },
@@ -1084,8 +1441,11 @@ export const localAiPlugin: Plugin = {
             try {
               logger.info("Starting TEXT_TOKENIZER_ENCODE test");
               const text = "Hello tokenizer test!";
-              const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, { text });
-              logger.info("Encoded tokens:", { count: tokens.length });
+              const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
+                prompt: text,
+                modelType: ModelType.TEXT_TOKENIZER_ENCODE,
+              });
+              logger.info({ count: tokens.length }, "Encoded tokens:");
 
               if (!Array.isArray(tokens)) {
                 throw new Error("Tokens output is not an array");
@@ -1101,10 +1461,13 @@ export const localAiPlugin: Plugin = {
 
               logger.success("TEXT_TOKENIZER_ENCODE test completed successfully");
             } catch (error) {
-              logger.error("TEXT_TOKENIZER_ENCODE test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "TEXT_TOKENIZER_ENCODE test failed:"
+              );
               throw error;
             }
           },
@@ -1117,16 +1480,21 @@ export const localAiPlugin: Plugin = {
 
               const originalText = "Hello tokenizer test!";
               const tokens = await runtime.useModel(ModelType.TEXT_TOKENIZER_ENCODE, {
-                text: originalText,
+                prompt: originalText,
+                modelType: ModelType.TEXT_TOKENIZER_ENCODE,
               });
 
               const decodedText = await runtime.useModel(ModelType.TEXT_TOKENIZER_DECODE, {
                 tokens,
+                modelType: ModelType.TEXT_TOKENIZER_DECODE,
               });
-              logger.info("Round trip tokenization:", {
-                original: originalText,
-                decoded: decodedText,
-              });
+              logger.info(
+                {
+                  original: originalText,
+                  decoded: decodedText,
+                },
+                "Round trip tokenization:"
+              );
 
               if (typeof decodedText !== "string") {
                 throw new Error("Decoded output is not a string");
@@ -1134,10 +1502,13 @@ export const localAiPlugin: Plugin = {
 
               logger.success("TEXT_TOKENIZER_DECODE test completed successfully");
             } catch (error) {
-              logger.error("TEXT_TOKENIZER_DECODE test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "TEXT_TOKENIZER_DECODE test failed:"
+              );
               throw error;
             }
           },
@@ -1152,7 +1523,10 @@ export const localAiPlugin: Plugin = {
                 "https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/Cat03.jpg/320px-Cat03.jpg";
               const result = await runtime.useModel(ModelType.IMAGE_DESCRIPTION, imageUrl);
 
-              logger.info("Image description result:", result);
+              logger.info(
+                { title: result.title, description: result.description },
+                "Image description result:"
+              );
 
               if (!result || typeof result !== "object") {
                 throw new Error("Invalid response format");
@@ -1168,10 +1542,13 @@ export const localAiPlugin: Plugin = {
 
               logger.success("IMAGE_DESCRIPTION test completed successfully");
             } catch (error) {
-              logger.error("IMAGE_DESCRIPTION test failed:", {
-                error: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              });
+              logger.error(
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  stack: error instanceof Error ? error.stack : undefined,
+                },
+                "IMAGE_DESCRIPTION test failed:"
+              );
               throw error;
             }
           },
@@ -1242,27 +1619,15 @@ export const localAiPlugin: Plugin = {
               logger.info("Starting TEXT_TO_SPEECH test");
 
               const testText = "This is a test of the text to speech system.";
-              const audioStream = await runtime.useModel(ModelType.TEXT_TO_SPEECH, testText);
+              const audioData = await runtime.useModel(ModelType.TEXT_TO_SPEECH, testText);
 
-              if (!(audioStream instanceof Readable)) {
-                throw new Error("TTS output is not a readable stream");
+              if (!(audioData instanceof Uint8Array) && !(audioData instanceof ArrayBuffer)) {
+                throw new Error("TTS output is not binary audio data");
               }
 
-              let dataReceived = false;
-              audioStream.on("data", () => {
-                dataReceived = true;
-              });
-
-              await new Promise((resolve, reject) => {
-                audioStream.on("end", () => {
-                  if (!dataReceived) {
-                    reject(new Error("No audio data received from stream"));
-                  } else {
-                    resolve(true);
-                  }
-                });
-                audioStream.on("error", reject);
-              });
+              if (audioData.byteLength === 0) {
+                throw new Error("No audio data received");
+              }
 
               logger.success("TEXT_TO_SPEECH test completed successfully");
             } catch (error) {

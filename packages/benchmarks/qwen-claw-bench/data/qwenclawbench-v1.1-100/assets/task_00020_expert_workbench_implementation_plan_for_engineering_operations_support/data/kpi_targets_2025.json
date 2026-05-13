@@ -1,0 +1,171 @@
+{
+  "document_info": {
+    "title": "KPI Targets 2025 - Engineering Operations Intelligent Support Center",
+    "version": "1.0",
+    "approved_date": "2025-01-08",
+    "approved_by": "VP Engineering Operations",
+    "review_frequency": "quarterly"
+  },
+  "kpi_targets": {
+    "response_and_resolution": {
+      "avg_response_time_p1_minutes": {
+        "target_2025": 15,
+        "baseline_2024": 45,
+        "improvement_pct": 66.7,
+        "measurement": "Rolling 30-day average of time from incident creation to first expert contact for P1 incidents",
+        "data_source": "Incident management system"
+      },
+      "avg_response_time_p2_minutes": {
+        "target_2025": 45,
+        "baseline_2024": 92,
+        "improvement_pct": 51.1,
+        "measurement": "Rolling 30-day average for P2 incidents"
+      },
+      "avg_response_time_p3_minutes": {
+        "target_2025": 90,
+        "baseline_2024": 138,
+        "improvement_pct": 34.8,
+        "measurement": "Rolling 30-day average for P3 incidents"
+      },
+      "avg_response_time_p4_minutes": {
+        "target_2025": 120,
+        "baseline_2024": 182,
+        "improvement_pct": 34.1,
+        "measurement": "Rolling 30-day average for P4 incidents"
+      },
+      "avg_resolution_time_hours": {
+        "target_2025": 4.0,
+        "baseline_2024": 8.2,
+        "improvement_pct": 51.2,
+        "measurement": "Average time from incident creation to resolution across all severities",
+        "data_source": "Incident management system"
+      },
+      "first_contact_resolution_pct": {
+        "target_2025": 55,
+        "baseline_2024": 32,
+        "improvement_pct": 71.9,
+        "measurement": "Percentage of incidents resolved during the first expert interaction"
+      }
+    },
+    "expert_efficiency": {
+      "expert_utilization_pct": {
+        "target_2025": 85,
+        "baseline_2024": 62,
+        "improvement_pct": 37.1,
+        "measurement": "Percentage of available expert hours spent on active support sessions",
+        "data_source": "Expert workbench platform"
+      },
+      "avg_sessions_per_expert_per_day": {
+        "target_2025": 6.5,
+        "baseline_2024": 3.8,
+        "improvement_pct": 71.1,
+        "measurement": "Average number of support sessions handled per expert per working day"
+      },
+      "expert_satisfaction_score": {
+        "target_2025": 4.0,
+        "baseline_2024": 3.4,
+        "scale": "1-5",
+        "measurement": "Quarterly expert satisfaction survey score"
+      }
+    },
+    "knowledge_management": {
+      "knowledge_reuse_rate_pct": {
+        "target_2025": 60,
+        "baseline_2024": 22,
+        "improvement_pct": 172.7,
+        "measurement": "Percentage of incidents where a previously documented solution was applied",
+        "data_source": "Knowledge base analytics"
+      },
+      "knowledge_base_articles": {
+        "target_2025": 5000,
+        "baseline_2024": 1200,
+        "measurement": "Total number of validated knowledge articles in the system"
+      },
+      "knowledge_article_quality_score": {
+        "target_2025": 4.0,
+        "baseline_2024": 3.1,
+        "scale": "1-5",
+        "measurement": "Average user rating of knowledge articles"
+      }
+    },
+    "ai_and_automation": {
+      "ai_assisted_resolution_pct": {
+        "target_2025": 40,
+        "baseline_2024": 12,
+        "improvement_pct": 233.3,
+        "measurement": "Percentage of incidents where AI provided the primary diagnostic recommendation that led to resolution",
+        "data_source": "AI analytics dashboard"
+      },
+      "ai_recommendation_accuracy_pct": {
+        "target_2025": 85,
+        "baseline_2024": 68,
+        "measurement": "Percentage of AI recommendations accepted by experts without modification"
+      },
+      "automated_triage_pct": {
+        "target_2025": 70,
+        "baseline_2024": 15,
+        "measurement": "Percentage of incoming incidents automatically categorized and prioritized by AI"
+      }
+    },
+    "system_reliability": {
+      "system_uptime_pct": {
+        "target_2025": 99.5,
+        "baseline_2024": null,
+        "measurement": "Platform availability excluding planned maintenance windows",
+        "data_source": "Monitoring system (Prometheus/Grafana)",
+        "notes": "New system - no baseline; target based on project charter SLA"
+      },
+      "edge_node_availability_pct": {
+        "target_2025": 99.0,
+        "baseline_2024": null,
+        "measurement": "Average availability of edge computing nodes at field sites"
+      },
+      "mean_time_to_recover_minutes": {
+        "target_2025": 30,
+        "baseline_2024": null,
+        "measurement": "Average time to restore service after unplanned outage"
+      }
+    },
+    "user_experience": {
+      "user_satisfaction_score": {
+        "target_2025": 4.2,
+        "baseline_2024": 3.2,
+        "scale": "1-5",
+        "improvement_pct": 31.3,
+        "measurement": "Quarterly user satisfaction survey score (field engineers + HQ experts)",
+        "data_source": "User survey system"
+      },
+      "mobile_app_adoption_pct": {
+        "target_2025": 80,
+        "baseline_2024": 0,
+        "measurement": "Percentage of field engineers actively using the mobile app (monthly active users)"
+      },
+      "training_completion_pct": {
+        "target_2025": 95,
+        "baseline_2024": 0,
+        "measurement": "Percentage of target users who completed platform training"
+      }
+    },
+    "cost_efficiency": {
+      "cost_per_incident_reduction_pct": {
+        "target_2025": 30,
+        "baseline_2024_cny": 8500,
+        "target_2025_cny": 5950,
+        "measurement": "Average fully-loaded cost per incident (personnel time + system costs + downtime impact)",
+        "data_source": "Finance system + incident management system"
+      },
+      "unplanned_downtime_reduction_pct": {
+        "target_2025": 25,
+        "baseline_2024_hours": 480,
+        "target_2025_hours": 360,
+        "measurement": "Total unplanned production downtime hours attributable to equipment failures"
+      }
+    }
+  },
+  "reporting_schedule": {
+    "daily": ["response_times", "resolution_times", "system_uptime"],
+    "weekly": ["expert_utilization", "ai_assisted_resolution", "knowledge_reuse_rate"],
+    "monthly": ["all_kpis_with_trend_analysis"],
+    "quarterly": ["comprehensive_review_with_stakeholder_presentation"]
+  }
+}

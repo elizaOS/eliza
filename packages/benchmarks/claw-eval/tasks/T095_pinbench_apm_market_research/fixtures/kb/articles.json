@@ -1,0 +1,56 @@
+[
+  {
+    "article_id": "pb19_001",
+    "title": "Datadog profile for observability buyers",
+    "content": "Datadog is one of the category leaders in cloud-native observability. Its differentiators include broad infrastructure coverage, strong APM plus logs plus security integration, and fast time to value for engineering teams. Pricing typically mixes per-host, per-GB ingestion, and modular add-ons. Strengths include breadth and ecosystem integrations. Weaknesses include cost sprawl at scale.",
+    "category": "market_research",
+    "last_updated": "2026-02-20",
+    "views": 120,
+    "tags": ["Datadog", "APM", "pricing"]
+  },
+  {
+    "article_id": "pb19_002",
+    "title": "New Relic competitive notes",
+    "content": "New Relic positions itself around a unified telemetry platform with usage-based pricing and a large free tier. Differentiators include a broad full-stack view and a familiar workflow for application teams. Pricing is commonly tied to user seats and data ingest. Strengths include accessibility and platform breadth. Weaknesses include budget sensitivity when ingest grows quickly.",
+    "category": "market_research",
+    "last_updated": "2026-02-20",
+    "views": 95,
+    "tags": ["New Relic", "APM", "pricing"]
+  },
+  {
+    "article_id": "pb19_003",
+    "title": "Dynatrace market positioning",
+    "content": "Dynatrace is often chosen for enterprise-scale observability with strong automation, topology mapping, and AI-assisted root cause analysis. Pricing is generally based on host units or monitored resources with enterprise contracts. Strengths include automation and large-environment observability. Weaknesses include procurement complexity and premium pricing.",
+    "category": "market_research",
+    "last_updated": "2026-02-21",
+    "views": 88,
+    "tags": ["Dynatrace", "enterprise", "AI"]
+  },
+  {
+    "article_id": "pb19_004",
+    "title": "Grafana Labs in the observability market",
+    "content": "Grafana Labs differentiates through strong dashboards, open-source adoption, LGTM positioning, and an OpenTelemetry-friendly architecture. Pricing varies across cloud plans and enterprise support, often aligned to metrics, logs, traces, and seats. Strengths include flexibility and open-source credibility. Weaknesses include more self-assembly for buyers seeking an all-in-one managed experience.",
+    "category": "market_research",
+    "last_updated": "2026-02-21",
+    "views": 77,
+    "tags": ["Grafana", "OpenTelemetry", "LGTM"]
+  },
+  {
+    "article_id": "pb19_005",
+    "title": "Splunk Observability buyer summary",
+    "content": "Splunk Observability remains strong in large enterprises, especially where logs, security, and existing Splunk relationships matter. Pricing often depends on data volume and enterprise packaging. Strengths include enterprise footprint and cross-domain analytics. Weaknesses include complexity and a reputation for high cost if telemetry volumes surge.",
+    "category": "market_research",
+    "last_updated": "2026-02-22",
+    "views": 81,
+    "tags": ["Splunk", "enterprise", "pricing"]
+  },
+  {
+    "article_id": "pb19_006",
+    "title": "Observability market trends 2026",
+    "content": "Key trends in 2026 include OpenTelemetry standardization, AI-assisted root cause analysis, platform consolidation across logs metrics traces security, and persistent interest in cloud-native deployment models. Buyers are also scrutinizing consumption-based pricing and data-ingest efficiency more closely. Vendors increasingly differentiate on workflow automation and cost governance.",
+    "category": "market_research",
+    "last_updated": "2026-02-22",
+    "views": 130,
+    "tags": ["market trends", "OpenTelemetry", "AI", "cloud-native"]
+  }
+]

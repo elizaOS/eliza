@@ -62,7 +62,15 @@ const pluginStreamingSrc = path.join(
   monorepoRoot,
   "plugins/plugin-streaming/src",
 );
+const pluginLocalEmbeddingSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-local-embedding/src",
+);
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
+const pluginAgentOrchestratorSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-agent-orchestrator/src",
+);
 const pluginWorkflowSrc = path.join(
   monorepoRoot,
   "plugins/plugin-workflow/src",
@@ -81,21 +89,17 @@ export default defineConfig({
   test: {
     testTimeout: 120_000,
     hookTimeout: 120_000,
-    maxWorkers: 2,
+    maxWorkers: 1,
     // Bootstrap-token tests spin up a real PGlite database + jose-signed
     // RS256 key material per test, and have intermittently exited the
     // vitest worker fork unexpectedly on CI (Worker exited unexpectedly /
-    // Worker forks emitted error). Forcing a single fork serializes the
-    // heavy native + WASM init across the file boundary and removes the
-    // class of crash.
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    // Worker forks emitted error). In Vitest 4 the former forks.singleFork
+    // setting is represented by maxWorkers: 1 plus isolate: false.
+    isolate: false,
     server: { deps: { inline: [/@elizaos\//] } },
     // Heavy browser e2e — install `puppeteer-core` / `playwright-core` in this package to run
     exclude: [
+      "**/.git/**",
       "**/node_modules/**",
       "**/dist/**",
       "**/*.e2e.test.{ts,tsx}",
@@ -106,11 +110,18 @@ export default defineConfig({
       "**/*.real.test.{ts,tsx}",
       "**/*.real.e2e.test.{ts,tsx}",
       "**/*.spec.{ts,tsx}",
+      "platforms/electrobun/**",
       "scripts/run-mobile-build-policy.test.mjs",
+      "scripts/aosp/compile-libllama-fused.test.mjs",
+      // node:sqlite (stable in Node ≥24) is unavailable in Bun. CI runs this
+      // separately under Node via vitest.node-sqlite.config.ts with
+      // NODE_OPTIONS=--experimental-sqlite (see .github/workflows/test.yml).
+      "src/api/training-benchmarks.test.ts",
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
       "test/app/onboarding-companion.live.e2e.test.ts",
+      "test/helpers/__tests__/live-agent-test.smoke.test.ts",
       ...(includeLiveE2e
         ? []
         : [
@@ -276,6 +287,10 @@ export default defineConfig({
         replacement: path.join(pluginLocalInferenceSrc, "index.ts"),
       },
       {
+        find: /^@elizaos\/plugin-local-embedding$/,
+        replacement: path.join(pluginLocalEmbeddingSrc, "index.ts"),
+      },
+      {
         find: /^@elizaos\/plugin-mcp$/,
         replacement: path.join(pluginMcpSrc, "index.ts"),
       },
@@ -298,6 +313,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-whatsapp$/,
         replacement: path.join(pluginWhatsappRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-orchestrator$/,
+        replacement: path.join(pluginAgentOrchestratorSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-orchestrator\/(.+)$/,
+        replacement: path.join(pluginAgentOrchestratorSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-workflow$/,

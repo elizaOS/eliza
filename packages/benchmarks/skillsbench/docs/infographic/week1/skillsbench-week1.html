@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SkillsBench - Week 1</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #e8e8e8;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .infographic {
+      width: 1080px;
+      height: 1080px;
+      background: #fafafa;
+      padding: 34px 48px 46px 48px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* HEADER */
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+
+    .header-left h1 {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 68px;
+      font-weight: 700;
+      color: #111;
+      letter-spacing: -2px;
+      line-height: 1;
+    }
+
+    .header-left .tagline {
+      font-size: 17px;
+      color: #555;
+      margin-top: 10px;
+      max-width: 480px;
+      line-height: 1.5;
+    }
+
+    .header-right {
+      text-align: right;
+    }
+
+    .header-badge {
+      font-size: 14px;
+      font-weight: 700;
+      color: #fff;
+      background: #111;
+      padding: 10px 18px;
+      border-radius: 6px;
+    }
+
+    .header-meta {
+      font-size: 12px;
+      color: #888;
+      margin-top: 8px;
+    }
+
+    /* HEADLINE */
+    .headline {
+      background: linear-gradient(135deg, #111 0%, #1a1a1a 100%);
+      border-radius: 12px;
+      padding: 24px 32px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .headline-text {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 32px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .headline-text .highlight {
+      color: #4ade80;
+    }
+
+    .headline-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #666;
+      background: #222;
+      padding: 8px 14px;
+      border-radius: 6px;
+    }
+
+    /* CHART SECTION */
+    .chart-section {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 28px 32px;
+      margin-bottom: 20px;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+    }
+
+    .chart-title {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #111;
+    }
+
+    .chart-legend {
+      display: flex;
+      gap: 20px;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #666;
+    }
+
+    .legend-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+    }
+
+    .legend-dot.without { background: #d1d5db; }
+    .legend-dot.with { background: #111; }
+
+    /* BAR CHART */
+    .chart {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .chart-row {
+      display: grid;
+      grid-template-columns: 160px 1fr 80px;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .chart-label {
+      text-align: right;
+    }
+
+    .chart-model-name {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+    }
+
+    .chart-model-version {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #111;
+    }
+
+    .chart-bars {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .bar-container {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .bar {
+      height: 28px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 600;
+      color: #fff;
+      min-width: 60px;
+    }
+
+    .bar.without {
+      background: #d1d5db;
+      color: #555;
+    }
+
+    .bar.with {
+      background: #111;
+    }
+
+    .bar.with.claude {
+      background: #d97706;
+    }
+
+    .chart-improvement {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 18px;
+      font-weight: 700;
+      color: #16a34a;
+      background: #dcfce7;
+      padding: 8px 14px;
+      border-radius: 6px;
+      text-align: center;
+    }
+
+    /* STATS ROW */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 24px 20px;
+      text-align: center;
+    }
+
+    .stat-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 42px;
+      font-weight: 600;
+      color: #111;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .stat-label {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #888;
+    }
+
+    /* HIGHLIGHTS GRID */
+    .highlights-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+
+    .highlight-card {
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 12px;
+      padding: 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .highlight-card.accent {
+      background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+      border-color: #bbf7d0;
+    }
+
+    .highlight-icon {
+      font-size: 28px;
+      flex-shrink: 0;
+    }
+
+    .highlight-content {
+      flex: 1;
+    }
+
+    .highlight-stat {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22px;
+      font-weight: 700;
+      color: #111;
+      line-height: 1.1;
+    }
+
+    .highlight-card.accent .highlight-stat {
+      color: #16a34a;
+    }
+
+    .highlight-text {
+      font-size: 13px;
+      color: #666;
+      line-height: 1.3;
+      margin-top: 2px;
+    }
+
+    /* CONTRIBUTORS */
+    .contributors {
+      background: linear-gradient(135deg, #f8f8f8 0%, #f0f0f0 100%);
+      border-radius: 12px;
+      padding: 18px 28px;
+      margin-bottom: 16px;
+    }
+
+    .contributors-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: #888;
+      margin-bottom: 6px;
+    }
+
+    .contributors-value {
+      font-size: 15px;
+      font-weight: 600;
+      color: #111;
+      line-height: 1.4;
+    }
+
+    /* CTA */
+    .cta {
+      background: #111;
+      border-radius: 12px;
+      padding: 28px 36px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+    }
+
+    .cta-left h2 {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 26px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .cta-left p {
+      font-size: 15px;
+      color: #888;
+    }
+
+    .cta-right {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .cta-stat {
+      text-align: center;
+      padding: 0 20px;
+      border-right: 1px solid #333;
+    }
+
+    .cta-stat:last-child {
+      border-right: none;
+    }
+
+    .cta-stat-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 26px;
+      font-weight: 600;
+      color: #4ade80;
+    }
+
+    .cta-stat-label {
+      font-size: 11px;
+      color: #666;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* FOOTER */
+    .footer {
+      margin-top: 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      color: #888;
+    }
+
+    .footer-left {
+      font-weight: 600;
+      color: #111;
+    }
+
+    .footer-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: #dcfce7;
+      border: 1px solid #bbf7d0;
+      padding: 8px 16px;
+      border-radius: 20px;
+      color: #16a34a;
+      font-weight: 600;
+      font-size: 13px;
+    }
+
+    .footer-badge::before {
+      content: '';
+      width: 8px;
+      height: 8px;
+      background: #16a34a;
+      border-radius: 50%;
+    }
+  </style>
+</head>
+<body>
+  <div class="infographic">
+
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <h1>SkillsBench</h1>
+        <p class="tagline">The first benchmark for AI Agent Skills. Measuring how procedural knowledge transfers to agents.</p>
+      </div>
+      <div class="header-right">
+        <div class="header-badge">Week 1 Update</div>
+        <div class="header-meta">January 2026</div>
+      </div>
+    </div>
+
+    <!-- HEADLINE -->
+    <div class="headline">
+      <div class="headline-text">Skills boost agent performance by <span class="highlight">up to 27%</span></div>
+      <div class="headline-badge">Pass@1</div>
+    </div>
+
+    <!-- CHART -->
+    <div class="chart-section">
+      <div class="chart-header">
+        <div class="chart-title">Benchmark Results</div>
+        <div class="chart-legend">
+          <div class="legend-item">
+            <div class="legend-dot without"></div>
+            <span>Without Skills</span>
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot with"></div>
+            <span>With Skills</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="chart">
+        <div class="chart-row">
+          <div class="chart-label">
+            <div class="chart-model-name">Codex</div>
+            <div class="chart-model-version">GPT-5.2</div>
+          </div>
+          <div class="chart-bars">
+            <div class="bar-container">
+              <div class="bar without" style="width: calc(64.5% + 60px);">0.645</div>
+            </div>
+            <div class="bar-container">
+              <div class="bar with" style="width: calc(72.9% + 60px);">0.729</div>
+            </div>
+          </div>
+          <div class="chart-improvement">+13%</div>
+        </div>
+
+        <div class="chart-row">
+          <div class="chart-label">
+            <div class="chart-model-name">Claude Code</div>
+            <div class="chart-model-version">Opus 4.5</div>
+          </div>
+          <div class="chart-bars">
+            <div class="bar-container">
+              <div class="bar without" style="width: calc(39.5% + 60px);">0.395</div>
+            </div>
+            <div class="bar-container">
+              <div class="bar with claude" style="width: calc(50% + 60px);">0.500</div>
+            </div>
+          </div>
+          <div class="chart-improvement">+27%</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-num">440+</div>
+        <div class="stat-label">Community</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">120+</div>
+        <div class="stat-label">Contributor Signups</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">8</div>
+        <div class="stat-label">Tasks Merged</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num">44</div>
+        <div class="stat-label">In Pipeline</div>
+      </div>
+    </div>
+
+    <!-- HIGHLIGHTS -->
+    <div class="highlights-grid">
+      <div class="highlight-card">
+        <div class="highlight-icon">🎓</div>
+        <div class="highlight-content">
+          <div class="highlight-stat">~70%</div>
+          <div class="highlight-text">PhD candidates or holders</div>
+        </div>
+      </div>
+      <div class="highlight-card">
+        <div class="highlight-icon">📈</div>
+        <div class="highlight-content">
+          <div class="highlight-stat">2 weeks</div>
+          <div class="highlight-text">From 0 to 440+ community, 52 tasks</div>
+        </div>
+      </div>
+      <div class="highlight-card accent">
+        <div class="highlight-icon">✍️</div>
+        <div class="highlight-content">
+          <div class="highlight-stat">100%</div>
+          <div class="highlight-text">Human-written, real-world tasks</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CONTRIBUTORS -->
+    <div class="contributors">
+      <div class="contributors-label">Notable Contributors</div>
+      <div class="contributors-value">First authors of Screenspot Pro, MCP-Universe, and BigCodeBench</div>
+    </div>
+
+    <!-- CTA -->
+    <div class="cta">
+      <div class="cta-left">
+        <h2>We're Recruiting Contributors</h2>
+        <p>Join 120+ researchers building the benchmark for agent skills</p>
+      </div>
+      <div class="cta-right">
+        <div class="cta-stat">
+          <div class="cta-stat-num">51K</div>
+          <div class="cta-stat-label">Twitter</div>
+        </div>
+        <div class="cta-stat">
+          <div class="cta-stat-num">14K</div>
+          <div class="cta-stat-label">Rednote</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <span class="footer-left">skillsbench.ai</span>
+      <div class="footer-badge">Open Source</div>
+    </div>
+
+  </div>
+</body>
+</html>

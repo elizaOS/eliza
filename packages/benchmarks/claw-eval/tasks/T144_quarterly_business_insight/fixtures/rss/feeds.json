@@ -1,0 +1,124 @@
+[
+  {
+    "article_id": "RSS-901",
+    "title": "2026 Q1 Software Industry Growth Exceeds Expectations",
+    "summary": "Software development industry grew 12% overall in Q1, SaaS model continues to gain enterprise favor, head customer ARPU significantly increased.",
+    "tags": [
+      "software",
+      "SaaS",
+      "growth"
+    ],
+    "url": "https://tech-observer.example.com/901",
+    "content": "Software development industry grew 12% overall in Q1, SaaS model continues to gain enterprise favor, head customer ARPU significantly increased.",
+    "category": "software, SaaS, growth",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-20T00:00:00Z",
+    "word_count": 144
+  },
+  {
+    "article_id": "RSS-902",
+    "title": "E-Commerce Platforms Face Traffic Growth Slowdown",
+    "summary": "Multiple e-commerce operational data shows Q1 traffic growth has slowed to single digits, small and medium e-commerce businesses are tightening cost controls.",
+    "tags": [
+      "e-commerce",
+      "challenges"
+    ],
+    "url": "https://tech-observer.example.com/902",
+    "content": "Multiple e-commerce operational data shows Q1 traffic growth has slowed to single digits, small and medium e-commerce businesses are tightening cost controls.",
+    "category": "e-commerce, challenges",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-18T00:00:00Z",
+    "word_count": 158
+  },
+  {
+    "article_id": "RSS-903",
+    "title": "Logistics Industry Digital Transformation Accelerates",
+    "summary": "Logistics companies' IT spending grew 20% year-over-year, but price competition is intense and profit margins are under pressure. Leading companies are more focused on ROI.",
+    "tags": [
+      "logistics",
+      "digital"
+    ],
+    "url": "https://tech-observer.example.com/903",
+    "content": "Logistics companies' IT spending grew 20% year-over-year, but price competition is intense and profit margins are under pressure. Leading companies are more focused on ROI.",
+    "category": "logistics, digital",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-22T00:00:00Z",
+    "word_count": 172
+  },
+  {
+    "article_id": "RSS-904",
+    "title": "Manufacturing IT Budget Tightening Trend Evident",
+    "summary": "Affected by global supply chain volatility, manufacturing companies are broadly tightening IT budgets, SaaS renewal rates dropped by 5 percentage points.",
+    "tags": [
+      "manufacturing",
+      "budget"
+    ],
+    "url": "https://tech-observer.example.com/904",
+    "content": "Affected by global supply chain volatility, manufacturing companies are broadly tightening IT budgets, SaaS renewal rates dropped by 5 percentage points.",
+    "category": "manufacturing, budget",
+    "source": "Tech Industry Observer",
+    "published_at": "2026-03-15T00:00:00Z",
+    "word_count": 153
+  },
+  {
+    "article_id": "RSS-905",
+    "title": "Media & Advertising Industry Welcomes AI-Driven Growth",
+    "summary": "AI content generation tools are driving cost reduction and efficiency gains in the media industry, advertiser digital spending grew 18% in Q1.",
+    "tags": [
+      "media",
+      "AI",
+      "growth"
+    ],
+    "url": "https://market-weekly.example.com/905",
+    "content": "AI content generation tools are driving cost reduction and efficiency gains in the media industry, advertiser digital spending grew 18% in Q1.",
+    "category": "media, AI, growth",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-21T00:00:00Z",
+    "word_count": 142
+  },
+  {
+    "article_id": "RSS-906",
+    "title": "Government Digital Transformation Budget Adjustments",
+    "summary": "Multiple government departments have reallocated IT budgets, some SaaS projects have been suspended or scaled down.",
+    "tags": [
+      "government",
+      "budget"
+    ],
+    "url": "https://market-weekly.example.com/906",
+    "content": "Multiple government departments have reallocated IT budgets, some SaaS projects have been suspended or scaled down.",
+    "category": "government, budget",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-19T00:00:00Z",
+    "word_count": 115
+  },
+  {
+    "article_id": "RSS-907",
+    "title": "Enterprise Services Investment and Financing Recap",
+    "summary": "Enterprise services sector completed 42 funding rounds in Q1, AI-related projects accounted for over 60%.",
+    "tags": [
+      "investment",
+      "AI"
+    ],
+    "url": "https://market-weekly.example.com/907",
+    "content": "Enterprise services sector completed 42 funding rounds in Q1, AI-related projects accounted for over 60%.",
+    "category": "investment, AI",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-23T00:00:00Z",
+    "word_count": 105
+  },
+  {
+    "article_id": "RSS-908",
+    "title": "New Energy Vehicle Sales Hit Record High",
+    "summary": "New energy vehicle Q1 sales exceeded 2 million units.",
+    "tags": [
+      "automotive",
+      "new energy"
+    ],
+    "url": "https://market-weekly.example.com/908",
+    "content": "New energy vehicle Q1 sales exceeded 2 million units.",
+    "category": "automotive, new energy",
+    "source": "Market Trends Weekly",
+    "published_at": "2026-03-24T00:00:00Z",
+    "word_count": 53
+  }
+]

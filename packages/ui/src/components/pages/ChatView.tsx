@@ -1,14 +1,4 @@
 import {
-  ChatAttachmentStrip,
-  ChatComposer,
-  ChatComposerShell,
-  ChatSourceIcon,
-  ChatThreadLayout,
-  ChatTranscript,
-  TypingIndicator,
-  useIntervalWhenDocumentVisible,
-} from "@elizaos/ui";
-import {
   type ChangeEvent,
   type DragEvent,
   type KeyboardEvent,
@@ -28,6 +18,7 @@ import { fetchWithCsrf } from "../../api/csrf-client";
 import { isRoutineCodingAgentMessage } from "../../chat";
 import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import {
   CodingAgentControlChip,
@@ -48,6 +39,13 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
+import { ChatComposer } from "../composites/chat/chat-composer";
+import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
+import { ChatSourceIcon } from "../composites/chat/chat-source";
+import { ChatThreadLayout } from "../composites/chat/chat-thread-layout";
+import { ChatTranscript } from "../composites/chat/chat-transcript";
+import { TypingIndicator } from "../composites/chat/chat-typing-indicator";
 import {
   useChatVoiceController,
   useGameModalMessages,

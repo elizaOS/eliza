@@ -1,0 +1,78 @@
+# Quality Audit Rules Configuration
+# Version: 2.1.0
+# Last updated: 2024-11-01
+
+option_rules:
+  min_options: 3
+  max_options: 4
+  allow_duplicates: false
+  duplicate_verdict: "option_error"
+  require_unique_values: true
+  check_option_format: true
+
+svg_rules:
+  check_hidden_text: true
+  check_low_opacity: true
+  opacity_threshold: 0.1
+  check_answer_leak: true
+  leak_verdict: "svg_error"
+  check_font_size_minimum: true
+  min_visible_font_size: 6
+  check_fill_matches_background: true
+  background_colors:
+    - "white"
+    - "#ffffff"
+    - "#fff"
+    - "rgb(255,255,255)"
+
+answer_verification:
+  method: "independent_calculation"
+  tolerance: 0.01
+  cross_reference_answer_keys: true
+  require_consistent_keys: true
+  verify_analysis_math: true
+
+analysis_rules:
+  verify_methodology: true
+  check_step_by_step: true
+  require_formula_citation: true
+  check_common_mistakes: true
+  diameter_handling:
+    check_internal_edge: true
+    semicircle_contributes: "arc_only"
+    common_error: "adding diameter when it is an internal/shared edge"
+
+judgment_policy:
+  uncertain_verdict: true
+  only_fully_correct_is_false: true
+  description: >
+    A question is marked as 'is_really_wrong: true' if ANY quality issue is found,
+    including but not limited to: duplicate options, answer leaks in SVG,
+    inconsistent answer keys, incorrect mathematical analysis, or
+    contradictions between labeled answer and computed answer.
+    Only mark 'is_really_wrong: false' if the question is fully correct
+    with no issues whatsoever. When uncertain, lean toward flagging.
+
+output_format:
+  fields:
+    - question_id
+    - is_really_wrong
+    - confidence
+    - issues
+  confidence_levels:
+    - "high"
+    - "medium"
+    - "low"
+  issue_categories:
+    - "duplicate_option"
+    - "svg_answer_leak"
+    - "answer_key_conflict"
+    - "math_error_in_analysis"
+    - "incorrect_labeled_answer"
+    - "svg_clarity"
+    - "stem_ambiguity"
+
+logging:
+  level: "INFO"
+  audit_trail: true
+  save_intermediate_results: true

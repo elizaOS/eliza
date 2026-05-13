@@ -1,0 +1,1 @@
+["echo 'This is sample license text.' >> LICENSE.txt","echo 'This is sample README text.' >> README.md","pip install  -e .","pytest --continue-on-collection-errors tests"]

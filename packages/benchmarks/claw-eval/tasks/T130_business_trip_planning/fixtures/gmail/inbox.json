@@ -1,0 +1,52 @@
+[
+  {
+    "message_id": "msg_801",
+    "from": "chen@vip-client.com",
+    "to": "me@company.com",
+    "subject": "Invitation to visit Shanghai on April 2",
+    "date": "2026-03-24T10:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Hello, we are your VIP client Dingxin Software. We would like to invite you to our Shanghai office on April 2 to discuss our cooperation plan for the second half of the year. This meeting is very important to us, please make sure to attend. Contact: Manager Chen at the Shanghai office."
+  },
+  {
+    "message_id": "msg_802",
+    "from": "liwei@shenzhen-branch.com",
+    "to": "me@company.com",
+    "subject": "Shenzhen Tech Exchange 4/2-4/3",
+    "date": "2026-03-24T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hi team, the Shenzhen branch is planning a technical exchange event from April 2 to 3, focusing on microservice architecture upgrade. HQ colleagues are welcome to attend. Contact: Li Wei at the Shenzhen office."
+  },
+  {
+    "message_id": "msg_803",
+    "from": "hr@company.com",
+    "to": "all@company.com",
+    "subject": "Beijing HQ Annual Meeting April 5",
+    "date": "2026-03-23T09:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox", "important"],
+    "body": "Company-wide notice: The annual strategy meeting will be held at Beijing HQ on April 5. All department heads must attend. Round-trip flights have been booked for all regional colleagues, please confirm your itinerary."
+  },
+  {
+    "message_id": "msg_804",
+    "from": "weekly@company.com",
+    "to": "all@company.com",
+    "subject": "Weekly report reminder",
+    "date": "2026-03-25T17:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Please submit your weekly report before end of business Friday."
+  },
+  {
+    "message_id": "msg_805",
+    "from": "zhaolei@company.com",
+    "to": "me@company.com",
+    "subject": "Weekend dinner",
+    "date": "2026-03-25T12:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Team dinner this weekend, are you coming?"
+  }
+]

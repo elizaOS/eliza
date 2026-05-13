@@ -34,7 +34,6 @@ import {
 export const appLifeopsPgSchema = pgSchema("app_lifeops");
 
 // ---------------------------------------------------------------------------
-// Wave 1+ additions — relationships, X read, screen time, scheduling.
 // All life_* prefix, text IDs, ISO timestamps.
 // ---------------------------------------------------------------------------
 

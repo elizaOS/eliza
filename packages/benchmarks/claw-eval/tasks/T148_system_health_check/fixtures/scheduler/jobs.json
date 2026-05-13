@@ -1,0 +1,167 @@
+[
+  {
+    "job_id": "JOB-1001",
+    "name": "Data Backup",
+    "schedule": "0 2 * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T02:00:00Z",
+    "last_status": "success",
+    "description": "Full database backup every day at 2:00 AM",
+    "tags": [
+      "backup",
+      "daily"
+    ],
+    "cron_expression": "0 2 * * *",
+    "enabled": true,
+    "action": "Full database backup every day at 2:00 AM",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T02:00:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1002",
+    "name": "Email Notifications",
+    "schedule": "*/10 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T09:30:00Z",
+    "last_status": "failed",
+    "error_message": "SMTP connection timeout: Connection to smtp.company.com:587 timed out after 30s",
+    "description": "Check pending email queue and batch send every 10 minutes",
+    "tags": [
+      "notification",
+      "email"
+    ],
+    "failure_count": 12,
+    "first_failure": "2026-03-19T10:00:00",
+    "cron_expression": "*/10 * * * *",
+    "enabled": true,
+    "action": "Check pending email queue and batch send every 10 minutes",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T09:30:00Z",
+        "status": "failed",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1003",
+    "name": "Data Warehouse ETL",
+    "schedule": "*/30 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T09:00:00Z",
+    "last_status": "failed",
+    "error_message": "Sync timeout: ETL pipeline exceeded 1800s limit, partial sync completed (72%)",
+    "description": "Incremental sync from production data to data warehouse every 30 minutes",
+    "tags": [
+      "etl",
+      "sync"
+    ],
+    "failure_count": 6,
+    "first_failure": "2026-03-23T12:00:00",
+    "cron_expression": "*/30 * * * *",
+    "enabled": true,
+    "action": "Incremental sync from production data to data warehouse every 30 minutes",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T09:00:00Z",
+        "status": "failed",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1004",
+    "name": "Monitoring Check",
+    "schedule": "*/5 * * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T09:55:00Z",
+    "last_status": "success",
+    "description": "Check service health status and report every 5 minutes",
+    "tags": [
+      "monitoring",
+      "health"
+    ],
+    "cron_expression": "*/5 * * * *",
+    "enabled": true,
+    "action": "Check service health status and report every 5 minutes",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T09:55:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1005",
+    "name": "Log Cleanup",
+    "schedule": "0 3 * * *",
+    "status": "enabled",
+    "last_run": "2026-03-26T03:00:00Z",
+    "last_status": "success",
+    "description": "Clean up archived logs older than 30 days every day at 3:00 AM",
+    "tags": [
+      "maintenance",
+      "cleanup"
+    ],
+    "cron_expression": "0 3 * * *",
+    "enabled": true,
+    "action": "Clean up archived logs older than 30 days every day at 3:00 AM",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-26T03:00:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-1006",
+    "name": "Report Generation",
+    "schedule": "0 8 * * *",
+    "status": "disabled",
+    "last_run": "2026-03-20T08:00:00Z",
+    "last_status": "success",
+    "description": "Generate daily business and operations reports at 8:00 AM",
+    "tags": [
+      "report",
+      "daily"
+    ],
+    "disabled_reason": "Manually disabled - report module under maintenance upgrade, expected to resume March 28",
+    "disabled_by": "admin",
+    "disabled_at": "2026-03-21T10:00:00",
+    "cron_expression": "0 8 * * *",
+    "enabled": false,
+    "action": "Generate daily business and operations reports at 8:00 AM",
+    "next_run": null,
+    "created_at": "2025-06-01T00:00:00Z",
+    "created_by": "system",
+    "execution_history": [
+      {
+        "run_at": "2026-03-20T08:00:00Z",
+        "status": "success",
+        "duration_s": 60
+      }
+    ]
+  }
+]

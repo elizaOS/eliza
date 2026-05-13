@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "comment": "voice-bench GPU matrix. Each entry references a config in packages/inference/configs/gpu/ and a bundle id; the autotune helper resolves the actual llama-server flags. expected_metrics here are extrapolated until a real benchmark replaces them.",
+  "matrix": [
+    {
+      "gpu": "rtx-3090",
+      "config": "../../configs/gpu/3090.json",
+      "bundles": [
+        {
+          "id": "eliza-1-9b",
+          "ctx_sweep": [4096, 16384, 32768, 65536],
+          "ttfa_target_ms": 550,
+          "rtf_target": 0.55
+        },
+        {
+          "id": "eliza-1-4b",
+          "ctx_sweep": [4096, 32768, 65536],
+          "ttfa_target_ms": 400,
+          "rtf_target": 0.5
+        }
+      ]
+    },
+    {
+      "gpu": "rtx-4090",
+      "config": "../../configs/gpu/4090.json",
+      "bundles": [
+        {
+          "id": "eliza-1-9b",
+          "ctx_sweep": [4096, 32768, 65536, 131072],
+          "ttfa_target_ms": 450,
+          "rtf_target": 0.4
+        },
+        {
+          "id": "eliza-1-27b",
+          "ctx_sweep": [4096, 16384, 32768],
+          "ttfa_target_ms": 700,
+          "rtf_target": 0.55
+        }
+      ]
+    },
+    {
+      "gpu": "rtx-5090",
+      "config": "../../configs/gpu/5090.json",
+      "bundles": [
+        {
+          "id": "eliza-1-27b",
+          "ctx_sweep": [4096, 32768, 65536, 131072],
+          "ttfa_target_ms": 450,
+          "rtf_target": 0.4
+        },
+        {
+          "id": "eliza-1-9b",
+          "ctx_sweep": [4096, 65536, 131072, 262144],
+          "ttfa_target_ms": 350,
+          "rtf_target": 0.3
+        },
+        {
+          "id": "eliza-1-27b-256k",
+          "ctx_sweep": [4096, 65536, 131072, 262144],
+          "ttfa_target_ms": 600,
+          "rtf_target": 0.5,
+          "notes": "Blackwell sm_120 — verify QJL/Polar kernels in CAPABILITIES.json first."
+        }
+      ]
+    },
+    {
+      "gpu": "h200",
+      "config": "../../configs/gpu/h200.json",
+      "bundles": [
+        {
+          "id": "eliza-1-27b-1m",
+          "ctx_sweep": [4096, 65536, 131072, 262144, 524288, 1048576],
+          "ttfa_target_ms": 400,
+          "rtf_target": 0.25,
+          "notes": "Marquee config: 27B at 1M context."
+        },
+        {
+          "id": "eliza-1-27b-256k",
+          "ctx_sweep": [4096, 65536, 131072, 262144],
+          "ttfa_target_ms": 350,
+          "rtf_target": 0.2
+        }
+      ]
+    }
+  ],
+  "harness": {
+    "warmupTurns": 3,
+    "measureTurns": 20,
+    "promptCorpus": "scenarios/standard-mix",
+    "audioFixture": "fixtures/16khz-mono-3s.wav",
+    "passCriteria": {
+      "ttfaP95UnderTargetMs": true,
+      "barginCancelMs": 200,
+      "rttMaxMs": 60000
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "api_url": "https://api.theblockbeats.news/v1/open-api/open-flash",
+  "page_size": 20,
+  "type": "push",
+  "keywords": [],
+  "notify_channel": "qq",
+  "translate": true,
+  "log_level": "info",
+  "retry_attempts": 3,
+  "retry_delay_seconds": 5
+}

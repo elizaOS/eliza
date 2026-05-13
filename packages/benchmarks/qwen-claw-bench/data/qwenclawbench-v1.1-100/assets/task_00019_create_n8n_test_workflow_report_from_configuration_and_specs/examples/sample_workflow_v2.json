@@ -1,0 +1,59 @@
+{
+  "name": "Partial_Example",
+  "comment": "Updated 2024-01. Partial example — missing Function node.",
+  "nodes": [
+    {
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "parameters": {}
+    },
+    {
+      "name": "Set Variables",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, 300],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "ex-a1b2c3",
+              "name": "testName",
+              "value": "Example_Test",
+              "type": "string"
+            },
+            {
+              "id": "ex-d4e5f6",
+              "name": "testTimestamp",
+              "value": "2024-01-20T14:30:00Z",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Set Variables",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "UTC",
+    "saveManualExecutions": true
+  },
+  "active": false,
+  "id": "wf_partial_002",
+  "createdAt": "2024-01-18T10:00:00.000Z",
+  "updatedAt": "2024-01-20T16:45:00.000Z"
+}

@@ -1,0 +1,63 @@
+{
+  "name": "poly-arb-enhanced",
+  "version": "2.4.1",
+  "network": "polygon-pos",
+  "chain_id": 137,
+  "rpc": {
+    "primary": "https://polygon-rpc.com",
+    "fallback": [
+      "https://rpc-mainnet.matic.quiknode.pro",
+      "https://polygon-mainnet.g.alchemy.com/v2/demo-key-replace-me"
+    ],
+    "timeout_ms": 5000,
+    "max_retries": 3
+  },
+  "wallet": {
+    "address": "0x7a3F29d6E8b9C0fA2bD51c8E4d3A9f7B6e1C5d08",
+    "label": "arb-hot-wallet-01"
+  },
+  "contracts": {
+    "usdc": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+    "weth": "0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619",
+    "quickswap_router": "0xa5E0829CaCEd8fFDD4De3c43696c57F7D7A678ff",
+    "sushiswap_router": "0x1b02dA8Cb0d097eB8D57A175b88c7D8b47997506",
+    "uniswap_v3_router": "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+  },
+  "pairs": [
+    {
+      "base": "POL",
+      "quote": "USDC",
+      "dex_a": "quickswap",
+      "dex_b": "sushiswap",
+      "min_spread_bps": 15,
+      "max_trade_usdc": 5000
+    },
+    {
+      "base": "WETH",
+      "quote": "USDC",
+      "dex_a": "uniswap_v3",
+      "dex_b": "quickswap",
+      "min_spread_bps": 10,
+      "max_trade_usdc": 10000
+    }
+  ],
+  "thresholds": {
+    "pol_min_balance": 50.0,
+    "usdc_min_balance": 500.0,
+    "max_slippage_bps": 50,
+    "max_gas_gwei": 300,
+    "min_profit_usdc": 0.50,
+    "max_position_usdc": 25000,
+    "max_pending_age_min": 30
+  },
+  "alerts": {
+    "webhook_url": "https://hooks.slack.com/services/T0FAKE01/B0FAKE02/xyzFakeWebhookToken123",
+    "telegram_chat_id": "-100198765432",
+    "alert_cooldown_min": 15
+  },
+  "monitor": {
+    "interval_sec": 900,
+    "log_retention_days": 30,
+    "balance_cache_path": "data/balance-cache.json"
+  }
+}

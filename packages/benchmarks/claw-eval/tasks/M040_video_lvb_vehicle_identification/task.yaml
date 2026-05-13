@@ -1,0 +1,48 @@
+task_id: M040_video_lvb_vehicle_identification
+task_name: LVB Vehicle Identification and Frame Extraction
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    请观看视频，完成以下任务：
+
+    一些身穿白衬衫、灰裤子、头戴绿帽的士兵，手持枪支，与火车上的人们交战。
+    找出以上场景中，除了火车以外的交通工具，并截取以该交通工具为中心的图片，保存为 /workspace/vehicle_frame.png。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/vehicle_frame.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  In the battle scene with soldiers wearing white shirts, grey pants, and green hats fighting people on a train,
+  the other vehicle besides the train is an airplane (飞机).
+  Find a frame where the airplane is clearly visible and centered, then save it as /workspace/vehicle_frame.png.
+
+primary_dimensions:
+  - completion
+  - robustness

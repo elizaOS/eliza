@@ -23,7 +23,7 @@ import {
   Skeleton,
 } from "@elizaos/cloud-ui";
 import { Copy, Download, RefreshCw, Search, Wifi, WifiOff } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { ParsedLogEntry } from "@/lib/types/containers";
@@ -54,6 +54,64 @@ interface FilterState {
   searchQuery: string;
 }
 
+function mergeState<TState extends object>(previous: TState, updates: Partial<TState>): TState {
+  const entries = Object.entries(updates) as Array<[keyof TState, TState[keyof TState]]>;
+  if (entries.every(([key, value]) => Object.is(previous[key], value))) {
+    return previous;
+  }
+  return { ...previous, ...updates };
+}
+
+type BadgeVariant = "default" | "destructive" | "outline" | "secondary";
+
+function formatLogLine(log: LogEntry): string {
+  const timestamp = new Date(log.timestamp).toISOString();
+  const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
+  return `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
+}
+
+function getLevelColor(logLevel: string): string {
+  switch (logLevel) {
+    case "error":
+      return "text-red-500";
+    case "warn":
+      return "text-yellow-500";
+    case "info":
+      return "text-blue-500";
+    case "debug":
+      return "text-gray-500";
+    default:
+      return "text-foreground";
+  }
+}
+
+function getLevelBadgeVariant(logLevel: string): BadgeVariant {
+  switch (logLevel) {
+    case "error":
+      return "destructive";
+    case "info":
+      return "default";
+    case "debug":
+      return "secondary";
+    case "warn":
+    default:
+      return "outline";
+  }
+}
+
+function getLevelBorderColor(logLevel: string): string {
+  switch (logLevel) {
+    case "error":
+      return "#ef4444";
+    case "warn":
+      return "#eab308";
+    case "info":
+      return "#3b82f6";
+    default:
+      return "#6b7280";
+  }
+}
+
 export function ContainerLogsViewer({ containerId, containerName }: ContainerLogsViewerProps) {
   const [logsState, setLogsState] = useState<LogsState>({
     logs: [],
@@ -74,46 +132,52 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
   });
 
   const updateLogs = useCallback((updates: Partial<LogsState>) => {
-    setLogsState((prev) => ({ ...prev, ...updates }));
+    setLogsState((prev) => mergeState(prev, updates));
   }, []);
 
   const updateStreaming = useCallback((updates: Partial<StreamingState>) => {
-    setStreamingState((prev) => ({ ...prev, ...updates }));
+    setStreamingState((prev) => mergeState(prev, updates));
   }, []);
 
   const updateFilter = useCallback((updates: Partial<FilterState>) => {
-    setFilterState((prev) => ({ ...prev, ...updates }));
+    setFilterState((prev) => mergeState(prev, updates));
   }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const fetchLogs = useCallback(async () => {
-    updateLogs({ loading: true });
+    updateLogs({ loading: true, error: null });
     const params = new URLSearchParams({
       limit: "100",
       ...(filterState.level !== "all" && { level: filterState.level }),
     });
 
-    const response = await fetch(`/api/v1/containers/${containerId}/logs?${params}`);
+    try {
+      const response = await fetch(`/api/v1/containers/${containerId}/logs?${params}`);
 
-    if (!response.ok) {
-      updateLogs({ loading: false });
-      throw new Error("Failed to fetch logs");
-    }
+      if (!response.ok) {
+        throw new Error("Failed to fetch logs");
+      }
 
-    const data = await response.json();
-    if (data.success) {
+      const data = await response.json();
+      if (data.success) {
+        updateLogs({
+          logs: data.data.logs || [],
+          infoMessage: data.data.message || null,
+          error: null,
+          loading: false,
+        });
+      } else {
+        updateLogs({
+          error: data.error || "Failed to load logs",
+          infoMessage: null,
+          loading: false,
+        });
+      }
+    } catch (err) {
       updateLogs({
-        logs: data.data.logs || [],
-        infoMessage: data.data.message || null,
-        error: null,
-        loading: false,
-      });
-    } else {
-      updateLogs({
-        error: data.error || "Failed to load logs",
+        error: err instanceof Error ? err.message : "Failed to fetch logs",
         infoMessage: null,
         loading: false,
       });
@@ -155,20 +219,17 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
             return { ...prev, logs: updated.slice(0, 500) };
           });
         } else if (parsed.type === "error") {
-          console.error("Stream error:", parsed.message);
           updateLogs({ error: parsed.message });
         }
-      } catch (err) {
-        console.error("Error parsing stream data:", err);
+      } catch {
+        // Malformed SSE frame — ignore and wait for the next event.
       }
     };
 
-    eventSource.onerror = (err) => {
-      console.error("EventSource error:", err);
+    eventSource.onerror = () => {
       updateStreaming({ isStreaming: false });
       eventSource.close();
-
-      // Fallback to polling
+      // Fallback to polling when the SSE connection drops.
       if (streamingState.useStreaming) {
         updateStreaming({ useStreaming: false, autoRefresh: true });
       }
@@ -177,20 +238,21 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
     eventSourceRef.current = eventSource;
   }, [containerId, filterState.level, streamingState.useStreaming, updateLogs, updateStreaming]);
 
-  const stopStreaming = useCallback(() => {
+  const closeStreamingConnection = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
+  }, []);
+
+  const stopStreaming = useCallback(() => {
+    closeStreamingConnection();
     updateStreaming({ isStreaming: false });
-  }, [updateStreaming]);
+  }, [closeStreamingConnection, updateStreaming]);
 
   // Initial load
   useEffect(() => {
-    // Use setTimeout to avoid synchronous setState in effect
-    setTimeout(() => {
-      fetchLogs();
-    }, 0);
+    void fetchLogs();
   }, [fetchLogs]);
 
   // Handle streaming vs polling
@@ -204,11 +266,7 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
       const interval = setInterval(fetchLogs, 5000);
       return () => clearInterval(interval);
     } else {
-      // Stop streaming if auto-refresh is off
-      // Use setTimeout to avoid synchronous setState in effect
-      setTimeout(() => {
-        stopStreaming();
-      }, 0);
+      stopStreaming();
     }
   }, [
     streamingState.autoRefresh,
@@ -220,53 +278,13 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
 
   // Cleanup on unmount
   useEffect(() => {
-    const abortController = abortControllerRef.current;
     return () => {
-      stopStreaming();
-      if (abortController) {
-        abortController.abort();
-      }
+      closeStreamingConnection();
     };
-  }, [stopStreaming]);
-
-  const getLevelColor = (logLevel: string) => {
-    switch (logLevel) {
-      case "error":
-        return "text-red-500";
-      case "warn":
-        return "text-yellow-500";
-      case "info":
-        return "text-blue-500";
-      case "debug":
-        return "text-gray-500";
-      default:
-        return "text-foreground";
-    }
-  };
-
-  const getLevelBadge = (logLevel: string) => {
-    switch (logLevel) {
-      case "error":
-        return "destructive";
-      case "warn":
-        return "outline";
-      case "info":
-        return "default";
-      case "debug":
-        return "secondary";
-      default:
-        return "outline";
-    }
-  };
+  }, [closeStreamingConnection]);
 
   const downloadLogs = () => {
-    const logsText = logsState.logs
-      .map((log) => {
-        const timestamp = new Date(log.timestamp).toISOString();
-        const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
-        return `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
-      })
-      .join("\n");
+    const logsText = logsState.logs.map(formatLogLine).join("\n");
 
     const blob = new Blob([logsText], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
@@ -280,35 +298,30 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
   };
 
   const copyAllLogs = async () => {
-    const logsText = logsState.logs
-      .map((log) => {
-        const timestamp = new Date(log.timestamp).toISOString();
-        const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
-        return `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
-      })
-      .join("\n");
+    const logsText = logsState.logs.map(formatLogLine).join("\n");
 
     await navigator.clipboard.writeText(logsText);
     toast.success("Logs copied to clipboard");
   };
 
   const copyLogLine = async (log: LogEntry) => {
-    const timestamp = new Date(log.timestamp).toISOString();
-    const metadata = log.metadata ? ` | ${JSON.stringify(log.metadata)}` : "";
-    const text = `[${timestamp}] [${log.level.toUpperCase()}] ${log.message}${metadata}`;
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(formatLogLine(log));
     toast.success("Log line copied");
   };
 
-  const filteredLogs = logsState.logs.filter((log) => {
-    if (!filterState.searchQuery) return true;
-    const searchLower = filterState.searchQuery.toLowerCase();
-    return (
-      log.message.toLowerCase().includes(searchLower) ||
-      log.level.toLowerCase().includes(searchLower) ||
-      (log.metadata && JSON.stringify(log.metadata).toLowerCase().includes(searchLower))
-    );
-  });
+  const filteredLogs = useMemo(
+    () =>
+      logsState.logs.filter((log) => {
+        if (!filterState.searchQuery) return true;
+        const searchLower = filterState.searchQuery.toLowerCase();
+        return (
+          log.message.toLowerCase().includes(searchLower) ||
+          log.level.toLowerCase().includes(searchLower) ||
+          (log.metadata && JSON.stringify(log.metadata).toLowerCase().includes(searchLower))
+        );
+      }),
+    [filterState.searchQuery, logsState.logs],
+  );
 
   return (
     <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="sm">
@@ -317,10 +330,7 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
         <div className="flex items-center justify-between pb-4 border-b border-white/10">
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <span
-                className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: "#FF5800" }}
-              />
+              <span className="inline-block w-2 h-2 rounded-full bg-[#FF5800]" />
               <h2
                 className="text-xl font-normal text-white"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -484,27 +494,11 @@ export function ContainerLogsViewer({ containerId, containerName }: ContainerLog
                   <div
                     key={`${log.timestamp}-${index}`}
                     className={`group flex gap-3 p-2 hover:bg-white/5 rounded-none transition-colors border-l-2 ${getLevelColor(log.level)}`}
-                    style={{
-                      borderLeftColor:
-                        log.level === "error"
-                          ? "#ef4444"
-                          : log.level === "warn"
-                            ? "#eab308"
-                            : log.level === "info"
-                              ? "#3b82f6"
-                              : "#6b7280",
-                    }}
+                    style={{ borderLeftColor: getLevelBorderColor(log.level) }}
                   >
                     <Badge
-                      variant={
-                        getLevelBadge(log.level) as
-                          | "default"
-                          | "destructive"
-                          | "outline"
-                          | "secondary"
-                      }
-                      className="shrink-0 h-5 text-xs rounded-none"
-                      style={{ fontFamily: "var(--font-roboto-mono)" }}
+                      variant={getLevelBadgeVariant(log.level)}
+                      className="shrink-0 h-5 text-xs rounded-none font-mono"
                     >
                       {log.level.toUpperCase()}
                     </Badge>

@@ -1,0 +1,72 @@
+# User Personas for Memory System Design
+# Last updated: 2024-01-18
+
+personas:
+  - name: "Dr. Elena Vasquez"
+    role: "Academic Researcher"
+    description: >
+      A computational biology researcher who uses the AI assistant as a
+      second brain for literature review, experiment tracking, and idea
+      synthesis. Generates a high volume of notes daily and frequently
+      searches back through months of prior work to find connections.
+    usage_pattern:
+      daily_entries_avg: 55
+      avg_entry_size_kb: 3.2
+      peak_entries_per_day: 120
+      search_frequency_per_day: 35
+      preferred_retrieval_style: "semantic"
+      typical_search_depth_days: 180
+      needs_cross_reference: true
+    key_requirements:
+      - "Must retain episodic memories for at least 180 days with full fidelity"
+      - "Semantic search is critical — often searches by concept, not exact keyword"
+      - "Needs to link related entries across different sessions and topics"
+      - "Distillation should preserve provenance chains back to original notes"
+
+  - name: "Marcus Chen"
+    role: "Project Manager"
+    description: >
+      Manages three concurrent software projects with weekly standups,
+      sprint planning, and stakeholder meetings. Uses the assistant to
+      log meeting notes, track action items, and recall decisions made
+      in previous meetings.
+    usage_pattern:
+      daily_entries_avg: 15
+      avg_entry_size_kb: 5.8
+      peak_entries_per_day: 30
+      search_frequency_per_day: 12
+      preferred_retrieval_style: "keyword"
+      typical_search_depth_days: 90
+      needs_cross_reference: true
+    key_requirements:
+      - "Action items must be easily retrievable by project, assignee, or due date"
+      - "Meeting notes should be tagged with project name and attendees"
+      - "Keyword search is primary — searches for specific names, dates, decisions"
+      - "Needs temporal queries like 'what did we decide about X last month?'"
+
+  - name: "Aria Okonkwo"
+    role: "Creative Writer"
+    description: >
+      A novelist and short story writer who captures ideas, character
+      sketches, plot fragments, and world-building details sporadically
+      throughout the day. Usage is bursty — some days nothing, other
+      days dozens of entries during a creative sprint.
+    usage_pattern:
+      daily_entries_avg: 8
+      avg_entry_size_kb: 1.5
+      peak_entries_per_day: 45
+      search_frequency_per_day: 6
+      preferred_retrieval_style: "temporal"
+      typical_search_depth_days: 365
+      needs_cross_reference: false
+    key_requirements:
+      - "Must handle bursty write patterns without performance degradation"
+      - "Temporal browsing is key — 'show me everything from last Tuesday'"
+      - "Entries are often short fragments; should not be lost or merged"
+      - "Long retention needed — ideas from a year ago may become relevant"
+
+# Aggregate estimates for storage planning:
+# Researcher: 55 entries/day × 3.2 KB = ~176 KB/day = ~5.3 MB/month
+# PM:         15 entries/day × 5.8 KB = ~87 KB/day  = ~2.6 MB/month
+# Writer:      8 entries/day × 1.5 KB = ~12 KB/day  = ~0.4 MB/month
+# Worst case (researcher): ~64 MB/month raw, ~50 MB/month after compression

@@ -1,0 +1,133 @@
+[
+  {
+    "message_id": "msg_1601",
+    "from": "dingxin_lina@dingxin.com",
+    "to": "me@company.com",
+    "subject": "Discussion on Renewal Terms",
+    "date": "2026-03-20T09:00:00Z",
+    "body": "Hello, our current contract expires at the end of September and we would like to discuss renewal terms in advance. Dingxin Software has seen strong business growth this year, and we hope to expand to additional modules upon renewal. Please arrange a time to meet. — Li Na, Dingxin Software",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1602",
+    "from": "dingxin_lina@dingxin.com",
+    "to": "me@company.com",
+    "subject": "Q1 Project Progress Report",
+    "date": "2026-02-15T09:00:00Z",
+    "body": "Hello, here is a quick update on the new module launched in January: the system has been running smoothly, user feedback has been positive, and daily active users are up 15%. We are very confident about our continued partnership. — Li Na, Dingxin Software",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1603",
+    "from": "hanhai_zhangqiang@hanhai.com",
+    "to": "me@company.com",
+    "subject": "Complaint Regarding Service Response Time",
+    "date": "2026-03-18T09:00:00Z",
+    "body": "Hello, I need to raise an issue: over the past two weeks we submitted 3 tickets and the average response time exceeded 48 hours, which has seriously impacted our operations. Hanhai E-commerce is very dissatisfied with the current service quality and expects prompt improvement. — Zhang Qiang, Hanhai E-commerce",
+    "labels": [
+      "inbox",
+      "customer",
+      "complaint"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1604",
+    "from": "hanhai_zhangqiang@hanhai.com",
+    "to": "me@company.com",
+    "subject": "Inquiry About Data Analytics Feature",
+    "date": "2026-03-05T09:00:00Z",
+    "body": "Hello, we heard you recently launched a data analytics module and we are very interested. Could you arrange a demo? Although our budget is limited, we would consider upgrading if the results are good. — Zhang Qiang, Hanhai E-commerce",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1605",
+    "from": "wantong_liuwei@wantong.com",
+    "to": "me@company.com",
+    "subject": "Thank You for Your Excellent Service",
+    "date": "2026-03-22T09:00:00Z",
+    "body": "Hello, Wantong Logistics has been using your system for two years now, and our Q1 operational efficiency improved by 20%. We especially appreciate the technical team's quick response to our customization requests. We plan to further expand the scope of our partnership in Q2. — Liu Wei, Wantong Logistics",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1606",
+    "from": "wantong_liuwei@wantong.com",
+    "to": "me@company.com",
+    "subject": "Discussion on Q2 Expansion Plan",
+    "date": "2026-02-28T09:00:00Z",
+    "body": "Hello, we are planning our Q2 IT investment and would like to extend your system to our South China branch. Please provide an expansion proposal and quote. — Liu Wei, Wantong Logistics",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1607",
+    "from": "qianfeng_wangli@qianfeng.com",
+    "to": "me@company.com",
+    "subject": "System Usage Issue Inquiry",
+    "date": "2026-01-20T09:00:00Z",
+    "body": "Hello, we have been experiencing some issues with the system — occasional slowdowns and lag. Additionally, we are internally reassessing our IT spending and may need to adjust our partnership arrangement. — Wang Li, Qianfeng Technology",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1608",
+    "from": "yangguang_chenyu@yangguang.com",
+    "to": "me@company.com",
+    "subject": "Q1 Business Review and Q2 Planning",
+    "date": "2026-03-15T09:00:00Z",
+    "body": "Hello, Sunshine Media exceeded Q1 performance expectations, and the AI content tools have delivered outstanding results. We plan to increase our investment further in Q2 and would like additional technical support and customized solutions. — Chen Yu, Sunshine Media",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1609",
+    "from": "gonggong_liujian@gov-agency.cn",
+    "to": "me@company.com",
+    "subject": "Inquiry Regarding 2026 Annual Budget Plan",
+    "date": "2026-02-10T09:00:00Z",
+    "body": "Hello, our agency is preparing the 2026 annual informatization budget and requires quotes for different configuration options from your company. Please submit by the end of February. — Liu Jian, Public Institution IT Division",
+    "labels": [
+      "inbox",
+      "customer"
+    ],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1610",
+    "from": "admin@company.com",
+    "to": "all@company.com",
+    "subject": "Notice Regarding Q2 Team Building Event",
+    "date": "2026-03-25T09:00:00Z",
+    "body": "All colleagues: The Q2 team building event is scheduled for mid-April. Please ensure your departments arrange work in advance. Detailed plans will be announced next week. — Admin Department",
+    "labels": [
+      "inbox",
+      "notice"
+    ],
+    "is_read": true
+  }
+]

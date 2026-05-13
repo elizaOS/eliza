@@ -1,0 +1,50 @@
+task_id: M092_video_movie_title_localization
+task_name: Movie Title Card Localization and Frame Extraction
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。请观看视频，完成以下任务：
+    (1) 找到电影片名出现在屏幕上的时刻，截取该帧画面，保存为 /workspace/title_frame.png。
+    (2) 告诉我这部电影的中文片名和英文片名，保存到 /workspace/answer.txt。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files:
+  - fixtures/gt.png
+
+env_snapshot_commands: []
+
+env_snapshot_files:
+  - /workspace/answer.txt
+  - /workspace/title_frame.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  观看视频到约 00:45-00:47 处，会出现片名画面：子弹慢动作落在黑色反光面上，片名文字显示。
+  中文片名：遍地狼烟
+  英文片名：COLD STEEL
+  截取该帧保存为 title_frame.png，将中英文片名写入 answer.txt。
+  评分：0.4 中文片名 + 0.4 英文片名 + 0.1 截图存在 + 0.1 截图内容匹配 GT。
+
+primary_dimensions:
+  - completion
+  - robustness

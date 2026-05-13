@@ -59,6 +59,7 @@ describe("isLocalAgentApiBase", () => {
   it("recognizes loopback API bases", () => {
     expect(isLocalAgentApiBase("http://localhost:31337/")).toBe(true);
     expect(isLocalAgentApiBase("http://127.0.0.1:2138")).toBe(true);
+    expect(isLocalAgentApiBase("eliza-local-agent://ipc")).toBe(true);
     expect(isLocalAgentApiBase("https://remote.example.com")).toBe(false);
   });
 });

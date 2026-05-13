@@ -9,7 +9,13 @@ import type {
 
 const DEFAULT_POLICY: RoutingPolicy = "prefer-local";
 
-const SLOTS: AgentModelSlot[] = ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"];
+const SLOTS: AgentModelSlot[] = [
+  "TEXT_SMALL",
+  "TEXT_LARGE",
+  "TEXT_EMBEDDING",
+  "TEXT_TO_SPEECH",
+  "TRANSCRIPTION",
+];
 
 const POLICIES: Array<{ value: RoutingPolicy; label: string; hint: string }> = [
   {
@@ -41,12 +47,16 @@ const SLOT_MODEL_TYPE: Record<AgentModelSlot, string> = {
   TEXT_SMALL: "TEXT_SMALL",
   TEXT_LARGE: "TEXT_LARGE",
   TEXT_EMBEDDING: "TEXT_EMBEDDING",
+  TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
+  TRANSCRIPTION: "TRANSCRIPTION",
 };
 
 const SLOT_LABEL: Record<AgentModelSlot, string> = {
   TEXT_SMALL: "Small text",
   TEXT_LARGE: "Large text",
   TEXT_EMBEDDING: "Embeddings",
+  TEXT_TO_SPEECH: "Voice output",
+  TRANSCRIPTION: "Transcription",
 };
 
 export function RoutingMatrix() {

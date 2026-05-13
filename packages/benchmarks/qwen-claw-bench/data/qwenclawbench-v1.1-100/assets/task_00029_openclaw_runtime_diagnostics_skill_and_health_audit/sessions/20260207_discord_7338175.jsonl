@@ -1,0 +1,20 @@
+{"type": "session_start", "session_id": "discord_7338175", "model": "deepseek-r1", "created_at": "2026-02-07T14:04:23.751321", "user_id": "system", "channel": "discord"}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-07T14:08:23.172362", "session_id": "discord_7338175", "seq": 1}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-07T14:12:27.132773", "session_id": "discord_7338175", "seq": 2}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-07T14:12:47.258542", "session_id": "discord_7338175", "seq": 3, "usage": {"prompt_tokens": 7780, "completion_tokens": 2055, "total_tokens": 1177}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-07T14:15:22.654523", "session_id": "discord_7338175", "seq": 4}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-07T14:16:11.414160", "session_id": "discord_7338175", "seq": 5}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-07T14:19:16.086310", "session_id": "discord_7338175", "seq": 6}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-07T14:20:52.310030", "session_id": "discord_7338175", "seq": 7}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-07T14:24:36.147026", "session_id": "discord_7338175", "seq": 8}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-07T14:26:20.704012", "session_id": "discord_7338175", "seq": 9, "usage": {"prompt_tokens": 2149, "completion_tokens": 1103, "total_tokens": 10509}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-07T14:30:38.671393", "session_id": "discord_7338175", "seq": 10}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-07T14:33:24.782695", "session_id": "discord_7338175", "seq": 11, "usage": {"prompt_tokens": 1718, "completion_tokens": 3232, "total_tokens": 3220}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-07T14:35:39.882829", "session_id": "discord_7338175", "seq": 12, "usage": {"prompt_tokens": 5131, "completion_tokens": 1013, "total_tokens": 9016}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-07T14:37:15.885972", "session_id": "discord_7338175", "seq": 13, "usage": {"prompt_tokens": 1733, "completion_tokens": 3488, "total_tokens": 7930}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-07T14:39:30.220474", "session_id": "discord_7338175", "seq": 14, "usage": {"prompt_tokens": 7643, "completion_tokens": 705, "total_tokens": 3957}}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-07T14:44:00.565808", "session_id": "discord_7338175", "seq": 15}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-07T14:44:32.796860", "session_id": "discord_7338175", "seq": 16}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-07T14:44:58.160582", "session_id": "discord_7338175", "seq": 17}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-07T14:47:57.930645", "session_id": "discord_7338175", "seq": 18}
+{"type": "session_end", "session_id": "discord_7338175", "ended_at": "2026-02-07T14:48:07.930645", "total_messages": 18, "status": "error"}

@@ -274,9 +274,7 @@ export function fusedCmakeBuildTargets() {
     "llama-server",
     "llama-cli",
     "llama-speculative-simple",
-    // Non-interactive generation drivers used by the verify runners.
-    "llama-bench",
-    "llama-completion",
+    "llama-mtmd-cli",
     "omnivoice-core",
     "elizainference",
     "llama-omnivoice-server",

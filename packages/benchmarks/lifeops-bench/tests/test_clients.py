@@ -322,6 +322,23 @@ async def test_cerebras_honors_retry_after_header() -> None:
     assert len(captured) == 2
 
 
+@pytest.mark.asyncio
+async def test_cerebras_rejects_malformed_tool_arguments() -> None:
+    captured: list[dict[str, Any]] = []
+    payload = _cerebras_success_response()
+    payload["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"] = "{"
+    transport = _make_transport_recording_body(payload, captured_request_body=captured)
+    async with httpx.AsyncClient(transport=transport) as http_client:
+        client = CerebrasClient(
+            api_key="sk-test", model="gpt-oss-120b", http_client=http_client
+        )
+        with pytest.raises(ProviderError, match="valid JSON"):
+            await client.complete(
+                ClientCall(messages=[{"role": "user", "content": "hi"}])
+            )
+    assert len(captured) == 1
+
+
 def test_cerebras_requires_api_key() -> None:
     saved = os.environ.pop("CEREBRAS_API_KEY", None)
     try:
@@ -496,6 +513,33 @@ async def test_anthropic_tool_use_extracts_tool_call_and_cache() -> None:
 
 
 @pytest.mark.asyncio
+async def test_anthropic_rejects_malformed_tool_arguments() -> None:
+    captured: list[dict[str, Any]] = []
+    fake = _FakeAnthropicClient([], captured=captured)
+    client = AnthropicClient(model="claude-opus-4-7", client=fake)
+    with pytest.raises(ProviderError, match="valid JSON"):
+        await client.complete(
+            ClientCall(
+                messages=[
+                    {
+                        "role": "assistant",
+                        "tool_calls": [
+                            {
+                                "id": "toolu_01abc",
+                                "type": "function",
+                                "function": {
+                                    "name": "list_events",
+                                    "arguments": "{",
+                                },
+                            }
+                        ],
+                    }
+                ]
+            )
+        )
+
+
+@pytest.mark.asyncio
 async def test_anthropic_retries_once_on_429() -> None:
     import anthropic as _anthropic_sdk
 
@@ -608,6 +652,12 @@ def test_hermes_parses_one_tool_call() -> None:
     assert calls == [
         ToolCall(id="call_0", name="list_events", arguments={"date": "2026-05-10"})
     ]
+
+
+def test_hermes_rejects_malformed_tool_call_json() -> None:
+    text = '<tool_call>{"name": "list_events", "arguments": {"date": "2026-05-10"}</tool_call>'
+    with pytest.raises(ProviderError, match="valid JSON"):
+        _parse_hermes_response_text(text)
 
 
 def test_hermes_parses_multiple_tool_calls() -> None:

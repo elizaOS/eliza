@@ -1,0 +1,42 @@
+# OpenClaw Gateway Configuration
+# See https://docs.openclaw.ai/config for full reference
+
+gateway:
+  bind: "0.0.0.0:3000"
+  remote:
+    url: "https://my-openclaw.example.com"
+
+agent:
+  defaultModel: "anthropic/claude-sonnet-4-20250514"
+  # External model providers can be configured below
+  # providers:
+  #   - name: openai
+  #     baseUrl: https://api.openai.com/v1
+  #     apiKey: sk-xxx
+  #     models:
+  #       - gpt-4o
+  #       - gpt-4o-mini
+
+plugins:
+  entries:
+    device-pair:
+      enabled: true
+      config:
+        publicUrl: "https://my-openclaw.example.com"
+
+sessions:
+  defaultThinking: "off"
+  idleTimeoutMin: 30
+
+heartbeat:
+  enabled: true
+  intervalMs: 1800000
+
+skills:
+  paths:
+    - /opt/openclaw/skills
+    - /home/node/workspace/skills
+
+logging:
+  level: info
+  file: /home/node/workspace/.openclaw/gateway.log

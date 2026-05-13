@@ -294,13 +294,10 @@ export function compactCodingExamplesForIntent(prompt: string): string {
  * the prompt with a version where only intent-relevant actions keep full
  * parameter detail — the rest are stubs with just name + description.
  *
- * Supports the legacy line-oriented prompt encoding emitted by older actions providers:
- *   actions[N]:
+ * Supports the current markdown action catalogue emitted by the planner:
+ *   # Available Actions
  *   - ACTION: description
- *     aliases[..]: ...
- *     tags[..]: ...
- *     params[..]: ...
- *     example: ...
+ *     parameters: { ...JSON schema summary... }
  *
  * If no intents are detected (general chat), only universal actions
  * (REPLY, NONE, IGNORE) keep full params — all others are stubbed.
@@ -334,9 +331,9 @@ function compactStructuredActionsBlock(
   prompt: string,
   fullParamActions: Set<string>,
 ): string | null {
-  // The actions provider emits "actions[N]:\n- NAME: desc\n  params[..]: ...".
-  // Anchor on that header line.
-  const headerRe = /^actions\[\d+\]:[ \t]*$/m;
+  // The planner emits "# Available Actions" followed by markdown bullets:
+  // "- NAME: description" and optional two-space-indented metadata lines.
+  const headerRe = /^# Available Actions[ \t]*$/m;
   const headerMatch = headerRe.exec(prompt);
   if (!headerMatch) return null;
 
@@ -345,8 +342,8 @@ function compactStructuredActionsBlock(
   const bodyStart = blockStart + headerLine.length;
 
   // Walk forward consuming action entries (`- NAME: ...`) and their
-  // two-space-indented continuation lines. Stop at the first non-indented
-  // non-entry line that isn't part of an entry.
+  // two-space-indented continuation lines. Stop at the next markdown section
+  // or the first non-entry line that is not part of the catalogue.
   const remainder = prompt.slice(bodyStart);
   const lines = remainder.split("\n");
 
@@ -357,6 +354,9 @@ function compactStructuredActionsBlock(
 
   while (consumed < lines.length) {
     const line = lines[consumed];
+    if (line.startsWith("# ")) {
+      break;
+    }
     if (line.startsWith("- ") || line.startsWith("  ")) {
       consumed += 1;
       continue;
@@ -375,9 +375,9 @@ function compactStructuredActionsBlock(
   const bodyLines = lines.slice(0, consumed);
   const blockEnd = bodyStart + bodyLines.join("\n").length;
 
-  type JsonAction = { name: string; entryLines: string[] };
-  const entries: JsonAction[] = [];
-  let current: JsonAction | null = null;
+  type PromptAction = { name: string; entryLines: string[] };
+  const entries: PromptAction[] = [];
+  let current: PromptAction | null = null;
   for (const line of bodyLines) {
     if (line.startsWith("- ")) {
       if (current) entries.push(current);
@@ -396,7 +396,7 @@ function compactStructuredActionsBlock(
     if (!entry.name || fullParamActions.has(entry.name)) {
       return entry.entryLines.join("\n");
     }
-    // Stub: keep only `- NAME: description`; drop continuation lines.
+    // Stub: keep only `- NAME: description`; drop parameter schema details.
     return entry.entryLines[0];
   });
 

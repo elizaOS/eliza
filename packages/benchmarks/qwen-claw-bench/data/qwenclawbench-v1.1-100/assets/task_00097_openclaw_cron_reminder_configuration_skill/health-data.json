@@ -1,0 +1,30 @@
+{
+  "weightLog": [
+    { "date": "2026-01-20", "weight": 72.5, "unit": "kg" },
+    { "date": "2026-01-21", "weight": 72.3, "unit": "kg" },
+    { "date": "2026-01-22", "weight": 72.6, "unit": "kg" },
+    { "date": "2026-01-23", "weight": 72.1, "unit": "kg" },
+    { "date": "2026-01-25", "weight": 71.9, "unit": "kg" },
+    { "date": "2026-01-27", "weight": 72.0, "unit": "kg" },
+    { "date": "2026-01-28", "weight": 71.8, "unit": "kg" },
+    { "date": "2026-01-30", "weight": 71.5, "unit": "kg" },
+    { "date": "2026-02-01", "weight": 72.2, "unit": "kg", "note": "Spring Festival meals" },
+    { "date": "2026-02-02", "weight": 72.8, "unit": "kg", "note": "Still holiday eating" },
+    { "date": "2026-02-03", "weight": 72.4, "unit": "kg" },
+    { "date": "2026-02-05", "weight": 72.1, "unit": "kg" },
+    { "date": "2026-02-06", "weight": 71.7, "unit": "kg" }
+  ],
+  "sittingBreaks": {
+    "target": 6,
+    "weeklyLog": {
+      "2026-W04": { "completed": 24, "total": 30, "rate": 0.80 },
+      "2026-W05": { "completed": 28, "total": 30, "rate": 0.93 },
+      "2026-W06": { "completed": 18, "total": 30, "rate": 0.60, "note": "Spring Festival week - irregular schedule" }
+    }
+  },
+  "goals": {
+    "targetWeight": 70.0,
+    "dailyWater": 2000,
+    "sittingBreakInterval": 90
+  }
+}

@@ -1,0 +1,68 @@
+[
+  {
+    "customer_id": "CUS-901",
+    "name": "Dingxin Software",
+    "tier": "vip",
+    "status": "active",
+    "industry": "Software Development",
+    "annual_revenue": 1080000,
+    "contract_end": "2026-09-30",
+    "notes": "Core customer, continuous expansion purchases",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-902",
+    "name": "Hanhai E-Commerce",
+    "tier": "standard",
+    "status": "active",
+    "industry": "E-Commerce",
+    "annual_revenue": 540000,
+    "contract_end": "2026-06-15",
+    "notes": "Stable usage, renewal intent to be confirmed",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-903",
+    "name": "Wantong Logistics",
+    "tier": "vip",
+    "status": "active",
+    "industry": "Logistics & Transportation",
+    "annual_revenue": 1440000,
+    "contract_end": "2026-12-31",
+    "notes": "Major customer, recently price-sensitive",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-904",
+    "name": "Qianfeng Tech",
+    "tier": "standard",
+    "status": "active",
+    "industry": "Tech Manufacturing",
+    "annual_revenue": 360000,
+    "contract_end": "2026-04-30",
+    "notes": "Downgraded to basic plan, contract expiring soon",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-905",
+    "name": "Sunlight Media",
+    "tier": "vip",
+    "status": "active",
+    "industry": "Media & Advertising",
+    "annual_revenue": 780000,
+    "contract_end": "2026-11-30",
+    "notes": "New VIP customer, strong growth momentum",
+    "contact_person": ""
+  },
+  {
+    "customer_id": "CUS-906",
+    "name": "Public Institution",
+    "tier": "standard",
+    "status": "churned",
+    "industry": "Government",
+    "annual_revenue": 0,
+    "contract_end": "2026-01-31",
+    "notes": "Churned at end of January, caused by budget cuts",
+    "contact_person": ""
+  }
+]

@@ -64,7 +64,7 @@ LEGACY_TERMINAL_OR_ROUTING = {
     "STOP",
     "REPLY",
     "TASK_CALL",
-    "SHELL_COMMAND",
+    "SHELL",
     "MUTE_ROOM",
     "UNMUTE_ROOM",
     "FOLLOW_ROOM",
@@ -801,6 +801,8 @@ def tool_calls_from_decoded(decoded: Any, record: dict[str, Any], record_id: str
             name = call.get("name")
             args = call.get("arguments") or call.get("args") or {}
             if isinstance(name, str) and name:
+                if name == "SHELL_COMMAND":
+                    name = "SHELL"
                 calls.append({
                     "id": f"call_{stable_hash(record_id, idx, name, length=16)}",
                     "name": name,
@@ -812,6 +814,8 @@ def tool_calls_from_decoded(decoded: Any, record: dict[str, Any], record_id: str
         name = action.get("name")
         if not isinstance(name, str) or not name:
             continue
+        if name == "SHELL_COMMAND":
+            name = "SHELL"
         params = action.get("params") if isinstance(action.get("params"), dict) else {}
         if name == "TASK_CALL":
             tool_name = params.get("tool") or params.get("name") or params.get("action")
@@ -834,7 +838,7 @@ def tool_calls_from_decoded(decoded: Any, record: dict[str, Any], record_id: str
     if not calls and isinstance(obj.get("command"), str) and obj.get("command"):
         calls.append({
             "id": f"call_{stable_hash(record_id, 'shell', obj.get('command'), length=16)}",
-            "name": "SHELL_COMMAND",
+            "name": "SHELL",
             "args": {
                 "command": obj.get("command"),
                 "cwd": obj.get("cwd") or "",

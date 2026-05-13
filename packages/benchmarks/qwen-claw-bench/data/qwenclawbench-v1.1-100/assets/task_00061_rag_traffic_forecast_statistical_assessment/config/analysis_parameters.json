@@ -1,0 +1,30 @@
+{
+  "analysis_name": "RAG Forecast Statistical Assessment",
+  "version": "1.3.2",
+  "created_by": "traffic_analytics_team",
+  "last_modified": "2024-01-18T09:30:00Z",
+  "data_processing": {
+    "normalization_factor": 10,
+    "flow_unit": "vehicles_per_5min_divided_by_10",
+    "note": "Raw sensor readings are stored in normalized units. Multiply by normalization_factor to convert to actual vehicle counts per 5-minute interval.",
+    "missing_value_handling": "linear_interpolation",
+    "outlier_threshold_sigma": 3.0
+  },
+  "statistical_tests": {
+    "significance_level": 0.05,
+    "trend_test": "mann_kendall",
+    "stationarity_test": "augmented_dickey_fuller",
+    "normality_test": "shapiro_wilk"
+  },
+  "error_metrics": ["MAE", "RMSE", "MAPE"],
+  "forecast_evaluation": {
+    "comparison_models": ["historical_average", "arima", "rag"],
+    "evaluation_window_steps": 12,
+    "confidence_level": 0.95
+  },
+  "output": {
+    "report_format": "markdown",
+    "output_directory": "reports/",
+    "include_plots": false
+  }
+}

@@ -1,0 +1,28 @@
+{
+    "description": "Current A-share trading fee schedule",
+    "market": "A-share",
+    "currency": "CNY",
+    "last_updated": "2024-09-01",
+    "fees": {
+        "commission": {
+            "rate": 0.00025,
+            "description": "Broker commission rate (wan 2.5)",
+            "min_amount": 5.0,
+            "applies_to": "both buy and sell"
+        },
+        "stamp_tax": {
+            "rate": 0.001,
+            "description": "Stamp tax at 0.1%, reduced from 0.1% effective 2023-08-28",
+            "applies_to": "sell only"
+        },
+        "transfer_fee": {
+            "rate": 0.00002,
+            "description": "Transfer fee at 0.002%, reduced from 0.006% effective 2022-04-29",
+            "applies_to": "both buy and sell"
+        }
+    },
+    "commission_rate": 0.00025,
+    "stamp_tax_rate": 0.001,
+    "transfer_fee_rate": 0.00002,
+    "notes": "Commission minimum 5 CNY per trade. Stamp tax applies to sell side only. Transfer fee applies to both buy and sell."
+}

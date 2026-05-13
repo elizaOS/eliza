@@ -8,7 +8,7 @@ import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
 } from "@elizaos/app-core";
-import { ethers } from "ethers";
+import * as ethers from "ethers";
 import { deriveSolanaAddress } from "../api/wallet";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";
 import type { StewardSignRequest } from "../types/steward";

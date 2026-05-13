@@ -270,6 +270,30 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-coding-tools") {
       return await import("@elizaos/plugin-coding-tools");
     }
+    if (packageName === "@elizaos/plugin-ollama") {
+      return await import("@elizaos/plugin-ollama");
+    }
+    if (packageName === "@elizaos/plugin-elizacloud") {
+      return await import("@elizaos/plugin-elizacloud");
+    }
+    if (packageName === "@elizaos/plugin-commands") {
+      return await import("@elizaos/plugin-commands");
+    }
+    if (packageName === "@elizaos/plugin-video") {
+      return await import("@elizaos/plugin-video");
+    }
+    if (packageName === "@elizaos/plugin-background-runner") {
+      return await import("@elizaos/plugin-background-runner");
+    }
+    if (packageName === "@elizaos/plugin-mlx") {
+      return await import("@elizaos/plugin-mlx");
+    }
+    if (packageName === "@elizaos/plugin-anthropic") {
+      return await import("@elizaos/plugin-anthropic");
+    }
+    if (packageName === "@elizaos/plugin-openai") {
+      return await import("@elizaos/plugin-openai");
+    }
     return await import(packageName);
   } catch {
     return null;
@@ -1410,7 +1434,10 @@ export async function autoResolveDiscordAppId(): Promise<void> {
   try {
     const res = await fetch(
       "https://discord.com/api/v10/oauth2/applications/@me",
-      { headers: { Authorization: `Bot ${discordToken}` } },
+      {
+        headers: { Authorization: `Bot ${discordToken}` },
+        signal: AbortSignal.timeout(10_000),
+      },
     );
 
     if (!res.ok) {
@@ -4586,7 +4613,16 @@ const isDirectRun = (() => {
   // primary one. The second invocation lacks `{ serverOnly: true }` and
   // drops into the readline chat loop, which closes on stdin EOF and tears
   // the whole process down.
-  if (process.env.ELIZA_DISABLE_DIRECT_RUN === "1") return false;
+  if (
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+      .__ELIZA_MOBILE_BUNDLE__ === true ||
+    (globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: unknown })
+      .__ELIZA_DISABLE_DIRECT_RUN === true ||
+    process.argv.includes("ios-bridge") ||
+    process.env.ELIZA_DISABLE_DIRECT_RUN === "1"
+  ) {
+    return false;
+  }
   const scriptArg = process.argv[1];
   if (!scriptArg) return false;
   const normalised = path.resolve(scriptArg);

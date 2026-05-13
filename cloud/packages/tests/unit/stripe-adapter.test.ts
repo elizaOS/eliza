@@ -14,25 +14,32 @@ interface StripeMockState {
 }
 
 function buildRequest(overrides: Partial<PaymentRequestRow> = {}): PaymentRequestRow {
-  const now = new Date().toISOString();
+  const now = new Date();
   return {
     id: PAYMENT_REQUEST_ID,
+    organizationId: "org_1",
+    agentId: null,
     provider: "stripe",
     status: "pending",
     amountCents: 2500,
     currency: "USD",
     reason: "Coffee subscription",
+    paymentContext: { kind: "any_payer" },
     payerUserId: "user_1",
     payerOrganizationId: "org_1",
     payerIdentityId: null,
-    creatorUserId: "creator_1",
-    creatorOrganizationId: "creator_org_1",
     appId: "app_1",
     successUrl: "https://example.com/success",
     cancelUrl: "https://example.com/cancel",
     metadata: { product_name: "Coffee" },
-    providerIntent: null,
-    txRef: null,
+    hostedUrl: null,
+    callbackUrl: null,
+    callbackSecret: null,
+    providerIntent: {},
+    settledAt: null,
+    settlementTxRef: null,
+    settlementProof: null,
+    expiresAt: new Date(now.getTime() + 30 * 60 * 1000),
     createdAt: now,
     updatedAt: now,
     ...overrides,
@@ -144,7 +151,7 @@ describe("stripe payment adapter", () => {
 
     await expect(
       stripePaymentAdapter.createIntent({
-        request: buildRequest({ successUrl: null, cancelUrl: null, metadata: null }),
+        request: buildRequest({ successUrl: null, cancelUrl: null, metadata: {} }),
       }),
     ).rejects.toThrow(/success_url and cancel_url/);
   });

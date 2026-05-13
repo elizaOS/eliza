@@ -91,6 +91,10 @@ interface TelegramMessage {
   reply_markup?: unknown;
 }
 
+interface RuntimeWithOptionalCleanup {
+  cleanup?: () => Promise<void> | void;
+}
+
 async function tgApi<T = unknown>(
   method: string,
   body?: Record<string, unknown>,
@@ -202,8 +206,7 @@ describeIfPluginAvailable("Telegram Connector - Setup & Authentication", () => {
 
     afterAll(async () => {
       if (runtime) {
-        // @ts-expect-error - cleanup method may not be in type
-        await runtime.cleanup?.();
+        await (runtime as RuntimeWithOptionalCleanup).cleanup?.();
         runtime = null;
       }
     });

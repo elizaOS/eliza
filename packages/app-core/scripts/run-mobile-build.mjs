@@ -69,6 +69,8 @@ const packagesRoot = path.resolve(appCoreRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
+const IOS_DEFAULT_DEPLOYMENT_TARGET = "15.0";
+const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 
 // AOSP system APK staging path. Brand-aware: forks declare their vendor
 // dir + APK name in `app.config.ts > aosp:`. When that block is present
@@ -124,6 +126,24 @@ const androidAgentSpikeDir = path.join(
   "scripts",
   "spike-android-agent",
 );
+const IOS_BUN_ENGINE_FRAMEWORK_NAME = "ElizaBunEngine";
+const IOS_BUN_ENGINE_ABI_VERSION = "3";
+const iosBunRuntimePackageRoot = path.join(packagesRoot, "bun-ios-runtime");
+const defaultIosBunEngineXcframework = path.join(
+  iosBunRuntimePackageRoot,
+  "artifacts",
+  `${IOS_BUN_ENGINE_FRAMEWORK_NAME}.xcframework`,
+);
+const IOS_BUN_ENGINE_REQUIRED_SYMBOLS = [
+  "_eliza_bun_engine_abi_version",
+  "_eliza_bun_engine_last_error",
+  "_eliza_bun_engine_set_host_callback",
+  "_eliza_bun_engine_start",
+  "_eliza_bun_engine_stop",
+  "_eliza_bun_engine_is_running",
+  "_eliza_bun_engine_call",
+  "_eliza_bun_engine_free",
+];
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
@@ -229,6 +249,16 @@ function resolveExecutable(name) {
     }
   }
   return null;
+}
+
+function runCaptureSync(command, args, { cwd = repoRoot, maxBuffer } = {}) {
+  return spawnSync(command, args, {
+    cwd,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+    maxBuffer,
+  });
 }
 
 function resolveBunExecutable() {
@@ -647,6 +677,11 @@ async function buildWeb(platform) {
           VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
         }
       : {}),
+    ...(platform === "ios-local" && isFullIosBunEngineRequested(process.env)
+      ? {
+          VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
+        }
+      : {}),
   };
   const bun = resolveBunExecutable();
   if (bun) {
@@ -700,6 +735,14 @@ function stageIosAgentRuntime() {
     if (fs.statSync(src).isFile()) {
       fs.copyFileSync(src, dst);
     }
+  }
+  // PGlite resolves extension bundles via new URL("../vector.tar.gz",
+  // import.meta.url) from public/agent/agent-bundle.js, so iOS must stage
+  // these two assets at public/ as well as keeping the manifest copy under
+  // public/agent for build diagnostics.
+  const publicDir = path.dirname(targetDir);
+  for (const file of ["vector.tar.gz", "fuzzystrmatch.tar.gz"]) {
+    fs.copyFileSync(path.join(sourceDir, file), path.join(publicDir, file));
   }
   console.log(
     `[mobile-build] Staged iOS Bun agent payload: ${path.relative(repoRoot, targetDir)}`,
@@ -2059,10 +2102,13 @@ function isTruthyEnv(value) {
 }
 
 function isFullIosBunEngineRequested(env = process.env) {
-  return (
-    isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE) ||
-    isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE)
-  );
+  return isTruthyEnv(env.ELIZA_IOS_FULL_BUN_ENGINE);
+}
+
+function resolveIosDeploymentTarget(env = process.env) {
+  return isFullIosBunEngineRequested(env)
+    ? IOS_FULL_BUN_DEPLOYMENT_TARGET
+    : IOS_DEFAULT_DEPLOYMENT_TARGET;
 }
 
 function isIosSimulatorBuildTarget(buildTarget) {
@@ -2126,27 +2172,31 @@ function generatePodfile() {
     ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
-    // Full iOS local mode needs both the native Bun-runtime host pod and the
-    // llama.cpp pod. App Store/cloud builds omit both so they do not ship local
-    // execution or model binaries.
-    ...(includeLlama
-      ? [
-          ["LlamaCppCapacitor", "llama-cpp-capacitor"],
-          ...(includeFullBunEngine
-            ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
-            : []),
-          ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
-        ]
+    // Full iOS local mode needs the native Bun-runtime host pod. The engine is
+    // independent of llama.cpp and must still be embedded for smoke/production
+    // full-Bun builds that intentionally omit llama.
+    ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
+    ...(includeFullBunEngine
+      ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
+      : []),
+    ...(includeLlama || includeFullBunEngine
+      ? [["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"]]
       : []),
   ];
   if (!includeLlama) {
     console.log(
-      "[mobile-build] iOS Podfile: omitting local runtime pods (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
+      "[mobile-build] iOS Podfile: omitting llama.cpp pod (ELIZA_IOS_INCLUDE_LLAMA / ELIZA_IOS_INCLUDE_LLAMA not set)",
     );
   }
   if (includeFullBunEngine) {
     console.log(
       "[mobile-build] iOS Podfile: requiring full Bun engine pod (ELIZA_IOS_FULL_BUN_ENGINE / ELIZA_IOS_FULL_BUN_ENGINE set)",
+    );
+  }
+  const deploymentTarget = resolveIosDeploymentTarget();
+  if (includeFullBunEngine) {
+    console.log(
+      `[mobile-build] iOS full Bun deployment target: ${deploymentTarget}`,
     );
   }
 
@@ -2182,7 +2232,7 @@ capacitor_ios_path = node_package_path('@capacitor/ios')
 
 require_relative File.join(capacitor_ios_path, 'scripts/pods_helpers')
 
-platform :ios, '15.0'
+platform :ios, '${deploymentTarget}'
 use_frameworks!
 
 install! 'cocoapods', :disable_input_output_paths => true
@@ -3043,22 +3093,175 @@ export function resolveIosBuildTarget({
 function resolveIosFullBunEngineXcframework({ buildTarget = null } = {}) {
   const candidates = [
     process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK,
-    process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK,
+    defaultIosBunEngineXcframework,
     path.join(
-      packagesRoot,
-      "bun-ios-runtime",
-      "artifacts",
-      "ElizaBunEngine.xcframework",
-    ),
-    path.join(
-      packagesRoot,
-      "bun-ios-runtime",
+      iosBunRuntimePackageRoot,
       "build",
       isIosSimulatorBuildTarget(buildTarget) ? "simulator" : "device",
-      "ElizaBunEngine.xcframework",
+      `${IOS_BUN_ENGINE_FRAMEWORK_NAME}.xcframework`,
     ),
   ].filter(Boolean);
   return firstExisting(candidates);
+}
+
+function parsePlistJson(plistPath) {
+  const result = runCaptureSync("plutil", [
+    "-convert",
+    "json",
+    "-o",
+    "-",
+    plistPath,
+  ]);
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `[mobile-build] failed to parse ${plistPath} with plutil: ${reason}`,
+    );
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch (err) {
+    throw new Error(
+      `[mobile-build] malformed JSON from plutil for ${plistPath}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+function resolveIosBunEngineLibrary(xcframework, { buildTarget = null } = {}) {
+  const infoPlist = path.join(xcframework, "Info.plist");
+  if (!fs.existsSync(infoPlist)) {
+    throw new Error(
+      `[mobile-build] ${IOS_BUN_ENGINE_FRAMEWORK_NAME}.xcframework is missing Info.plist: ${xcframework}`,
+    );
+  }
+  const info = parsePlistJson(infoPlist);
+  const libraries = Array.isArray(info.AvailableLibraries)
+    ? info.AvailableLibraries
+    : [];
+  const wantSimulator = isIosSimulatorBuildTarget(buildTarget);
+  const library = libraries.find((entry) => {
+    if (!entry || entry.SupportedPlatform !== "ios") return false;
+    const variant = entry.SupportedPlatformVariant;
+    return wantSimulator ? variant === "simulator" : !variant;
+  });
+  if (!library?.LibraryIdentifier) {
+    const requested = wantSimulator ? "iOS Simulator" : "iOS device";
+    const available = libraries
+      .map(
+        (entry) =>
+          `${entry?.SupportedPlatform ?? "unknown"}${
+            entry?.SupportedPlatformVariant
+              ? `-${entry.SupportedPlatformVariant}`
+              : ""
+          }/${entry?.LibraryIdentifier ?? "missing-id"}`,
+      )
+      .join(", ");
+    throw new Error(
+      `[mobile-build] ${xcframework} does not contain a ${requested} ${IOS_BUN_ENGINE_FRAMEWORK_NAME} library. Available: ${available || "none"}`,
+    );
+  }
+  const libraryRoot = path.join(xcframework, library.LibraryIdentifier);
+  const frameworkRelPath =
+    typeof library.LibraryPath === "string"
+      ? library.LibraryPath
+      : `${IOS_BUN_ENGINE_FRAMEWORK_NAME}.framework`;
+  const frameworkDir = path.join(libraryRoot, frameworkRelPath);
+  const binary = path.join(frameworkDir, IOS_BUN_ENGINE_FRAMEWORK_NAME);
+  if (!fs.existsSync(binary)) {
+    throw new Error(
+      `[mobile-build] ${xcframework} selected ${library.LibraryIdentifier}, but ${binary} was not found`,
+    );
+  }
+  return { binary, frameworkDir, libraryIdentifier: library.LibraryIdentifier };
+}
+
+function validateIosBunEngineSymbols(binary) {
+  const result = runCaptureSync("nm", ["-gU", binary], {
+    maxBuffer: 256 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    const reason =
+      result.stderr?.trim() ||
+      result.error?.message ||
+      `exit status ${String(result.status)}`;
+    throw new Error(
+      `[mobile-build] failed to inspect ${binary} with nm: ${reason}`,
+    );
+  }
+  const output = `${result.stdout}\n${result.stderr}`;
+  const missing = IOS_BUN_ENGINE_REQUIRED_SYMBOLS.filter(
+    (symbol) => !output.includes(symbol),
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `[mobile-build] ${binary} is missing required full-Bun ABI symbols: ${missing.join(", ")}`,
+    );
+  }
+}
+
+function validateIosFullBunEngineXcframework(
+  xcframework,
+  { buildTarget = null } = {},
+) {
+  const { binary, frameworkDir, libraryIdentifier } = resolveIosBunEngineLibrary(
+    xcframework,
+    { buildTarget },
+  );
+  const frameworkInfoPlist = path.join(frameworkDir, "Info.plist");
+  if (!fs.existsSync(frameworkInfoPlist)) {
+    throw new Error(
+      `[mobile-build] ${frameworkDir} is missing Info.plist; cannot verify full-Bun ABI metadata`,
+    );
+  }
+  const frameworkInfo = parsePlistJson(frameworkInfoPlist);
+  if (
+    String(frameworkInfo.ElizaBunEngineABIVersion ?? "") !==
+    IOS_BUN_ENGINE_ABI_VERSION
+  ) {
+    throw new Error(
+      `[mobile-build] ${frameworkInfoPlist} has ElizaBunEngineABIVersion=${String(
+        frameworkInfo.ElizaBunEngineABIVersion,
+      )}; expected ${IOS_BUN_ENGINE_ABI_VERSION}`,
+    );
+  }
+  validateIosBunEngineSymbols(binary);
+  console.log(
+    `[mobile-build] iOS full Bun engine validated ${libraryIdentifier}: ${binary}`,
+  );
+}
+
+function isPathInside(parent, child) {
+  const relative = path.relative(path.resolve(parent), path.resolve(child));
+  return (
+    Boolean(relative) &&
+    !relative.startsWith("..") &&
+    !path.isAbsolute(relative)
+  );
+}
+
+function stageIosFullBunEngineForPodspec(framework) {
+  const resolved = path.resolve(framework);
+  if (isPathInside(iosBunRuntimePackageRoot, resolved)) {
+    return resolved;
+  }
+  if (resolved === path.resolve(defaultIosBunEngineXcframework)) {
+    return resolved;
+  }
+
+  console.log(
+    `[mobile-build] staging external iOS full Bun engine for CocoaPods: ${resolved} -> ${defaultIosBunEngineXcframework}`,
+  );
+  fs.rmSync(defaultIosBunEngineXcframework, { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(defaultIosBunEngineXcframework), {
+    recursive: true,
+  });
+  fs.cpSync(resolved, defaultIosBunEngineXcframework, { recursive: true });
+  return defaultIosBunEngineXcframework;
 }
 
 function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
@@ -3078,9 +3281,14 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
       ].join("\n"),
     );
   }
-  process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK = framework;
-  console.log(`[mobile-build] iOS full Bun engine: ${framework}`);
-  return framework;
+  validateIosFullBunEngineXcframework(framework, { buildTarget });
+  const stagedFramework = stageIosFullBunEngineForPodspec(framework);
+  if (stagedFramework !== framework) {
+    validateIosFullBunEngineXcframework(stagedFramework, { buildTarget });
+  }
+  process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK = stagedFramework;
+  console.log(`[mobile-build] iOS full Bun engine: ${stagedFramework}`);
+  return stagedFramework;
 }
 
 // ── Android cloud (Play-Store) strip set ────────────────────────────────
@@ -4082,10 +4290,7 @@ function withCocoaPodsEnv(baseEnv = process.env) {
 
 function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
   setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
@@ -4178,6 +4383,7 @@ async function buildIos({ local = false } = {}) {
       buildTarget.destination,
       "-sdk",
       buildTarget.sdk,
+      `IPHONEOS_DEPLOYMENT_TARGET=${resolveIosDeploymentTarget()}`,
       `CODE_SIGNING_ALLOWED=${process.env.ELIZA_IOS_CODE_SIGNING_ALLOWED ?? "NO"}`,
       ...(isIosSimulatorBuildTarget(buildTarget)
         ? ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "EXCLUDED_ARCHS=x86_64"]

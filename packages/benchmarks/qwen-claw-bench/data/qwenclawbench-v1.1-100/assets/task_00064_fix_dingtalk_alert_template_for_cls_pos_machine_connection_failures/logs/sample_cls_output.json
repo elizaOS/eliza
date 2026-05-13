@@ -1,0 +1,55 @@
+{
+  "NotifyTime": "2024-01-15 10:30:00",
+  "QueryResult": [
+    [
+      {
+        "sn": "POS20240001",
+        "shopName": "东区旗舰店",
+        "shopNo": "SH001",
+        "logTime": "2024-01-15 10:28:33",
+        "message": "TCP connection timeout after 30s"
+      },
+      {
+        "sn": "",
+        "shopName": "北区仓储中心",
+        "shopNo": "",
+        "logTime": "2024-01-15 10:28:55",
+        "message": ""
+      },
+      {
+        "sn": "POS20240002",
+        "shopName": "西区分店",
+        "shopNo": "SH002",
+        "logTime": "2024-01-15 10:29:01",
+        "message": "heartbeat lost"
+      },
+      {
+        "sn": "",
+        "shopName": "中区便利店",
+        "shopNo": "SH005",
+        "logTime": "2024-01-15 10:29:22",
+        "message": "connection refused"
+      },
+      {
+        "sn": "POS20240003",
+        "shopName": "南区购物中心店",
+        "shopNo": "SH015",
+        "logTime": "2024-01-15 10:29:45",
+        "message": "SSL handshake failed: certificate expired"
+      }
+    ],
+    [
+      {
+        "sn": "POS20240001",
+        "shopName": "东区旗舰店",
+        "shopNo": "SH001",
+        "logTime": "2024-01-15 09:30:00",
+        "message": "TCP connection restored"
+      }
+    ]
+  ],
+  "DetailUrl": "https://console.cloud.example.com/cls/alarm/detail?id=abc123",
+  "NotifyType": 1,
+  "AlarmName": "收款机连接失败告警",
+  "Condition": "count > 0"
+}

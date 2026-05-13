@@ -1,5 +1,5 @@
-import { Button } from "@elizaos/ui";
 import type { CSSProperties } from "react";
+import { Button } from "../ui/button";
 
 type CloudHeaderStatusKind =
   | "error"

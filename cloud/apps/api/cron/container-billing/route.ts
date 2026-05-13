@@ -20,6 +20,7 @@ import {
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { CONTAINER_PRICING, calculateDailyContainerCost } from "@/lib/constants/pricing";
+import { computeContainerBillingPlan } from "@/lib/services/container-billing-policy";
 import { emailService } from "@/lib/services/email";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
 import { logger } from "@/lib/utils/logger";
@@ -78,11 +79,14 @@ async function processContainerBilling(
   });
 
   const currentBalance = Number(org.credit_balance);
-  // When pay-as-you-go is on (default), earnings absorb the bill before
-  // credits. When off, earnings stay untouched and hosting comes purely
-  // from credits — the org's owner controls this via /dashboard/billing.
-  const earningsAvailable = org.pay_as_you_go_from_earnings ? org.earnings_available : 0;
-  const totalAvailable = currentBalance + earningsAvailable;
+  const plan = computeContainerBillingPlan({
+    dailyCost,
+    currentBalance,
+    ownerEarningsAvailable: org.earnings_available,
+    payAsYouGoFromEarnings: org.pay_as_you_go_from_earnings,
+  });
+  const earningsAvailable = plan.earningsEligible;
+  const totalAvailable = plan.totalAvailable;
   const now = new Date();
 
   logger.info(`[Container Billing] Processing ${containerName}`, {
@@ -186,12 +190,12 @@ async function processContainerBilling(
     };
   }
 
-  // Pay-as-you-go split: take what we can from earnings (sweeping the
-  // smallest amount needed), then charge the remainder to org credits.
-  // Earnings → org credits conversion goes through redeemableEarningsService
-  // so we get a credit_conversion ledger entry for the audit trail.
-  const fromEarnings = Math.min(earningsAvailable, dailyCost);
-  const fromCredits = dailyCost - fromEarnings;
+  // Pay-as-you-go split (decided by computeContainerBillingPlan above):
+  // take what we can from earnings first, then charge the remainder to
+  // credits. Earnings → org credits conversion goes through
+  // redeemableEarningsService so we get a credit_conversion ledger entry
+  // for the audit trail.
+  const { fromEarnings, fromCredits } = plan;
 
   if (fromEarnings > 0 && org.earnings_source_user_id) {
     const conversion = await redeemableEarningsService.convertToCredits({

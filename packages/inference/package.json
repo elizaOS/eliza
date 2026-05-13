@@ -32,5 +32,8 @@
     "verify:vulkan": "make -C verify vulkan && cd verify && ./vulkan_verify",
     "verify:metal": "make -C verify metal && cd verify && ./metal_verify",
     "clean": "make -C verify clean"
+  },
+  "dependencies": {
+    "yaml": "^2.8.2"
   }
 }

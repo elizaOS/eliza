@@ -1,0 +1,47 @@
+task_id: M080_doc_extraction_delta_comparison
+task_name: Document Extraction - Delta Bar Comparison
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am a researcher comparing language models. Please download and read this
+    PDF: https://arxiv.org/pdf/2405.04434
+
+    Please find Table 2. Extract the scores of DeepSeek-V2 and LLaMA 3 70B on
+    the following 14 English and code benchmarks:
+    BBH, MMLU, DROP, ARC-Easy, ARC-Challenge, HellaSwag, PIQA, WinoGrande,
+    RACE-Middle, RACE-High, TriviaQA, NaturalQuestions, HumanEval, MBPP.
+
+    Requirements:
+    1. Create a CSV file /workspace/deepseek_v2_vs_llama3.csv with columns:
+       Benchmark, DeepSeek-V2, LLaMA3_70B, Delta
+       (Delta = DeepSeek-V2 - LLaMA3_70B)
+    2. Generate a delta bar chart /workspace/deepseek_v2_vs_llama3_delta.png with
+       benchmark names on the X-axis and Delta values on the Y-axis; use blue for
+       positive values and red for negative values
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/deepseek_v2_vs_llama3.csv
+  - /workspace/deepseek_v2_vs_llama3_delta.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Download DeepSeek-V2 PDF, extract Table 2 scores for 14 benchmarks,
+  compute delta, save CSV and delta bar chart with blue/red coloring.
+primary_dimensions:
+  - completion
+  - robustness

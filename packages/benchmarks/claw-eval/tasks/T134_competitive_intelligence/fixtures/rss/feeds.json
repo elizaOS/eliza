@@ -1,0 +1,157 @@
+[
+  {
+    "article_id": "RSS-401",
+    "title": "Competitor A Releases v4.0: New AI Assistant Feature",
+    "category": "Competitor Updates",
+    "content": "Competitor A officially released version 4.0 today, with the core highlight being a built-in AI assistant capable of automated data analysis and report generation. The release also optimizes the mobile experience.",
+    "url": "https://news.example.com/competitor-a-v4",
+    "tags": [
+      "Competitor A",
+      "release",
+      "AI"
+    ],
+    "source": "Industry News",
+    "published_at": "2026-03-24T09:00:00Z",
+    "summary": "Competitor A officially released version 4.0 today, with the core highlight being a built-in AI assistant capable of automated data analysis and report generation. The release also optimizes the mobil",
+    "word_count": 213
+  },
+  {
+    "article_id": "RSS-402",
+    "title": "Competitor A v4.0 User Review: AI Assistant Impresses",
+    "category": "Competitor Updates",
+    "content": "A third-party review organization conducted an in-depth evaluation of Competitor A v4.0. The AI assistant achieved 85% accuracy on simple analysis tasks, though complex scenarios still require human intervention. Performance-wise, page load speed improved by 30%.",
+    "url": "https://tech-review.example.com/comp-a-review",
+    "tags": [
+      "Competitor A",
+      "review",
+      "AI"
+    ],
+    "source": "Tech Reviews",
+    "published_at": "2026-03-25T10:00:00Z",
+    "summary": "A third-party review organization conducted an in-depth evaluation of Competitor A v4.0. The AI assistant achieved 85% accuracy on simple analysis tasks, though complex scenarios still require human i",
+    "word_count": 263
+  },
+  {
+    "article_id": "RSS-403",
+    "title": "Competitor A CEO Interview: Full AI Embrace Over Next 3 Years",
+    "category": "Competitor Updates",
+    "content": "Competitor A's CEO revealed in an interview that the company will allocate 40% of its R&D budget to AI over the next 3 years, with plans to cover AI-enabled workflows from customer service to operations.",
+    "url": "https://news.example.com/comp-a-ceo",
+    "tags": [
+      "Competitor A",
+      "strategy",
+      "AI"
+    ],
+    "source": "Industry News",
+    "published_at": "2026-03-25T14:00:00Z",
+    "summary": "Competitor A's CEO revealed in an interview that the company will allocate 40% of its R&D budget to AI over the next 3 years, with plans to cover AI-enabled workflows from customer service to operatio",
+    "word_count": 203
+  },
+  {
+    "article_id": "RSS-404",
+    "title": "Competitor B Raises 500M in Series C Funding",
+    "category": "Competitor Updates",
+    "content": "Competitor B completed a 500M Series C round led by Sequoia China. The funding will primarily be used for overseas market expansion and big data platform development. Competitor B currently has over 3,000 enterprise customers.",
+    "url": "https://funding.example.com/comp-b-series-c",
+    "tags": [
+      "Competitor B",
+      "funding",
+      "investment"
+    ],
+    "source": "Funding News",
+    "published_at": "2026-03-23T08:00:00Z",
+    "summary": "Competitor B completed a 500M Series C round led by Sequoia China. The funding will primarily be used for overseas market expansion and big data platform development. Competitor B currently has over 3",
+    "word_count": 226
+  },
+  {
+    "article_id": "RSS-405",
+    "title": "Competitor B Announces Southeast Asia Market Entry",
+    "category": "Competitor Updates",
+    "content": "Following its funding round, Competitor B moved quickly, announcing the establishment of an Asia-Pacific headquarters in Singapore with plans to cover 5 Southeast Asian countries by year-end.",
+    "url": "https://news.example.com/comp-b-sea",
+    "tags": [
+      "Competitor B",
+      "overseas",
+      "expansion"
+    ],
+    "source": "Industry News",
+    "published_at": "2026-03-24T11:00:00Z",
+    "summary": "Following its funding round, Competitor B moved quickly, announcing the establishment of an Asia-Pacific headquarters in Singapore with plans to cover 5 Southeast Asian countries by year-end.",
+    "word_count": 191
+  },
+  {
+    "article_id": "RSS-406",
+    "title": "Global SaaS Market Surpasses $300 Billion",
+    "category": "Industry Trends",
+    "content": "Gartner's latest report shows the global SaaS market surpassed $300 billion in 2025 for the first time, growing 18% year-over-year. AI and vertical industry SaaS are the biggest growth engines.",
+    "url": "https://news.example.com/saas-market",
+    "tags": [
+      "SaaS",
+      "market",
+      "trends"
+    ],
+    "source": "Industry News",
+    "published_at": "2026-03-22T07:00:00Z",
+    "summary": "Gartner's latest report shows the global SaaS market surpassed $300 billion in 2025 for the first time, growing 18% year-over-year. AI and vertical industry SaaS are the biggest growth engines.",
+    "word_count": 193
+  },
+  {
+    "article_id": "RSS-407",
+    "title": "Star Hedge Fund Liquidates",
+    "category": "Finance",
+    "content": "A well-known quantitative hedge fund announced liquidation due to strategy failures.",
+    "url": "https://funding.example.com/fund-close",
+    "tags": [
+      "fund",
+      "finance"
+    ],
+    "source": "Funding News",
+    "published_at": "2026-03-23T15:00:00Z",
+    "summary": "A well-known quantitative hedge fund announced liquidation due to strategy failures.",
+    "word_count": 84
+  },
+  {
+    "article_id": "RSS-408",
+    "title": "Chip Supply Chain Returns to Normal",
+    "category": "Supply Chain",
+    "content": "The global chip supply chain has largely returned to normal, with lead times shortened to under 6 weeks.",
+    "url": "https://tech-review.example.com/chip-supply",
+    "tags": [
+      "chips",
+      "supply chain"
+    ],
+    "source": "Tech Reviews",
+    "published_at": "2026-03-24T13:00:00Z",
+    "summary": "The global chip supply chain has largely returned to normal, with lead times shortened to under 6 weeks.",
+    "word_count": 104
+  },
+  {
+    "article_id": "RSS-409",
+    "title": "EV Sales Hit Record High",
+    "category": "Automotive",
+    "content": "March new energy vehicle retail sales exceeded 1 million units.",
+    "url": "https://news.example.com/ev-sales",
+    "tags": [
+      "automotive",
+      "EV"
+    ],
+    "source": "Industry News",
+    "published_at": "2026-03-25T08:00:00Z",
+    "summary": "March new energy vehicle retail sales exceeded 1 million units.",
+    "word_count": 63
+  },
+  {
+    "article_id": "RSS-410",
+    "title": "Sports News",
+    "category": "Sports",
+    "content": "Latest results from the 2026 World Cup qualifiers.",
+    "url": "https://news.example.com/sports",
+    "tags": [
+      "sports"
+    ],
+    "source": "General News",
+    "published_at": "2026-03-25T20:00:00Z",
+    "summary": "Latest results from the 2026 World Cup qualifiers.",
+    "word_count": 50
+  }
+]

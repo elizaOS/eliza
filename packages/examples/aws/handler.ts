@@ -195,7 +195,12 @@ async function handleChat(
   // Process message and collect response (same as chat demo)
   let responseText = "";
 
-  await rt.messageService?.handleMessage(rt, message, async (content) => {
+  const messageService = rt.messageService;
+  if (!messageService) {
+    throw new Error("Runtime message service not available");
+  }
+
+  await messageService.handleMessage(rt, message, async (content) => {
     if (content?.text) {
       responseText += content.text;
     }
@@ -275,5 +280,4 @@ export async function handler(
   });
 }
 
-// Export for testing
-export { handleChat, initializeRuntime, parseRequestBody, shutdownRuntime };
+export { shutdownRuntime };

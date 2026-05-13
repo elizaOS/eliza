@@ -23,12 +23,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Optional
 
-ElizaOneModelSize = Literal["0.6b", "1.7b", "9b", "27b", "27b-1m"]
+ElizaOneModelSize = Literal["0.8b", "2b", "9b", "27b", "27b-1m"]
 ElizaOneReleaseState = Literal["local-standin", "candidate", "final"]
 
 ELIZA_ONE_MODEL_SIZES: tuple[ElizaOneModelSize, ...] = (
-    "0.6b",
-    "1.7b",
+    "0.8b",
+    "2b",
     "9b",
     "27b",
     "27b-1m",

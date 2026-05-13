@@ -19,13 +19,11 @@
     "@elizaos/plugin-google-genai": "workspace:*",
     "@elizaos/plugin-groq": "workspace:*",
     "@elizaos/plugin-localdb": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "uuid": "^14.0.0"
+    "@elizaos/plugin-openai": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
     "@types/chrome": "^0.1.33",
-    "@types/uuid": "^11.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   },

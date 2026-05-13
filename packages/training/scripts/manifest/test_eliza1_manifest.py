@@ -9,10 +9,12 @@ import pytest
 
 from scripts.manifest.eliza1_manifest import (
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
+    ELIZA_1_TIERS,
     REQUIRED_KERNELS_BY_TIER,
     Eliza1ManifestError,
     FileEntry,
     KernelVerification,
+    VOICE_BACKENDS_BY_TIER,
     LineageEntry,
     build_manifest,
     parse_ctx_string,
@@ -31,7 +33,7 @@ def passing_backends() -> dict[str, KernelVerification]:
     }
 
 
-def base_kwargs(tier: str = "9b") -> dict:
+def base_kwargs(tier: str = "4b") -> dict:
     return dict(
         tier=tier,
         version="1.0.0",
@@ -48,7 +50,7 @@ def base_kwargs(tier: str = "9b") -> dict:
             "text": [
                 FileEntry(path=f"text/eliza-1-{tier}-64k.gguf", sha256=SHA, ctx=65536)
             ],
-            "voice": [FileEntry(path="tts/omnivoice-1.7b.gguf", sha256=SHA)],
+            "voice": [FileEntry(path="tts/omnivoice-base-Q4_K_M.gguf", sha256=SHA)],
             "asr": [FileEntry(path="asr/asr.gguf", sha256=SHA)],
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
             "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
@@ -71,6 +73,10 @@ def base_kwargs(tier: str = "9b") -> dict:
         vad_false_barge_in_rate=0.01,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
+        dflash_eval=True,
+        dflash_acceptance_rate=0.71,
+        dflash_speedup=1.8,
+        dflash_passed=True,
         ram_budget_min_mb=7000,
         ram_budget_recommended_mb=9500,
         default_eligible=True,
@@ -81,10 +87,41 @@ def test_schema_version_constant():
     assert ELIZA_1_MANIFEST_SCHEMA_VERSION == "1"
 
 
+def test_eliza1_tier_ids_are_canonical():
+    assert ELIZA_1_TIERS == (
+        "0_8b",
+        "2b",
+        "4b",
+        "9b",
+        "27b",
+        "27b-256k",
+        "27b-1m",
+    )
+    assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+    )
+    assert REQUIRED_KERNELS_BY_TIER["2b"] == REQUIRED_KERNELS_BY_TIER["0_8b"]
+    assert REQUIRED_KERNELS_BY_TIER["4b"] == (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    )
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
+    assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
+
+
 def test_build_manifest_happy_path():
     manifest = build_manifest(**base_kwargs())
-    assert manifest["tier"] == "9b"
-    assert manifest["id"] == "eliza-1-9b"
+    assert manifest["tier"] == "4b"
+    assert manifest["id"] == "eliza-1-4b"
     assert manifest["defaultEligible"] is True
     assert manifest["$schema"].endswith("eliza-1.manifest.v1.json")
     assert manifest["evals"]["vadLatencyMs"] == {
@@ -93,6 +130,11 @@ def test_build_manifest_happy_path():
         "boundaryMs": 24.0,
         "endpointMs": 80.0,
         "falseBargeInRate": 0.01,
+    }
+    assert manifest["evals"]["dflash"] == {
+        "acceptanceRate": 0.71,
+        "speedup": 1.8,
+        "passed": True,
     }
     # Validates against itself.
     assert validate_manifest(manifest) == ()
@@ -139,7 +181,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 @pytest.mark.parametrize(
     "tier",
-    ["0_6b", "1_7b", "9b", "27b", "27b-256k"],
+    ["0_8b", "2b", "4b"],
 )
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))
@@ -147,7 +189,7 @@ def test_every_tier_validates(tier: str):
 
 
 def test_missing_required_kernel_rejected():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["kernels_required"] = ["turboquant_q4", "qjl", "polarquant"]  # no dflash
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -155,7 +197,7 @@ def test_missing_required_kernel_rejected():
 
 
 def test_default_eligible_with_failing_eval_rejected():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["text_eval_passed"] = False
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -163,8 +205,18 @@ def test_default_eligible_with_failing_eval_rejected():
     assert any("defaultEligible" in e for e in exc.value.errors)
 
 
+def test_default_eligible_requires_measured_dflash_eval():
+    kwargs = base_kwargs("4b")
+    kwargs["dflash_speedup"] = None
+    kwargs["dflash_passed"] = False
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("evals.dflash" in e for e in exc.value.errors)
+    assert any("defaultEligible" in e for e in exc.value.errors)
+
+
 def test_non_publishable_manifest_can_validate_for_local_staging():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -203,7 +255,7 @@ def test_non_publishable_manifest_can_validate_for_local_staging():
 
 
 def test_default_eligible_true_still_rejected_in_local_staging_mode():
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["text_eval_passed"] = False
 
     with pytest.raises(Eliza1ManifestError) as exc:
@@ -214,21 +266,21 @@ def test_default_eligible_true_still_rejected_in_local_staging_mode():
 
 
 def test_default_eligible_with_failing_voice_rtf_rejected():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["voice_rtf_passed"] = False
     with pytest.raises(Eliza1ManifestError):
         build_manifest(**kwargs)
 
 
 def test_default_eligible_with_failing_e2e_rejected():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["e2e_loop_ok"] = False
     with pytest.raises(Eliza1ManifestError):
         build_manifest(**kwargs)
 
 
 def test_component_files_require_matching_lineage_and_eval_gate():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["lineage"] = {
         k: v for k, v in kwargs["lineage"].items() if k != "asr"
     }
@@ -241,7 +293,7 @@ def test_component_files_require_matching_lineage_and_eval_gate():
 
 
 def test_vad_false_barge_in_metric_must_be_rate():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["vad_false_barge_in_rate"] = 1.2
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -249,7 +301,7 @@ def test_vad_false_barge_in_metric_must_be_rate():
 
 
 def test_default_eligible_requires_asr_and_vad_components():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["lineage"] = {
         k: v for k, v in kwargs["lineage"].items() if k not in {"asr", "vad"}
     }
@@ -266,7 +318,7 @@ def test_default_eligible_requires_asr_and_vad_components():
 
 
 def test_expressive_voice_capabilities_require_expressive_eval():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["voice_capabilities"] = ["tts", "singing"]
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
@@ -274,7 +326,7 @@ def test_expressive_voice_capabilities_require_expressive_eval():
 
 
 def test_missing_voice_cache_file_rejected():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["files"]["cache"] = [
         FileEntry(path="cache/not-the-default-voice-cache.bin", sha256=SHA)
     ]
@@ -284,7 +336,7 @@ def test_missing_voice_cache_file_rejected():
 
 
 def test_default_eligible_with_failing_backend_rejected():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -299,7 +351,7 @@ def test_lite_tier_does_not_require_cuda_or_rocm_pass():
     """Lite tier ships on metal/vulkan/cpu — failing cuda/rocm backends
     must not block lite publishing."""
 
-    kwargs = base_kwargs("0_6b")
+    kwargs = base_kwargs("0_8b")
     backends = passing_backends()
     backends["cuda"] = KernelVerification(
         status="fail", at_commit="abc1234", report="cuda.txt"
@@ -313,7 +365,7 @@ def test_lite_tier_does_not_require_cuda_or_rocm_pass():
 
 
 def test_desktop_tier_requires_rocm_pass():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     backends = passing_backends()
     backends["rocm"] = KernelVerification(
         status="fail", at_commit="abc1234", report="rocm.txt"
@@ -325,9 +377,9 @@ def test_desktop_tier_requires_rocm_pass():
 
 
 def test_long_context_requires_turbo3_tcq():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-9b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(path="text/eliza-1-4b-128k.gguf", sha256=SHA, ctx=131072)
     ]
     kwargs["kernels_required"] = [
         k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
@@ -338,9 +390,9 @@ def test_long_context_requires_turbo3_tcq():
 
 
 def test_long_context_rejects_turbo3_tcq_optional_only():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-9b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(path="text/eliza-1-4b-128k.gguf", sha256=SHA, ctx=131072)
     ]
     kwargs["kernels_required"] = [
         k for k in kwargs["kernels_required"] if k != "turbo3_tcq"
@@ -352,11 +404,11 @@ def test_long_context_rejects_turbo3_tcq_optional_only():
 
 
 def test_long_context_with_turbo3_tcq_in_required_passes():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["files"]["text"] = [
-        FileEntry(path="text/eliza-1-9b-128k.gguf", sha256=SHA, ctx=131072)
+        FileEntry(path="text/eliza-1-4b-128k.gguf", sha256=SHA, ctx=131072)
     ]
-    kwargs["kernels_required"] = list(REQUIRED_KERNELS_BY_TIER["9b"])
+    kwargs["kernels_required"] = list(REQUIRED_KERNELS_BY_TIER["4b"])
     kwargs["kernels_optional"] = []
     manifest = build_manifest(**kwargs)
     assert validate_manifest(manifest) == ()
@@ -429,7 +481,7 @@ def test_write_manifest_refuses_invalid(tmp_path: Path):
 def test_write_manifest_allows_non_publishable_only_when_requested(
     tmp_path: Path,
 ):
-    kwargs = base_kwargs("1_7b")
+    kwargs = base_kwargs("2b")
     kwargs["default_eligible"] = False
     kwargs["text_eval_score"] = 0.0
     kwargs["text_eval_passed"] = False
@@ -483,18 +535,18 @@ def test_parse_ctx_string_rejects_bad_input(bad: str):
 
 def test_parse_text_ctx_from_filename_finds_suffix_token():
     assert (
-        parse_text_ctx_from_filename(Path("text/eliza-1-9b-64k.gguf"))
+        parse_text_ctx_from_filename(Path("text/eliza-1-4b-64k.gguf"))
         == 65536
     )
     assert (
-        parse_text_ctx_from_filename(Path("text/eliza-1-27b-256k.gguf"))
+        parse_text_ctx_from_filename(Path("text/eliza-1-4b-256k.gguf"))
         == 262144
     )
 
 
 def test_parse_text_ctx_from_filename_returns_none_when_no_suffix():
-    assert parse_text_ctx_from_filename(Path("text/eliza-1-1_7b.gguf")) is None
-    assert parse_text_ctx_from_filename(Path("dflash/drafter-9b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("text/eliza-1-2b.gguf")) is None
+    assert parse_text_ctx_from_filename(Path("dflash/drafter-4b.gguf")) is None
 
 
 # ---------------------------------------------------------------------------
@@ -509,21 +561,21 @@ def _base_v1_provenance() -> dict:
         "finetuned": False,
         "sourceModels": {
             "text": {
-                "repo": "unsloth/Qwen3.5-9B-GGUF",
-                "file": "Qwen3.5-9B-Q4_K_M.gguf",
+                "repo": "unsloth/Qwen3.5-4B-GGUF",
+                "file": "Qwen3.5-4B-Q4_K_M.gguf",
                 "convertedVia": "<fork>/convert_hf_to_gguf.py",
             },
             "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
-            "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1-9b"},
+            "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
+            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 
 
 def test_base_v1_manifest_validates_and_is_default_eligible():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     kwargs["provenance"] = _base_v1_provenance()
     # base-v1 evals are runnable on base weights: text perplexity vs the
     # upstream GGUF passes, RTF / WER / VAD / dflash / e2e / 30-turn pass.
@@ -532,13 +584,13 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert manifest["provenance"]["releaseState"] == "base-v1"
     assert manifest["provenance"]["finetuned"] is False
     assert manifest["provenance"]["sourceModels"]["text"]["repo"].endswith(
-        "Qwen3.5-9B-GGUF"
+        "Qwen3.5-4B-GGUF"
     )
     assert validate_manifest(manifest) == ()
 
 
 def test_base_v1_provenance_requires_finetuned_false():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     prov = _base_v1_provenance()
     prov["finetuned"] = True  # contradicts base-v1
     kwargs["provenance"] = prov
@@ -548,7 +600,7 @@ def test_base_v1_provenance_requires_finetuned_false():
 
 
 def test_base_v1_provenance_requires_coverage_for_shipped_components():
-    kwargs = base_kwargs("9b")
+    kwargs = base_kwargs("4b")
     prov = _base_v1_provenance()
     del prov["sourceModels"]["asr"]  # but files.asr is non-empty
     del prov["sourceModels"]["vision"]
@@ -559,8 +611,34 @@ def test_base_v1_provenance_requires_coverage_for_shipped_components():
     assert any("provenance.sourceModels.vision" in e for e in exc.value.errors)
 
 
+def test_base_v1_provenance_rejects_fake_qwen_asr_and_embedding_repos():
+    kwargs = base_kwargs("4b")
+    kwargs["lineage"] = {
+        **kwargs["lineage"],
+        "embedding": LineageEntry(base="qwen3-embedding", license="apache-2.0"),
+    }
+    kwargs["files"] = {
+        **kwargs["files"],
+        "embedding": [FileEntry(path="embedding/eliza-1-embedding.gguf", sha256=SHA)],
+    }
+    kwargs["embed_mteb_score"] = 0.62
+    kwargs["embed_mteb_passed"] = True
+    prov = _base_v1_provenance()
+    prov["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-1.8B-GGUF"}
+    prov["sourceModels"]["embedding"] = {
+        "repo": "Qwen/Qwen3-Embedding-1.7B-GGUF"
+    }
+    kwargs["provenance"] = prov
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("Qwen3-ASR-1.8B-GGUF" in e for e in exc.value.errors)
+    assert any("Qwen3-Embedding-1.7B-GGUF" in e for e in exc.value.errors)
+
+
 def test_provenance_rejects_unknown_release_state():
-    manifest = build_manifest(**base_kwargs("9b"))
+    manifest = build_manifest(**base_kwargs("4b"))
     manifest["provenance"] = {
         "releaseState": "not-a-state",
         "finetuned": False,
@@ -571,7 +649,7 @@ def test_provenance_rejects_unknown_release_state():
 
 
 def test_provenance_rejects_unknown_component_slot():
-    manifest = build_manifest(**base_kwargs("9b"))
+    manifest = build_manifest(**base_kwargs("4b"))
     manifest["provenance"] = {
         "releaseState": "base-v1",
         "finetuned": False,

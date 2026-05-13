@@ -690,13 +690,9 @@ class StreamManager {
         if (source.startsWith("/") || source.startsWith("./")) {
           return ["-stream_loop", "-1", "-i", source];
         }
-        // Fallback to silent if source is unrecognized.
-        return [
-          "-f",
-          "lavfi",
-          "-i",
-          "anullsrc=channel_layout=stereo:sample_rate=44100",
-        ];
+        throw new Error(
+          `${TAG} Unsupported audio source ${JSON.stringify(source)}. Use "silent" explicitly for a silent track, "tts" for model audio, "system", "microphone", or an audio file path.`,
+        );
       }
     }
   }

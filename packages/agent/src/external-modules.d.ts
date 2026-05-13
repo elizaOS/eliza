@@ -292,34 +292,6 @@ declare module "@elizaos/plugin-signal" {
   ): boolean;
   export function signalLogout(workspaceDir: string, accountId?: string): void;
 }
-declare module "@elizaos/plugin-discord" {
-  export interface DiscordProfileLike {
-    displayName?: string | null;
-    username?: string | null;
-    avatarUrl?: string | null;
-    rawUserId?: string | null;
-  }
-
-  export function cacheDiscordAvatarUrl(...args: unknown[]): Promise<string>;
-  export function getDiscordAvatarCacheDir(): string;
-  export function getDiscordAvatarCachePath(fileName: string): string;
-  export function cacheDiscordAvatarForRuntime(
-    ...args: unknown[]
-  ): Promise<string | undefined>;
-  export function isCanonicalDiscordSource(source: unknown): boolean;
-  export function resolveDiscordMessageAuthorProfile(
-    ...args: unknown[]
-  ): Promise<DiscordProfileLike | null>;
-  export function resolveDiscordUserProfile(
-    ...args: unknown[]
-  ): Promise<DiscordProfileLike | null>;
-  export function resolveStoredDiscordEntityProfile(
-    ...args: unknown[]
-  ): Promise<DiscordProfileLike | null>;
-  const discordPlugin: unknown;
-  export default discordPlugin;
-}
-
 declare module "@elizaos/plugin-whatsapp" {
   import type { Plugin } from "@elizaos/core";
 
@@ -422,72 +394,6 @@ declare module "@elizaos/plugin-x402" {
   ): X402StartupValidationResult;
 }
 declare module "@elizaos/signal-native";
-declare module "qrcode";
-
-declare module "abitype" {
-  export type TypedData = Record<
-    string,
-    ReadonlyArray<{ name: string; type: string; [key: string]: unknown }>
-  >;
-  export type TypedDataDomain = {
-    name?: string;
-    version?: string;
-    chainId?: bigint | number | undefined;
-    verifyingContract?: `0x${string}` | undefined;
-    salt?: `0x${string}` | undefined;
-  };
-  export type TypedDataToPrimitiveTypes<T extends TypedData> = {
-    [K in keyof T]: unknown;
-  };
-  export type Address = `0x${string}`;
-  export type TypedDataParameter = { name: string; type: string };
-  export type TypedDataType = string;
-}
-
-declare module "ws" {
-  import type { EventEmitter } from "node:events";
-  import type { Server as HttpServer, IncomingMessage } from "node:http";
-  import type { Duplex } from "node:stream";
-
-  export class WebSocket extends EventEmitter {
-    static readonly CONNECTING: 0;
-    static readonly OPEN: 1;
-    static readonly CLOSING: 2;
-    static readonly CLOSED: 3;
-    readonly readyState: number;
-    constructor(address: string | URL, options?: Record<string, unknown>);
-    close(code?: number, reason?: string): void;
-    send(
-      data: string | Buffer | ArrayBuffer | ArrayBufferView,
-      cb?: (err?: Error) => void,
-    ): void;
-    on(event: string, listener: (...args: unknown[]) => void): this;
-  }
-
-  export class WebSocketServer extends EventEmitter {
-    constructor(options?: {
-      noServer?: boolean;
-      server?: HttpServer;
-      path?: string;
-      [key: string]: unknown;
-    });
-    handleUpgrade(
-      request: IncomingMessage,
-      socket: Duplex,
-      head: Buffer,
-      callback: (ws: WebSocket, request: IncomingMessage) => void,
-    ): void;
-    emit(event: "connection", ws: WebSocket, request: IncomingMessage): boolean;
-    emit(event: string, ...args: unknown[]): boolean;
-    on(
-      event: "connection",
-      listener: (ws: WebSocket, request: IncomingMessage) => void,
-    ): this;
-    on(event: string, listener: (...args: unknown[]) => void): this;
-    close(callback?: () => void): void;
-    clients: Set<WebSocket>;
-  }
-}
 
 declare module "fast-redact" {
   interface FastRedactOptions {
@@ -568,4 +474,53 @@ declare module "jsdom" {
     window: Window & typeof globalThis;
     serialize(): string;
   }
+}
+
+declare module "@elizaos/plugin-discord" {
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export interface DiscordUserProfile {
+    avatarUrl?: string;
+    displayName?: string;
+    username?: string;
+  }
+
+  export interface DiscordMessageAuthorProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export interface StoredDiscordEntityProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export function cacheDiscordAvatarUrl(
+    url: string | undefined,
+    options?: {
+      fetchImpl?: typeof fetch;
+      userId?: string;
+    },
+  ): Promise<string | undefined>;
+  export function getDiscordAvatarCacheDir(): string;
+  export function getDiscordAvatarCachePath(fileName: string): string;
+  export function isCanonicalDiscordSource(
+    source: string | null | undefined,
+  ): boolean;
+  export function cacheDiscordAvatarForRuntime(
+    runtime: AgentRuntime,
+    avatarUrl: string | undefined,
+    userId?: string,
+  ): Promise<string | undefined>;
+  export function resolveDiscordMessageAuthorProfile(
+    runtime: AgentRuntime,
+    channelId: string,
+    messageId: string,
+  ): Promise<DiscordMessageAuthorProfile | null>;
+  export function resolveDiscordUserProfile(
+    runtime: AgentRuntime,
+    userId: string,
+  ): Promise<DiscordUserProfile | null>;
+  export function resolveStoredDiscordEntityProfile(
+    runtime: AgentRuntime,
+    entityId: string | undefined,
+  ): Promise<StoredDiscordEntityProfile | null>;
 }

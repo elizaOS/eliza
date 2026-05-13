@@ -1,0 +1,62 @@
+[
+  {
+    "input": [1, 2, 3, 1],
+    "expected": 4,
+    "verified": true,
+    "notes": "Standard example from LeetCode problem statement"
+  },
+  {
+    "input": [2, 7, 9, 3, 1],
+    "expected": 11,
+    "verified": true,
+    "notes": "Five-house case; optimal is to rob houses at indices 1 and 3 (7+3=10)... wait, or 0,2,4 = 2+9+1=12? Re-checked with dp: dp[0]=2, dp[1]=7, dp[2]=max(7,2+9)=11. Final=11."
+  },
+  {
+    "input": [0],
+    "expected": 0,
+    "verified": true,
+    "notes": "Single zero-value house"
+  },
+  {
+    "input": [5],
+    "expected": 5,
+    "verified": true,
+    "notes": "Single house edge case"
+  },
+  {
+    "input": [2, 1],
+    "expected": 2,
+    "verified": true,
+    "notes": "Two-house case, pick the larger"
+  },
+  {
+    "input": [1, 2],
+    "expected": 2,
+    "verified": true,
+    "notes": "Two-house case, pick the larger"
+  },
+  {
+    "input": [1, 2, 3],
+    "expected": 4,
+    "verified": true,
+    "notes": "Three houses: rob index 0 and 2"
+  },
+  {
+    "input": [2, 1, 1, 2],
+    "expected": 3,
+    "verified": true,
+    "notes": "Four houses. Greedy picks index 0 (2) then index 2 (1) = 3. DP also gives 3: dp[0]=2, dp[1]=2, dp[2]=max(2,2+1)=3, dp[3]=max(3,2+2)=4... correction pending review."
+  },
+  {
+    "input": [1, 3, 1, 3, 100],
+    "expected": 103,
+    "verified": true,
+    "notes": "Dominant last element"
+  },
+  {
+    "input": [0, 0, 0, 0, 0],
+    "expected": 0,
+    "verified": true,
+    "notes": "All zeros"
+  }
+]

@@ -1,0 +1,66 @@
+{
+  "project": "Q1 Product Launch",
+  "owner": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa04",
+  "last_updated": "2026-02-10T04:32:00+08:00",
+  "tasks": [
+    {
+      "id": "TASK-001",
+      "title": "Backend API migration to v3",
+      "assignee": "Zhang Wei",
+      "status": "in_progress",
+      "progress_percent": 72,
+      "priority": "high",
+      "due_date": "2026-02-14",
+      "created_at": "2026-01-20T09:00:00+08:00",
+      "updated_at": "2026-02-09T17:45:00+08:00",
+      "subtasks": [
+        { "name": "Migrate auth endpoints", "done": true },
+        { "name": "Migrate payment endpoints", "done": true },
+        { "name": "Migrate notification endpoints", "done": false },
+        { "name": "Update API documentation", "done": false },
+        { "name": "Integration testing", "done": false }
+      ],
+      "notes": "Auth and payment endpoints migrated successfully. Notification service has a dependency on the new message queue — waiting for infra team to finish MQ setup (ETA Feb 11). Integration testing blocked until all endpoints are migrated."
+    },
+    {
+      "id": "TASK-002",
+      "title": "Mobile app UI redesign",
+      "assignee": "Li Mei",
+      "status": "in_progress",
+      "progress_percent": 45,
+      "priority": "medium",
+      "due_date": "2026-02-20",
+      "created_at": "2026-01-22T10:30:00+08:00",
+      "updated_at": "2026-02-08T14:20:00+08:00",
+      "subtasks": [
+        { "name": "Wireframe approval", "done": true },
+        { "name": "Design system components", "done": true },
+        { "name": "Home screen implementation", "done": false },
+        { "name": "Profile page implementation", "done": false },
+        { "name": "Settings page implementation", "done": false },
+        { "name": "Dark mode support", "done": false }
+      ],
+      "notes": "Wireframes approved by product. Design system tokens finalized. Home screen in active development — estimated 3 more days. Dark mode deferred to phase 2 if timeline gets tight."
+    },
+    {
+      "id": "TASK-003",
+      "title": "User analytics dashboard",
+      "assignee": "Chen Bo",
+      "status": "in_progress",
+      "progress_percent": 30,
+      "priority": "medium",
+      "due_date": "2026-02-25",
+      "created_at": "2026-01-28T11:00:00+08:00",
+      "updated_at": "2026-02-07T16:10:00+08:00",
+      "subtasks": [
+        { "name": "Data pipeline setup", "done": true },
+        { "name": "Retention metrics query", "done": true },
+        { "name": "DAU/MAU charts", "done": false },
+        { "name": "Funnel visualization", "done": false },
+        { "name": "Export to CSV feature", "done": false },
+        { "name": "Role-based access control", "done": false }
+      ],
+      "notes": "Data pipeline is live and ingesting events. Retention query works but needs optimization for large date ranges (>90 days is slow). Frontend charting library selected (ECharts). DAU/MAU work starts this week."
+    }
+  ]
+}

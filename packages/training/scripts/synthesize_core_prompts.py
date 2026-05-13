@@ -1,6 +1,6 @@
 """Rule-based synthesis of ~100 records each for 8 under-represented core prompts.
 
-Targets (one TOON expectedResponse schema per task — see docstrings):
+Targets (one native JSON expectedResponse schema per task — see docstrings):
 
     reflection             reflect on conversation -> facts/relationships
     reflection_evaluator   rate a previous reflection
@@ -20,7 +20,7 @@ Each record:
       "agentId":          "agent",
       "memoryEntries":    [<0-3 turns>],
       "currentMessage":   {"role":"user","speaker":"<persona>","content":"..."},
-      "expectedResponse": "<TOON document>",
+      "expectedResponse": "<native JSON document>",
       "availableActions": ["REPLY","IGNORE"],
       "metadata":         {"task_type": ..., "synth_origin": "core-prompts-gen",
                             "synth_lang": ..., "synth_style": ...}

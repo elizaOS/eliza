@@ -1,0 +1,72 @@
+# Competitor Intelligence Profile
+# Last updated: 2024-05-20
+# Analyst: Sarah Chen, Competitive Intelligence Team
+
+competitor_name: AlphaWare Solutions
+website: https://www.alphaware-solutions.example.com
+market_segment: mid-market SaaS
+industry_vertical: Project Management & Collaboration
+founded: 2018
+headquarters: Austin, TX
+estimated_employees: 280-320
+
+known_customers:
+  enterprise_accounts: ~120
+  total_accounts: ~2400
+  notable_clients:
+    - Meridian Healthcare Group
+    - TechBridge Consulting
+    - Apex Financial Services
+    - NovaCraft Industries
+
+funding:
+  total_raised: $45M
+  last_round: Series B
+  last_round_date: 2022-09-15
+  lead_investor: Summit Ventures
+
+last_known_pricing:
+  starter:
+    price: 29
+    currency: USD
+    billing: monthly
+    seats: 5
+  professional:
+    price: 129
+    currency: USD
+    billing: monthly
+    seats: 20
+  enterprise:
+    price: 299
+    currency: USD
+    billing: monthly
+    seats: 50
+    notes: "Raised from $279 in March 2024"
+
+strengths:
+  - Strong third-party integrations (200+ connectors)
+  - Highly rated customer support (4.7/5 on G2)
+  - Intuitive UI for non-technical users
+  - Robust API documentation
+  - Good onboarding experience
+
+weaknesses:
+  - Limited AI/ML features compared to market
+  - Higher price point relative to feature set
+  - No native mobile app (web-only on mobile)
+  - Slow release cadence (quarterly updates)
+  - Limited customization for large enterprises
+
+competitive_positioning:
+  primary_differentiator: "Ease of use and integration ecosystem"
+  target_buyer: "VP of Operations at mid-market companies (200-2000 employees)"
+  win_rate_against_us: "~35% (we win ~65% of head-to-head deals)"
+
+notes: |
+  Historically slow to adopt AI capabilities. Their Q1 2024 product update
+  made no mention of AI or ML features. Industry analysts have noted this
+  as a growing gap in their offering. Their sales team has been observed
+  positioning integrations as a substitute for native AI features.
+
+  Watch for potential pricing moves — they raised Enterprise pricing in
+  March 2024 which generated some customer pushback on social media.

@@ -1,0 +1,34 @@
+[2026-02-09 07:35:02] [INFO] Starting check. Last seen ID: 337105
+[2026-02-09 07:35:03] [INFO] Found 12 new item(s)
+[2026-02-09 07:35:03] [INFO] New flash: ID=337106 title=Data: Bitcoin ETF saw net inflows of $420M yesterday
+[2026-02-09 07:35:03] [INFO] New flash: ID=337108 title=Ethereum co-founder Vitalik Buterin discusses L2 roadmap up
+[2026-02-09 07:35:03] [INFO] New flash: ID=337110 title=US SEC delays decision on Solana spot ETF application
+[2026-02-09 07:35:03] [INFO] New flash: ID=337112 title=Circle announces USDC expansion to five new blockchain net
+[2026-02-09 07:35:03] [INFO] New flash: ID=337115 title=Binance announces delisting of three low-volume trading pai
+[2026-02-09 07:35:03] [INFO] New flash: ID=337118 title=Data: Total crypto market cap surpasses $3.8 trillion
+[2026-02-09 07:35:03] [INFO] New flash: ID=337120 title=Fed Governor Waller: Inflation data encouraging but more pr
+[2026-02-09 07:35:03] [INFO] New flash: ID=337125 title=Uniswap V4 deployment reaches 15 chains
+[2026-02-09 07:35:03] [INFO] New flash: ID=337130 title=MicroStrategy purchases additional 2,500 BTC worth $245M
+[2026-02-09 07:35:03] [INFO] New flash: ID=337145 title=Arbitrum DAO approves $50M ecosystem growth fund
+[2026-02-09 07:35:03] [INFO] New flash: ID=337180 title=Data: DeFi TVL reaches new all-time high of $320B
+[2026-02-09 07:35:03] [INFO] New flash: ID=337210 title=Japan's FSA considering new crypto regulation framework
+[2026-02-09 07:35:03] [INFO] Check complete. New last_id: 337210
+[2026-02-09 14:05:01] [INFO] Starting check. Last seen ID: 337210
+[2026-02-09 14:05:02] [INFO] Found 8 new item(s)
+[2026-02-09 14:05:02] [INFO] New flash: ID=337212 title=Tether reports Q4 2025 attestation showing $120B reserves
+[2026-02-09 14:05:02] [INFO] New flash: ID=337215 title=OpenAI partners with Worldcoin for identity verification
+[2026-02-09 14:05:02] [INFO] New flash: ID=337218 title=Data: Ethereum gas fees drop to 3 gwei average
+[2026-02-09 14:05:02] [INFO] New flash: ID=337220 title=South Korea lifts ban on institutional crypto trading
+[2026-02-09 14:05:02] [INFO] New flash: ID=337225 title=Coinbase launches derivatives trading in EU markets
+[2026-02-09 14:05:02] [INFO] New flash: ID=337228 title=BlackRock Bitcoin ETF IBIT crosses $80B AUM milestone
+[2026-02-09 14:05:02] [INFO] New flash: ID=337232 title=Solana network processes record 185M transactions in 24h
+[2026-02-09 14:05:02] [INFO] New flash: ID=337235 title=Ripple wins final appeal in SEC lawsuit
+[2026-02-09 14:05:02] [INFO] Check complete. New last_id: 337235
+[2026-02-09 20:35:04] [INFO] Starting check. Last seen ID: 337235
+[2026-02-09 20:35:05] [INFO] No new items since ID 337235. Latest API ID: 337235
+[2026-02-10 01:05:01] [INFO] Starting check. Last seen ID: 337235
+[2026-02-10 01:05:02] [INFO] Found 3 new item(s)
+[2026-02-10 01:05:02] [INFO] New flash: ID=337240 title=Bitcoin briefly touches $108,000 before pulling back to $10
+[2026-02-10 01:05:02] [INFO] New flash: ID=337242 title=Data: Stablecoin total supply exceeds $220B
+[2026-02-10 01:05:02] [INFO] New flash: ID=337245 title=Grayscale files for Avalanche spot ETF with SEC
+[2026-02-10 01:05:02] [INFO] Check complete. New last_id: 337245

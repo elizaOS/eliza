@@ -1,0 +1,25 @@
+收款机连接失败告警
+2024-01-15 10:30:00
+---
+设备SN: POS20240001
+门店名: 东区旗舰店
+门店NO: SH001
+日志时间: 2024-01-15 10:28:33
+告警信息: TCP connection timeout after 30s
+---
+设备SN: POS20240002
+门店名: 西区分店
+门店NO: SH002
+日志时间: 2024-01-15 10:29:01
+告警信息: heartbeat lost
+---
+设备SN: POS20240003
+门店名: 南区购物中心店
+门店NO: SH015
+日志时间: 2024-01-15 10:29:45
+告警信息: SSL handshake failed: certificate expired
+---
+告警详情: https://console.cloud.example.com/cls/alarm/detail?id=abc123
+通知类型: 触发
+
+(说明：此为工程师随手写的三设备预览草稿，漏掉了示例数据里应出现的“中区便利店 / SH005”场景，也未逐段标注条件分支；正式交付应明显优于本草稿。)

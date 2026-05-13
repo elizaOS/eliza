@@ -1,14 +1,3 @@
-import {
-  Button,
-  FieldLabel,
-  FieldSwitch,
-  FormSelect,
-  FormSelectItem,
-  Input,
-  PagePanel,
-  StatusDot,
-  Textarea,
-} from "@elizaos/ui";
 import { useEffect, useMemo, useState } from "react";
 import { client } from "../../api";
 import type { TriggerSummary, WorkflowDefinition } from "../../api/client";
@@ -17,6 +6,14 @@ import {
   detectUiHostCapabilities,
   intervalHostWarning,
 } from "../../utils/host-capabilities";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { FieldLabel } from "../ui/field";
+import { FieldSwitch } from "../ui/field-switch";
+import { FormSelect, FormSelectItem } from "../ui/form-select";
+import { Input } from "../ui/input";
+import { StatusDot } from "../ui/status-badge";
+import { Textarea } from "../ui/textarea";
 import {
   DURATION_UNITS,
   durationToMs,

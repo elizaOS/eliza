@@ -45,7 +45,9 @@ or "pick the TTS" — that is a runtime concern, not a user concern.
 
 Backbones (do not change without explicit human approval):
 
-- **Text/vision:** Qwen3.5 family, plus Qwen3.6 27B where available. We
+- **Text/vision:** Qwen3.5 family only for the current release line:
+  0.6B, 1.7B, and 4B. Larger historical 9B/27B hardware tiers are hidden
+  placeholders until final Eliza-1 weights and evidence exist. We
   do not name these as "Qwen" in any user-facing string. Internally,
   manifests record the upstream lineage and license; the UI shows
   "Eliza-1 <tier>".
@@ -65,18 +67,23 @@ Backbones (do not change without explicit human approval):
   commercially-licensed corpora — until then, ship it.
 - **ASR:** Qwen3-ASR (`ggml-org/Qwen3-ASR-0.6B-GGUF` for
   lite/mobile/desktop tiers, `ggml-org/Qwen3-ASR-1.7B-GGUF` for
-  pro/server). Tokenizer fused with the Qwen3.5/3.6 text backbone
-  (zero re-tokenization between ASR output and text input). whisper.cpp
-  is **not** the default — it vendors its own ggml, violating the
-  one-llama.cpp-build / one-GGML-pin contract in §4.
+  pro/server). These are the only public GGUF ASR artifacts currently
+  available; do not invent ASR source repos with a Qwen3.5 prefix. The released
+  Eliza bundle may wrap them under `elizaos/eliza-1-*`, but provenance
+  must record the real upstream. whisper.cpp is **not** the default — it
+  vendors its own ggml, violating the one-llama.cpp-build / one-GGML-pin
+  contract in §4.
 - **VAD:** Silero VAD (MIT, ~2 MB ONNX). Ships in every voice-enabled
   bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
 - **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
   only. Hidden in cloud mode per three-mode hide-not-disable.
-- **Embedding:** Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim with
-  Matryoshka, 32k ctx) for non-lite tiers as a separate `embedding/`
-  artifact. On `0_6b` the embedding model IS the text backbone
-  with `--pooling last` — no duplicate weights.
+- **Embedding:** `0_6b` and `1_7b` reuse the active text backbone with
+  `--pooling last` — no duplicate weights in the mobile/default tiers.
+  Larger tiers may ship a dedicated `embedding/` artifact (1024-dim
+  Matryoshka, 32k ctx) when the manifest records a real source artifact and
+  evidence. Do not fabricate embedding source repos, and do not silently
+  fall back on larger tiers when the manifest says a dedicated region is
+  required.
 - **Drafter:** DFlash. Always present in the bundle. Always wired in.
   Speculative decoding is mandatory, not optional (see §3).
 
@@ -117,11 +124,13 @@ hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_6b`     | low-RAM phones, CPU fallback  | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `1_7b`   | modern phones                 | 1.7B  | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
-| `9b`    | laptops, 24GB phones, 48GB Mac| ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`       | 96GB+ Mac, high-VRAM desktop  | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b-256k`   | server / workstation          | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice small | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `1_7b`         | modern phones                  | 1.7B    | OmniVoice small | no     | 32k      | yes    | TurboQuant Q4 + QJL K-cache     |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice small | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
+| `9b`         | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
+| `27b`        | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
+| `27b-256k`  | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
+| `27b-1m`    | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -298,171 +307,11 @@ mic / file → ASR → text tokens
 - We do not run text and voice in two processes communicating over IPC.
   That regresses memory and adds a 1–10ms scheduling tax per turn.
 - We do not run a "TTS-only mode" that skips DFlash. DFlash is always
-  on (auto-detected from the managed `llama-server` binary — there is no
-  "enable DFlash" setting). If the user disables speculative decoding for
-  debugging, that is the single developer-only kill-switch
-  `ELIZA_DFLASH_DISABLE=1` (`MILADY_DFLASH_DISABLE=1` is a back-compat
-  alias); it is not a user setting, and it MUST log a loud warning every
-  turn.
+  on. If the user disables speculative decoding for debugging, that is
+  a developer-only flag (`ELIZA_DFLASH_DISABLE=1`), it is not a user
+  setting, and it MUST log a loud warning every turn.
 - We do not split voice into "fast TTS" and "high-quality TTS" tiers.
   One voice model per tier, fused, optimized.
-
-### Cross-platform runtime paths (the voice pipeline must run everywhere)
-
-The §4 graph is the same on every platform; the *runtime path* differs:
-
-- **Desktop / server (Linux, Windows, macOS — any GPU: CUDA / ROCm /
-  Vulkan / Metal / CPU):** the spawned fork `llama-server`. The `*-fused`
-  build serves `/v1/audio/speech` in the same process as `/completion` +
-  the DFlash loop (`dflash-server.ts` prefers it over the stock +
-  `llama-omnivoice-server` two-process path). The fused
-  `libelizainference` also exposes the streaming voice ABI:
-  `eliza_inference_tts_synthesize_stream` (OmniVoice's chunked pipeline —
-  PCM chunks emit as they decode) + `eliza_inference_cancel_tts`
-  (hard-cancel an in-flight forward pass at the next chunk boundary, the
-  barge-in path). Streaming ASR (`eliza_inference_asr_stream_*`) and the
-  native DFlash verifier callback are not yet implemented — the runtime
-  uses the windowed-batch ASR adapter (`FfiBatchTranscriber`) and
-  SSE-delta-derived verifier events; both are contract-clean fallbacks,
-  not blockers. (See `packages/inference/reports/porting/2026-05-11/remaining-work-ledger.md` §W7.)
-- **iOS / Android:** the **in-process FFI path** —
-  `@elizaos/llama-cpp-capacitor`'s `LlamaCpp.xcframework` (iOS) /
-  `@elizaos/plugin-aosp-local-inference`'s `compile-libllama.mjs` →
-  `libllama.so` (Android), driven by `aosp-llama-adapter.ts` /
-  `aosp-dflash-adapter.ts`. The voice bridge takes the in-process text
-  runner via `LocalInferenceEngine.runVoiceTurn({ textRunner })` (the
-  adapter's `voiceTextRunner()` adapts its libllama-backed `--spec-type
-  dflash` server onto the `DflashTextRunner` contract). The mic + audio
-  sink go through the Capacitor `Microphone` plugin + a native
-  `AudioTrack` / `AVAudioEngine` sink (both feed a `PushMicSource` /
-  `PcmRingBuffer`); the Silero VAD runs on `onnxruntime-mobile` / the
-  Capacitor ONNX bridge instead of `onnxruntime-node`. Building the iOS
-  fused lib needs a `ios-arm64-metal-fused` target (the Capacitor
-  framework otherwise carries the `omnivoice_*` symbols); building the
-  Android fused libs needs `android-arm64-{cpu,vulkan}-fused`. These
-  builds require an Xcode / Android-Studio (NDK) host respectively.
-
-### Reduced-optimization local mode — "works everywhere regardless of GPU"
-
-§3 requires the TurboQuant/QJL/PolarQuant/DFlash kernels on every bundle
-and forbids a "kernels-missing fallback build". When a backend genuinely
-can't dispatch a required kernel yet (ROCm/HIP — the *production* `.cu`
-custom kernels aren't `__HIP_PLATFORM_AMD__`-clean yet, though
-`verify/hip_verify.cu` — a thin shim over `cuda_verify.cu` — now gives a
-fixture-parity gate via `make -C packages/inference/verify hip-verify`;
-CPU TBQ/Polar *standalone score graph op* — no public CPU ggml graph
-builder in the pin), there is an **opt-in, loudly-warned,
-non-publishable** escape hatch so the voice pipeline still *runs* on
-that backend:
-
-> **`turbo3_tcq` is now a real K/V cache type** (2026-05-12). The fork's
-> `ggml.c` has the `[GGML_TYPE_TBQ3_TCQ]` type-traits entry (`to_float` =
-> sliding-9-bit-window codebook lookup `dequantize_row_tbq3_tcq`;
-> `from_float_ref` = host-side 512-state Viterbi forward+backtrack in the
-> orthogonal WHT basis `quantize_row_tbq3_tcq_ref`; codebook + the two
-> 128-element WHT sign vectors in the new `ggml/src/ggml-tcq-codebook.h`),
-> plus the ggml-cpu `from_float` (so `ggml_cpy(K_cur -> K_view)` can
-> quantize), the `quantize_tbq3_tcq` size wrapper, and the
-> `validate_row_data` case. `build-llama-cpp-dflash.mjs`'s
-> `patchServerKvCacheTypeNames` appends `GGML_TYPE_TBQ3_TCQ` to
-> `common/arg.cpp`'s `kv_cache_types`, so `--cache-type-k tbq3_tcq`
-> resolves. Like `qjl1_256`/`q4_polar` it is a cache type only (never a
-> `mul_mat` operand); the score path consumes the WHT-rotated cache
-> directly, bit-identical to the CUDA (`ggml-cuda/turbo-tcq.cu`) + Metal
-> decode kernels. Unblocks the 27b / 27b-256k / 27b-1m tiers
-> (`requiredKernelsForContext` adds `turbo3_tcq` at `contextLength >=
-> 65536`). Fork branch: `elizaOS/llama.cpp` `eliza/ws2-tbq3-tcq-traits`
-> @ `536ff214` (on top of pin `2f80716c`); the `packages/inference/llama.cpp`
-> gitlink is bumped to it. WS-4 to merge the decode-loop / streaming
-> source on that branch, then tag. The CPU *standalone score graph op*
-> stays `reference-only` (no public CPU graph builder for TCQ in the
-> pin — the reduced-mode hatch covers it).
->
-> **MLX (`mlx_lm.server`)** is a separate Apple-Silicon convenience path
-> (`packages/app-core/src/services/local-inference/mlx-server.ts`,
-> opt-in `ELIZA_LOCAL_MLX=1`) — text completion only, NOT kernel-aware
-> (no TurboQuant/QJL/Polar → never `defaultEligible`, never flips
-> `verifiedBackends.mlx`), NOT the voice path (no OmniVoice/Qwen3-ASR).
-> Same class as reduced-mode: a "works-on-Apple-Silicon-without-the-fork-
-> build" convenience, not a publish path. **TPU/NPU** is not a target
-> this wave (text model doesn't fit an Edge TPU's 8 MB SRAM, no Pixel-
-> Tensor third-party delegate API, NNAPI deprecated; the Android GPU via
-> Vulkan is the on-device accelerator — `ELIZA_VAD_QNN_DELEGATE=1` for
-> Silero VAD on the Hexagon NPU is a future *battery* optimization, not
-> core). The **`android-x86_64-cpu`** target (Cuttlefish/cvd, ChromeOS,
-> emulator) is real and built (cvd smoke 5/6 infra steps PASS); the
-> Android in-process voice path adds the **"path b" `common_speculative`
-> shim** (`aosp/llama-shim/eliza_llama_shim_speculative.cpp` — C ABI over
-> the C++ helpers, in-process libllama, no localhost server; path a /
-> spawned `llama-server` stays the fallback) + the Capacitor mic/audio/
-> ONNX-VAD bridges + `aosp/deploy-pixel.mjs`.
-
-- **Runtime:** `MILADY_LOCAL_ALLOW_STOCK_KV=1` — `backend.ts`'s
-  `BackendDispatcher.load()` and `dflash-server.ts`'s
-  `resolveCacheTypeForBackend()` load the model with stock `f16` KV
-  instead of hard-refusing on a missing kernel, with a loud one-time
-  warning (`warnReducedOptimizationLocalMode`). The default (no env var)
-  still hard-refuses.
-- **Build:** `ELIZA_DFLASH_ALLOW_REDUCED_KERNELS=1` (or
-  `MILADY_LOCAL_ALLOW_STOCK_KV=1`) — `build-llama-cpp-dflash.mjs`'s
-  `writeCapabilities()` writes `publishable: false` +
-  `reducedOptimizationLocalMode: true` and `return`s instead of throwing.
-  The default still throws (the §3 contract).
-
-This is NOT a default and NOT publishable: `defaultEligible` bundles
-still require the verified kernels per backend
-(`eliza-1.manifest.json` `kernels.verifiedBackends`), and the
-recommendation engine still refuses a `defaultEligible: false` bundle as
-a default. The reconciliation with the "works everywhere regardless of
-GPU" directive: the build dispatches the kernels on every backend where
-it can (Metal: all 5; CUDA: fork binary; Vulkan: source-patched + a
-runtime-dispatch-evidence file; CPU: turbo3/turbo4 via `tbq3_0`/`tbq4_0`
-plus the `--cache-type-k/v` whitelist extended with `qjl1_256`/`q4_polar`
-by `patchServerKvCacheTypeNames`), and the reduced mode is the
-loudly-flagged hatch for the rest. Cross-platform support matrix:
-[`docs/voice-interactive.md`](../../docs/voice-interactive.md#cross-platform-voice-support-matrix).
-
-### Guided structured decoding (HTTP surface — not a mandatory kernel)
-
-When the model's job is a *structured* response (action selection / tool
-call / typed object), the runtime forces the JSON shape in the decode
-loop instead of letting the model spell out scaffolding it already
-knows:
-
-- `@elizaos/core` `buildResponseGrammar` / `buildPlannerActionGrammar`
-  walk the registered actions (the `normalizeActionName` ids are the
-  canonical short on-wire form) + Stage-1 field evaluators + context ids
-  and emit a `ResponseSkeleton` + a precise GBNF string. `message.ts`
-  (Stage 1) and `planner-loop.ts` (Stage 2) attach them to the model
-  call as `responseSkeleton` / `grammar`.
-- The local engine compiles the skeleton to a **lazy GBNF**
-  (`compileSkeletonToGbnf` in
-  `packages/app-core/src/services/local-inference/structured-output.ts`)
-  — single-value enums collapse to literals, so the model samples
-  nothing for a one-action turn.
-- On top of that, `compilePrefillPlan` derives an `ElizaPrefillPlan` —
-  the runs of bytes the schema *fully determines* (the JSON scaffold,
-  fixed key names, the rest of an enum after enough prefix), shipped on
-  the request as `eliza_prefill_plan`. A fork build that consumes it
-  splices those token ids without a forward pass and advances the
-  decoder to the next free param; the runtime sends it whenever guided
-  decode is on and degrades to the grammar-only path otherwise (the
-  lazy GBNF still forces the same bytes — correctness is unaffected).
-  `eliza_prefill_plan` is an elizaOS-fork extension reported (present /
-  absent) by `kernel-patches/server-structured-output.mjs`; absent in
-  the current pin. **Off by default** — `ensure-local-inference-handler.ts`
-  only builds the `ElizaHarnessSchema` (skeleton + grammar + prefill plan +
-  short/long name maps) when `providerOptions.eliza.guidedDecode === true`
-  or `MILADY_LOCAL_GUIDED_DECODE=1`; unguided generation is untouched.
-- Token-savings bench: `verify/guided_decode_token_bench.mjs` (static
-  mode always runs; `--bin … --model …` for a live wall-time delta).
-- Design + the prefill-plan format + measured savings:
-  [`reports/porting/2026-05-11/guided-structured-decoding.md`](reports/porting/2026-05-11/guided-structured-decoding.md).
-
-Structured output is an HTTP surface, NOT on the §3 mandatory-kernel
-path — text, voice, embedding, and the DFlash spec loop don't need it,
-so `server-structured-output.mjs` is *tolerant* (warns, never fails) and
-the §3 fail-closed rule does not apply to it.
 
 ---
 
@@ -499,21 +348,21 @@ catalogs drift from it — generate them.
 ```json
 {
   "$schema": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json",
-  "id": "eliza-1-9b",
-  "tier": "9b",
+  "id": "eliza-1-4b",
+  "tier": "4b",
   "version": "1.0.0",
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
-    "text": { "base": "qwen3.5-9b", "license": "..." },
-    "voice": { "base": "omnivoice-1.7b", "license": "..." },
-    "drafter": { "base": "dflash-9b-drafter", "license": "..." }
+    "text": { "base": "qwen3.5-4b", "license": "..." },
+    "voice": { "base": "omnivoice-1_7b", "license": "..." },
+    "drafter": { "base": "dflash-4b-drafter", "license": "..." }
   },
   "files": {
-    "text":    [{ "path": "text/eliza-1-9b-64k.gguf", "ctx": 65536, "sha256": "..." }],
-    "voice":   [{ "path": "tts/omnivoice-1.7b.gguf",          "sha256": "..." }],
+    "text":    [{ "path": "text/eliza-1-4b-64k.gguf", "ctx": 65536, "sha256": "..." }],
+    "voice":   [{ "path": "tts/omnivoice-1_7b.gguf",          "sha256": "..." }],
     "asr":     [{ "path": "asr/...",                          "sha256": "..." }],
-    "vision":  [{ "path": "vision/mmproj-9b.gguf",    "sha256": "..." }],
-    "dflash":  [{ "path": "dflash/drafter-9b.gguf",   "sha256": "..." }],
+    "vision":  [{ "path": "vision/mmproj-4b.gguf",    "sha256": "..." }],
+    "dflash":  [{ "path": "dflash/drafter-4b.gguf",   "sha256": "..." }],
     "cache":   [{ "path": "cache/voice-preset-default.bin",   "sha256": "..." }]
   },
   "kernels": {

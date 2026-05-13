@@ -40,7 +40,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
       text: [
         { path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA },
       ],
-      voice: [{ path: "tts/omnivoice-1.7b.gguf", sha256: SHA }],
+      voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
       asr: [{ path: "asr/asr.gguf", sha256: SHA }],
       vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
       dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
@@ -63,6 +63,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
         falseBargeInRate: 0.01,
         passed: true,
       },
+      dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
       e2eLoopOk: true,
       thirtyTurnOk: true,
     },
@@ -72,13 +73,17 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 }
 
 describe("manifest evals — dflash bench slot", () => {
-  it("accepts a manifest with no dflash eval (optional)", () => {
-    const result = validateManifest(baseManifest());
+  it("accepts a non-default manifest with no dflash eval", () => {
+    const m = baseManifest();
+    m.defaultEligible = false;
+    delete m.evals.dflash;
+    const result = validateManifest(m);
     expect(result.ok).toBe(true);
   });
 
-  it("accepts a needs-hardware dflash eval (null numbers, passed=false)", () => {
+  it("accepts a non-default needs-hardware dflash eval", () => {
     const m = baseManifest();
+    m.defaultEligible = false;
     m.evals = {
       ...m.evals,
       dflash: { acceptanceRate: null, speedup: null, passed: false },
@@ -102,6 +107,18 @@ describe("manifest evals — dflash bench slot", () => {
     };
     const result = validateManifest(m);
     expect(result.ok).toBe(true);
+  });
+
+  it("rejects defaultEligible when the dflash eval is missing", () => {
+    const m = baseManifest();
+    delete m.evals.dflash;
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(
+        result.errors.some((e) => e.includes("evals.dflash: required")),
+      ).toBe(true);
+    }
   });
 
   it("rejects passed=true with null numbers (a needs-hardware bench cannot pass)", () => {
@@ -139,16 +156,18 @@ describe("manifest evals — dflash bench slot", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("a passed=false dflash eval does not block defaultEligible", () => {
-    // The dflash gate is provisional — a not-yet-passing bench must not
-    // demote an otherwise-eligible bundle.
+  it("rejects defaultEligible when the dflash eval did not pass", () => {
     const m = baseManifest();
     m.evals = {
       ...m.evals,
       dflash: { acceptanceRate: 0.4, speedup: 1.1, passed: false },
     };
     const result = validateManifest(m);
-    expect(result.ok).toBe(true);
-    if (result.ok) expect(result.manifest.defaultEligible).toBe(true);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("evals.dflash.passed"))).toBe(
+        true,
+      );
+    }
   });
 });

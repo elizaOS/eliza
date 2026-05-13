@@ -2,7 +2,7 @@
 /**
  * Long-running NIAH-style drift harness.
  *
- * Drives multi-turn synthetic conversations through a chosen model (real
+ * Drives multi-turn planted-fact conversations through a chosen model (real
  * Cerebras gpt-oss-120b by default; a fake offline model under --dry-run),
  * forces compaction on a fixed cadence using a chosen strategy, then probes
  * planted facts at every compaction event and at end-of-run to measure
@@ -15,7 +15,7 @@
  *   bun run scripts/benchmark/drift-harness.ts --strategy none --turns 50 \
  *     --compact-every 10 --plant-facts 5 --output results.jsonl
  *
- *   # offline plumbing smoke test:
+ *   # offline plumbing smoke test (prints JSONL to stdout; writes no artifact):
  *   bun run scripts/benchmark/drift-harness.ts --strategy none --turns 3 \
  *     --compact-every 100 --plant-facts 1 --output /tmp/drift.jsonl --dry-run
  */
@@ -115,7 +115,8 @@ Flags:
   --with-tool-calls            Interleave a synthetic tool-call/tool-result pair
                                every 5 turns and probe its preservation
   --probe-max-tokens <n>       Max tokens for probe answers (default: 600)
-  --dry-run                    Use a fake model (no API calls); for plumbing tests
+  --dry-run                    Use a fake model (no API calls); prints JSONL to
+                               stdout and never writes --output
   --help, -h                   Show this help
 
 Env:
@@ -1328,7 +1329,7 @@ export async function probeFact(args: {
   const rawActual = resp.content.trim();
   const actual = extractBenchmarkAnswerText(rawActual);
   if (fact.exactMatch) {
-    const correct = isExactRecallAnswer(actual, fact.expected);
+    const correct = isExactRecallAnswer(actual, fact.expected, fact.kind);
     return {
       factId: fact.id,
       turn: fact.turn,
@@ -1346,7 +1347,7 @@ export async function probeFact(args: {
   // agent's own outputs. For real measurement, set --judge-model to a
   // different model family (e.g. gpt-4o or claude-haiku) so the judge is
   // independent of the system under test.
-  if (isExactRecallAnswer(actual, fact.expected)) {
+  if (isExactRecallAnswer(actual, fact.expected, fact.kind)) {
     return {
       factId: fact.id,
       turn: fact.turn,
@@ -1434,11 +1435,100 @@ export function normalizeRecallText(s: string): string {
   );
 }
 
-function isExactRecallAnswer(actual: string, expected: string): boolean {
-  const normalizedActual = normalizeRecallText(actual);
-  const normalizedExpected = normalizeRecallText(expected);
-  if (!normalizedActual.includes(normalizedExpected)) return false;
+function monthNameAliases(month: number): string[] {
+  const names = [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
+  const shortNames = [
+    "",
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
+  const full = names[month];
+  const short = shortNames[month];
+  return full && short ? [full, short, `${short}.`] : [];
+}
 
+function ordinalDay(day: number): string {
+  const mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${day}th`;
+  switch (day % 10) {
+    case 1:
+      return `${day}st`;
+    case 2:
+      return `${day}nd`;
+    case 3:
+      return `${day}rd`;
+    default:
+      return `${day}th`;
+  }
+}
+
+function expectedRecallAliases(
+  expected: string,
+  kind?: FactKind | "tool_call",
+): string[] {
+  const aliases = [expected];
+  if (kind === "birthday") {
+    const match = /^(\d{1,2})\/(\d{1,2})$/.exec(expected.trim());
+    if (match) {
+      const month = Number(match[1]);
+      const day = Number(match[2]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        aliases.push(`${month}/${day}`);
+        aliases.push(
+          `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}`,
+        );
+        for (const monthName of monthNameAliases(month)) {
+          aliases.push(`${monthName} ${day}`);
+          aliases.push(`${monthName} ${ordinalDay(day)}`);
+        }
+      }
+    }
+  }
+  return Array.from(new Set(aliases.map(normalizeRecallText)));
+}
+
+function isExactRecallAnswer(
+  actual: string,
+  expected: string,
+  kind?: FactKind | "tool_call",
+): boolean {
+  const normalizedActual = normalizeRecallText(actual);
+  for (const normalizedExpected of expectedRecallAliases(expected, kind)) {
+    if (normalizedActual.includes(normalizedExpected)) {
+      return isAcceptedRecallMatch(normalizedActual, normalizedExpected);
+    }
+  }
+  return false;
+}
+
+function isAcceptedRecallMatch(
+  normalizedActual: string,
+  normalizedExpected: string,
+): boolean {
   const lower = normalizedActual.toLowerCase();
   const expectedIndex = lower.indexOf(normalizedExpected.toLowerCase());
   const localWindow = lower.slice(
@@ -2185,13 +2275,19 @@ export async function main(argv: readonly string[]): Promise<number> {
           reasoningEffort: args.compactorReasoningEffort,
         }),
   });
-  await Bun.write(args.output, sink.serialize());
+  if (args.dryRun) {
+    process.stdout.write(sink.serialize());
+  } else {
+    await Bun.write(args.output, sink.serialize());
+  }
   const summary = sink.events.find((e) => e.event === "summary");
   if (summary && summary.event === "summary") {
     process.stdout.write(
       `[harness] strategy=${summary.strategy} accuracy=${(summary.overallAccuracy * 100).toFixed(1)}% ` +
         `compactions=${summary.totalCompactions} tokensSaved=${summary.totalTokensSaved} ` +
-        `probes=${summary.totalProbes} → ${args.output}\n`,
+        `probes=${summary.totalProbes}${
+          args.dryRun ? " (dry-run: no output artifact written)" : ` → ${args.output}`
+        }\n`,
     );
   }
   // Surface unavailable strategies as a non-fatal note.

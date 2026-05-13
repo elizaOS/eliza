@@ -7,7 +7,6 @@
  * entirely so future default changes still propagate.
  */
 
-import { Button, Switch } from "@elizaos/ui";
 import { LayoutGrid } from "lucide-react";
 import type { ReactNode } from "react";
 import type { ChatSidebarVisibilityHook } from "../../widgets/useChatSidebarVisibility";
@@ -15,6 +14,8 @@ import {
   APPS_SECTION_VISIBILITY_KEY,
   type VisibilityCandidate,
 } from "../../widgets/visibility";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
 
 export interface WidgetVisibilityCandidate extends VisibilityCandidate {
   /** Display label shown next to the toggle. */

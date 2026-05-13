@@ -1,0 +1,175 @@
+{
+  "sample_size": 21,
+  "matched": 20,
+  "match_rate": 0.9523809523809523,
+  "results": [
+    {
+      "skill": "anthropics/frontend-design",
+      "name": "frontend-design",
+      "githubUrl": "https://github.com/anthropics/claude-code/tree/main/plugins/frontend-design/skills/frontend-design",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "anthropics/skill-creator",
+      "name": "skill-creator",
+      "githubUrl": "https://github.com/anthropics/skills/tree/main/skills/skill-creator",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "mrgoonie/sequential-thinking",
+      "name": "sequential-thinking",
+      "githubUrl": "https://github.com/mrgoonie/claudekit-skills/tree/main/.claude/skills/sequential-thinking",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "mikha08-rgb/context7",
+      "name": "context7",
+      "githubUrl": "https://github.com/mikha08-rgb/VoiceLite/tree/master/.claude/skills/context7",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "wshobson/prompt-engineering-patterns",
+      "name": "prompt-engineering-patterns",
+      "githubUrl": "https://github.com/wshobson/agents/tree/main/plugins/llm-application-dev/skills/prompt-engineering-patterns",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "anthropics/pptx",
+      "name": "pptx",
+      "githubUrl": "https://github.com/anthropics/skills/tree/main/skills/pptx",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "czlonkowski/n8n-workflow-patterns",
+      "name": "n8n-workflow-patterns",
+      "githubUrl": "https://github.com/czlonkowski/n8n-skills/tree/main/skills/n8n-workflow-patterns",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "anthropics/docx",
+      "name": "docx",
+      "githubUrl": "https://github.com/anthropics/skills/tree/main/skills/docx",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "anthropics/pdf",
+      "name": "pdf",
+      "githubUrl": "https://github.com/anthropics/skills/tree/main/skills/pdf",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "cexll/gemini",
+      "name": "gemini",
+      "githubUrl": "https://github.com/cexll/myclaude/tree/master/skills/gemini",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "langchain-ai/arxiv-search",
+      "name": "arxiv-search",
+      "githubUrl": "https://github.com/langchain-ai/deepagents/tree/master/libs/deepagents-cli/examples/skills/arxiv-search",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "mrgoonie/chrome-devtools",
+      "name": "chrome-devtools",
+      "githubUrl": "https://github.com/mrgoonie/claudekit-skills/tree/main/.claude/skills/chrome-devtools",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "antinomyhq/create-plan",
+      "name": "create-plan",
+      "githubUrl": "https://github.com/antinomyhq/forge/tree/main/.forge/skills/create-plan",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": false,
+      "matched": true
+    },
+    {
+      "skill": "anthropics/mcp-integration",
+      "name": "mcp-integration",
+      "githubUrl": "https://github.com/anthropics/claude-code/tree/main/plugins/plugin-dev/skills/mcp-integration",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "davila7/excel-analysis",
+      "name": "excel-analysis",
+      "githubUrl": "https://github.com/davila7/claude-code-templates/tree/main/cli-tool/components/skills/enterprise-communication/excel-analysis",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "langchain-ai/web-research",
+      "name": "web-research",
+      "githubUrl": "https://github.com/langchain-ai/deepagents/tree/master/libs/deepagents-cli/examples/skills/web-research",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "sfc-gh-dflippo/playwright-mcp",
+      "name": "playwright-mcp",
+      "githubUrl": "https://github.com/sfc-gh-dflippo/snowflake-dbt-demo/tree/main/.claude/skills/playwright-mcp",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "Lucklyric/codex",
+      "name": "codex",
+      "githubUrl": "https://github.com/Lucklyric/cc-dev-tools/tree/main/plugins/codex/skills/codex",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "mhattingpete/dashboard-creator",
+      "name": "dashboard-creator",
+      "githubUrl": "https://github.com/mhattingpete/claude-skills-marketplace/tree/main/visual-documentation-plugin/skills/dashboard-creator",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    },
+    {
+      "skill": "smithery-ai/unicorn-or-bust",
+      "name": "unicorn-or-bust",
+      "githubUrl": "https://github.com/smithery-ai/skills/tree/main/unicorn-or-bust",
+      "inSkillsmpByName": false,
+      "inSkillsmpByUrl": false,
+      "matched": false
+    },
+    {
+      "skill": "anthropics/skill-development",
+      "name": "skill-development",
+      "githubUrl": "https://github.com/anthropics/claude-code/tree/main/plugins/plugin-dev/skills/skill-development",
+      "inSkillsmpByName": true,
+      "inSkillsmpByUrl": true,
+      "matched": true
+    }
+  ]
+}

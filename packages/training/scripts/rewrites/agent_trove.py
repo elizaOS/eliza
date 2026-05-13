@@ -1,10 +1,10 @@
 """Rewriter for agent-trove (`agent_trace` branch).
 
 Original shape:
-    expectedResponse TOON:
+    expectedResponse native JSON:
         thought: "<rich grounded thought>"
-        actions[1]: REPLY
-        providers[0]: (often empty)
+        tool_calls[0] REPLY
+        providers: [] (often empty)
         text: "{\"analysis\": ..., \"plan\": ..., \"commands\": [...], \"task_complete\": ...}"
         simple: false
 
@@ -13,8 +13,8 @@ plain natural-language text without the JSON envelope.
 
 Target shape (still `agent_trace`/`message_handler` compatible):
     thought: "<existing>"
-    actions[1]: REPLY
-    providers[0]:
+    tool_calls[0] REPLY
+    providers: []
       text: "<plan body, joined with newlines>"
     simple: true
 
@@ -131,7 +131,7 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     }
 
     try:
-        new_toon = encoder.encode(new_payload)
+        new_payload = encoder.encode(new_payload)
     except Exception:
         return None
 
@@ -139,6 +139,6 @@ def rewrite(record: dict[str, Any], *, decoder, encoder) -> dict[str, Any] | Non
     new_md["_rewriter"] = "agent_trove"
 
     new_record = dict(record)
-    new_record["expectedResponse"] = new_toon
+    new_record["expectedResponse"] = new_payload
     new_record["metadata"] = new_md
     return new_record

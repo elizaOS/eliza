@@ -1,0 +1,28 @@
+{
+  "notification_bot": {
+    "bot_name": "notify_trade_bot",
+    "permissions": [
+      "send_message",
+      "read_group",
+      "pin_message",
+      "delete_message",
+      "ban_user",
+      "invite_link"
+    ],
+    "scope": "all_groups",
+    "description": "Sends trade alerts, system notifications, and daily summaries",
+    "added_date": "2023-06-12",
+    "last_reviewed": "2024-03-01"
+  },
+  "transaction_bot": {
+    "bot_name": "txn_monitor_bot",
+    "permissions": [
+      "send_message",
+      "read_group"
+    ],
+    "scope": "transaction_channel_only",
+    "description": "Monitors and reports completed transactions to the transaction log channel",
+    "added_date": "2023-08-20",
+    "last_reviewed": "2024-03-01"
+  }
+}

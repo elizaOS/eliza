@@ -1323,4 +1323,8 @@ export {
 // to a `./utils/index.ts`. Any helper in the `utils/` directory that needs to be
 // reachable from `@elizaos/core` must be re-exported here.
 export { getLocalServerUrl } from "./utils/node";
+export {
+	isSyntheticConversationArtifactMemory,
+	isSyntheticConversationArtifactText,
+} from "./utils/synthetic-conversation-artifact";
 export { extractFirstSentence, hasFirstSentence } from "./utils/text-splitting";

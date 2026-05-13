@@ -10,14 +10,6 @@
  * dedicated `cron` field on WorkbenchTask we can drop the tag encoding.
  */
 
-import {
-  Button,
-  FieldLabel,
-  Input,
-  PagePanel,
-  Spinner,
-  Textarea,
-} from "@elizaos/ui";
 import { Calendar, Clock3, Zap } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { client } from "../../api";
@@ -27,6 +19,12 @@ import {
   encodeScheduleTags,
   type TaskScheduleKind,
 } from "../../utils/task-schedule";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { FieldLabel } from "../ui/field";
+import { Input } from "../ui/input";
+import { Spinner } from "../ui/spinner";
+import { Textarea } from "../ui/textarea";
 
 export type { TaskScheduleKind } from "../../utils/task-schedule";
 export {

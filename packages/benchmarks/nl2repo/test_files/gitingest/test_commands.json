@@ -1,0 +1,1 @@
+["pip install -e .","pip install gitpython","pip install loguru strenum eval-type-backport","pytest --continue-on-collection-errors tests"]

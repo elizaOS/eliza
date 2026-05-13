@@ -1,0 +1,46 @@
+---
+title: "Introduction to Climate Econometrics"
+author: "Lai Xiang"
+date: "2026-01-15"
+format: html
+bibliography: references.bib
+---
+
+## Overview
+
+This chapter introduces the fundamental concepts and methods used in climate econometrics, a rapidly evolving field that applies statistical and econometric techniques to understand the economic impacts of climate change.
+
+## Motivation
+
+Climate change poses unprecedented challenges to global economic systems. Understanding these impacts requires rigorous quantitative methods that can:
+
+1. Identify causal relationships between climate variables and economic outcomes
+2. Account for spatial and temporal heterogeneity
+3. Project future economic damages under different climate scenarios
+
+## Research Questions
+
+- How do temperature anomalies affect agricultural productivity across different regions?
+- What are the long-run economic costs of increased climate variability?
+- How effective are adaptation strategies in mitigating economic losses?
+
+## Data Sources
+
+```{r}
+#| label: load-packages
+#| message: false
+
+library(tidyverse)
+library(fixest)
+library(sf)
+```
+
+We utilize panel data spanning 180 countries over the period 1960-2025, combining:
+
+- **Climate data**: ERA5 reanalysis (temperature, precipitation)
+- **Economic data**: Penn World Table 10.1, World Bank WDI
+- **Agricultural data**: FAO production statistics
+
+## Chapter Structure
+
+The remainder of this document is organized as follows. @sec-literature reviews the existing literature. @sec-methodology presents our econometric framework. @sec-results discusses empirical findings.

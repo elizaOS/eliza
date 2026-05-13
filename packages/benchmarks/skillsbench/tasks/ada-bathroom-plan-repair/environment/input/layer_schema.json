@@ -1,0 +1,120 @@
+{
+  "unit": "in",
+  "notes": "Canonical layer schema for the ADA bathroom repair benchmark. Aliases support the source DXF layer names.",
+  "layers": {
+    "WALL": {
+      "canonical": "A-WALL",
+      "type": "wall",
+      "description": "Bathroom walls and partition boundaries"
+    },
+    "A-WALL": {
+      "canonical": "A-WALL",
+      "type": "wall",
+      "description": "Bathroom walls and partition boundaries"
+    },
+    "DOOR": {
+      "canonical": "A-DOOR",
+      "type": "door",
+      "description": "Door opening, leaf, and swing arc geometry"
+    },
+    "A-DOOR": {
+      "canonical": "A-DOOR",
+      "type": "door",
+      "description": "Door opening, leaf, and swing arc geometry"
+    },
+    "FIXTURE-WC": {
+      "canonical": "A-FIXTURE-WC",
+      "type": "toilet",
+      "description": "Water closet / toilet fixture geometry"
+    },
+    "A-FIXTURE-WC": {
+      "canonical": "A-FIXTURE-WC",
+      "type": "toilet",
+      "description": "Water closet / toilet fixture geometry"
+    },
+    "FIXTURE-LAV": {
+      "canonical": "A-FIXTURE-LAV",
+      "aliases": ["FIXTURE-LAI", "FIXTURE-LAV"],
+      "type": "lavatory",
+      "description": "Lavatory / sink fixture geometry"
+    },
+    "FIXTURE-LAI": {
+      "canonical": "A-FIXTURE-LAV",
+      "type": "lavatory",
+      "description": "Alias for lavatory / sink fixture geometry"
+    },
+    "FIXT-TUB": {
+      "canonical": "A-FIXTURE-TUB",
+      "aliases": ["A-FIXTURE-TUB", "FIXTURE-TUB"],
+      "type": "bathtub",
+      "description": "Bathtub geometry"
+    },
+    "ACCESSORY": {
+      "canonical": "A-ACCESSORY",
+      "type": "accessory",
+      "description": "Bathroom accessories"
+    },
+    "GRABRAIL": {
+      "canonical": "A-GRABBAR",
+      "aliases": ["GRABRAIL", "GRABBAR", "A-GRABBAR"],
+      "type": "grab_bar",
+      "description": "Grab bar geometry"
+    },
+    "CLEARANCE": {
+      "canonical": "A-CLEARANCE",
+      "type": "clearance",
+      "description": "Turning circle or clearance guide geometry"
+    },
+    "SPACE-TOILE": {
+      "canonical": "A-SPACE-TOILET",
+      "aliases": ["SPACE-TOILE", "SPACE-TOILET", "A-SPACE-TOILET"],
+      "type": "space_boundary",
+      "description": "Closed boundary of toilet room"
+    },
+    "DIMS": {
+      "canonical": "A-DIMS",
+      "type": "dimension",
+      "description": "Dimension annotations"
+    },
+    "TEXT": {
+      "canonical": "A-TEXT",
+      "type": "text",
+      "description": "Text labels"
+    },
+    "REPAIR-ROOM": {
+      "canonical": "REPAIR-ROOM",
+      "type": "repaired_space_boundary",
+      "description": "Machine-checkable repaired room boundary"
+    },
+    "REPAIR-DOOR": {
+      "canonical": "REPAIR-DOOR",
+      "type": "repaired_door",
+      "description": "Machine-checkable repaired door geometry"
+    },
+    "REPAIR-WC": {
+      "canonical": "REPAIR-WC",
+      "type": "repaired_toilet",
+      "description": "Machine-checkable repaired toilet geometry"
+    },
+    "REPAIR-LAV": {
+      "canonical": "REPAIR-LAV",
+      "type": "repaired_lavatory",
+      "description": "Machine-checkable repaired lavatory geometry"
+    },
+    "REPAIR-TUB": {
+      "canonical": "REPAIR-TUB",
+      "type": "repaired_bathtub",
+      "description": "Machine-checkable repaired bathtub geometry"
+    },
+    "REPAIR-GRABBAR": {
+      "canonical": "REPAIR-GRABBAR",
+      "type": "repaired_grab_bar",
+      "description": "Machine-checkable repaired grab bar geometry"
+    },
+    "REPAIR-CLEARANCE": {
+      "canonical": "REPAIR-CLEARANCE",
+      "type": "repaired_clearance",
+      "description": "Machine-checkable repaired turning circle and clearance geometry"
+    }
+  }
+}

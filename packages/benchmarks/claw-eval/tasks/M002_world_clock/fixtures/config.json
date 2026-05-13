@@ -1,0 +1,11 @@
+{
+  "clocks": [
+    {"city": "北京", "timezone_offset": 8, "color": "#D32F2F"},
+    {"city": "London", "timezone_offset": 0, "color": "#1565C0"},
+    {"city": "New York", "timezone_offset": -5, "color": "#2E7D32"},
+    {"city": "Tokyo", "timezone_offset": 9, "color": "#F57F17"}
+  ],
+  "clock_size": 250,
+  "background": "#F5F5F5",
+  "layout": "horizontal"
+}

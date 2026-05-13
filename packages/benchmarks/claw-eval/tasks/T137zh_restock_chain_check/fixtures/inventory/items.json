@@ -1,0 +1,10 @@
+[
+  {"product_id": "INV-801", "name": "A4打印纸", "category": "文具", "quantity": 80, "unit": "箱", "reorder_level": 50, "supplier_integration": "INT-801", "last_restock": "2026-03-23"},
+  {"product_id": "INV-802", "name": "签字笔", "category": "文具", "quantity": 200, "unit": "支", "reorder_level": 100, "supplier_integration": "INT-801", "last_restock": "2026-03-23"},
+  {"product_id": "INV-803", "name": "显示器27寸", "category": "IT设备", "quantity": 2, "unit": "台", "reorder_level": 5, "supplier_integration": "INT-802", "last_restock": "2026-02-15"},
+  {"product_id": "INV-804", "name": "机械键盘", "category": "IT设备", "quantity": 3, "unit": "个", "reorder_level": 10, "supplier_integration": "INT-802", "last_restock": "2026-02-15"},
+  {"product_id": "INV-805", "name": "洗手液", "category": "清洁用品", "quantity": 5, "unit": "瓶", "reorder_level": 20, "supplier_integration": "INT-803", "last_restock": "2026-02-01"},
+  {"product_id": "INV-806", "name": "垃圾袋", "category": "清洁用品", "quantity": 10, "unit": "卷", "reorder_level": 30, "supplier_integration": "INT-803", "last_restock": "2026-02-01"},
+  {"product_id": "INV-807", "name": "墨盒", "category": "耗材", "quantity": 1, "unit": "个", "reorder_level": 5, "supplier_integration": "INT-804", "last_restock": "2026-03-05"},
+  {"product_id": "INV-808", "name": "办公椅", "category": "家具", "quantity": 15, "unit": "把", "reorder_level": 5, "supplier_integration": "INT-801", "last_restock": "2026-03-01"}
+]

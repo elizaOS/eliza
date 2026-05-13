@@ -263,11 +263,11 @@ they are the batch one-shot fallbacks. The within-a-tick handoff
 AGENTS.md §4 needs is the `*_stream` / verifier-callback surface above.
 
 Implementation note: ABI v2 added the streaming TTS, streaming ASR, and
-verifier-callback symbols. ABI v3 adds native Silero VAD. TTS + batch ASR
-are implemented on macOS Metal. The current fused library still advertises
-`tts_stream_supported()==0`, `asr_stream_supported()==0`, and
-`vad_supported()==0`; callers use the batch TTS/ASR paths and the JS/ONNX VAD
-fallback until the corresponding native low-latency implementations exist.
+verifier-callback symbols. ABI v3 adds native Silero VAD. Streaming TTS and
+batch ASR are implemented on macOS Metal; current smoke runs report
+`tts_stream_supported()==1` and `asr_stream_supported()==0`. Callers use the
+native streaming TTS path, the fused batch ASR path, and the JS/ONNX VAD
+fallback until native streaming ASR and native VAD advertise support.
 
 Implementation note (v1, still in force): TTS and ASR on macOS Metal.
 TTS keeps the OmniVoice LM / MaskGIT path on the selected accelerator. On
@@ -279,6 +279,35 @@ second model runtime or duplicating model lifecycle state. ASR uses llama.cpp
 canonical bundle files `asr/eliza-1-asr.gguf` and
 `asr/eliza-1-asr-mmproj.gguf`; missing or ambiguous ASR assets remain a hard
 `ELIZA_ERR_BUNDLE_INVALID` failure.
+
+Streaming-cancel note: the v3 ABI cancellation path is correct at the FFI
+boundary, but short utterances still run as a single OmniVoice chunk by default
+(`chunk_threshold_sec=30`). The first PCM callback can therefore arrive only
+after MaskGIT and DAC decode complete. For low-latency barge-in, lower the
+native streaming chunk threshold through `ELIZA_TTS_CHUNK_THRESHOLD_SEC` and
+`ELIZA_TTS_CHUNK_DURATION_SEC`, then measure audio quality before changing
+release defaults. The smoke harness exposes the same knobs as
+`--chunk-threshold-sec` and `--chunk-duration-sec`, plus
+`--warmup-runs` for measuring a warmed TTS context before the reported
+run. Its JSON report includes `firstAudioMs`, first/largest chunk
+durations, RTF, and `codecBackendPolicy`. On `darwin-arm64-metal-fused`,
+`codecBackendPolicy.status === "intentional-cpu-fallback"` means the
+OmniVoice LM / MaskGIT path stayed on Metal while the codec scheduler was
+intentionally pinned to CPU to bypass the known merged-ggml DAC decode
+stall; gates should classify that as a pass-with-fallback, not as a
+silent downgrade or hang.
+
+Example 9B latency probe:
+
+```bash
+bun packages/app-core/scripts/omnivoice-fuse/tts-stream-ffi-smoke.ts \
+  --bundle ~/.eliza/local-inference/models/eliza-1-9b.bundle \
+  --cancel-mode none \
+  --maskgit-steps 8 \
+  --chunk-threshold-sec 0.25 \
+  --chunk-duration-sec 0.25 \
+  --warmup-runs 1
+```
 
 All errors flow through a `char ** out_error` parameter that the
 library populates with a heap-allocated NUL-terminated message.

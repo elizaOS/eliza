@@ -1,0 +1,68 @@
+[
+  {
+    "contact_id": "CT-1201",
+    "name": "Ma Qiang",
+    "department": "Operations",
+    "title": "Senior Operations Engineer",
+    "email": "maqiang@company.com",
+    "phone": "13800121001",
+    "location": "Shanghai HQ",
+    "skills": ["System troubleshooting", "Database operations", "Network diagnostics", "Server management"],
+    "notes": "10 years ops experience, specializes in rapid production incident recovery, holds OCP and RHCE certifications"
+  },
+  {
+    "contact_id": "CT-1202",
+    "name": "Li Hua",
+    "department": "Engineering",
+    "title": "Senior Architect",
+    "email": "lihua@company.com",
+    "phone": "13800121002",
+    "location": "Shanghai HQ",
+    "skills": ["Architecture design", "Performance optimization", "Code review", "Microservices"],
+    "notes": "8 years development experience, leads system architecture design, specializes in performance tuning and code refactoring"
+  },
+  {
+    "contact_id": "CT-1203",
+    "name": "Zhou Ming",
+    "department": "Engineering",
+    "title": "Frontend Engineer",
+    "email": "zhouming@company.com",
+    "phone": "13800121003",
+    "location": "Shanghai HQ",
+    "skills": ["Frontend development", "UI design", "React", "Vue"],
+    "notes": "5 years frontend experience, responsible for client-side interface development"
+  },
+  {
+    "contact_id": "CT-1204",
+    "name": "Zhao Lei",
+    "department": "Customer Success",
+    "title": "Account Manager",
+    "email": "zhaolei@company.com",
+    "phone": "13800121004",
+    "location": "Shanghai HQ",
+    "skills": ["Customer relations", "Business negotiation", "SLA management"],
+    "notes": "Responsible for Wantong Logistics (CUS-1201) and other VIP customers' day-to-day liaison and relationship management"
+  },
+  {
+    "contact_id": "CT-1205",
+    "name": "Zhang Wei",
+    "department": "Customer Success",
+    "title": "Account Manager",
+    "email": "zhangwei@company.com",
+    "phone": "13800121005",
+    "location": "Shanghai HQ",
+    "skills": ["Customer relations", "Project management"],
+    "notes": "Responsible for SME customer group's daily maintenance and renewal management"
+  },
+  {
+    "contact_id": "CT-1206",
+    "name": "Wang Ming",
+    "department": "Technology",
+    "title": "Technical Director",
+    "email": "wangming@company.com",
+    "phone": "13800121006",
+    "location": "Shanghai HQ",
+    "skills": ["Technical management", "Strategic planning", "Team building"],
+    "notes": "Head of Technology department, VIP customer critical tickets require escalation notification, serves as escalation contact"
+  }
+]

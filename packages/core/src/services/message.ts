@@ -44,6 +44,10 @@ import {
 	segmentBlock,
 } from "../runtime/context-renderer";
 import {
+	getMessageHistoryCompactionHook,
+	type MessageHistoryCompactionTelemetry,
+} from "../runtime/conversation-compaction-hook";
+import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
 	runEvaluator,
@@ -69,6 +73,7 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "../runtime/model-input-budget";
+import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
@@ -572,15 +577,8 @@ export function resolvePlannerActionName(
 		return resolved;
 	}
 
-	// When the caller provided a narrowed `actionLookup` AND opted into
-	// `strict` resolution (e.g. tier-A was hard-narrowed by candidateActions),
-	// don't fall back to the global runtime.actions lookup — the upstream
-	// stage decisively chose a subset and falling back would resolve LLM
-	// hallucinations (`WRITE` -> `FILE`) and defeat the narrow.
-	//
-	// The legacy fallback below stays for the non-strict path where the
-	// `actions` slice is just a soft hint and we want the resolver to
-	// repair common LLM alias/typo errors against the full registry.
+	// In strict mode don't fall back to the full registry — LLM aliases
+	// like WRITE -> FILE would defeat a candidateActions narrow.
 	if (actionLookup && !options?.strict) {
 		const runtimeResolved = resolvePlannerActionNameFromLookup(
 			runtime,
@@ -998,7 +996,84 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 	return false;
 }
 
-function composeResponseState(
+function latestMessageHistoryCompactionTelemetry(
+	state: State,
+): MessageHistoryCompactionTelemetry | undefined {
+	const value = state.data?.messageHistoryCompaction;
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as unknown as MessageHistoryCompactionTelemetry;
+}
+
+function appendMessageHistoryCompactionTelemetry(
+	state: State,
+	telemetry: MessageHistoryCompactionTelemetry,
+): State {
+	const history = Array.isArray(state.data?.messageHistoryCompactionHistory)
+		? state.data.messageHistoryCompactionHistory
+		: [];
+	return {
+		...state,
+		data: {
+			...state.data,
+			messageHistoryCompaction: telemetry as unknown as State["data"][string],
+			messageHistoryCompactionHistory: [
+				...history,
+				telemetry as unknown as State["data"][string],
+			].slice(-10) as unknown as State["data"][string],
+		},
+	};
+}
+
+async function applyMessageHistoryCompactionHook(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+	source:
+		| "compose-response-state"
+		| "provider-grounded-state"
+		| "continuation-state",
+): Promise<State> {
+	const hook = getMessageHistoryCompactionHook(runtime);
+	if (!hook) return state;
+	try {
+		const result = await hook({ runtime, message, state, source });
+		if (!result?.state) return state;
+		return result.telemetry
+			? appendMessageHistoryCompactionTelemetry(result.state, result.telemetry)
+			: result.state;
+	} catch (error) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Message-history compaction hook failed",
+		);
+		return state;
+	}
+}
+
+function withMessageHistoryCompactionProviderOptions<
+	T extends Record<string, unknown>,
+>(providerOptions: T, state: State): T {
+	const telemetry = latestMessageHistoryCompactionTelemetry(state);
+	if (!telemetry) return providerOptions;
+	const eliza =
+		typeof providerOptions.eliza === "object" && providerOptions.eliza !== null
+			? (providerOptions.eliza as Record<string, unknown>)
+			: {};
+	return {
+		...providerOptions,
+		eliza: {
+			...eliza,
+			messageHistoryCompaction: telemetry,
+		},
+	} as T;
+}
+
+async function composeResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	skipCache = false,
@@ -1007,14 +1082,26 @@ function composeResponseState(
 		? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
 		: CORE_RESPONSE_STATE_PROVIDERS;
 	if (hasPageScopedRoutingMetadata(message)) {
-		return runtime.composeState(
+		const state = await runtime.composeState(
 			message,
 			[...providers, "page-scoped-context"],
 			true,
 			skipCache,
 		);
+		return applyMessageHistoryCompactionHook(
+			runtime,
+			message,
+			state,
+			"compose-response-state",
+		);
 	}
-	return runtime.composeState(message, providers, true, skipCache);
+	const state = await runtime.composeState(message, providers, true, skipCache);
+	return applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"compose-response-state",
+	);
 }
 
 function _composeStructuredResponseState(
@@ -1030,17 +1117,23 @@ function _composeStructuredResponseState(
 	);
 }
 
-function composeProviderGroundedResponseState(
+async function composeProviderGroundedResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	providers: string[],
 	skipCache = false,
 ): Promise<State> {
-	return runtime.composeState(
+	const state = await runtime.composeState(
 		message,
 		[...CORE_RESPONSE_STATE_PROVIDERS, ...providers],
 		false,
 		skipCache,
+	);
+	return applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"provider-grounded-state",
 	);
 }
 
@@ -1342,6 +1435,42 @@ type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" };
 
+export function buildFailureReplyPrompt(recentMessages: string): string {
+	return [
+		"You hit a transient model error and have to send a short user-facing reply.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Stay in character. Keep your usual voice and tone.",
+		"- NEVER answer the user's question on the merits.",
+		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
+		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
+		"- Acknowledge that something went wrong and suggest a retry.",
+		"- Do not paraphrase or echo the user's question as if you are about to answer it.",
+		"- NEVER mention internal mechanism words such as: planner, action_planner,",
+		"  XML, JSON, schema, structured output, model, retries, sonnet,",
+		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+		"  loop, runtime, dispatch, or hand off. The user does not know or care",
+		"  what those are.",
+		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
+		"",
+		"Recent Conversation:",
+		recentMessages,
+		"",
+		"Reply:",
+	].join("\n");
+}
+
+export function stripReasoningBlocks(raw: string): string {
+	return raw
+		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+		.replace(/^[\s\S]*?<\/think>/i, "")
+		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
+		.replace(/\/?\bno_think\b/gi, "")
+		.trim();
+}
+
 export type V5MessageRuntimeStage1Result =
 	| {
 			kind: "terminal";
@@ -1371,6 +1500,56 @@ function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
 	return (
 		message.content?.channelType === ChannelType.VOICE_DM ||
 		message.content?.channelType === ChannelType.VOICE_GROUP
+	);
+}
+
+type VoiceTurnSignalMetadata = {
+	endOfTurnProbability?: number;
+	nextSpeaker?: "agent" | "user" | "unknown";
+	agentShouldSpeak?: boolean | null;
+	source?: string;
+	model?: string;
+};
+
+function getVoiceTurnSignalMetadata(
+	message: Pick<Memory, "content">,
+): VoiceTurnSignalMetadata | null {
+	const value = message.content?.voiceTurnSignal;
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	const raw = value as Record<string, unknown>;
+	const signal: VoiceTurnSignalMetadata = {};
+	if (typeof raw.endOfTurnProbability === "number") {
+		signal.endOfTurnProbability = raw.endOfTurnProbability;
+	}
+	if (
+		raw.nextSpeaker === "agent" ||
+		raw.nextSpeaker === "user" ||
+		raw.nextSpeaker === "unknown"
+	) {
+		signal.nextSpeaker = raw.nextSpeaker;
+	}
+	const agentShouldSpeak = raw.agentShouldSpeak;
+	if (typeof agentShouldSpeak === "boolean") {
+		signal.agentShouldSpeak = agentShouldSpeak;
+	} else if (agentShouldSpeak === null) {
+		signal.agentShouldSpeak = null;
+	}
+	if (typeof raw.source === "string") signal.source = raw.source;
+	if (typeof raw.model === "string") signal.model = raw.model;
+	return Object.keys(signal).length > 0 ? signal : null;
+}
+
+function voiceTurnSignalSuppressesAgent(
+	signal: VoiceTurnSignalMetadata | null,
+): boolean {
+	if (!signal) return false;
+	return (
+		signal.agentShouldSpeak === false ||
+		signal.nextSpeaker === "user" ||
+		(typeof signal.endOfTurnProbability === "number" &&
+			signal.endOfTurnProbability < 0.4)
 	);
 }
 
@@ -1864,9 +2043,8 @@ function buildV5PlannerActionSurface(params: {
 		// When the upstream messageHandler decided this turn maps to a
 		// specific parent (e.g. `TASKS_SPAWN_AGENT`), narrow tier-A to
 		// that parent so the planner can't pick a competing tier-A action
-		// (e.g. inline `FILE.write`) on weaker LLMs. Other tier-A parents
-		// fall to tier-B for retrieval fallback. No-op when nothing
-		// matches the candidate set.
+		// (e.g. inline `FILE.write`) on weaker LLMs. Non-matching parents
+		// go to tier-C; no-op when nothing matches the candidate set.
 		narrowToCandidateActions: candidateActions,
 	});
 	const toolSearchEndedAt = Date.now();
@@ -2142,6 +2320,32 @@ function contextAvailableForRepair(
 	);
 }
 
+/**
+ * Resolve a Stage 1 repair's `parentActionHints` to the first umbrella from
+ * `preferred` that is present in `availableActionNames`. When none of the
+ * preferred umbrellas are present, fall back to `fallback` so legacy callers
+ * (and runtimes that don't expose the umbrella action) still receive a usable
+ * hint.
+ *
+ * Names are compared case-insensitively after the same identifier normalization
+ * the planner alias map uses (`A_B` and `AB` both match the `AB` umbrella).
+ */
+function resolveActionAwareParentHint(
+	preferred: readonly string[],
+	fallback: string,
+	availableActionNames: readonly string[] | undefined,
+): string {
+	const available = new Set(
+		(availableActionNames ?? []).map((name) => normalizeActionIdentifier(name)),
+	);
+	for (const candidate of preferred) {
+		if (available.has(normalizeActionIdentifier(candidate))) {
+			return candidate;
+		}
+	}
+	return fallback;
+}
+
 function addRepairPlanToPatch(
 	patch: {
 		setContexts?: AgentContext[];
@@ -2302,6 +2506,7 @@ function getStage1PasswordManagerRepairPlan(args: {
 function getStage1CheckinRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2329,6 +2534,15 @@ function getStage1CheckinRepairPlan(args: {
 	).filter((context) =>
 		contextAvailableForRepair(context, args.availableContexts),
 	);
+	// Action-aware umbrella: prefer the dedicated `CHECKIN` action when the
+	// runtime exposes it (LifeOps deployments), otherwise fall back to the
+	// generic `SCHEDULED_TASKS` umbrella that hosts check-in subactions in
+	// vanilla runtimes.
+	const parentActionHint = resolveActionAwareParentHint(
+		["CHECKIN"],
+		"SCHEDULED_TASKS",
+		args.availableActionNames,
+	);
 	return {
 		contexts: contexts.length > 0 ? contexts : ["tasks"],
 		candidateActions: nightIntent
@@ -2336,7 +2550,7 @@ function getStage1CheckinRepairPlan(args: {
 			: morningIntent
 				? ["morning_checkin", "run_morning_checkin", "lifeops_morning_checkin"]
 				: ["run_checkin", "daily_checkin", "lifeops_checkin"],
-		parentActionHints: ["SCHEDULED_TASKS"],
+		parentActionHints: [parentActionHint],
 	};
 }
 
@@ -2479,6 +2693,7 @@ function getStage1CalendarSignatureDeadlineRepairPlan(args: {
 function getStage1KnownToolRepairPlan(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): {
 	contexts: AgentContext[];
 	candidateActions: string[];
@@ -2498,6 +2713,7 @@ function getStage1KnownToolRepairPlan(args: {
 function buildFallbackStage1PlanForKnownToolRequest(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): MessageHandlerResult | null {
 	const repair = getStage1KnownToolRepairPlan(args);
 	if (!repair) {
@@ -2520,6 +2736,7 @@ function buildFallbackStage1PlanForKnownToolRequest(args: {
 function buildKnownToolRequestResponseHandlerPatch(args: {
 	message: Memory;
 	availableContexts: readonly ContextDefinition[];
+	availableActionNames?: readonly string[];
 }): ResponseHandlerPatch | null {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text) {
@@ -2637,16 +2854,40 @@ function buildKnownToolRequestResponseHandlerPatch(args: {
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
+			name: "core.voice_turn_signal",
+			description:
+				"Deterministically suppresses voice replies when semantic turn-taking says the next speaker is not the agent.",
+			priority: 0,
+			shouldRun: ({ message }) =>
+				isVoiceChannelMessage(message) &&
+				voiceTurnSignalSuppressesAgent(getVoiceTurnSignalMetadata(message)),
+			evaluate: ({ message }) => {
+				const signal = getVoiceTurnSignalMetadata(message);
+				return {
+					processMessage: "IGNORE",
+					requiresTool: false,
+					simple: true,
+					clearReply: true,
+					debug: [
+						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
+					],
+				};
+			},
+		},
+		{
 			name: "core.known_tool_request_repair",
 			description:
 				"Deterministically repairs Stage 1 routing for explicit known tool requests.",
 			priority: 20,
 			shouldRun: ({ message }) =>
 				Boolean((getUserMessageText(message) ?? "").trim()),
-			evaluate: ({ message, availableContexts }) =>
+			evaluate: ({ runtime, message, availableContexts }) =>
 				buildKnownToolRequestResponseHandlerPatch({
 					message,
 					availableContexts,
+					availableActionNames: (runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? undefined,
 		},
 	];
@@ -3555,23 +3796,28 @@ function messageHandlerFromFieldResult(
 function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
+	// Recovery chain priorities, fail-closed at each layer:
+	//   1. native tool-call    — only valid for the GenerateTextResult shape
+	//   2. synthesize prefired — Cerebras `{name, arguments}` function-call
+	//                            shape leaked into text (HEAD).
+	//   3. parse handler       — canonical structured envelope.
+	//   4. recover plan-actions — `{"action": "...", "params": {...}}` shape
+	//                            embedded in content (origin/develop).
+	//   5. simple reply        — degenerate plain text.
 	if (typeof raw !== "string") {
-		// PLAN_ACTIONS-in-content recovery has to run BEFORE the generic
-		// `parseMessageHandlerOutput` — that parser would consume the bare
-		// `{"action": "...", "params": {...}}` shape as a response-handler
-		// envelope (interpreting `action` as `shouldRespond`) and silently
-		// drop the params. The extractor fails closed on any ambiguity, so
-		// it's safe to try first.
+		const text = getV5ModelText(raw);
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
-			synthesizePrefiredToolCallFromText(getV5ModelText(raw)) ??
-			parseMessageHandlerOutput(getV5ModelText(raw)) ??
-			synthesizeSimpleReplyFromPlainText(getV5ModelText(raw))
+			synthesizePrefiredToolCallFromText(text) ??
+			parseMessageHandlerOutput(text) ??
+			recoverPlanActionsFromContentText(text) ??
+			synthesizeSimpleReplyFromPlainText(text)
 		);
 	}
 	return (
 		synthesizePrefiredToolCallFromText(raw) ??
 		parseMessageHandlerOutput(raw) ??
+		recoverPlanActionsFromContentText(raw) ??
 		synthesizeSimpleReplyFromPlainText(raw)
 	);
 }
@@ -3625,53 +3871,22 @@ function synthesizeSimpleReplyFromPlainText(
 	if (typeof raw !== "string") return null;
 	const trimmed = raw.trim();
 	if (!trimmed) return null;
-	// Strip <think>...</think> blocks emitted by reasoning models.
-	const cleaned = trimmed.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-	const replyText = cleaned || trimmed;
-
-	// Before falling through to a simple reply, check whether the model
-	// actually emitted a clean `PLAN_ACTIONS(<JSON>)` call shape as
-	// content text. Weaker / Cerebras-aligned planners do this routinely
-	// — see `extractPlanActionsCallFromText` for the strictly-conservative
-	// parsing contract. When extraction succeeds, route the turn through
-	// the planner dispatch with `prefiredToolCall` set so the action
-	// actually executes instead of being shipped as message text.
-	const prefiredToolCall =
-		extractPlanActionsCallFromText(replyText) ??
-		extractEmbeddedCallShapeFromText(replyText);
-	if (prefiredToolCall) {
-		return {
-			processMessage: "RESPOND",
-			thought:
-				"Recovered planner action from response-handler content (PLAN_ACTIONS-in-text or embedded JSON call shape); dispatching directly.",
-			plan: {
-				contexts: ["general"],
-				candidateActions: [prefiredToolCall.name],
-				requiresTool: true,
-				simple: false,
-				prefiredToolCall: {
-					name: prefiredToolCall.name,
-					params: prefiredToolCall.params as Record<string, JsonValue>,
-				},
-			},
-		};
-	}
+	const replyText = stripReasoningBlocks(trimmed);
+	if (!replyText) return null;
 
 	// Malformed structured-output guard: when the response handler was
 	// instructed to emit JSON via `HANDLE_RESPONSE` / `responseSkeleton`
 	// (the default) but the model returned a JSON-shaped fragment that
-	// neither `parseMessageHandlerOutput` nor the call-shape extractors
+	// neither `parseMessageHandlerOutput` nor `recoverPlanActionsFromContentText`
 	// could parse, the model produced broken structured output — NOT
-	// user-facing prose. Shipping that fragment verbatim to Discord
-	// surfaces things like a stray `{` character or half a JSON object
-	// as the bot's reply.
+	// user-facing prose. Shipping that fragment to Discord surfaces a stray
+	// `{` or half a JSON object as the bot's reply.
 	//
-	// Structural test (not regex-on-content-for-routing): try to
-	// JSON.parse the entire reply. If parse FAILS and the trimmed text
-	// starts with `{` or `[`, the model intended structured output and
-	// failed mid-stream. Fall through to the null return so callers
-	// route to their structured-failure reply path instead of shipping
-	// the fragment.
+	// Structural test (not regex-on-content-for-routing): try to JSON.parse
+	// the entire reply. If parse FAILS and the trimmed text starts with `{`
+	// or `[`, the model intended structured output and failed mid-stream.
+	// Fall through to null so callers route to a structured-failure path
+	// instead of shipping the fragment.
 	const looksLikeIncompleteStructuredOutput =
 		(replyText.startsWith("{") || replyText.startsWith("[")) &&
 		(() => {
@@ -3686,13 +3901,12 @@ function synthesizeSimpleReplyFromPlainText(
 		return null;
 	}
 
-	// Embedded structured-content guard: the call-shape extractors only
-	// match recognized call wrappers (`{action, params}` /
-	// `{task, agentType}`) — they intentionally fail closed on arbitrary
-	// tool-arg shapes like `{"path":"...","contents":"..."}`. But the model
-	// is just as likely to leak those into prose. Return null so the
-	// caller routes to its structured-failure reply path; the visible
-	// reasoning + leaked args never reach the user channel.
+	// Embedded structured-content guard: the recovery chain only matches
+	// recognized PLAN_ACTIONS wrappers — it intentionally fails closed on
+	// arbitrary tool-arg shapes like `{"path":"...","contents":"..."}`.
+	// But the model is just as likely to leak those into prose. Return null
+	// so the caller routes to a structured-failure reply path; the leaked
+	// reasoning + args never reach the user channel.
 	if (containsEmbeddedJsonObject(replyText)) {
 		return null;
 	}
@@ -3705,6 +3919,49 @@ function synthesizeSimpleReplyFromPlainText(
 			contexts: [SIMPLE_CONTEXT_ID],
 			reply: replyText,
 			simple: true,
+		},
+	};
+}
+
+/**
+ * Stage 1 tolerant recovery: when the model emitted a single well-formed
+ * PLAN_ACTIONS({...}) block as message-content text instead of invoking the
+ * HANDLE_RESPONSE tool (symptom: Cerebras / weak-planner LLMs), synthesize a
+ * planning envelope that will let Stage 2 dispatch the intended action.
+ *
+ * Only fires when the raw text is exclusively the PLAN_ACTIONS call (strict
+ * mode) so explanatory text like "here's how you'd call it: PLAN_ACTIONS({...})"
+ * falls through to the existing simple-reply path.
+ *
+ * The envelope sets requiresTool=true and candidateActions=[extracted.action]
+ * so the Stage 2 planner narrows to the right action. Role-gate checks and
+ * action resolution still run normally in Stage 2 — this is a parse-layer
+ * recovery only.
+ */
+function recoverPlanActionsFromContentText(
+	text: string,
+): MessageHandlerResult | null {
+	const extracted = extractPlanActionsFromContent(text);
+	if (!extracted) return null;
+
+	logger.info(
+		{
+			src: "service:message",
+			action: extracted.action,
+			recoverySource: extracted.recoverySource,
+		},
+		"Recovered planner action from content (Stage 1 RESPONSE_HANDLER)",
+	);
+
+	return {
+		processMessage: "RESPOND",
+		thought: `Tolerant recovery: model emitted PLAN_ACTIONS as content text rather than tool call; routing to Stage 2 with candidateActions=[${extracted.action}].`,
+		plan: {
+			contexts: ["general"],
+			reply: "",
+			simple: false,
+			requiresTool: true,
+			candidateActions: [extracted.action],
 		},
 	};
 }
@@ -4788,9 +5045,8 @@ async function executeV5PlannedToolCall(
 	const actions = args.executorOptions?.actions ?? args.runtime.actions;
 	const actionLookup = buildRuntimeActionLookup({ actions });
 	// When the caller passed a narrowed `actions` slice (different reference
-	// than the full registry), the upstream stage decisively trimmed the
-	// surface — usually because `candidateActions` mapped to a specific
-	// parent. Resolve strictly against that slice so LLM hallucinations
+	// than the full registry), `candidateActions` decisively trimmed the
+	// surface. Resolve strictly against that slice so LLM hallucinations
 	// (e.g. emitting `WRITE` when only `TASKS` was exposed) can't escape via
 	// the global runtime fallback.
 	const strictResolve = actions !== args.runtime.actions;
@@ -4947,9 +5203,11 @@ function subPlannerResultToPlannerToolResult(
 	const lastStep =
 		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
+	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
 	return {
 		success,
-		text: subResult.finalMessage ?? evaluator?.messageToUser,
+		text: userFacingText,
+		userFacingText,
 		data: lastStep?.result?.data,
 		error: lastStep?.result?.error,
 	};
@@ -5171,7 +5429,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
 			args.message.content?.channelType === ChannelType.DM ||
-			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
@@ -5220,25 +5477,29 @@ export async function runV5MessageRuntimeStage1(args: {
 					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
 			}),
 		];
-		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
-			cacheProviderOptions({
-				prefixHash: stage1PrefixHash,
-				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-				promptSegments: messageHandlerInput.promptSegments,
-				// Use `roomId` as the conversation id for local-inference slot
-				// pinning. Cloud providers ignore it; local backends route
-				// every turn of the same room to the same KV slot, which is
-				// the dominant cache reuse signal for chat.
-				conversationId: args.message.roomId
-					? String(args.message.roomId)
-					: undefined,
-			}),
-			buildModelInputBudget({
-				messages: messageHandlerInput.messages,
-				promptSegments: messageHandlerInput.promptSegments,
-				tools: messageHandlerTools,
-			}),
-		);
+		const messageHandlerProviderOptions =
+			withMessageHistoryCompactionProviderOptions(
+				withModelInputBudgetProviderOptions(
+					cacheProviderOptions({
+						prefixHash: stage1PrefixHash,
+						segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+						promptSegments: messageHandlerInput.promptSegments,
+						// Use `roomId` as the conversation id for local-inference slot
+						// pinning. Cloud providers ignore it; local backends route
+						// every turn of the same room to the same KV slot, which is
+						// the dominant cache reuse signal for chat.
+						conversationId: args.message.roomId
+							? String(args.message.roomId)
+							: undefined,
+					}),
+					buildModelInputBudget({
+						messages: messageHandlerInput.messages,
+						promptSegments: messageHandlerInput.promptSegments,
+						tools: messageHandlerTools,
+					}),
+				),
+				args.state,
+			);
 
 		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
 		// call. Used to inject providers / facts / relationships into the
@@ -5397,6 +5658,9 @@ export async function runV5MessageRuntimeStage1(args: {
 				buildFallbackStage1PlanForKnownToolRequest({
 					message: args.message,
 					availableContexts,
+					availableActionNames: (args.runtime.actions ?? []).map(
+						(action) => action.name,
+					),
 				}) ?? buildFallbackStage1DirectReplyPlan();
 		}
 		if (!messageHandler && process.env.ELIZA_DEBUG_STAGE1 === "1") {
@@ -6298,60 +6562,6 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 }
 
 /**
- * Build the prompt sent to the fallback "failure reply" model when the
- * planner trajectory errors out (rate limits, transient network failure,
- * provider 5xx). The prompt forbids the model from emitting any
- * substantive answer to the user's question — including answers that
- * appear "obvious" from recent-conversation context — because the
- * grounding trajectory never ran.
- *
- * Why a separate exported function: this prompt is load-bearing for
- * correctness (a previous version's "if you can plausibly act, do it"
- * escape hatch caused gpt-oss-120b on Cerebras to hallucinate a git
- * SHA from prior chat context during a live battle test, even though
- * no tool was actually called). Pinning the hard rules in tests means
- * a future "let's make the failure reply more helpful" refactor can't
- * silently re-introduce the hallucination vector.
- *
- * @param recentMessages Plain-text projection of the recent conversation
- * (whatever the caller has at hand — typically `state.values.recentMessages`).
- */
-export function buildFailureReplyPrompt(recentMessages: string): string {
-	return [
-		"You hit a transient model error and have to send a short user-facing reply.",
-		"Write a one or two sentence reply in plain language.",
-		"",
-		"Hard rules:",
-		"- Stay in character. Keep your usual voice and tone.",
-		"- NEVER mention internal mechanism words such as: planner, action_planner,",
-		"  XML, JSON, schema, structured output, model, retries, sonnet,",
-		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-		"  loop, runtime, dispatch, or hand off. The user does not know or care",
-		"  what those are.",
-		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-		"- Acknowledge that something went wrong and suggest a retry. Examples:",
-		'  "something flaked, try again in a sec",',
-		'  "weird hiccup, give me another shot in a moment",',
-		'  "got stuck on my end, retry that?"',
-		"- NEVER answer the user's question on the merits in this reply. Even",
-		"  if the answer looks obvious from context (a SHA, a count, a price,",
-		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
-		"  The trajectory that would have GROUNDED the answer failed, so any",
-		"  factual claim you make here is by definition ungrounded. The user",
-		"  will retry, the real run will produce the grounded answer, and",
-		"  meanwhile you must not invent one from recent-conversation context.",
-		"- Do not paraphrase or echo the user's question as if you were about",
-		"  to answer it. Just say something went wrong and invite a retry.",
-		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-		"",
-		"Recent Conversation:",
-		recentMessages,
-		"",
-		"Reply:",
-	].join("\n");
-}
-
-/**
  * True when a plugin registered at least one core text delegate (chat / planning).
  * Embeddings-only (local-ai) and TTS do not count — without a matching delegate,
  * `dynamicPromptExecFromState` can fail with "No handler found for delegate type".
@@ -6926,18 +7136,9 @@ function buildCanonicalActionRepairPrompt(args: {
 		args.plannerReplyText.trim().length > 0
 			? args.plannerReplyText.trim()
 			: "(empty)";
-	const rawPlannerActions =
-		args.rawPlannerActions.length > 0
-			? `planner_actions_raw[${args.rawPlannerActions.length}]: ${args.rawPlannerActions.join(",")}`
-			: "planner_actions_raw[0]:";
-	const rawPlannerProviders =
-		args.rawPlannerProviders.length > 0
-			? `planner_providers_raw[${args.rawPlannerProviders.length}]: ${args.rawPlannerProviders.join(",")}`
-			: "planner_providers_raw[0]:";
-	const availableRuntimeActions =
-		args.availableActionNames.length > 0
-			? `available_runtime_actions[${args.availableActionNames.length}]: ${args.availableActionNames.join(",")}`
-			: "available_runtime_actions[0]:";
+	const rawPlannerActions = `planner_actions_raw: ${JSON.stringify(args.rawPlannerActions)}`;
+	const rawPlannerProviders = `planner_providers_raw: ${JSON.stringify(args.rawPlannerProviders)}`;
+	const availableRuntimeActions = `available_runtime_actions: ${JSON.stringify(args.availableActionNames)}`;
 
 	return [
 		"You are repairing an action-planner output that used a non-canonical action name.",
@@ -6961,7 +7162,7 @@ function buildCanonicalActionRepairPrompt(args: {
 		"",
 		"Example:",
 		'user_message: "Pull up a dossier on Satya Nadella."',
-		"planner_actions_raw[1]: LOOKUP",
+		'planner_actions_raw: ["LOOKUP"]',
 		"output:",
 		JSON.stringify(
 			{
@@ -8855,15 +9056,19 @@ async function _composeContinuationDecisionState(
 	// assistant reply and/or action_result memories. Refresh RECENT_MESSAGES so
 	// the follow-up planner does not reuse stale conversation history cached on
 	// the original user turn.
-	return withContextRoutingValues(
-		await runtime.composeState(
-			message,
-			["RECENT_MESSAGES", "ACTIONS"],
-			false,
-			false,
-		),
-		contextRoutingStateValues,
+	const state = await runtime.composeState(
+		message,
+		["RECENT_MESSAGES", "ACTIONS"],
+		false,
+		false,
 	);
+	const compactedState = await applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"continuation-state",
+	);
+	return withContextRoutingValues(compactedState, contextRoutingStateValues);
 }
 
 /**
@@ -10808,9 +11013,7 @@ export class DefaultMessageService implements IMessageService {
 					continue;
 				}
 
-				const cleaned = response
-					.replace(/<think>[\s\S]*?<\/think>/g, "")
-					.trim();
+				const cleaned = stripReasoningBlocks(response);
 				const looksStructuredReply =
 					cleaned.startsWith("{") && cleaned.includes("}");
 				const parsed = looksStructuredReply

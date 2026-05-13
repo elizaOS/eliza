@@ -22,11 +22,19 @@ const authTokenArg = argValue("--auth-token");
 const requireInstalled = process.argv.includes("--require-installed");
 const exerciseAppCoreApi = process.argv.includes("--live") || Boolean(apiBase);
 const iosSelectLocal = process.argv.includes("--ios-select-local");
+const iosFullBunSmoke = process.argv.includes("--ios-full-bun-smoke");
 const androidSelectLocal = process.argv.includes("--android-select-local");
 const androidBackground = process.argv.includes("--android-background");
 const iosBackground = process.argv.includes("--ios-background");
 const iosBackgroundTaskId =
   argValue("--ios-background-task-id") ?? "ai.eliza.tasks.refresh";
+const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
+const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
+const IOS_FULL_BUN_PREWARM_RESULT_KEY = "eliza:ios-full-bun-prewarm:result";
+const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
+const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
+const IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE = /in one short sentence/i;
 const ANDROID_HEALTH_ATTEMPTS = 240;
 const IOS_WAKE_POLL_ATTEMPTS = 30;
 const IOS_WAKE_POLL_DELAY_MS = 1000;
@@ -43,6 +51,7 @@ Options:
   --api-base URL                   Exercise an already-reachable app-core HTTP API
   --auth-token TOKEN               Bearer token for protected app-core API routes
   --ios-select-local               Pre-seed iOS onboarding/runtime state for Local mode before launch
+  --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
   --android-select-local           Tap through Android first-run Local runtime selection
   --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
   --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
@@ -141,6 +150,7 @@ function launchIosSimulatorApp() {
   }
 
   const id = appId();
+  let fullBunSmokeRequestedAtMs = null;
   const container = tryExec("xcrun", [
     "simctl",
     "get_app_container",
@@ -155,16 +165,22 @@ function launchIosSimulatorApp() {
     return { udid, installed: false };
   }
 
-  if (iosSelectLocal) {
+  if (iosSelectLocal || iosFullBunSmoke) {
     preseedIosLocalRuntime(udid, id);
+  }
+  if (iosFullBunSmoke) {
+    fullBunSmokeRequestedAtMs = Date.now();
+    preseedIosFullBunSmoke(udid, id);
   }
 
   console.log(
     `[local-chat-smoke] Launching ${id} in the booted simulator (${udid}).`,
   );
   tryExec("xcrun", ["simctl", "launch", udid, id]);
-  tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
-  return { udid, installed: true };
+  if (!iosFullBunSmoke) {
+    tryExec("xcrun", ["simctl", "openurl", udid, "elizaos://chat"]);
+  }
+  return { udid, installed: true, fullBunSmokeRequestedAtMs };
 }
 
 function writeIosDefaultsString(udid, domain, key, value) {
@@ -191,6 +207,64 @@ function writeIosDefaultsString(udid, domain, key, value) {
   );
 }
 
+function readIosDefaultsString(udid, domain, key) {
+  const nativeKey = `CapacitorStorage.${key}`;
+  const readPlistValue = () => {
+    const dataContainer = tryExec(
+      "xcrun",
+      ["simctl", "get_app_container", udid, domain, "data"],
+      { allowFailure: true },
+    );
+    if (!dataContainer) return null;
+    const plist = path.join(
+      dataContainer,
+      "Library",
+      "Preferences",
+      `${domain}.plist`,
+    );
+    if (!fs.existsSync(plist)) return null;
+    const json = tryExec("plutil", ["-convert", "json", "-o", "-", plist], {
+      allowFailure: true,
+    });
+    if (!json) return null;
+    try {
+      const parsed = JSON.parse(json);
+      const plistValue = parsed?.[nativeKey];
+      return typeof plistValue === "string" ? plistValue : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const plistValue = readPlistValue();
+  if (plistValue !== null) return plistValue;
+
+  const value = tryExec(
+    "xcrun",
+    ["simctl", "spawn", udid, "defaults", "read", domain, nativeKey],
+    { allowFailure: true },
+  );
+  if (value !== null) return value;
+
+  return null;
+}
+
+function deleteIosDefaultsKey(udid, domain, key) {
+  tryExec(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      udid,
+      "defaults",
+      "delete",
+      domain,
+      `CapacitorStorage.${key}`,
+    ],
+    { allowFailure: true },
+  );
+}
+
 function flushIosPreferencesCache(udid) {
   // `defaults write <container>/Library/Preferences/<bundle-id>` updates the
   // plist on disk, but a booted simulator can keep the old domain cached in
@@ -206,7 +280,7 @@ function preseedIosLocalRuntime(udid, id) {
     id: "local:mobile",
     kind: "remote",
     label: "On-device agent",
-    apiBase: "http://127.0.0.1:31337",
+    apiBase: IOS_LOCAL_AGENT_IPC_BASE,
   });
 
   tryExec("xcrun", ["simctl", "terminate", udid, id], { allowFailure: true });
@@ -216,6 +290,26 @@ function preseedIosLocalRuntime(udid, id) {
   flushIosPreferencesCache(udid);
   console.log(
     `[local-chat-smoke] Pre-seeded iOS Local runtime preferences for ${id}.`,
+  );
+}
+
+function preseedIosFullBunSmoke(udid, id) {
+  deleteIosDefaultsKey(udid, id, IOS_FULL_BUN_SMOKE_RESULT_KEY);
+  deleteIosDefaultsKey(udid, id, IOS_FULL_BUN_PREWARM_RESULT_KEY);
+  writeIosDefaultsString(
+    udid,
+    id,
+    IOS_FULL_BUN_SMOKE_RESULT_KEY,
+    JSON.stringify({
+      ok: false,
+      phase: "requested",
+      updatedAt: new Date().toISOString(),
+    }),
+  );
+  writeIosDefaultsString(udid, id, IOS_FULL_BUN_SMOKE_REQUEST_KEY, "1");
+  flushIosPreferencesCache(udid);
+  console.log(
+    `[local-chat-smoke] Requested in-app iOS full Bun backend smoke for ${id}.`,
   );
 }
 
@@ -538,6 +632,256 @@ function takeIosScreenshot(udid, label) {
   const ok = tryExec("xcrun", ["simctl", "io", udid, "screenshot", outPath]);
   if (ok === null) return null;
   return outPath;
+}
+
+function parseIosFullBunSmokeResult(raw) {
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function iosFullBunSmokeResultTimeMs(result) {
+  if (!result || typeof result !== "object") return null;
+  for (const key of ["updatedAt", "finishedAt", "startedAt"]) {
+    const value = result[key];
+    if (typeof value !== "string" || !value.trim()) continue;
+    const ms = Date.parse(value);
+    if (Number.isFinite(ms)) return ms;
+  }
+  return null;
+}
+
+function assertObject(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} was not an object.`);
+  }
+  return value;
+}
+
+function assertArray(value, label) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} was not an array.`);
+  }
+  return value;
+}
+
+function assertIosFullBunSmokeSuccess(result) {
+  const runtimeStatus = assertObject(
+    result.runtimeStatus,
+    "iOS full Bun runtimeStatus",
+  );
+  if (runtimeStatus.ready !== true || runtimeStatus.engine !== "bun") {
+    throw new Error(
+      `iOS full Bun runtimeStatus was not ready on bun: ${JSON.stringify(runtimeStatus)}`,
+    );
+  }
+
+  const bridgeStatus = assertObject(
+    result.bridgeStatus,
+    "iOS full Bun bridgeStatus",
+  );
+  if (
+    bridgeStatus.ready !== true ||
+    bridgeStatus.engine !== "bun" ||
+    bridgeStatus.transport !== "bun-host-ipc"
+  ) {
+    throw new Error(
+      `iOS full Bun bridgeStatus did not report bun-host-ipc: ${JSON.stringify(bridgeStatus)}`,
+    );
+  }
+  if ("apiPort" in bridgeStatus || "fallbackPort" in bridgeStatus) {
+    throw new Error(
+      `iOS full Bun bridgeStatus still exposed port metadata: ${JSON.stringify(bridgeStatus)}`,
+    );
+  }
+
+  const fetchHealth = assertObject(
+    result.fetchHealth,
+    "iOS full Bun fetchHealth",
+  );
+  if (fetchHealth.ready !== true || fetchHealth.runtime !== "ok") {
+    throw new Error(
+      `iOS full Bun fetchHealth was not ready: ${JSON.stringify(fetchHealth)}`,
+    );
+  }
+
+  const localInference = assertObject(
+    result.localInference,
+    "iOS full Bun localInference",
+  );
+  const hub = assertObject(
+    localInference.hub,
+    "iOS full Bun localInference.hub",
+  );
+  const hubInstalled = assertArray(
+    hub.installed,
+    "iOS full Bun localInference.hub.installed",
+  );
+  const device = assertObject(
+    localInference.device,
+    "iOS full Bun localInference.device",
+  );
+  if (
+    device.enabled !== true ||
+    device.connected !== true ||
+    device.transport !== "bun-host-ipc"
+  ) {
+    throw new Error(
+      `iOS full Bun device bridge was not connected over IPC: ${JSON.stringify(device)}`,
+    );
+  }
+  assertArray(device.devices, "iOS full Bun localInference.device.devices");
+
+  const providers = assertArray(
+    assertObject(localInference.providers, "iOS full Bun providers").providers,
+    "iOS full Bun provider list",
+  );
+  const capacitorProvider = providers.find(
+    (provider) =>
+      provider &&
+      typeof provider === "object" &&
+      provider.id === "capacitor-llama",
+  );
+  if (!capacitorProvider) {
+    throw new Error(
+      "iOS full Bun provider list did not include capacitor-llama.",
+    );
+  }
+  const slots = assertArray(
+    capacitorProvider.registeredSlots,
+    "iOS full Bun capacitor-llama registeredSlots",
+  );
+  if (!slots.includes("TEXT_SMALL") || !slots.includes("TEXT_LARGE")) {
+    throw new Error(
+      "iOS full Bun capacitor-llama did not register TEXT_SMALL/TEXT_LARGE.",
+    );
+  }
+
+  if (typeof result.conversationId !== "string" || !result.conversationId) {
+    throw new Error("iOS full Bun smoke did not return a conversationId.");
+  }
+  const installed = assertArray(
+    assertObject(
+      localInference.installed,
+      "iOS full Bun localInference.installed",
+    ).models,
+    "iOS full Bun localInference.installed.models",
+  );
+  if (hubInstalled.length > 0) {
+    if (installed.length === 0) {
+      throw new Error(
+        "iOS full Bun scanner saw an installed model, but /installed returned none.",
+      );
+    }
+    const activatedModel = assertObject(
+      localInference.activatedModel,
+      "iOS full Bun localInference.activatedModel",
+    );
+    if (
+      activatedModel.status !== "ready" ||
+      typeof activatedModel.modelPath !== "string" ||
+      !activatedModel.modelPath
+    ) {
+      throw new Error(
+        `iOS full Bun model activation was not ready: ${JSON.stringify(activatedModel)}`,
+      );
+    }
+    const active = assertObject(
+      localInference.active,
+      "iOS full Bun localInference.active",
+    );
+    if (active.status !== "ready") {
+      throw new Error(
+        `iOS full Bun active model was not ready: ${JSON.stringify(active)}`,
+      );
+    }
+  }
+  const sendMessage = assertObject(
+    result.sendMessage,
+    "iOS full Bun sendMessage",
+  );
+  const reply = String(sendMessage.text ?? sendMessage.reply ?? "");
+  if (
+    !reply.trim() ||
+    /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(reply) ||
+    IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE.test(reply)
+  ) {
+    throw new Error(
+      `iOS full Bun sendMessage did not return a usable reply: ${JSON.stringify(sendMessage)}`,
+    );
+  }
+  const streamMessage = String(result.streamMessage ?? "");
+  if (
+    !streamMessage.includes('"type":"done"') ||
+    /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
+      streamMessage,
+    ) ||
+    IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE.test(streamMessage)
+  ) {
+    throw new Error(
+      `iOS full Bun stream did not return usable SSE: ${streamMessage.slice(0, 500)}`,
+    );
+  }
+}
+
+async function verifyIosFullBunSmoke(context) {
+  if (!context?.installed) {
+    const message =
+      "[local-chat-smoke] --ios-full-bun-smoke requested but the iOS app is not installed.";
+    if (requireInstalled) throw new Error(message);
+    console.warn(message);
+    return null;
+  }
+
+  const id = appId();
+  let lastRaw = "";
+  const requestedAtMs = Number.isFinite(context.fullBunSmokeRequestedAtMs)
+    ? context.fullBunSmokeRequestedAtMs
+    : Date.now();
+  for (let attempt = 1; attempt <= IOS_FULL_BUN_SMOKE_ATTEMPTS; attempt += 1) {
+    lastRaw =
+      readIosDefaultsString(context.udid, id, IOS_FULL_BUN_SMOKE_RESULT_KEY) ??
+      "";
+    const result = parseIosFullBunSmokeResult(lastRaw);
+    const resultTimeMs = iosFullBunSmokeResultTimeMs(result);
+    const isFresh =
+      resultTimeMs !== null && resultTimeMs >= requestedAtMs - 1_000;
+    if (result && !isFresh) {
+      await sleep(IOS_FULL_BUN_SMOKE_DELAY_MS);
+      continue;
+    }
+    if (result?.ok === true) {
+      assertIosFullBunSmokeSuccess(result);
+      console.log(
+        "[local-chat-smoke] iOS full Bun smoke:",
+        JSON.stringify(result),
+      );
+      return result;
+    }
+    if (result?.phase === "failed" || (result?.ok === false && result?.error)) {
+      const screenshot = takeIosScreenshot(context.udid, "ios-full-bun-failed");
+      throw new Error(
+        `iOS full Bun smoke failed: ${JSON.stringify(result)}${screenshot ? ` Screenshot: ${screenshot}` : ""}`,
+      );
+    }
+    if (attempt % 10 === 0) {
+      const phase =
+        typeof result?.phase === "string" ? ` (${result.phase})` : "";
+      console.warn(
+        `[local-chat-smoke] iOS full Bun smoke still running${phase} (${attempt}/${IOS_FULL_BUN_SMOKE_ATTEMPTS}).`,
+      );
+    }
+    await sleep(IOS_FULL_BUN_SMOKE_DELAY_MS);
+  }
+
+  const screenshot = takeIosScreenshot(context.udid, "ios-full-bun-timeout");
+  throw new Error(
+    `iOS full Bun smoke did not complete in time. Last result: ${lastRaw || "<none>"}${screenshot ? ` Screenshot: ${screenshot}` : ""}`,
+  );
 }
 
 function takeAndroidScreenshot(context, label) {
@@ -1114,6 +1458,10 @@ async function main() {
           JSON.stringify(result),
         );
       }
+    }
+
+    if (iosFullBunSmoke && (platform === "ios" || platform === "both")) {
+      await verifyIosFullBunSmoke(iosContext);
     }
 
     run(

@@ -4,15 +4,11 @@
  * Usage:
  *   CONVEX_URL=https://your-deployment.convex.cloud bun run test-client.ts
  *
- * The CONVEX_URL is the HTTP Actions URL printed by `npx convex dev`.
+ * The CONVEX_URL is the HTTP Actions URL printed by `convex dev`.
  */
 
 import "dotenv/config";
 import * as readline from "node:readline";
-
-// ============================================================================
-// Configuration
-// ============================================================================
 
 const CONVEX_URL = process.env.CONVEX_URL;
 const RUN_ONCE = process.argv.includes("--once");
@@ -20,7 +16,7 @@ const RUN_ONCE = process.argv.includes("--once");
 if (!CONVEX_URL) {
   console.log(
     "Skipping live Convex test: CONVEX_URL is not set.\n" +
-      "Run `npx convex dev` and copy the HTTP Actions URL, then:\n" +
+      "Run `convex dev` and copy the HTTP Actions URL, then:\n" +
       '  CONVEX_URL="https://your-deployment.convex.cloud" bun run test-client.ts\n',
   );
   process.exit(0);
@@ -28,10 +24,6 @@ if (!CONVEX_URL) {
 
 const CHAT_ENDPOINT = `${CONVEX_URL.replace(/\/$/, "")}/chat`;
 const HEALTH_ENDPOINT = `${CONVEX_URL.replace(/\/$/, "")}/health`;
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 interface ChatResponse {
   response: string;
@@ -71,14 +63,9 @@ async function sendMessage(
   return (await res.json()) as ChatResponse;
 }
 
-// ============================================================================
-// Main
-// ============================================================================
-
 async function main() {
   console.log("elizaOS Convex Agent — Test Client\n");
 
-  // Health check
   try {
     const health = await checkHealth();
     console.log(

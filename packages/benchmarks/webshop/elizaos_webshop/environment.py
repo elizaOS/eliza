@@ -344,34 +344,40 @@ class WebShopEnvironment:
         if task is None or product is None:
             return 0.0
 
-        # Perfect reward if we buy an explicit target product.
+        goal_score = self._goal_attribute_score(task, product)
+
+        # Buying an explicit target product is necessary but not always
+        # sufficient: local tasks also encode required options such as size or
+        # decaf. Give target-product credit, then gate perfection on attributes.
         if product.product_id in task.target_product_ids:
-            base = 1.0
+            base = 1.0 if not task.goal_attributes else 0.5 + (0.5 * goal_score)
         else:
-            # Partial reward by attribute matches.
-            # We only use goal_attributes keys that exist for the product or selected options.
-            goals = task.goal_attributes
-            if not goals:
-                base = 0.0
-            else:
-                matches = 0.0
-                total = 0.0
-                merged_attrs: dict[str, str] = dict(product.attributes)
-                for k, v in self._selected_options.items():
-                    merged_attrs[k] = v
-                for k, v in goals.items():
-                    total += 1.0
-                    actual = merged_attrs.get(k)
-                    if actual is None:
-                        continue
-                    if actual.strip().lower() == v.strip().lower():
-                        matches += 1.0
-                    elif v.strip().lower() in actual.strip().lower():
-                        matches += 0.5
-                base = matches / total if total > 0.0 else 0.0
+            base = goal_score
 
         # Budget penalty
         if task.budget is not None and product.price > task.budget:
             base *= 0.5
         return max(0.0, min(1.0, base))
 
+    def _goal_attribute_score(self, task: WebShopTask, product: Product) -> float:
+        goals = task.goal_attributes
+        if not goals:
+            return 0.0
+
+        matches = 0.0
+        merged_attrs: dict[str, str] = dict(product.attributes)
+        for k, v in self._selected_options.items():
+            merged_attrs.setdefault(k, v)
+            merged_attrs[f"{k}_option"] = v
+
+        for k, expected in goals.items():
+            actual = merged_attrs.get(k)
+            if actual is None:
+                continue
+            actual_norm = actual.strip().lower()
+            expected_norm = expected.strip().lower()
+            if actual_norm == expected_norm:
+                matches += 1.0
+            elif expected_norm and expected_norm in actual_norm:
+                matches += 0.5
+        return matches / len(goals)

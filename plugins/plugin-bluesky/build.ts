@@ -117,12 +117,8 @@ export { default } from "./node/index";
 `;
 	await writeFile(rootIndexDtsPath, rootAlias, "utf8");
 
-	// Node alias
-	const nodeIndexDtsPath = join(nodeDir, "index.d.ts");
-	const nodeAlias = `export * from "./index.node";
-export { default } from "./index.node";
-`;
-	await writeFile(nodeIndexDtsPath, nodeAlias, "utf8");
+	// Keep the real declaration surface emitted from index.ts at
+	// dist/node/index.d.ts. index.node.d.ts re-exports it for the JS entrypoint.
 
 	// Browser alias
 	const browserIndexDtsPath = join(browserDir, "index.d.ts");

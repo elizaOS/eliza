@@ -1,0 +1,68 @@
+# Spring Boot Best Practices
+
+Part of senior-java skill for engineering-team.
+
+## Overview
+
+[TODO: Add overview of this reference guide]
+
+This reference provides comprehensive guidance for [topic area].
+
+## Key Concepts
+
+[TODO: Document key concepts]
+
+### Concept 1
+
+[Description]
+
+### Concept 2
+
+[Description]
+
+### Concept 3
+
+[Description]
+
+## Best Practices
+
+[TODO: Add best practices]
+
+1. **Practice 1** - Description and rationale
+2. **Practice 2** - Description and rationale
+3. **Practice 3** - Description and rationale
+
+## Frameworks
+
+[TODO: Provide frameworks and methodologies]
+
+### Framework 1
+
+[Description]
+
+### Framework 2
+
+[Description]
+
+## Examples
+
+[TODO: Provide examples]
+
+### Example 1: [Use Case]
+
+**Scenario:** [Description]
+
+**Approach:** [Steps]
+
+**Outcome:** [Result]
+
+## Resources
+
+- [External resource 1]
+- [External resource 2]
+
+---
+
+**Last Updated:** 2025-12-16
+**Status:** Draft - To be expanded
+**Part of:** senior-java skill

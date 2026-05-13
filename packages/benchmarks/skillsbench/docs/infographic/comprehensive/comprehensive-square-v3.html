@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SkillsBench – Comprehensive Square v3</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600;8..60,700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: #fafafa;
+      display: flex; justify-content: center; align-items: center;
+      min-height: 100vh; padding: 8px 10px;
+    }
+    .ig {
+      width: 960px; height: auto;
+      background: #fafafa;
+      padding: 3px 10px;
+      display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── HEADER ── */
+    .hdr { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+    .hdr h1 {
+      font-family: 'Source Serif 4', Georgia, serif;
+      font-size: 44px; font-weight: 700; color: #111;
+      letter-spacing: -1.5px; line-height: 1;
+    }
+    .hdr-sub { font-size: 11.5px; color: #666; margin-top: 4px; line-height: 1.4; max-width: 640px; }
+    .hdr-sub strong { color: #111; }
+    .hdr-right { text-align: right; flex-shrink: 0; }
+    .hdr-meta { font-size: 9px; color: #aaa; }
+
+    /* ── PROPS ── */
+    .props { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 8px; }
+    .prop {
+      font-size: 9px; font-weight: 600; color: #fff;
+      background: #222; padding: 3px 7px; border-radius: 3px;
+    }
+    .prop .ck { color: #4ade80; margin-right: 2px; font-weight: 800; }
+
+    /* ── TWO-COL TOP ── */
+    .top-row { display: grid; grid-template-columns: 390px 1fr; gap: 8px; margin-bottom: 8px; }
+
+    /* Circles */
+    .circles-wrap {
+      background: #fff; border: 1px solid #e0e0e0; border-radius: 10px;
+      padding: 18px 16px; display: flex; gap: 16px; align-items: center;
+    }
+    .circles-box { position: relative; width: 185px; height: 185px; flex-shrink: 0; }
+    .c-outer {
+      position: absolute; inset: 0; border-radius: 50%; background: #C4B5A3;
+      display: flex; align-items: flex-start; justify-content: center; padding-top: 12px;
+    }
+    .c-mid-w {
+      position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+      width: 140px; height: 140px; border-radius: 50%; background: #fafafa; z-index: 2;
+    }
+    .c-mid {
+      width: 100%; height: 100%; border-radius: 50%; background: #3BB89E;
+      display: flex; align-items: flex-start; justify-content: center; padding-top: 10px;
+    }
+    .c-inn-w {
+      position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+      width: 82px; height: 82px; border-radius: 50%; background: #fafafa; z-index: 3;
+    }
+    .c-inn {
+      width: 100%; height: 100%; border-radius: 50%; background: #D08050;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .c-lbl { text-align: center; font-weight: 700; font-size: 14px; line-height: 1.2; }
+    .c-sub { font-size: 8.5px; font-weight: 500; opacity: 0.55; }
+    .c-outer .c-lbl { color: #3D3329; }
+    .c-mid .c-lbl { color: #0D3D34; }
+    .c-inn .c-lbl { color: #3D1F0D; }
+
+    .layers { display: flex; flex-direction: column; gap: 8px; }
+    .layer { display: flex; gap: 6px; align-items: flex-start; }
+    .l-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 3px; flex-shrink: 0; }
+    .l-name { font-size: 11.5px; font-weight: 700; color: #111; }
+    .l-desc { font-size: 9px; color: #777; line-height: 1.35; }
+
+    /* Domains */
+    .domains-wrap {
+      background: #fff; border: 1px solid #e0e0e0; border-radius: 10px;
+      padding: 8px 10px 8px;
+    }
+    .dom-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+    .dom-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #111; }
+    .dom-stats { font-size: 8.5px; color: #aaa; }
+    .dom-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+    .dom-card {
+      background: #f8f8f8; border-radius: 4px; padding: 5px 6px;
+    }
+    .dom-card .d-name { font-size: 10px; font-weight: 700; color: #222; line-height: 1.2; }
+    .dom-card .d-areas { font-size: 7.5px; color: #999; line-height: 1.25; margin-top: 1px; }
+
+    /* Difficulty stratification */
+    .strat { margin-top: 6px; }
+    .strat-label { font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #888; margin-bottom: 3px; }
+    .strat-bar { display: flex; height: 20px; border-radius: 5px; overflow: hidden; }
+    .strat-seg {
+      display: flex; align-items: center; justify-content: center;
+      font-size: 9px; font-weight: 700; color: #fff;
+    }
+    .strat-core { background: #bbb; }
+    .strat-ext { background: #666; }
+    .strat-extreme { background: #222; }
+    .strat-legend { display: flex; gap: 12px; margin-top: 3px; }
+    .strat-legend-item { display: flex; align-items: center; gap: 3px; font-size: 7.5px; color: #888; }
+    .strat-legend-dot { width: 6px; height: 6px; border-radius: 2px; flex-shrink: 0; }
+
+    /* Community momentum */
+    .community { margin-top: 6px; }
+    .comm-header {
+      font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px;
+      color: #888; margin-bottom: 3px;
+    }
+    .comm-row { display: flex; gap: 4px; }
+    .comm-stat {
+      flex: 1; background: #111; border-radius: 4px; padding: 7px 8px; text-align: center;
+    }
+    .comm-num { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: #fff; line-height: 1; }
+    .comm-label { font-size: 7.5px; color: #999; margin-top: 2px; line-height: 1.2; }
+    .comm-sub { font-size: 6.5px; color: #666; }
+
+    /* ── CHART SECTION ── */
+    .chart {
+      background: #fff; border: 1px solid #e0e0e0; border-radius: 10px;
+      padding: 10px 14px 8px; margin-bottom: 8px;
+    }
+    .ch-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+    .ch-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #111; }
+    .ch-leg { display: flex; gap: 8px; }
+    .ch-leg-item { display: flex; align-items: center; gap: 3px; font-size: 8px; color: #888; }
+    .ch-leg-bar { width: 12px; height: 5px; border-radius: 1px; }
+    .ch-leg-bar.striped {
+      background: repeating-linear-gradient(-45deg, #d97706 0px, #d97706 2px, #fde68a 2px, #fde68a 4px);
+    }
+
+    .ch-models { display: flex; flex-direction: column; gap: 5px; }
+    .ch-model { display: grid; grid-template-columns: 18px 125px 1fr 46px; align-items: center; gap: 5px; }
+    .ch-rank {
+      font-family: 'JetBrains Mono', monospace; font-size: 9px; font-weight: 600;
+      color: #ccc; text-align: center;
+    }
+    .ch-model-info { display: flex; align-items: center; gap: 4px; justify-content: flex-end; }
+    .ch-model-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .ch-model-name { font-size: 10px; font-weight: 600; color: #333; text-align: right; }
+    .ch-model-var { font-size: 8.5px; color: #999; }
+    .ch-bars { display: flex; flex-direction: column; gap: 1px; }
+    .ch-main-track {
+      height: 24px; background: #f0f0f0; border-radius: 3px;
+      position: relative; overflow: hidden;
+    }
+    .ch-bar-with {
+      position: absolute; inset: 0; border-radius: 3px; opacity: 0.22;
+    }
+    .ch-bar-without {
+      position: absolute; top: 0; bottom: 0; left: 0; border-radius: 3px; opacity: 0.82;
+    }
+    .ch-bar-vals {
+      position: absolute; right: 5px; top: 50%; transform: translateY(-50%);
+      font-family: 'JetBrains Mono', monospace; font-size: 8.5px; color: #666; white-space: nowrap;
+    }
+    .ch-bar-vals .ci { font-size: 7px; color: #aaa; }
+    .ch-gen-track {
+      height: 10px; background: #f5f5f5; border-radius: 2px;
+      position: relative; overflow: hidden;
+    }
+    .ch-gen-fill {
+      height: 100%; border-radius: 2px; position: absolute; left: 0; top: 0;
+      background: repeating-linear-gradient(-45deg, #d97706 0px, #d97706 2px, #fde68a 2px, #fde68a 4px);
+      opacity: 0.9;
+    }
+    .ch-gen-val {
+      font-family: 'JetBrains Mono', monospace; font-size: 7px; color: #999;
+      position: absolute; top: 50%; transform: translateY(-50%); white-space: nowrap;
+    }
+    .ch-ng {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px; font-weight: 700; color: #16a34a;
+      background: #dcfce7; border-radius: 4px; padding: 3px 5px; text-align: center;
+      line-height: 1; align-self: center;
+    }
+    .ch-brands { display: flex; gap: 10px; margin-top: 5px; padding-top: 4px; border-top: 1px solid #f0f0f0; }
+    .ch-brand { display: flex; align-items: center; gap: 3px; font-size: 8px; color: #888; }
+    .ch-brand .bd { width: 5px; height: 5px; border-radius: 50%; }
+    .ch-note { margin-left: auto; font-size: 7.5px; color: #bbb; }
+
+    /* ── LINE CHART SECTION ── */
+    .scale-section {
+      background: #fff; border: 1px solid #e0e0e0; border-radius: 10px;
+      padding: 10px 14px 6px;
+    }
+    .sc-hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+    .sc-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #111; }
+    .sc-leg { display: flex; gap: 12px; }
+    .sc-leg-item { display: flex; align-items: center; gap: 4px; font-size: 8px; color: #888; }
+    .sc-chart-svg { width: 100%; display: block; }
+
+    /* ── FOOTER ── */
+    .ftr {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 10px; color: #aaa; padding-top: 5px; border-top: 1px solid #e0e0e0;
+      margin-top: 8px; flex-shrink: 0;
+    }
+    .ftr-left { font-weight: 700; color: #111; }
+    .ftr-badge { background: #111; color: #fff; padding: 3px 7px; border-radius: 3px; font-size: 8px; font-weight: 600; }
+  </style>
+</head>
+<body>
+<div class="ig">
+
+  <!-- ═══ HEADER ═══ -->
+  <div class="hdr">
+    <div>
+      <h1>SkillsBench</h1>
+      <p class="hdr-sub">A benchmark of <strong>86 verifiable, expert-created tasks</strong> measuring how reusable skills improve AI coding agents across 11 professional domains.</p>
+    </div>
+    <div class="hdr-right">
+      <div class="hdr-meta">skillsbench.ai &middot; Feb 2026</div>
+    </div>
+  </div>
+
+  <!-- ═══ PROPS ═══ -->
+  <div class="props">
+    <span class="prop"><span class="ck">&#10003;</span> Verifiable</span>
+    <span class="prop"><span class="ck">&#10003;</span> Human-Created</span>
+    <span class="prop"><span class="ck">&#10003;</span> Expert-Verified</span>
+    <span class="prop"><span class="ck">&#10003;</span> Real Data (not synthetic)</span>
+    <span class="prop"><span class="ck">&#10003;</span> Tasks Humans Get Paid to Do</span>
+  </div>
+
+  <!-- ═══ FRAMEWORK + DOMAINS ═══ -->
+  <div class="top-row">
+    <!-- Three Circles -->
+    <div class="circles-wrap">
+      <div class="circles-box">
+        <div class="c-outer"><div class="c-lbl">Skills<br><span class="c-sub">Applications</span></div></div>
+        <div class="c-mid-w"><div class="c-mid"><div class="c-lbl">Harness<br><span class="c-sub">Operating Systems</span></div></div></div>
+        <div class="c-inn-w"><div class="c-inn"><div class="c-lbl">Models<br><span class="c-sub">CPUs</span></div></div></div>
+      </div>
+      <div class="layers">
+        <div class="layer"><div class="l-dot" style="background:#C4B5A3;"></div><div><div class="l-name">Skills Layer</div><div class="l-desc">Domain-specific capabilities and workflows that extend agent functionality. Like applications on an OS, skills provide specialized knowledge and tools for particular tasks.</div></div></div>
+        <div class="layer"><div class="l-dot" style="background:#3BB89E;"></div><div><div class="l-name">Agent Harness Layer</div><div class="l-desc">The execution environment that orchestrates agents, manages tool access, and handles I/O. Analogous to an operating system that mediates between applications and hardware.</div></div></div>
+        <div class="layer"><div class="l-dot" style="background:#D08050;"></div><div><div class="l-name">Models Layer</div><div class="l-desc">The foundational AI models that power reasoning and generation. Like CPUs, they provide the raw computational capability that upper layers build upon.</div></div></div>
+      </div>
+    </div>
+
+    <!-- Domains + Stratification -->
+    <div class="domains-wrap">
+      <div class="dom-hdr">
+        <div class="dom-title">86 Expert-Level Tasks Across 11 Domains</div>
+      </div>
+      <div class="dom-grid">
+        <div class="dom-card"><div class="d-name">Office &amp; White Collar</div><div class="d-areas">Excel, Word, PowerPoint, PDF, Gmail</div></div>
+        <div class="dom-card"><div class="d-name">Natural Science</div><div class="d-areas">Physics, Astronomy, Chemistry, Earth Sciences</div></div>
+        <div class="dom-card"><div class="d-name">Finance</div><div class="d-areas">Macrofinance, Economics, Portfolio Mgmt</div></div>
+        <div class="dom-card"><div class="d-name">Healthcare</div><div class="d-areas">Clinical Lab, Cancer Proteomics</div></div>
+        <div class="dom-card"><div class="d-name">Manufacturing</div><div class="d-areas">Codebook, Equipment, Job-Shop Scheduling</div></div>
+        <div class="dom-card"><div class="d-name">Cybersecurity</div><div class="d-areas">CVE Patching, CTF, Network Security</div></div>
+        <div class="dom-card"><div class="d-name">Energy</div><div class="d-areas">Power Grid, Optimal Power Flow</div></div>
+        <div class="dom-card"><div class="d-name">Mathematics</div><div class="d-areas">Formal Proof, Game Optimization</div></div>
+        <div class="dom-card"><div class="d-name">Robotics</div><div class="d-areas">PDDL Planning, Control Systems</div></div>
+        <div class="dom-card"><div class="d-name">Media &amp; Content</div><div class="d-areas">Video Editing, Audio, Dubbing, TTS</div></div>
+        <div class="dom-card"><div class="d-name">Software Eng.</div><div class="d-areas">ML Repro, DevOps, Bug Fix, Migration</div></div>
+      </div>
+
+      <!-- Difficulty Stratification -->
+      <div class="strat">
+        <div class="strat-label">Difficulty</div>
+        <div class="strat-bar">
+          <div class="strat-seg strat-core" style="width:20%;">Core 20%</div>
+          <div class="strat-seg strat-ext" style="width:50%;">Extended 50%</div>
+          <div class="strat-seg strat-extreme" style="width:30%;">Extreme 30%</div>
+        </div>
+        <div class="strat-legend">
+          <div class="strat-legend-item"><div class="strat-legend-dot" style="background:#bbb;"></div>Core &mdash; 17 tasks &middot; &lt;60 min</div>
+          <div class="strat-legend-item"><div class="strat-legend-dot" style="background:#666;"></div>Extended &mdash; 43 tasks &middot; 1-4 hours</div>
+          <div class="strat-legend-item"><div class="strat-legend-dot" style="background:#222;"></div>Extreme &mdash; 26 tasks &middot; &gt;4 hours</div>
+        </div>
+      </div>
+
+      <!-- Community Momentum -->
+      <div class="community">
+        <div class="comm-header">Community Momentum</div>
+        <div class="comm-row">
+          <div class="comm-stat">
+            <div class="comm-num">800+</div>
+            <div class="comm-label">Community Members</div>
+          </div>
+          <div class="comm-stat">
+            <div class="comm-num">180+</div>
+            <div class="comm-label">Contributors</div>
+          </div>
+          <div class="comm-stat">
+            <div class="comm-num">80%+</div>
+            <div class="comm-label">PhDs or Senior Professionals</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ BAR CHART ═══ -->
+  <div class="chart">
+    <div class="ch-hdr">
+      <div class="ch-title">Agent Performance &mdash; All Conditions <span style="font-weight:400;color:#aaa;text-transform:none;letter-spacing:0;font-size:8px;margin-left:6px;">5 trials &times; 84 tasks &times; 7 models</span></div>
+      <div class="ch-leg">
+        <div class="ch-leg-item"><div class="ch-leg-bar" style="background:#888;opacity:0.82;"></div>Without Skills</div>
+        <div class="ch-leg-item"><div class="ch-leg-bar" style="background:#888;opacity:0.22;"></div>With Skills (range)</div>
+        <div class="ch-leg-item"><div class="ch-leg-bar striped"></div>Self-Generated</div>
+        <div class="ch-leg-item" style="margin-left:2px;"><span style="font-size:7.5px;color:#aaa;">&#9650; Norm. Gain</span></div>
+      </div>
+    </div>
+
+    <div class="ch-models">
+      <!-- 1. Gemini Flash -->
+      <div class="ch-model">
+        <div class="ch-rank">1</div>
+        <div class="ch-model-info">
+          <span class="ch-model-name">Gemini CLI <span class="ch-model-var">Flash</span></span>
+          <span class="ch-model-dot" style="background:#4285F4;"></span>
+        </div>
+        <div class="ch-bars">
+          <div class="ch-main-track">
+            <div class="ch-bar-with" style="width:88.5%;background:#4285F4;"></div>
+            <div class="ch-bar-without" style="width:56.9%;background:#4285F4;"></div>
+            <div class="ch-bar-vals">31.3<span class="ci">&plusmn;3.0</span> &rarr; 48.7<span class="ci">&plusmn;3.1</span></div>
+          </div>
+        </div>
+        <div class="ch-ng">25.3%</div>
+      </div>
+
+      <!-- 2. Opus 4.5 -->
+      <div class="ch-model">
+        <div class="ch-rank">2</div>
+        <div class="ch-model-info">
+          <span class="ch-model-name">Claude Code <span class="ch-model-var">Opus 4.5</span></span>
+          <span class="ch-model-dot" style="background:#D97757;"></span>
+        </div>
+        <div class="ch-bars">
+          <div class="ch-main-track">
+            <div class="ch-bar-with" style="width:82.4%;background:#D97757;"></div>
+            <div class="ch-bar-without" style="width:40.0%;background:#D97757;"></div>
+            <div class="ch-bar-vals">22.0<span class="ci">&plusmn;2.8</span> &rarr; 45.3<span class="ci">&plusmn;2.5</span></div>
+          </div>
+          <div class="ch-gen-track">
+            <div class="ch-gen-fill" style="width:39.3%;"></div>
+            <span class="ch-gen-val" style="left:calc(39.3% + 4px);">21.6</span>
+          </div>
+        </div>
+        <div class="ch-ng">29.9%</div>
+      </div>
+
+      <!-- 3. GPT-5.2 -->
+      <div class="ch-model">
+        <div class="ch-rank">3</div>
+        <div class="ch-model-info">
+          <span class="ch-model-name">Codex <span class="ch-model-var">GPT-5.2</span></span>
+          <span class="ch-model-dot" style="background:#10A37F;"></span>
+        </div>
+        <div class="ch-bars">
+          <div class="ch-main-track">
+            <div class="ch-bar-with" style="width:81.3%;background:#10A37F;"></div>
+            <div class="ch-bar-without" style="width:55.6%;background:#10A37F;"></div>
+            <div class="ch-bar-vals">30.6<span class="ci">&plusmn;3.1</span> &rarr; 44.7<span class="ci">&plusmn;3.0</span></div>
+          </div>
+          <div class="ch-gen-track">
+            <div class="ch-gen-fill" style="width:45.5%;background:repeating-linear-gradient(-45deg, #10A37F 0px, #10A37F 2px, #a7f3d0 2px, #a7f3d0 4px);"></div>
+            <span class="ch-gen-val" style="left:calc(45.5% + 4px);">25.0</span>
+          </div>
+        </div>
+        <div class="ch-ng">20.3%</div>
+      </div>
+
+      <!-- 4. Opus 4.6 -->
+      <div class="ch-model">
+        <div class="ch-rank">4</div>
+        <div class="ch-model-info">
+          <span class="ch-model-name">Claude Code <span class="ch-model-var">Opus 4.6</span></span>
+          <span class="ch-model-dot" style="background:#D97757;"></span>
+        </div>
+        <div class="ch-bars">
+          <div class="ch-main-track">
+            <div class="ch-bar-with" style="width:80.9%;background:#D97757;"></div>
+            <div class="ch-bar-without" style="width:55.6%;background:#D97757;"></div>
+            <div class="ch-bar-vals">30.6<span class="ci">&plusmn;2.6</span> &rarr; 44.5<span class="ci">&plusmn;3.1</span></div>
+          </div>
+          <div class="ch-gen-track">
+            <div class="ch-gen-fill" style="width:58.2%;"></div>
+            <span class="ch-gen-val" style="left:calc(58.2% + 4px);">32.0</span>
+          </div>
+        </div>
+        <div class="ch-ng">20.0%</div>
+      </div>
+
+      <!-- 5. Gemini Pro -->
+      <div class="ch-model">
+        <div class="ch-rank">5</div>
+        <div class="ch-model-info">
+          <span class="ch-model-name">Gemini CLI <span class="ch-model-var">Pro</span></span>
+          <span class="ch-model-dot" style="background:#4285F4;"></span>
+        </div>
+        <div class="ch-bars">
+          <div class="ch-main-track">
+            <div class="ch-bar-with" style="width:74.9%;background:#4285F4;"></div>
+            <div class="ch-bar-without" style="width:50.2%;background:#4285F4;"></div>
+            <div class="ch-bar-vals">27.6<span class="ci">&plusmn;3.0</span> &rarr; 41.2<span class="ci">&plusmn;3.1</span></div>
+          </div>
+        </div>
+        <div class="ch-ng">18.8%</div>
+      </div>
+
+      <!-- 6. Sonnet 4.5 -->
+      <div class="ch-model">
+        <div class="ch-rank">6</div>
+        <div class="ch-model-info">
+          <span class="ch-model-name">Claude Code <span class="ch-model-var">Sonnet 4.5</span></span>
+          <span class="ch-model-dot" style="background:#D97757;"></span>
+        </div>
+        <div class="ch-bars">
+          <div class="ch-main-track">
+            <div class="ch-bar-with" style="width:57.8%;background:#D97757;"></div>
+            <div class="ch-bar-without" style="width:31.5%;background:#D97757;"></div>
+            <div class="ch-bar-vals">17.3<span class="ci">&plusmn;2.5</span> &rarr; 31.8<span class="ci">&plusmn;2.9</span></div>
+          </div>
+          <div class="ch-gen-track">
+            <div class="ch-gen-fill" style="width:27.6%;"></div>
+            <span class="ch-gen-val" style="left:calc(27.6% + 4px);">15.2</span>
+          </div>
+        </div>
+        <div class="ch-ng">17.5%</div>
+      </div>
+
+      <!-- 7. Haiku 4.5 -->
+      <div class="ch-model">
+        <div class="ch-rank">7</div>
+        <div class="ch-model-info">
+          <span class="ch-model-name">Claude Code <span class="ch-model-var">Haiku 4.5</span></span>
+          <span class="ch-model-dot" style="background:#D97757;"></span>
+        </div>
+        <div class="ch-bars">
+          <div class="ch-main-track">
+            <div class="ch-bar-with" style="width:50.4%;background:#D97757;"></div>
+            <div class="ch-bar-without" style="width:20.0%;background:#D97757;"></div>
+            <div class="ch-bar-vals">11.0<span class="ci">&plusmn;2.1</span> &rarr; 27.7<span class="ci">&plusmn;2.9</span></div>
+          </div>
+          <div class="ch-gen-track">
+            <div class="ch-gen-fill" style="width:20.0%;"></div>
+            <span class="ch-gen-val" style="left:calc(20.0% + 4px);">11.0</span>
+          </div>
+        </div>
+        <div class="ch-ng">18.8%</div>
+      </div>
+    </div>
+
+    <div class="ch-brands">
+      <span class="ch-brand"><span class="bd" style="background:#D97757;"></span>Claude Code</span>
+      <span class="ch-brand"><span class="bd" style="background:#4285F4;"></span>Gemini CLI</span>
+      <span class="ch-brand"><span class="bd" style="background:#10A37F;"></span>Codex</span>
+      <span class="ch-note">Normalized Gain = (with &minus; without) / (100 &minus; without) &middot; Method D &middot; 95% CIs</span>
+    </div>
+  </div>
+
+  <!-- ═══ SKILLS SUBSTITUTE FOR SCALE (Line Chart) ═══ -->
+  <div class="scale-section">
+    <div class="sc-hdr">
+      <div class="sc-title">Skills Substitute for Model Scale</div>
+      <div class="sc-leg">
+        <div class="sc-leg-item">
+          <svg width="10" height="10"><rect x="1" y="1" width="8" height="8" rx="1" fill="#d1d5db" stroke="#999" stroke-width="0.8"/></svg>
+          Without Skills
+        </div>
+        <div class="sc-leg-item">
+          <svg width="10" height="10"><circle cx="5" cy="5" r="4" fill="#86cfac" stroke="#3d9970" stroke-width="1"/></svg>
+          With Skills
+        </div>
+      </div>
+    </div>
+    <!--
+      Line chart: 4 Claude models ordered by size (Haiku → Opus 4.6)
+      Y range: score 0→y=205, score 50→y=15 (height=190)
+      y(s) = 205 - (s/50)*190
+      X positions: 150, 400, 650, 900
+    -->
+    <svg class="sc-chart-svg" viewBox="0 0 1000 260" xmlns="http://www.w3.org/2000/svg">
+      <!-- Y-axis grid lines -->
+      <line x1="80" y1="205" x2="940" y2="205" stroke="#e0e0e0" stroke-width="1"/>
+      <line x1="80" y1="167" x2="940" y2="167" stroke="#f0f0f0" stroke-width="0.5"/>
+      <line x1="80" y1="129" x2="940" y2="129" stroke="#f0f0f0" stroke-width="0.5"/>
+      <line x1="80" y1="91" x2="940" y2="91" stroke="#f0f0f0" stroke-width="0.5"/>
+      <line x1="80" y1="53" x2="940" y2="53" stroke="#f0f0f0" stroke-width="0.5"/>
+      <line x1="80" y1="15" x2="940" y2="15" stroke="#f0f0f0" stroke-width="0.5"/>
+
+      <!-- Y-axis labels -->
+      <text x="68" y="209" text-anchor="end" font-size="10" fill="#ccc" font-family="'JetBrains Mono',monospace">0</text>
+      <text x="68" y="171" text-anchor="end" font-size="10" fill="#ccc" font-family="'JetBrains Mono',monospace">10</text>
+      <text x="68" y="133" text-anchor="end" font-size="10" fill="#ccc" font-family="'JetBrains Mono',monospace">20</text>
+      <text x="68" y="95" text-anchor="end" font-size="10" fill="#ccc" font-family="'JetBrains Mono',monospace">30</text>
+      <text x="68" y="57" text-anchor="end" font-size="10" fill="#ccc" font-family="'JetBrains Mono',monospace">40</text>
+      <text x="68" y="19" text-anchor="end" font-size="10" fill="#ccc" font-family="'JetBrains Mono',monospace">50</text>
+
+      <!-- X-axis model labels -->
+      <text x="150" y="228" text-anchor="middle" font-size="12" fill="#555" font-family="Inter,sans-serif" font-weight="600">Haiku 4.5</text>
+      <text x="400" y="228" text-anchor="middle" font-size="12" fill="#555" font-family="Inter,sans-serif" font-weight="600">Sonnet 4.5</text>
+      <text x="650" y="228" text-anchor="middle" font-size="12" fill="#555" font-family="Inter,sans-serif" font-weight="600">Opus 4.5</text>
+      <text x="900" y="228" text-anchor="middle" font-size="12" fill="#555" font-family="Inter,sans-serif" font-weight="600">Opus 4.6</text>
+      <text x="525" y="247" text-anchor="middle" font-size="9" fill="#bbb" font-family="Inter,sans-serif">&#8592; smaller &middot; larger &#8594;</text>
+
+      <!-- Shaded area between the two lines (skill gain region) -->
+      <polygon points="150,100 400,84 650,33 900,36 900,89 650,121 400,139 150,163" fill="#e0f0e8" opacity="0.4"/>
+
+      <!-- Without Skills line (gray) -->
+      <polyline points="150,163 400,139 650,121 900,89" fill="none" stroke="#aaa" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- Without Skills square markers -->
+      <rect x="144" y="157" width="12" height="12" rx="2" fill="#d1d5db" stroke="#999" stroke-width="1"/>
+      <rect x="394" y="133" width="12" height="12" rx="2" fill="#d1d5db" stroke="#999" stroke-width="1"/>
+      <rect x="644" y="115" width="12" height="12" rx="2" fill="#d1d5db" stroke="#999" stroke-width="1"/>
+      <rect x="894" y="83" width="12" height="12" rx="2" fill="#d1d5db" stroke="#999" stroke-width="1"/>
+
+      <!-- With Skills line (muted green) -->
+      <polyline points="150,100 400,84 650,33 900,36" fill="none" stroke="#3d9970" stroke-width="2.5" stroke-linejoin="round"/>
+      <!-- With Skills circle markers -->
+      <circle cx="150" cy="100" r="6" fill="#86cfac" stroke="#3d9970" stroke-width="1.5"/>
+      <circle cx="400" cy="84" r="6" fill="#86cfac" stroke="#3d9970" stroke-width="1.5"/>
+      <circle cx="650" cy="33" r="6" fill="#86cfac" stroke="#3d9970" stroke-width="1.5"/>
+      <circle cx="900" cy="36" r="6" fill="#86cfac" stroke="#3d9970" stroke-width="1.5"/>
+
+      <!-- Score labels: Without (below squares) -->
+      <text x="150" y="183" text-anchor="middle" font-size="10" fill="#999" font-family="'JetBrains Mono',monospace" font-weight="600">11.0</text>
+      <text x="400" y="158" text-anchor="middle" font-size="10" fill="#999" font-family="'JetBrains Mono',monospace" font-weight="600">17.3</text>
+      <text x="650" y="141" text-anchor="middle" font-size="10" fill="#999" font-family="'JetBrains Mono',monospace" font-weight="600">22.0</text>
+      <text x="900" y="109" text-anchor="middle" font-size="10" fill="#999" font-family="'JetBrains Mono',monospace" font-weight="600">30.6</text>
+
+      <!-- Score labels: With (above circles) -->
+      <text x="150" y="90" text-anchor="middle" font-size="10" fill="#3d9970" font-family="'JetBrains Mono',monospace" font-weight="700">27.7</text>
+      <text x="400" y="74" text-anchor="middle" font-size="10" fill="#3d9970" font-family="'JetBrains Mono',monospace" font-weight="700">31.8</text>
+      <text x="650" y="23" text-anchor="middle" font-size="10" fill="#3d9970" font-family="'JetBrains Mono',monospace" font-weight="700">45.3</text>
+      <text x="900" y="26" text-anchor="middle" font-size="10" fill="#3d9970" font-family="'JetBrains Mono',monospace" font-weight="700">44.5</text>
+
+      <!-- Annotation 1: Haiku + Skills (27.7) beats Opus 4.5 without (22.0) -->
+      <rect x="265" y="115" width="220" height="17" rx="4" fill="#e0f0e8" opacity="0.95"/>
+      <text x="375" y="127" text-anchor="middle" font-size="9" fill="#3d9970" font-weight="700" font-family="Inter,sans-serif">Haiku + Skills (27.7) &gt; Opus 4.5 (22.0)</text>
+      <line x1="282" y1="115" x2="157" y2="104" stroke="#3d9970" stroke-width="1" opacity="0.4" stroke-dasharray="3,2"/>
+      <line x1="455" y1="126" x2="644" y2="121" stroke="#3d9970" stroke-width="1" opacity="0.4" stroke-dasharray="3,2"/>
+
+      <!-- Annotation 2: Sonnet + Skills (31.8) beats Opus 4.6 without (30.6) -->
+      <rect x="575" y="53" width="230" height="17" rx="4" fill="#e0f0e8" opacity="0.95"/>
+      <text x="690" y="65" text-anchor="middle" font-size="9" fill="#3d9970" font-weight="700" font-family="Inter,sans-serif">Sonnet + Skills (31.8) &gt; Opus 4.6 (30.6)</text>
+      <line x1="585" y1="61" x2="408" y2="84" stroke="#3d9970" stroke-width="1" opacity="0.4" stroke-dasharray="3,2"/>
+      <line x1="778" y1="66" x2="894" y2="89" stroke="#3d9970" stroke-width="1" opacity="0.4" stroke-dasharray="3,2"/>
+    </svg>
+  </div>
+
+  <!-- ═══ FOOTER ═══ -->
+  <div class="ftr">
+    <span class="ftr-left">skillsbench.ai</span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <span>github.com/benchflow-ai/skillsbench</span>
+      <span class="ftr-badge">Open Source</span>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

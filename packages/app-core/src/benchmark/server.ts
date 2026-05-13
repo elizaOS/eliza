@@ -23,6 +23,7 @@ import {
   clearCapturedAction,
   createBenchmarkPlugin,
   getCapturedAction,
+  getCapturedActions,
   setBenchmarkContext,
 } from "./plugin";
 import {
@@ -31,6 +32,8 @@ import {
   type BenchmarkSession,
   type BenchmarkTrajectoryStep,
   type BenchmarkTurnUsage,
+  benchmarkTurnMetadata,
+  capturedActionsToToolCalls,
   capturedActionToParams,
   coerceActions,
   coerceParams,
@@ -48,8 +51,6 @@ import {
   toPlugin,
 } from "./server-utils.js";
 
-// Load environment variables BEFORE anything else
-// This ensures API keys are available when plugins initialize.
 // `dotenv.config({ path: cwd/.env })` only finds the file when the bench server
 // is started from the repo root. When `ElizaServerManager` spawns us with
 // `cwd=packages/app-core`, there is no `.env` next to that directory — so the
@@ -346,7 +347,6 @@ async function collectSessionDiagnostics(
   };
 }
 
-// Proper robust server implementation
 export async function startBenchmarkServer() {
   const port = resolvePort();
   elizaLogger.info(
@@ -385,7 +385,7 @@ export async function startBenchmarkServer() {
   ]);
 
   // Skip `@elizaos/plugin-local-embedding` by default in benchmark mode:
-  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-lite-0_6b`
+  // - It downloads a ~500MB GGUF from `huggingface.co/elizaos/eliza-1-0_6b`
   //   on first `TEXT_EMBEDDING` call. The repo is gated/private, so every turn
   //   spams a 401 from HuggingFace.
   // - Benchmarks don't score on semantic retrieval, so a deterministic
@@ -494,7 +494,7 @@ export async function startBenchmarkServer() {
   // persisted memory; without ANY handler, those calls throw and abort the
   // turn. The benchmarks don't score retrieval, so a deterministic
   // 1024-dim zero vector is the right stub. Dimensions match the local-
-  // embedding default (eliza-1-lite-0_6b → 1024) so downstream code that
+  // embedding default (eliza-1-0_6b → 1024) so downstream code that
   // assumes that shape (vector columns sized at boot) still works.
   if (skipEmbeddingPlugin) {
     const EMBEDDING_DIMENSIONS = 1024;
@@ -518,9 +518,6 @@ export async function startBenchmarkServer() {
         "set ELIZA_BENCH_SKIP_EMBEDDING=0 to use @elizaos/plugin-local-embedding instead.",
     );
   }
-
-  // Trust is now a built-in core capability — enable via ENABLE_TRUST character setting.
-  // No need to load as a separate plugin.
 
   // Load LLM provider plugins based on environment.
   //
@@ -1022,7 +1019,6 @@ export async function startBenchmarkServer() {
   const sessions = new Map<string, BenchmarkSession>();
   let lastSessionKey: string | null = null;
 
-  // Session TTL eviction (R4)
   const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
   const SESSION_SWEEP_INTERVAL_MS = 60_000;
   const sessionCreatedAt = new Map<string, number>();
@@ -1263,11 +1259,6 @@ export async function startBenchmarkServer() {
         totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
         ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
       };
-
-      // Touch the backend so unused-import linters do not strip the
-      // LifeOpsFakeBackend type — and so future planner integrations can
-      // pre-warm the backend before action execution.
-      void (backend as LifeOpsFakeBackend);
 
       return { text: responseText, toolCalls, usage };
     },
@@ -1605,6 +1596,7 @@ export async function startBenchmarkServer() {
           const turnUsage = summarizeUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
+          const capturedActions = getCapturedActions();
 
           const responseText =
             typeof result.responseContent?.text === "string"
@@ -1626,6 +1618,12 @@ export async function startBenchmarkServer() {
             Object.keys(parsedParams).length > 0
               ? parsedParams
               : capturedActionToParams(capturedAction);
+          if (capturedActions.length > 1) {
+            params.BENCHMARK_ACTIONS = capturedActions
+              .map((action) => capturedActionToParams(action).BENCHMARK_ACTION)
+              .filter(Boolean);
+          }
+          const toolCalls = capturedActionsToToolCalls(capturedActions);
           const finishedAt = Date.now();
 
           trajectory.push({
@@ -1642,22 +1640,12 @@ export async function startBenchmarkServer() {
             usage: turnUsage,
           });
           trajectoriesBySession.set(key, trajectory);
+          const metadata = benchmarkTurnMetadata({
+            session,
+            step: trajectory.length,
+            context: benchmarkContext,
+          });
 
-          // Propagate Cerebras / OpenAI token-usage so the Python adapter
-          // (eliza_adapter.client.ElizaClient) can compute per-turn cost.
-          // Shape mirrors the lifeops_bench/message handler so adapter code
-          // reads either endpoint the same way (camelCase keys + nullable
-          // cacheRead/cacheCreation fields). W2-9 surfaced this as the cause
-          // of cost: $0.0000 on eliza runs — the bench server had the data
-          // (turnUsage from MODEL_USED events) but never forwarded it.
-          const usagePayload = {
-            promptTokens: turnUsage.promptTokens,
-            completionTokens: turnUsage.completionTokens,
-            totalTokens: turnUsage.totalTokens,
-            cacheReadInputTokens:
-              turnUsage.cachedTokens > 0 ? turnUsage.cachedTokens : null,
-            cacheCreationInputTokens: null,
-          };
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(
             JSON.stringify({
@@ -1665,7 +1653,10 @@ export async function startBenchmarkServer() {
               thought,
               actions,
               params,
-              usage: usagePayload,
+              captured_actions: capturedActions,
+              tool_calls: toolCalls,
+              usage: turnUsage,
+              metadata,
               benchmark: session.benchmark,
               task_id: session.taskId,
               room_id: session.roomId,

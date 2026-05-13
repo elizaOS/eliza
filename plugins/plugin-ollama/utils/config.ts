@@ -15,7 +15,7 @@ type SettingsProvider = {
 
 export const DEFAULT_OLLAMA_URL = "http://localhost:11434";
 export const DEFAULT_SMALL_MODEL = "eliza-1-2b";
-export const DEFAULT_LARGE_MODEL = "eliza-1-9b";
+export const DEFAULT_LARGE_MODEL = "eliza-1-4b";
 export const DEFAULT_EMBEDDING_MODEL = "eliza-1-2b";
 
 function getEnvValue(key: string): string | undefined {

@@ -11,14 +11,14 @@ import { recommendForFirstRun } from "./recommendation";
 import { localInferenceService } from "./service";
 
 describe("local inference catalog", () => {
-  it("ships exactly the 5 visible Eliza-1 tiers", () => {
+  it("ships exactly the visible Eliza-1 tiers", () => {
     const visible = MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog);
     expect(visible.map((m) => m.id).sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
   });
 
-  it("marks ONLY the 5 Eliza-1 tiers as default-eligible", () => {
+  it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
       [...ELIZA_1_TIER_IDS].sort(),
     );
@@ -44,11 +44,13 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses elizaos HuggingFace repos for every visible Eliza-1 tier", () => {
+  it("uses the single elizaOS HuggingFace repo for every visible Eliza-1 tier", () => {
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
-      expect(model.hfRepo).toBe(`elizaos/${model.id}`);
+      const tier = model.id.slice("eliza-1-".length);
+      expect(model.hfRepo).toBe("elizaos/eliza-1");
+      expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
       expect(buildHuggingFaceResolveUrl(model)).toContain(
-        `/elizaos/${model.id}/resolve/main/`,
+        `/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
       );
     }
   });
@@ -88,15 +90,17 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B/1.7B = 32k, 9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B/2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_6b": 32768,
-      "eliza-1-1_7b": 32768,
+      "eliza-1-0_8b": 32768,
+      "eliza-1-2b": 32768,
+      "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
+      "eliza-1-27b-1m": 1_048_576,
     };
     for (const [id, expectedLength] of Object.entries(expected)) {
       const model = findCatalogModel(id);
@@ -183,8 +187,50 @@ describe("local inference catalog", () => {
       expect(drafter.hiddenFromCatalog).toBe(true);
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
       expect(drafter.companionForModelId).toBeTruthy();
-      expect(drafter.tokenizerFamily).toBe("eliza1");
+      expect(drafter.tokenizerFamily).toBe("qwen35");
     }
+  });
+
+  it("declares the text quantization matrix and voice boundary by tier", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const model = findCatalogModel(id);
+      expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
+      expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
+        "q4_k_m",
+        "q6_k",
+        "q8_0",
+      ]);
+    }
+
+    expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
+      "kokoro",
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b-1m")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+  });
+
+  it("records 27b-1m text source provenance (vision shipped only on 4b/9b/27b/27b-256k)", () => {
+    const model = findCatalogModel("eliza-1-27b-1m");
+    expect(model?.sourceModel?.finetuned).toBe(false);
+    const components = model?.sourceModel?.components;
+    expect(components?.text).toEqual({
+      repo: "elizaos/eliza-1",
+      file: "bundles/27b-1m/text/eliza-1-27b-1m.gguf",
+    });
+    // Vision is intentionally omitted from the 1m tier because the KV-cache
+    // budget at that window is the constraint.
+    expect(components?.vision).toBeUndefined();
   });
 
   it("does not leak implementation-family names in visible catalog copy", () => {

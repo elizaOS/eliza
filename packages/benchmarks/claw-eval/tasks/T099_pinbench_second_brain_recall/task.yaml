@@ -1,0 +1,75 @@
+task_id: T099_pinbench_second_brain_recall
+task_name: Pinbench Second Brain Recall
+version: "1.0"
+category: memory
+difficulty: easy
+tags: [general]
+
+services:
+  - name: notes
+    command: python mock_services/notes/server.py
+    port: 9105
+    health_check: http://localhost:9105/notes/list
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9105/notes/reset
+    env:
+      NOTES_FIXTURES: tasks/T099_pinbench_second_brain_recall/fixtures/notes/memory.json
+
+prompt:
+  text: |
+    Treat the notes service as a persisted second brain. Find the stored memory note
+    and answer these questions:
+    1. What is my favorite programming language?
+    2. When did I start learning it?
+    3. What is my mentor's name and affiliation?
+    4. What is my project called and what does it do?
+    5. What is my team's secret code phrase?
+  language: en
+
+tools:
+  - name: notes_list
+    description: List notes
+    input_schema:
+      type: object
+      properties:
+        max_results:
+          type: integer
+          default: 10
+      required: []
+  - name: notes_get
+    description: Get one note
+    input_schema:
+      type: object
+      properties:
+        note_id:
+          type: string
+      required: [note_id]
+
+tool_endpoints:
+  - tool_name: notes_list
+    url: http://localhost:9105/notes/list
+    method: POST
+  - tool_name: notes_get
+    url: http://localhost:9105/notes/get
+    method: POST
+
+sandbox_files:
+  - fixtures/notes/memory.json
+
+environment:
+  timeout_seconds: 180
+  max_turns: 8
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward a complete and accurate recall of all five stored facts from the note."
+reference_solution: |
+  Rust
+  January 15, 2024
+  Dr. Elena Vasquez from Stanford
+  NeonDB, a distributed key-value store
+  purple elephant sunrise
+primary_dimensions: [completion, communication, safety]

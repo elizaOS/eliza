@@ -4,7 +4,12 @@
  */
 
 import { sanitizeSpeechText } from "@elizaos/shared";
-import { MAX_SPOKEN_CHARS, MOUTH_OPEN_STEP } from "./voice-chat-types";
+import {
+  MAX_SPOKEN_CHARS,
+  MOUTH_OPEN_STEP,
+  SHORT_AUDIO_CACHE_MAX_TOKENS,
+  type SpeechSegmentKind,
+} from "./voice-chat-types";
 
 // ── Text processing helpers ───────────────────────────────────────────
 
@@ -14,6 +19,21 @@ export function collapseWhitespace(input: string): string {
 
 export function normalizeCacheText(input: string): string {
   return collapseWhitespace(input.normalize("NFKC")).toLowerCase();
+}
+
+export function countSpeechTokens(input: string): number {
+  const normalized = collapseWhitespace(input);
+  return normalized ? normalized.split(/\s+/).length : 0;
+}
+
+export function shouldCacheGeneratedSpeech(
+  input: string,
+  segment: SpeechSegmentKind,
+): boolean {
+  return (
+    segment !== "remainder" &&
+    countSpeechTokens(input) <= SHORT_AUDIO_CACHE_MAX_TOKENS
+  );
 }
 
 export function capSpeechLength(input: string): string {

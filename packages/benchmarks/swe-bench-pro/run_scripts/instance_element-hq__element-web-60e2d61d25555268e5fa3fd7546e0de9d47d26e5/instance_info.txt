@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-60e2d61d25555268e5fa3fd7546e0de9d47d26e5
+Repository: element-hq/element-web
+Base Commit: de01dcfd26278e74c71676869504162b44f10359
+Test Files: ["test/TextForEvent-test.ts", "/app/test/TextForEvent-test.ts"]
+FAIL_TO_PASS: ["/app/test/TextForEvent-test.ts | TextForEvent | TextForPinnedEvent | mentions message when a single message was pinned, with no previously pinned messages", "/app/test/TextForEvent-test.ts | TextForEvent | TextForPinnedEvent | mentions message when a single message was pinned, with multiple previously pinned messages", "/app/test/TextForEvent-test.ts | TextForEvent | TextForPinnedEvent | mentions message when a single message was unpinned, with a single message previously pinned", "/app/test/TextForEvent-test.ts | TextForEvent | TextForPinnedEvent | mentions message when a single message was unpinned, with multiple previously pinned messages"]
+PASS_TO_PASS: ["/app/test/TextForEvent-test.ts | TextForEvent | TextForPinnedEvent | shows generic text when multiple messages were pinned", "/app/test/TextForEvent-test.ts | TextForEvent | TextForPinnedEvent | shows generic text when multiple messages were unpinned", "/app/test/TextForEvent-test.ts | TextForEvent | TextForPinnedEvent | shows generic text when one message was pinned, and another unpinned"]

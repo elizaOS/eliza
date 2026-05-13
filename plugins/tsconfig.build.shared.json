@@ -31,6 +31,10 @@
         "../packages/agent/dist/packages/agent/src/index.d.ts"
       ],
       "@elizaos/agent/*": ["../packages/agent/dist/packages/agent/src/*"],
+      "@elizaos/plugin-discord": [
+        "./plugin-discord/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-discord/*": ["./plugin-discord/dist/*"],
       "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
       "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],
       "@elizaos/plugin-elizacloud": [

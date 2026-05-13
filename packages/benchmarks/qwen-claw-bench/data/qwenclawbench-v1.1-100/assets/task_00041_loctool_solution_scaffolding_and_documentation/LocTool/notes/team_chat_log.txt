@@ -1,0 +1,86 @@
+===============================================
+ LocTool Team Chat — #dev-loctool channel
+ Exported: 2024-02-15
+===============================================
+
+[2024-02-12 09:14:23] Alex Torres:
+Hey team, quick question about the project setup. I've been looking at the target framework and I think we should just use `net8.0` as the target. WPF works fine without the `-windows` suffix now. Microsoft has been moving toward unifying the TFMs and the windows-specific one is mostly legacy at this point.
+
+[2024-02-12 09:16:45] Jordan Kim:
+Oh interesting, I didn't know that. That would simplify things. We wouldn't need to worry about the platform-specific targeting.
+
+[2024-02-12 09:18:02] Alex Torres:
+Yeah exactly. I tested it locally and the project created fine with just `net8.0`. Builds without issues.
+
+[2024-02-12 09:22:31] Jordan Kim:
+Also, while we're simplifying — do we really need the whole DI container setup? I was looking at the requirements and it seems like overkill for a desktop app. We could just use a static service locator pattern, it's simpler and we don't need to pull in Microsoft.Extensions.DependencyInjection at all.
+
+[2024-02-12 09:24:15] Alex Torres:
+That's a good point. A static ServiceLocator class with lazy initialization would be way simpler. Less ceremony, less configuration. We can always refactor to proper DI later if we need to.
+
+[2024-02-12 09:25:48] Jordan Kim:
+Agreed. Let's go with `net8.0` and a static service locator. I'll update the project files.
+
+[2024-02-12 09:27:03] Alex Torres:
+Sounds good. Also for EPPlus, I saw there's a newer version but 5.x should be fine. Let's not upgrade unless we have to.
+
+[2024-02-12 09:28:19] Jordan Kim:
+Makes sense. The 5.x API is stable and well-documented. No need to chase the latest version.
+
+[2024-02-12 09:30:44] Alex Torres:
+Perfect. I'll start setting up the solution with these changes. Should have a PR up by end of day.
+
+[2024-02-12 09:31:12] Jordan Kim:
+👍 Great, I'll review it when it's ready.
+
+---
+
+[2024-03-14 14:22:11] Sarah Chen:
+Team, I've reviewed the Sprint 7 package version updates and uploaded the new registry file to config/. The key changes are bumping EPPlus to 7.1.0 for the conditional formatting support and updating the test framework packages. I also added Microsoft.Extensions.Logging.Abstractions to Core so we can start injecting ILogger<T> into our services.
+
+[2024-03-14 14:24:33] Alex Torres:
+Great, I saw the new file. The DI patch (8.0.1) is a good call too — that thread-safety fix was causing intermittent test failures in CI.
+
+[2024-03-14 14:26:18] Jordan Kim:
+Should the new dev starting next week use the Sprint 7 versions or the old ones?
+
+[2024-03-14 14:27:45] Sarah Chen:
+The Sprint 7 registry is the one to use going forward. I've already validated it locally — everything builds and tests pass. We just need to run it through the CI pipeline for final sign-off before we update the requirements doc.
+
+[2024-03-14 14:29:03] Alex Torres:
+Makes sense. I'll update the onboarding docs once CI is green. By the way, the CommunityToolkit.Mvvm 8.3.0 bump — the partial property source gen looks really useful for our ViewModels.
+
+[2024-03-14 14:30:22] Sarah Chen:
+Already included in the Sprint 7 update. Check the registry — it's all there.
+
+[2024-03-14 14:31:08] Jordan Kim:
+Perfect. One less thing to worry about for the new dev setup.
+
+---
+
+[2024-03-18 10:15:33] Sarah Chen:
+Quick update — I've finalized the refreshed package version registry and pushed it to config/. This is now the production baseline going forward. Everything has been reviewed and approved by the architecture board. Make sure the new dev starting next week uses these versions, not the older ones.
+
+[2024-03-18 10:17:12] Alex Torres:
+Roger that. I'll update the architecture docs to match the new package versions right away.
+
+[2024-03-18 10:18:45] Jordan Kim:
+Done — architecture diagram updated with all the refreshed package versions. The DI patch, EPPlus bump, and MVVM 8.3.0 are all reflected now.
+
+[2024-03-18 10:20:03] Sarah Chen:
+Perfect. The new dev should reference the architecture diagram and the latest registry file for the exact versions. Everything should be consistent now.
+
+---
+
+[2024-03-20 16:05:22] Sarah Chen:
+Heads up — the canonical version registry is now `draft_nuget_versions.json` in the config folder. I know the name says "draft" but that's just a leftover from before it was finalized. The metadata inside correctly shows "production-baseline" status. Please ignore `nuget_versions.json` — that's the old Sprint 6 file that hasn't been updated yet. I'll rename things properly in the repo cleanup next week but for now the new dev should use the file with "draft" in the name.
+
+[2024-03-20 16:07:41] Alex Torres:
+Confirmed — I just double-checked and `draft_nuget_versions.json` has the DI 8.0.1 patch, the logging abstractions addition, and all the test package bumps. The addendum doc references this file too. I'll point the onboarding notes here.
+
+[2024-03-20 16:09:15] Jordan Kim:
+Got it. Updated my local setup to match. Everything builds clean.
+
+===============================================
+ End of exported chat log
+===============================================

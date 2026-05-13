@@ -73,7 +73,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain("contextsarray ::=");
 	});
 
-	it("drops shouldRespond on direct channels (DM/API/VOICE_DM/SELF)", () => {
+	it("drops shouldRespond on non-voice direct channels (DM/API/SELF)", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
@@ -87,6 +87,18 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			value: '{"thought":',
 		});
 		expect(grammar).not.toContain("shouldrespond ::=");
+	});
+
+	it("keeps shouldRespond on voice channels", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton, grammar } = buildResponseGrammar(
+			{ actions: [] },
+			{ contexts: ["general"], channelType: "VOICE_DM" },
+		);
+		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
+			true,
+		);
+		expect(grammar).toContain("shouldrespond ::=");
 	});
 
 	it("always merges `simple` and `general` into the contexts element enum", () => {
@@ -116,6 +128,38 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		// The literal is in the grammar root, not as a sampled enum rule.
 		expect(grammar).not.toContain("fieldenum_");
 		expect(grammar).toContain('"\\"ONLY\\""');
+	});
+
+	it("preserves multi-value string field enums as enum spans for prefix shortcuts", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton, grammar } = buildResponseGrammar(
+			{
+				actions: [],
+				responseHandlerFields: [
+					field({
+						name: "shouldRespond",
+						priority: 5,
+						schema: { type: "string", enum: ["RESPOND", "IGNORE", "STOP"] },
+					}),
+					field({
+						name: "replyText",
+						priority: 20,
+						schema: { type: "string" },
+					}),
+				],
+			},
+			{ contexts: ["general"] },
+		);
+		const shouldRespondSpan = responseSkeleton.spans.find(
+			(span) => span.key === "shouldRespond",
+		);
+		expect(shouldRespondSpan).toMatchObject({
+			kind: "enum",
+			enumValues: ["RESPOND", "IGNORE", "STOP"],
+		});
+		expect(grammar).toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
 	});
 
 	it("uses the field-registry envelope when registered fields are present", () => {

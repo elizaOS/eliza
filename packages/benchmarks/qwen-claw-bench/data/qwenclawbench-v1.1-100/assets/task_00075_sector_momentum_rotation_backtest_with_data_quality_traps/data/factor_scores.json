@@ -1,0 +1,36 @@
+{
+  "report_period": "2024-Q1",
+  "factor_scores": {
+    "XLK": {
+      "value": 0.35,
+      "growth": 0.82,
+      "quality": 0.71
+    },
+    "XLF": {
+      "value": 0.68,
+      "growth": 0.41,
+      "quality": 0.55
+    },
+    "XLE": {
+      "value": 0.52,
+      "growth": 0.28,
+      "quality": 0.63
+    },
+    "XLV": {
+      "value": 0.44,
+      "growth": 0.39,
+      "quality": 0.78
+    },
+    "XLI": {
+      "value": 0.57,
+      "growth": 0.55,
+      "quality": 0.6
+    },
+    "XLY": {
+      "value": 0.4,
+      "growth": 0.65,
+      "quality": 0.48
+    }
+  },
+  "note": "Factor scores are for informational purposes. The momentum strategy does not use fundamental factors."
+}

@@ -22,7 +22,15 @@
     "emitDeclarationOnly": true,
     "resolveJsonModule": true,
     "moduleDetection": "force",
-    "allowArbitraryExtensions": true
+    "allowArbitraryExtensions": true,
+    "paths": {
+      "@elizaos/core": [
+        "../../packages/core/src/index.node.ts"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../plugin-local-inference/src/index.ts"
+      ]
+    }
   },
   "include": [
     "src/**/*.ts"

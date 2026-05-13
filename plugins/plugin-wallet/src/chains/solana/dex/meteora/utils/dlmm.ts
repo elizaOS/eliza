@@ -1,12 +1,15 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 // Shared DLMM module export to avoid bundler issues
-import DLMMDefault from "@meteora-ag/dlmm";
+import DLMMDefault, { autoFillYByStrategy, StrategyType } from "@meteora-ag/dlmm";
 
-export { autoFillYByStrategy, StrategyType } from "@meteora-ag/dlmm";
+export type { LbPosition } from "@meteora-ag/dlmm";
+export { autoFillYByStrategy, StrategyType };
+
+type DLMMConstructor = typeof DLMMDefault;
+type DLMMModule = DLMMConstructor | { default: DLMMConstructor };
 
 // Handle both ESM and CommonJS default exports
-// @ts-expect-error - TypeScript doesn't understand this pattern
-const DLMM = DLMMDefault.default || DLMMDefault;
+const dlmmModule = DLMMDefault as DLMMModule;
+const DLMM: DLMMConstructor = "default" in dlmmModule ? dlmmModule.default : dlmmModule;
 
 // Re-export the default as DLMM
 export { DLMM };

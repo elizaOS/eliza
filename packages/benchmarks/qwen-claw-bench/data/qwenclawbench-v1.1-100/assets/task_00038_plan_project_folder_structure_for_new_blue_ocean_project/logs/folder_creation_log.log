@@ -1,0 +1,25 @@
+[2025-03-25 09:14:22] [INFO] Folder creation service started. Version 3.2.1
+[2025-03-25 09:14:24] [INFO] Authenticating user: li.jianhua@company.com
+[2025-03-25 09:14:25] [INFO] User authenticated successfully. Session ID: 8a3f-c291-4e7b
+[2025-03-25 09:14:27] [INFO] Request received: Create project folder structure for 04TK25001C
+[2025-03-25 09:14:29] [INFO] Checking existing folder: D:\My Projects\2025 Projects\
+[2025-03-25 09:14:30] [INFO] Year folder '2025 Projects' already exists. Skipping creation.
+[2025-03-25 09:14:32] [INFO] Creating folder: D:\My Projects\2025 Projects\04TK25001C-Evergreen Energy LNG Receiving Terminal
+[2025-03-25 09:14:34] [INFO] Creating subfolder: 01_Project_Management
+[2025-03-25 09:14:35] [INFO] Creating subfolder: 02_Design_Documents
+[2025-03-25 09:14:36] [INFO] Creating subfolder: 03_Calculations
+[2025-03-25 09:14:37] [INFO] Creating subfolder: 04_Drawings
+[2025-03-25 09:14:38] [INFO] Creating subfolder: 05_Procurement
+[2025-03-25 09:14:39] [WARN] Disk space on D: drive is at 72% capacity (1.84 TB used of 2.56 TB)
+[2025-03-25 09:14:40] [INFO] Creating subfolder: 06_Correspondence
+[2025-03-25 09:14:41] [INFO] Creating subfolder: 07_Meeting_Minutes
+[2025-03-25 09:14:42] [INFO] Creating subfolder: 08_Quality_Control
+[2025-03-25 09:14:43] [INFO] Creating subfolder: 09_Deliverables
+[2025-03-25 09:14:44] [INFO] Creating subfolder: 10_Archive
+[2025-03-25 09:14:46] [INFO] README.md template copied to project root.
+[2025-03-25 09:14:48] [INFO] Folder structure for 04TK25001C created successfully. 10 subfolders initialized.
+[2025-03-25 09:14:52] [WARN] Permission inheritance check: 2 subfolders have non-standard ACLs. Review recommended.
+[2025-03-25 09:15:07] [INFO] Backup job triggered for D:\My Projects\2025 Projects\
+[2025-03-25 09:16:22] [ERROR] Backup job failed: Network path \\backup-srv01\projects$ unreachable. Retrying in 60s.
+[2025-03-25 09:17:27] [INFO] Backup job retry successful. 387 files synchronized.
+[2025-03-25 09:17:32] [INFO] Folder creation service idle. Awaiting next request.

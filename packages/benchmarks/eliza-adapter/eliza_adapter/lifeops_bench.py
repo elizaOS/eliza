@@ -20,6 +20,7 @@ This adapter mirrors the canonical pattern in
 from __future__ import annotations
 
 import logging
+import os
 import uuid
 from typing import Any, Awaitable, Callable
 
@@ -56,7 +57,26 @@ def build_lifeops_bench_agent_fn(
     """
     from eliza_lifeops_bench.types import MessageTurn  # noqa: WPS433 — lazy
 
-    bridge = client or ElizaClient()
+    server_manager = None
+    if client is not None:
+        bridge = client
+    else:
+        bridge = ElizaClient()
+        harness = (
+            os.environ.get("ELIZA_BENCH_HARNESS")
+            or os.environ.get("BENCHMARK_HARNESS")
+            or "eliza"
+        ).strip().lower()
+        if (
+            getattr(bridge, "_delegate", None) is None
+            and not os.environ.get("ELIZA_BENCH_URL")
+            and harness in {"", "eliza"}
+        ):
+            from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
+
+            server_manager = ElizaServerManager()
+            server_manager.start()
+            bridge = server_manager.client
     task_id: str | None = None
     reset_done = False
     bridge.wait_until_ready(timeout=120)
@@ -180,6 +200,9 @@ def build_lifeops_bench_agent_fn(
             setattr(turn, "model_name", model_name)
         return turn
 
+    # Keep the subprocess manager alive for as long as the returned callable
+    # is alive. The manager also registers atexit cleanup.
+    setattr(_agent_fn, "_eliza_server_manager", server_manager)
     return _agent_fn
 
 

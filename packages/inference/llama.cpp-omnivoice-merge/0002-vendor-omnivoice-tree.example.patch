@@ -1,0 +1,52 @@
+From: Eliza Phase E <noreply@elizaos.dev>
+Subject: [PATCH 2/3] llama.cpp: vendor omnivoice tree under tools/omnivoice (example)
+Date: 2026-05-12
+
+EXAMPLE PATCH — do not apply directly. Vendors omnivoice.cpp's src/,
+tools/, and public header into llama.cpp/tools/omnivoice/, dropping
+the bundled ggml/ submodule (the merged build uses llama.cpp's GGML).
+
+Files relocated (exact list, no content edits in this patch):
+
+  omnivoice.cpp/src/audio-io.h               -> tools/omnivoice/src/audio-io.h
+  omnivoice.cpp/src/audio-postproc.h         -> tools/omnivoice/src/audio-postproc.h
+  omnivoice.cpp/src/audio-postproc-stream.h  -> tools/omnivoice/src/audio-postproc-stream.h
+  omnivoice.cpp/src/audio-resample.h         -> tools/omnivoice/src/audio-resample.h
+  omnivoice.cpp/src/bpe.h                    -> tools/omnivoice/src/bpe.h
+  omnivoice.cpp/src/dac-decoder.h            -> tools/omnivoice/src/dac-decoder.h
+  omnivoice.cpp/src/dac-encoder.h            -> tools/omnivoice/src/dac-encoder.h
+  omnivoice.cpp/src/debug.h                  -> tools/omnivoice/src/debug.h
+  omnivoice.cpp/src/duration-estimator.h     -> tools/omnivoice/src/duration-estimator.h
+  omnivoice.cpp/src/gguf-weights.h           -> tools/omnivoice/src/gguf-weights.h
+  omnivoice.cpp/src/hubert-enc.h             -> tools/omnivoice/src/hubert-enc.h
+  omnivoice.cpp/src/lang-map.h               -> tools/omnivoice/src/lang-map.h
+  omnivoice.cpp/src/maskgit-tts.h            -> tools/omnivoice/src/maskgit-tts.h
+  omnivoice.cpp/src/omnivoice-llm.h          -> tools/omnivoice/src/omnivoice-llm.h
+  omnivoice.cpp/src/omnivoice.cpp            -> tools/omnivoice/src/omnivoice.cpp
+  omnivoice.cpp/src/omnivoice.h              -> tools/omnivoice/include/omnivoice.h
+  omnivoice.cpp/src/ov-error.h               -> tools/omnivoice/src/ov-error.h
+  omnivoice.cpp/src/philox.h                 -> tools/omnivoice/src/philox.h
+  omnivoice.cpp/src/pipeline-codec.cpp       -> tools/omnivoice/src/pipeline-codec.cpp
+  omnivoice.cpp/src/pipeline-codec.h         -> tools/omnivoice/src/pipeline-codec.h
+  omnivoice.cpp/src/pipeline-tts.cpp         -> tools/omnivoice/src/pipeline-tts.cpp
+  omnivoice.cpp/src/pipeline-tts.h           -> tools/omnivoice/src/pipeline-tts.h
+  omnivoice.cpp/src/prompt-tts.h             -> tools/omnivoice/src/prompt-tts.h
+  omnivoice.cpp/src/qwen3-enc.h              -> tools/omnivoice/src/qwen3-enc.h
+  omnivoice.cpp/src/rvq-codec.h              -> tools/omnivoice/src/rvq-codec.h
+  omnivoice.cpp/src/semantic-enc.h           -> tools/omnivoice/src/semantic-enc.h
+  omnivoice.cpp/src/text-chunker.h           -> tools/omnivoice/src/text-chunker.h
+  omnivoice.cpp/src/text-chunker-stream.h    -> tools/omnivoice/src/text-chunker-stream.h
+  omnivoice.cpp/src/voice-design.h           -> tools/omnivoice/src/voice-design.h
+  omnivoice.cpp/tools/omnivoice-codec.cpp    -> tools/omnivoice/tools/omnivoice-codec.cpp
+  omnivoice.cpp/tools/omnivoice-tts.cpp      -> tools/omnivoice/tools/omnivoice-tts.cpp
+  omnivoice.cpp/tools/quantize.cpp           -> tools/omnivoice/tools/quantize.cpp
+  omnivoice.cpp/tools/version.cmake          -> tools/omnivoice/cmake/version.cmake
+  omnivoice.cpp/tests/abi-c.c                -> tools/omnivoice/tests/abi-c.c
+
+Plus a new tools/omnivoice/CMakeLists.txt defining omnivoice_lib,
+omnivoice (SHARED), omnivoice-tts, omnivoice-codec, test-abi-c targets.
+
+[diff body omitted — this is the example shape; full diff will be
+produced by `git format-patch` against the upstream branch.]
+--
+2.42.0

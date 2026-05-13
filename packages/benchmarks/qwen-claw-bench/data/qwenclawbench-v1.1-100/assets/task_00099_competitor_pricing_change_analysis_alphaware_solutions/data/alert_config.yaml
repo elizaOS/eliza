@@ -1,0 +1,99 @@
+# SiteWatch Pro v3.2.1 — Monitoring Configuration
+# Last modified: 2024-06-01 by ops-admin@ourcompany.example.com
+
+monitoring:
+  check_interval: "6h"
+  max_retries: 3
+  retry_delay_seconds: 300
+  timeout_seconds: 30
+  user_agent: "SiteWatch Pro/3.2.1 (Monitoring Bot)"
+
+alert_channels:
+  - type: slack
+    webhook_url: "https://hooks.slack.example.com/services/T0XXXX/B0XXXX/xxxxxxxxxxx"
+    channel: "#competitive-intel-alerts"
+    mention_on_high_significance: "@channel"
+    enabled: true
+  - type: email
+    recipients:
+      - competitive-intel@ourcompany.example.com
+      - product-strategy@ourcompany.example.com
+      - vp-product@ourcompany.example.com
+    subject_prefix: "[SiteWatch Alert]"
+    enabled: true
+  - type: pagerduty
+    integration_key: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    enabled: false
+
+sensitivity: medium
+significance_thresholds:
+  low: 0.0
+  medium: 0.3
+  high: 0.7
+  critical: 0.9
+
+ignore_patterns:
+  - "*.js"
+  - "*.css"
+  - "*.woff"
+  - "*.woff2"
+  - "tracking pixels"
+  - "analytics scripts"
+  - "cookie consent banners"
+  - "session tokens"
+
+monitored_domains:
+  - domain: "www.alphaware-solutions.example.com"
+    pages:
+      - "/pricing"
+      - "/features"
+      - "/about"
+      - "/blog"
+    priority: high
+  - domain: "www.betaflow.example.com"
+    pages:
+      - "/pricing"
+      - "/product"
+    priority: high
+  - domain: "www.nimbus-workspace.example.com"
+    pages:
+      - "/pricing"
+      - "/features"
+    priority: high
+  - domain: "www.taskforgepro.example.com"
+    pages:
+      - "/pricing"
+      - "/product/ai"
+    priority: medium
+  - domain: "www.collabsync.example.com"
+    pages:
+      - "/pricing"
+      - "/solutions"
+    priority: medium
+  - domain: "www.projecthive.example.com"
+    pages:
+      - "/pricing"
+    priority: low
+  - domain: "www.workvault.example.com"
+    pages:
+      - "/pricing"
+      - "/enterprise"
+    priority: low
+  - domain: "www.teamcanvas.example.com"
+    pages:
+      - "/pricing"
+    priority: low
+
+storage:
+  backend: s3
+  bucket: "sitewatch-snapshots-prod"
+  region: "us-east-1"
+  retention_days: 365
+  screenshot_format: png
+  diff_format: json
+
+logging:
+  level: INFO
+  output: "/var/log/sitewatch/monitor.log"
+  rotate: daily
+  max_files: 90

@@ -1,0 +1,10 @@
+Variable Correlation Notes (preliminary EDA)
+==================================================
+
+- log_assets and employees_thousands: moderate positive (~0.35)
+- leverage and roa: weak negative (~-0.15)
+- rd_intensity and industry: varies by sector
+- revenue_growth_pct shows structural break around 2020 for treated firms
+- Pre-trend check: no significant differential trends 2015-2019
+
+Note: Run formal parallel trends test before interpreting DID.

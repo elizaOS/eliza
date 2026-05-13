@@ -58,7 +58,7 @@ The 4 zero scenarios:
 
 ### openclaw (14 zero, 11 partial)
 
-OpenClaw's W1-11 fix (parse unclosed `<tool_call>`) is engaging — it emits structured tools like `CALENDAR_SEARCH_EVENTS`, `CALENDAR_CHECK_AVAILABILITY`, `CALENDAR_NEXT_EVENT`, `CALENDAR_PROPOSE_TIMES`, etc. Some of these are mixed with raw `CALENDAR` umbrella calls.
+OpenClaw's W1-11 legacy text-tool parser fix is engaging — it emits structured tools like `CALENDAR_SEARCH_EVENTS`, `CALENDAR_CHECK_AVAILABILITY`, `CALENDAR_NEXT_EVENT`, `CALENDAR_PROPOSE_TIMES`, etc. Some of these are mixed with raw `CALENDAR` umbrella calls. Current Eliza-native comparisons should prefer OpenAI-compatible `tool_calls` rather than text-embedded tool-call protocols.
 
 The 11 partials cap at 0.80 with the same intent-kwarg issue as hermes.
 

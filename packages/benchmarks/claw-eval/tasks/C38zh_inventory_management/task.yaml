@@ -1,0 +1,155 @@
+task_id: C38zh_inventory_management
+task_name: 库存管理
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我手头有最近几个月的销量数据，中间有一个月做了活动冲了一波量，现在要定下个月的订货量，有没有什么简单的方法能算出一个比较靠谱的备货数？我不会用什么Python，就Excel水平
+  language: zh
+tools:
+- name: Bash
+  description: 在沙箱环境中执行 shell 命令（如 python3 -c "..."），返回 stdout/stderr。适合进行精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+        description: 要执行的 shell 命令
+      timeout_seconds:
+        type: integer
+        description: 超时时间（秒），默认30
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询库存管理方法、安全库存公式等信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+        description: 搜索关键词或查询语句
+      max_results:
+        type: integer
+        description: 最大返回结果数
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定URL的完整网页内容，提取正文文字。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+        description: 要获取的网页URL
+      timeout_seconds:
+        type: integer
+        description: 请求超时时间（秒）
+        default: 30
+    required:
+    - url
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一个开了快六年小餐饮店的老板，店不大，十来张桌子，雇了五六个人，你既是老板也是半个店长，采购、排班、处理客诉什么都得管。疫情那几年生意难做，你被逼着在淘宝和拼多多上开了家网店，卖自家秘制的辣酱和几款地方特产，没想到慢慢做出了点销量，现在线上这块反而成了你越来越上心的事。每天除了盯餐厅，还得花不少时间看店铺后台数据、优化商品详情页、回复买家咨询、协调发货。你完全不懂技术，手机是你最主要的工具，电脑也就登个后台看看报表，什么代码、程序对你来说跟天书一样，所有东西都靠界面上点来点去完成。
+
+
+    今天店里倒没特别忙，但下午一个老顾客因为外卖漏了一份小菜，在电话里发了好大的火，你赔笑赔了半天，还多送了一份才平息下来，心里有点堵但也不知道找谁说。晚上关了店回到家，老婆孩子都睡了，你一个人窝在沙发上刷手机，习惯性地点开了店铺后台——最近那款招牌辣酱的销量连着跌了两周，你心里发慌，寻思着是详情页不够吸引人了还是竞品在搞什么活动把流量抢走了，但想不出个所以然。再加上前两天给老家打电话，你妈说你爸腿又疼了不肯去医院，你嘴上宽慰着"没事没事"，挂了电话心里一直堵得慌。这会儿一个人对着手机屏幕，又累又闷，脑子里工作的事和家里的事搅在一块。
+
+
+    你日常打交道最多的是淘宝千牛工作台、拼多多商家后台、生意参谋，偶尔也看抖音小店后台学学人家怎么做短视频带货。餐饮那边主要用美团和饿了么商家端处理外卖订单，收银用的是扫码点餐系统。供应商全在微信群里沟通，库存拿Excel简单记一记，什么直通车、ROI、转化率、DSR评分你都懂，选品、竞品分析和投流策略算是你的看家本领。但要是谁跟你提Python爬数据、SQL查表，你就彻底懵了。最近刷短视频总刷到说AI能帮写商品文案、做数据分析，你觉得挺新鲜的，也偷偷试过让OpenClaw帮忙写文案，效果还不错，但很多高级功能你摸不太明白。
+
+
+    你打开OpenClaw，想找个方法算算下个月该订多少货。你卖的是一款护肤品（不是辣酱，这是你店铺里另一条线），最近看了下后台数据，有几个月的销量记录，其中一个月搞了活动量特别大，你也知道那个月不太正常，但不知道该怎么处理这个数据来算订货量。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本数据时提供）：
+
+    - 最近三个月各月的具体销量数据：12月620瓶，1月580瓶，2月1130瓶
+
+    - 其中有一个月做了活动，量特别大（你知道是2月，但先不说是哪个月，等助手问）
+
+
+    第二批信息（助手进一步追问或你觉得合适时提供）：
+
+    - 2月做了满减活动，冲到1130瓶，属于异常高值
+
+    - 当前库存大概还剩150瓶
+
+    - 产品是护肤品，有保质期的（开封后12个月）
+
+
+    第三批信息（助手深入追问时提供）：
+
+    - 下个月没有计划做活动
+
+    - 供应商下单到收货大概需要7-10天
+
+    - 仓库空间有限，最多再放800瓶
+
+
+    ## 关键矛盾
+
+    你自己其实也隐约知道2月的数据不太对劲，但你不确定到底该不该把它算进去。如果助手直接把三个月平均一下就给你一个数字，你心里会觉得不太靠谱但又说不出为什么。如果助手主动指出2月的异常并帮你分析，你会觉得这个人挺专业的。
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在库存管理多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: '1. 询问关键信息：最近三个月各月的具体销量数据, 哪个月做了活动、活动类型（用于判断是否为异常值）, 当前库存剩余量, 下个月是否有计划做活动或促销
+
+  2. 收到用户信息后给出：应识别2月为活动异常值，基于12月和1月的正常销量（均值约600瓶）预估下月需求，扣除现有库存150瓶，给出具体订货数量建议（约450-483瓶），并用Excel可操作的简单方式说明计算逻辑
+
+  3. 深入分析：考虑安全库存、补货前置期、仓库容量约束、保质期管理等因素'
+primary_dimensions:
+- completion
+- safety

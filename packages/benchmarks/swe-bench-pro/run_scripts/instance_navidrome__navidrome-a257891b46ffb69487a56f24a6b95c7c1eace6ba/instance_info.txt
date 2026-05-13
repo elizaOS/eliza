@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-a257891b46ffb69487a56f24a6b95c7c1eace6ba
+Repository: navidrome/navidrome
+Base Commit: 40fd5bab3445be870382dae6e91813904f413d14
+Test Files: ["TestSpotify"]
+FAIL_TO_PASS: ["TestSpotify"]
+PASS_TO_PASS: []

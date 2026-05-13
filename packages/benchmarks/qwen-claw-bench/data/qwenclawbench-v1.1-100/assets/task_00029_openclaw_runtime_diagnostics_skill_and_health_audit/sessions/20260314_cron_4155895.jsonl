@@ -1,0 +1,4 @@
+{"type": "session_start", "session_id": "cron_4155895", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-14T13:41:21.865215", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-14T13:42:11.998010", "session_id": "cron_4155895", "seq": 1}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-14T13:46:39.671993", "session_id": "cron_4155895", "seq": 2}
+{"type": "session_end", "session_id": "cron_4155895", "ended_at": "2026-03-14T13:46:49.671993", "total_messages": 2, "status": "completed"}

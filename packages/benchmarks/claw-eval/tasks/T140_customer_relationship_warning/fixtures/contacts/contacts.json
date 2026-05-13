@@ -1,0 +1,8 @@
+[
+  {"contact_id":"CON-901","name":"Zhao Lei","email":"zhaolei@company.com","phone":"13800138001","department":"Sales","title":"Senior Account Manager","responsibilities":["VIP client management","Contract renewals"]},
+  {"contact_id":"CON-902","name":"Zhang Wei","email":"zhangwei@company.com","phone":"13800138002","department":"Sales","title":"Account Manager","responsibilities":["Standard client management","New client acquisition"]},
+  {"contact_id":"CON-903","name":"Wang Ming","email":"wangming@company.com","phone":"13800138003","department":"Customer Success","title":"Customer Success Manager","responsibilities":["Client health monitoring","Renewal support"]},
+  {"contact_id":"CON-904","name":"Li Hua","email":"lihua@company.com","phone":"13800138004","department":"Engineering","title":"Senior Architect","responsibilities":["Technical support","Solution consulting"]},
+  {"contact_id":"CON-905","name":"Liu Yang","email":"liuyang@company.com","phone":"13800138005","department":"Finance","title":"Finance Manager","responsibilities":["Contract review","Accounts receivable management"]},
+  {"contact_id":"CON-906","name":"Chen Ting","email":"chenting@company.com","phone":"13800138006","department":"Legal","title":"Legal Specialist","responsibilities":["Contract terms","Legal review"]}
+]

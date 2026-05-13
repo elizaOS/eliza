@@ -99,7 +99,15 @@ class VisualWebBenchEvaluator:
     def _score_exact(self, expected: str | int | list[str] | BBox, predicted: str) -> bool:
         refs = expected if isinstance(expected, list) else [expected]
         pred_norm = _normalize_text(predicted)
-        return any(pred_norm == _normalize_text(str(ref)) for ref in refs)
+        for ref in refs:
+            ref_norm = _normalize_text(str(ref))
+            if not ref_norm:
+                continue
+            if pred_norm == ref_norm:
+                return True
+            if len(ref_norm) >= 2 and ref_norm in pred_norm:
+                return True
+        return False
 
     def _score_choice(
         self,
@@ -115,6 +123,9 @@ class VisualWebBenchEvaluator:
         options = task.options
         if task.answer < 0 or task.answer >= len(options):
             return False
+        parsed_choice = _parse_choice_index(prediction.answer_text, len(options))
+        if parsed_choice is not None:
+            return parsed_choice == task.answer
         expected_option = options[task.answer]
         if not isinstance(expected_option, str):
             return False
@@ -152,6 +163,36 @@ def _bbox_iou(a: BBox, b: BBox) -> float:
     area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
     union = area_a + area_b - intersection
     return intersection / union if union > 0 else 0.0
+
+
+def _parse_choice_index(text: str, option_count: int) -> int | None:
+    """Parse common model choice formats into a zero-based index."""
+    normalized = text.strip()
+    if not normalized:
+        return None
+
+    letter_pattern = re.compile(
+        r"(?:^|[^A-Za-z0-9])(?:option|choice|answer)?\s*(?:is\s*)?[\(\[]?([A-Z])[\)\].:]?(?=$|[^A-Za-z0-9])",
+        flags=re.IGNORECASE,
+    )
+    for letter_match in letter_pattern.finditer(normalized):
+        index = ord(letter_match.group(1).upper()) - ord("A")
+        if 0 <= index < option_count:
+            return index
+
+    number_pattern = re.compile(
+        r"(?:^|[^A-Za-z0-9])(?:option|choice|answer|index)?\s*(?:is\s*)?[\(\[]?(\d+)[\)\].:]?(?=$|[^A-Za-z0-9])",
+        flags=re.IGNORECASE,
+    )
+    for number_match in number_pattern.finditer(normalized):
+        value = int(number_match.group(1))
+        if value == 0:
+            return 0 if option_count > 0 else None
+        index = value - 1
+        if 0 <= index < option_count:
+            return index
+
+    return None
 
 
 def _mean(values: object) -> float:

@@ -1,0 +1,128 @@
+task_id: T067zh_synopsys_china_revenue
+task_name: Synopsys中国区收入风险敞口分析
+version: "1.0"
+category: finance
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    你是半导体产业链专项研究员，正在对Synopsys在出口管制与国产替代压力下的中国区收入韧性做核验。市场观点分歧很大，但本次工作不讨论份额、产品优劣或行业景气，只用SEC备案文件中的GAAP地理分布披露，把中国区收入的变化说清楚，并判断风险敞口是否在上升或收敛。
+
+    二、任务要求：仅基于Synopsys的2024财年10-K与2025财年10-K，完成以下分析：
+
+    1、数据提取与口径锁定
+    （1）从两期10-K的地理分布表中，提取中国区域收入与公司全球总收入，确认两期披露口径一致
+    （2）若公司在两期之间调整了地区划分、披露方式或分类口径，必须指出变化点，并说明你如何保证可比性
+
+    2、敞口量化与变化分解
+    （1）计算2024财年与2025财年中国收入占全球总收入的比例，并计算占比同比变动的基点变化
+    （2）计算中国收入同比增速与全球收入同比增速，并给出两者差异的量化结论，用于判断中国收入是在跑赢还是跑输公司整体
+    （3）基于上述结果，对市场观点（出口管制与国产替代已导致Synopsys在中国的收入出现结构性下滑）作出结论性判断。要求给出证伪或证实，并明确你的判据仅来自收入与占比数据
+
+    3、风险披露与韧性解释
+    （1）从两期10-K中各提取一条与中国相关的关键风险披露或限制因素表述，解释其可能对应的收入变化方向
+    （2）结合公司对收入确认、合同期限、客户集中度或未履约义务等披露，判断中国收入韧性更接近哪一种驱动？①存量续费与维护为主；②新增授权与新增项目为主。只需给出判断与依据，不要求展开行业背景
+  language: zh
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+scoring_components:
+  - name: china_revenue_data
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: ["989.5", "814.3", "6,127", "7,054"]
+  - name: ratio_calculation
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: ["16.1", "11.5", "-461", "-17.7"]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  你正在评估一份关于Synopsys中国区收入风险敞口的分析报告。基于以下评分标准逐项打分：
+
+  【正向评分项】（满分100%）
+  1. [权重12%] FY2024中国区收入：$989.5 million — 数据准确
+  2. [权重12%] FY2024全球总收入：$6,127.4 million — 数据准确
+  3. [权重12%] FY2025中国区收入：$814.3 million — 数据准确
+  4. [权重12%] FY2025全球总收入：$7,054.2 million — 数据准确
+  5. [权重6%] FY2024中国收入占比：16.15% — 计算正确
+  6. [权重6%] FY2025中国收入占比：11.54% — 计算正确
+  7. [权重6%] 占比同比变动：约-461个基点 — 计算正确
+  8. [权重6%] FY2025中国收入同比增速：-17.7% — 计算正确
+  9. [权重3%] FY2025全球收入同比增速：+15.1% — 计算正确
+  10. [权重4%] 增速差异约-32.8个百分点，中国显著跑输整体 — 结论准确
+  11. [权重6%] 风险敞口判断：基于占比下降，敞口在收敛 — 逻辑自洽
+  12. [权重3%] 提及BIS informed letter（2025年5月29日）关于中国交易许可要求
+  13. [权重4%] 提及许可要求后续被撤销（2025年7月2日）但对中国业务有负面影响
+  14. [权重4%] 中国收入韧性判断：以存量续费与维护为主（非新增授权/项目） — 判断正确且有依据
+  15. [权重4%] 提及RPO数据：FY2024 $8.1B（41%在12个月内）；FY2025 $11.4B（45%在12个月内）
+
+  【负向扣分项】（出现时扣分）
+  16. [扣6%] 将收入变化直接归因于贸易限制，而非基于数据客观分析
+  17. [扣4%] 金额单位转换错误（如百万/十亿混淆）
+  18. [扣4%] 不必要的行业背景铺垫（任务明确要求不讨论份额、产品优劣或行业景气）
+  19. [扣4%] 使用情绪化用语（如"暴跌"、"崩盘"等非中性表述）
+
+  方法论说明：不对53周调整做要求；增量周无法按地区拆分。
+  回答结构应与三项任务要求对齐：数据提取、敞口量化、风险披露。
+
+reference_solution: |
+  FY2024中国收入$989.5M，全球$6,127.4M，占比16.15%。
+  FY2025中国收入$814.3M，全球$7,054.2M，占比11.54%，占比下降461bp。
+  中国收入同比-17.7%，全球+15.1%，差异-32.8ppt，中国显著跑输。
+  风险敞口在收敛。韧性主要靠存量续费与维护。
+
+primary_dimensions: [completion, communication]

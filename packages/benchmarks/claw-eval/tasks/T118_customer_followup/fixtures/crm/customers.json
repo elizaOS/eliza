@@ -1,0 +1,80 @@
+[
+  {
+    "customer_id": "CUS-701",
+    "name": "Dingxin Software",
+    "contact_person": "Manager Zhou",
+    "email": "zhoujl@dingxin-soft.com",
+    "phone": "13900701001",
+    "industry": "Software",
+    "tier": "vip",
+    "annual_revenue": 5200000,
+    "last_contact_date": "2026-02-10",
+    "status": "active",
+    "notes": "Three-year strategic contract client, recent communication has decreased"
+  },
+  {
+    "customer_id": "CUS-702",
+    "name": "Hanhai E-commerce",
+    "contact_person": "Director Lin",
+    "email": "lin@hanhai-ec.com",
+    "phone": "13900701002",
+    "industry": "E-commerce",
+    "tier": "standard",
+    "annual_revenue": 800000,
+    "last_contact_date": "2026-03-20",
+    "status": "active",
+    "notes": "Annual renewal upcoming, discussed feature requirements last week"
+  },
+  {
+    "customer_id": "CUS-703",
+    "name": "Wantong Logistics",
+    "contact_person": "Director Zhao",
+    "email": "zhao@wantong-logistics.com",
+    "phone": "13900701003",
+    "industry": "Logistics",
+    "tier": "vip",
+    "annual_revenue": 3800000,
+    "last_contact_date": "2026-02-25",
+    "status": "active",
+    "notes": "Leading logistics industry client, high service satisfaction"
+  },
+  {
+    "customer_id": "CUS-704",
+    "name": "Public Institution",
+    "contact_person": "Teacher Zhang",
+    "email": "zhang@edu-gov.cn",
+    "phone": "13900701004",
+    "industry": "Education",
+    "tier": "standard",
+    "annual_revenue": 200000,
+    "last_contact_date": "2026-01-15",
+    "status": "active",
+    "notes": "Government procurement client, low usage frequency but contract still active"
+  },
+  {
+    "customer_id": "CUS-705",
+    "name": "Sunlight Media",
+    "contact_person": "Zhang Hua",
+    "email": "zhanghua@sunlight-media.com",
+    "phone": "13900701005",
+    "industry": "Media",
+    "tier": "vip",
+    "annual_revenue": 4800000,
+    "last_contact_date": "2026-02-05",
+    "status": "active",
+    "notes": "VIP major client, recent interest in partnership upgrade"
+  },
+  {
+    "customer_id": "CUS-706",
+    "name": "Qianfeng Tech",
+    "contact_person": "Wang Min",
+    "email": "wangmin@qianfeng-tech.com",
+    "phone": "13900701006",
+    "industry": "Technology",
+    "tier": "standard",
+    "annual_revenue": 360000,
+    "last_contact_date": "2026-03-25",
+    "status": "churned",
+    "notes": "Officially churned last month, no longer renewing"
+  }
+]

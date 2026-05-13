@@ -9,7 +9,6 @@
  *   POST /api/apps/load-from-directory  — { directory }
  */
 
-import { Button, Checkbox, Input } from "@elizaos/ui";
 import { Loader2, Play, RotateCw, Square } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { client } from "../../api/client";
@@ -19,6 +18,9 @@ import type {
   InstalledAppInfo,
 } from "../../api/client-types-cloud";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
 
 interface CreateAppResponse {
   ok?: boolean;

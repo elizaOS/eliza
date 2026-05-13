@@ -1,0 +1,50 @@
+{
+  "system": "Deal Management System",
+  "version": "4.2.1",
+  "database": {
+    "host": "dms-prod-db.internal.eastbridge.com",
+    "port": 5432,
+    "name": "deal_management",
+    "schema": "new_issuance"
+  },
+  "export": {
+    "format": [
+      "csv",
+      "json",
+      "xlsx"
+    ],
+    "default_path": "/shared/exports/new_issuance/",
+    "date_format": "YYYY-MM-DD"
+  },
+  "permissions": {
+    "read": [
+      "analyst",
+      "associate",
+      "vp",
+      "md"
+    ],
+    "write": [
+      "vp",
+      "md"
+    ],
+    "admin": [
+      "md",
+      "system_admin"
+    ]
+  },
+  "fields": {
+    "deal_id": {
+      "type": "string",
+      "prefix": "NI-"
+    },
+    "deal_size_mm": {
+      "type": "decimal",
+      "unit": "millions"
+    },
+    "total_pnl_mm": {
+      "type": "decimal",
+      "unit": "millions",
+      "description": "Total P&L including underwriting fees and trading gains/losses"
+    }
+  }
+}

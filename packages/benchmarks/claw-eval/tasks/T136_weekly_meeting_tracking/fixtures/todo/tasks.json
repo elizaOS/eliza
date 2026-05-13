@@ -1,0 +1,12 @@
+[
+  {"task_id": "TODO-501", "title": "Requirements Prioritization", "description": "Complete Q2 requirements prioritization document", "status": "completed", "priority": "high", "due_date": "2026-03-22", "assignee": "Wang Ming", "tags": ["product"]},
+  {"task_id": "TODO-502", "title": "Microservices Decomposition Evaluation", "description": "Evaluate feasibility of microservices decomposition", "status": "in_progress", "priority": "high", "due_date": "2026-03-25", "assignee": "Li Hua", "tags": ["technical"]},
+  {"task_id": "TODO-503", "title": "Customer Feedback Summary", "description": "Collect and summarize top customer feedback", "status": "completed", "priority": "medium", "due_date": "2026-03-20", "assignee": "Zhao Lei", "tags": ["customer"]},
+  {"task_id": "TODO-504", "title": "API Gateway Design", "description": "Write API gateway technical design document", "status": "in_progress", "priority": "high", "due_date": "2026-03-25", "assignee": "Li Hua", "tags": ["technical"]},
+  {"task_id": "TODO-505", "title": "Stress Testing", "description": "Execute system stress tests and produce report", "status": "completed", "priority": "high", "due_date": "2026-03-22", "assignee": "Ma Qiang", "tags": ["ops"]},
+  {"task_id": "TODO-506", "title": "Frontend Performance Optimization", "description": "Frontend performance optimization plan design", "status": "pending", "priority": "medium", "due_date": "2026-03-24", "assignee": "Zhou Ming", "tags": ["frontend"]},
+  {"task_id": "TODO-507", "title": "Dingxin Contract Proposal", "description": "Update Dingxin Software contract proposal", "status": "pending", "priority": "high", "due_date": "2026-03-25", "assignee": "Zhao Lei", "tags": ["customer"]},
+  {"task_id": "TODO-508", "title": "Routine Code Review", "description": "Weekly PR code reviews", "status": "completed", "priority": "low", "due_date": "2026-03-22", "assignee": "Li Hua", "tags": ["routine"]},
+  {"task_id": "TODO-509", "title": "Update Jira Board", "description": "Update project management board", "status": "pending", "priority": "low", "due_date": "2026-03-26", "assignee": "Wang Ming", "tags": ["routine"]},
+  {"task_id": "TODO-510", "title": "Team Weekly Report", "description": "Compile team member weekly reports", "status": "pending", "priority": "low", "due_date": "2026-03-26", "assignee": "Wang Ming", "tags": ["routine"]}
+]

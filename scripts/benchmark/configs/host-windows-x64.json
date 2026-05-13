@@ -1,7 +1,7 @@
 {
   "$schema": "../profile-config.schema.json",
   "description": "Host CPU profiling matrix targeting a Windows x86_64 build of the elizaOS/llama.cpp fork (cross-compiled from Linux via x86_64-w64-mingw32 by packages/app-core/scripts/build-llama-cpp-dflash.mjs --target windows-x64-cpu, or built natively on a Windows host). Mirrors host-cpu.json but pins iteration counts a touch lower because the harness has to drive the agent over a Wine bridge or a remote Windows runner — both add per-call latency that swamps short-prompt timings if you iterate too aggressively. KV cache types match the fork's CPU-side feature set (TBQ4 V-cache + TBQ3 V-cache; QJL1_256 K-cache is host-CPU-validated but ships disabled until the CI bench wires its model fixtures).",
-  "models": ["eliza-1-mobile-1_7b"],
+  "models": ["eliza-1-0_8b", "eliza-1-2b"],
   "kvCacheConfigs": [
     { "name": "baseline-fp16", "k": "f16", "v": "f16" },
     { "name": "tbq4-tbq3", "k": "tbq4_0", "v": "tbq3_0" }

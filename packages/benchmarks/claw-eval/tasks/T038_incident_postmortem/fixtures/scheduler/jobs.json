@@ -1,0 +1,122 @@
+[
+  {
+    "job_id": "JOB-301",
+    "name": "crm_data_sync",
+    "description": "Performs full CRM customer data synchronization, runs daily at 20:00",
+    "cron_expression": "0 20 * * *",
+    "enabled": true,
+    "last_status": "stopped",
+    "last_run": "2026-02-28T20:00:00+08:00",
+    "action": "Execute full CRM customer data synchronization",
+    "created_by": "data_team",
+    "tags": ["crm", "sync", "data"],
+    "notes": "SQL query was modified after last Friday's deployment. New query logic: SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id WHERE sync_status = 'pending'. This query has no index added, posing a full table scan risk.",
+    "execution_history": [
+      {
+        "run_time": "2026-02-28T20:00:00+08:00",
+        "status": "stopped",
+        "duration_seconds": 5400,
+        "notes": "Ran for 75 minutes before being manually terminated by DBA (21:30 kill process). Process was holding 300+ database connections, causing connection pool exhaustion."
+      },
+      {
+        "run_time": "2026-02-27T20:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 180,
+        "notes": "Old query logic, completed normally, took 3 minutes"
+      },
+      {
+        "run_time": "2026-02-26T20:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 175,
+        "notes": "Completed normally"
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-302",
+    "name": "database_backup",
+    "description": "Performs incremental database backup daily at 03:00",
+    "cron_expression": "0 3 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T03:00:00+08:00",
+    "action": "Execute PostgreSQL incremental backup",
+    "created_by": "dba_team",
+    "tags": ["database", "backup"],
+    "notes": "Routine backup task, running stably",
+    "execution_history": [
+      {
+        "run_time": "2026-03-01T03:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 420,
+        "notes": "Backup completed, size 12.3GB"
+      },
+      {
+        "run_time": "2026-02-28T03:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 415,
+        "notes": "Backup completed"
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-303",
+    "name": "monitoring_alerts",
+    "description": "Checks system health metrics every 5 minutes and triggers alerts",
+    "cron_expression": "*/5 * * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T08:00:00+08:00",
+    "action": "Check system health metrics (API latency, DB connections, error rates)",
+    "created_by": "ops_team",
+    "tags": ["monitoring", "alerts"],
+    "notes": "Ran normally during the outage, triggered all alerts on time",
+    "execution_history": [
+      {
+        "run_time": "2026-02-28T20:15:00+08:00",
+        "status": "success",
+        "duration_seconds": 3,
+        "notes": "Triggered API timeout alert: multiple endpoints P99 > 5s"
+      },
+      {
+        "run_time": "2026-02-28T20:20:00+08:00",
+        "status": "success",
+        "duration_seconds": 3,
+        "notes": "Triggered database connection alert: connection pool utilization 100%"
+      },
+      {
+        "run_time": "2026-02-28T20:25:00+08:00",
+        "status": "success",
+        "duration_seconds": 3,
+        "notes": "Triggered payment service 503 alert"
+      },
+      {
+        "run_time": "2026-02-28T21:35:00+08:00",
+        "status": "success",
+        "duration_seconds": 2,
+        "notes": "All metrics returned to normal"
+      }
+    ]
+  },
+  {
+    "job_id": "JOB-304",
+    "name": "log_rotation",
+    "description": "Performs log rotation and compression daily at 01:00",
+    "cron_expression": "0 1 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T01:00:00+08:00",
+    "action": "Execute log file rotation and compression archival",
+    "created_by": "ops_team",
+    "tags": ["logs", "maintenance"],
+    "notes": "Routine maintenance task",
+    "execution_history": [
+      {
+        "run_time": "2026-03-01T01:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 30,
+        "notes": "Log rotation completed"
+      }
+    ]
+  }
+]

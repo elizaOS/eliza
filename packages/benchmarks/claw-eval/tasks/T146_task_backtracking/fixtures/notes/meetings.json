@@ -1,0 +1,55 @@
+[
+  {
+    "note_id": "NOTE-801",
+    "title": "Q1 Summary Report Discussion Meeting",
+    "attendees": [
+      "Director Wang",
+      "Me",
+      "Li Hua"
+    ],
+    "content": "Discussed the Q1 summary report framework. Director Wang's requirements: 1) Add latest March data 2) Include year-over-year comparison with Q1 last year 3) Add Q2 outlook section. Report deadline is March 28. Li Hua is responsible for providing the technical section data.",
+    "created_at": "2026-03-20T10:00:00Z",
+    "participants": [
+      "Director Wang",
+      "Me",
+      "Li Hua"
+    ],
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-802",
+    "title": "Dingxin Software Customization Proposal Discussion",
+    "attendees": [
+      "Me",
+      "Zhao Lei",
+      "Client Zhang Ming",
+      "Client Manager Wang"
+    ],
+    "content": "The client raised 3 customization requirements: 1) User permission module 2) Custom data export 3) Dashboard customization. After our assessment, the first two items can be completed within 2 weeks. The client said the 3rd requirement still needs internal discussion before confirmation, and full development should start only after confirmation.",
+    "created_at": "2026-03-15T10:00:00Z",
+    "participants": [
+      "Me",
+      "Zhao Lei",
+      "Client Zhang Ming",
+      "Client Manager Wang"
+    ],
+    "duration_minutes": 60
+  },
+  {
+    "note_id": "NOTE-803",
+    "title": "Performance Evaluation Discussion Meeting",
+    "attendees": [
+      "Me",
+      "HR Li Wei",
+      "Department Manager"
+    ],
+    "content": "Discussed this quarter's performance evaluation criteria and process. The evaluation form must be submitted before March 25. The assessment indicators were confirmed during the meeting, and I completed most of the form on the spot, with remaining items to be finalized afterward.",
+    "created_at": "2026-03-20T10:00:00Z",
+    "participants": [
+      "Me",
+      "HR Li Wei",
+      "Department Manager"
+    ],
+    "duration_minutes": 60
+  }
+]

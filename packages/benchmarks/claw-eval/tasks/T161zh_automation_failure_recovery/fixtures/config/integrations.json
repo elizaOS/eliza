@@ -1,0 +1,58 @@
+[
+  {
+    "integration_id": "INT-1501",
+    "name": "供应商API v2",
+    "service": "supplier_api",
+    "status": "active",
+    "endpoint": "https://supplier-api.example.com/v2/data",
+    "api_key": "sk-supplier-v2-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": null,
+    "last_verified": "2026-03-19T10:00:00Z",
+    "monthly_calls": 720,
+    "error_rate": 1.0,
+    "notes": "v2版本自3月20日起持续返回404，供应商已将API迁移至v3，此端点已废弃。当前仍配置为active状态，需切换到INT-1502。"
+  },
+  {
+    "integration_id": "INT-1502",
+    "name": "供应商API v3",
+    "service": "supplier_api",
+    "status": "inactive",
+    "endpoint": "https://supplier-api.example.com/v3/data",
+    "api_key": "sk-supplier-v3-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": "https://api.ourapp.com/webhooks/supplier-v3",
+    "last_verified": "2026-03-25T14:00:00Z",
+    "monthly_calls": 0,
+    "error_rate": 0.0,
+    "notes": "新版本API已上线并通过验证测试，但尚未在生产环境激活。需将JOB-1501的数据源从v2切换到v3。"
+  },
+  {
+    "integration_id": "INT-1503",
+    "name": "库存管理系统",
+    "service": "inventory_system",
+    "status": "active",
+    "endpoint": "https://inventory.internal.example.com/api/v1",
+    "api_key": "sk-inv-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": null,
+    "last_verified": "2026-03-26T08:00:00Z",
+    "monthly_calls": 15200,
+    "error_rate": 0.002,
+    "notes": "运行正常"
+  },
+  {
+    "integration_id": "INT-1504",
+    "name": "订单系统",
+    "service": "order_system",
+    "status": "active",
+    "endpoint": "https://orders.internal.example.com/api/v2",
+    "api_key": "sk-ord-xxxx-REDACTED",
+    "api_secret": null,
+    "webhook_url": null,
+    "last_verified": "2026-03-26T09:00:00Z",
+    "monthly_calls": 32000,
+    "error_rate": 0.001,
+    "notes": "运行正常"
+  }
+]

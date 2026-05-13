@@ -1,0 +1,89 @@
+[
+  {
+    "transaction_id": "TXN-801",
+    "date": "2026-03-10",
+    "amount": 3750.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Office Supplies",
+    "description": "A4 paper 150 boxes x 25/box",
+    "status": "completed",
+    "reference": "ITEM-801"
+  },
+  {
+    "transaction_id": "TXN-802",
+    "date": "2026-03-12",
+    "amount": 3600.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Consumables",
+    "description": "Ink cartridge HP-12A 20 units x 180/unit",
+    "status": "completed",
+    "reference": "ITEM-802"
+  },
+  {
+    "transaction_id": "TXN-803",
+    "date": "2026-03-15",
+    "amount": 15750.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "IT Equipment",
+    "description": "Mechanical keyboard 45 units x 350/unit",
+    "status": "completed",
+    "reference": "ITEM-803"
+  },
+  {
+    "transaction_id": "TXN-804",
+    "date": "2026-03-18",
+    "amount": 26400.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "IT Equipment",
+    "description": "24-inch monitor 12 units x 2200/unit",
+    "status": "completed",
+    "reference": "ITEM-804"
+  },
+  {
+    "transaction_id": "TXN-805",
+    "date": "2026-03-08",
+    "amount": 3000.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Consumables",
+    "description": "USB cable 200 pieces x 15/piece",
+    "status": "completed",
+    "reference": "ITEM-805"
+  },
+  {
+    "transaction_id": "TXN-806a",
+    "date": "2026-03-05",
+    "amount": 480.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Office Supplies",
+    "description": "Mousepad batch 1: 60 units x 8/unit",
+    "status": "completed",
+    "reference": "ITEM-806"
+  },
+  {
+    "transaction_id": "TXN-806b",
+    "date": "2026-03-20",
+    "amount": 480.00,
+    "currency": "CNY",
+    "type": "procurement",
+    "category": "Office Supplies",
+    "description": "Mousepad batch 2: 40 units x 12/unit",
+    "status": "completed",
+    "reference": "ITEM-806"
+  },
+  {
+    "transaction_id": "TXN-807",
+    "date": "2026-03-01",
+    "amount": 85000.00,
+    "currency": "CNY",
+    "type": "operations",
+    "category": "Rent",
+    "description": "Office rent for March",
+    "status": "completed"
+  }
+]

@@ -314,3 +314,96 @@ provision→ssh→teardown path. Then the 0_6b full-corpus run was launched:
   # Preferred: Vast 27b (2x/4x H200 or B200):
   VAST_API_KEY=<key> bash packages/training/scripts/train_vast.sh provision-and-train --registry-key qwen3.6-27b --epochs 1
   ```
+
+## 11. H200 run relaunched 2026-05-12 ~12:18 UTC — torch-on-CPU bug fixed; local run killed
+
+The first H200 launch (§10) silently trained on **CPU**: `train_nebius.sh`'s boot-time
+torch swap to `2.11.0+cu128` (the Nebius image's 570.x driver can't run the
+project-pinned `2.11.0+cu130`) *did* run and verified `cuda OK on NVIDIA H200`, but
+`run_pipeline.py`'s internal `uv run --extra train python scripts/{train_local,benchmark/*}.py`
+calls **re-sync the venv from the cu130-pinned lockfile**, clobbering the swap — so the
+base bench and then `train_local.py` came up `device=cpu ... no GPU detected` (a 77 k-row
+CPU SFT = days, H200 idle). Killed at ~12:17 UTC before it wasted GPU-hours.
+
+Fix (committed to `train_nebius.sh`): the torch swap is now an idempotent
+`torch_swap_cu128()` function called at boot **and** again right before `run_pipeline.py`,
+and after the first swap the runner exports `UV_NO_SYNC=1 UV_FROZEN=1` so every later
+`uv run` (incl. the subprocesses `run_pipeline.py` spawns) uses the in-place-swapped
+`.venv` instead of re-resolving. Verified on the live VM: `UV_NO_SYNC=1 uv run … → torch
+2.11.0+cu128 True`; a bare `uv run` (no env) still clobbers it → the fix is load-bearing.
+
+Relaunched on the **same VM** (`eliza-train-h200-0_6b`), **same run name**
+(`eliza-1-0_6b-apollo-fullcorpus-h200-1778581740`, log overwritten), corpus already on
+disk (`SYNC_FULLCORPUS_SOURCES=0`, `data/final-eliza1-fullcorpus/` = 76 917 train rows,
+`ELIZA1_FULLCORPUS_UPSAMPLE=8`, `ALLOW_UNVALIDATED_CORPUS=1`), **`BENCHMARK_AFTER=0`**
+(`--skip-base-bench` — the ~1.4 h CPU base bench was already eaten by the broken first
+launch; the base column for the delta is in `reports/eliza1-0_6b-apollo-sft-2026-05-11.manifest.json`).
+SFT confirmed training **on the H200** at 12:18 UTC: `device=cuda torch=2.11.0+cu128`,
+2.2 GB GPU resident, 127 W. Caveat: **Liger disabled** — the Nebius image lacks
+`python3.12-dev` headers so Triton's runtime probe fails to compile `cuda_utils.c`; the
+SFT falls back to HF defaults (slower / more memory, but the 0.6B at seq 4096 fits the
+H200 easily — not a correctness issue). `apt install python3.12-dev` + relaunch would
+re-enable Liger if speed matters.
+
+**Local fallback SFT (`eliza-1-0_6b-apollo-fullcorpus-1778563093`, RTX 5080, ~12 %,
+non-upsampled corpus, no envelope rows) — killed 2026-05-12 ~12:22 UTC** once the H200
+SFT was confirmed on the GPU; checkpoints 500/1000 retained under
+`packages/training/checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/`. The H200 run
+(`…-h200-1778581740`) supersedes it.
+
+Watcher: `/tmp/nebius-finish-v3.sh` (16 h timeout, `fetch` → print `gate_report.json` →
+`teardown` on `RUN_PIPELINE_EXIT=`, `teardown` on timeout).
+
+## 12. H200 run ABORTED ~13:00 UTC — VM torn down by a spurious sentinel; restart needed
+
+The relaunch (§11) hit a *second* GPU-placement bug: `train_local.py` uses
+`device_map="auto"`, which on this Nebius image makes accelerate's `infer_auto_device_map`
+silently place the whole model on **CPU** ("Device 0 seems unavailable" — the same failure
+`eliza_bench.py` has here). Result: single-threaded CPU training at ~10 s/it (≈26–31 h ETA)
+with the GPU at 0 % util holding only the (unused) optimizer states (~14 GB). Killed.
+
+Fix committed: `train_local.py` now honours `ELIZA_NO_DEVICE_MAP=1` (skip `device_map="auto"`,
+load to CPU then `.to("cuda")` explicitly — the single-GPU 0.6B–9B tiers fit a `from_pretrained`
+load fine; the 27B FSDP path always loads to CPU so it's unaffected) plus a safety net that
+`.to(device)`s the model if it ended up on CPU; `train_nebius.sh`'s runner exports
+`ELIZA_NO_DEVICE_MAP=1`. **Not yet verified to actually light up the GPU** — the relaunch
+that carried this fix never reached a training step before the VM died (see below).
+
+Then a process-management mistake compounded it: I killed/relaunched the run several times
+(`tmux kill-session -t elizatrain` then a new `train_nebius.sh run`). Each tmux kill makes
+the prior session's wrapper (`bash .run_pipeline.sh … | tee $log; echo RUN_PIPELINE_EXIT=$? >> $log`)
+write a spurious `RUN_PIPELINE_EXIT=<nonzero>` to the run log — which the side watcher then
+read as "pipeline done" and ran `train_nebius.sh fetch` + **`teardown`**, deleting the H200
+VM + boot disk **while a fresh relaunch was mid-tokenization**. Also: a `train_nebius.sh sync`
+in between rsynced the *local* (non-upsampled, 68 297-row) `data/final-eliza1-fullcorpus/`
+over the remote's correct 76 917-row upsampled corpus — fixed by rebuilding it on the remote
+(`build_eliza1_fullcorpus.py` with `ELIZA1_FULLCORPUS_UPSAMPLE=8` → 76 917 / 3 909 / 3 700)
+before the doomed relaunch. **Net: no checkpoint produced; the H200 instance + disk are
+torn down (verified `nebius instance list` / `disk list` empty → billing stopped).**
+
+**Local fallback SFT killed ~12:22 UTC** (checkpoints 500/1000 retained under
+`packages/training/checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093/`) — and *not*
+re-launched, since the H200 is the intended path and the fixes below should make a fresh
+H200 run fast.
+
+### Restart recipe (clean, single invocation — do NOT manually kill/relaunch mid-run)
+
+```bash
+NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec HF_TOKEN=<hf> HUGGING_FACE_HUB_TOKEN=<hf> \
+REGISTRY_KEY=qwen3-0.6b NEBIUS_VM_PRESET=gpu-h200x1 NEBIUS_VM_NAME=eliza-train-h200-0_6b \
+RUN_NAME=eliza-1-0_6b-apollo-fullcorpus-h200-$(date +%s) \
+SYNC_FULLCORPUS_SOURCES=1 ELIZA1_FULLCORPUS_UPSAMPLE=8 ALLOW_UNVALIDATED_CORPUS=1 BENCHMARK_AFTER=0 \
+TRAIN_FILE=data/final-eliza1-fullcorpus/train.jsonl VAL_FILE=data/final-eliza1-fullcorpus/val.jsonl TEST_FILE=data/final-eliza1-fullcorpus/test.jsonl \
+bash packages/training/scripts/train_nebius.sh full
+```
+
+`full` = provision → sync (rsyncs the patched `train_local.py` + `train_nebius.sh`; with
+`SYNC_FULLCORPUS_SOURCES=1` it rsyncs `data/final/` + `datasets/eliza1-sft-0_6b/` and the
+remote runner rebuilds the upsampled corpus) → run (boot torch-swap to cu128 + `UV_NO_SYNC=1`
++ `ELIZA_NO_DEVICE_MAP=1` + `--skip-base-bench`) → fetch → teardown (`full` has a trap that
+tears down on exit). **First action after the run boots: ssh in, wait for `train_local.py`
+to start stepping, and confirm `nvidia-smi` shows >50 % GPU util and ~≤2 s/it** — if it's
+still ~10 s/it with GPU 0 %, the `ELIZA_NO_DEVICE_MAP` path didn't take and needs another
+look (check the `loading model … device_map=False` / `moving model to cuda` log lines).
+Optional speedup: `apt install python3.12-dev` on the VM before training to re-enable Liger.
+Then: monitor → gate (`format_ok ≥ 0.70`) → quant → push to `elizaos/eliza-1-0_6b` if green.

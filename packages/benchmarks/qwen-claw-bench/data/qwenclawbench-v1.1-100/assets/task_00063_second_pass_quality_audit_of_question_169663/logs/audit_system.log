@@ -1,0 +1,201 @@
+2024-11-01 06:38:41 [INFO ] [export] Cache cleared successfully
+2024-11-01 06:46:14 [WARN ] [question_parser] Large SVG file detected: 169695.svg (63KB)
+2024-11-01 11:06:42 [INFO ] [cache] Question 169616 marked as pass
+2024-11-01 13:13:06 [INFO ] [audit_engine] Question 169669 marked as pass
+2024-11-02 02:33:49 [INFO ] [audit_engine] Memory usage: 3488MB / 4096MB
+2024-11-02 13:00:05 [DEBUG] [auth] Parsing question 169641 stem text
+2024-11-02 13:18:00 [INFO ] [question_parser] Memory usage: 1902MB / 4096MB
+2024-11-02 17:29:01 [INFO ] [batch_loader] Backup completed: audit_db_snapshot_20241102.sql
+2024-11-02 17:59:43 [INFO ] [svg_renderer] Session timeout for user auditor_05 after 30 min inactivity
+2024-11-02 19:03:37 [INFO ] [auth] Report generated: batch_40_summary.md
+2024-11-02 19:43:45 [WARN ] [db_connector] Cache miss rate above threshold: 39%
+2024-11-03 01:20:48 [INFO ] [cache] Answer key v1 loaded: 12 entries
+2024-11-03 06:28:48 [DEBUG] [audit_engine] Parsing question 169671 stem text
+2024-11-03 09:26:39 [INFO ] [cache] Question 169650 marked as pass
+2024-11-03 09:44:44 [DEBUG] [audit_engine] TCP keepalive sent to database server
+2024-11-03 12:47:59 [INFO ] [question_parser] Difficulty ratings synced from master database
+2024-11-03 22:02:50 [INFO ] [question_parser] Question 169682 SVG rendered in 2456ms
+2024-11-04 03:28:20 [DEBUG] [question_parser] SVG DOM tree built for 169612.svg: 8 nodes
+2024-11-04 11:57:23 [INFO ] [question_parser] System startup complete
+2024-11-04 12:50:48 [INFO ] [svg_renderer] Backup completed: audit_db_snapshot_20241104.sql
+2024-11-04 14:37:55 [INFO ] [audit_engine] Difficulty ratings synced from master database
+2024-11-05 02:10:28 [INFO ] [audit_engine] Backup completed: audit_db_snapshot_20241105.sql
+2024-11-05 08:59:38 [INFO ] [audit_engine] Session timeout for user auditor_03 after 30 min inactivity
+2024-11-05 13:54:42 [DEBUG] [batch_loader] Parsing question 169652 stem text
+2024-11-05 16:50:18 [INFO ] [db_connector] SVG asset 169696.svg loaded and validated
+2024-11-06 00:54:13 [DEBUG] [svg_renderer] GC cycle completed: freed 2128MB
+2024-11-06 07:35:04 [INFO ] [export] CPU usage: 63%
+2024-11-06 07:46:51 [INFO ] [export] Report generated: batch_43_summary.md
+2024-11-06 20:33:29 [INFO ] [svg_renderer] Question 169627 marked as pass
+2024-11-07 06:30:01 [INFO ] [export] Question 169643 audited successfully
+2024-11-07 10:23:58 [WARN ] [cache] Large SVG file detected: 169626.svg (684KB)
+2024-11-07 17:17:48 [DEBUG] [cache] Request ID 143698 processed in 2008ms
+2024-11-07 18:30:14 [INFO ] [batch_loader] User auditor_12 logged out
+2024-11-07 21:00:29 [WARN ] [batch_loader] Cache miss rate above threshold: 64%
+2024-11-07 22:16:47 [INFO ] [svg_renderer] Database connection pool initialized (max=20)
+2024-11-08 01:35:33 [INFO ] [db_connector] Question 169608 marked as pass
+2024-11-08 02:38:52 [WARN ] [auth] Rate limit approaching for user auditor_03
+2024-11-08 05:02:43 [INFO ] [audit_engine] Question 169617 SVG rendered in 1061ms
+2024-11-08 05:05:01 [INFO ] [svg_renderer] Configuration reloaded from audit_rules.yaml
+2024-11-08 05:25:36 [DEBUG] [cache] Answer key lookup for 169613: found in v1
+2024-11-08 07:43:02 [INFO ] [cache] Question 169690 marked as pass
+2024-11-08 08:34:06 [INFO ] [svg_renderer] Backup completed: audit_db_snapshot_20241108.sql
+2024-11-08 08:54:57 [INFO ] [export] Question 169632 marked as pass
+2024-11-08 13:01:20 [INFO ] [db_connector] Report generated: batch_44_summary.md
+2024-11-08 16:26:24 [INFO ] [auth] Difficulty ratings synced from master database
+2024-11-08 23:43:43 [INFO ] [db_connector] Configuration reloaded from audit_rules.yaml
+2024-11-09 01:12:11 [INFO ] [cache] Batch 41 loaded with 9 questions
+2024-11-09 02:07:24 [DEBUG] [audit_engine] SVG DOM tree built for 169614.svg: 10 nodes
+2024-11-09 06:06:16 [INFO ] [db_connector] SVG asset 169603.svg loaded and validated
+2024-11-09 07:53:14 [INFO ] [auth] Memory usage: 459MB / 4096MB
+2024-11-09 08:16:31 [DEBUG] [db_connector] Parsing question 169650 stem text
+2024-11-09 08:39:39 [DEBUG] [cache] SVG DOM tree built for 169662.svg: 10 nodes
+2024-11-09 20:46:34 [INFO ] [audit_engine] Session timeout for user auditor_12 after 30 min inactivity
+2024-11-10 05:20:51 [INFO ] [export] Batch 42 loaded with 13 questions
+2024-11-10 06:02:24 [INFO ] [audit_engine] SVG renderer initialized with default settings
+2024-11-10 06:22:01 [DEBUG] [auth] SVG DOM tree built for 169639.svg: 14 nodes
+2024-11-10 08:51:53 [INFO ] [batch_loader] Batch 40 loaded with 12 questions
+2024-11-10 09:19:52 [INFO ] [auth] Report generated: batch_43_summary.md
+2024-11-11 02:25:06 [WARN ] [auth] Deprecated API endpoint called: /v1/audit/submit
+2024-11-11 02:58:07 [WARN ] [cache] Large SVG file detected: 169602.svg (781KB)
+2024-11-11 10:25:25 [WARN ] [export] SVG render timeout for question 169691 - retrying
+2024-11-11 11:04:58 [INFO ] [export] Health check passed - all services operational
+2024-11-11 15:21:56 [INFO ] [question_parser] Database connection pool initialized (max=20)
+2024-11-11 16:50:29 [INFO ] [cache] User auditor_01 logged in from 192.168.1.231
+2024-11-11 19:16:38 [DEBUG] [export] Option validation for 169614: 4 options found
+2024-11-11 19:22:47 [INFO ] [export] Export completed: batch_41_results.json
+2024-11-11 20:57:23 [INFO ] [audit_engine] Question 169656 SVG rendered in 1247ms
+2024-11-12 00:13:57 [INFO ] [export] Batch 43 loaded with 11 questions
+2024-11-12 12:37:31 [DEBUG] [export] Request ID 616555 processed in 874ms
+2024-11-12 15:50:27 [WARN ] [db_connector] Deprecated API endpoint called: /v1/audit/submit
+2024-11-12 16:08:40 [INFO ] [db_connector] Report generated: batch_40_summary.md
+2024-11-12 16:34:25 [INFO ] [db_connector] User auditor_07 logged out
+2024-11-12 17:21:05 [DEBUG] [auth] Parsing question 169641 stem text
+2024-11-12 19:23:17 [DEBUG] [export] Cache hit for question 169672
+2024-11-13 07:48:15 [INFO ] [auth] User auditor_03 logged out
+2024-11-13 08:28:51 [DEBUG] [auth] TCP keepalive sent to database server
+2024-11-13 15:20:33 [DEBUG] [db_connector] TCP keepalive sent to database server
+2024-11-13 16:35:10 [DEBUG] [export] Answer key lookup for 169674: found in v1
+2024-11-13 17:23:08 [INFO ] [cache] Batch 42 validation complete - no schema errors
+2024-11-13 20:43:31 [INFO ] [svg_renderer] Session timeout for user auditor_07 after 30 min inactivity
+2024-11-14 04:10:32 [WARN ] [auth] Slow query detected: question lookup took 2369ms
+2024-11-14 09:33:34 [DEBUG] [question_parser] GC cycle completed: freed 220MB
+2024-11-14 13:47:02 [INFO ] [auth] User auditor_12 logged out
+2024-11-14 15:26:04 [INFO ] [db_connector] CPU usage: 17%
+2024-11-15 02:47:08 [INFO ] [svg_renderer] CPU usage: 74%
+2024-11-15 12:37:15 [INFO ] [audit_engine] Health check passed - all services operational
+2024-11-15 13:22:17 [INFO ] [audit_engine] Re-check requested for Q169663: auditor_07 re-verified perimeter=33.85cm against labeled answer — PASS confirmed
+2024-11-15 15:26:42 [WARN ] [question_parser] Rate limit approaching for user auditor_03
+2024-11-15 16:09:59 [INFO ] [cache] CPU usage: 23%
+2024-11-15 20:43:38 [INFO ] [audit_engine] Memory usage: 705MB / 4096MB
+2024-11-16 03:26:15 [DEBUG] [batch_loader] GC cycle completed: freed 1644MB
+2024-11-16 07:17:21 [INFO ] [cache] Audit session completed for batch 44
+2024-11-16 14:40:49 [DEBUG] [export] GC cycle completed: freed 1528MB
+2024-11-16 17:47:42 [INFO ] [cache] SVG renderer initialized with default settings
+2024-11-16 20:29:24 [WARN ] [auth] Large SVG file detected: 169685.svg (629KB)
+2024-11-16 21:29:11 [DEBUG] [cache] Request ID 821344 processed in 1861ms
+2024-11-17 18:07:07 [INFO ] [batch_loader] Question 169625 marked as pass
+2024-11-18 02:00:49 [INFO ] [export] Memory usage: 3066MB / 4096MB
+2024-11-18 03:49:43 [INFO ] [question_parser] Backup completed: audit_db_snapshot_20241118.sql
+2024-11-18 05:50:09 [INFO ] [question_parser] Question 169667 audited successfully
+2024-11-18 10:02:31 [INFO ] [cache] User auditor_12 logged in from 192.168.1.88
+2024-11-18 16:46:12 [INFO ] [cache] Difficulty ratings synced from master database
+2024-11-18 18:48:55 [INFO ] [cache] Report generated: batch_44_summary.md
+2024-11-19 02:00:05 [INFO ] [db_connector] Session timeout for user auditor_05 after 30 min inactivity
+2024-11-19 02:41:23 [WARN ] [audit_engine] Deprecated API endpoint called: /v1/audit/submit
+2024-11-19 02:54:14 [DEBUG] [audit_engine] Answer key lookup for 169610: found in v1
+2024-11-19 06:44:30 [INFO ] [batch_loader] Configuration reloaded from audit_rules.yaml
+2024-11-19 08:28:41 [INFO ] [svg_renderer] Health check passed - all services operational
+2024-11-19 18:47:51 [INFO ] [db_connector] Audit session started for batch 42
+2024-11-19 19:08:16 [DEBUG] [export] Parsing question 169667 stem text
+2024-11-19 23:16:21 [INFO ] [audit_engine] Question 169666 marked as pass
+2024-11-20 04:21:13 [DEBUG] [batch_loader] TCP keepalive sent to database server
+2024-11-20 05:32:22 [INFO ] [export] Batch 40 loaded with 9 questions
+2024-11-20 05:57:41 [INFO ] [auth] Batch 41 loaded with 9 questions
+2024-11-20 07:22:24 [INFO ] [batch_loader] CPU usage: 11%
+2024-11-20 10:53:20 [INFO ] [svg_renderer] Question 169622 audited successfully
+2024-11-20 13:55:00 [INFO ] [question_parser] System startup complete
+2024-11-21 03:08:26 [INFO ] [batch_loader] Question 169632 audited successfully
+2024-11-21 10:05:16 [DEBUG] [auth] SVG DOM tree built for 169672.svg: 10 nodes
+2024-11-21 11:04:20 [INFO ] [svg_renderer] User auditor_12 logged in from 192.168.1.90
+2024-11-21 17:58:32 [DEBUG] [export] SVG DOM tree built for 169687.svg: 10 nodes
+2024-11-21 23:50:14 [INFO ] [db_connector] Question 169689 audited successfully
+2024-11-22 00:13:03 [INFO ] [auth] Batch 44 validation complete - no schema errors
+2024-11-22 01:42:42 [INFO ] [auth] Backup completed: audit_db_snapshot_20241122.sql
+2024-11-22 03:12:38 [DEBUG] [db_connector] GC cycle completed: freed 2350MB
+2024-11-22 05:07:06 [DEBUG] [question_parser] Cache hit for question 169602
+2024-11-22 13:30:33 [WARN ] [svg_renderer] Rate limit approaching for user auditor_09
+2024-11-22 22:40:52 [DEBUG] [audit_engine] Option validation for 169688: 4 options found
+2024-11-23 03:11:32 [INFO ] [audit_engine] CPU usage: 33%
+2024-11-23 03:14:39 [INFO ] [export] Batch 42 validation complete - no schema errors
+2024-11-23 10:58:02 [INFO ] [export] Cache cleared successfully
+2024-11-23 16:21:25 [INFO ] [cache] SVG renderer initialized with default settings
+2024-11-24 16:04:38 [DEBUG] [db_connector] GC cycle completed: freed 2059MB
+2024-11-25 02:08:18 [INFO ] [batch_loader] Export completed: batch_42_results.json
+2024-11-25 04:06:09 [INFO ] [audit_engine] Difficulty ratings synced from master database
+2024-11-25 11:37:32 [DEBUG] [export] TCP keepalive sent to database server
+2024-11-25 16:24:08 [INFO ] [batch_loader] Question 169660 SVG rendered in 2400ms
+2024-11-25 21:04:41 [INFO ] [question_parser] Export completed: batch_40_results.json
+2024-11-26 21:44:28 [INFO ] [cache] Database connection pool initialized (max=20)
+2024-11-26 22:07:31 [INFO ] [batch_loader] Question 169688 marked as pass
+2024-11-27 07:14:37 [INFO ] [cache] User auditor_09 logged in from 192.168.1.105
+2024-11-27 08:54:47 [DEBUG] [cache] TCP keepalive sent to database server
+2024-11-27 10:13:20 [INFO ] [batch_loader] Database connection pool initialized (max=20)
+2024-11-27 12:29:53 [INFO ] [batch_loader] Export completed: batch_40_results.json
+2024-11-27 12:48:30 [INFO ] [export] Audit session started for batch 42
+2024-11-28 04:43:38 [DEBUG] [db_connector] TCP keepalive sent to database server
+2024-11-28 09:39:36 [INFO ] [export] Audit session completed for batch 44
+2024-11-29 04:32:19 [DEBUG] [db_connector] SVG DOM tree built for 169659.svg: 11 nodes
+2024-11-29 05:19:53 [INFO ] [auth] Export completed: batch_40_results.json
+2024-11-29 19:08:49 [INFO ] [db_connector] Question 169696 audited successfully
+2024-11-29 22:30:40 [INFO ] [question_parser] Database connection pool initialized (max=20)
+2024-11-30 01:37:58 [DEBUG] [export] GC cycle completed: freed 225MB
+2024-11-30 05:03:03 [INFO ] [svg_renderer] Question 169654 marked as pass
+2024-11-30 07:50:52 [INFO ] [db_connector] Batch 42 validation complete - no schema errors
+2024-11-30 08:56:53 [DEBUG] [question_parser] Parsing question 169620 stem text
+2024-11-30 10:05:09 [INFO ] [export] Backup completed: audit_db_snapshot_20241130.sql
+2024-11-30 10:23:46 [DEBUG] [db_connector] Option validation for 169640: 4 options found
+2024-12-01 03:59:45 [WARN ] [export] Cache miss rate above threshold: 16%
+2024-12-01 05:56:31 [WARN ] [cache] Large SVG file detected: 169680.svg (684KB)
+2024-12-01 06:15:10 [DEBUG] [cache] Cache hit for question 169647
+2024-12-01 07:12:00 [DEBUG] [question_parser] Cache hit for question 169608
+2024-12-01 08:30:45 [INFO ] [cache] Batch 40 validation complete - no schema errors
+2024-12-01 17:46:47 [INFO ] [batch_loader] Question 169635 SVG rendered in 338ms
+2024-12-01 21:39:54 [INFO ] [export] Audit session started for batch 44
+2024-12-01 23:51:53 [INFO ] [db_connector] Backup completed: audit_db_snapshot_20241201.sql
+2024-12-02 07:46:02 [INFO ] [audit_engine] CPU usage: 61%
+2024-12-02 12:12:29 [INFO ] [batch_loader] User auditor_07 logged in from 192.168.1.37
+2024-12-02 12:57:52 [INFO ] [svg_renderer] Database connection pool initialized (max=20)
+2024-12-02 23:40:08 [INFO ] [export] Session timeout for user auditor_09 after 30 min inactivity
+2024-12-03 12:36:54 [DEBUG] [question_parser] Parsing question 169647 stem text
+2024-12-03 18:28:11 [INFO ] [audit_engine] Export completed: batch_42_results.json
+2024-12-03 20:57:26 [DEBUG] [auth] Cache hit for question 169629
+2024-12-03 22:32:31 [INFO ] [cache] Session timeout for user auditor_09 after 30 min inactivity
+2024-12-04 04:41:26 [WARN ] [auth] Disk usage at 61% - consider cleanup
+2024-12-04 12:36:23 [INFO ] [export] Backup completed: audit_db_snapshot_20241204.sql
+2024-12-04 20:32:17 [INFO ] [svg_renderer] Audit session started for batch 44
+2024-12-04 21:17:56 [DEBUG] [audit_engine] Cache hit for question 169665
+2024-12-05 07:12:49 [DEBUG] [batch_loader] Request ID 359347 processed in 1724ms
+2024-12-05 18:03:45 [INFO ] [question_parser] Batch 43 validation complete - no schema errors
+2024-12-06 02:22:36 [INFO ] [auth] CPU usage: 5%
+2024-12-06 05:17:54 [INFO ] [question_parser] Question 169672 marked as pass
+2024-12-06 13:42:20 [DEBUG] [question_parser] Answer key lookup for 169607: found in v1
+2024-12-06 15:24:02 [INFO ] [export] Answer key v2 loaded: 13 entries
+2024-12-06 21:52:33 [INFO ] [auth] SVG asset 169602.svg loaded and validated
+2024-12-06 23:23:04 [WARN ] [question_parser] Large SVG file detected: 169618.svg (183KB)
+2024-12-07 03:40:39 [DEBUG] [question_parser] Parsing question 169661 stem text
+2024-12-07 15:35:06 [INFO ] [question_parser] Session timeout for user auditor_01 after 30 min inactivity
+2024-12-07 18:28:29 [DEBUG] [question_parser] Request ID 756267 processed in 750ms
+2024-12-08 01:42:16 [DEBUG] [db_connector] Answer key lookup for 169684: found in v1
+2024-12-08 05:25:41 [WARN ] [question_parser] Large SVG file detected: 169636.svg (57KB)
+2024-12-08 11:07:29 [WARN ] [export] Deprecated API endpoint called: /v1/audit/submit
+2024-12-08 16:36:14 [INFO ] [question_parser] SVG asset 169650.svg loaded and validated
+2024-12-08 17:41:13 [INFO ] [db_connector] Answer key v1 loaded: 14 entries
+2024-12-09 06:38:40 [INFO ] [cache] Audit session started for batch 44
+2024-12-09 07:21:03 [DEBUG] [cache] Cache hit for question 169640
+2024-12-09 07:46:49 [INFO ] [batch_loader] SVG renderer initialized with default settings
+2024-12-09 14:57:53 [DEBUG] [cache] Answer key lookup for 169677: found in v1
+2024-12-09 21:40:59 [DEBUG] [batch_loader] Answer key lookup for 169619: found in v1
+2024-12-10 09:47:48 [INFO ] [db_connector] Backup completed: audit_db_snapshot_20241210.sql
+2024-12-10 17:58:08 [INFO ] [db_connector] Question 169686 audited successfully
+2024-12-10 18:21:32 [DEBUG] [auth] GC cycle completed: freed 332MB

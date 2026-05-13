@@ -20,9 +20,9 @@ import { afterAll, beforeAll, describe, expect } from "vitest";
 import { stochasticTest } from "../../../packages/app-core/test/helpers/stochastic-test";
 import { selectLiveProvider } from "../../../test/helpers/live-provider";
 import { extractCalendarPlanWithLlm } from "../src/actions/calendar.js";
-import { extractLifeOperationWithLlm } from "../src/actions/life.extractor.js";
-import { extractGoalCreatePlanWithLlm } from "../src/actions/life-goal-extractor.js";
-import { extractTaskCreatePlanWithLlm } from "../src/actions/life-param-extractor.js";
+import { extractGoalCreatePlanWithLlm } from "../src/actions/lib/extract-goal-plan.js";
+import { extractLifeOperationWithLlm } from "../src/actions/lib/extract-life-operation.js";
+import { extractTaskCreatePlanWithLlm } from "../src/actions/lib/extract-task-plan.js";
 import {
   createLifeOpsTestRuntime,
   type RealTestRuntimeResult,

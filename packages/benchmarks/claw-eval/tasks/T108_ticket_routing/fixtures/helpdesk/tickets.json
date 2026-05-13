@@ -1,0 +1,67 @@
+[
+  {
+    "ticket_id": "TK-501",
+    "title": "API interface frequent timeouts",
+    "description": "Dingxin Software (CUS-501) reports that their integrated order query API frequently times out during peak hours, with average response time exceeding 10 seconds, severely impacting their business system. This has persisted for 3 days and they request an urgent fix.",
+    "customer_id": "CUS-501",
+    "reporter": "Manager Zhou",
+    "department": "Tech Support",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T09:00:00Z",
+    "tags": ["API", "performance", "VIP"],
+    "category": "performance issue"
+  },
+  {
+    "ticket_id": "TK-502",
+    "title": "Export function error",
+    "description": "Hanhai E-commerce (CUS-502) encounters a 500 error when using the data export function. Unable to export the last 3 months of sales data. Error message: InternalServerError: query timeout.",
+    "customer_id": "CUS-502",
+    "reporter": "Director Lin's assistant",
+    "department": "Tech Support",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T11:30:00Z",
+    "tags": ["export", "error", "data"],
+    "category": "feature failure"
+  },
+  {
+    "ticket_id": "TK-503",
+    "title": "How to batch modify user permissions",
+    "description": "Public institution user (CUS-503) Teacher Zhang asks how to batch modify permissions for 150 subordinate accounts. Currently only able to modify one by one, which is very inefficient.",
+    "customer_id": "CUS-503",
+    "reporter": "Teacher Zhang",
+    "department": "Customer Service",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T14:00:00Z",
+    "tags": ["permissions", "batch operation", "usage inquiry"],
+    "category": "usage inquiry"
+  },
+  {
+    "ticket_id": "TK-504",
+    "title": "Severe data sync delay",
+    "description": "Wantong Logistics (CUS-504) Director Zhao urgently reports: since last night, logistics tracking data sync has been delayed by over 2 hours, causing multiple order statuses to be unable to update in real time, with increasing customer complaints.",
+    "customer_id": "CUS-504",
+    "reporter": "Director Zhao",
+    "department": "Tech Support",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-25T08:15:00Z",
+    "tags": ["data sync", "delay", "VIP", "urgent"],
+    "category": "performance issue"
+  },
+  {
+    "ticket_id": "TK-505",
+    "title": "Report chart display abnormality",
+    "description": "Hanhai E-commerce (CUS-502) reports that pie charts and bar charts in the report module are not fully displayed, with some data labels overlapping and unreadable. Browser: Chrome 120.",
+    "customer_id": "CUS-502",
+    "reporter": "Director Lin's assistant",
+    "department": "Tech Support",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T15:00:00Z",
+    "tags": ["reports", "frontend", "UI"],
+    "category": "UI issue"
+  }
+]

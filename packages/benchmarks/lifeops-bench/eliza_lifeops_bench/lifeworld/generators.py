@@ -35,7 +35,9 @@ from .entities import (
     Note,
     Reminder,
     ReminderList,
+    ScheduledTask,
     Subscription,
+    WorkoutRecord,
 )
 from .world import LifeWorld
 
@@ -60,6 +62,8 @@ SCALE_PRESETS: dict[Scale, dict[str, int]] = {
         health_days=7,
         location_points=20,
         subscriptions=2,
+        workouts=3,
+        scheduled_tasks=2,
     ),
     "small": dict(
         contacts=30,
@@ -74,6 +78,8 @@ SCALE_PRESETS: dict[Scale, dict[str, int]] = {
         health_days=14,
         location_points=80,
         subscriptions=4,
+        workouts=10,
+        scheduled_tasks=5,
     ),
     "medium": dict(
         contacts=200,
@@ -88,6 +94,8 @@ SCALE_PRESETS: dict[Scale, dict[str, int]] = {
         health_days=90,
         location_points=1200,
         subscriptions=8,
+        workouts=60,
+        scheduled_tasks=20,
     ),
     "large": dict(
         contacts=400,
@@ -102,6 +110,8 @@ SCALE_PRESETS: dict[Scale, dict[str, int]] = {
         health_days=120,
         location_points=2000,
         subscriptions=12,
+        workouts=100,
+        scheduled_tasks=40,
     ),
     "huge": dict(
         contacts=500,
@@ -116,6 +126,8 @@ SCALE_PRESETS: dict[Scale, dict[str, int]] = {
         health_days=180,
         location_points=3000,
         subscriptions=15,
+        workouts=150,
+        scheduled_tasks=60,
     ),
 }
 
@@ -342,6 +354,8 @@ class WorldGenerator:
         self.generate_subscriptions(world, self.preset["subscriptions"])
         self.generate_health_metrics(world, self.preset["health_days"])
         self.generate_location_points(world, self.preset["location_points"])
+        self.generate_workouts(world, self.preset["workouts"])
+        self.generate_scheduled_tasks(world, self.preset["scheduled_tasks"])
         return world
 
     # --------------------------------------------------------------- contacts
@@ -885,6 +899,61 @@ class WorldGenerator:
                     recorded_at=_iso(recorded),
                 ),
             )
+
+    _WORKOUT_ACTIVITIES = ["running", "cycling", "swimming", "strength", "yoga", "hiking", "rowing"]
+
+    def generate_workouts(self, world: LifeWorld, n: int) -> list[WorkoutRecord]:
+        out: list[WorkoutRecord] = []
+        for i in range(n):
+            activity = self.rng.choice(self._WORKOUT_ACTIVITIES)
+            duration = self.rng.randint(20, 90)
+            calories = self.rng.randint(150, 800) if self.rng.random() > 0.2 else None
+            recorded = self._now_dt - timedelta(days=self.rng.randint(0, 180))
+            distance = round(self.rng.uniform(1.0, 25.0), 2) if activity in ("running", "cycling", "hiking") else None
+            workout = WorkoutRecord(
+                id=f"workout_{i:05d}",
+                activity_type=activity,
+                duration_minutes=duration,
+                calories=calories,
+                recorded_at=_iso(recorded),
+                distance_km=distance,
+            )
+            world.add(EntityKind.WORKOUT, workout)
+            out.append(workout)
+        return out
+
+    _TASK_KINDS = ["send_message", "create_reminder", "create_event", "summarize", "lookup"]
+    _TASK_PROMPTS = [
+        "Send a follow-up message to {contact} about the meeting.",
+        "Create a reminder to review the Q4 report.",
+        "Schedule a 30-minute check-in with the team next week.",
+        "Summarize the last 5 emails from {contact}.",
+        "Look up contact info for {contact} and update the record.",
+    ]
+
+    def generate_scheduled_tasks(self, world: LifeWorld, n: int) -> list[ScheduledTask]:
+        out: list[ScheduledTask] = []
+        contacts = list(world.contacts.values())
+        for i in range(n):
+            kind = self.rng.choice(self._TASK_KINDS)
+            prompt_tmpl = self.rng.choice(self._TASK_PROMPTS)
+            contact_name = self.rng.choice(contacts).display_name if contacts else "Unknown"
+            prompt = prompt_tmpl.format(contact=contact_name)
+            state = self.rng.choices(["active", "paused", "completed"], weights=[7, 2, 1], k=1)[0]
+            created = self._now_dt - timedelta(days=self.rng.randint(0, 30))
+            task = ScheduledTask(
+                id=f"task_{i:05d}",
+                kind=kind,
+                prompt_instructions=prompt,
+                trigger={"type": "manual"},
+                state=state,
+                priority=self.rng.choice(["low", "normal", "high"]),
+                created_at=_iso(created),
+                updated_at=_iso(created),
+            )
+            world.add(EntityKind.SCHEDULED_TASK, task)
+            out.append(task)
+        return out
 
 
 def _parse_iso(s: str) -> datetime:

@@ -1,11 +1,7 @@
 /**
- * Default escalation ladders registered by W1-D.
+ * Default escalation ladders.
  *
- * Frozen by wave1-interfaces.md §3.4. Wave-1 ships the ladder data here;
- * once W1-F's `src/lifeops/escalation-ladders.ts` lands, this module flips
- * to a re-export per the integration gate (`IMPLEMENTATION_PLAN.md` §4).
- *
- * Ladders shipped:
+ * Frozen shapes per `docs/audit/wave1-interfaces.md` §3.4.
  *
  * ```
  * priority_low_default:    { steps: [] }
@@ -16,9 +12,6 @@
  *   { delayMinutes: 45, channelKey: "imessage", intensity: "urgent" },
  * ]}
  * ```
- *
- * Stub status: see `contract-stubs.ts` — `EscalationStep` /
- * `EscalationLadder` types are local until W1-A's `escalation.ts` lands.
  */
 
 import type {

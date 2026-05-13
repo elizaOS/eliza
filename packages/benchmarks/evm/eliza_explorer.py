@@ -46,6 +46,21 @@ SKILL_RUNNER_DIR = BENCH_DIR / "skill_runner"
 DEFAULT_CODE_FILE = str(SKILL_RUNNER_DIR / "evm_skill.ts")
 
 
+def _last_json_object(output: str) -> dict[str, object] | None:
+    """Return the last JSON object emitted on stdout, ignoring log lines."""
+    for line in reversed((output or "").splitlines()):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return dict(parsed)
+    return None
+
+
 def run_typescript_skill(
     code: str,
     rpc_url: str,
@@ -55,8 +70,7 @@ def run_typescript_skill(
     timeout_ms: int = 30000,
 ) -> dict[str, object]:
     """Write code to file, run via Bun's runSkill.ts, return parsed JSON result."""
-    with open(code_file, "w") as f:
-        f.write(code)
+    Path(code_file).write_text(code, encoding="utf-8")
 
     runner = str(SKILL_RUNNER_DIR / "runSkill.ts")
     try:
@@ -76,22 +90,24 @@ def run_typescript_skill(
 
     stdout_lines = (completed.stdout or "").strip().split("\n")
     last_line = stdout_lines[-1] if stdout_lines else ""
+    parsed = _last_json_object(completed.stdout or "")
 
-    if completed.returncode == 0 and last_line:
-        try:
-            return dict(json.loads(last_line))
-        except json.JSONDecodeError:
-            return {"results": [], "error": f"Invalid JSON output: {last_line[:500]}"}
+    if completed.returncode == 0:
+        if parsed is not None:
+            return parsed
+        return {"results": [], "error": f"Invalid JSON output: {last_line[:500]}"}
+
+    if parsed is not None:
+        if completed.stderr:
+            parsed["stderr"] = completed.stderr[:2000]
+        return parsed
 
     if last_line:
-        try:
-            parsed = dict(json.loads(last_line))
-            if completed.stderr:
-                parsed["stderr"] = completed.stderr[:2000]
-            return parsed
-        except json.JSONDecodeError:
-            # Last line wasn't valid JSON — fall through to generic error
-            logger.debug("Non-JSON last line from Bun (exit %d): %s", completed.returncode, last_line[:200])
+        logger.debug(
+            "Non-JSON last line from Bun (exit %d): %s",
+            completed.returncode,
+            last_line[:200],
+        )
 
     return {
         "results": [],
@@ -106,30 +122,50 @@ from benchmarks.evm.providers import detect_provider as _detect_provider
 
 
 class LLM:
-    """LLM wrapper supporting Groq, OpenAI, and OpenRouter (all OpenAI-compatible)."""
+    """LLM wrapper supporting Anthropic plus OpenAI-compatible providers."""
 
     def __init__(self, model_name: str, api_key: str, provider: str = ""):
-        from langchain_openai import ChatOpenAI
         from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
         self.provider = provider or _detect_provider(model_name)
-        base_url = _PROVIDER_URLS.get(self.provider, "https://api.openai.com/v1")
+        if self.provider == "openai":
+            base_url = os.getenv(
+                "OPENAI_BASE_URL",
+                _PROVIDER_URLS.get(self.provider, "https://api.openai.com/v1"),
+            )
+        elif self.provider == "vllm":
+            base_url = os.getenv(
+                "VLLM_BASE_URL",
+                os.getenv(
+                    "OPENAI_BASE_URL",
+                    _PROVIDER_URLS.get(self.provider, "http://127.0.0.1:8001/v1"),
+                ),
+            )
+        else:
+            base_url = _PROVIDER_URLS.get(self.provider, "https://api.openai.com/v1")
 
-        # Strip provider prefix from model name if present (e.g. "groq/qwen..." → "qwen...")
         clean_model = model_name
-        for prefix in ("groq/", "openai/", "openrouter/"):
-            if clean_model.lower().startswith(prefix):
-                clean_model = clean_model[len(prefix):]
-                break
+        prefix = f"{self.provider}/"
+        if clean_model.lower().startswith(prefix):
+            clean_model = clean_model[len(prefix):]
 
         logger.info("LLM: provider=%s  model=%s  base_url=%s", self.provider, clean_model, base_url)
 
-        self.llm = ChatOpenAI(
-            base_url=base_url,
-            model=clean_model,
-            api_key=api_key,
-            temperature=0.7,
-        )
+        if self.provider == "anthropic":
+            from langchain_anthropic import ChatAnthropic
+            self.llm = ChatAnthropic(
+                model=clean_model,
+                api_key=api_key,
+                temperature=0.7,
+            )
+        else:
+            from langchain_openai import ChatOpenAI
+            self.llm = ChatOpenAI(
+                base_url=base_url,
+                model=clean_model,
+                api_key=api_key,
+                temperature=0.7,
+            )
         self._msg_classes = {
             "system": SystemMessage,
             "user": HumanMessage,
@@ -209,6 +245,8 @@ class ElizaExplorer:
             provider = _detect_provider(self.model_name)
             key_var = _PROVIDER_KEY_VARS.get(provider, "OPENAI_API_KEY")
             api_key = os.getenv(key_var, "")
+            if provider == "vllm" and not api_key:
+                api_key = os.getenv("OPENAI_API_KEY", "local-vllm")
             if not api_key:
                 # Try all known key vars as fallback
                 for var in _PROVIDER_KEY_VARS.values():

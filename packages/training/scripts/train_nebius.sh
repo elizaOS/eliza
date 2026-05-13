@@ -25,11 +25,13 @@
 # can target a 2× or 4× H200/B200 box.
 #
 # eliza-1 cloud-tier targets (model_registry.py REGISTRY keys):
-#   REGISTRY_KEY=qwen3-0.6b   → eliza-1-0_6b   (single H200 — overkill, ~2 GPU-h)
-#   REGISTRY_KEY=qwen3-1.7b   → eliza-1-1_7b   (single H200 — fits seq 4096 easily)
-#   REGISTRY_KEY=qwen3-4b     → eliza-1-4b     (single H200)
+#   REGISTRY_KEY=qwen3.5-0.8b → eliza-1-0_8b   (single H200 — overkill, ~2 GPU-h)
+#   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b     (single H200 — fits seq 8k)
+#   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b     (single H200, ~80 GB peak)
-#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (8× H200 + FSDP — HOLD, see above)
+#   REGISTRY_KEY=qwen3.5-27b  → eliza-1-27b    (single H200 — apollo_mini fits 141 GB)
+#   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
+#   compatibility but the eliza-1 fused-kernel stack only validates Qwen3.5.)
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
@@ -101,12 +103,11 @@ case "$NEBIUS_VM_PRESET" in
 esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
-# The transformer decoder-layer class FSDP wraps. Qwen3-0.6B/1.7B/4B use
-# Qwen3DecoderLayer; the (larger) Qwen3.5/3.6 checkpoints use Qwen3_5DecoderLayer.
-case "$REGISTRY_KEY" in
-  qwen3-0.6b|qwen3-1.7b|qwen3-4b) FSDP_WRAP_CLS="Qwen3DecoderLayer" ;;
-  *) FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
-esac
+# The transformer decoder-layer class FSDP wraps. Every entry in the
+# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b + qwen3.6-27b
+# legacy) uses Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which
+# would have used Qwen3DecoderLayer) were dropped on 2026-05-12.
+FSDP_WRAP_CLS="Qwen3_5DecoderLayer"
 
 cmd="${1:-help}"
 
@@ -267,26 +268,55 @@ sync_tree() {
   ssh -o StrictHostKeyChecking=no "$target" "sudo mkdir -p $REMOTE_TRAIN_DIR && sudo chown -R \$USER $REMOTE_TRAIN_DIR"
   # Keep the slim scripts/configs tree + benchmarks/ python+yaml (run_pipeline.py
   # imports benchmarks.eliza1_gates) but drop the big corpora, raw data, old
-  # benchmark/checkpoint outputs, and caches.
+  # benchmark/checkpoint outputs, and caches. The `**/__pycache__/` exclude
+  # catches every pycache tree under packages/training (not just the top-level
+  # benchmarks/__pycache__/) — those regenerate constantly under any local
+  # pytest run and were producing rsync exit-24 ("some files vanished") +
+  # killing the whole launcher under `set -e` (2026-05-12 incident).
+  local rsync_rc=0
   rsync -avhz --delete \
     --exclude '.venv/' --exclude '.git/' --exclude 'wandb/' \
     --exclude 'data/raw/' --exclude 'data/normalized/' --exclude 'data/synthesized/' \
     --exclude 'data/final/' --exclude 'data/final-eliza1-fullcorpus/' --exclude 'datasets/' \
     --exclude 'checkpoints/' --exclude '.hypothesis/' --exclude '.logs/' --exclude '.pytest_cache/' \
-    --exclude 'benchmarks/eliza-1-*/' --exclude 'benchmarks/__pycache__/' \
-    "$ROOT/" "$target:$REMOTE_TRAIN_DIR/"
+    --exclude '**/__pycache__/' \
+    --exclude 'benchmarks/eliza-1-*/' \
+    "$ROOT/" "$target:$REMOTE_TRAIN_DIR/" || rsync_rc=$?
+  # rsync exit 24 = "some files vanished before they could be transferred"
+  # (transient pycache files regenerated mid-transfer). Harmless when the rest
+  # of the transfer is intact — must NOT abort the launcher.
+  if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
+    echo "[train_nebius][sync] main rsync failed rc=$rsync_rc — aborting"
+    return "$rsync_rc"
+  fi
+  [ "$rsync_rc" = "24" ] && echo "[train_nebius][sync] main rsync rc=24 (files vanished mid-transfer — harmless, continuing)"
 
   if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
     echo "[train_nebius][sync] sending corpus sources (data/final/ + datasets/eliza1-sft-0_6b/) for remote rebuild"
-    rsync -avhz --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/"
-    rsync -avhz --partial "$ROOT/datasets/eliza1-sft-0_6b/" "$target:$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/"
+    # The main rsync above excludes data/final/ and datasets/, so those dirs
+    # don't exist on a fresh VM — rsync won't create 2-deep targets. mkdir first.
+    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/data/final $REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b"
+    rsync_rc=0
+    rsync -avhz --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/" || rsync_rc=$?
+    if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
+      echo "[train_nebius][sync] data/final rsync failed rc=$rsync_rc"; return "$rsync_rc"
+    fi
+    rsync_rc=0
+    rsync -avhz --partial "$ROOT/datasets/eliza1-sft-0_6b/" "$target:$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/" || rsync_rc=$?
+    if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
+      echo "[train_nebius][sync] datasets/eliza1-sft-0_6b rsync failed rc=$rsync_rc"; return "$rsync_rc"
+    fi
   else
     # Send exactly the corpus the run trains on (TRAIN/VAL/TEST dirs).
     for f in "$TRAIN_FILE" "$VAL_FILE" "$TEST_FILE"; do
       local d; d="$(dirname "$f")"
       ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
       echo "[train_nebius][sync] sending $f"
-      rsync -avhz --partial --info=progress2 "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f"
+      rsync_rc=0
+      rsync -avhz --partial --info=progress2 "$ROOT/$f" "$target:$REMOTE_TRAIN_DIR/$f" || rsync_rc=$?
+      if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
+        echo "[train_nebius][sync] $f rsync failed rc=$rsync_rc"; return "$rsync_rc"
+      fi
     done
   fi
 }
@@ -329,6 +359,13 @@ export PATH=\$HOME/.local/bin:\$PATH
 # shells, which makes transformers/accelerate fall back to CPU ("Device 0 seems
 # unavailable"). Pin it so eliza_bench.py / train_local.py use the H200.
 export CUDA_VISIBLE_DEVICES=0
+# accelerate's device_map="auto" mis-detects the H200 on this image and falls
+# back to CPU placement (the model then trains single-threaded on CPU at ~10
+# s/it with the GPU at 0% util holding only unused optimizer states) — tell
+# train_local.py to skip device_map and .to() the GPU explicitly. (eliza_bench.py
+# still runs on CPU here — see the §11 caveat in the 0_6b report; --skip-base-bench
+# from BENCHMARK_AFTER=0 avoids the base pass, the finetuned pass is ~3h CPU.)
+export ELIZA_NO_DEVICE_MAP=1
 export HF_HOME=/opt/hf-cache
 sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
 ${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
@@ -341,22 +378,36 @@ uv sync --extra train
 # the leftover cu13 nvidia stack, and force-refresh nvidia-cusparselt-cu12 (uv's
 # uninstall can leave a stale dist-info without the .so). REMOTE_TORCH_OVERRIDE=skip
 # disables this on an image whose driver is >=580.
+# torch_swap_cu128 — idempotent: swaps the venv to torch 2.11.0+cu128 if the
+# installed torch can't see CUDA (cu130 needs driver >=580; the Nebius cuda12.8
+# image ships 570.x). Callable both at boot AND right before train_local.py: a
+# bare \`uv run --extra train …\` re-syncs the env from the cu130-pinned lockfile,
+# silently clobbering the swap and forcing CPU training — so after the first swap
+# we set UV_NO_SYNC=1 (every later \`uv run\`, incl. the ones run_pipeline.py spawns
+# internally, then uses .venv as-is) AND re-swap defensively if it still drifted.
+torch_swap_cu128() {
+  .venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null && return 0
+  echo "[remote] torch can't see CUDA (cu130 needs driver >=580; have 570.x) — swapping to torch 2.11.0+cu128"
+  uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
+  cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
+  [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
+  uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
+  uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
+  .venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "still no CUDA after torch swap"; x=torch.randn(64,64,device="cuda"); _=(x@x).sum().item(); print("[remote] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
+}
 if [ "${REMOTE_TORCH_OVERRIDE:-cu128}" != "skip" ]; then
-  if ! .venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null; then
-    echo "[remote] torch can't see CUDA (driver too old for cu130) — swapping to torch 2.11.0+cu128"
-    uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
-    cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
-    [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
-    uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
-    uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
-    .venv/bin/python -c 'import torch; assert torch.cuda.is_available(), "still no CUDA after torch swap"; x=torch.randn(64,64,device="cuda"); _=(x@x).sum().item(); print("[remote] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
-  fi
+  torch_swap_cu128
+  # Freeze the env: no later \`uv run\` may re-sync away the cu128 torch.
+  export UV_NO_SYNC=1 UV_FROZEN=1
 fi
 ${hf_tok:+uv run hf auth login --token "\$HUGGING_FACE_HUB_TOKEN" --add-to-git-credential || true}
 if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
   echo "[remote] rebuilding data/final-eliza1-fullcorpus/ (upsample=\$ELIZA1_FULLCORPUS_UPSAMPLE)"
   uv run --extra train python scripts/build_eliza1_fullcorpus.py
 fi
+# Defensive re-check: if anything above re-synced the env (it shouldn't with
+# UV_NO_SYNC=1), swap torch back to cu128 before run_pipeline.py spawns SFT.
+[ "${REMOTE_TORCH_OVERRIDE:-cu128}" != "skip" ] && torch_swap_cu128
 uv run --extra train $launch scripts/run_pipeline.py \\
   --registry-key $REGISTRY_KEY --run-name $RUN_NAME \\
   --epochs 1 --lr 1e-5 --use-liger on \\
@@ -365,7 +416,12 @@ uv run --extra train $launch scripts/run_pipeline.py \\
   --quantizers $QUANTIZE_AFTER --eliza1-bundle $base_bench_flag $push_flag $allow_unval_flag
 echo "RUN_PIPELINE_DONE_OK"
 EOF
-  ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_pipeline.sh; tmux kill-session -t elizatrain 2>/dev/null || true; tmux new-session -d -s elizatrain \"bash $REMOTE_TRAIN_DIR/.run_pipeline.sh 2>&1 | tee $log; echo RUN_PIPELINE_EXIT=\\\$? >> $log\""
+  # NOTE: `bash ... 2>&1 | tee $log` makes `$?` reflect `tee`'s exit (always 0)
+  # — masking real failures. Use ${PIPESTATUS[0]} to capture the script's
+  # actual rc. Without this, a 0.8B SFT crash (chat-template TypeError,
+  # 2026-05-12 incident) emitted `RUN_PIPELINE_EXIT=0`, the launcher saw
+  # "success", and ran fetch + teardown over an empty checkpoint dir.
+  ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_pipeline.sh; tmux kill-session -t elizatrain 2>/dev/null || true; tmux new-session -d -s elizatrain \"bash $REMOTE_TRAIN_DIR/.run_pipeline.sh 2>&1 | tee $log; echo RUN_PIPELINE_EXIT=\\\${PIPESTATUS[0]} >> $log\""
   echo "[train_nebius][run] launched under tmux 'elizatrain' on $target — log: $log"
   echo "[train_nebius][run] polling for completion (this is a long run)..."
   local i=0
@@ -393,6 +449,98 @@ fetch() {
   rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/reports/" "$ROOT/reports/" || true
 }
 
+# --- DFlash drafter distillation (distill_dflash_drafter.py) ----------------
+# Env knobs (defaults frugal — a small KD job, not a full pipeline):
+#   DFLASH_TIER            tier the drafter ships for (default 9b — the 0.6B
+#                          Qwen3.5-arch drafter serves the 2b/9b/27b tiers)
+#   DFLASH_TARGET_BASE     HF id of the target text model whose logits we
+#                          distill toward (default Qwen/Qwen3.5-0.8B-Base)
+#   DFLASH_STUDENT_CONFIG  from-scratch ~0.6B student config dir
+#                          (default configs/dflash-drafter-0_6b-qwen3_5)
+#   DFLASH_STUDENT_BASE    alternative: a published student HF id (overrides
+#                          DFLASH_STUDENT_CONFIG if set)
+#   DFLASH_DATASET         distillation corpus (default $TRAIN_FILE)
+#   DFLASH_EPOCHS / DFLASH_BATCH / DFLASH_GRAD_ACCUM / DFLASH_MAX_SEQ_LEN
+#                          default 1 / 8 / 4 / 2048
+#   DFLASH_MAX_SAMPLES     cap examples (default 0 = all; set e.g. 20000 for a
+#                          short budget-bounded run)
+#   DFLASH_OUT_DIR         remote+local out dir name (default
+#                          out/dflash-drafter-${DFLASH_TIER})
+run_distill_remote() {
+  local target; target="$(ssh_target)"
+  local tier="${DFLASH_TIER:-9b}"
+  local target_base="${DFLASH_TARGET_BASE:-Qwen/Qwen3.5-0.8B-Base}"
+  local student_cfg="${DFLASH_STUDENT_CONFIG:-configs/dflash-drafter-0_6b-qwen3_5}"
+  local student_base="${DFLASH_STUDENT_BASE:-}"
+  local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
+  local epochs="${DFLASH_EPOCHS:-1}" batch="${DFLASH_BATCH:-8}" ga="${DFLASH_GRAD_ACCUM:-4}"
+  local msl="${DFLASH_MAX_SEQ_LEN:-2048}" maxn="${DFLASH_MAX_SAMPLES:-0}"
+  local out_dir="${DFLASH_OUT_DIR:-out/dflash-drafter-${tier}}"
+  local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
+  local log="$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log"
+  local student_arg
+  if [ -n "$student_base" ]; then student_arg="--student-base $student_base"; else student_arg="--student-config $student_cfg"; fi
+
+  echo "[train_nebius][distill] tier=$tier target=$target_base student=${student_base:-$student_cfg} dataset=$ds epochs=$epochs batch=$batch ga=$ga seq=$msl max_samples=$maxn"
+  ssh -o StrictHostKeyChecking=no "$target" "cat > $REMOTE_TRAIN_DIR/.run_distill.sh" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+cd $REMOTE_TRAIN_DIR
+export PATH=\$HOME/.local/bin:\$PATH
+export CUDA_VISIBLE_DEVICES=0
+export HF_HOME=/opt/hf-cache
+sudo mkdir -p \$HF_HOME && sudo chown -R \$USER \$HF_HOME || true
+${hf_tok:+export HUGGING_FACE_HUB_TOKEN='$hf_tok'; export HF_TOKEN='$hf_tok'}
+uv sync --extra train
+# qwen3_5 (hybrid linear-attn) needs transformers >= 4.57.0.dev0; the train
+# extra pins >=4.46. Upgrade in-venv (matches the local box's 5.7.0).
+uv pip install --python .venv/bin/python -U 'transformers>=4.57.0' 'accelerate>=1.1.0'
+# Same cu130-driver problem as run_remote(): the Nebius cuda12.8 image ships a
+# 570.x driver; the cu130-pinned torch can't see CUDA. Swap to cu128.
+.venv/bin/python -c 'import torch,sys; sys.exit(0 if torch.cuda.is_available() else 1)' 2>/dev/null || {
+  echo "[remote][distill] torch cannot see CUDA — swapping to torch 2.11.0+cu128"
+  uv pip uninstall --python .venv/bin/python torch torchvision triton 2>/dev/null || true
+  cu13pkgs="\$(uv pip list --python .venv/bin/python 2>/dev/null | awk '/^nvidia-[a-z0-9-]+ /{print \$1}')"
+  [ -n "\$cu13pkgs" ] && uv pip uninstall --python .venv/bin/python \$cu13pkgs 2>/dev/null || true
+  uv pip install --python .venv/bin/python 'torch==2.11.0' --index-url https://download.pytorch.org/whl/cu128
+  uv pip install --python .venv/bin/python --reinstall nvidia-cusparselt-cu12
+  .venv/bin/python -c 'import torch; assert torch.cuda.is_available(); print("[remote][distill] torch", torch.__version__, "cuda OK on", torch.cuda.get_device_name(0))'
+}
+export UV_NO_SYNC=1 UV_FROZEN=1
+.venv/bin/python scripts/distill_dflash_drafter.py \\
+  --tier $tier --target-base $target_base $student_arg \\
+  --dataset $ds --out-dir $out_dir \\
+  --epochs $epochs --batch-size $batch --grad-accum $ga --max-seq-len $msl --max-samples $maxn
+echo DISTILL_DONE_OK
+EOF
+  # Same PIPESTATUS[0] fix as run_remote — `$?` of a tee pipeline is tee's rc.
+  ssh -o StrictHostKeyChecking=no "$target" "chmod +x $REMOTE_TRAIN_DIR/.run_distill.sh; tmux kill-session -t elizadistill 2>/dev/null || true; tmux new-session -d -s elizadistill \"bash $REMOTE_TRAIN_DIR/.run_distill.sh 2>&1 | tee $log; echo DISTILL_EXIT=\\\${PIPESTATUS[0]} >> $log\""
+  echo "[train_nebius][distill] launched under tmux 'elizadistill' — log: $log"
+  local i=0
+  while true; do
+    sleep 60; i=$((i+1))
+    local tail_out; tail_out="$(ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "tail -n 3 $log 2>/dev/null" 2>/dev/null || echo '(ssh hiccup)')"
+    echo "[train_nebius][distill] +$((i))m | $(echo "$tail_out" | tr '\n' ' ' | tr '\r' ' ' | tail -c 220)"
+    if ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 "$target" "grep -q 'DISTILL_EXIT=' $log 2>/dev/null"; then
+      local rc; rc="$(ssh -o StrictHostKeyChecking=no "$target" "grep 'DISTILL_EXIT=' $log | tail -1 | sed 's/.*=//'" 2>/dev/null || echo '?')"
+      echo "[train_nebius][distill] finished (DISTILL_EXIT=$rc)"
+      [ "$rc" = "0" ] || return 1
+      break
+    fi
+    if [ "$i" -gt 240 ]; then echo "[train_nebius][distill] ERROR: still running after 4h — bailing (VM left up; ssh in or run teardown)"; return 1; fi
+  done
+}
+
+fetch_distill() {
+  local target; target="$(ssh_target)"
+  local tier="${DFLASH_TIER:-9b}"
+  local out_dir="${DFLASH_OUT_DIR:-out/dflash-drafter-${tier}}"
+  echo "[train_nebius][fetch-distill] pulling $out_dir + the run log"
+  mkdir -p "$ROOT/$out_dir"
+  rsync -avhz --info=progress2 "$target:$REMOTE_TRAIN_DIR/$out_dir/" "$ROOT/$out_dir/" || true
+  rsync -avhz "$target:$REMOTE_TRAIN_DIR/distill_${RUN_NAME}.log" "$ROOT/$out_dir/distill.log" 2>/dev/null || true
+}
+
 teardown() {
   local iid did
   iid="$(instance_id_by_name)"
@@ -410,6 +558,16 @@ teardown() {
   fi
 }
 
+sync_distill_dataset() {
+  # The distiller needs exactly one corpus file (DFLASH_DATASET / TRAIN_FILE).
+  local target; target="$(ssh_target)"
+  local ds="${DFLASH_DATASET:-$TRAIN_FILE}"
+  local d; d="$(dirname "$ds")"
+  ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/$d"
+  echo "[train_nebius][sync] sending distillation corpus $ds"
+  rsync -avhz --partial --info=progress2 "$ROOT/$ds" "$target:$REMOTE_TRAIN_DIR/$ds"
+}
+
 case "$cmd" in
   smoke) smoke ;;
   provision) provision ;;
@@ -418,12 +576,25 @@ case "$cmd" in
   fetch) fetch ;;
   teardown) teardown ;;
   ip) vm_ip ;;
+  distill) run_distill_remote ;;
+  fetch-distill) fetch_distill ;;
   full)
     trap 'echo "[train_nebius] full: ensuring teardown on exit"; teardown || true' EXIT
     provision
     sync_tree
     run_remote
     fetch
+    ;;
+  distill-full)
+    # Provision → sync training tree → sync the one corpus → distill → fetch
+    # the drafter → teardown. Frugal: a single H200 for ~1-3 GPU-h on a small
+    # KD job. Set DFLASH_MAX_SAMPLES for a short budget-bounded pass.
+    trap 'echo "[train_nebius] distill-full: ensuring teardown on exit"; teardown || true' EXIT
+    provision
+    sync_tree
+    sync_distill_dataset
+    run_distill_remote
+    fetch_distill
     ;;
   help|*) sed -n '1,80p' "$0" ;;
 esac

@@ -1,0 +1,53 @@
+# Corporate Project Folder Naming Convention
+# Version: 2.3
+# Effective Date: 2023-09-01
+# Approved By: Engineering Standards Committee
+# Status: current
+
+naming_convention:
+  version: "2.3"
+  status: "current"
+  effective_date: "2023-09-01"
+
+folder_structure:
+  root_drive: "D"
+  main_folder: "My Projects"
+  year_folder_pattern: "{year} Projects"
+  project_folder_pattern: "{project_code}-{project_name}"
+
+  mandatory_subfolders:
+    - "01_Project_Management"
+    - "02_Design_Documents"
+    - "03_Calculations"
+    - "04_Drawings"
+    - "05_Procurement"
+    - "06_Correspondence"
+    - "07_Meeting_Minutes"
+    - "08_Quality_Control"
+    - "09_Deliverables"
+    - "10_Archive"
+
+policies:
+  isolation_policy: "strict"
+  cross_project_reference: "prohibited"
+  readme_required: true
+  readme_location: "project root"
+
+hierarchy_example: |
+  D:\My Projects\
+    2024 Projects\
+      03TK24018A-Tianhe Refinery Catalytic Cracking Unit Revamp\
+        01_Project_Management\
+        02_Design_Documents\
+        ...
+    2025 Projects\
+      04TK25001C-Evergreen Energy LNG Receiving Terminal\
+        01_Project_Management\
+        02_Design_Documents\
+        ...
+
+notes:
+  - "Each project must reside in its own year folder based on the project start year."
+  - "Project folder names must begin with the official project code followed by a hyphen."
+  - "Do not create shortcuts or symbolic links between project folders."
+  - "All mandatory subfolders must be created at project initialization."

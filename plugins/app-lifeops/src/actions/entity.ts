@@ -683,9 +683,8 @@ export const entityAction: Action & {
     }
 
     if (subaction === "set_identity") {
-      // Wave-2 W2-A: route directly through `EntityStore.observeIdentity`
-      // with `verified: true` so the user-asserted identity wins over any
-      // ambient platform observation.
+      // Route through `EntityStore.observeIdentity` with `verified: true` so
+      // the user-asserted identity wins over any ambient platform observation.
       const platform = normalizedNonEmpty(params.platform);
       const handle = normalizedNonEmpty(params.handle);
       if (!platform || !handle) {

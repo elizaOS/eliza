@@ -1,0 +1,72 @@
+[
+  {
+    "transaction_id": "TXN-811",
+    "date": "2026-03-15",
+    "amount": 180000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-801",
+    "customer_name": "Dingxin Software",
+    "type": "Order Payment",
+    "category": "Sales Revenue",
+    "description": "Dingxin Software ORD-801 full order payment",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-812",
+    "date": "2026-03-18",
+    "amount": 50000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-802",
+    "customer_name": "Hanhai E-Commerce",
+    "type": "Order Payment",
+    "category": "Sales Revenue",
+    "description": "Hanhai E-Commerce ORD-802 initial payment",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-813",
+    "date": "2026-03-20",
+    "amount": 250000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-803",
+    "customer_name": "Wantong Logistics",
+    "type": "Order Payment",
+    "category": "Sales Revenue",
+    "description": "Wantong Logistics ORD-803 full order payment",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-814",
+    "date": "2026-03-22",
+    "amount": -20000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-803",
+    "customer_name": "Wantong Logistics",
+    "type": "Refund",
+    "category": "Sales Refund",
+    "description": "Wantong Logistics ORD-803 partial refund for implementation services (implementation delay compensation)",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-815",
+    "date": "2026-03-20",
+    "amount": 30000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-804",
+    "customer_name": "Qianfeng Tech",
+    "type": "Order Payment",
+    "category": "Sales Revenue",
+    "description": "Qianfeng Tech ORD-804 full order payment",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-816",
+    "date": "2026-03-01",
+    "amount": 150000.00,
+    "currency": "CNY",
+    "type": "Payroll",
+    "category": "HR Cost",
+    "description": "March sales team payroll",
+    "status": "completed"
+  }
+]

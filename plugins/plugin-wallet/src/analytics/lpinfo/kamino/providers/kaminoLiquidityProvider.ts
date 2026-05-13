@@ -1,27 +1,11 @@
-// @ts-nocheck — legacy code from absorbed plugins (lp-manager, lpinfo, dexscreener, defi-news, birdeye); strict types pending cleanup
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
-import type { KaminoLiquidityService } from "../services/kaminoLiquidityService";
+import type {
+  KaminoLiquidityService,
+  KaminoStrategy,
+} from "../services/kaminoLiquidityService";
 
 const KAMINO_LIQUIDITY_TEXT_LIMIT = 4000;
-
-// Import the KaminoStrategy type from the service
-interface KaminoStrategy {
-  address: string;
-  dataSize: number;
-  lamports: number;
-  owner: string;
-  strategyType: string;
-  estimatedTvl: number;
-  volume24h: number;
-  apy: number;
-  tokenA: string;
-  tokenB: string;
-  feeTier: string;
-  rebalancing: string;
-  lastRebalance: string;
-  positions: unknown[];
-}
 
 function asPromptRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object"
@@ -217,7 +201,7 @@ export const kaminoLiquidityProvider: Provider = {
 
     return {
       data,
-      values: {} as Record<string, unknown>,
+      values: {},
       text,
     };
   },

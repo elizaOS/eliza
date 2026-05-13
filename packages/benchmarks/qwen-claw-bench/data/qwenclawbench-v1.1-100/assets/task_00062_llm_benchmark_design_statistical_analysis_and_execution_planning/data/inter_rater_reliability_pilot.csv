@@ -1,0 +1,101 @@
+question_id,rater_1_score,rater_2_score,rater_3_score,dimension,question_type
+Q0001,1.3,1.3,1.4,Mathematics,mathematical_proof
+Q0002,2.9,2.6,3.2,Creative Writing,open_ended
+Q0003,4.5,5.0,4.2,Mathematics,multi_turn_dialogue
+Q0004,2.0,2.8,2.8,Summarization,multi_turn_dialogue
+Q0005,4.5,4.2,4.5,Reading Comprehension,open_ended
+Q0006,3.8,4.2,4.2,Reading Comprehension,creative_writing
+Q0007,3.9,3.6,3.5,Mathematics,open_ended
+Q0008,4.3,3.8,4.7,Creative Writing,open_ended
+Q0009,2.9,3.1,2.8,Mathematics,mathematical_proof
+Q0010,3.0,4.0,3.4,Common Sense,multi_turn_dialogue
+Q0011,3.8,3.8,4.4,Common Sense,open_ended
+Q0012,2.8,4.1,4.0,Common Sense,multi_turn_dialogue
+Q0013,2.9,2.4,1.5,Data Analysis,mathematical_proof
+Q0014,2.4,1.8,2.5,Data Analysis,open_ended
+Q0015,2.9,2.5,1.8,Instruction Following,multi_turn_dialogue
+Q0016,3.4,4.0,4.4,Instruction Following,mathematical_proof
+Q0017,2,7,2,3,2,1,Code Generation,multi_turn_dialogue
+Q0018,2.7,2.4,1.8,Creative Writing,creative_writing
+Q0019,3.3,3.4,3.7,Summarization,multi_turn_dialogue
+Q0020,2.4,1.7,2.1,Code Generation,multi_turn_dialogue
+Q0021,4,7,4,5,4,2,Summarization,creative_writing
+Q0022,1.7,1.5,2.5,Scientific Knowledge,multi_turn_dialogue
+Q0023,4.8,4.3,3.9,Scientific Knowledge,open_ended
+Q0024,3.7,2.8,3.7,Scientific Knowledge,creative_writing
+Q0025,3.9,3.2,3.5,Scientific Knowledge,creative_writing
+Q0026,3.4,4.1,2.8,Data Analysis,mathematical_proof
+Q0027,4.1,4.4,4.1,Reasoning,multi_turn_dialogue
+Q0028,2.0,2.1,2.6,Creative Writing,multi_turn_dialogue
+Q0029,2.2,2.6,2.0,Reasoning,creative_writing
+Q0030,4.1,3.9,3.8,Scientific Knowledge,mathematical_proof
+Q0031,3.4,3.0,2.9,Mathematics,open_ended
+Q0032,4.5,4.4,4.1,Reading Comprehension,multi_turn_dialogue
+Q0033,1.9,2.1,1.5,Instruction Following,multi_turn_dialogue
+Q0034,3.9,3.7,3.8,Instruction Following,multi_turn_dialogue
+Q0035,5.0,4.0,3.8,Data Analysis,multi_turn_dialogue
+Q0036,1.3,1.3,1.4,Common Sense,creative_writing
+Q0037,4.8,3.6,3.8,Data Analysis,creative_writing
+Q0038,2.8,2.2,2.8,Reading Comprehension,creative_writing
+Q0039,2.6,2.4,2.9,Reasoning,creative_writing
+Q0040,3,7,3,5,2,2,Reasoning,creative_writing
+Q0041,4,0,4,2,4,2,Reasoning,mathematical_proof
+Q0042,3.7,3.1,4.0,Instruction Following,creative_writing
+Q0043,2.9,2.8,3.7,Instruction Following,mathematical_proof
+Q0044,4.1,3.0,4.4,Logical Deduction,creative_writing
+Q0045,2.8,2.6,2.6,Reasoning,multi_turn_dialogue
+Q0046,2,7,2,2,2,2,Reading Comprehension,open_ended
+Q0047,2.2,2.9,1.4,Summarization,creative_writing
+Q0048,3.3,3.8,4.1,Code Generation,multi_turn_dialogue
+Q0049,2.2,1.8,0.8,Reasoning,multi_turn_dialogue
+Q0050,1,1,2,6,2,0,Language Understanding,mathematical_proof
+Q0051,4,7,3,6,4,7,Instruction Following,creative_writing
+Q0052,1.8,2.2,1.9,Language Understanding,mathematical_proof
+Q0053,1.3,1.8,2.0,Instruction Following,creative_writing
+Q0054,4.4,4.8,4.5,Summarization,mathematical_proof
+Q0055,2.5,2.5,1.3,Reading Comprehension,mathematical_proof
+Q0056,3.0,2.9,2.1,Common Sense,open_ended
+Q0057,4.1,4.9,4.1,Logical Deduction,open_ended
+Q0058,2.7,4.0,3.0,Reasoning,creative_writing
+Q0059,3.2,2.9,2.3,Reading Comprehension,multi_turn_dialogue
+Q0060,2.9,1.6,3.1,Reasoning,mathematical_proof
+Q0061,3.0,2.0,2.6,Summarization,open_ended
+Q0062,2.3,2.1,3.0,Reading Comprehension,multi_turn_dialogue
+Q0063,1.5,1.5,1.5,Language Understanding,creative_writing
+Q0064,3,1,2,7,3,0,Summarization,multi_turn_dialogue
+Q0065,1.7,1.3,2.0,Code Generation,mathematical_proof
+Q0066,3,7,4,2,3,6,Instruction Following,mathematical_proof
+Q0067,3.8,3.8,4.5,Scientific Knowledge,creative_writing
+Q0068,3.9,4.3,4.7,Mathematics,multi_turn_dialogue
+Q0069,3.5,3.5,4.0,Code Generation,multi_turn_dialogue
+Q0070,4.5,4.5,4.0,Reasoning,creative_writing
+Q0071,2.5,2.8,2.5,Common Sense,mathematical_proof
+Q0072,3.2,2.9,3.9,Common Sense,mathematical_proof
+Q0073,2.3,2.7,1.3,Scientific Knowledge,open_ended
+Q0074,2.6,3.5,3.8,Reading Comprehension,open_ended
+Q0075,3.6,2.8,3.4,Mathematics,open_ended
+Q0076,3.3,4.8,3.6,Reading Comprehension,mathematical_proof
+Q0077,3.8,4.9,4.6,Creative Writing,mathematical_proof
+Q0078,2,0,2,2,2,6,Instruction Following,creative_writing
+Q0079,3.3,2.6,3.2,Logical Deduction,multi_turn_dialogue
+Q0080,2,2,2,2,1,0,Code Generation,mathematical_proof
+Q0081,2.0,2.6,3.0,Common Sense,multi_turn_dialogue
+Q0082,2.4,2.6,2.4,Data Analysis,mathematical_proof
+Q0083,3.6,4.2,4.5,Reasoning,mathematical_proof
+Q0084,2.1,2.0,2.8,Scientific Knowledge,creative_writing
+Q0085,2.8,1.7,2.8,Summarization,open_ended
+Q0086,3,1,2,9,2,3,Logical Deduction,open_ended
+Q0087,4.6,4.5,4.6,Logical Deduction,mathematical_proof
+Q0088,2.5,1.9,1.8,Mathematics,mathematical_proof
+Q0089,3.5,3.4,3.8,Reasoning,mathematical_proof
+Q0090,2.2,0.8,1.7,Summarization,open_ended
+Q0091,2.9,3.1,2.0,Mathematics,creative_writing
+Q0092,1.6,2.4,1.4,Scientific Knowledge,creative_writing
+Q0093,4.2,3.7,4.4,Summarization,multi_turn_dialogue
+Q0094,3.9,3.4,4.4,Summarization,creative_writing
+Q0095,2.4,3.0,3.6,Reading Comprehension,multi_turn_dialogue
+Q0096,4.4,4.4,4.2,Logical Deduction,open_ended
+Q0097,2.8,3.4,3.2,Reasoning,mathematical_proof
+Q0098,2.2,2.3,2.0,Reading Comprehension,multi_turn_dialogue
+Q0099,2,7,2,0,2,1,Instruction Following,mathematical_proof
+Q0100,3.3,4.3,3.4,Reading Comprehension,multi_turn_dialogue

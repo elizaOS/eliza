@@ -1,8 +1,15 @@
+"use client";
+
+// Sibling primitive mirrored at packages/ui/src/components/ui/empty-state.tsx. The two
+// workspaces (Eliza-UI and Cloud-UI) cannot depend on each other today, so
+// these files are intentional siblings. When changing behavior, props, or
+// visual semantics, update both — or extract to a shared package per
+// docs/frontend-cleanup-2026-05-12/15-cloud-eliza-primitive-dedup.md.
+
 /**
  * Empty state component for displaying when a section has no content.
  * Supports icon, title, description, action button, and custom children.
  */
-"use client";
 
 import * as React from "react";
 import { cn } from "../lib/utils";

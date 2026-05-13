@@ -1,0 +1,16 @@
+{"type": "session_start", "session_id": "feishu_1326187", "model": "claude-sonnet-4-20250514", "created_at": "2026-02-05T23:33:26.492333", "user_id": "cron-scheduler", "channel": "feishu"}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-02-05T23:37:59.679334", "session_id": "feishu_1326187", "seq": 1}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-05T23:39:41.403603", "session_id": "feishu_1326187", "seq": 2, "usage": {"prompt_tokens": 541, "completion_tokens": 1900, "total_tokens": 956}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-05T23:44:09.549107", "session_id": "feishu_1326187", "seq": 3}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-05T23:45:44.284262", "session_id": "feishu_1326187", "seq": 4}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-05T23:50:05.234858", "session_id": "feishu_1326187", "seq": 5}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-05T23:53:28.730742", "session_id": "feishu_1326187", "seq": 6, "usage": {"prompt_tokens": 5306, "completion_tokens": 2531, "total_tokens": 10215}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-05T23:54:35.068599", "session_id": "feishu_1326187", "seq": 7, "usage": {"prompt_tokens": 2732, "completion_tokens": 3935, "total_tokens": 3901}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-02-05T23:59:19.438266", "session_id": "feishu_1326187", "seq": 8, "usage": {"prompt_tokens": 6780, "completion_tokens": 2254, "total_tokens": 11019}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-06T00:01:14.981393", "session_id": "feishu_1326187", "seq": 9}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-02-06T00:04:49.181194", "session_id": "feishu_1326187", "seq": 10, "usage": {"prompt_tokens": 2128, "completion_tokens": 3662, "total_tokens": 2069}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-06T00:09:05.453561", "session_id": "feishu_1326187", "seq": 11}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-06T00:13:51.889884", "session_id": "feishu_1326187", "seq": 12}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-06T00:15:49.846082", "session_id": "feishu_1326187", "seq": 13, "usage": {"prompt_tokens": 1499, "completion_tokens": 2940, "total_tokens": 5683}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-02-06T00:17:11.945087", "session_id": "feishu_1326187", "seq": 14}
+{"type": "session_end", "session_id": "feishu_1326187", "ended_at": "2026-02-06T00:17:21.945087", "total_messages": 14, "status": "timeout"}

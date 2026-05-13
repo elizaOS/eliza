@@ -68,15 +68,6 @@ export default function PrivacyPolicyPage() {
 
       <LandingHeader />
 
-      <video
-        src="/videos/Hero Cloud_x3 Slower_1_Scale 5.mp4"
-        autoPlay
-        loop
-        muted
-        playsInline
-        className="absolute inset-0 h-full w-full object-cover"
-        style={{ filter: "brightness(0.4) blur(2px)" }}
-      />
       <div className="absolute inset-0 bg-gradient-to-br from-black/60 via-black/40 to-black/60" />
 
       <div className="relative z-10 flex flex-1 items-start justify-center p-4 py-12">

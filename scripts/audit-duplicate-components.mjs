@@ -1267,7 +1267,7 @@ function collectPromptIssues(repoRoot, promptFiles) {
             line: index + 1,
             match: trimmed.slice(0, 180),
             message:
-              "planner-facing structured prompt appears to require JSON/XML; prefer TOON unless downstream API requires JSON",
+              "planner-facing structured prompt appears to require text-serialized JSON/XML; prefer native function/tool calling or JSON schema",
             rule: "planner-structured-format",
             severity: "error",
           }),

@@ -1,0 +1,23 @@
+2026-02-09 23:00:05 UTC [INFO] Hyper Backup task "Daily-Documents" completed successfully. 1,247 files backed up (12.3 GB).
+2026-02-09 23:00:12 UTC [INFO] Hyper Backup task "Daily-Photos" completed successfully. 342 files backed up (8.7 GB).
+2026-02-09 23:00:18 UTC [INFO] Hyper Backup task "Daily-Docker" completed successfully. 89 files backed up (3.1 GB).
+2026-02-10 00:00:01 UTC [INFO] Scheduled SMART check initiated for all disks.
+2026-02-10 00:00:45 UTC [INFO] Disk 1 (WD-WCC7K0RD4201): SMART OK. Temperature: 36°C.
+2026-02-10 00:00:46 UTC [INFO] Disk 2 (WD-WCC7K0RD4208): SMART OK. Temperature: 35°C.
+2026-02-10 00:00:47 UTC [WARN] Disk 3 (WD-WCC7K0RD4215): Reallocated_Sector_Ct rising (current: 148, threshold: 140). Monitoring.
+2026-02-10 00:00:48 UTC [INFO] Disk 4 (WD-WCC7K0RD4222): SMART OK. Temperature: 37°C.
+2026-02-10 00:00:49 UTC [INFO] Disk 5 (WD-WCC7K0RD4229): SMART OK (hot spare). Temperature: 34°C.
+2026-02-10 00:00:50 UTC [INFO] Disk 6 (WD-WCC7K0RD4236): SMART OK. Temperature: 36°C.
+2026-02-10 06:00:01 UTC [INFO] Surveillance Station: 24h recording cycle complete. 48 cameras, 1.2 TB written.
+2026-02-10 12:30:14 UTC [CRITICAL] Disk 3 (WD-WCC7K0RD4215) SMART FAILURE: Reallocated_Sector_Ct exceeded threshold (current: 196, threshold: 140).
+2026-02-10 12:30:15 UTC [CRITICAL] Storage Pool 1 status changed: healthy → degraded.
+2026-02-10 12:30:16 UTC [ALERT] Email notification sent to admin@example.com: "Disk failure on nas-primary"
+2026-02-10 12:31:00 UTC [WARN] Storage Pool 1 operating in degraded mode (RAID-6, 1 disk failed, 1 parity remaining).
+2026-02-10 12:35:00 UTC [INFO] Hot spare (Disk 5, WD-WCC7K0RD4229) activated for Storage Pool 1.
+2026-02-10 12:35:01 UTC [INFO] RAID rebuild initiated. Estimated time: 6 hours.
+2026-02-10 13:00:00 UTC [INFO] RAID rebuild progress: 10.2%. Speed: 185 MB/s.
+2026-02-10 13:30:00 UTC [INFO] Hyper Backup tasks paused during RAID rebuild.
+2026-02-10 14:00:00 UTC [INFO] RAID rebuild progress: 20.1%. Speed: 178 MB/s.
+2026-02-10 14:30:00 UTC [INFO] RAID rebuild progress: 30.5%. Speed: 180 MB/s.
+2026-02-10 15:00:00 UTC [INFO] RAID rebuild progress: 40.3%. Speed: 176 MB/s.
+2026-02-10 15:04:32 UTC [INFO] Status poll: rebuild at 42.7%, all services nominal except Hyper Backup (paused).

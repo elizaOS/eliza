@@ -1,0 +1,53 @@
+task_id: M089_video_movie_scene_meme
+task_name: Movie Scene Localization - Driver Meme Creation
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。这是一段约52秒的动作电影片段，包含一辆车和一名滑翔伞玩家卷入混乱场景。
+
+    请完成以下任务：
+    该电影片段中有一个混乱的场景，一辆车和一名滑翔伞玩家卷入其中。请找出当房车司机看到滑翔伞被挂在车上后，露出震惊表情的时间区间，并截取清晰帧，显示房车司机震惊的面部特写做成一个表情包，配字"wow"，保存为 /workspace/meme.png。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files:
+  - fixtures/gt.png
+
+env_snapshot_commands: []
+
+env_snapshot_files:
+  - /workspace/meme.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  观看视频找到约 00:24 处房车司机震惊表情的画面。
+  房车司机是一位戴帽子、有胡须的中年男子，身穿浅蓝色衬衫和灰绿色马甲，神情极为震惊。
+  步骤：
+  1. 用 ffmpeg 截取 00:24 附近的帧：ffmpeg -i /workspace/fixtures/video.mp4 -ss 00:00:24 -frames:v 1 /workspace/frame.png
+  2. 裁剪面部特写区域
+  3. 在图片底部添加 "wow" 文字，制作成表情包风格
+  4. 保存为 /workspace/meme.png
+  参考图片：fixtures/gt.png
+
+primary_dimensions:
+  - completion
+  - robustness

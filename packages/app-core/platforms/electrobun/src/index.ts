@@ -3,10 +3,10 @@ import { createServer as createNetServer } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { resolveApiToken, resolveDesktopApiPort } from "@elizaos/shared";
+import type { BrowserWindow } from "electrobun/bun";
 import Electrobun, {
 	ApplicationMenu,
 	BrowserView,
-	BrowserWindow,
 	BuildConfig,
 	Updater,
 	Utils,
@@ -31,6 +31,7 @@ import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-se
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
+import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { getFloatingChatManager } from "./floating-chat-window";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
@@ -748,24 +749,25 @@ async function startRendererServer(): Promise<string> {
 			// on same-origin /api fetches whether it's loaded via Vite (watch mode)
 			// or this static server (non-watch dev:desktop). Without this, every
 			// /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
+			const apiBase = apiBaseOwner.getCurrent().base ?? initialApiBase;
 			if (
-				initialApiBase &&
+				apiBase &&
 				(pathname.startsWith("/api/") ||
 					pathname === "/ws" ||
 					pathname.startsWith("/music-player"))
 			) {
-				const target = new URL(pathname + url.search, initialApiBase);
+				const target = new URL(pathname + url.search, apiBase);
 				const headers = new Headers(req.headers);
 				headers.set("host", target.host);
 				try {
-					const upstream = await fetch(target, {
+					const upstreamRequest: RequestInit & { duplex: "half" } = {
 						method: req.method,
 						headers,
 						body: req.body,
-						// @ts-expect-error Bun fetch supports duplex for streaming bodies
 						duplex: "half",
 						redirect: "manual",
-					});
+					};
+					const upstream = await fetch(target, upstreamRequest);
 					return new Response(upstream.body, {
 						status: upstream.status,
 						statusText: upstream.statusText,
@@ -899,9 +901,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 		// Shell window with the empty default webview. The actual content
 		// (and therefore the RPC channel) is hosted on the separate mainView
 		// BrowserView constructed below — that's what we attach `rpc` to.
-		win = new BrowserWindow({
+		win = createElectrobunBrowserWindow({
 			title: BRAND.appName,
-			// @ts-expect-error: Electrobun doesn't expose icon in JS typings yet
 			icon: resolveDesktopAppIconPath(),
 			url: null,
 			preload: null,
@@ -934,9 +935,8 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 			);
 		}
 	} else {
-		win = new BrowserWindow({
+		win = createElectrobunBrowserWindow({
 			title: BRAND.appName,
-			// @ts-expect-error: Electrobun doesn't expose icon in JS typings yet
 			icon: resolveDesktopAppIconPath(),
 			url: rendererUrl,
 			preload,
@@ -2111,7 +2111,7 @@ async function main(): Promise<void> {
 	surfaceWindowManager = new SurfaceWindowManager({
 		createWindow: (options) => {
 			const { rpc } = createDesktopRpc("surface");
-			const window = new BrowserWindow({
+			const window = createElectrobunBrowserWindow({
 				...options,
 				rpc,
 			}) as BrowserWindow & ManagedWindowLike;

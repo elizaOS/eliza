@@ -16,7 +16,7 @@ Pipeline:
        - phase==OOB after transforms     → drop
   2. Append the new synth records (already Phase-3/4).
   3. Apply per-tier caps (Tier S replicate, hermes E_combined budget).
-  4. Repair TOON bullets in synth records.
+  4. Repair native JSON bullets in synth records.
   5. Write data/final/train_v2.jsonl + manifest_v2.json with the final
      phase distribution.
 
@@ -55,8 +55,8 @@ _CD_THINK_RE = re.compile(r"<think>(.+?)</think>(.*)$", re.S)
 _RC_THINK_RE = _CD_THINK_RE  # same shape
 
 
-def _toon_repair(s: str) -> str:
-    """Inline copy of transform_repair_toon_bullets.repair so we don't
+def _payload_repair(s: str) -> str:
+    """Inline copy of transform_repair_payload_bullets.repair so we don't
     have to subprocess. Two passes: indexed-assign collapse and
     markdown-bullet → array."""
     lines = s.splitlines()
@@ -112,15 +112,15 @@ def _shrink_thought(s: str, limit: int = 240) -> str:
 
 
 def _to_phase2_reply(thought: str, text: str) -> str:
-    """Build a TOON planner envelope with REPLY-only action."""
+    """Build a native JSON planner envelope with REPLY-only action."""
     thought = _shrink_thought(thought)
     text = (text or "").strip()
     return (
         f"thought: {thought}\n"
-        f"actions[1]:\n"
+        f"tool_calls[0]\n"
         f"  - name: REPLY\n"
         f"    params:\n"
-        f"providers[0]:\n"
+        f"providers: []\n"
         f"text: {json.dumps(text)}\n"
         f"simple: true"
     )
@@ -174,7 +174,7 @@ def transform_record(rec: dict) -> dict | None:
 
 def iter_synth(synth_dir: Path) -> Iterator[dict]:
     """Yield records from data/synthesized/{evaluators,phase3}/*.jsonl,
-    repairing TOON bullets/indexed-assign as we go."""
+    repairing native JSON bullets/indexed-assign as we go."""
     for sub in ("evaluators", "phase3"):
         d = synth_dir / sub
         if not d.exists():
@@ -190,7 +190,7 @@ def iter_synth(synth_dir: Path) -> Iterator[dict]:
                     except json.JSONDecodeError:
                         continue
                     er = rec.get("expectedResponse") or ""
-                    rec["expectedResponse"] = _toon_repair(er)
+                    rec["expectedResponse"] = _payload_repair(er)
                     yield rec
 
 

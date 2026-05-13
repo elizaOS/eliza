@@ -1,0 +1,72 @@
+[
+  {
+    "transaction_id": "TXN-811",
+    "date": "2026-03-15",
+    "amount": 180000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-801",
+    "customer_name": "鼎新软件",
+    "type": "订单收款",
+    "category": "销售收入",
+    "description": "鼎新软件ORD-801订单全额收款",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-812",
+    "date": "2026-03-18",
+    "amount": 50000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-802",
+    "customer_name": "瀚海电商",
+    "type": "订单收款",
+    "category": "销售收入",
+    "description": "瀚海电商ORD-802订单首款",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-813",
+    "date": "2026-03-20",
+    "amount": 250000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-803",
+    "customer_name": "万通物流",
+    "type": "订单收款",
+    "category": "销售收入",
+    "description": "万通物流ORD-803订单全额收款",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-814",
+    "date": "2026-03-22",
+    "amount": -20000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-803",
+    "customer_name": "万通物流",
+    "type": "退款",
+    "category": "销售退款",
+    "description": "万通物流ORD-803实施服务部分退款（实施延期补偿）",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-815",
+    "date": "2026-03-20",
+    "amount": 30000.00,
+    "currency": "CNY",
+    "customer_id": "CUS-804",
+    "customer_name": "前锋科技",
+    "type": "订单收款",
+    "category": "销售收入",
+    "description": "前锋科技ORD-804订单全额收款",
+    "status": "completed"
+  },
+  {
+    "transaction_id": "TXN-816",
+    "date": "2026-03-01",
+    "amount": 150000.00,
+    "currency": "CNY",
+    "type": "工资",
+    "category": "人力成本",
+    "description": "3月份销售团队工资",
+    "status": "completed"
+  }
+]

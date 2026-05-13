@@ -1,21 +1,16 @@
-import {
-  Button,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-  SettingsControls,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-  Switch,
-} from "@elizaos/ui";
 import { ChevronRight } from "lucide-react";
 import type { ReactNode, RefCallback } from "react";
 import type { PluginInfo } from "../../api";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { getBrandIcon } from "../conversations/brand-icons";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { Select, SelectContent, SelectItem, SelectValue } from "../ui/select";
+import { SettingsControls } from "../ui/settings-controls";
+import { Switch } from "../ui/switch";
 import type {
   PluginsViewMode,
   SubgroupTag,

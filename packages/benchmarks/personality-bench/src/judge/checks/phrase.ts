@@ -268,9 +268,54 @@ function tokenize(text: string): string[] {
     .filter((t) => t.length > 0);
 }
 
-/** Terseness: at most `maxTokens` tokens. */
+/**
+ * Filler phrases that violate the `terse` style directive. These are the
+ * assistant-side pleasantry padding tokens that add length without substance.
+ */
+const TERSE_FILLER_PHRASES = [
+  /\bcertainly\b/i,
+  /\bof course\b/i,
+  /\bgreat question\b/i,
+  /\babsolutely\b/i,
+  /\bi'?d be happy to\b/i,
+  /\bi would be happy to\b/i,
+];
+
+/**
+ * Hard character cap for the `terse` style (~50 tokens ≈ 280 chars).
+ * Responses over this limit are clearly not terse regardless of token count.
+ */
+const TERSE_MAX_CHARS = 280;
+
+/** Terseness: at most `maxTokens` whitespace tokens, ≤ 280 chars, and no filler phrases. */
 export function checkTerse(response: string, maxTokens: number): LayerResult {
-  const tokens = tokenize(response);
+  const trimmed = response.trim();
+
+  // Hard character cap first — cheapest check.
+  if (trimmed.length > TERSE_MAX_CHARS) {
+    return {
+      layer: "phrase",
+      verdict: "FAIL",
+      confidence: 0.9,
+      reason: `not terse: ${trimmed.length} chars > ${TERSE_MAX_CHARS} char cap`,
+      evidence: { chars: trimmed.length, charCap: TERSE_MAX_CHARS },
+    };
+  }
+
+  // Filler-phrase check.
+  for (const re of TERSE_FILLER_PHRASES) {
+    if (re.test(trimmed)) {
+      return {
+        layer: "phrase",
+        verdict: "FAIL",
+        confidence: 0.9,
+        reason: `not terse: filler phrase matched: ${re}`,
+        evidence: { matched: String(re) },
+      };
+    }
+  }
+
+  const tokens = tokenize(trimmed);
   if (tokens.length <= maxTokens) {
     return {
       layer: "phrase",
@@ -1006,6 +1051,125 @@ export function checkSecondPersonOnly(response: string): LayerResult {
     confidence: 0.85,
     reason: `second-person voice: you/your×${secondPerson}, first-person×${firstPerson}`,
     evidence: { firstPerson, secondPerson },
+  };
+}
+
+/* ----------------------------------------------------------------------------
+ * Precise pattern checks for no_exclamation / no_questions_back / no_lists
+ * These replace the brittle single-character forbidden-phrase mappings
+ * (W5-tra §7a) that caused false-positives when injection payloads or normal
+ * punctuation contained the bare characters.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * Strip content between triple-backtick fences and bare URLs so injection
+ * payloads embedded in code blocks don't trigger prose-level checks.
+ */
+function stripNoisyContent(text: string): string {
+  // Remove fenced code blocks.
+  let cleaned = text.replace(/```[\s\S]*?```/g, " ");
+  // Remove inline code spans.
+  cleaned = cleaned.replace(/`[^`]*`/g, " ");
+  // Remove URLs (http/https/ftp).
+  cleaned = cleaned.replace(/https?:\/\/\S+|ftp:\/\/\S+/g, " ");
+  return cleaned;
+}
+
+/**
+ * `no_exclamation` trait check.
+ *
+ * Fails only when the agent's own prose contains `!` used as a sentence
+ * terminator (preceded by a word character). Strips fenced code blocks and
+ * URLs before scanning so injection payloads and technical content don't
+ * false-positive.
+ */
+export function checkNoExclamation(response: string): LayerResult {
+  const prose = stripNoisyContent(response);
+  // Match `!` preceded by a word char — sentence-terminator pattern.
+  const hits = prose.match(/\w!/g) ?? [];
+  if (hits.length === 0) {
+    return {
+      layer: "phrase",
+      verdict: "PASS",
+      confidence: 0.95,
+      reason: "no exclamation marks used as sentence terminators",
+    };
+  }
+  return {
+    layer: "phrase",
+    verdict: "FAIL",
+    confidence: 0.95,
+    reason: `exclamation mark(s) used as sentence terminator: ${hits.length}`,
+    evidence: { count: hits.length },
+  };
+}
+
+/**
+ * `no_questions_back` trait check.
+ *
+ * Fails only when the agent's own text (after stripping injection payloads
+ * between triple-backtick or IGNORE_BELOW markers) contains a `?`.
+ */
+export function checkNoQuestionsBack(response: string): LayerResult {
+  // Strip injection payload markers — text after IGNORE_BELOW is adversarial.
+  const withoutInjection = response
+    .replace(/IGNORE_BELOW[\s\S]*/i, "")
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/`[^`]*`/g, " ");
+  if (withoutInjection.includes("?")) {
+    return {
+      layer: "phrase",
+      verdict: "FAIL",
+      confidence: 0.95,
+      reason: "agent response contains a question mark",
+    };
+  }
+  return {
+    layer: "phrase",
+    verdict: "PASS",
+    confidence: 0.95,
+    reason: "no question marks in agent response",
+  };
+}
+
+/**
+ * `no_lists` trait check.
+ *
+ * Fails only when the response contains ≥ 2 consecutive lines that start
+ * with a list marker (`- `, `* `, `1.`, `1)`) at the beginning of the line.
+ * Isolated list-marker-like text inside sentences does not count.
+ */
+export function checkNoLists(response: string): LayerResult {
+  const lines = response.split(/\r?\n/);
+  // A line "starts a list" if it begins (after optional whitespace) with a
+  // bullet or numbered list prefix.
+  const LIST_LINE = /^\s*(?:[-*][ \t]|\d+[.)]\s)/;
+  let consecutiveListLines = 0;
+  let maxConsecutive = 0;
+  for (const line of lines) {
+    if (LIST_LINE.test(line)) {
+      consecutiveListLines += 1;
+      if (consecutiveListLines > maxConsecutive)
+        maxConsecutive = consecutiveListLines;
+    } else {
+      consecutiveListLines = 0;
+    }
+  }
+  if (maxConsecutive >= 2) {
+    return {
+      layer: "phrase",
+      verdict: "FAIL",
+      confidence: 0.95,
+      reason: `list detected: ${maxConsecutive} consecutive list-style lines`,
+      evidence: { maxConsecutive },
+    };
+  }
+  return {
+    layer: "phrase",
+    verdict: "PASS",
+    confidence: 0.9,
+    reason: "no multi-line list structure found",
+    evidence: { maxConsecutive },
   };
 }
 

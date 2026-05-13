@@ -1,0 +1,155 @@
+task_id: T114_meeting_preparation
+task_name: Meeting Preparation Materials
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T114_meeting_preparation/fixtures/calendar/events.json
+  - name: contacts
+    command: python mock_services/contacts/server.py
+    port: 9103
+    health_check: http://localhost:9103/contacts/search
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9103/contacts/reset
+    env:
+      CONTACTS_FIXTURES: tasks/T114_meeting_preparation/fixtures/contacts/contacts.json
+
+prompt:
+  text: |
+    Please help me prepare materials for tomorrow's meetings:
+    1. Check all meetings scheduled for tomorrow
+    2. Compile a list of attendees for each meeting
+    3. Look up each attendee's contact information and job title in the contacts directory
+    4. Produce a meeting preparation document that includes: time/location/attendee details for each meeting
+    5. Specifically flag external attendees (people not in the contacts directory) and the busiest colleague
+  language: en
+
+tools:
+  - name: calendar_list_events
+    description: List calendar events
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+
+  - name: calendar_get_event
+    description: Get event details
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: Event ID
+      required: [event_id]
+
+  - name: contacts_search
+    description: Search internal contacts directory
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search keyword
+        department:
+          type: string
+          description: Filter by department
+      required: [query]
+
+  - name: contacts_get
+    description: Get contact details
+    input_schema:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          description: Contact ID
+      required: [contact_id]
+
+tool_endpoints:
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+  - tool_name: contacts_search
+    url: http://localhost:9103/contacts/search
+    method: POST
+  - tool_name: contacts_get
+    url: http://localhost:9103/contacts/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-26"
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: attendee_coverage
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether all attendees are fully listed with their contact information found"
+  - name: schedule_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether external personnel (Director Chen) and the busiest colleague (Li Hua, 3 meetings) are correctly flagged"
+  - name: material_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether the meeting materials are clearly structured and information is complete"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the assistant's meeting preparation materials.
+
+  ## Correct Information
+  1. 4 meetings tomorrow: Product Plan Review (9:00), Client Demo (11:00), Tech Stack Selection (14:00), All-Hands Weekly (16:00)
+  2. De-duplicated attendees: 6 internal + 1 external (Director Chen)
+     - Wang Ming: 2 meetings (review + weekly), Technical Director
+     - Li Hua: 3 meetings (review + tech selection + weekly), busiest colleague
+     - Zhao Lei: 3 meetings (review + demo + weekly), Account Manager
+     - Zhang Wei: 2 meetings (demo + weekly), Security Manager
+     - Ma Qiang: 2 meetings (tech selection + weekly), Ops Lead
+     - Zhou Ming: 2 meetings (tech selection + weekly), Frontend Lead
+     - Director Chen: external, not in contacts directory
+  3. Li Hua attends 3 meetings — the busiest colleague
+  4. Director Chen is not in the internal contacts directory and should be flagged as external
+
+  Scoring:
+  - 0.8-1.0: Covers all meetings and attendees, correctly flags external personnel and busiest colleague
+  - 0.5-0.7: Most meetings covered, some details missing
+  - 0.2-0.4: Only lists some meetings
+  - 0.0-0.1: Meeting materials not completed
+
+reference_solution: |
+  1. calendar_list_events(start_date="2026-03-27") -> 4 meetings
+  2. Review each meeting's details and attendees one by one
+  3. contacts_search("Wang Ming"), contacts_search("Li Hua"), etc. -> look up 6 internal personnel
+  4. "Director Chen" search returns no results -> flag as external
+  5. Count meetings per person: Li Hua has the most (3 meetings)
+  6. Output structured meeting preparation materials
+
+primary_dimensions: [completion, robustness, communication]

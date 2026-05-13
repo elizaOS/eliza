@@ -40,6 +40,10 @@
 // reference. A nonzero kv_tile (voice barge-in cancellation granularity) would
 // subdivide pass 1/2 over [t0, t0+kv_tile); not yet wired (the current runtime
 // treats 0 == n_tokens).
+//
+// causal/q_pos_base (push constants): when causal != 0, mask out KV positions
+// t > q_pos_base + q_pos. causal == 0 preserves the original full-range,
+// non-causal behavior.
 
 #version 450
 #extension GL_EXT_shader_16bit_storage  : require
@@ -64,6 +68,8 @@ layout(push_constant) uniform Push {
     uint q_pos;          // query position index (selects the q_sketch / out row)
     uint sm_scale_bits;  // float bit pattern of the pre-softmax temperature
     uint kv_tile;        // KV positions per online-softmax tile; 0 == whole range
+    uint causal;         // 1 -> mask KV positions greater than q_pos_base + q_pos
+    uint q_pos_base;     // absolute position of q_pos 0 (causal masking)
 } push;
 
 const uint  QJL_PROJECTION_DIM = 256u;
@@ -230,6 +236,7 @@ void main() {
         for (uint i = tid; i < HEAD_DIM; i += 32u) out_attn[out_base + i] = 0.0;
         return;
     }
+    uint q_abs = push.q_pos_base + q_pos;
 
     // --- Single online-softmax pass over the KV tokens. The running (m, l) are
     //     thread-uniform (every thread sees the same per-token raw score after
@@ -241,6 +248,7 @@ void main() {
     for (uint i = tid; i < HEAD_DIM; i += 32u) acc_o[i] = 0.0;
     barrier();
     for (uint t = 0u; t < push.n_tokens; t++) {
+        if (push.causal != 0u && t > q_abs) break;
         float raw = qjl_score_one_token(h_q, q_pos, h_k, t, sm_scale, tid);
         float new_m = max(m, raw);
         float corr  = exp(m - new_m);          // rescale factor for the old acc

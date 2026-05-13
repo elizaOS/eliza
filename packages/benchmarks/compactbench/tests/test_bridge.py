@@ -213,6 +213,37 @@ def test_bridge_recovers_trailing_json_after_stray_logs(
     assert result["summaryText"] == "x"
 
 
+def test_bridge_recovers_trailing_json_with_braces_inside_strings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact = {
+        "schemaVersion": "1.0.0",
+        "summaryText": "literal braces } and { are valid inside strings",
+        "structured_state": {
+            "immutable_facts": ["keep {this} fact"],
+            "locked_decisions": [],
+            "deferred_items": [],
+            "forbidden_behaviors": [],
+            "entity_map": {},
+            "unresolved_items": [],
+        },
+        "selectedSourceTurnIds": [],
+        "warnings": [],
+        "methodMetadata": {},
+    }
+    noisy_stdout = f"setup complete\n{json.dumps(artifact)}\n"
+
+    def fake_run(_args: list[str], *, input: bytes, **_kwargs: Any) -> Any:
+        return _make_completed(noisy_stdout)
+
+    monkeypatch.setattr(bridge.subprocess, "run", fake_run)
+    monkeypatch.setattr(bridge.shutil, "which", lambda _: "/fake/bun")
+
+    result = bridge.run_ts_compactor("naive-summary", {"turns": []})
+    assert result["summaryText"] == "literal braces } and { are valid inside strings"
+    assert result["structured_state"]["immutable_facts"] == ["keep {this} fact"]
+
+
 def test_bridge_serializes_unicode_without_escape(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -1,0 +1,79 @@
+{
+  "unit": "in",
+  "source_note": "California/ADA-derived simplified plan-view geometric rules for benchmark evaluation, not a full code compliance review.",
+  "scope": "Plan-view accessibility repair only. All vertical mounting-height requirements are intentionally excluded from scoring.",
+  "door_clear_width_min": 32.0,
+  "turning_circle_diameter_min": 60.0,
+  "turning_circle_fit_rule": "turning_circle_fit_usable_floor",
+  "wall_boundary_clearance_offset": 2.8,
+  "toilet_centerline_from_side_wall_min": 16.0,
+  "toilet_centerline_from_side_wall_max": 18.0,
+  "door_must_not_swing_into_fixture_clearance": true,
+  "turning_space_may_overlap_toilet_clearance": true,
+  "lavatory_may_overlap_turning_space_only_with_knee_toe_clearance": true,
+  "lavatory_knee_clearance_width_min": 30.0,
+  "lavatory_knee_clearance_depth_min": 19.0,
+  "side_grab_bar_length_min": 42.0,
+  "rear_grab_bar_length_min": 36.0,
+  "grab_bar_side_wall_alignment_tolerance": 4.0,
+  "grab_bar_rear_wall_alignment_tolerance": 8.0,
+  "excluded_vertical_requirements": [
+    "toilet_seat_height",
+    "flush_control_height",
+    "grab_bar_mounting_height",
+    "lavatory_rim_or_counter_height",
+    "lavatory_knee_clearance_height",
+    "pipe_protection_height_or_configuration",
+    "mirror_height",
+    "accessory_mounting_height",
+    "door_sign_mounting_height",
+    "wall_sign_mounting_height",
+    "braille_or_tactile_signage_height"
+  ],
+  "excluded_from_first_version_scoring": [
+    "unisex_restroom_requirement",
+    "international_symbol_of_accessibility_labeling",
+    "door_latch_hardware_operation",
+    "mirror_requirements",
+    "vertical_signage_requirements"
+  ],
+  "plan_requirements": {
+    "turning_space": {
+      "type": "circle",
+      "diameter_min": 60.0,
+      "fit_rule": "turning_circle_fit_usable_floor",
+      "wall_boundary_clearance_offset": 2.8,
+      "description": "A 60 inch diameter wheelchair turning circle must fit in the usable floor area; diameter alone is not sufficient. In this plan-view benchmark, the room polygon represents the interior finished room boundary. Usable floor is derived from that boundary after a small wall/boundary offset and after subtracting blocked fixtures. The turning circle may overlap toilet clear floor space, but not the bathtub or a lavatory without knee/toe clearance."
+    },
+    "door": {
+      "clear_width_min": 32.0,
+      "must_not_swing_into_fixture_clearance": true,
+      "description": "Door must provide a 32 inch clear opening and should not swing into required fixture clearance."
+    },
+    "toilet": {
+      "centerline_from_side_wall_range": [16.0, 18.0],
+      "description": "Toilet centerline must be 16 to 18 inches from the adjacent side wall."
+    },
+    "grab_bars": {
+      "side_wall_length_min": 42.0,
+      "rear_wall_length_min": 36.0,
+      "side_wall_alignment_tolerance": 4.0,
+      "rear_wall_alignment_tolerance": 8.0,
+      "description": "Only plan-view grab bar presence/orientation/length and toilet-relative placement are in scope; mounting height is excluded. The side-wall grab bar should align with the same adjacent side wall used for the toilet centerline. The rear-wall grab bar should align with the toilet rear wall and cross or closely span the toilet centerline."
+    },
+    "lavatory": {
+      "knee_clearance_width_min": 30.0,
+      "knee_clearance_depth_min": 19.0,
+      "may_overlap_turning_space_if_knee_toe_clearance_provided": true,
+      "description": "Only plan-view knee/toe clearance width and depth are in scope; rim height, pipe protection, and mirror rules are excluded."
+    },
+    "bathtub": {
+      "preserve_if_present": true,
+      "description": "Bathtub is treated as a protected fixture in minimal-change scoring unless a repair explicitly requires otherwise."
+    },
+    "accessories_and_signage": {
+      "plan_view_scoring": false,
+      "description": "Accessories and signage are visible CAD elements but their ADA requirements are vertical or labeling-related and are excluded from first-version scoring."
+    }
+  }
+}

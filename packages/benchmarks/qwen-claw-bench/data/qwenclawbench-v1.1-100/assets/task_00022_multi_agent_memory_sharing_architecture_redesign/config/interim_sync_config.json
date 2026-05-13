@@ -1,0 +1,55 @@
+{
+  "_metadata": {
+    "config_version": "3.5.0",
+    "updated": "2024-11-10T09:15:00Z",
+    "updated_by": "platform-engineering",
+    "status": "draft",
+    "notes": "Proposed configuration for Q1 2025 rollout. NOT YET ACTIVE. Under review by architecture board. Do not deploy to production."
+  },
+  "default_sync_interval_seconds": 600,
+  "conflict_resolution_strategy": "timestamp_wins",
+  "max_payload_size_kb": 1024,
+  "retry_attempts": 5,
+  "retry_backoff_multiplier": 2.5,
+  "shared_namespace": "/shared/knowledge_base",
+  "sync_mode": "push",
+  "polling_enabled": false,
+  "batch_size": 200,
+  "compression": "zstd",
+  "timeout_seconds": 45,
+  "health_check_interval_seconds": 30,
+  "per_agent_overrides": {
+    "customer_agent": {
+      "sync_interval_seconds": 120,
+      "priority": "high",
+      "namespaces": ["/shared/knowledge_base", "/shared/entity_store"],
+      "max_payload_size_kb": 512,
+      "notes": "Proposed increase from 60s to 120s — re-evaluate against SLA"
+    },
+    "analytics_agent": {
+      "sync_interval_seconds": 600,
+      "priority": "normal",
+      "namespaces": ["/shared/knowledge_base", "/shared/entity_store", "/shared/config_cache"],
+      "max_payload_size_kb": 4096,
+      "notes": "Expanded payload cap for large report pulls"
+    },
+    "ops_agent": {
+      "sync_interval_seconds": 900,
+      "priority": "low",
+      "namespaces": ["/shared/knowledge_base", "/shared/config_cache"],
+      "max_payload_size_kb": 256
+    }
+  },
+  "proposed_changes": [
+    "Switch from pull-based polling to push-based event sync",
+    "Increase default interval to 600s to reduce PostgreSQL polling load",
+    "Introduce timestamp_wins as transitional conflict resolution before full CRDT rollout",
+    "Expand analytics_agent payload cap to support large dataset pulls",
+    "Disable polling in favor of webhook-based notification"
+  ],
+  "dead_letter_queue": {
+    "enabled": true,
+    "max_retries": 10,
+    "ttl_hours": 168
+  }
+}

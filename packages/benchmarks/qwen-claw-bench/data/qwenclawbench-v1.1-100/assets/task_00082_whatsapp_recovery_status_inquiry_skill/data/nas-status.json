@@ -1,0 +1,118 @@
+{
+  "hostname": "nas-primary.local",
+  "model": "Synology DS1621+",
+  "ip": "192.168.1.50",
+  "lastChecked": "2026-02-10T15:04:32Z",
+  "overallStatus": "degraded",
+  "storage": {
+    "pool": "Storage Pool 1",
+    "raidType": "RAID-6",
+    "status": "rebuilding",
+    "rebuildProgress": 42.7,
+    "rebuildStarted": "2026-02-10T12:35:00Z",
+    "rebuildETA": "2026-02-10T18:30:00Z",
+    "totalCapacity": "43.6 TB",
+    "usedCapacity": "31.2 TB",
+    "availableCapacity": "12.4 TB"
+  },
+  "disks": [
+    {
+      "slot": 1,
+      "model": "WD Red Plus WD120EFBX",
+      "serial": "WD-WCC7K0RD4201",
+      "capacity": "12 TB",
+      "temperature": 38,
+      "status": "healthy",
+      "smartStatus": "OK",
+      "hoursOn": 18432
+    },
+    {
+      "slot": 2,
+      "model": "WD Red Plus WD120EFBX",
+      "serial": "WD-WCC7K0RD4208",
+      "capacity": "12 TB",
+      "temperature": 37,
+      "status": "healthy",
+      "smartStatus": "OK",
+      "hoursOn": 18430
+    },
+    {
+      "slot": 3,
+      "model": "WD Red Plus WD120EFBX",
+      "serial": "WD-WCC7K0RD4215",
+      "capacity": "12 TB",
+      "temperature": 0,
+      "status": "failed",
+      "smartStatus": "FAIL",
+      "failedAt": "2026-02-10T12:30:14Z",
+      "errorType": "Reallocated_Sector_Ct threshold exceeded",
+      "hoursOn": 22156
+    },
+    {
+      "slot": 4,
+      "model": "WD Red Plus WD120EFBX",
+      "serial": "WD-WCC7K0RD4222",
+      "capacity": "12 TB",
+      "temperature": 39,
+      "status": "healthy",
+      "smartStatus": "OK",
+      "hoursOn": 18435
+    },
+    {
+      "slot": 5,
+      "model": "WD Red Plus WD120EFBX",
+      "serial": "WD-WCC7K0RD4229",
+      "capacity": "12 TB",
+      "temperature": 36,
+      "status": "rebuilding",
+      "smartStatus": "OK",
+      "role": "hot_spare_activated",
+      "rebuildProgress": 42.7,
+      "hoursOn": 5120
+    },
+    {
+      "slot": 6,
+      "model": "WD Red Plus WD120EFBX",
+      "serial": "WD-WCC7K0RD4236",
+      "capacity": "12 TB",
+      "temperature": 38,
+      "status": "healthy",
+      "smartStatus": "OK",
+      "hoursOn": 18440
+    }
+  ],
+  "services": {
+    "smb": "running",
+    "nfs": "running",
+    "docker": "running",
+    "surveillance": "running",
+    "hyperBackup": "paused_during_rebuild"
+  },
+  "recentEvents": [
+    {
+      "timestamp": "2026-02-10T12:30:14Z",
+      "severity": "critical",
+      "message": "Disk 3 (WD-WCC7K0RD4215) has failed. SMART threshold exceeded for Reallocated_Sector_Ct."
+    },
+    {
+      "timestamp": "2026-02-10T12:31:00Z",
+      "severity": "warning",
+      "message": "Storage Pool 1 is now in degraded state."
+    },
+    {
+      "timestamp": "2026-02-10T12:35:00Z",
+      "severity": "info",
+      "message": "Hot spare (Disk 5) activated. RAID rebuild initiated."
+    },
+    {
+      "timestamp": "2026-02-10T14:00:00Z",
+      "severity": "info",
+      "message": "RAID rebuild progress: 20.1%"
+    },
+    {
+      "timestamp": "2026-02-10T15:00:00Z",
+      "severity": "info",
+      "message": "RAID rebuild progress: 40.3%"
+    }
+  ]
+}

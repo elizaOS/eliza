@@ -7,6 +7,7 @@ import type { VoiceLifecycleLoaders } from "./lifecycle";
 import {
   canonicalizePhraseText,
   DEFAULT_PHRASE_CACHE_SEED,
+  estimatePhraseTokenCount,
   FIRST_AUDIO_FILLERS,
   PhraseCache,
 } from "./phrase-cache";
@@ -55,6 +56,11 @@ describe("FIRST_AUDIO_FILLERS", () => {
 // --- PhraseCache LRU semantics (new symbols) -------------------------------
 
 describe("PhraseCache LRU", () => {
+  it("estimates short acknowledgement token counts", () => {
+    expect(estimatePhraseTokenCount("  Got it!  ")).toBe(2);
+    expect(estimatePhraseTokenCount("")).toBe(0);
+  });
+
   it("get() promotes an entry to most-recently-used", () => {
     const c = new PhraseCache({ maxEntries: 2 });
     c.put({ text: "a", pcm: new Float32Array([1]), sampleRate: 24000 });
@@ -65,6 +71,28 @@ describe("PhraseCache LRU", () => {
     expect(c.has("a")).toBe(true);
     expect(c.has("b")).toBe(false);
     expect(c.has("c")).toBe(true);
+  });
+
+  it("keeps live phrase caching focused on sub-10-token first sentences", () => {
+    const c = new PhraseCache();
+    expect(
+      c.put({
+        text: "one two three four five six seven eight nine",
+        pcm: new Float32Array([1]),
+        sampleRate: 24000,
+      }),
+    ).toBe(true);
+    expect(
+      c.put({
+        text: "one two three four five six seven eight nine ten",
+        pcm: new Float32Array([2]),
+        sampleRate: 24000,
+      }),
+    ).toBe(false);
+    expect(c.has("one two three four five six seven eight nine")).toBe(true);
+    expect(c.has("one two three four five six seven eight nine ten")).toBe(
+      false,
+    );
   });
 });
 

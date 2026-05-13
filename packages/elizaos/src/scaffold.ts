@@ -174,7 +174,7 @@ function normalizeKebabCase(value: string): string {
   return normalized || "project";
 }
 
-export function toDisplayName(value: string): string {
+function toDisplayName(value: string): string {
   return normalizeKebabCase(value)
     .split("-")
     .filter(Boolean)
@@ -225,7 +225,7 @@ export function buildFullstackTemplateValues(
   };
 }
 
-export function getPluginReplacementEntries(
+function getPluginReplacementEntries(
   values: PluginTemplateValues,
 ): Array<[string, string]> {
   return [
@@ -248,7 +248,7 @@ export function getPluginReplacementEntries(
   ];
 }
 
-export function getFullstackReplacementEntries(
+function getFullstackReplacementEntries(
   values: FullstackTemplateValues,
 ): Array<[string, string]> {
   return [
@@ -384,7 +384,7 @@ export function resolveTemplateUpstream(
   };
 }
 
-export function ensurePackageJsonWorkspaces(
+function ensurePackageJsonWorkspaces(
   packageJsonPath: string,
   workspaceEntries: string[],
 ): boolean {

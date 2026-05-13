@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -20,14 +21,25 @@ const shimSource = path.join(
   "ElizaBunEngineShim",
   "eliza_bun_engine_shim.c",
 );
+const patchesDir = path.join(packageRoot, "patches");
+const bunIosPatch = path.join(patchesDir, "dannote-bun-ios-nojit.patch");
+const webKitIosPatch = path.join(
+  patchesDir,
+  "webkit-ios-simulator-nojit.patch",
+);
 const frameworkName = "ElizaBunEngine";
+const expectedEngineAbiVersion = "3";
 const requiredSymbols = [
   "_eliza_bun_engine_abi_version",
+  "_eliza_bun_engine_last_error",
+  "_eliza_bun_engine_set_host_callback",
   "_eliza_bun_engine_start",
   "_eliza_bun_engine_stop",
+  "_eliza_bun_engine_is_running",
   "_eliza_bun_engine_call",
   "_eliza_bun_engine_free",
 ];
+const allowedExportedSymbols = new Set(requiredSymbols);
 
 function argValue(name, fallback = null) {
   const prefix = `${name}=`;
@@ -44,6 +56,7 @@ function run(command, args, options = {}) {
     env: options.env ?? process.env,
     stdio: options.stdio ?? "inherit",
     encoding: options.encoding,
+    maxBuffer: options.maxBuffer,
   });
   if (result.status !== 0) {
     throw new Error(
@@ -58,6 +71,7 @@ function runCapture(command, args, options = {}) {
     ...options,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
+    maxBuffer: options.maxBuffer ?? 256 * 1024 * 1024,
   });
 }
 
@@ -72,6 +86,7 @@ function targetInfo(raw) {
         cmakeBuildDirName: "ios-device",
         webkitStageName: "ios-webkit-device",
         clangTarget: "arm64-apple-ios16.0",
+        rustTarget: "aarch64-apple-ios",
         minVersionFlag: "-miphoneos-version-min=16.0",
         xcframeworkLibraryIdentifier: "ios-arm64",
         sourceToolchainName: "ios-device.cmake",
@@ -84,6 +99,7 @@ function targetInfo(raw) {
         cmakeBuildDirName: "ios-simulator",
         webkitStageName: "ios-webkit-simulator",
         clangTarget: "arm64-apple-ios16.0-simulator",
+        rustTarget: "aarch64-apple-ios-sim",
         minVersionFlag: "-mios-simulator-version-min=16.0",
         xcframeworkLibraryIdentifier: "ios-arm64-simulator",
         sourceToolchainName: "ios-simulator.cmake",
@@ -97,6 +113,7 @@ function fail(message) {
 
 const info = targetInfo(argValue("--target", "simulator"));
 const verifyOnly = process.argv.includes("--verify-only");
+const packageOnly = process.argv.includes("--package-only");
 const rebuild = process.argv.includes("--rebuild");
 const backend = (
   argValue("--backend", process.env.ELIZA_BUN_IOS_BUILD_BACKEND || "auto") ||
@@ -167,6 +184,104 @@ function validateEngineBinary(binary) {
   if (missing.length > 0) {
     fail(`${binary} is missing required ABI symbols: ${missing.join(", ")}`);
   }
+  const exportedSymbols = output
+    .split(/\r?\n/)
+    .map((line) => line.trim().split(/\s+/).at(-1))
+    .filter((symbol) => symbol?.startsWith("_"));
+  const unexpected = exportedSymbols.filter(
+    (symbol) => !allowedExportedSymbols.has(symbol),
+  );
+  if (unexpected.length > 0) {
+    fail(
+      `${binary} exports non-ABI symbols: ${unexpected
+        .slice(0, 24)
+        .join(", ")}${unexpected.length > 24 ? ", ..." : ""}`,
+    );
+  }
+}
+
+function validateEngineFrameworkMetadata(frameworkDir) {
+  const infoPlist = path.join(frameworkDir, "Info.plist");
+  if (!fs.existsSync(infoPlist)) {
+    fail(`${frameworkDir} is missing Info.plist`);
+  }
+  const plist = parsePlistJson(infoPlist);
+  if (String(plist.ElizaBunEngineABIVersion ?? "") !== expectedEngineAbiVersion) {
+    fail(
+      `${infoPlist} has ElizaBunEngineABIVersion=${String(
+        plist.ElizaBunEngineABIVersion,
+      )}; expected ${expectedEngineAbiVersion}`,
+    );
+  }
+}
+
+function parsePlistJson(plistPath) {
+  const result = runCapture("plutil", [
+    "-convert",
+    "json",
+    "-o",
+    "-",
+    plistPath,
+  ]);
+  try {
+    return JSON.parse(result.stdout);
+  } catch (err) {
+    fail(
+      `failed to parse ${plistPath} as JSON plist: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+  }
+}
+
+function resolveXcframeworkBinary(root, targetInfo = info) {
+  const infoPlist = path.join(root, "Info.plist");
+  if (!fs.existsSync(infoPlist)) {
+    fail(`${root} is missing Info.plist`);
+  }
+  const plist = parsePlistJson(infoPlist);
+  const libraries = Array.isArray(plist.AvailableLibraries)
+    ? plist.AvailableLibraries
+    : [];
+  const wantSimulator = targetInfo.sdk === "iphonesimulator";
+  const library = libraries.find((entry) => {
+    if (!entry || entry.SupportedPlatform !== "ios") return false;
+    return wantSimulator
+      ? entry.SupportedPlatformVariant === "simulator"
+      : !entry.SupportedPlatformVariant;
+  });
+  if (!library?.LibraryIdentifier) {
+    const requested = wantSimulator ? "iOS Simulator" : "iOS device";
+    const available = libraries
+      .map((entry) =>
+        `${entry?.SupportedPlatform ?? "unknown"}${
+          entry?.SupportedPlatformVariant
+            ? `-${entry.SupportedPlatformVariant}`
+            : ""
+        }/${entry?.LibraryIdentifier ?? "missing-id"}`,
+      )
+      .join(", ");
+    fail(
+      `${root} does not contain the requested ${requested} ${frameworkName} library. Available: ${available || "none"}`,
+    );
+  }
+  const libraryPath =
+    typeof library.LibraryPath === "string"
+      ? library.LibraryPath
+      : `${frameworkName}.framework`;
+  const binary = path.join(
+    root,
+    library.LibraryIdentifier,
+    libraryPath,
+    frameworkName,
+  );
+  const frameworkDir = path.dirname(binary);
+  if (!fs.existsSync(binary)) {
+    fail(
+      `${root} selected ${library.LibraryIdentifier}, but ${binary} does not exist`,
+    );
+  }
+  return { binary, frameworkDir, libraryIdentifier: library.LibraryIdentifier };
 }
 
 function findFrameworkBinaries(root) {
@@ -191,13 +306,22 @@ function findFrameworkBinaries(root) {
 }
 
 function validateXcframework(root) {
+  const selected = resolveXcframeworkBinary(root, info);
+  validateEngineFrameworkMetadata(selected.frameworkDir);
+  validateEngineBinary(selected.binary);
   const binaries = findFrameworkBinaries(root);
   if (binaries.length === 0) {
     fail(
       `${root} does not contain ${frameworkName}.framework/${frameworkName}`,
     );
   }
-  for (const binary of binaries) validateEngineBinary(binary);
+  for (const binary of binaries) {
+    validateEngineFrameworkMetadata(path.dirname(binary));
+    validateEngineBinary(binary);
+  }
+  console.log(
+    `[bun-ios-runtime] Validated ${selected.libraryIdentifier} ABI symbols`,
+  );
 }
 
 if (fs.existsSync(artifact) && !rebuild) {
@@ -231,6 +355,65 @@ if (
     `${sourceDir} does not look like a Bun source checkout (missing build.zig and CMakeLists.txt)`,
   );
 }
+
+function patchCheck(root, patchFile, reverse = false) {
+  const args = reverse
+    ? ["apply", "--reverse", "--check", patchFile]
+    : ["apply", "--check", patchFile];
+  return spawnSync("git", args, {
+    cwd: root,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+  });
+}
+
+function applyPatchIfNeeded(root, patchFile, label) {
+  if (process.env.ELIZA_BUN_IOS_SKIP_SOURCE_PATCHES === "1") return;
+  if (!fs.existsSync(patchFile)) return;
+  if (!fs.existsSync(path.join(root, ".git"))) {
+    console.warn(
+      `[bun-ios-runtime] Skipping ${label} source patch; ${root} is not a git checkout`,
+    );
+    return;
+  }
+
+  const forward = patchCheck(root, patchFile);
+  if (forward.status === 0) {
+    console.log(`[bun-ios-runtime] Applying ${label} source patch`);
+    run("git", ["apply", patchFile], { cwd: root });
+    return;
+  }
+
+  const reverse = patchCheck(root, patchFile, true);
+  if (reverse.status === 0) {
+    console.log(`[bun-ios-runtime] ${label} source patch already applied`);
+    return;
+  }
+
+  fail(
+    [
+      `Cannot apply ${label} source patch ${patchFile}.`,
+      forward.stderr?.trim() || forward.stdout?.trim() || "git apply --check failed",
+    ].join("\n"),
+  );
+}
+
+function applyBundledSourcePatches() {
+  applyPatchIfNeeded(sourceDir, bunIosPatch, "Bun iOS/no-JIT");
+  const webKitSourceDir =
+    process.env.ELIZA_BUN_IOS_WEBKIT_SOURCE_DIR ||
+    process.env.ELIZA_WEBKIT_SOURCE_DIR;
+  if (webKitSourceDir) {
+    applyPatchIfNeeded(
+      path.resolve(webKitSourceDir),
+      webKitIosPatch,
+      "WebKit iOS Simulator/no-JIT",
+    );
+  }
+}
+
+applyBundledSourcePatches();
 
 const explicitCommand = process.env.ELIZA_BUN_IOS_BUILD_COMMAND;
 const env = {
@@ -270,11 +453,17 @@ function parseExtraArgs(value) {
 function stageWebKitIfRequested(info) {
   const webkitBuildDir = process.env.ELIZA_BUN_IOS_WEBKIT_BUILD_DIR;
   const webkitPath = process.env.ELIZA_BUN_IOS_WEBKIT_PATH;
-  if (webkitPath) return path.resolve(webkitPath);
+  if (webkitPath) {
+    const resolved = path.resolve(webkitPath);
+    validateStagedWebKit(resolved);
+    return resolved;
+  }
 
   const staged = path.join(sourceDir, "build", info.webkitStageName);
   if (!webkitBuildDir) {
     if (fs.existsSync(path.join(staged, "lib", "libJavaScriptCore.a"))) {
+      validateStagedWebKit(staged);
+      writeWebKitPackageMarker(staged);
       return staged;
     }
     fail(
@@ -283,15 +472,22 @@ function stageWebKitIfRequested(info) {
         `Expected ${path.join(staged, "lib", "libJavaScriptCore.a")}, or set:`,
         "  ELIZA_BUN_IOS_WEBKIT_BUILD_DIR=/path/to/WebKit/build-ios-{device,simulator}",
         "  ELIZA_BUN_IOS_WEBKIT_PATH=/path/with/include-and-lib",
-        "Build WebKit/JSC with ENABLE_JIT=OFF and ENABLE_C_LOOP=ON first.",
+        "Build WebKit/JSC with ENABLE_JIT=OFF, ENABLE_WEBASSEMBLY=ON, and ENABLE_C_LOOP=OFF first.",
       ].join("\n"),
     );
   }
 
   const src = path.resolve(webkitBuildDir);
   const srcLib = path.join(src, "lib");
-  const srcHeaders = path.join(src, "JavaScriptCore", "Headers");
-  if (!fs.existsSync(srcLib) || !fs.existsSync(srcHeaders)) {
+  const headerRoots = [
+    path.join(src, "JavaScriptCore", "Headers"),
+    path.join(src, "JavaScriptCore", "PrivateHeaders"),
+    path.join(src, "JavaScriptCore", "DerivedSources", "inspector"),
+    path.join(src, "WTF", "Headers"),
+    path.join(src, "bmalloc", "Headers"),
+    path.join(src, "ICU", "Headers"),
+  ];
+  if (!fs.existsSync(srcLib) || !fs.existsSync(headerRoots[0])) {
     fail(
       `ELIZA_BUN_IOS_WEBKIT_BUILD_DIR must contain lib/ and JavaScriptCore/Headers/ (${src})`,
     );
@@ -308,12 +504,137 @@ function stageWebKitIfRequested(info) {
       );
     }
   }
-  fs.cpSync(srcHeaders, path.join(staged, "include"), { recursive: true });
+  for (const headerRoot of headerRoots) {
+    if (fs.existsSync(headerRoot)) {
+      fs.cpSync(headerRoot, path.join(staged, "include"), { recursive: true });
+    }
+  }
+  const inspectorDerivedHeaders = path.join(
+    src,
+    "JavaScriptCore",
+    "DerivedSources",
+    "inspector",
+  );
+  if (fs.existsSync(inspectorDerivedHeaders)) {
+    fs.cpSync(inspectorDerivedHeaders, path.join(staged, "include", "JavaScriptCore"), {
+      recursive: true,
+    });
+  }
   const cmakeConfig = path.join(src, "cmakeconfig.h");
   if (fs.existsSync(cmakeConfig)) {
     fs.copyFileSync(cmakeConfig, path.join(staged, "include", "cmakeconfig.h"));
   }
+  validateStagedWebKit(staged);
+  writeWebKitPackageMarker(staged);
   return staged;
+}
+
+function validateStagedWebKit(webkitPath) {
+  const requiredArchives = [
+    {
+      name: "JavaScriptCore",
+      path: path.join(webkitPath, "lib", "libJavaScriptCore.a"),
+      symbols: ["_JSEvaluateScript", "__ZN3JSC14JSGlobalObject14finishCreationERNS_2VME"],
+    },
+    {
+      name: "WTF",
+      path: path.join(webkitPath, "lib", "libWTF.a"),
+      symbols: ["__ZN3WTF10initializeEv"],
+    },
+    {
+      name: "bmalloc",
+      path: path.join(webkitPath, "lib", "libbmalloc.a"),
+      symbols: ["_bmalloc_allocate"],
+    },
+  ];
+  for (const archive of requiredArchives) {
+    if (!fs.existsSync(archive.path)) {
+      fail(`${webkitPath} is missing required static archive ${archive.path}`);
+    }
+    const archs = runCapture("lipo", ["-archs", archive.path]).stdout
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!archs.includes("arm64")) {
+      fail(`${archive.path} does not contain an arm64 slice; archs=${archs.join(",") || "none"}`);
+    }
+    const symbols = runCapture("nm", ["-gU", archive.path], {
+      maxBuffer: 256 * 1024 * 1024,
+    }).stdout;
+    const missingSymbols = archive.symbols.filter(
+      (symbol) => !symbols.includes(symbol),
+    );
+    if (missingSymbols.length > 0) {
+      fail(
+        `${archive.path} is missing required ${archive.name} symbols: ${missingSymbols.join(", ")}`,
+      );
+    }
+  }
+
+  const candidates = [
+    path.join(webkitPath, "include", "cmakeconfig.h"),
+    path.join(webkitPath, "cmakeconfig.h"),
+    path.join(webkitPath, "CMakeCache.txt"),
+  ].filter((file) => fs.existsSync(file));
+  if (candidates.length === 0) {
+    fail(
+      `${webkitPath} is missing cmakeconfig.h or CMakeCache.txt; cannot prove the JSC iOS build flags`,
+    );
+  }
+  const observedFlags = new Map();
+  for (const file of candidates) {
+    const contents = fs.readFileSync(file, "utf8");
+    for (const flag of [
+      "ENABLE_C_LOOP",
+      "ENABLE_JIT",
+      "ENABLE_STATIC_JSC",
+      "ENABLE_WEBASSEMBLY",
+      "USE_BUN_JSC_ADDITIONS",
+    ]) {
+      const define = contents.match(
+        new RegExp(`#\\s*define\\s+${flag}\\s+(\\d+)\\b`),
+      );
+      const cache = contents.match(new RegExp(`^${flag}(?::\\w+)?=([^\\r\\n]+)$`, "im"));
+      const raw = define?.[1] ?? cache?.[1]?.trim();
+      if (raw == null) continue;
+      observedFlags.set(flag, /^(1|ON|TRUE|YES)$/i.test(raw));
+    }
+  }
+  const requiredFlags = [
+    ["ENABLE_C_LOOP", false],
+    ["ENABLE_JIT", false],
+    ["ENABLE_STATIC_JSC", true],
+    ["ENABLE_WEBASSEMBLY", true],
+    ["USE_BUN_JSC_ADDITIONS", true],
+  ];
+  for (const [flag, expected] of requiredFlags) {
+    if (!observedFlags.has(flag)) {
+      fail(`${webkitPath} does not expose ${flag}; cannot validate the staged iOS JSC build`);
+    }
+    const actual = observedFlags.get(flag);
+    if (actual !== expected) {
+      fail(
+        `${webkitPath} has ${flag}=${actual ? "ON" : "OFF"}; expected ${expected ? "ON" : "OFF"}`,
+      );
+    }
+  }
+}
+
+function webKitVersion() {
+  const setupWebKit = path.join(sourceDir, "cmake", "tools", "SetupWebKit.cmake");
+  if (!fs.existsSync(setupWebKit)) return "local-ios-jsc";
+  const contents = fs.readFileSync(setupWebKit, "utf8");
+  const match = contents.match(/set\(WEBKIT_VERSION\s+([^)]+)\)/);
+  return match?.[1]?.trim() || "local-ios-jsc";
+}
+
+function writeWebKitPackageMarker(webkitPath) {
+  const marker = path.join(webkitPath, "package.json");
+  const version = process.env.ELIZA_BUN_IOS_WEBKIT_VERSION || webKitVersion();
+  fs.writeFileSync(
+    marker,
+    `${JSON.stringify({ name: "bun-webkit-ios-local", version }, null, 2)}\n`,
+  );
 }
 
 function collectStaticInputs(buildDir, webkitPath) {
@@ -386,12 +707,17 @@ function collectStaticInputs(buildDir, webkitPath) {
       "release",
       "liblolhtml.a",
     ),
-    path.join(webkitPath, "lib", "libJavaScriptCore.a"),
-    path.join(webkitPath, "lib", "libWTF.a"),
-    path.join(webkitPath, "lib", "libbmalloc.a"),
   ];
   for (const input of optionalInputs) {
     if (fs.existsSync(input)) inputs.push({ kind: "normal", path: input });
+  }
+  for (const input of [
+    path.join(webkitPath, "lib", "libJavaScriptCore.a"),
+    path.join(webkitPath, "lib", "libWTF.a"),
+    path.join(webkitPath, "lib", "libbmalloc.a"),
+  ]) {
+    if (!fs.existsSync(input)) fail(`missing required static WebKit input ${input}`);
+    inputs.push({ kind: "normal", path: input });
   }
   return inputs;
 }
@@ -434,6 +760,7 @@ function writeFrameworkMetadata(frameworkDir) {
       "  <key>CFBundlePackageType</key><string>FMWK</string>",
       "  <key>CFBundleShortVersionString</key><string>0.0.0</string>",
       "  <key>CFBundleVersion</key><string>0</string>",
+      `  <key>ElizaBunEngineABIVersion</key><string>${expectedEngineAbiVersion}</string>`,
       "  <key>MinimumOSVersion</key><string>16.0</string>",
       "</dict>",
       "</plist>",
@@ -456,6 +783,8 @@ function linkFramework({ buildDir, webkitPath, info }) {
   fs.rmSync(stageRoot, { recursive: true, force: true });
   fs.mkdirSync(frameworkDir, { recursive: true });
   writeFrameworkMetadata(frameworkDir);
+  const exportedSymbolsList = path.join(stageRoot, "exported-symbols.txt");
+  fs.writeFileSync(exportedSymbolsList, `${requiredSymbols.join("\n")}\n`);
 
   const sdkPath = runCapture("xcrun", [
     "--sdk",
@@ -479,6 +808,7 @@ function linkFramework({ buildDir, webkitPath, info }) {
     path.join(webkitPath, "include"),
     "-install_name",
     `@rpath/${frameworkName}.framework/${frameworkName}`,
+    `-Wl,-exported_symbols_list,${exportedSymbolsList}`,
     "-o",
     binary,
     shimSource,
@@ -530,8 +860,24 @@ function buildWithCmake() {
     process.env.ELIZA_BUN_IOS_BUILD_DIR ||
       path.join(packageRoot, "build", info.cmakeBuildDirName, "bun"),
   );
+  if (packageOnly) {
+    console.log(
+      `[bun-ios-runtime] Packaging existing Bun CMake output from ${buildDir}`,
+    );
+    const frameworkDir = linkFramework({ buildDir, webkitPath, info });
+    createXcframework(frameworkDir);
+    return;
+  }
   if (rebuild) fs.rmSync(buildDir, { recursive: true, force: true });
   fs.mkdirSync(buildDir, { recursive: true });
+
+  prepareBunSourceForCmake();
+  patchBunSetupZigForWrapper();
+  const zigWrapper = ensureZigBuildWrapper(buildDir);
+  const buildEnv = {
+    ...env,
+    ELIZA_BUN_IOS_ZIG_EXECUTABLE: zigWrapper,
+  };
 
   console.log(
     `[bun-ios-runtime] Configuring Bun CMake backend for ${info.platform}`,
@@ -547,16 +893,25 @@ function buildWithCmake() {
       process.env.ELIZA_BUN_IOS_CMAKE_GENERATOR || "Ninja",
       "-DCMAKE_BUILD_TYPE=Release",
       `-DCMAKE_TOOLCHAIN_FILE=${toolchain}`,
+      "-DCMAKE_SYSTEM_NAME=iOS",
+      "-DCMAKE_SYSTEM_PROCESSOR=arm64",
+      `-DCMAKE_OSX_SYSROOT=${info.sdk}`,
+      "-DCMAKE_OSX_ARCHITECTURES=arm64",
+      "-DCMAKE_OSX_DEPLOYMENT_TARGET=16.0",
+      `-DCMAKE_C_COMPILER_TARGET=${info.clangTarget}`,
+      `-DCMAKE_CXX_COMPILER_TARGET=${info.clangTarget}`,
+      "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
+      "-DENABLE_LLVM=OFF",
       `-DWEBKIT_PATH=${webkitPath}`,
       ...parseExtraArgs(process.env.ELIZA_BUN_IOS_CMAKE_ARGS),
     ],
-    { cwd: sourceDir, env },
+    { cwd: sourceDir, env: buildEnv },
   );
 
   console.log(`[bun-ios-runtime] Building Bun CMake target in ${buildDir}`);
   run("cmake", ["--build", buildDir, "--config", "Release"], {
     cwd: sourceDir,
-    env,
+    env: buildEnv,
   });
 
   if (fs.existsSync(artifact)) {
@@ -565,6 +920,193 @@ function buildWithCmake() {
   }
   const frameworkDir = linkFramework({ buildDir, webkitPath, info });
   createXcframework(frameworkDir);
+}
+
+function patchBunSetupZigForWrapper() {
+  const setupZig = path.join(sourceDir, "cmake", "tools", "SetupZig.cmake");
+  if (!fs.existsSync(setupZig)) return;
+  const marker = "ELIZA_BUN_IOS_ZIG_EXECUTABLE";
+  let contents = fs.readFileSync(setupZig, "utf8");
+  if (contents.includes(marker)) return;
+  const original = [
+    "setx(ZIG_PATH ${VENDOR_PATH}/zig)",
+    "",
+    "if(WIN32)",
+    "  setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig.exe)",
+    "else()",
+    "  setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig)",
+    "endif()",
+  ].join("\n");
+  const replacement = [
+    "setx(ZIG_PATH ${VENDOR_PATH}/zig)",
+    "",
+    "if(DEFINED ENV{ELIZA_BUN_IOS_ZIG_EXECUTABLE})",
+    "  setx(ZIG_EXECUTABLE $ENV{ELIZA_BUN_IOS_ZIG_EXECUTABLE})",
+    "elseif(WIN32)",
+    "  setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig.exe)",
+    "else()",
+    "  setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig)",
+    "endif()",
+  ].join("\n");
+  if (!contents.includes(original)) {
+    fail(`cannot patch ${setupZig}; expected ZIG_EXECUTABLE block was not found`);
+  }
+  contents = contents.replace(original, replacement);
+  fs.writeFileSync(setupZig, contents);
+}
+
+function ensureZigBuildWrapper(buildDir) {
+  const wrapper = path.join(buildDir, "eliza-zig-wrapper.mjs");
+  const hostTarget =
+    process.env.ELIZA_BUN_IOS_ZIG_BUILD_RUNNER_TARGET ||
+    (os.arch() === "arm64" ? "aarch64-macos.15.0" : "x86_64-macos.13.0");
+  fs.writeFileSync(
+    wrapper,
+    `#!/usr/bin/env node
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
+
+const args = process.argv.slice(2);
+
+function run(command, argv, options = {}) {
+  const result = spawnSync(command, argv, {
+    cwd: options.cwd || process.cwd(),
+    env: process.env,
+    stdio: "inherit",
+  });
+  if (result.status !== 0) process.exit(result.status || 1);
+}
+
+function consumeValue(argv, index, name) {
+  const value = argv[index + 1];
+  if (!value) {
+    console.error(\`missing value after \${name}\`);
+    process.exit(1);
+  }
+  return value;
+}
+
+if (args[0] !== "build") {
+  const realZig = process.env.ELIZA_BUN_IOS_REAL_ZIG || "zig";
+  run(realZig, args);
+  process.exit(0);
+}
+
+let cacheDir = null;
+let globalCacheDir = null;
+let zigLibDir = null;
+const forwarded = [];
+for (let i = 1; i < args.length; i++) {
+  const arg = args[i];
+  if (arg === "--cache-dir") {
+    cacheDir = consumeValue(args, i, arg);
+    i++;
+    continue;
+  }
+  if (arg === "--global-cache-dir") {
+    globalCacheDir = consumeValue(args, i, arg);
+    i++;
+    continue;
+  }
+  if (arg === "--zig-lib-dir") {
+    zigLibDir = consumeValue(args, i, arg);
+    i++;
+    continue;
+  }
+  forwarded.push(arg);
+}
+
+if (!zigLibDir) {
+  console.error("missing --zig-lib-dir for Eliza iOS Zig build wrapper");
+  process.exit(1);
+}
+cacheDir ||= path.join(process.cwd(), ".zig-cache");
+globalCacheDir ||= cacheDir;
+
+const realZig = process.env.ELIZA_BUN_IOS_REAL_ZIG || path.join(path.dirname(zigLibDir), "zig");
+const buildRoot = process.cwd();
+const runnerSource = path.join(zigLibDir, "compiler", "build_runner.zig");
+const buildFile = path.join(buildRoot, "build.zig");
+const runnerDir = path.join(cacheDir, "eliza-build-runner");
+const depsFile = path.join(runnerDir, "dependencies.zig");
+const runner = path.join(runnerDir, "build-runner");
+
+fs.mkdirSync(runnerDir, { recursive: true });
+fs.writeFileSync(depsFile, "pub const packages = struct {};\\npub const root_deps: []const struct { []const u8, []const u8 } = &.{};\\n");
+
+const runnerMissing = !fs.existsSync(runner);
+const runnerMtime = runnerMissing ? 0 : fs.statSync(runner).mtimeMs;
+const sourceMtime = Math.max(fs.statSync(runnerSource).mtimeMs, fs.statSync(buildFile).mtimeMs);
+if (runnerMissing || runnerMtime < sourceMtime) {
+  run(realZig, [
+    "build-exe",
+    "-target",
+    ${JSON.stringify(hostTarget)},
+    "-lc",
+    "--cache-dir",
+    path.join(runnerDir, "cache"),
+    "--global-cache-dir",
+    globalCacheDir,
+    "--zig-lib-dir",
+    zigLibDir,
+    "--dep",
+    "@build",
+    "--dep",
+    "@dependencies",
+    \`-Mroot=\${runnerSource}\`,
+    \`-M@build=\${buildFile}\`,
+    \`-M@dependencies=\${depsFile}\`,
+    \`-femit-bin=\${runner}\`,
+  ]);
+}
+
+run(runner, [realZig, zigLibDir, buildRoot, cacheDir, globalCacheDir, ...forwarded], {
+  cwd: buildRoot,
+});
+`,
+  );
+  fs.chmodSync(wrapper, 0o755);
+  return wrapper;
+}
+
+function prepareBunSourceForCmake() {
+  if (fs.existsSync(path.join(sourceDir, "bun.lock"))) {
+    console.log("[bun-ios-runtime] Installing Bun source dependencies");
+    run("bun", ["install", "--frozen-lockfile"], { cwd: sourceDir, env });
+  }
+
+  const requiredSourceLists = [
+    path.join(sourceDir, "cmake", "sources", "BunErrorSources.txt"),
+    path.join(sourceDir, "cmake", "sources", "NodeFallbacksSources.txt"),
+  ];
+  if (requiredSourceLists.some((file) => !fs.existsSync(file))) {
+    console.log("[bun-ios-runtime] Generating Bun CMake source lists");
+    run("bun", ["run", "glob-sources"], { cwd: sourceDir, env });
+  }
+
+  ensureRustTarget(info.rustTarget);
+}
+
+function ensureRustTarget(rustTarget) {
+  const rustup = spawnSync("rustup", ["target", "list", "--installed"], {
+    cwd: sourceDir,
+    env,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+  });
+  if (rustup.status !== 0) {
+    return;
+  }
+  const installed = rustup.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (installed.includes(rustTarget)) {
+    return;
+  }
+  console.log(`[bun-ios-runtime] Installing Rust target ${rustTarget}`);
+  run("rustup", ["target", "add", rustTarget], { cwd: sourceDir, env });
 }
 
 function buildWithZig() {

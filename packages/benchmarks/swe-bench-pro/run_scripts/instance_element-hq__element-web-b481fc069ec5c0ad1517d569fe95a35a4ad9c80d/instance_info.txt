@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-b481fc069ec5c0ad1517d569fe95a35a4ad9c80d
+Repository: element-hq/element-web
+Base Commit: 6ac3a925130ed6dfdc8a87312b9540635bddd020
+Test Files: ["test/components/views/settings/UiFeatureSettingWrapper-test.tsx", "test/components/views/settings/UiFeatureSettingWrapper-test.ts", "test/components/views/settings/__snapshots__/UiFeatureSettingWrapper-test.tsx.snap"]
+FAIL_TO_PASS: ["test/components/views/settings/UiFeatureSettingWrapper-test.tsx | <UiFeatureSettingWrapper> | renders children when setting is truthy", "test/components/views/settings/UiFeatureSettingWrapper-test.tsx | <UiFeatureSettingWrapper> | returns null when setting is truthy but children are undefined", "test/components/views/settings/UiFeatureSettingWrapper-test.tsx | <UiFeatureSettingWrapper> | returns null when setting is falsy"]
+PASS_TO_PASS: []
