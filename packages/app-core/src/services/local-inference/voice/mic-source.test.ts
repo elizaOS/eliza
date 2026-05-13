@@ -112,12 +112,15 @@ describe("DesktopMicSource", () => {
   it("builds the arecord argv on Linux / sox on macOS", () => {
     const src = new DesktopMicSource({ sampleRate: 16_000 });
     const resolved = resolveDesktopRecorder(16_000);
-    const program = (src as unknown as { program: string }).program;
-    const argv = (src as unknown as { argv: string[] }).argv;
+    const program = Reflect.get(src, "program") as string;
+    const argv = Reflect.get(src, "argv") as string[];
     expect(program).toBe(resolved?.program ?? "");
     expect(argv).toEqual(resolved?.argv ?? []);
-    if (process.platform === "linux") {
-      expect(["arecord", "parec", "rec", "sox", ""]).toContain(program);
+    if (process.platform === "linux" && program) {
+      expect(["arecord", "parec", "rec", "sox"]).toContain(program);
+      if (program === "arecord") {
+        expect(argv).toContain("S16_LE");
+      }
       expect(argv.join(" ")).toContain("16000");
     } else if (process.platform === "darwin") {
       expect(["sox", "rec", "ffmpeg", ""]).toContain(program);
