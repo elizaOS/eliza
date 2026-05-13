@@ -68,34 +68,33 @@ export class SubAgentRouter {
     const acp = this.runtime.getService(
       "ACP_SUBPROCESS_SERVICE",
     ) as AcpService | null;
-    if (!acp || typeof acp.onSessionEvent !== "function") {
-      this.log("debug", "AcpService unavailable; router idle");
-      return;
-    }
-    this.acp = acp;
-    this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
-      this.handleEvent(sid, event, data).catch((err) => {
-        this.log("error", "router event failed", {
-          sessionId: sid,
-          event,
-          error: err instanceof Error ? err.message : String(err),
+    const acpUsable = !!acp && typeof acp.onSessionEvent === "function";
+    if (acpUsable) {
+      this.acp = acp;
+      this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
+        this.handleEvent(sid, event, data).catch((err) => {
+          this.log("error", "router event failed", {
+            sessionId: sid,
+            event,
+            error: err instanceof Error ? err.message : String(err),
+          });
         });
       });
-    });
-    // Also subscribe to PTY_SERVICE events. AcpService only emits
-    // task_complete for ACPX-protocol sessions (codex via acpx). The
-    // direct PTYService.spawnSession path used by opencode-run emits
-    // task_complete through PTYService.emitEvent — and without this
-    // second subscription, those completions never reached the router
-    // (so the sub-agent's actual answer was dropped on the floor and
-    // the user only ever saw the "On it — spawning…" ack).
+    }
+    // PTY_SERVICE is a separate event channel from AcpService. The
+    // direct PTYService.spawnSession path used by opencode-run / codex-exec
+    // fast-path emits task_complete through PTYService.emitEvent — without
+    // this subscription, those completions never reach the router and the
+    // sub-agent's actual answer is dropped (user sees only the "On it…" ack).
+    // Bind PTY independently of ACP so this works even when ACP isn't loaded.
     const pty = this.runtime.getService("PTY_SERVICE") as {
       onSessionEvent?: (
         cb: (sid: string, event: SessionEventName, data: unknown) => void,
       ) => () => void;
     } | null;
-    if (pty && typeof pty.onSessionEvent === "function") {
-      this.unsubscribePty = pty.onSessionEvent((sid, event, data) => {
+    const ptyUsable = !!pty && typeof pty.onSessionEvent === "function";
+    if (ptyUsable) {
+      this.unsubscribePty = pty!.onSessionEvent!((sid, event, data) => {
         this.handleEvent(sid, event, data).catch((err) => {
           this.log("error", "router event failed (pty)", {
             sessionId: sid,
@@ -104,9 +103,15 @@ export class SubAgentRouter {
           });
         });
       });
+    }
+    if (acpUsable && ptyUsable) {
       this.log("info", "router bound to AcpService + PTYService");
-    } else {
+    } else if (acpUsable) {
       this.log("info", "router bound to AcpService (PTYService unavailable)");
+    } else if (ptyUsable) {
+      this.log("info", "router bound to PTYService (AcpService unavailable)");
+    } else {
+      this.log("debug", "no session-event source available; router idle");
     }
   }
 
@@ -129,13 +134,14 @@ export class SubAgentRouter {
   ): Promise<void> {
     if (!shouldInject(event)) return;
     const acp = this.acp;
-    if (!acp) return;
     // ACPX-protocol sessions live in AcpService.store; sessions spawned
-    // via PTYService.spawnSession (the path opencode-run uses) live in
-    // PTYService instead. Look up both — without the PTY fallback, the
-    // opencode-run task_complete events we now route here would be
-    // dropped at `if (!session) return`.
-    let session = await acp.getSession(sessionId);
+    // via PTYService.spawnSession (opencode-run / codex-exec) live in
+    // PTYService instead. Look up both — and don't require ACP to exist,
+    // since the PTY-only path needs to work when ACP isn't loaded.
+    let session: SessionInfo | undefined;
+    if (acp) {
+      session = (await acp.getSession(sessionId)) ?? undefined;
+    }
     if (!session) {
       const ptyService = this.runtime.getService("PTY_SERVICE") as {
         getSession?: (sid: string) => SessionInfo | undefined;
@@ -180,12 +186,19 @@ export class SubAgentRouter {
         count: nextCount,
         cap: this.roundTripCap,
       });
-      await acp.stopSession(sessionId).catch((err) =>
-        this.log("warn", "force-stop after cap failed", {
-          sessionId,
-          error: err instanceof Error ? err.message : String(err),
-        }),
-      );
+      const stopper =
+        acp ??
+        (this.runtime.getService("PTY_SERVICE") as {
+          stopSession?: (sid: string) => Promise<unknown>;
+        } | null);
+      if (stopper && typeof stopper.stopSession === "function") {
+        await stopper.stopSession(sessionId).catch((err) =>
+          this.log("warn", "force-stop after cap failed", {
+            sessionId,
+            error: err instanceof Error ? err.message : String(err),
+          }),
+        );
+      }
     }
 
     const subAgentEntityId = deriveUuidFromString(
