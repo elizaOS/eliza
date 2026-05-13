@@ -239,13 +239,81 @@ describe("CarrotManager", () => {
 							success: true,
 						});
 						const list = (
-							response as { payload: Array<{ id: string }> }
+							response as unknown as { payload: Array<{ id: string }> }
 						).payload;
 						expect(list).toHaveLength(1);
 						expect(list[0]).toMatchObject({ id: "bunny.search" });
 						resolve();
 					} catch (error) {
 						reject(error);
+					}
+				}, 10);
+			});
+		}));
+
+	it("seeds and replaces the carrot auth token on demand", () =>
+		withTempDir((dir) => {
+			const previousToken = process.env.ELIZA_API_TOKEN;
+			process.env.ELIZA_API_TOKEN = "carrot-test-token";
+			const worker = new FakeWorkerHandle();
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => worker },
+				now: () => 1700000000000,
+			});
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+
+			worker.emit({
+				type: "host-request",
+				requestId: 11,
+				method: "get-auth-token",
+			});
+			worker.emit({
+				type: "host-request",
+				requestId: 12,
+				method: "set-auth-token",
+				params: { token: "rotated-token" },
+			});
+			worker.emit({
+				type: "host-request",
+				requestId: 13,
+				method: "get-auth-token",
+			});
+
+			return new Promise<void>((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						const initial = worker.messages.find(
+							(m) => m.type === "host-response" && m.requestId === 11,
+						);
+						expect(initial).toMatchObject({
+							success: true,
+							payload: { token: "carrot-test-token" },
+						});
+						const setResp = worker.messages.find(
+							(m) => m.type === "host-response" && m.requestId === 12,
+						);
+						expect(setResp).toMatchObject({
+							success: true,
+							payload: { ok: true },
+						});
+						const rotated = worker.messages.find(
+							(m) => m.type === "host-response" && m.requestId === 13,
+						);
+						expect(rotated).toMatchObject({
+							success: true,
+							payload: { token: "rotated-token" },
+						});
+						resolve();
+					} catch (error) {
+						reject(error);
+					} finally {
+						if (previousToken === undefined) {
+							delete process.env.ELIZA_API_TOKEN;
+						} else {
+							process.env.ELIZA_API_TOKEN = previousToken;
+						}
 					}
 				}, 10);
 			});
@@ -265,7 +333,10 @@ describe("CarrotManager", () => {
 			worker.emit({
 				type: "host-request",
 				requestId: 42,
-				method: "totally-made-up",
+				// Force an unknown method through the dispatcher to assert the
+				// error-response path. Casting through unknown is necessary
+				// because the type union only allows known methods.
+				method: "totally-made-up" as unknown as "list-carrots",
 			});
 
 			return new Promise<void>((resolve, reject) => {
