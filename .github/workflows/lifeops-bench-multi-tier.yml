@@ -349,14 +349,14 @@ jobs:
     steps:
       - name: Download large-tier artifact
         if: needs.smoke-large.result == 'success'
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: lifeops-multi-tier-large-${{ github.run_id }}
           path: artifacts/large
 
       - name: Download frontier-tier artifact
         if: needs.smoke-frontier.result == 'success'
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: lifeops-multi-tier-frontier-${{ github.run_id }}
           path: artifacts/frontier
