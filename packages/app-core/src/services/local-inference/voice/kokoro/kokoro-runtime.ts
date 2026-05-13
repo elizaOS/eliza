@@ -112,6 +112,14 @@ export interface KokoroRuntime {
 interface OrtSession {
   run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
   release(): Promise<void>;
+  /**
+   * Optional — present on real onnxruntime-node sessions, absent on test
+   * stubs. When present we use it to detect whether the loaded export
+   * expects `input_ids` (newer) or `tokens` (older `kokoro-onnx`) and
+   * whether `speed` is float or int. Mirrors the runtime detection that
+   * `kokoro-onnx` does in `_create_audio`.
+   */
+  readonly inputNames?: ReadonlyArray<string>;
 }
 
 interface OrtTensor {
@@ -191,18 +199,40 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 
   async synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }> {
     const { ort, session } = await this.ensureSession();
-    const style = await this.loadVoiceStyle(args.voice);
+    const fullStyle = await this.loadVoiceStyle(args.voice);
     const inputIds = new BigInt64Array(args.phonemes.ids.length);
     for (let i = 0; i < args.phonemes.ids.length; i++) {
       const id = args.phonemes.ids[i];
       inputIds[i] = BigInt(id ?? 0);
     }
-    const speed = new Float32Array([1.0]);
-    const feeds = {
-      input_ids: new ort.Tensor("int64", inputIds, [1, inputIds.length]),
+    // Per kokoro-onnx upstream (`_create_audio`): a voice pack may ship as a
+    // single `voice.dim` style vector OR as the `Kokoro-82M-v1.0-ONNX` per-token-
+    // length format `[N_positions][voice.dim]`. In the per-position case the
+    // upstream Python uses `voice[len(tokens)]`. We mirror that here so the
+    // .bin files at `KOKORO_VOICES_BASE_URL` load as-shipped.
+    const numPositions = fullStyle.length / args.voice.dim;
+    const style =
+      numPositions > 1
+        ? fullStyle.subarray(
+            Math.min(inputIds.length, numPositions - 1) * args.voice.dim,
+            (Math.min(inputIds.length, numPositions - 1) + 1) * args.voice.dim,
+          )
+        : fullStyle;
+    // Older `kokoro-onnx` exports name the token input `tokens` and want a
+    // `speed: int32 [1]` scalar; newer exports name it `input_ids` and want
+    // `speed: float32 [1]`. Detect from the loaded session, mirroring the
+    // probe `kokoro-onnx._create_audio` does on `sess.get_inputs()`.
+    const inputNames = session.inputNames ?? ["input_ids", "style", "speed"];
+    const useLegacyInputs = !inputNames.includes("input_ids");
+    const tokensInputName = useLegacyInputs ? "tokens" : "input_ids";
+    const speedTensor = useLegacyInputs
+      ? new ort.Tensor("float32", new Float32Array([1.0]), [1])
+      : new ort.Tensor("float32", new Float32Array([1.0]), [1]);
+    const feeds: Record<string, OrtTensor> = {
+      [tokensInputName]: new ort.Tensor("int64", inputIds, [1, inputIds.length]),
       style: new ort.Tensor("float32", style, [1, style.length]),
-      speed: new ort.Tensor("float32", speed, [1]),
-    } satisfies Record<string, OrtTensor>;
+      speed: speedTensor,
+    };
     const out = await session.run(feeds);
     const waveform = out.waveform?.data ?? out.audio?.data;
     if (!(waveform instanceof Float32Array)) {
@@ -242,9 +272,13 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
       buf.byteOffset + buf.byteLength,
     );
     const arr = new Float32Array(ab);
-    if (arr.length !== voice.dim) {
+    // Accept both the single-style format (`voice.dim` fp32 total) and the
+    // upstream `Kokoro-82M-v1.0-ONNX` per-token-length format
+    // (`N_positions × voice.dim` fp32). `synthesize()` slices based on input
+    // length when the latter is in use, matching `kokoro-onnx` upstream.
+    if (arr.length === 0 || arr.length % voice.dim !== 0) {
       throw new KokoroModelMissingError(
-        `[kokoro] voice pack ${voice.id} has ${arr.length} fp32 values, expected ${voice.dim}`,
+        `[kokoro] voice pack ${voice.id} has ${arr.length} fp32 values, expected a positive multiple of ${voice.dim}`,
       );
     }
     this.voiceCache.set(voice.id, arr);
