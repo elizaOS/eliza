@@ -152,55 +152,6 @@ export function tierActionResults(
 		tierBParents.sort(compareTieredParents);
 	}
 
-	const narrowSet = normalizeCandidateSet(input.narrowToCandidateActions);
-	if (narrowSet.size > 0 && tierAParents.length > 0) {
-		const matchesCandidate = (parent: TieredParentAction): boolean => {
-			if (narrowSet.has(parent.normalizedName)) {
-				return true;
-			}
-			for (const child of parent.childNormalizedNames) {
-				if (narrowSet.has(child)) {
-					return true;
-				}
-			}
-			return false;
-		};
-		const kept: TieredParentAction[] = [];
-		const demotedFromTierA: TieredParentAction[] = [];
-		for (const parent of tierAParents) {
-			if (matchesCandidate(parent)) {
-				kept.push(parent);
-			} else {
-				demotedFromTierA.push(parent);
-			}
-		}
-		if (kept.length > 0) {
-			tierAParents.length = 0;
-			tierAParents.push(...kept);
-
-			// Demoted tier-A parents go to tier-C (omitted), not tier-B.
-			// Tier-B exposes the parent name to the LLM, and many parents
-			// are parameter-driven umbrellas (e.g. `FILE` with
-			// `action=read/write/edit`). If we left them in tier-B the
-			// planner could still call `FILE` with `action=write` and
-			// bypass the narrow. Tier-C removes them from the prompt
-			// entirely, which is what the candidate filter means to do.
-			// Tier-B parents not in tier-A are unaffected.
-			const tierBKept: TieredParentAction[] = [];
-			for (const parent of tierBParents) {
-				if (matchesCandidate(parent)) {
-					tierBKept.push(parent);
-				} else {
-					tierCParents.push(parent);
-				}
-			}
-			tierBParents.length = 0;
-			tierBParents.push(...tierBKept);
-			tierCParents.push(...demotedFromTierA);
-			tierCParents.sort(compareTieredParents);
-		}
-	}
-
 	if (tierBParents.length > maxTierBParents) {
 		tierCParents.push(...tierBParents.splice(maxTierBParents));
 		tierCParents.sort(compareTieredParents);
