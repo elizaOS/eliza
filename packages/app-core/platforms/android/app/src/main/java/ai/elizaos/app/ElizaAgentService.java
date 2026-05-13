@@ -782,6 +782,25 @@ public class ElizaAgentService extends Service {
             // device-bridge. The WebView dials it over loopback once the
             // user picks the local runtime mode in onboarding.
             agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
+            // CPU-only inference on a stock-Android Capacitor APK runs the
+            // same on-device chat path as the AOSP variant — Snapdragon
+            // 4 Gen 1 / Tensor G1 class hardware lands at 3–7 tok/s and a
+            // ~4.5 k-token system prompt + 256-token reply easily blows
+            // past the chat-route 180 s / device-bridge 120 s defaults.
+            // The upstream gate that bumps these (under
+            // `BuildConfig.AOSP_BUILD && isBrandedDevice()` further down)
+            // only fires for branded AOSP builds; stock-Android sideloads
+            // get the defaults and time out on every first turn with
+            // "Chat generation failed with no streamed text
+            // (err=Chat generation timed out after 180000ms)". Set the
+            // same 10 min budget here unconditionally so both build
+            // types finish their cold first turn.
+            if (!env.containsKey("ELIZA_CHAT_GENERATION_TIMEOUT_MS")) {
+                agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "600000");
+            }
+            if (!env.containsKey("ELIZA_DEVICE_GENERATE_TIMEOUT_MS")) {
+                agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "600000");
+            }
             // The mobile bridge ships the bge embedding GGUF disabled
             // by default (`ELIZA_LOCAL_EMBEDDING_ENABLED!="1"`) because
             // mmapping it alongside the chat GGUF would OOM a 4 GB
@@ -840,6 +859,11 @@ public class ElizaAgentService extends Service {
                 // (Tensor / Adreno) finishes in seconds, so this only
                 // matters for AOSP cvd runs.
                 agentEnv.put("ELIZA_CHAT_GENERATION_TIMEOUT_MS", "3600000");
+                // Device bridge is unused on AOSP (ELIZA_LOCAL_LLAMA=1 routes
+                // inference through the native llama.so adapter instead). Set
+                // the same 1h budget explicitly so the intent is clear and
+                // operator overrides above are not inadvertently in effect.
+                agentEnv.put("ELIZA_DEVICE_GENERATE_TIMEOUT_MS", "3600000");
 
                 // Eliza-1 native context is 128k. We pin to 16k
                 // because 16k easily fits the planner's ~12k-token

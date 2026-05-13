@@ -12,11 +12,6 @@ import {
   type ShopifyService,
 } from "../services/ShopifyService.js";
 import type { Customer } from "../types.js";
-import {
-  getShopifyAccountId,
-  hasShopifyConfig,
-  shopifyAccountIdParameter,
-} from "./account-options.js";
 import { getActionOptions } from "./confirmation.js";
 import { parseJsonObject } from "./json.js";
 

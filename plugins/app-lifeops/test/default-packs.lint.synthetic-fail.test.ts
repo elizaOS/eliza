@@ -20,10 +20,10 @@
 import { describe, expect, it } from "vitest";
 import {
   type DefaultPack,
-  type PromptLintRuleKind,
-  type ScheduledTaskSeed,
   lintPack,
   lintPromptText,
+  type PromptLintRuleKind,
+  type ScheduledTaskSeed,
 } from "../src/default-packs/index.js";
 
 function buildSeed(prompt: string, recordKey: string): ScheduledTaskSeed {
@@ -104,7 +104,8 @@ const SYNTHETIC_CASES: ReadonlyArray<SyntheticCase> = [
   {
     name: "embedded conditional (else if)",
     rule: "embedded_conditional",
-    prompt: "Send the morning brief; else if there is no data, send a check-in.",
+    prompt:
+      "Send the morning brief; else if there is no data, send a check-in.",
   },
   {
     name: "embedded conditional (case ... when)",
@@ -146,7 +147,9 @@ describe("W3-B prompt-content lint — synthetic-fail corpus (lintPromptText)", 
         recordKey: "synthetic-record",
         prompt: testCase.prompt,
       });
-      const matched = findings.filter((finding) => finding.rule === testCase.rule);
+      const matched = findings.filter(
+        (finding) => finding.rule === testCase.rule,
+      );
       expect(matched.length).toBeGreaterThan(0);
     });
   }
@@ -157,7 +160,9 @@ describe("W3-B prompt-content lint — synthetic-fail corpus (lintPack)", () => 
     it(`flags ${testCase.name} when run through lintPack`, () => {
       const pack = buildPack(testCase.prompt);
       const findings = lintPack(pack);
-      const matched = findings.filter((finding) => finding.rule === testCase.rule);
+      const matched = findings.filter(
+        (finding) => finding.rule === testCase.rule,
+      );
       expect(matched.length).toBeGreaterThan(0);
     });
   }

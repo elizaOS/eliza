@@ -220,7 +220,7 @@ export class ScreenCaptureService {
   }
 
   getActiveTile(): ScreenTile | null {
-    if (!this.lastCapture || !this.lastCapture.tiles[this.activeTileIndex]) {
+    if (!this.lastCapture?.tiles[this.activeTileIndex]) {
       return null;
     }
     return this.lastCapture.tiles[this.activeTileIndex];

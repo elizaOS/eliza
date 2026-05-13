@@ -100,7 +100,9 @@ async function invokeSubaction(
     } as HandlerOptions,
   );
   if (!isActionResult(result)) {
-    throw new Error(`websiteBlockAction.${subaction} returned non-ActionResult`);
+    throw new Error(
+      `websiteBlockAction.${subaction} returned non-ActionResult`,
+    );
   }
   return result;
 }

@@ -3,9 +3,9 @@ import {
   type ActionResult,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
 import {
   injectCredentialToClipboard,
@@ -63,8 +63,7 @@ const PARAM_SCHEMA = [
   },
   {
     name: "itemId",
-    description:
-      "Password manager item id (required for inject_* subactions).",
+    description: "Password manager item id (required for inject_* subactions).",
     schema: { type: "string" as const },
   },
   {
@@ -167,10 +166,7 @@ export async function runPasswordManagerHandler(
       requiredFields: ["subaction"],
     })) as PasswordManagerParameters;
 
-    const subaction = (params.subaction ?? "")
-      .toString()
-      .trim()
-      .toLowerCase();
+    const subaction = (params.subaction ?? "").toString().trim().toLowerCase();
     const config = readConfig(runtime);
 
     if (subaction === "search") {

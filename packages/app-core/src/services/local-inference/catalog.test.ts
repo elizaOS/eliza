@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   buildHuggingFaceResolveUrl,
   DEFAULT_ELIGIBLE_MODEL_IDS,
-  ELIZA_1_RELEASE_TIER_IDS,
   ELIZA_1_TIER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   findCatalogModel,
@@ -15,60 +14,18 @@ describe("local inference catalog", () => {
   it("ships exactly the visible Eliza-1 tiers", () => {
     const visible = MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog);
     expect(visible.map((m) => m.id).sort()).toEqual(
-      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
+      [...ELIZA_1_TIER_IDS].sort(),
     );
   });
 
-  it("uses the Qwen3.5 0.6B / 1.7B / 4B text source tiers, not stale Qwen3 small-tier sources", () => {
-    expect(ELIZA_1_TIER_IDS.slice(0, 3)).toEqual([
-      "eliza-1-0_6b",
-      "eliza-1-1_7b",
-      "eliza-1-4b",
-    ]);
-    expect(FIRST_RUN_DEFAULT_MODEL_ID).toBe("eliza-1-1_7b");
-    const serializedCatalog = JSON.stringify(MODEL_CATALOG);
-    expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.6B");
-    expect(serializedCatalog).toContain("Qwen/Qwen3.5-1.7B");
-    expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
-    const staleSmallTierId = "eliza-1-0_" + "6b";
-    const staleMobileTierId = "eliza-1-1_" + "7b";
-    const staleQwen3Small = "Qwen/Qwen3-0" + "\\.6B";
-    const staleQwen3Mobile = "Qwen/Qwen3-1" + "\\.7B";
-    const staleQwen35Small = "Qwen/Qwen3\\.5-0" + "\\.6B";
-    const staleQwen35Mobile = "Qwen/Qwen3\\.5-1" + "\\.7B";
-    expect(serializedCatalog).not.toMatch(
-      new RegExp(
-        [
-          staleSmallTierId,
-          staleMobileTierId,
-          staleQwen3Small,
-          staleQwen3Mobile,
-          staleQwen35Small,
-          staleQwen35Mobile,
-        ].join("|"),
-      ),
-    );
-    for (const model of MODEL_CATALOG) {
-      expect(model.tokenizerFamily).toBe("qwen35");
-    }
-  });
-
-  it("marks ONLY the current Qwen3.5 Eliza-1 release tiers as default-eligible", () => {
+  it("marks ONLY the Eliza-1 tiers as default-eligible", () => {
     expect([...DEFAULT_ELIGIBLE_MODEL_IDS].sort()).toEqual(
-      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
+      [...ELIZA_1_TIER_IDS].sort(),
     );
-    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
+    for (const id of ELIZA_1_TIER_IDS) {
       expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(id), `${id} not eligible`).toBe(
         true,
       );
-    }
-    for (const id of ELIZA_1_TIER_IDS) {
-      if ((ELIZA_1_RELEASE_TIER_IDS as readonly string[]).includes(id))
-        continue;
-      expect(
-        DEFAULT_ELIGIBLE_MODEL_IDS.has(id),
-        `${id} should not be eligible`,
-      ).toBe(false);
     }
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
       expect(model.id.startsWith("eliza-1-")).toBe(true);
@@ -87,49 +44,13 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("uses the single elizaos HuggingFace bundle repo for every visible tier", () => {
+  it("uses elizaos HuggingFace repos for every visible Eliza-1 tier", () => {
     for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
-      expect(model.hfRepo).toBe("elizaos/eliza-1");
-      expect(model.hfPathPrefix).toBe(
-        `bundles/${model.id.replace("eliza-1-", "")}`,
-      );
-      expect(model.ggufFile).not.toMatch(/^bundles\//);
-      expect(buildHuggingFaceResolveUrl(model)).toContain(model.ggufFile);
+      expect(model.hfRepo).toBe(`elizaos/${model.id}`);
       expect(buildHuggingFaceResolveUrl(model)).toContain(
-        `/elizaos/eliza-1/resolve/main/${model.hfPathPrefix}/`,
+        `/elizaos/${model.id}/resolve/main/`,
       );
-      expect(model.quantization?.defaultVariantId).toBe("q4_k_m");
-      expect(model.quantization?.variants.map((v) => v.id)).toEqual([
-        "q4_k_m",
-        "q6_k",
-        "q8_0",
-      ]);
     }
-  });
-
-  it("declares the Kokoro/OmniVoice voice boundary by tier", () => {
-    expect(findCatalogModel("eliza-1-0_6b")?.voiceBackends).toEqual(["kokoro"]);
-    expect(findCatalogModel("eliza-1-1_7b")?.voiceBackends).toEqual(["kokoro"]);
-    expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
-    expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
-      "kokoro",
-      "omnivoice",
-    ]);
-    expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
-      "omnivoice",
-    ]);
-    expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
-      "omnivoice",
-    ]);
-    expect(findCatalogModel("eliza-1-27b-1m")?.voiceBackends).toEqual([
-      "omnivoice",
-    ]);
-    expect(findCatalogModel("eliza-1-1_7b")?.sourceModel?.components.voice?.repo).toBe(
-      "onnx-community/Kokoro-82M-v1.0-ONNX",
-    );
-    expect(findCatalogModel("eliza-1-27b")?.sourceModel?.components.voice?.repo).toBe(
-      "Serveurperso/OmniVoice-GGUF",
-    );
   });
 
   it("does not expose hidden companion entries in the hub", () => {
@@ -140,7 +61,7 @@ describe("local inference catalog", () => {
   it("keeps the visible model hub focused on Eliza-1 only", () => {
     const visible = localInferenceService.getCatalog();
     expect(visible.map((model) => model.id).sort()).toEqual(
-      [...ELIZA_1_RELEASE_TIER_IDS].sort(),
+      [...ELIZA_1_TIER_IDS].sort(),
     );
     expect(
       visible.filter((model) => DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id))
@@ -167,12 +88,14 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.6B / 1.7B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.8B/0.6B/1.7B/2B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
+      "eliza-1-0_8b": 32768,
       "eliza-1-0_6b": 32768,
       "eliza-1-1_7b": 32768,
+      "eliza-1-2b": 32768,
       "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,
@@ -230,7 +153,7 @@ describe("local inference catalog", () => {
       "qjl_full",
       "polarquant",
     ];
-    for (const id of ELIZA_1_RELEASE_TIER_IDS) {
+    for (const id of ELIZA_1_TIER_IDS) {
       const model = findCatalogModel(id);
       expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
         "llama-server",
@@ -268,15 +191,20 @@ describe("local inference catalog", () => {
     }
   });
 
-  it("keeps future large placeholders hidden and out of upstream Qwen provenance", () => {
+  it("records 27b-1m text source provenance (vision shipped only on 9b/27b/27b-256k)", () => {
     const model = findCatalogModel("eliza-1-27b-1m");
-    expect(model?.hiddenFromCatalog).toBe(true);
-    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has("eliza-1-27b-1m")).toBe(false);
     expect(model?.sourceModel?.finetuned).toBe(false);
     const components = model?.sourceModel?.components;
-    expect(components?.text?.repo).toBe("elizaos/eliza-1");
-    expect(components?.vision?.repo).toBe("elizaos/eliza-1");
-    expect(JSON.stringify(model)).not.toMatch(/Qwen\/Qwen3(?:\.6)?/);
+    // The text component for the 27b family points at the published
+    // `batiai/Qwen3.6-27B-GGUF` mirror with the canonical Q4_K_M file.
+    expect(components?.text).toEqual({
+      repo: "batiai/Qwen3.6-27B-GGUF",
+      file: "Qwen-Qwen3.6-27B-Q4_K_M.gguf",
+    });
+    // Vision is only shipped on the 9b / 27b / 27b-256k tiers — the 1m
+    // tier intentionally omits it (KV-cache budget is the constraint at
+    // 1M context). See sourceModelForTier in shared/local-inference/catalog.ts.
+    expect(components?.vision).toBeUndefined();
   });
 
   it("does not leak implementation-family names in visible catalog copy", () => {

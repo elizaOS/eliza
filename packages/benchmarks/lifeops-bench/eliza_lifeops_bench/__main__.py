@@ -211,8 +211,13 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--output-dir",
+        "--output",
         default="lifeops_bench_results",
-        help="Directory for result JSON (default: lifeops_bench_results)",
+        dest="output_dir",
+        help=(
+            "Directory for result JSON (default: lifeops_bench_results). "
+            "--output is accepted as a short alias for --output-dir."
+        ),
     )
     parser.add_argument(
         "--list-scenarios",

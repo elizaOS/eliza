@@ -217,7 +217,8 @@ export async function withOptimisticRetry<T>(
       }
       lastError = error;
       if (attempt < maxAttempts - 1) {
-        const delay = baseDelay * 2 ** attempt + Math.floor(Math.random() * baseDelay);
+        const delay =
+          baseDelay * 2 ** attempt + Math.floor(Math.random() * baseDelay);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }

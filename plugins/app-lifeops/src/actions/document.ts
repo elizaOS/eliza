@@ -38,8 +38,8 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
+import { createApprovalQueue } from "../lifeops/approval-queue.js";
 import type {
   ScheduledTaskRunnerHandle,
   ScheduledTaskTrigger,

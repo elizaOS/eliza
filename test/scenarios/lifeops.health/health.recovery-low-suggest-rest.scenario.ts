@@ -3,8 +3,8 @@
  * easing up on planned workouts rather than push through.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import type { AgentRuntime } from "@elizaos/core";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
 import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 
 export default scenario({
@@ -48,9 +48,7 @@ export default scenario({
       type: "custom",
       name: "agent-suggests-easing",
       predicate: (ctx: ScenarioContext) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         const sensible =
           reply.includes("ease") ||

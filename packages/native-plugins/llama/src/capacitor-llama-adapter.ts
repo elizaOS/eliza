@@ -600,10 +600,18 @@ class CapacitorLlamaAdapter implements LlamaAdapter {
     // reads it via setCacheType / completion params and pins KV slots.
     if (options.cacheKey) {
       const slotId = deriveCacheSlotId(options.cacheKey);
-      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).cache_prompt =
-        true;
-      (params as NativeGenerateParams & { cache_prompt?: boolean; slot_id?: number }).slot_id =
-        slotId;
+      (
+        params as NativeGenerateParams & {
+          cache_prompt?: boolean;
+          slot_id?: number;
+        }
+      ).cache_prompt = true;
+      (
+        params as NativeGenerateParams & {
+          cache_prompt?: boolean;
+          slot_id?: number;
+        }
+      ).slot_id = slotId;
     }
 
     const started = Date.now();

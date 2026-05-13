@@ -172,6 +172,11 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
     "CALENDAR_CHECK_AVAILABILITY": ("CALENDAR", "subaction", "check_availability"),
     "CALENDAR_NEXT_EVENT": ("CALENDAR", "subaction", "next_event"),
     "CALENDAR_UPDATE_PREFERENCES": ("CALENDAR", "subaction", "update_preferences"),
+    # P1-5: contact-create aliases. Agents emit ENTITY_CREATE_CONTACT,
+    # CONTACT_CREATE, or contact_create interchangeably with ENTITY/create.
+    # Normalise all of them into ENTITY(subaction=create) before dispatch.
+    "ENTITY_CREATE_CONTACT": ("ENTITY", "subaction", "create"),
+    "CONTACT_CREATE": ("ENTITY", "subaction", "create"),
     "MESSAGE_SEND": ("MESSAGE", "operation", "send"),
     "MESSAGE_DRAFT_REPLY": ("MESSAGE", "operation", "draft_reply"),
     "MESSAGE_MANAGE": ("MESSAGE", "operation", "manage"),
@@ -183,6 +188,9 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
 }
 
 _ACTION_NAME_ALIASES: dict[str, str] = {
+    # Retired action names → canonical replacements.
+    "DEVICE_INTENT": "BLOCK",
+    "LIFEOPS": "LIFE",
     "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
     "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
     "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
@@ -287,12 +295,38 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "log_interaction, or list."
     ),
     "LIFE_CREATE": (
-        "Create personal life records such as reminders, alarms, workouts, or health "
-        "metrics. Use subaction=create and put typed fields in details."
+        "Create a life record. Required: subaction='create', title:str, kind='definition', "
+        "and details:{kind ∈ {reminder, alarm, workout, health_metric}, ...typed fields}. "
+        "For reminder/alarm: details.due (ISO8601) and details.listId (default 'list_personal'); "
+        "alarms also take cadence ∈ {daily, weekly}, timeOfDay 'HH:MM', dayOfWeek:[str] (weekly). "
+        "Workout: details.distanceKm, durationMinutes, effort, occurredAtIso. "
+        "Health metric: details.metric (e.g. weight_kg), value:float, occurredAtIso."
     ),
-    "LIFE_COMPLETE": "Complete a target, usually a reminder. Include target.",
-    "LIFE_SNOOZE": "Snooze a reminder-like target. Include target and minutes.",
-    "LIFE_REVIEW": "Review life records without mutating state.",
+    "LIFE_COMPLETE": (
+        "Mark a reminder complete. Required: subaction='complete', target='reminder_*' id. "
+        "Only reminder_* targets are supported; other ids raise UnsupportedAction."
+    ),
+    "LIFE_SNOOZE": (
+        "Push a reminder's due time forward. Required: subaction='snooze', "
+        "target='reminder_*' id, minutes:int. The new due_at is the existing due_at "
+        "(or world.now_iso) plus minutes."
+    ),
+    "LIFE_REVIEW": (
+        "Read-only listing of life records. Required: subaction='review'. No state mutation."
+    ),
+    "LIFE_DELETE": (
+        "Delete a reminder by id. Required: subaction='delete', target='reminder_*' id. "
+        "Alarm definitions (no concrete id) are a structured no-op for parity with the executor."
+    ),
+    "LIFE_UPDATE": (
+        "Update an alarm/reminder definition. Required: subaction='update', kind='definition', "
+        "title:str, details:{...fields to patch} (e.g. timeOfDay, cadence). Modeled as a no-op "
+        "because definitions aren't a separate LifeWorld entity."
+    ),
+    "LIFE_SKIP": (
+        "Skip one occurrence of an alarm/reminder. Required: subaction='skip', kind='definition', "
+        "title:str, details:{skipDate:'YYYY-MM-DD' or skipDates:[...]}. No-op (no skip-log entity)."
+    ),
     "HEALTH": "Read health data without mutating state.",
     "MONEY": "Read financial state or route a money subaction.",
     "MONEY_DASHBOARD": "Read the financial dashboard.",
@@ -320,8 +354,24 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "BLOCK_STATUS": "Read app/website block status.",
     "BLOCK_REQUEST_PERMISSION": "Request permission to create or change an app/website block.",
     "SCHEDULED_TASK_CREATE": (
-        "Create a scheduled task. Include kind, trigger, promptInstructions, and "
-        "other structured task fields when known."
+        "Create a scheduled task. Wire shape: kind, promptInstructions, and trigger "
+        "are TOP-LEVEL flat fields. trigger is an OBJECT, not a string — use "
+        '{"kind":"once","atIso":"2026-05-12T09:00:00Z"} for one-shot tasks or '
+        '{"kind":"recurring","rrule":"FREQ=DAILY"} for recurring. Example: '
+        '{"kind":"reminder","promptInstructions":"Stand up and stretch",'
+        '"trigger":{"kind":"once","atIso":"2026-05-12T09:00:00Z"}}.'
+    ),
+    "SCHEDULED_TASK_UPDATE": (
+        "Update an existing scheduled task. Wire shape: taskId is a TOP-LEVEL flat "
+        "field; trigger (when present) is an OBJECT with kind+atIso/rrule, never a "
+        "string. Example: "
+        '{"subaction":"update","taskId":"task_abc",'
+        '"trigger":{"kind":"once","atIso":"2026-05-13T10:00:00Z"}}.'
+    ),
+    "SCHEDULED_TASK_SNOOZE": (
+        "Snooze a scheduled task. Wire shape: taskId and minutes are TOP-LEVEL flat "
+        "fields. Example: "
+        '{"subaction":"snooze","taskId":"task_abc","minutes":30}.'
     ),
 }
 
@@ -352,22 +402,111 @@ _DISCRIMINATORS: dict[str, tuple[str, list[str]]] = {
             "read_with_contact",
         ],
     ),
-    "ENTITY": ("subaction", ["add", "set_identity", "log_interaction", "list"]),
+    # P1-5: `create` is the canonical TS subaction; `add` is the legacy alias
+    # retained for scenario-corpus compatibility. `create_contact` covers the
+    # ENTITY_CREATE_CONTACT promoted form some agents emit.
+    "ENTITY": ("subaction", ["create", "add", "create_contact", "set_identity", "log_interaction", "list"]),
     "LIFE_CREATE": ("subaction", ["create"]),
+    "LIFE_UPDATE": ("subaction", ["update"]),
+    "LIFE_DELETE": ("subaction", ["delete"]),
     "LIFE_COMPLETE": ("subaction", ["complete"]),
+    "LIFE_SKIP": ("subaction", ["skip"]),
     "LIFE_SNOOZE": ("subaction", ["snooze"]),
     "LIFE_REVIEW": ("subaction", ["review"]),
-    "HEALTH": ("subaction", ["by_metric", "summary", "trends"]),
+    "LIFE_UPDATE": ("subaction", ["update"]),
+    "SCHEDULED_TASK_UPDATE": ("subaction", ["update"]),
+    "SCHEDULED_TASK_SNOOZE": ("subaction", ["snooze"]),
+    # All six spellings used across scenarios, scorer, and TS backend:
+    # - "trend" (singular) appears in health_batch_001 GT scenarios
+    # - "trends" (plural) appears in older runner fixture
+    # - "today" / "status" / "summary" match the TS health.ts surface
+    "HEALTH": ("subaction", ["by_metric", "summary", "trends", "trend", "today", "status"]),
+}
+
+
+# JSON-schema fragment for SCHEDULED_TASK_* trigger objects. Documented inline so
+# the LLM sees the {kind, atIso}/{kind, rrule} shape rather than guessing.
+_TRIGGER_OBJECT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Trigger is an OBJECT, never a string. Use kind=once with atIso (ISO8601) "
+        "for one-shot triggers, or kind=recurring with rrule for recurring."
+    ),
+    "properties": {
+        "kind": {"type": "string", "enum": ["once", "recurring"]},
+        "atIso": {
+            "type": "string",
+            "description": "ISO8601 datetime (e.g. 2026-05-12T09:00:00Z) for kind=once.",
+        },
+        "rrule": {
+            "type": "string",
+            "description": "RFC 5545 RRULE string for kind=recurring.",
+        },
+    },
+    "required": ["kind"],
+    "additionalProperties": True,
+}
+
+
+# JSON-schema fragment for LIFE_CREATE details. Top-level fields are forbidden
+# (title belongs at the top level of kwargs, not here).
+_LIFE_CREATE_DETAILS_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "description": (
+        "Typed fields for the record being created. Do NOT put title here — title "
+        "is a TOP-LEVEL flat field on the action kwargs."
+    ),
+    "properties": {
+        "kind": {
+            "type": "string",
+            "enum": ["reminder", "alarm", "workout", "health_metric"],
+            "description": "Discriminates the kind of life record to create.",
+        },
+        "listId": {
+            "type": "string",
+            "description": "Reminder list id (e.g. list_personal). Reminder/alarm only.",
+        },
+        "due": {
+            "type": "string",
+            "description": "ISO8601 due datetime. Reminder/alarm only.",
+        },
+        "cadence": {
+            "type": "string",
+            "description": "Cadence label (daily/weekly/etc). Reminder/alarm only.",
+        },
+        "timeOfDay": {
+            "type": "string",
+            "description": "HH:MM local time. Alarm only.",
+        },
+        "distanceKm": {"type": "number", "description": "Workout only."},
+        "durationMinutes": {"type": "number", "description": "Workout only."},
+        "occurredAtIso": {
+            "type": "string",
+            "description": "ISO8601 timestamp for workouts / health metrics.",
+        },
+        "metric": {
+            "type": "string",
+            "description": "Health metric type (e.g. weight_kg). health_metric only.",
+        },
+        "value": {
+            "type": "number",
+            "description": "Health metric numeric value. health_metric only.",
+        },
+    },
+    "additionalProperties": True,
 }
 
 
 def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
     """Return a permissive JSON Schema for a LifeOps action.
 
-    The schema intentionally requires only the action discriminator where one
-    exists. LifeOps scenarios use a broad, evolving action vocabulary, and a
+    The schema requires only the action discriminator where one exists, but
+    surfaces explicit top-level shape hints for LIFE_* / SCHEDULED_TASK_*
+    verbs so the planner sees title/target as flat fields and trigger as an
+    object. LifeOps scenarios use a broad, evolving action vocabulary, and a
     too-strict schema would reject valid benchmark kwargs before the executor
-    can apply its own deterministic checks.
+    can apply its own deterministic checks, so additionalProperties stays
+    open.
     """
     schema: dict[str, Any] = {
         "type": "object",
@@ -375,17 +514,140 @@ def _tool_parameters_for_action(action_name: str) -> dict[str, Any]:
         "additionalProperties": True,
     }
     discriminator = _DISCRIMINATORS.get(action_name)
-    if discriminator is None:
-        return schema
-    field, values = discriminator
-    schema["properties"] = {
-        field: {
+    if discriminator is not None:
+        field, values = discriminator
+        schema["properties"][field] = {
             "type": "string",
             "enum": values,
             "description": f"LifeOps {action_name} discriminator.",
         }
-    }
-    schema["required"] = [field]
+        schema["required"] = [field]
+
+    if action_name == "LIFE_CREATE":
+        schema["properties"]["title"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the human-readable record title. "
+                "Do NOT nest title inside details."
+            ),
+        }
+        schema["properties"]["details"] = _LIFE_CREATE_DETAILS_SCHEMA
+        schema["required"] = sorted({*schema.get("required", []), "title"})
+    elif action_name == "LIFE_UPDATE":
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the record being updated "
+                "(e.g. reminder_*). Do NOT nest target inside details."
+            ),
+        }
+        schema["properties"]["details"] = {
+            "type": "object",
+            "description": "Changed fields. title/due/listId go here, not at top level.",
+            "additionalProperties": True,
+        }
+    elif action_name in {"LIFE_DELETE", "LIFE_COMPLETE", "LIFE_SKIP"}:
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the target record "
+                "(e.g. reminder_*). Do NOT nest target inside details."
+            ),
+        }
+        schema["required"] = sorted({*schema.get("required", []), "target"})
+    elif action_name == "LIFE_SNOOZE":
+        schema["properties"]["target"] = {
+            "type": "string",
+            "description": (
+                "TOP-LEVEL flat field — the id of the reminder to snooze "
+                "(e.g. reminder_*)."
+            ),
+        }
+        schema["properties"]["minutes"] = {
+            "type": "integer",
+            "description": "TOP-LEVEL flat field — snooze duration in minutes.",
+            "minimum": 1,
+        }
+        schema["required"] = sorted({*schema.get("required", []), "target", "minutes"})
+    elif action_name == "LIFE_REVIEW":
+        schema["properties"]["details"] = {
+            "type": "object",
+            "description": "Optional filters (kind, listId, from, to).",
+            "additionalProperties": True,
+        }
+    elif action_name == "SCHEDULED_TASK_CREATE":
+        schema["properties"]["kind"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — scheduled task kind (e.g. reminder).",
+        }
+        schema["properties"]["promptInstructions"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — instructions used as the task title.",
+        }
+        schema["properties"]["trigger"] = _TRIGGER_OBJECT_SCHEMA
+        schema["required"] = sorted(
+            {*schema.get("required", []), "promptInstructions", "trigger"}
+        )
+    elif action_name == "SCHEDULED_TASK_UPDATE":
+        schema["properties"]["taskId"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — id of the scheduled task to update.",
+        }
+        schema["properties"]["trigger"] = _TRIGGER_OBJECT_SCHEMA
+        schema["required"] = sorted({*schema.get("required", []), "taskId"})
+    elif action_name == "SCHEDULED_TASK_SNOOZE":
+        schema["properties"]["taskId"] = {
+            "type": "string",
+            "description": "TOP-LEVEL flat field — id of the scheduled task to snooze.",
+        }
+        schema["properties"]["minutes"] = {
+            "type": "integer",
+            "description": "TOP-LEVEL flat field — snooze duration in minutes.",
+            "minimum": 1,
+        }
+        schema["required"] = sorted({*schema.get("required", []), "taskId", "minutes"})
+    elif action_name == "BOOK_TRAVEL":
+        # Passengers must be an array of objects. Emit a named+seat_class shape
+        # so agents produce [{name, seat_class}] instead of a bare integer count.
+        # The scorer coerces an integer passenger count to this canonical array
+        # form when comparing against GT, so both representations score correctly.
+        schema["properties"]["origin"] = {
+            "type": "string",
+            "description": "IATA origin airport code (e.g. LAX).",
+        }
+        schema["properties"]["destination"] = {
+            "type": "string",
+            "description": "IATA destination airport code (e.g. JFK).",
+        }
+        schema["properties"]["departureDate"] = {
+            "type": "string",
+            "description": "Departure date in YYYY-MM-DD format.",
+        }
+        schema["properties"]["returnDate"] = {
+            "type": "string",
+            "description": "Return date in YYYY-MM-DD format, or omit for one-way.",
+        }
+        schema["properties"]["passengers"] = {
+            "type": "array",
+            "description": (
+                "Array of passenger objects. Each entry must have "
+                "name (string) and seat_class ('economy'|'business'|'first'). "
+                "Example: [{\"name\": \"passenger_1\", \"seat_class\": \"economy\"}]. "
+                "Do NOT pass a bare integer count."
+            ),
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "seat_class": {
+                        "type": "string",
+                        "enum": ["economy", "business", "first"],
+                    },
+                },
+                "required": ["name", "seat_class"],
+            },
+        }
+
     return schema
 
 
@@ -1325,10 +1587,14 @@ def _manage_email_via_message(world: LifeWorld, kw: dict[str, Any]) -> dict[str,
 def _u_entity(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
     """Dispatch the ENTITY umbrella on `subaction`.
 
-    Subactions: add, set_identity, log_interaction, list.
+    Canonical subaction is `create`; `add` is the legacy alias (kept for
+    scenario-corpus compatibility). Agents also emit `create_contact` and
+    the promoted `ENTITY_CREATE_CONTACT` / `CONTACT_CREATE` surface names —
+    all four route to the same contact-creation handler (P1-5 vocab alignment).
     """
     sub = _required(kw, "subaction", action=name, sub="<missing>")
-    if sub == "add":
+    # Normalise the four contact-create variants into a single branch.
+    if sub in {"add", "create", "create_contact"}:
         display = kw.get("name") or "Unknown"
         parts = display.split(maxsplit=1)
         given = parts[0] if parts else display
@@ -1422,9 +1688,8 @@ def _u_life_create(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
         )
         return {"id": reminder.id, "title": reminder.title}
     if detail_kind == "workout":
-        # Persist as a Note so the world hash captures the workout entry.
-        note_id = _synthetic_id(
-            "note_workout",
+        workout_id = _synthetic_id(
+            "workout",
             {
                 "t": title,
                 "d": details.get("distanceKm"),
@@ -1432,18 +1697,25 @@ def _u_life_create(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
                 "o": details.get("occurredAtIso"),
             },
         )
-        body = json.dumps(
-            {k: details[k] for k in sorted(details) if k != "kind"},
-            sort_keys=True,
-            default=str,
+        activity_type = (
+            details.get("workoutType")
+            or details.get("activityType")
+            or details.get("activity_type")
+            or title
         )
-        note = world.create_note(
-            note_id=note_id,
-            title=title,
-            body_markdown=body,
-            tags=["workout"],
+        duration_minutes = int(details.get("durationMinutes") or details.get("duration_minutes") or 0)
+        calories = details.get("calories") or details.get("kcal")
+        calories = int(calories) if calories is not None else None
+        distance_km_raw = details.get("distanceKm") or details.get("distance_km")
+        distance_km = float(distance_km_raw) if distance_km_raw is not None else None
+        workout = world.log_workout(
+            workout_id=workout_id,
+            activity_type=str(activity_type),
+            duration_minutes=duration_minutes,
+            calories=calories,
+            distance_km=distance_km,
         )
-        return {"id": note.id, "kind": "workout"}
+        return {"id": workout.id, "kind": "workout"}
     if detail_kind == "health_metric":
         metric_type = _required(details, "metric", action=name, sub="create/health_metric")
         value = float(_required(details, "value", action=name, sub="create/health_metric"))
@@ -1491,9 +1763,24 @@ def _u_life_snooze(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str,
     return {"id": reminder.id, "due_at": reminder.due_at}
 
 
-def _u_life_review(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """LIFE_REVIEW is a read-only listing — no-op for state hash purposes."""
-    return {"subaction": kw.get("subaction", "review"), "ok": True, "noop": True}
+def _u_life_review(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """LIFE_REVIEW stamps last_reviewed_at on the target list (side-effect).
+
+    Even though the primary purpose is a read/listing operation, a review call
+    writes a ``last_reviewed_at`` timestamp to the reminder list so that
+    subsequent review cadence queries can tell when the list was last checked.
+    This is the mutation that makes LIFE_REVIEW a "read_with_side_effects"
+    scenario rather than a pure read.
+    """
+    sub = kw.get("subaction", "review")
+    list_id = kw.get("list_id") or kw.get("listId")
+    if isinstance(list_id, str) and list_id in world.reminder_lists:
+        updated = world.touch_reminder_list_reviewed(list_id)
+        return {"subaction": sub, "ok": True, "list_id": list_id, "last_reviewed_at": updated.last_reviewed_at}
+    # No list_id provided or list not in seed — still stamp all known lists.
+    for lid in list(world.reminder_lists):
+        world.touch_reminder_list_reviewed(lid)
+    return {"subaction": sub, "ok": True, "last_reviewed_at": world.now_iso}
 
 
 def _u_life_delete(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, Any]:
@@ -1765,19 +2052,155 @@ def _u_scheduled_tasks(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[
     )
 
 
-def _u_health(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """HEALTH umbrella is read-only in the manifest; no-op for state hash."""
-    return {"subaction": kw.get("subaction", "by_metric"), "ok": True, "noop": True}
+def _u_health(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """HEALTH umbrella — read-only for state-hash purposes.
+
+    ``by_metric`` subaction returns deduplicated data points from world health
+    metrics, preferring the most specific source when multiple sources overlap
+    on the same (metric_type, date) key:
+
+      - For sleep metrics: oura > apple-health > fitbit > manual
+      - For steps / other activity metrics: apple-health > oura > fitbit > manual
+
+    The ``source_used`` metadata field indicates which source won the
+    deduplication. All other subactions (summary, trends, today, status) are
+    pure no-ops for state-hash purposes.
+    """
+    subaction = kw.get("subaction", "by_metric")
+    if subaction != "by_metric":
+        return {"subaction": subaction, "ok": True, "noop": True}
+
+    metric_type = (kw.get("metric") or "").strip().lower()
+
+    # Source priority: higher index = higher priority (preferred winner).
+    # Sleep metrics: Oura Ring is the gold standard for sleep tracking.
+    # Activity metrics (steps, calories, …): Apple Health (HealthKit) has
+    # broader device support and is the default on-device aggregator.
+    _SLEEP_SOURCE_PRIORITY: list[str] = [
+        "manual", "fitbit", "apple-health", "oura"
+    ]
+    _ACTIVITY_SOURCE_PRIORITY: list[str] = [
+        "manual", "fitbit", "oura", "apple-health"
+    ]
+    is_sleep_metric = metric_type in {"sleep_hours", "sleep"}
+    source_priority = _SLEEP_SOURCE_PRIORITY if is_sleep_metric else _ACTIVITY_SOURCE_PRIORITY
+
+    def _source_rank(src: str) -> int:
+        try:
+            return source_priority.index(src)
+        except ValueError:
+            return -1  # unknown sources lose to all known ones
+
+    # Collect matching metrics, optionally filtered by metric_type.
+    raw_metrics = list(world.health_metrics.values())
+    if metric_type:
+        raw_metrics = [m for m in raw_metrics if m.metric_type == metric_type]
+
+    # Dedup by (metric_type, date-bucket) — keep the highest-priority source.
+    # Use the date portion of `recorded_at` as the bucket so intraday samples
+    # from different sources for the same calendar day are collapsed.
+    best: dict[tuple[str, str], Any] = {}
+    for m in raw_metrics:
+        date_bucket = m.recorded_at[:10]  # YYYY-MM-DD prefix
+        key = (m.metric_type, date_bucket)
+        existing = best.get(key)
+        if existing is None or _source_rank(m.source) > _source_rank(existing.source):
+            best[key] = m
+
+    data_points = [
+        {
+            "id": m.id,
+            "metric_type": m.metric_type,
+            "value": m.value,
+            "recorded_at": m.recorded_at,
+            "source": m.source,
+        }
+        for m in sorted(best.values(), key=lambda x: x.recorded_at)
+    ]
+
+    # Surface the dominant source so the scorer / agent can inspect provenance.
+    sources_used = sorted({m["source"] for m in data_points})
+    source_used = sources_used[0] if len(sources_used) == 1 else "multi"
+
+    return {
+        "subaction": "by_metric",
+        "ok": True,
+        "metric": metric_type or "all",
+        "data": data_points,
+        "count": len(data_points),
+        "source_used": source_used,
+    }
 
 
-def _u_money_readonly(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+def _u_money_readonly(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
     """MONEY_* read-only verbs — dashboard, list_transactions, list_sources, etc.
 
     Every MONEY_* verb that doesn't mutate state lands here. The MONEY umbrella picks
     the right behavior on ``subaction`` so the same handler is shared
     between e.g. ``MONEY``, ``MONEY_DASHBOARD``, ``MONEY_LIST_TRANSACTIONS``.
+
+    For ``list_transactions``, apply ``category``, ``start_date`` / ``end_date``,
+    and ``merchantContains`` filters so scenarios that pass these params get
+    a real filtered result instead of a no-op that masks incorrect agent calls.
+    State hash is unchanged (read-only), but the result payload now reflects the
+    actual filter — agents that skip filtering get a different (larger) result
+    than agents that correctly narrow by category/date.
     """
-    return {"subaction": kw.get("subaction", "dashboard"), "ok": True, "noop": True}
+    subaction = kw.get("subaction", "dashboard")
+    if subaction != "list_transactions":
+        return {"subaction": subaction, "ok": True, "noop": True}
+
+    # --- list_transactions: filter transactions by category / date range ---
+    transactions = list(world.transactions.values())
+
+    category = (kw.get("category") or "").strip().lower()
+    start_date: str | None = kw.get("start_date") or kw.get("startDate") or None  # type: ignore[assignment]
+    end_date: str | None = kw.get("end_date") or kw.get("endDate") or None  # type: ignore[assignment]
+    merchant_contains: str = (kw.get("merchantContains") or kw.get("merchant") or "").strip().lower()
+    only_debits: bool = bool(kw.get("onlyDebits") or kw.get("only_debits"))
+    window_days: int | None = None
+    raw_window = kw.get("windowDays") or kw.get("window_days")
+    if isinstance(raw_window, (int, float)) and raw_window > 0:
+        window_days = int(raw_window)
+
+    # Resolve window_days into a start_date when no explicit start_date given.
+    if window_days is not None and start_date is None:
+        from datetime import datetime, timedelta, timezone as _tz
+        now_dt = datetime.fromisoformat(world.now_iso.replace("Z", "+00:00"))
+        start_dt = now_dt - timedelta(days=window_days)
+        start_date = start_dt.isoformat()
+
+    filtered = []
+    for txn in transactions:
+        if category and txn.category.lower() != category:
+            continue
+        if merchant_contains and merchant_contains not in txn.merchant.lower():
+            continue
+        if only_debits and txn.amount_cents >= 0:
+            continue
+        posted = txn.posted_at
+        if start_date and posted < start_date:
+            continue
+        if end_date and posted > end_date:
+            continue
+        filtered.append(
+            {
+                "id": txn.id,
+                "merchant": txn.merchant,
+                "category": txn.category,
+                "amount_cents": txn.amount_cents,
+                "posted_at": txn.posted_at,
+                "is_pending": txn.is_pending,
+            }
+        )
+
+    filtered.sort(key=lambda t: t["posted_at"], reverse=True)
+    return {
+        "subaction": "list_transactions",
+        "ok": True,
+        "transactions": filtered,
+        "count": len(filtered),
+    }
 
 
 def _u_money_subscription_audit(
@@ -1821,8 +2244,18 @@ def _u_money_subscription_cancel(
     return {"id": sub.id, "status": sub.status}
 
 
-def _u_book_travel(_world: LifeWorld, _kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    """BOOK_TRAVEL returns offers without booking — no state mutation."""
+def _u_book_travel(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
+    """BOOK_TRAVEL — search/offer path and cancel path.
+
+    Search/offer (default): returns stub offers without mutating state.
+    Cancel: marks a booking as cancelled in the fake state and returns the
+    cancelled booking id. No LifeWorld entity exists for bookings, so the
+    cancellation is a no-op for the state hash (same as search).
+    """
+    subaction = kw.get("subaction") or kw.get("action")
+    if subaction == "cancel":
+        booking_id = kw.get("booking_id") or kw.get("bookingId") or kw.get("id")
+        return {"ok": True, "cancelled_booking_id": booking_id}
     return {"action": "BOOK_TRAVEL", "ok": True, "noop": True}
 
 
@@ -1837,8 +2270,27 @@ def _u_block(_world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any
 
     Focus-block sessions are not yet modeled in LifeWorld — every BLOCK_*
     is a read-only no-op for state-hash purposes.
+
+    Kwarg canonicalization (P2-6): agents emit app target under several
+    spellings. Normalize all variants to ``bundle_id`` internally so the
+    scorer can compare consistently regardless of which name was used:
+
+      - ``app_name``   → ``bundle_id``
+      - ``identifier`` → ``bundle_id``
+      - ``name``       → ``bundle_id`` (when not already a bundle-id form)
     """
-    return {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
+    # Resolve bundle_id from whichever kwarg spelling the agent chose.
+    bundle_id: str | None = (
+        kw.get("bundle_id")
+        or kw.get("app_name")
+        or kw.get("identifier")
+        or kw.get("name")
+        or None
+    )
+    result: dict[str, Any] = {"subaction": kw.get("subaction", "block"), "ok": True, "noop": True}
+    if bundle_id is not None:
+        result["bundle_id"] = bundle_id
+    return result
 
 
 def _u_scheduled_task_create(
@@ -2290,6 +2742,10 @@ _ACTION_HANDLERS: dict[
     "CALENDAR_CHECK_AVAILABILITY": _u_calendar,
     "CALENDAR_NEXT_EVENT": _u_calendar,
     "CALENDAR_UPDATE_PREFERENCES": _u_calendar,
+    # P1-5: contact-create promoted aliases. _normalize_action already injects
+    # subaction=create before dispatch, so routing to _u_entity is sufficient.
+    "ENTITY_CREATE_CONTACT": _u_entity,
+    "CONTACT_CREATE": _u_entity,
     # Promoted MESSAGE_* names mirror the same top-level manifest shape.
     "MESSAGE_SEND": _u_message,
     "MESSAGE_DRAFT_REPLY": _u_message,

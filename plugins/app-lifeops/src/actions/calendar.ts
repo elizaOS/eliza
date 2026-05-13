@@ -31,7 +31,9 @@ import type {
   State,
 } from "@elizaos/core";
 import type { LifeOpsCalendarEvent } from "@elizaos/shared";
+import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { resolveDefaultTimeZone } from "../lifeops/defaults.js";
+import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import {
   buildUtcDateFromLocalParts,
@@ -47,8 +49,6 @@ import {
   runProposeMeetingTimesHandler,
   runUpdateMeetingPreferencesHandler,
 } from "./lib/scheduling-handler.js";
-import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
-import { formatCalendarEventDateTime } from "../lifeops/google/format-helpers.js";
 
 // Re-exported for consumers that route calendar-plan extraction without
 // going through the umbrella handler (multilingual routing test, live LLM
@@ -266,13 +266,9 @@ function messageText(message: Memory): string {
 function looksLikeFlightConflictQuestion(text: string): boolean {
   const normalized = text.toLowerCase();
   return (
-    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(
-      normalized,
-    ) &&
+    /\b(?:flight|flights?|airport|jfk|sfo|lax|ewr|lga)\b/u.test(normalized) &&
     /\b(?:meeting|board|calendar|appointment|event)\b/u.test(normalized) &&
-    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(
-      normalized,
-    )
+    /\b(?:land|lands|arrival|arrive|make|conflict|rebook)\b/u.test(normalized)
   );
 }
 
@@ -817,7 +813,8 @@ export const calendarAction: Action & {
     },
     {
       name: "endAt",
-      description: "Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
+      description:
+        "Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
       required: false,
       schema: { type: "string" as const },
     },

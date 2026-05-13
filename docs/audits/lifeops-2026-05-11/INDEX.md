@@ -92,6 +92,20 @@ Unified metrics, prompt optimization, multi-tier model e2e, native DSPy-style op
 - [x] W5-C final REPORT.md + INDEX.md close-out
   - `docs/audits/lifeops-2026-05-11/REPORT.md` (this commit)
 
+### Wave 6 — post-rebuild follow-ups + catch-all sweep
+- [x] G6 catch-all bug/test/lint sweep (this commit)
+  - Hermes-adapter F4: `attach_usage_cache_fields` stub re-export (2 tests recovered)
+  - Openclaw-adapter: dead `_post_with_retry` removed, obsolete HTTP retry-loop tests trimmed
+  - Eliza-adapter: `conftest.py` to put `packages/` on `sys.path` for `benchmarks.bfcl.types` (2 tests recovered)
+  - `packages/shared/src/themes/{index,presets}.ts` — botched MILADY→ELIZA rename duplicate identifier fix (TS2300/TS2451/TS2448 cleared)
+  - `packages/core/src/features/advanced-capabilities/providers/facts.test.ts` — bun's vitest compat lacks `vi.setSystemTime`; switched to `vi.spyOn(Date, "now")` mock (1 test recovered)
+  - `packages/core/src/runtime/__tests__/turn-controller.test.ts` — bun's `AbortController.abort` propagates listener-thrown rejections; rewrote room-B's executor to poll `signal.aborted` (1 test recovered)
+  - `plugins/app-training/src/core/prompt-compare.test.ts` — env-leakage from `.env` `TRAIN_MODEL_PROVIDER=cerebras` + invalid `expect(fn()).rejects` syntax (1 test recovered)
+  - `plugins/app-training/test/training-api.live.e2e.test.ts` — deferred top-level imports of `@elizaos/app-training` + `live-runtime-server` into `beforeAll` so the LIVE gate cleanly skips
+  - Built `plugins/plugin-imessage/dist` + `plugins/plugin-x402/dist` (missing artifacts blocked agent server import chain; ~4 tests recovered indirectly)
+  - Documented residual pre-existing failures in [`known-typecheck-failures.md`](./known-typecheck-failures.md) (tiered-action-surface "night check-in" repair design gap, app-lifeops missing-module typecheck errors, cross-workspace missing-dist typecheck errors)
+- See also wave-6 prior commits: `91f2bcbcff` (F1 manifest discriminator), `45c8004155` (F4 per-turn cost), `7ca18d92a1` (F5 runbook), `d6047d27c5` (F3 bench-server pin), `2db2fc7982` (F2 dspy test count)
+
 ## Follow-ups
 
 - **W5-A gap list** — [`wave-5a-gap-list.md`](./wave-5a-gap-list.md)

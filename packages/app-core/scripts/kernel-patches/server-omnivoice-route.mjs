@@ -387,7 +387,9 @@ static std::string resolved_codec_path() {
   }
   const afterInclude = source.indexOf("\n", includeIdx) + 1;
   let patched =
-    source.slice(0, afterInclude) + audioSpeechBlock() + source.slice(afterInclude);
+    source.slice(0, afterInclude) +
+    audioSpeechBlock() +
+    source.slice(afterInclude);
 
   // 2) Register the route. Anchor on the existing `/v1/embeddings` POST
   //    registration line (stable across recent forks) and add ours right

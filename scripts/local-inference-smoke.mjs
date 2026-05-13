@@ -77,7 +77,10 @@ function probeBinary(binaryPath) {
   }
   if (typeof result.status === "number" && result.status !== 0) {
     const stderr = (result.stderr ?? "").trim().split(/\r?\n/)[0] ?? "";
-    return { ok: false, reason: `exit ${result.status}${stderr ? `: ${stderr}` : ""}` };
+    return {
+      ok: false,
+      reason: `exit ${result.status}${stderr ? `: ${stderr}` : ""}`,
+    };
   }
   const out = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
   const versionLine =
@@ -89,7 +92,11 @@ function probeBinary(binaryPath) {
           /version[:\s]/i.test(line) ||
           /\bbuild\b/i.test(line) ||
           /^llama\s/i.test(line),
-      ) ?? out.split(/\r?\n/).find((line) => line.trim().length > 0)?.trim();
+      ) ??
+    out
+      .split(/\r?\n/)
+      .find((line) => line.trim().length > 0)
+      ?.trim();
   if (!versionLine) {
     return { ok: false, reason: "no version line printed" };
   }

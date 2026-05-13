@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 
 const EXPECTED_FILES = ["game.js", "index.html", "styles.css"];

@@ -87,6 +87,7 @@ export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { formatError } from "./utils/format-error";
+export * from "./utils/read-env";
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
 
@@ -121,6 +122,23 @@ export function resolveStateDir(
 	return (
 		readBrowserEnv(env, "ELIZA_STATE_DIR") ?? `/.${getElizaNamespace(env)}`
 	);
+}
+
+// Browser stubs for Node-only path helpers. These exist on the Node entry
+// (see utils/state-dir.ts) and are imported by server-side runtime modules
+// (e.g. @elizaos/agent/src/config/paths.ts) that may be statically reached
+// by the renderer bundle's dep graph. The values returned are unused in the
+// browser; we just need named exports so Rollup's static analysis succeeds.
+export function resolveOAuthDir(): string {
+	return "/.eliza/oauth";
+}
+
+export function resolveUserPath(input: string): string {
+	return input;
+}
+
+export function getElizaNamespace(): string {
+	return "eliza";
 }
 
 export async function runPluginMigrations(): Promise<void> {}

@@ -75,6 +75,7 @@ export {
   type DesktopMicSourceOptions,
   PushMicSource,
   pipeMicToRingBuffer,
+  resolveDesktopRecorder,
 } from "./mic-source";
 export {
   CharacterPhonemeStub,
@@ -157,6 +158,12 @@ export {
   type SpeakerPresetCacheOptions,
   voicePresetPath,
 } from "./speaker-preset-cache";
+export {
+  SystemAudioSink,
+  type SystemAudioSinkOptions,
+  WavFileAudioSink,
+  type WavFileAudioSinkOptions,
+} from "./system-audio-sink";
 export {
   ASR_SAMPLE_RATE,
   AsrUnavailableError,

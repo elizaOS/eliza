@@ -11,7 +11,8 @@ const now = Date.now();
 
 export default scenario({
   id: "travel.flight-conflict-rebook",
-  title: "Detect a flight conflict with an existing booking and propose a rebook",
+  title:
+    "Detect a flight conflict with an existing booking and propose a rebook",
   domain: "lifeops.travel",
   tags: ["lifeops", "travel", "conflict", "rebook"],
   description:

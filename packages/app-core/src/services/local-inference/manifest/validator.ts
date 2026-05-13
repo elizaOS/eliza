@@ -7,8 +7,15 @@
 //                                        packages/inference/AGENTS.md §3 + §6:
 //        - required-kernel set per tier is satisfied,
 //        - long-context bundles (ctx > 64k) require `turbo3_tcq`,
-//        - every backend the tier supports has `verifiedBackends.<b>.status === "pass"`,
-//        - every eval has `passed: true` (and `e2eLoopOk` / `thirtyTurnOk`).
+//        - structural bundle invariants (voice-preset cache present, lineage
+//          ↔ files consistency, base-v1 provenance coverage, no dflash lie),
+//        - and — for a *production* release only (`base-v1` / `finetuned-v2` /
+//          `final`, or any `defaultEligible: true` manifest) — every supported
+//          backend kernel-verified `pass` and every eval green. A
+//          candidate/staging release (`base-v1-candidate` / `local-standin` /
+//          `upload-candidate`) is publishable + installable on a device whose
+//          backend it verified, but is not held to the full bar; its
+//          `defaultEligible` must stay false.
 //
 // `defaultEligible: true` is the strongest claim a manifest can make. The
 // validator REFUSES the combination of `defaultEligible: true` and any
@@ -84,19 +91,36 @@ export function parseManifestOrThrow(input: unknown): Eliza1Manifest {
 
 /**
  * `canSetAsDefault` is the recommendation-engine gate. A manifest that
- * passes this is allowed to be picked as the default bundle for the
- * device — it is `defaultEligible`, contract-valid, AND every backend
- * it claims to verify is one the device exposes.
+ * passes this is allowed to fill an empty default slot for the device:
+ *
+ *   - the manifest is contract-valid (every required kernel declared, every
+ *     required eval green for a strict release, lineage/files consistent),
+ *   - the device RAM meets the manifest's `ramBudgetMb.min` floor,
+ *   - the device exposes at least one backend the manifest verified `pass`
+ *     on out of the tier's supported set.
+ *
+ * A `defaultEligible: true` manifest is the strict release: every supported
+ * backend kernel-verified `pass`, every required eval green. A
+ * `defaultEligible: false` manifest with `releaseState` in the candidate /
+ * staging vocabulary (`base-v1-candidate`, `local-standin`,
+ * `upload-candidate`) is still permitted to fill an empty default slot
+ * **when this device can run it** — the recommender prefers a strict
+ * release over a candidate when both are installed (see
+ * `isStrictReleaseManifest`). This mirrors the install gate
+ * (`downloader.assertBundleInstallable`): if the device can install + run
+ * the bundle, it can also fall back to running it as the default. The
+ * historic "candidate bundles must never be a default" rule produced the
+ * worse outcome of installing a bundle but leaving the model slot empty,
+ * forcing the user to manually pick the only model they had downloaded.
  *
  * The device-caps check rejects "this device has Vulkan only but the
- * manifest only verified Metal/CUDA" — a manifest may be globally
- * default-eligible but not on this device.
+ * manifest only verified Metal/CUDA" — a manifest may be contract-valid
+ * but not runnable on this device.
  */
 export function canSetAsDefault(
   manifest: Eliza1Manifest,
   device: Eliza1DeviceCaps,
 ): boolean {
-  if (!manifest.defaultEligible) return false;
   if (collectContractErrors(manifest).length > 0) return false;
   if (manifest.ramBudgetMb.min > device.ramMb) return false;
 
@@ -114,12 +138,46 @@ export function canSetAsDefault(
   return overlapping.length > 0;
 }
 
+/**
+ * Strict release identifier: a `defaultEligible: true` manifest. The
+ * recommender uses this to prefer a strict release over a candidate
+ * bundle when both are installed and contract-valid. Mirrors the
+ * publish-side `eliza1_gates.yaml` strict bar.
+ */
+export function isStrictReleaseManifest(manifest: Eliza1Manifest): boolean {
+  return manifest.defaultEligible === true;
+}
+
 // ---------------------------------------------------------------------------
 // Internal: contract rules from AGENTS.md §3 + §6
 // ---------------------------------------------------------------------------
 
+// Release states that make the full "production" claim: every supported
+// backend kernel-verified `pass`, every eval green. `base-v1` / `finetuned-v2`
+// / `final` are published releases; `defaultEligible: true` always implies it
+// (it is the device auto-default). A manifest with no `provenance` block is
+// treated as production too — that was the only behaviour before this guard,
+// so back-compat holds. `base-v1-candidate` / `local-standin` /
+// `upload-candidate` are publishable + installable on a device whose backend
+// they *did* verify, but are not held to the full bar — their `defaultEligible`
+// must stay false (the schema's `releaseChannel=base-v1 → defaultEligible:false`
+// refinement already enforces that for the base-v1 channel; the validator now
+// honours the release-state vocabulary instead of applying the auto-default
+// bar to every manifest).
+const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
+  "base-v1",
+  "finetuned-v2",
+  "final",
+]);
+
 function collectContractErrors(m: Eliza1Manifest): string[] {
   const errors: string[] = [];
+
+  const releaseState = m.provenance?.releaseState;
+  const strictRelease =
+    m.defaultEligible === true ||
+    releaseState === undefined ||
+    STRICT_RELEASE_STATES.has(releaseState);
 
   // Required-kernel coverage.
   const declaredRequired = new Set<Eliza1Kernel>(m.kernels.required);
@@ -145,15 +203,32 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     }
   }
 
-  // Every supported backend for this tier must report pass.
+  // Backend kernel-verify coverage. A production release must verify every
+  // backend the tier supports; a candidate/staging bundle need only verify at
+  // least one supported backend (the device-side `canSetAsDefault` /
+  // installability check then matches the device's available backends against
+  // the verified-`pass` set, so a CUDA-only candidate installs on CUDA hosts
+  // and is rejected on a Mac whose Metal it never verified).
   const supportedBackends = SUPPORTED_BACKENDS_BY_TIER[m.tier];
-  for (const b of supportedBackends) {
-    const status = m.kernels.verifiedBackends[b].status;
-    if (status !== "pass") {
-      errors.push(
-        `kernels.verifiedBackends.${b}: status is "${status}", expected "pass" for tier ${m.tier}`,
-      );
+  if (strictRelease) {
+    for (const b of supportedBackends) {
+      const status = m.kernels.verifiedBackends[b].status;
+      if (status !== "pass") {
+        errors.push(
+          `kernels.verifiedBackends.${b}: status is "${status}", expected "pass" for tier ${m.tier}`,
+        );
+      }
     }
+  } else if (
+    !supportedBackends.some(
+      (b) => m.kernels.verifiedBackends[b].status === "pass",
+    )
+  ) {
+    errors.push(
+      `kernels.verifiedBackends: a publishable bundle must report status="pass" on at least one supported backend for tier ${m.tier} (got [${supportedBackends
+        .map((b) => `${b}:${m.kernels.verifiedBackends[b].status}`)
+        .join(", ")}])`,
+    );
   }
 
   // The precomputed default-voice speaker preset (`cache/voice-preset-default.bin`)
@@ -170,11 +245,16 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
     );
   }
 
-  // Eval gates.
-  if (!m.evals.textEval.passed) errors.push("evals.textEval.passed: false");
-  if (!m.evals.voiceRtf.passed) errors.push("evals.voiceRtf.passed: false");
-  if (!m.evals.e2eLoopOk) errors.push("evals.e2eLoopOk: false");
-  if (!m.evals.thirtyTurnOk) errors.push("evals.thirtyTurnOk: false");
+  // Eval gates. Enforced as pass/fail only for a production release; a
+  // candidate/staging bundle still carries the eval blobs (Zod-shape-checked,
+  // measured-or-`not-run`) but a non-green eval does not block publish/install
+  // — only `defaultEligible` promotion (which requires `strictRelease`).
+  if (strictRelease) {
+    if (!m.evals.textEval.passed) errors.push("evals.textEval.passed: false");
+    if (!m.evals.voiceRtf.passed) errors.push("evals.voiceRtf.passed: false");
+    if (!m.evals.e2eLoopOk) errors.push("evals.e2eLoopOk: false");
+    if (!m.evals.thirtyTurnOk) errors.push("evals.thirtyTurnOk: false");
+  }
 
   // Optional component slots must be internally consistent: a shipped
   // component needs auditable lineage, and lineage may not point at a
@@ -213,7 +293,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
   if ((m.files.asr ?? []).length > 0) {
     if (!m.evals.asrWer) {
       errors.push("evals.asrWer: required when files.asr is non-empty");
-    } else if (!m.evals.asrWer.passed) {
+    } else if (strictRelease && !m.evals.asrWer.passed) {
       errors.push("evals.asrWer.passed: false");
     }
   }
@@ -222,14 +302,14 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
       errors.push(
         "evals.embedMteb: required when files.embedding is non-empty",
       );
-    } else if (!m.evals.embedMteb.passed) {
+    } else if (strictRelease && !m.evals.embedMteb.passed) {
       errors.push("evals.embedMteb.passed: false");
     }
   }
   if ((m.files.vad ?? []).length > 0) {
     if (!m.evals.vadLatencyMs) {
       errors.push("evals.vadLatencyMs: required when files.vad is non-empty");
-    } else if (!m.evals.vadLatencyMs.passed) {
+    } else if (strictRelease && !m.evals.vadLatencyMs.passed) {
       errors.push("evals.vadLatencyMs.passed: false");
     }
   }
@@ -241,7 +321,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
       errors.push(
         "evals.expressive: required when voice capabilities include emotion-tags or singing",
       );
-    } else if (!m.evals.expressive.passed) {
+    } else if (strictRelease && !m.evals.expressive.passed) {
       errors.push("evals.expressive.passed: false");
     }
   }

@@ -200,7 +200,7 @@ function installWhatsAppMockService(runtime: AgentRuntime): Cleanup {
     async handleWebhook(payload) {
       buffered.push(payload);
     },
-    async fetchConnectorMessages(limit = 25) {
+    async fetchConnectorMessages(_limit = 25) {
       return [];
     },
   };

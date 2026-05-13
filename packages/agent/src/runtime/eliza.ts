@@ -97,6 +97,7 @@ import {
   isMobilePlatform,
   migrateLegacyRuntimeConfig,
   resolveDeploymentTargetInConfig,
+  resolveDesktopApiPort,
   resolveElizaCloudTopology,
   resolveServerOnlyPort,
   resolveServiceRoutingInConfig,
@@ -122,11 +123,6 @@ type AppCoreRuntimeModule = {
     options: AccountPoolCredentialsOptions,
   ) => Promise<void> | void;
   startAccountPoolKeepAlive: () => void;
-  ensureLocalInferenceHandler?: (runtime: AgentRuntime) => Promise<void> | void;
-  resolveRuntimeMode?: (config: unknown) => {
-    mode: "local" | "local-only" | "cloud" | "remote";
-    remoteApiBaseError: string | null;
-  };
   getBuildVariant: () => "store" | "direct";
   isStoreBuild: () => boolean;
 };
@@ -141,40 +137,6 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   return import(
     /* webpackIgnore: true */ "@elizaos/app-core"
   ) as Promise<AppCoreRuntimeModule>;
-}
-
-async function ensureAppCoreLocalInferenceHandlers(
-  runtime: AgentRuntime,
-  context: string,
-): Promise<void> {
-  try {
-    const appCoreRuntime = await importAppCoreRuntime();
-    if (typeof appCoreRuntime.ensureLocalInferenceHandler !== "function") {
-      logger.debug(
-        `[eliza] ${context}: app-core local inference bootstrap unavailable`,
-      );
-      return;
-    }
-    await appCoreRuntime.ensureLocalInferenceHandler(runtime);
-  } catch (err) {
-    logger.warn(
-      `[eliza] ${context}: local inference pre-registration skipped: ${formatError(err)}`,
-    );
-  }
-}
-
-async function assertRemoteDeploymentTargetIsAllowed(
-  config: ElizaConfig,
-  deploymentTarget: { runtime?: string },
-): Promise<void> {
-  if (deploymentTarget.runtime !== "remote") return;
-  const appCoreRuntime = await importAppCoreRuntime();
-  const snapshot = appCoreRuntime.resolveRuntimeMode?.(config);
-  if (snapshot?.mode === "remote" && snapshot.remoteApiBaseError) {
-    throw new Error(
-      `[eliza] Remote mode target rejected: ${snapshot.remoteApiBaseError}`,
-    );
-  }
 }
 
 import { buildCharacterFromConfig } from "./build-character-config.ts";
@@ -223,7 +185,11 @@ import {
   collectConfigEnvVars,
   collectConnectorEnvVars,
 } from "../config/env-vars.ts";
-import { resolveStateDir, resolveUserPath } from "../config/paths.ts";
+import {
+  migrateLegacyStateDir,
+  resolveStateDir,
+  resolveUserPath,
+} from "../config/paths.ts";
 import {
   createHookEvent,
   type LoadHooksOptions,
@@ -304,24 +270,6 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-coding-tools") {
       return await import("@elizaos/plugin-coding-tools");
     }
-    if (packageName === "@elizaos/plugin-agent-skills") {
-      return await import("@elizaos/plugin-agent-skills");
-    }
-    if (packageName === "@elizaos/plugin-device-filesystem") {
-      return await import("@elizaos/plugin-device-filesystem");
-    }
-    if (packageName === "@elizaos/plugin-local-embedding") {
-      return await import("@elizaos/plugin-local-embedding");
-    }
-    if (packageName === "@elizaos/plugin-video") {
-      return await import("@elizaos/plugin-video");
-    }
-    if (packageName === "@elizaos/plugin-ollama") {
-      return await import("@elizaos/plugin-ollama");
-    }
-    if (packageName === "@elizaos/plugin-mlx") {
-      return await import("@elizaos/plugin-mlx");
-    }
     return await import(packageName);
   } catch {
     return null;
@@ -350,12 +298,20 @@ async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   return _pluginSqlPromise;
 }
 
-let _pluginLocalEmbeddingPromise: Promise<unknown> | null = null;
-async function getPluginLocalEmbedding(): Promise<unknown> {
+let _pluginLocalEmbeddingPromise: Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> | null = null;
+async function getPluginLocalEmbedding(): Promise<
+  typeof import("@elizaos/plugin-local-embedding") | null
+> {
   if (!_pluginLocalEmbeddingPromise) {
-    _pluginLocalEmbeddingPromise = loadOptionalPlugin(
-      "@elizaos/plugin-local-embedding",
-    );
+    _pluginLocalEmbeddingPromise = (async () => {
+      try {
+        return await import("@elizaos/plugin-local-embedding");
+      } catch {
+        return null;
+      }
+    })();
   }
   return _pluginLocalEmbeddingPromise;
 }
@@ -399,7 +355,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginAgentOrchestrator,
       pluginShell,
       pluginCodingTools,
-      pluginAgentSkills,
       pluginCommands,
       pluginVideo,
       pluginBackgroundRunner,
@@ -414,7 +369,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
       getOptionalPlugin("@elizaos/plugin-shell"),
       getOptionalPlugin("@elizaos/plugin-coding-tools"),
-      getOptionalPlugin("@elizaos/plugin-agent-skills"),
       getOptionalPlugin("@elizaos/plugin-commands"),
       getOptionalPlugin("@elizaos/plugin-video"),
       getOptionalPlugin("@elizaos/plugin-background-runner"),
@@ -437,9 +391,6 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       ...(pluginShell ? { "@elizaos/plugin-shell": pluginShell } : {}),
       ...(pluginCodingTools
         ? { "@elizaos/plugin-coding-tools": pluginCodingTools }
-        : {}),
-      ...(pluginAgentSkills
-        ? { "@elizaos/plugin-agent-skills": pluginAgentSkills }
         : {}),
       // plugin-manager: now built-in core capability (ENABLE_PLUGIN_MANAGER)
       ...(pluginCommands ? { "@elizaos/plugin-commands": pluginCommands } : {}),
@@ -2807,7 +2758,13 @@ export async function startEliza(
   // Register log listener for chat mirroring
   addLogListener(logToChatListener);
 
-  // 1. Load Eliza config from ~/.eliza/eliza.json
+  // 0. Back-compat: migrate a legacy `~/.milady` state dir to `~/.eliza`
+  //    on first run (no-op when an explicit state dir is set or `~/.eliza`
+  //    already exists). Done before any state-dir read so config/skills/etc.
+  //    land in the migrated directory.
+  migrateLegacyStateDir();
+
+  // 1. Load Eliza config from ~/.eliza/eliza.json (legacy `milady.json` honored)
   let config: ElizaConfig;
   try {
     config = loadElizaConfig();
@@ -3087,7 +3044,6 @@ export async function startEliza(
   const deploymentTarget = resolveDeploymentTargetInConfig(
     config as Record<string, unknown>,
   );
-  await assertRemoteDeploymentTargetIsAllowed(config, deploymentTarget);
 
   // 2h-pre. Store-variant build: macOS App Sandbox / MAS / MS Store / Flathub
   // policy is incompatible with running an embedded local AgentRuntime, so
@@ -3559,15 +3515,33 @@ export async function startEliza(
   });
   installRuntimeMethodBindings(runtime);
 
-  // 7a. Local inference must be registered before runtime.initialize().
-  // Runtime services probe TEXT_EMBEDDING during init, and voice surfaces need
-  // the same local-mode default provider as text generation. The app-core
-  // bootstrap handles desktop Eliza-1, AOSP, Capacitor, and device bridge
-  // loaders, then no-ops outside local/local-only mode.
-  await ensureAppCoreLocalInferenceHandlers(
-    runtime,
-    "local inference pre-registration",
-  );
+  // 7a. Mobile local inference must be registered before runtime.initialize().
+  // Runtime services probe TEXT_EMBEDDING during init; registering the local
+  // handler only after startEliza() returns leaves mobile local mode booting
+  // with "no provider" diagnostics and disabled embedding services.
+  if (process.env.ELIZA_LOCAL_LLAMA?.trim() === "1") {
+    try {
+      const { ensureAospLocalInferenceHandlers } = await import(
+        "@elizaos/plugin-aosp-local-inference"
+      );
+      await ensureAospLocalInferenceHandlers(runtime);
+    } catch (err) {
+      logger.warn(
+        `[eliza] AOSP local inference pre-registration skipped: ${formatError(err)}`,
+      );
+    }
+  } else if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
+    try {
+      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+        "@elizaos/plugin-capacitor-bridge"
+      );
+      await ensureMobileDeviceBridgeInferenceHandlers(runtime);
+    } catch (err) {
+      logger.warn(
+        `[eliza] Mobile device bridge pre-registration skipped: ${formatError(err)}`,
+      );
+    }
+  }
 
   // 7b. Pre-register plugin-sql so the adapter is ready before other plugins init.
   //     This is OPTIONAL — without it, some features (memory, todos) won't work.
@@ -3969,19 +3943,17 @@ export async function startEliza(
   // desktop app, the API server is always available for the GUI admin
   // surface.
   try {
-    // Mobile bundles (Bun.build, single-file output) require a string literal
-    // in the import() call so the bundler can include the module statically.
-    // Desktop / Vite builds use the variable form to keep the module out of
-    // the build graph (the file is loaded from disk at runtime instead).
-    const { startApiServer } = await (process.env.ELIZA_PLATFORM ===
-      "android" || process.env.ELIZA_PLATFORM === "ios"
-      ? import("../api/server.ts")
-      : /* eslint-disable-next-line @typescript-eslint/no-implied-eval */
-        (() => {
-          const m = "../api/server.ts";
-          return import(/* @vite-ignore */ m);
-        })());
-    const apiPort = resolveServerOnlyPort(process.env);
+    const { startApiServer } = await import("../api/server.ts");
+    // When the desktop launcher embeds this agent it sets ELIZA_API_PORT
+    // (default 31337) to match the renderer's hardcoded API base. The old
+    // `resolveServerOnlyPort` call only reads ELIZA_PORT/ELIZA_UI_PORT,
+    // ignoring ELIZA_API_PORT, so the desktop API ended up on 2138 and
+    // the renderer hit "Failed to fetch". Prefer the desktop API port
+    // resolver when ELIZA_API_PORT is set; otherwise fall back to the
+    // server-only resolver so CLI-mode defaults (2138) stay untouched.
+    const apiPort = process.env.ELIZA_API_PORT
+      ? resolveDesktopApiPort(process.env)
+      : resolveServerOnlyPort(process.env);
     const { port: actualApiPort } = await startApiServer({
       port: apiPort,
       runtime,
@@ -4136,10 +4108,6 @@ export async function startEliza(
             },
           });
           installRuntimeMethodBindings(newRuntime);
-          await ensureAppCoreLocalInferenceHandlers(
-            newRuntime,
-            "Hot-reload local inference pre-registration",
-          );
 
           // Pre-register plugin-sql + local-embedding before initialize()
           // to avoid the same race condition as the initial startup.

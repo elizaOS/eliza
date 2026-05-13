@@ -62,7 +62,6 @@ import {
   captureSessionOpen,
   isDebugCaptureEnabled,
 } from "./debug-capture.js";
-import { OPENCODE_SKILL_ESSENTIALS } from "./opencode-essentials.js";
 import {
   handleGeminiAuth as handleGeminiAuthFlow,
   pushDefaultRules as pushDefaultAutoResponseRules,
@@ -146,6 +145,24 @@ import {
  */
 const TASK_COMPLETE_STOP_DELAY_MS = 5_000;
 
+export const OPENCODE_AGENTS_MD_BEGIN_MARKER =
+  "<!-- orchestrator:opencode:begin -->";
+export const OPENCODE_AGENTS_MD_END_MARKER =
+  "<!-- orchestrator:opencode:end -->";
+
+export function mergeOpencodeAgentsMd(existing: string, brief: string): string {
+  const stripped = existing
+    .replace(
+      new RegExp(
+        `${OPENCODE_AGENTS_MD_BEGIN_MARKER}[\\s\\S]*?${OPENCODE_AGENTS_MD_END_MARKER}\\n*`,
+      ),
+      "",
+    )
+    .trim();
+  const block = `${OPENCODE_AGENTS_MD_BEGIN_MARKER}\n${brief}\n${OPENCODE_AGENTS_MD_END_MARKER}`;
+  return stripped ? `${block}\n\n${stripped}` : block;
+}
+
 export function shouldSuppressCodexExecPtyManagerEvent(options: {
   codexExecMode: boolean;
   event: string;
@@ -193,7 +210,7 @@ const TOOL_DISCOVERY_HINTS: Record<CodingAgentType, string> = {
   hermes: "",
   shell: "",
   pi: "",
-  opencode: OPENCODE_SKILL_ESSENTIALS,
+  opencode: "",
 };
 
 function buildWorkspaceLockMemory(
@@ -360,29 +377,6 @@ function prependWorkspaceLockToTask(
     return undefined;
   }
   return `${workspaceLock} ${task}`;
-}
-
-export const OPENCODE_AGENTS_MD_BEGIN_MARKER =
-  "<!-- BEGIN ELIZA SUB-AGENT BRIEF -->";
-export const OPENCODE_AGENTS_MD_END_MARKER =
-  "<!-- END ELIZA SUB-AGENT BRIEF -->";
-
-export function mergeOpencodeAgentsMd(
-  existing: string,
-  briefContent: string,
-): string {
-  const block = `${OPENCODE_AGENTS_MD_BEGIN_MARKER}\n${briefContent}\n${OPENCODE_AGENTS_MD_END_MARKER}`;
-  if (!existing) return block;
-  const stripped = existing
-    .replace(
-      new RegExp(
-        `${OPENCODE_AGENTS_MD_BEGIN_MARKER}[\\s\\S]*?${OPENCODE_AGENTS_MD_END_MARKER}\\n?`,
-        "g",
-      ),
-      "",
-    )
-    .trimStart();
-  return stripped ? `${block}\n\n${stripped}` : block;
 }
 
 /**
@@ -937,13 +931,7 @@ export class PTYService {
         }
       : options.env;
     const workdir = options.workdir ?? process.cwd();
-    const workspaceLockHintType: CodingAgentType = opencodeRequested
-      ? "opencode"
-      : resolvedAgentType;
-    const workspaceLock = buildWorkspaceLockMemory(
-      workdir,
-      workspaceLockHintType,
-    );
+    const workspaceLock = buildWorkspaceLockMemory(workdir, resolvedAgentType);
     const workspaceTaskPrefix = buildInlineWorkspaceTaskPrefix(workdir);
     const serverPort = resolveServerPort(this.runtime);
     const parentRuntimeBridge = buildParentRuntimeBridgeMemory(
@@ -1008,31 +996,6 @@ export class PTYService {
         this.log(
           `Failed to write memory file for ${resolvedAgentType}: ${err}`,
         );
-      }
-    }
-
-    if (opencodeRequested) {
-      const fullMemory = [
-        workspaceLock,
-        parentRuntimeBridge,
-        options.memoryContent,
-      ]
-        .filter((section) => section?.trim())
-        .join("\n\n---\n\n");
-      try {
-        const agentsMdPath = join(workdir, "AGENTS.md");
-        let existing = "";
-        try {
-          existing = await readFile(agentsMdPath, "utf-8");
-        } catch {
-          existing = "";
-        }
-        const next = mergeOpencodeAgentsMd(existing, fullMemory);
-        await mkdir(dirname(agentsMdPath), { recursive: true });
-        await writeFile(agentsMdPath, next, "utf-8");
-        this.log(`Wrote opencode brief to ${agentsMdPath}`);
-      } catch (err) {
-        this.log(`Failed to write opencode AGENTS.md: ${err}`);
       }
     }
 
@@ -1155,10 +1118,7 @@ export class PTYService {
 
     // Ensure injected config/memory files are gitignored so agents don't
     // commit them. Appends to existing .gitignore if present.
-    if (
-      (resolvedAgentType !== "shell" || opencodeRequested) &&
-      workdir !== process.cwd()
-    ) {
+    if (resolvedAgentType !== "shell" && workdir !== process.cwd()) {
       await this.ensureOrchestratorGitignore(workdir);
     }
 
@@ -1732,21 +1692,24 @@ export class PTYService {
    * Precedence: config file (`eliza.json` env section, written by the UI)
    * > runtime/env setting > "claude" fallback.
    */
-  get defaultAgentType(): CodingAgentType {
+  get defaultAgentType(): AdapterType {
     return this.explicitDefaultAgentType ?? "claude";
   }
 
-  private get explicitDefaultAgentType(): CodingAgentType | null {
+  private get explicitDefaultAgentType(): AdapterType | null {
     const fromConfig = readConfigEnvKey("PARALLAX_DEFAULT_AGENT_TYPE");
     const fromRuntimeOrEnv =
       fromConfig ||
       (this.runtime.getSetting("PARALLAX_DEFAULT_AGENT_TYPE") as
         | string
         | undefined);
-    if (!fromRuntimeOrEnv) return null;
-    const lowered = fromRuntimeOrEnv.toLowerCase();
-    if (["claude", "gemini", "codex", "aider", "opencode"].includes(lowered)) {
-      return lowered as CodingAgentType;
+    if (
+      fromRuntimeOrEnv &&
+      ["claude", "gemini", "codex", "aider", "opencode"].includes(
+        fromRuntimeOrEnv.toLowerCase(),
+      )
+    ) {
+      return fromRuntimeOrEnv.toLowerCase() as AdapterType;
     }
     return null;
   }

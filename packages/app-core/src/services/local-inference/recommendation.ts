@@ -18,7 +18,6 @@ import {
 } from "./ram-budget";
 import type {
   CatalogModel,
-  CatalogQuantizationVariant,
   HardwareFitLevel,
   HardwareProbe,
   InstalledModel,
@@ -29,12 +28,14 @@ import type {
 // type so the ladder definitions can't drift from the canonical list.
 // Adding a tier requires extending the manifest module; this file picks
 // it up automatically.
-// The canonical tier-id set is `ELIZA_1_TIER_IDS` in
-// `packages/shared/src/local-inference/catalog.ts`. Ladders below reference
-// that canonical Qwen3.5-based tier line only.
-const TIER_0_8B: Eliza1TierId = "eliza-1-0_6b";
-const TIER_2B: Eliza1TierId = "eliza-1-1_7b";
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
+const TIER_0_6B: Eliza1TierId = "eliza-1-0_6b";
+const TIER_1_7B: Eliza1TierId = "eliza-1-1_7b";
+const TIER_2B: Eliza1TierId = "eliza-1-2b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
+const TIER_9B: Eliza1TierId = "eliza-1-9b";
+const TIER_27B: Eliza1TierId = "eliza-1-27b";
+const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
 
 export type RecommendationPlatformClass =
   | "mobile"
@@ -48,7 +49,6 @@ export interface RecommendedModelSelection {
   slot: TextGenerationSlot;
   platformClass: RecommendationPlatformClass;
   model: CatalogModel | null;
-  quantization: CatalogQuantizationVariant | null;
   fit: HardwareFitLevel | null;
   reason: string;
   alternatives: CatalogModel[];
@@ -67,29 +67,37 @@ const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
   Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
+  // Per the 2026-05-12 operator directive, the Qwen3.5 line is the
+  // default — eliza-1-0_8b (Qwen3.5-0.8B) is the small default;
+  // eliza-1-2b (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers
+  // (eliza-1-0_6b / eliza-1-1_7b) stay in the ladders as DEPRECATED
+  // fallbacks so existing user bundles still resolve — but they sit
+  // BELOW the Qwen3.5 tiers in the preference order (a host that
+  // could run 0_8b or 2b should never get pushed onto the deprecated
+  // Qwen3 tiers).
   mobile: {
-    TEXT_SMALL: [TIER_0_8B, TIER_2B],
-    TEXT_LARGE: [TIER_2B, TIER_4B, TIER_0_8B],
+    TEXT_SMALL: [TIER_0_8B, TIER_0_6B, TIER_2B, TIER_1_7B],
+    TEXT_LARGE: [TIER_2B, TIER_0_8B, TIER_1_7B, TIER_0_6B],
   },
   "apple-silicon": {
-    TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_4B, TIER_2B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "linux-gpu": {
-    TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_4B, TIER_2B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "linux-cpu": {
-    TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_4B, TIER_2B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_4B, TIER_2B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: [TIER_2B, TIER_0_8B],
-    TEXT_LARGE: [TIER_4B, TIER_2B],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_1_7B, TIER_0_6B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_1_7B],
   },
 };
 
@@ -217,39 +225,6 @@ function canFit(
   options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): boolean {
   return assessCatalogModelFit(hardware, model, catalog, options) !== "wontfit";
-}
-
-export function selectBestQuantizationVariant(
-  model: CatalogModel,
-  hardware: HardwareProbe,
-): CatalogQuantizationVariant | null {
-  const matrix = model.quantization;
-  if (!matrix) return null;
-  const published = matrix.variants.filter(
-    (variant) => variant.status === "published",
-  );
-  if (published.length === 0) return null;
-  const isMobile = classifyRecommendationPlatform(hardware) === "mobile";
-  const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
-  const maxFootprintRatio = isMobile ? 0.65 : 0.7;
-  const rank: Record<CatalogQuantizationVariant["id"], number> = {
-    q8_0: 3,
-    q6_k: 2,
-    q4_k_m: 1,
-  };
-  const fitting = published
-    .filter(
-      (variant) =>
-        variant.minRamGb <= memGb &&
-        variant.sizeGb <= memGb * maxFootprintRatio,
-    )
-    .sort((left, right) => rank[right.id] - rank[left.id]);
-  return (
-    fitting[0] ??
-    published.find((variant) => variant.id === matrix.defaultVariantId) ??
-    published[0] ??
-    null
-  );
 }
 
 /**
@@ -397,7 +372,6 @@ export function selectRecommendedModelForSlot(
   const budget = resolveBudgetOptions(options);
   const eligible = ladder.filter(
     (model) =>
-      DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id) &&
       canFit(hardware, model, catalog, budgetOptionsForModel(model, budget)) &&
       kernelRequirementsSatisfied(model, binaryKernels),
   );
@@ -420,9 +394,6 @@ export function selectRecommendedModelForSlot(
           kernelRequirementsSatisfied(model, binaryKernels),
         );
   const model = alternatives[0] ?? null;
-  const quantization = model
-    ? selectBestQuantizationVariant(model, hardware)
-    : null;
   const fit = model
     ? assessCatalogModelFit(
         hardware,
@@ -435,12 +406,9 @@ export function selectRecommendedModelForSlot(
     slot,
     platformClass,
     model,
-    quantization,
     fit,
     reason: model
-      ? `${platformClass} ${slot} ladder selected ${model.id}${
-          quantization ? ` (${quantization.id})` : ""
-        }`
+      ? `${platformClass} ${slot} ladder selected ${model.id}`
       : `${platformClass} ${slot} ladder has no fitting catalog model`,
     alternatives,
   };
@@ -490,9 +458,6 @@ export type BundleDefaultEligibility =
   | { canBeDefault: true }
   | {
       canBeDefault: false;
-      /** Distinct, machine-readable reason — surfaced to the UI alongside
-       * the `BundleIncompatibleError` the downloader raises for the same
-       * conditions. */
       reason:
         | "no-manifest"
         | "not-default-eligible"
@@ -508,8 +473,8 @@ export type BundleDefaultEligibility =
  * not default):
  *
  *  - the bundle ships a validated `eliza-1.manifest.json`,
- *  - the manifest is `defaultEligible` AND contract-valid (which in turn
- *    means every required kernel is verified AND every required eval passed —
+ *  - the manifest is contract-valid (every required kernel declared, every
+ *    required eval green for a strict release, lineage/files consistent —
  *    enforced by `canSetAsDefault` → `collectContractErrors`),
  *  - the device exposes at least one backend the manifest verified `pass` on
  *    out of the tier's supported set,
@@ -517,6 +482,11 @@ export type BundleDefaultEligibility =
  *  - the bundle has passed the one-time on-device verify pass
  *    (`InstalledModel.bundleVerifiedAt` is set) — a materialized-but-unverified
  *    bundle is never auto-selected, per AGENTS.md §7.
+ *
+ * `manifest.defaultEligible: true` is NOT required at the gate level — a
+ * `base-v1-candidate` bundle that passes every above condition is allowed
+ * to fill an empty default slot. The recommender prefers a strict release
+ * (`defaultEligible: true`) over a candidate when both are installed.
  */
 export function canBundleBeDefaultOnDevice(
   installed: InstalledModel,
@@ -543,13 +513,6 @@ export function canBundleBeDefaultOnDevice(
   if (canSetAsDefault(manifest, caps)) return { canBeDefault: true };
 
   // canSetAsDefault returned false — disambiguate why so the UI/log is precise.
-  if (!manifest.defaultEligible) {
-    return {
-      canBeDefault: false,
-      reason: "not-default-eligible",
-      detail: `${installed.id}: manifest defaultEligible is false (evals/kernels not all green at publish time)`,
-    };
-  }
   if (manifest.ramBudgetMb.min > caps.ramMb) {
     return {
       canBeDefault: false,
@@ -573,13 +536,14 @@ export function canBundleBeDefaultOnDevice(
       detail: `${installed.id}: no backend the device exposes (${deviceBackends}) has a 'pass' kernel-verify report in the manifest`,
     };
   }
-  // Contract-valid manifest, RAM ok, backend ok — but canSetAsDefault still
-  // said no. That can only be a contract-error path (e.g. an eval gate not
-  // passed) the manifest validator caught; surface it as not-default-eligible.
+  // RAM ok, backend ok — the failure must be a manifest-contract path the
+  // validator caught (e.g. a required-eval gate not passed for a strict
+  // release, a lineage/files mismatch, an inconsistent provenance block).
+  // All contract failures make the bundle ineligible to be the device default.
   return {
     canBeDefault: false,
     reason: "not-default-eligible",
-    detail: `${installed.id}: manifest failed the default-eligibility contract check (an eval gate or kernel-coverage rule)`,
+    detail: `${installed.id}: manifest failed the contract check (an eval gate, kernel-coverage rule, or lineage/files consistency rule)`,
   };
 }
 

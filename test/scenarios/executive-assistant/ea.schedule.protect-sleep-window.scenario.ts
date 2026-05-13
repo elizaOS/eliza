@@ -69,11 +69,7 @@ export default scenario({
   finalChecks: [
     {
       type: "selectedAction",
-      actionName: [
-        "CALENDAR",
-        "CALENDAR",
-        "CALENDAR",
-      ],
+      actionName: ["CALENDAR", "CALENDAR", "CALENDAR"],
     },
     {
       type: "memoryWriteOccurred",
@@ -83,11 +79,7 @@ export default scenario({
       type: "custom",
       name: "ea-protect-sleep-action-coverage",
       predicate: expectScenarioToCallAction({
-        acceptedActions: [
-          "CALENDAR",
-          "CALENDAR",
-          "CALENDAR",
-        ],
+        acceptedActions: ["CALENDAR", "CALENDAR", "CALENDAR"],
         description: "sleep-window preference capture and conflict resolution",
         includesAny: ["11pm", "8am", "sleep", "7am", "move"],
       }),

@@ -23,39 +23,36 @@ export default scenario({
     "aggression:hostile",
     "format:with_emojis",
   ],
-  description: "Tests whether the agent goes silent after being asked, and stays silent across 4 subsequent unrelated user turns. No explicit release in this scenario.",
+  description:
+    "Tests whether the agent goes silent after being asked, and stays silent across 4 subsequent unrelated user turns. No explicit release in this scenario.",
   scope: "user",
   isolation: "per-scenario",
   rooms: [
     {
-          id: "main",
-          source: "dashboard",
-          channelType: "DM",
-          title: "Personality Benchmark",
-        },
+      id: "main",
+      source: "dashboard",
+      channelType: "DM",
+      title: "Personality Benchmark",
+    },
   ],
   personalityExpect: {
     bucket: "shut_up",
-    expectedBehavior: "after_turn_1_agent_does_not_substantively_respond_until_release",
+    expectedBehavior:
+      "after_turn_1_agent_does_not_substantively_respond_until_release",
     judgeMode: "strict_silence",
     forbiddenContent: [
-          "any helpful prose",
-          "any clarifying question",
-          "any advice",
-          "any summarization",
-        ],
+      "any helpful prose",
+      "any clarifying question",
+      "any advice",
+      "any summarization",
+    ],
     requiredContent: [],
     judgeKwargs: {
-          instructionTurnIndex: 0,
-          silentTurnIndices: [
-                  1,
-                  2,
-                  3,
-                  4,
-                ],
-          releaseTurnIndex: null,
-          allowOneLineAcknowledgmentOnInstructionTurn: true,
-        },
+      instructionTurnIndex: 0,
+      silentTurnIndices: [1, 2, 3, 4],
+      releaseTurnIndex: null,
+      allowOneLineAcknowledgmentOnInstructionTurn: true,
+    },
   },
   turns: [
     // instruction turn — agent may briefly acknowledge

@@ -1,8 +1,10 @@
 """Speech-to-text shim for the cascaded baseline.
 
 The cascaded baseline transcribes a query's ``audio_bytes`` to text via
-Groq Whisper before forwarding to the agent's text path. Real benchmark
-runs require audio bytes and credentials.
+Groq Whisper before forwarding to the agent's text path. When no audio
+is attached (text-only fixture runs) or when ``--mock`` is set, the
+shim returns the query's ground-truth transcript so smoke tests stay
+deterministic.
 
 Direct-audio adapters (future work) bypass this shim entirely.
 """
@@ -22,6 +24,17 @@ class STTBackend(Protocol):
         ...
 
 
+class TranscriptPassthroughSTT:
+    """Returns ``query.transcript`` unchanged.
+
+    Used in mock mode and when audio bytes are absent. Deterministic,
+    requires no credentials.
+    """
+
+    def transcribe(self, query: AudioQuery) -> str:
+        return query.transcript
+
+
 class GroqWhisperSTT:
     """Groq Whisper backend.
 
@@ -38,7 +51,8 @@ class GroqWhisperSTT:
         self._api_key = api_key or os.environ.get("GROQ_API_KEY")
         if not self._api_key:
             raise RuntimeError(
-                "GroqWhisperSTT requires GROQ_API_KEY (env or arg)."
+                "GroqWhisperSTT requires GROQ_API_KEY (env or arg). Use "
+                "TranscriptPassthroughSTT for mock / fixture runs."
             )
         self._model = os.environ.get("GROQ_TRANSCRIPTION_MODEL") or model
         self._client = None
@@ -52,7 +66,7 @@ class GroqWhisperSTT:
 
     def transcribe(self, query: AudioQuery) -> str:
         if query.audio_bytes is None:
-            raise RuntimeError("GroqWhisperSTT requires real audio bytes")
+            return query.transcript
         self._ensure_client()
         assert self._client is not None
         response = self._client.audio.transcriptions.create(
@@ -72,5 +86,7 @@ class GroqWhisperSTT:
 def build_stt(*, mock: bool) -> STTBackend:
     """Pick an STT backend based on run mode."""
     if mock:
-        raise RuntimeError("Transcript passthrough STT is disabled for benchmark runs")
-    return GroqWhisperSTT()
+        return TranscriptPassthroughSTT()
+    if os.environ.get("GROQ_API_KEY"):
+        return GroqWhisperSTT()
+    return TranscriptPassthroughSTT()

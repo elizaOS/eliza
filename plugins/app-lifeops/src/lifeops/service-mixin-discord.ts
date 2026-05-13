@@ -3,22 +3,6 @@ import type {
   BrowserBridgeCompanionStatus,
   BrowserBridgeTabSummary,
 } from "@elizaos/plugin-browser";
-import type {
-  LifeOpsBrowserSession,
-  LifeOpsConnectorDegradation,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorSide,
-  LifeOpsDiscordCapability,
-  LifeOpsDiscordConnectorStatus,
-  LifeOpsMessagingConnectorReason,
-  LifeOpsOwnerBrowserAccessSource,
-  LifeOpsOwnerBrowserAccessStatus,
-  LifeOpsOwnerBrowserAuthState,
-  LifeOpsOwnerBrowserNextAction,
-  LifeOpsOwnerBrowserTabState,
-} from "@elizaos/shared";
-import { LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
-import { asRecord } from "@elizaos/shared";
 import {
   captureDiscordDeliveryStatus,
   closeDiscordTab,
@@ -36,6 +20,21 @@ import {
   searchDiscordMessages,
   sendDiscordViaDesktopCdp,
 } from "@elizaos/plugin-discord";
+import type {
+  LifeOpsBrowserSession,
+  LifeOpsConnectorDegradation,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorSide,
+  LifeOpsDiscordCapability,
+  LifeOpsDiscordConnectorStatus,
+  LifeOpsMessagingConnectorReason,
+  LifeOpsOwnerBrowserAccessSource,
+  LifeOpsOwnerBrowserAccessStatus,
+  LifeOpsOwnerBrowserAuthState,
+  LifeOpsOwnerBrowserNextAction,
+  LifeOpsOwnerBrowserTabState,
+} from "@elizaos/shared";
+import { asRecord, LIFEOPS_DISCORD_CAPABILITIES } from "@elizaos/shared";
 import { createLifeOpsConnectorGrant } from "./repository.js";
 import {
   searchDiscordMessagesWithRuntimeService,

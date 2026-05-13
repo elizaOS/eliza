@@ -1,5 +1,6 @@
 // Re-exports for hosts that import directly from "@elizaos/app-wallet".
 
+export { useWalletState } from "@elizaos/ui";
 export { InventoryView } from "./InventoryView.tsx";
 export { ChainIcon } from "./inventory/ChainIcon.tsx";
 export {
@@ -29,7 +30,8 @@ export {
 export { TokenLogo } from "./inventory/TokenLogo.tsx";
 export { useInventoryData } from "./inventory/useInventoryData.ts";
 export { walletAppPlugin } from "./plugin.ts";
-export { useWalletState } from "@elizaos/ui";
+export * from "./register.ts";
+export * from "./ui.ts";
 export {
   buildWalletRpcUpdateRequest,
   resolveInitialWalletRpcSelections,
@@ -38,5 +40,3 @@ export {
   WALLET_STATUS_WIDGET,
   WalletStatusSidebarWidget,
 } from "./widgets/wallet-status.tsx";
-export * from "./ui.ts";
-export * from "./register.ts";

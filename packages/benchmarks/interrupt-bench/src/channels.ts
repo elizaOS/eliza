@@ -13,16 +13,14 @@
 
 import { RoomHandlerQueue } from "@elizaos/core";
 import type { FakeClock } from "./clock.ts";
-import type { Scenario, ScenarioScriptStep, TraceEvent } from "./types.ts";
 import type { Trace } from "./trace.ts";
+import type { Scenario, ScenarioScriptStep, TraceEvent } from "./types.ts";
 
-interface ChannelDelivery {
+export interface ChannelDelivery {
   step: ScenarioScriptStep;
 }
 
-type OnMessageCallback = (
-  delivery: ChannelDelivery,
-) => Promise<void>;
+export type OnMessageCallback = (delivery: ChannelDelivery) => Promise<void>;
 
 export class ChannelSimulator {
   readonly queue = new RoomHandlerQueue();

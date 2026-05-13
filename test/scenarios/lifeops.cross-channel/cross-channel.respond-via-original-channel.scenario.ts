@@ -12,28 +12,30 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkReplyChannelMatchesOriginal(
   ctx: ScenarioContext,
 ): string | undefined {
   // The original is on Telegram. Agent reply must NOT dispatch to gmail.
-  const wrongChannelDispatches = (ctx.connectorDispatches ?? []).filter(
-    (d) => {
-      const ch = (d.channel ?? "").toLowerCase();
-      return ch.includes("gmail") || ch.includes("email");
-    },
-  );
+  const wrongChannelDispatches = (ctx.connectorDispatches ?? []).filter((d) => {
+    const ch = (d.channel ?? "").toLowerCase();
+    return ch.includes("gmail") || ch.includes("email");
+  });
   if (wrongChannelDispatches.length > 0) {
     return `Agent dispatched reply via gmail/email when original was Telegram. Dispatches: ${JSON.stringify(wrongChannelDispatches.map((d) => d.channel))}`;
   }
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
-  if (reply.includes("email") && reply.includes("sending") && !reply.includes("telegram")) {
+  if (
+    reply.includes("email") &&
+    reply.includes("sending") &&
+    !reply.includes("telegram")
+  ) {
     return `Agent indicated email-channel reply for a Telegram-originated thread. Reply: ${reply.slice(0, 400)}`;
   }
   return undefined;

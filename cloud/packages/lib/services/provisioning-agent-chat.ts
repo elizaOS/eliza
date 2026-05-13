@@ -19,7 +19,7 @@ const HISTORY_TTL_SECONDS = 604800; // 7 days
 const MAX_HISTORY_MESSAGES = 20; // 10 turns (user + assistant)
 
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
-const CEREBRAS_MODEL = "llama-3.3-70b";
+const CEREBRAS_MODEL = "gpt-oss-120b";
 
 export interface ChatMessage {
   role: "user" | "assistant";
@@ -139,7 +139,7 @@ export async function provisioningAgentChat(
     const systemPrompt = buildSystemPrompt(containerStatus);
 
     const { text } = await generateText({
-      model: cerebras(CEREBRAS_MODEL),
+      model: cerebras.chat(CEREBRAS_MODEL),
       system: systemPrompt,
       messages: updatedHistory,
     });

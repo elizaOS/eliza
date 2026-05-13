@@ -1,5 +1,5 @@
-import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { useApp } from "@elizaos/ui";
+import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
 import { useCallback, useEffect, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import { PtyTerminalPane } from "./PtyTerminalPane";

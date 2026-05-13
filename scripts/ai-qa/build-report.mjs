@@ -1,11 +1,12 @@
 #!/usr/bin/env node
+
 // Rolls per-capture findings into a single markdown report.
 //
 // Usage:
 //   node scripts/ai-qa/build-report.mjs --run-dir reports/ai-qa/<run-id>
 
-import { readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -42,9 +43,7 @@ const SEVERITY_ORDER = ["P0", "P1", "P2", "P3"];
 
 async function main() {
   const args = parseArgs(process.argv.slice(2));
-  const runDir = args.runDir
-    ? resolve(args.runDir)
-    : await findLatestRunDir();
+  const runDir = args.runDir ? resolve(args.runDir) : await findLatestRunDir();
   if (!runDir || !existsSync(runDir)) {
     console.error("[ai-qa] no run dir; build-report skipped");
     process.exit(2);
@@ -130,7 +129,9 @@ async function main() {
       (sum, r) => sum + (r.finding?.findings?.length ?? 0),
       0,
     );
-    lines.push(`- **${key}** — ${recs.length} captures, ${totalFindings} findings`);
+    lines.push(
+      `- **${key}** — ${recs.length} captures, ${totalFindings} findings`,
+    );
   }
   lines.push("");
 

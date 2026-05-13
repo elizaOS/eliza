@@ -12,7 +12,7 @@ import {
   Users,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type RegistryKind = "app" | "connector" | "plugin";
 type RegistryOrigin = "builtin" | "third-party";
@@ -269,7 +269,7 @@ const App = () => {
   const [origin, setOrigin] = useState<"all" | RegistryOrigin>("all");
   const [kind, setKind] = useState<"all" | RegistryKind>("all");
 
-  const fetchRegistry = async () => {
+  const fetchRegistry = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -286,11 +286,11 @@ const App = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRegistry();
-  }, []);
+  }, [fetchRegistry]);
 
   const items = useMemo<RegistryItem[]>(() => {
     if (!data) {
@@ -337,7 +337,9 @@ const App = () => {
   }
 
   if (error || !data) {
-    return <ErrorState error={error || "No registry data"} onRetry={fetchRegistry} />;
+    return (
+      <ErrorState error={error || "No registry data"} onRetry={fetchRegistry} />
+    );
   }
 
   return (
@@ -380,8 +382,16 @@ const App = () => {
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Stat icon={Boxes} label="Total" value={data.counts.total} />
-            <Stat icon={ShieldCheck} label="Built in" value={data.counts.builtin} />
-            <Stat icon={Users} label="Third party" value={data.counts.thirdParty} />
+            <Stat
+              icon={ShieldCheck}
+              label="Built in"
+              value={data.counts.builtin}
+            />
+            <Stat
+              icon={Users}
+              label="Third party"
+              value={data.counts.thirdParty}
+            />
             <Stat icon={AppWindow} label="Apps" value={data.counts.app} />
             <Stat icon={Plug} label="Plugins" value={data.counts.plugin} />
           </div>
@@ -401,10 +411,16 @@ const App = () => {
             />
           </div>
           <div className="flex flex-wrap gap-1">
-            <FilterButton active={origin === "all"} onClick={() => setOrigin("all")}>
+            <FilterButton
+              active={origin === "all"}
+              onClick={() => setOrigin("all")}
+            >
               All
             </FilterButton>
-            <FilterButton active={origin === "builtin"} onClick={() => setOrigin("builtin")}>
+            <FilterButton
+              active={origin === "builtin"}
+              onClick={() => setOrigin("builtin")}
+            >
               Built in
             </FilterButton>
             <FilterButton
@@ -415,10 +431,16 @@ const App = () => {
             </FilterButton>
           </div>
           <div className="flex flex-wrap gap-1">
-            <FilterButton active={kind === "all"} onClick={() => setKind("all")}>
+            <FilterButton
+              active={kind === "all"}
+              onClick={() => setKind("all")}
+            >
               Any kind
             </FilterButton>
-            <FilterButton active={kind === "app"} onClick={() => setKind("app")}>
+            <FilterButton
+              active={kind === "app"}
+              onClick={() => setKind("app")}
+            >
               Apps
             </FilterButton>
             <FilterButton

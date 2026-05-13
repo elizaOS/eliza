@@ -15,7 +15,7 @@
  *   3. packages/training/scripts/quantization/test_recipes_smoke.py  (TBQ/QJL/Polar recipe parity + codebook-hash pins)
  *   4. python -m py_compile on the release-pipeline scripts           (no syntax rot)
  *   5. each quant recipe --dry-run (turboquant/fused_turboquant/qjl/polarquant) (CLI + recipe params)
- *   6. distill_dflash_drafter.py --tier 2b --synthetic-smoke          (DFlash distill pipeline + GGUF metadata write, no torch)
+ *   6. distill_dflash_drafter.py --tier 1_7b --synthetic-smoke        (DFlash distill pipeline + GGUF metadata write, no torch)
  *   7. eliza1_platform_plan.py regenerates ELIZA_1_GGUF_{PLATFORM_PLAN.json,READINESS.md} idempotently
  *   8. eliza1_gates_collect.mjs --tier <each> --json                  (gate-collect with needs-data placeholders, no eval bytes)
  *   9. make -C packages/inference/verify reference-test kernel-contract  (CPU C reference + kernel-contract sync) — only if `make`/`cc` present
@@ -50,20 +50,6 @@ const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
 const args = process.argv.slice(2);
 const QUICK = args.includes("--quick");
 const JSON_OUT = args.includes("--json");
-const DEFAULT_BUNDLE_ROOT =
-  process.env.ELIZA1_BUNDLE_ROOT ||
-  path.join(process.env.HOME || "", ".eliza", "local-inference", "models");
-
-function hostBuildTarget() {
-  if (process.platform === "darwin" && process.arch === "arm64") {
-    return "darwin-arm64-metal-fused";
-  }
-  if (process.platform === "darwin") return "darwin-x64-cpu";
-  if (process.platform === "linux" && process.arch === "x64") return "linux-x64-cpu";
-  if (process.platform === "linux" && process.arch === "arm64") return "linux-aarch64-cpu";
-  if (process.platform === "win32" && process.arch === "x64") return "windows-x64-cpu";
-  return "linux-x64-cpu";
-}
 
 /** @type {{name:string, status:"ok"|"fail"|"skipped", detail?:string}[]} */
 const results = [];
@@ -136,11 +122,10 @@ if (!JSON_OUT) {
 }
 
 // --- 1. Build plumbing ---------------------------------------------------------
-const BUILD_TARGET = hostBuildTarget();
-step(`build-llama-cpp-dflash.mjs --target ${BUILD_TARGET} --dry-run`, "node", [
+step("build-llama-cpp-dflash.mjs --target linux-x64-cpu --dry-run", "node", [
   "packages/app-core/scripts/build-llama-cpp-dflash.mjs",
   "--target",
-  BUILD_TARGET,
+  "linux-x64-cpu",
   "--dry-run",
 ]);
 
@@ -193,9 +178,7 @@ for (const [label, script, extra] of [
   step(label, "python3", [
     `packages/training/scripts/quantization/${script}`,
     "--model",
-    "Qwen/Qwen3.5-0.8B",
-    "--device",
-    "cpu",
+    "Qwen/Qwen3-0.6B",
     "--output",
     `${process.env.TMPDIR || "/tmp"}/eliza1-prep-${script}`,
     "--dry-run",
@@ -205,19 +188,17 @@ for (const [label, script, extra] of [
 step("polarquant_apply --dry-run", "python3", [
   "packages/training/scripts/quantization/polarquant_apply.py",
   "--model",
-  "Qwen/Qwen3.5-0.8B",
-  "--device",
-  "cpu",
+  "Qwen/Qwen3-0.6B",
   "--output",
   `${process.env.TMPDIR || "/tmp"}/eliza1-prep-polarquant`,
   "--dry-run",
 ]);
 
 // --- 6. DFlash distill synthetic smoke (no torch / GPU) ------------------------
-step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
+step("distill_dflash_drafter.py --tier 1_7b --synthetic-smoke", "python3", [
   "packages/training/scripts/distill_dflash_drafter.py",
   "--tier",
-  "2b",
+  "1_7b",
   "--synthetic-smoke",
   "--out-dir",
   `${process.env.TMPDIR || "/tmp"}/eliza1-prep-dflash-smoke`,
@@ -239,8 +220,6 @@ step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
       "ELIZA_1_GGUF_PLATFORM_PLAN.json",
       "--readiness-md",
       "ELIZA_1_GGUF_READINESS.md",
-      "--bundle-root",
-      DEFAULT_BUNDLE_ROOT,
     ],
   );
   const after = [planPath, mdPath].map((p) =>
@@ -270,7 +249,7 @@ step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
   const tmpReportDir = fs.mkdtempSync(
     path.join(process.env.TMPDIR || "/tmp", "eliza1-prep-gates-"),
   );
-  for (const tier of ["0_8b", "2b", "4b"]) {
+  for (const tier of ["0_6b", "1_7b", "9b", "27b", "27b-256k", "27b-1m"]) {
     step(`eliza1_gates_collect.mjs --tier ${tier}`, "node", [
       "packages/inference/verify/eliza1_gates_collect.mjs",
       "--tier",
@@ -306,18 +285,18 @@ const ok = results.filter((r) => r.status === "ok");
 const REMAINING_HW = [
   [
     "Fork build per backend + metal/vulkan/cuda/rocm verify + platform-dispatch smokes",
-    "the target backend's hardware (Metal Mac/iOS, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD, Windows CPU/CUDA)",
+    "the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD; GH200-class aarch64+CUDA for 27b-1m)",
     "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>; make -C packages/inference/verify {metal,vulkan,cuda,rocm}_verify; verify/{cuda,rocm,gh200}_runner.sh / windows_runner.ps1",
   ],
   [
     "PolarQuant code generation + TurboQuant skip-layer calibration",
-    "a GPU big enough for the active Qwen3.5 tier (16 GB for 0.8B/2B, 48 GB-class for 4B training; 24 GB inference after quantization)",
+    "a GPU big enough for the tier (consumer for 0.6B/1.7B; ≥24 GB for 9B; ≥48 GB / multi-GPU for 27B)",
     "uv run --extra train python packages/training/scripts/quantization/{polarquant,turboquant}_apply.py --model <hf-ckpt> --output ... --device cuda",
   ],
   [
     "DFlash drafter real distillation run",
     "a GPU (the student forwards the dataset)",
-    "uv run --extra train python packages/training/scripts/distill_dflash_drafter.py --tier <0_8b|2b|4b> --target-checkpoint <dir> --target-gguf <gguf> --student-base <qwen3.5> --dataset <jsonl> --out-dir ...",
+    "uv run --extra train python packages/training/scripts/distill_dflash_drafter.py --tier <t> --target-checkpoint <dir> --target-gguf <gguf> --student-base <qwen3> --dataset <jsonl> --out-dir ...",
   ],
   [
     "Acquire the base weights + stage the full bundle",

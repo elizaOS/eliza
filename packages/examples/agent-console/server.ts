@@ -9,7 +9,6 @@ import {
   AgentRuntime,
   ChannelType,
   type Character,
-  type Content,
   type ContextDefinition,
   createCharacter,
   createMessageMemory,
@@ -82,13 +81,12 @@ function detectProvider(): (ProviderConfig & { apiKey: string }) | null {
   return null;
 }
 
-const detectedProvider = detectProvider();
-if (!detectedProvider) {
+const provider = detectProvider();
+if (!provider) {
   console.error("\n  ✗ No API key found. Set one of:");
   for (const p of PROVIDERS) console.error(`     - ${p.envKey}`);
   process.exit(1);
 }
-const provider = detectedProvider;
 
 // Inject the env vars plugin-openai expects so its Cerebras auto-detect kicks in.
 process.env.OPENAI_BASE_URL = provider.baseUrl;
@@ -606,13 +604,13 @@ async function initialize() {
     await runtime.initialize();
     initState = "ready";
     console.log(`\n  AGENT CONSOLE  (elizaOS)  →  http://localhost:${PORT}`);
-    console.log(`  provider: ${provider.name}`);
+    console.log(`  provider: ${provider!.name}`);
     console.log(`  large model: ${process.env.OPENAI_LARGE_MODEL}`);
     console.log(`  small model: ${process.env.OPENAI_SMALL_MODEL}`);
-    console.log(`  base URL:    ${provider.baseUrl}\n`);
-  } catch (err: unknown) {
+    console.log(`  base URL:    ${provider!.baseUrl}\n`);
+  } catch (err: any) {
     initState = "error";
-    initError = errorMessage(err);
+    initError = err?.message ?? String(err);
     console.error("\n  ✗ Runtime init failed:", initError, "\n");
   }
 }
@@ -640,9 +638,9 @@ async function handleUserMessage(text: string) {
     trajectoryId: id,
     color,
     userMessage: text,
-    provider: provider.name,
+    provider: provider!.name,
     model: process.env.OPENAI_LARGE_MODEL,
-    baseUrl: provider.baseUrl,
+    baseUrl: provider!.baseUrl,
     character: character.name,
     t: startedAt,
   });
@@ -666,14 +664,10 @@ async function handleUserMessage(text: string) {
     });
 
     let postRespondError: string | null = null;
-    const messageService = runtime.messageService;
-    if (!messageService) {
-      throw new Error("Message service not initialized");
-    }
-    activeRunPromise = messageService.handleMessage(
+    activeRunPromise = runtime.messageService!.handleMessage(
       runtime,
       messageMemory,
-      async (content: Content) => {
+      async (content: any) => {
         if (typeof content?.text === "string") {
           broadcast(tag({ type: "response_chunk", text: content.text }));
         }
@@ -682,8 +676,8 @@ async function handleUserMessage(text: string) {
     );
     try {
       await activeRunPromise;
-    } catch (err: unknown) {
-      postRespondError = errorMessage(err);
+    } catch (err: any) {
+      postRespondError = err?.message ?? String(err);
     }
 
     const responded = !!currentTrajectoryFinalText;
@@ -701,12 +695,12 @@ async function handleUserMessage(text: string) {
       postRespondError: postRespondError ?? undefined,
       stats: snapshotStats(),
     });
-  } catch (err: unknown) {
+  } catch (err: any) {
     broadcast(
       tag({
         type: "log",
         level: "error",
-        message: errorMessage(err),
+        message: err?.message ?? String(err),
       }),
     );
     broadcast({
@@ -765,12 +759,9 @@ const server = Bun.serve({
         url.searchParams.get("sort") === "filepath" ? "filepath" : "name";
       try {
         return Response.json(scanRepoActions({ repoRoot: REPO_ROOT, sort }));
-      } catch (err: unknown) {
+      } catch (err: any) {
         return Response.json(
-          {
-            error: errorMessage(err),
-            stack: err instanceof Error ? err.stack : undefined,
-          },
+          { error: err?.message ?? String(err), stack: err?.stack },
           { status: 500 },
         );
       }
@@ -824,10 +815,10 @@ const server = Bun.serve({
 
     if (url.pathname === "/status") {
       return Response.json({
-        provider: provider.name,
+        provider: provider!.name,
         model: process.env.OPENAI_LARGE_MODEL,
         smallModel: process.env.OPENAI_SMALL_MODEL,
-        baseUrl: provider.baseUrl,
+        baseUrl: provider!.baseUrl,
         runtimeState: initState,
         runtimeError: initError,
         agent: character.name,
@@ -843,7 +834,7 @@ const server = Bun.serve({
       const stream = new ReadableStream({
         start(controller) {
           const encoder = new TextEncoder();
-          const send: Subscriber = (event) => {
+          const send = (event: any) => {
             try {
               controller.enqueue(
                 encoder.encode(`data: ${JSON.stringify(event)}\n\n`),

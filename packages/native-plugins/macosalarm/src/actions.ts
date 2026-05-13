@@ -102,7 +102,10 @@ function readParameters(
 
 function normalizeSubactionValue(value: unknown): AlarmSubaction | null {
   if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
   const aliases: Record<string, AlarmSubaction> = {
     schedule: "set",
     create: "set",
@@ -510,12 +513,15 @@ export function createAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
     },
     examples: [
       [
-        { name: "{{user}}", content: { text: "set an alarm for 7am tomorrow" } },
+        {
+          name: "{{user}}",
+          content: { text: "set an alarm for 7am tomorrow" },
+        },
         {
           name: "{{agent}}",
           content: {
             actions: ["ALARM"],
-            text: "Alarm set for 2026-05-08T07:00:00-07:00: \"Wake up\".",
+            text: 'Alarm set for 2026-05-08T07:00:00-07:00: "Wake up".',
           },
         },
       ],

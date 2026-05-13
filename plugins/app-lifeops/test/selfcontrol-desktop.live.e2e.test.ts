@@ -4,7 +4,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, expect, it } from "vitest";
 import { describeIf } from "../../../packages/app-core/test/helpers/conditional-tests.ts";
 import { req } from "../../../packages/app-core/test/helpers/http";
 

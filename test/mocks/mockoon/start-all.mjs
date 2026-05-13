@@ -17,11 +17,17 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync, openSync } from "node:fs";
-import { dirname, join, basename } from "node:path";
-import { fileURLToPath } from "node:url";
-import { setTimeout as delay } from "node:timers/promises";
+import {
+  mkdirSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { connect } from "node:net";
+import { basename, dirname, join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const LOG_DIR = join(HERE, ".mockoon-logs");
@@ -81,8 +87,24 @@ function spawnMockoon(envPath, port) {
   const useNpx = process.env.MOCKOON_USE_NPX === "1";
   const cmd = useNpx ? "npx" : MOCKOON_BIN;
   const args = useNpx
-    ? ["--yes", MOCKOON_NPX_PACKAGE, "start", "--data", envPath, "--port", String(port), "--disable-log-to-file"]
-    : ["start", "--data", envPath, "--port", String(port), "--disable-log-to-file"];
+    ? [
+        "--yes",
+        MOCKOON_NPX_PACKAGE,
+        "start",
+        "--data",
+        envPath,
+        "--port",
+        String(port),
+        "--disable-log-to-file",
+      ]
+    : [
+        "start",
+        "--data",
+        envPath,
+        "--port",
+        String(port),
+        "--disable-log-to-file",
+      ];
   const child = spawn(cmd, args, {
     stdio: ["ignore", out, err],
     detached: true,
@@ -101,7 +123,10 @@ async function main() {
   for (const envPath of envs) {
     const { port, name } = readPort(envPath);
     const child = spawnMockoon(envPath, port);
-    writeFileSync(join(PID_DIR, `${basename(envPath, ".json")}.pid`), String(child.pid));
+    writeFileSync(
+      join(PID_DIR, `${basename(envPath, ".json")}.pid`),
+      String(child.pid),
+    );
     started.push({ envPath, port, name, pid: child.pid });
     console.log(`started ${name} pid=${child.pid} port=${port}`);
   }
@@ -114,7 +139,9 @@ async function main() {
     const ok = await waitForPort(s.port);
     if (!ok) {
       failed += 1;
-      console.error(`FAIL: ${s.name} did not bind port ${s.port} within 10s — see ${LOG_DIR}/${basename(s.envPath, ".json")}.log`);
+      console.error(
+        `FAIL: ${s.name} did not bind port ${s.port} within 10s — see ${LOG_DIR}/${basename(s.envPath, ".json")}.log`,
+      );
     } else {
       console.log(`ready ${s.name} on http://localhost:${s.port}`);
     }

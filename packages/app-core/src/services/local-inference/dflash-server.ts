@@ -66,6 +66,7 @@ import {
   grammarRequestFields,
   repairStructuredOutput,
   resolveGrammarForParams,
+  resolveGuidedDecodeForParams,
   type StructuredGenerateParams,
   StructuredOutputRepairStream,
 } from "./structured-output";
@@ -4064,15 +4065,17 @@ export function buildChatCompletionBody(
   slotId: number,
   streaming: boolean,
 ): Record<string, unknown> {
+  const guided = resolveGuidedDecodeForParams(args);
+  const effectivePrefill =
+    guided.prefill ??
+    (typeof args.prefill === "string" && args.prefill.length > 0
+      ? args.prefill
+      : "");
   const messages: Array<{ role: string; content: string }> = [
     { role: "user", content: args.prompt },
   ];
-  const prefill =
-    typeof args.prefill === "string" && args.prefill.length > 0
-      ? args.prefill
-      : "";
-  if (prefill.length > 0) {
-    messages.push({ role: "assistant", content: prefill });
+  if (effectivePrefill.length > 0) {
+    messages.push({ role: "assistant", content: effectivePrefill });
   }
   const payload: Record<string, unknown> = {
     model: "local-dflash",
@@ -4085,15 +4088,21 @@ export function buildChatCompletionBody(
     cache_prompt: true,
     slot_id: slotId,
   };
-  if (prefill.length > 0) {
+  if (effectivePrefill.length > 0) {
     // Continue the partial assistant turn instead of opening a new one.
     payload.continue_final_message = true;
     // Some fork builds spell it `add_generation_prompt: false` instead.
     payload.add_generation_prompt = false;
   }
-  const grammar = resolveGrammarForParams(args);
-  if (grammar) {
-    Object.assign(payload, grammarRequestFields(grammar));
+  if (guided.grammar) {
+    Object.assign(payload, grammarRequestFields(guided.grammar));
+  }
+  if (guided.prefillPlan) {
+    payload.eliza_prefill_plan = {
+      prefix: guided.prefillPlan.prefix,
+      runs: guided.prefillPlan.runs,
+      free_count: guided.prefillPlan.freeCount,
+    };
   }
   return payload;
 }

@@ -46,13 +46,14 @@ import {
 } from "./dflash-server";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { MemoryMonitor } from "./memory-monitor";
+import { mlxLocalServer } from "./mlx-server";
 import { listInstalledModels } from "./registry";
 import {
   DEFAULT_SESSION_KEY,
   resolveDefaultPoolSize,
   SessionPool,
 } from "./session-pool";
-import { resolveGrammarForParams } from "./structured-output";
+import { resolveGuidedDecodeForParams } from "./structured-output";
 import type { InstalledModel } from "./types";
 import {
   buildLocalEmbeddingRoute,
@@ -70,7 +71,10 @@ import {
   VoiceStartupError,
 } from "./voice/engine-bridge";
 import type { VoicePipelineEvents } from "./voice/pipeline";
-import { dflashTextRunner } from "./voice/pipeline-impls";
+import {
+  type DflashTextRunner,
+  dflashTextRunner,
+} from "./voice/pipeline-impls";
 import {
   createEvictableModelRole,
   SharedResourceRegistry,
@@ -233,14 +237,16 @@ interface LlamaContext {
 
 /**
  * Resolve the GBNF source for a node-llama-cpp constrained-decode call.
- * Precedence: an explicit `grammar` string on the args, then a compiled
- * forced skeleton (single-value enums collapsed to literals). Returns null
- * when neither is set — generation is unconstrained as before. node-llama-cpp
- * has no `grammar_lazy`, so a lazy grammar from the skeleton is applied
- * eagerly here; that's still correct (the leading literal is the trigger).
+ * Precedence: an explicit `grammar` string, then an `elizaSchema`'s grammar,
+ * then a compiled forced skeleton (single-value enums collapsed to literals).
+ * Returns null when none is set — generation is unconstrained as before.
+ * node-llama-cpp has no `grammar_lazy` and no token-splice prefill plan, so a
+ * lazy grammar from the skeleton is applied eagerly here (still correct — the
+ * leading literal is the trigger) and the prefill plan is ignored (the leading
+ * literal still gets seeded via `args.prefill`/`elizaSchema` upstream).
  */
 function resolveBindingGrammarSource(args: GenerateArgs): string | null {
-  const grammar = resolveGrammarForParams(args);
+  const grammar = resolveGuidedDecodeForParams(args).grammar;
   return grammar ? grammar.source : null;
 }
 
@@ -544,6 +550,12 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
     if (dflashLlamaServer.hasLoadedModel()) {
       return dflashLlamaServer.generate(args);
     }
+    // Apple-Silicon convenience path: when the MLX adapter has a model
+    // loaded (opt-in via ELIZA_LOCAL_MLX, text-only, never the voice path,
+    // never `defaultEligible`), route text generation to `mlx_lm.server`.
+    if (mlxLocalServer.hasLoadedModel()) {
+      return mlxLocalServer.generate(args);
+    }
     const pool = this.sessionPool;
     if (!pool) {
       throw new Error(
@@ -601,8 +613,10 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
       // Assistant-turn prefill: node-llama-cpp has no first-class "continue
       // this assistant message" knob, so we seed the prompt text with the
       // partial assistant turn and re-prepend it to the result so callers
-      // see the full assistant message.
-      const prefill = typeof args.prefill === "string" ? args.prefill : "";
+      // see the full assistant message. The prefill is an explicit
+      // `args.prefill` or the leading literal run of an `elizaSchema`'s
+      // prefill plan (resolved by the same helper the server path uses).
+      const prefill = resolveGuidedDecodeForParams(args).prefill ?? "";
       const promptText =
         prefill.length > 0 ? `${args.prompt}\n${prefill}` : args.prompt;
       if (args.onTextChunk || args.onVerifierEvent) {
@@ -1663,6 +1677,13 @@ export class LocalInferenceEngine {
    * verifier are wired against the running DFlash llama-server; the ASR is
    * the fused ABI's ASR. Requires `startVoice()` + `armVoice()` first.
    *
+   * `opts.textRunner` lets a host that runs its own text engine in-process
+   * (the iOS/Android FFI path — `@elizaos/plugin-aosp-local-inference`'s
+   * `AospDflashAdapter` / the `LlamaCpp.xcframework` shim — which does NOT
+   * spawn `llama-server`) supply its own {@link DflashTextRunner}. When
+   * omitted, the desktop/server path is used: the module-level
+   * `dflashLlamaServer` singleton (the spawned fork `llama-server`).
+   *
    * Resolves with the turn's exit reason (`done` / `token-cap` /
    * `cancelled`). A missing ASR region in voice mode surfaces as a
    * `VoiceStartupError` — no silent cloud fallback (AGENTS.md §3).
@@ -1673,13 +1694,20 @@ export class LocalInferenceEngine {
       maxDraftTokens?: number;
       maxGeneratedTokens?: number;
       events?: VoicePipelineEvents;
+      /**
+       * In-process text runner for the mobile FFI path. Must implement the
+       * same `DflashTextRunner` contract (`hasDrafter()` +
+       * `generateWithVerifierEvents()`); the AOSP/Capacitor bridge wraps
+       * its libllama-context-backed speculative loop in one.
+       */
+      textRunner?: DflashTextRunner;
     } = {},
   ): Promise<"done" | "token-cap" | "cancelled"> {
     this.markActivity();
     const bridge = this.requireVoiceBridge("run a voice turn");
     return bridge.runVoiceTurn(
       audio,
-      dflashTextRunner(dflashLlamaServer),
+      opts.textRunner ?? dflashTextRunner(dflashLlamaServer),
       {
         maxDraftTokens: opts.maxDraftTokens ?? DEFAULT_VOICE_MAX_DRAFT_TOKENS,
         maxGeneratedTokens: opts.maxGeneratedTokens,

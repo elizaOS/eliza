@@ -25,6 +25,45 @@ describe("system prompt helpers", () => {
 		);
 	});
 
+	it("substitutes {{name}} / {{agentName}} placeholders in system + bio", () => {
+		// Onboarding presets (packages/shared/dist/onboarding-presets.characters.js)
+		// persist `{{name}}` tokens so character renames propagate. The runtime
+		// must resolve them before the prompt reaches `useModel(...)`.
+		const prompt = buildCanonicalSystemPrompt({
+			character: {
+				name: "Eliza",
+				system: "You are {{name}}. Keep it brief.",
+				bio: [
+					"{{name}} is warm and precise.",
+					"{{agentName}} keeps things calm.",
+				],
+			},
+		});
+
+		expect(prompt).toContain("You are Eliza. Keep it brief.");
+		expect(prompt).toContain("Eliza is warm and precise.");
+		expect(prompt).toContain("Eliza keeps things calm.");
+		expect(prompt).not.toContain("{{name}}");
+		expect(prompt).not.toContain("{{agentName}}");
+	});
+
+	it("substitution is idempotent (no placeholders → unchanged)", () => {
+		const prompt = buildCanonicalSystemPrompt({
+			character: {
+				name: "Eliza",
+				system: "You are Eliza. Keep it brief.",
+				bio: ["Eliza is warm and precise."],
+			},
+		});
+
+		expect(prompt).toBe(
+			[
+				"You are Eliza. Keep it brief.",
+				"# About Eliza\nEliza is warm and precise.",
+			].join("\n\n"),
+		);
+	});
+
 	it("prefers explicit system, then leading message system, then fallback", () => {
 		expect(
 			resolveEffectiveSystemPrompt({

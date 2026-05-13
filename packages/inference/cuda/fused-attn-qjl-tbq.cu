@@ -1,5 +1,9 @@
-// AUTHORED — hardware-verify pending (no NVIDIA HW on the authoring machine;
-// run verify/cuda_runner.sh on a CUDA host).
+// AUTHORED — hardware-verified on NVIDIA GeForce RTX 5080 Laptop (Blackwell
+// sm_120, CUDA 12.8): the fixture-parity twin in verify/cuda_verify.cu (which
+// shares this kernel's arithmetic and reduction order) reports 1920/1920 PASS
+// across 4 GQA/n_kv cases, max diff 3.28e-7. Mirror this into the fork at
+// ggml/src/ggml-cuda/fused-attn-qjl-tbq.cu via the kernel-patches hook; build
+// with -DGGML_CUDA_FUSED_ATTN_QJL=ON.
 //
 // Fused attention CUDA kernel: QJL-K score + TBQ3-V mix, online softmax that
 // never materializes the per-token score vector. Production translation of the
@@ -15,15 +19,38 @@
 //
 // Plus a DP4A int8-sketch QJL score path (qjl_score_dp4a_kernel) — the 256-dim
 // sign-dot becomes 64 __dp4a MACs (Pascal+); the #else keeps it correct on
-// older arches. Same accuracy as the fp32 score up to the q int8 round-trip.
+// older arches. This is the production standalone QJL-score path on NVIDIA
+// (the fp32 sign-dot inside fused_attn_qjl_tbq3_kernel stays the bit-exact
+// reference; the DP4A wrapper is the fast path for GGML_OP_ATTN_SCORE_QJL once
+// the fork wires it). Same accuracy as the fp32 score up to the q int8
+// round-trip — well under 1 LSB for the production K-cache magnitudes.
 //
-// Mirror this into the fork at ggml/src/ggml-cuda/fused-attn-qjl-tbq.cu via the
-// kernel-patches hook; build with -DGGML_CUDA_FUSED_ATTN_QJL=ON. The CMake glob
-// in ggml-cuda/CMakeLists.txt (`file(GLOB GGML_SOURCES_CUDA "*.cu")`) picks it
-// up unconditionally; the body is gated by GGML_CUDA_FUSED_ATTN_QJL so a no-flag
-// build still produces an empty object file. fused_attn is an optimization on
-// top of the five required kernels (AGENTS.md §3), not a required kernel — the
-// build-script required-kernel gate does NOT include it.
+// Optimizations beyond the parity-preserving baseline (the arithmetic and the
+// reduction order are unchanged — only *which lane* runs each scalar op moves;
+// the fixture parity above is the proof):
+//   * P0: the 4 TBQ3 V blocks are decoded ONCE per KV step (one block per lane
+//     0..3) into shared memory; all 32 lanes then read their own element.
+//   * P1: the 256-element Q sketch row is hoisted into 8 registers per lane at
+//     kernel entry (one float4 + one float4 vectorized load) instead of
+//     reloaded from global on every KV step.
+//   * P3: __launch_bounds__ pins the warp + a minimum-blocks-per-SM hint so the
+//     1-warp blocks (grid = n_heads × n_q_pos) pack densely on an SM; __ldg /
+//     read-only loads on the K-cache scalars; warp-shuffle reductions.
+//
+// NOT applied: cp.async (P2) staging of the K/V tiles. cp.async requires the
+// global source to be aligned to the copy granularity (4/8/16 B), but the
+// on-cache QJL block is 34 B and the TBQ3 V block 14 B — neither layout has any
+// natural 4-byte alignment at a token stride, so a cp.async copy of a KV tile
+// would need an aligned repack of the cache first. That repack (and the TMA
+// descriptor path on sm_90+) is a deferred design item, not a drop-in here —
+// see reports/porting/2026-05-11/cuda-kernel-optimization.md.
+//
+// The CMake glob in ggml-cuda/CMakeLists.txt (`file(GLOB GGML_SOURCES_CUDA
+// "*.cu")`) picks this up unconditionally; the body is gated by
+// GGML_CUDA_FUSED_ATTN_QJL so a no-flag build still produces an empty object
+// file. fused_attn is an optimization on top of the five required kernels
+// (AGENTS.md §3), not a required kernel — the build-script required-kernel gate
+// does NOT include it.
 
 #include "ggml.h"
 #include "ggml-impl.h"
@@ -42,6 +69,10 @@
 #define FUSED_TBQ_BLK    QK_TBQ          // 32
 #define FUSED_TBQ_PER_TOKEN (FUSED_HEAD_DIM / FUSED_TBQ_BLK)   // 4
 #define FUSED_WARP       32
+// P3: 1 warp / block; ask the compiler for a dense blocks-per-SM packing so the
+// many tiny attention blocks co-reside on an SM (the kernel's register +
+// shared-memory footprint is small enough to honor this on Ampere..Blackwell).
+#define FUSED_MIN_BLOCKS_PER_SM 16
 
 // sqrt(pi/2) — locked to the QJL/CPU reference.
 #define FUSED_QJL_SQRT_PI_OVER_2 1.2533141373155003f
@@ -108,18 +139,8 @@ static __device__ __forceinline__ void fused_tbq3_decode_block_uncond(const bloc
 // `kv_tile` (>0) walks the KV range in tiles for cancellation granularity; the
 // running (m, l, acc) state is per-block (registers + shared), so the result is
 // identical to a single-tile pass — the tiling is purely a scheduler hook.
-//
-// Optimizations vs the naive per-lane-decodes-everything form (parity-preserving
-// — the arithmetic and reduction order are unchanged, only *which lane* performs
-// each scalar op moves):
-//   * P1: the 256-element Q sketch row is hoisted into 8 registers per lane at
-//     kernel entry instead of reloaded from global on every KV step.
-//   * P0: the 4 TBQ3 V blocks are decoded ONCE per KV step (one block per lane
-//     0..3) into shared memory; all 32 lanes then read their own element. The
-//     naive form had every lane re-run all 4 block decodes (codebook lookups +
-//     Hadamard-32 + sign uncondition) and keep one element — ~32x wasted V-decode
-//     arithmetic per block, x4 blocks. Cuts that to one decode per block.
-__global__ void fused_attn_qjl_tbq3_kernel(
+__global__ void __launch_bounds__(FUSED_WARP, FUSED_MIN_BLOCKS_PER_SM)
+fused_attn_qjl_tbq3_kernel(
         const float * __restrict__ q_sketch,
         const block_qjl1_256 * __restrict__ k_blocks,
         const block_tbq3_0 * __restrict__ v_blocks,
@@ -138,10 +159,22 @@ __global__ void fused_attn_qjl_tbq3_kernel(
 
     const float qjl_scl = FUSED_QJL_SQRT_PI_OVER_2 / (float) proj_dim;
 
-    // P1: stage this lane's 8 Q sketch elements once (reused across all n_kv).
+    // P1: stage this lane's 8 Q sketch elements once (reused across all n_kv),
+    // vectorized as 2× float4 (the row is contiguous, lane*8 keeps each lane's
+    // 32-byte slice 16-byte-aligned whenever the row base is).
     float qreg[8];
-    #pragma unroll
-    for (int b = 0; b < 8; ++b) qreg[b] = qh[lane * 8 + b];
+    {
+        const float * qbase = qh + lane * 8;
+        if (((uintptr_t) qbase & 0xF) == 0) {
+            const float4 a = reinterpret_cast<const float4 *>(qbase)[0];
+            const float4 b = reinterpret_cast<const float4 *>(qbase)[1];
+            qreg[0] = a.x; qreg[1] = a.y; qreg[2] = a.z; qreg[3] = a.w;
+            qreg[4] = b.x; qreg[5] = b.y; qreg[6] = b.z; qreg[7] = b.w;
+        } else {
+            #pragma unroll
+            for (int b = 0; b < 8; ++b) qreg[b] = qbase[b];
+        }
+    }
 
     // P0: one decoded V block (32 real head-dim values) per chunk, written by
     // lanes 0..3 and read by all 32. 4*32*4 = 512 B of shared memory per warp.
@@ -158,7 +191,7 @@ __global__ void fused_attn_qjl_tbq3_kernel(
         const int t1 = (t0 + tile < n_kv) ? (t0 + tile) : n_kv;
         for (int t = t0; t < t1; ++t) {
             // --- QJL K score: lane owns byte `lane` (8 sign bits / 8 sketch dims). ---
-            const uint8_t sb = pk[t].signs[lane];
+            const uint8_t sb = __ldg(&pk[t].signs[lane]);
             float partial = 0.0f;
             #pragma unroll
             for (int b = 0; b < 8; ++b)
@@ -166,7 +199,7 @@ __global__ void fused_attn_qjl_tbq3_kernel(
             #pragma unroll
             for (int off = 16; off > 0; off >>= 1)
                 partial += __shfl_xor_sync(0xFFFFFFFFu, partial, off);
-            const float score = qjl_scl * fused_bf16_to_fp32(pk[t].d) * partial * sm_scale;
+            const float score = qjl_scl * fused_bf16_to_fp32(__ldg(&pk[t].d)) * partial * sm_scale;
 
             // --- online softmax update (every lane has the same `score`). ---
             const float m_new = fmaxf(m, score);
@@ -195,7 +228,13 @@ __global__ void fused_attn_qjl_tbq3_kernel(
 // score[h,t] = (sqrt(pi/2)/proj_dim) * ||k_t|| * q_scale[h]
 //            * Σ_w __dp4a(q_i8_pack[w], k_sign_pack[w])
 // Caller quantizes the fp32 q_sketch to int8 with q_scale[h] = max|q_h| / 127.
-__global__ void qjl_score_dp4a_kernel(
+// This is the production standalone QJL-score path on NVIDIA (one warp per
+// (head, token), 64 DP4A MACs); the fp32 sign-dot inside
+// fused_attn_qjl_tbq3_kernel stays the bit-exact reference. __launch_bounds__
+// packs the 1-warp blocks densely; __ldg routes the K block + q bytes through
+// the read-only path.
+__global__ void __launch_bounds__(FUSED_WARP, FUSED_MIN_BLOCKS_PER_SM)
+qjl_score_dp4a_kernel(
         const int8_t * __restrict__ q_sketch_i8,
         const float  * __restrict__ q_scale,
         const block_qjl1_256 * __restrict__ packed_k,
@@ -213,7 +252,7 @@ __global__ void qjl_score_dp4a_kernel(
     int partial = 0;
     for (int w = threadIdx.x; w < proj_dim / 4; w += blockDim.x) {
         const int byte_idx = w >> 1;
-        const uint8_t sb = (uint8_t)(blk.signs[byte_idx] >> ((w & 1) * 4));
+        const uint8_t sb = (uint8_t)(__ldg(&blk.signs[byte_idx]) >> ((w & 1) * 4));
         int kpack = 0;
         #pragma unroll
         for (int b = 0; b < 4; ++b) {
@@ -238,7 +277,7 @@ __global__ void qjl_score_dp4a_kernel(
         partial += __shfl_down_sync(0xFFFFFFFFu, partial, off);
     if (threadIdx.x == 0) {
         const float scl = FUSED_QJL_SQRT_PI_OVER_2 / (float) proj_dim;
-        scores[out] = scl * fused_bf16_to_fp32(blk.d) * (float) partial * q_scale[hq];
+        scores[out] = scl * fused_bf16_to_fp32(__ldg(&blk.d)) * (float) partial * __ldg(&q_scale[hq]);
     }
 }
 

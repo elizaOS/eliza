@@ -126,9 +126,7 @@ function memoryToLifeOpsXDm(args: {
     isInbound:
       typeof x.isInbound === "boolean"
         ? x.isInbound
-        : metadata.fromBot === true
-          ? false
-          : true,
+        : metadata.fromBot !== true,
     text: stringField(args.memory.content?.text),
     receivedAt,
     readAt: null,

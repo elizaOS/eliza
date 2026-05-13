@@ -3,8 +3,7 @@
  * Two-agents-talking-endlessly voice harness for Eliza-1 (`bun run voice:duet`).
  *
  * Agent A and agent B are two `LocalInferenceEngine` instances on the **same
- * tier bundle** (`eliza-1-0_8b` by default; use `eliza-1-2b` for the larger
- * smoke) but with
+ * tier bundle** (`eliza-1-0_6b` by default, then `eliza-1-1_7b`) but with
  * **different characters** — A's `replyText` → A's OmniVoice TTS →
  * `InMemoryAudioSink`-shaped `DuetSink` (24 kHz → 16 kHz) → a ring →
  * B's `PushMicSource` → B's VAD + streaming ASR → B's `VoiceTurnController`
@@ -18,7 +17,7 @@
  * reduced-optimization fallback (`MILADY_LOCAL_ALLOW_STOCK_KV=1`) only where a
  * backend genuinely can't dispatch a §3 kernel.
  *
- * `--two-process` (recommended for `eliza-1-2b`, RSS): runs agent B in a
+ * `--two-process` (recommended for `eliza-1-1_7b`, RSS): runs agent B in a
  * child process — the parent pumps A's PCM frames to the child as
  * newline-delimited base64 over stdio, the child runs B's full voice loop and
  * streams B's reply PCM frames back the same way. Same wiring, two address
@@ -30,10 +29,9 @@
  * never runs a silent stub-TTS duet and never pretends a model loaded.
  *
  * Run:
- *   bun run voice:duet                                  # 0.8b, endless, in-process
+ *   bun run voice:duet                                  # 0.6b, endless, in-process
  *   bun run voice:duet -- --turns 20 --report out.json  # 20 round-trips → bench JSON
- *   bun run voice:duet -- --model eliza-1-2b --two-process
- *   bun run voice:duet -- --agent-pipeline              # full message-service/planner path
+ *   bun run voice:duet -- --model eliza-1-1_7b --two-process
  *   bun run voice:duet -- --list-active                 # prereq report, then exit
  *   bun run voice:duet -- --platform-report             # cross-platform matrix, then exit
  *   bun run voice:duet -- --character-a a.json --character-b b.json --seed-text "hey there"
@@ -52,14 +50,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { ChannelType, stringToUuid } from "@elizaos/core";
 import { DuetAudioBridge } from "./lib/duet-bridge.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
-
-function duetUuid(seed) {
-  return stringToUuid(`voice-duet:${seed}`);
-}
 
 // ---------------------------------------------------------------------------
 // CLI
@@ -67,11 +60,12 @@ function duetUuid(seed) {
 
 function parseArgs(argv) {
   const out = {
-    model: "eliza-1-0_8b",
+    model: "eliza-1-0_6b",
     turns: Infinity,
     characterA: null,
     characterB: null,
-    seedText: "What fascinates you lately?",
+    seedText:
+      "Hey — what's the most interesting thing you've thought about lately?",
     report: null,
     ringMs: 200,
     twoProcess: false,
@@ -87,8 +81,6 @@ function parseArgs(argv) {
     chunkWords: null, // phrase-chunker max words per phrase
     kvCacheType: null, // KV cache type override (the harness picks among co-staged variants)
     backend: null, // fused build dir selection (metal/cuda/vulkan/cpu)
-    agentPipeline: false, // full runtime message-service path; default is low-latency simple voice
-    turnTimeoutMs: null,
     // Internal: when set, this process IS agent B's peer loop (driven by the parent over stdio).
     asPeerB: false,
   };
@@ -117,8 +109,6 @@ function parseArgs(argv) {
     else if (a === "--chunk-words") out.chunkWords = intArg(argv[++i]);
     else if (a === "--kv-cache-type") out.kvCacheType = argv[++i] ?? null;
     else if (a === "--backend") out.backend = argv[++i] ?? null;
-    else if (a === "--agent-pipeline") out.agentPipeline = true;
-    else if (a === "--turn-timeout-ms") out.turnTimeoutMs = intArg(argv[++i]);
     else if (a === "--as-peer-b") out.asPeerB = true;
     else if (a === "--help" || a === "-h") out.help = true;
     else {
@@ -129,28 +119,6 @@ function parseArgs(argv) {
   return out;
 }
 
-function kvCacheOverrideEnv(value) {
-  if (!value) return null;
-  const v = String(value).trim().toLowerCase();
-  if (!v) return null;
-  if (v === "qjl_full" || v === "qjl" || v === "qjl1_256") {
-    return { k: "qjl1_256", v: "q4_polar" };
-  }
-  if (v === "polar" || v === "polarquant" || v === "q4_polar") {
-    return { k: "qjl1_256", v: "q4_polar" };
-  }
-  if (v === "turbo3" || v === "tbq3" || v === "tbq3_0") {
-    return { k: "tbq3_0", v: "tbq3_0" };
-  }
-  if (v === "turbo3_tcq" || v === "tbq3_tcq") {
-    return { k: "tbq3_tcq", v: "tbq3_0" };
-  }
-  if (v === "turbo4" || v === "tbq4" || v === "tbq4_0") {
-    return { k: "tbq4_0", v: "tbq4_0" };
-  }
-  return { k: v, v };
-}
-
 function intArg(s) {
   const n = Number(s);
   return Number.isFinite(n) ? Math.floor(n) : null;
@@ -158,14 +126,14 @@ function intArg(s) {
 
 const USAGE = `Usage: bun run voice:duet [-- <options>]
 
-  --model <id>            tier bundle (default eliza-1-0_8b; also eliza-1-2b)
+  --model <id>            tier bundle (default eliza-1-0_6b; also eliza-1-1_7b)
   --turns <N>             stop after N round-trips (default: endless)
   --character-a <path>    agent A's Character JSON (default: a baked-in persona)
   --character-b <path>    agent B's Character JSON (default: a baked-in persona)
   --seed-text "<text>"    agent A's opening line (default: a baked-in prompt)
   --report <path>         write a voice-duet-bench JSON (+ a .md next to it)
   --ring-ms <ms>          cross-ring target size (sweep knob; default 200)
-  --two-process           run agent B in a child process (recommended for 2b — RSS)
+  --two-process           run agent B in a child process (recommended for 1.7b — RSS)
   --list-active           print the prereq report (both engines), then exit
   --platform-report       print the cross-platform voice matrix, then exit
 
@@ -177,9 +145,6 @@ Sweep knobs (the scientific grind — see verify/voice_duet_sweep.mjs):
   --chunk-words <N>       phrase-chunker max words per phrase
   --kv-cache-type <name>  KV cache type (turbo3 / turbo3_tcq / qjl_full / polarquant / f16 …)
   --backend <name>        fused build to use (metal / cuda / vulkan / cpu)
-  --agent-pipeline        use the full message-service/planner pipeline instead of the
-                          low-latency simple-voice responder
-  --turn-timeout-ms <ms>  fail the harness if a finite run makes no progress
 
   -h, --help              this help
 `;
@@ -238,15 +203,6 @@ const DEFAULT_CHARACTER_B = {
   settings: { secrets: {} },
 };
 
-const SIMPLE_VOICE_RESPONSE_PREFILL = '{"replyText":';
-const SIMPLE_VOICE_RESPONSE_SKELETON = {
-  spans: [
-    { kind: "literal", value: SIMPLE_VOICE_RESPONSE_PREFILL },
-    { kind: "free-string", key: "replyText" },
-    { kind: "literal", value: ',"contexts":["simple"]}' },
-  ],
-};
-
 async function loadCharacter(pathOrNull, fallback) {
   if (!pathOrNull) return { ...fallback };
   try {
@@ -294,11 +250,6 @@ function applySweepKnobs(args) {
   set("ELIZA_DFLASH_CTX_SIZE_DRAFT", args.ctxSizeDraft);
   set("ELIZA_VOICE_CHUNK_WORDS", args.chunkWords);
   set("ELIZA_KV_CACHE_TYPE", args.kvCacheType);
-  const kv = kvCacheOverrideEnv(args.kvCacheType);
-  if (kv) {
-    set("ELIZA_DFLASH_CACHE_TYPE_K", kv.k);
-    set("ELIZA_DFLASH_CACHE_TYPE_V", kv.v);
-  }
   set("ELIZA_INFERENCE_FUSED_BACKEND", args.backend);
   // Guided structured decode is on by default; the harness never turns it off.
   // The reduced-optimization fallback stays opt-in (MILADY_LOCAL_ALLOW_STOCK_KV).
@@ -312,16 +263,11 @@ function applySweepKnobs(args) {
 async function inspectDuetPrereqs(args) {
   // Reuse the interactive harness's full prereq inspector (catalog entry, bundle
   // install, DFlash binary + kernel coverage, fused libelizainference, VAD,
-  // ASR). The duet feeds audio with PushMicSource, so it deliberately skips the
-  // interactive DesktopMicSource recorder check.
+  // ASR). It's parameterised by `args.modelId` for the tier the duet runs.
   const { inspectActiveOptimizations } = await import(
     "./voice-interactive.mjs"
   );
-  return inspectActiveOptimizations({
-    modelId: args.model,
-    noDflash: false,
-    say: true,
-  });
+  return inspectActiveOptimizations({ modelId: args.model, noDflash: false });
 }
 
 function printPrereqs(report, model) {
@@ -389,33 +335,17 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
   } catch {
     /* the handler may auto-assign; reported later if generation fails */
   }
-  const peerEntityId = duetUuid(`${roomId}:peer`);
-  const worldId = duetUuid(`${roomId}:world`);
-  await runtime.ensureConnection({
-    entityId: peerEntityId,
-    roomId,
-    worldId,
-    roomName: `${character.name ?? "Eliza"} voice duet`,
-    worldName: "voice duet harness",
-    userName: "Voice Duet Peer",
-    source: "voice-duet",
-    channelId: roomId,
-    type: ChannelType.VOICE_DM,
-  });
   const generate = async (request, onChunk) => {
     if (!runtime.messageService?.handleMessage) {
       throw new Error(
         "[voice-duet] runtime.messageService.handleMessage unavailable (plugin-bootstrap not loaded?)",
       );
     }
+    const entityId = `${roomId}-peer`;
     const incoming = {
-      id: duetUuid(`${roomId}:message:${Date.now()}:${Math.random()}`),
-      content: {
-        text: request.transcript,
-        source: "voice-duet",
-        channelType: ChannelType.VOICE_DM,
-      },
-      entityId: peerEntityId,
+      id: `${roomId}-${Date.now()}`,
+      content: { text: request.transcript, source: "voice-duet" },
+      entityId,
       agentId: runtime.agentId,
       roomId,
       createdAt: Date.now(),
@@ -454,151 +384,6 @@ async function bootAgentRuntime({ roomId, character, modelId }) {
   return { runtime, generate, prewarmResponseHandler };
 }
 
-function firstLine(value) {
-  return String(value ?? "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function wordCap(value, maxWords) {
-  return firstLine(value)
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, maxWords)
-    .join(" ");
-}
-
-function extractSimpleReplyText(raw, streamed) {
-  const candidates = [];
-  if (streamed) candidates.push(streamed);
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    candidates.push(raw);
-    const objectMatch = raw.match(/\{[\s\S]*\}/);
-    if (objectMatch) candidates.push(objectMatch[0]);
-  }
-  for (const candidate of candidates) {
-    const text = String(candidate ?? "").trim();
-    if (!text) continue;
-    try {
-      const parsed = JSON.parse(text);
-      if (typeof parsed?.replyText === "string") {
-        return cleanVoiceReply(parsed.replyText);
-      }
-    } catch {
-      /* try the next shape */
-    }
-  }
-  return cleanVoiceReply(streamed || raw || "");
-}
-
-function cleanVoiceReply(text) {
-  return String(text ?? "")
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/<\/?(?:think|analysis|reasoning)\b[^>]*>/gi, "")
-    .replace(/[\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/gu, "")
-    .replace(/^\s*["']|["']\s*$/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 320);
-}
-
-function cleanVoiceChunk(text) {
-  return String(text ?? "")
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/<\/?(?:think|analysis|reasoning)\b[^>]*>/gi, "")
-    .replace(/[\u{1f300}-\u{1faff}\u{2600}-\u{27bf}]/gu, "");
-}
-
-function buildSimpleVoicePrompt({ character, request, history }) {
-  void history;
-  const name = firstLine(character.name || "Eliza");
-  const style = Array.isArray(character.adjectives)
-    ? character.adjectives.slice(0, 3).map(firstLine).join("/")
-    : "";
-  return [
-    `${name}, ${style ? `${style} ` : ""}voice.`,
-    "Answer in 8-14 spoken words.",
-    `Peer: ${wordCap(request.transcript, 8)}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-async function bootSimpleVoiceResponder({
-  roomId,
-  character,
-  runId = `${process.pid}-${Date.now()}`,
-  duetSlotId = null,
-}) {
-  const history = [];
-  // Keep prefix caching within a duet run, but never restore stale slot state
-  // from an earlier report run. Stale persisted KV can hide DFlash proof
-  // counters even when the same llama-server drafts correctly in isolation.
-  const conversationId = `voice-duet-simple:${runId}:${roomId}`;
-  return {
-    runtime: null,
-    prewarmResponseHandler: async () => false,
-    generate: async (request, onChunk) => {
-      const { dflashLlamaServer } = await import(
-        "../src/services/local-inference/dflash-server.ts"
-      );
-      let streamedReply = "";
-      const t0 = performance.now();
-      const result = await dflashLlamaServer.generateWithUsage({
-        prompt: buildSimpleVoicePrompt({ character, request, history }),
-        maxTokens: 48,
-        temperature: 0,
-        topP: 1,
-        stopSequences: ["\n\n", "<|im_end|>", "</s>"],
-        cacheKey: conversationId,
-        ...(Number.isInteger(duetSlotId) ? { slotId: duetSlotId } : {}),
-        onTextChunk: (chunk) => {
-          const cleaned = cleanVoiceChunk(chunk);
-          if (!cleaned) return;
-          streamedReply += cleaned;
-          void onChunk?.(cleaned);
-        },
-      });
-      const generationMs = Math.max(0, performance.now() - t0);
-      const replyText =
-        cleanVoiceReply(streamedReply || result.text) ||
-        "Tell me more about that.";
-      const outputTokens = Number(result.usage?.output_tokens ?? 0);
-      const tokensPerSecond =
-        outputTokens > 0 && generationMs > 0
-          ? outputTokens / (generationMs / 1000)
-          : null;
-      history.push({
-        peerName: request.speaker?.name ?? "Peer",
-        peer: firstLine(request.transcript),
-        self: replyText,
-      });
-      while (history.length > 8) history.shift();
-      return {
-        transcript: request.transcript,
-        replyText,
-        _usage: result.usage,
-        _slotId: result.slotId,
-        _firstTokenMs: result.firstTokenMs,
-        _generationMs: generationMs,
-        _tokensPerSecond: tokensPerSecond,
-        _simpleVoiceResponder: true,
-        ...(request.source ? { source: request.source } : {}),
-        ...(request.speaker ? { speaker: request.speaker } : {}),
-        ...(request.segments ? { segments: request.segments } : {}),
-        ...(request.turn ? { turn: request.turn } : {}),
-      };
-    },
-  };
-}
-
-async function bootVoiceResponder(opts) {
-  if (opts.agentPipeline) {
-    return bootAgentRuntime(opts);
-  }
-  return bootSimpleVoiceResponder(opts);
-}
-
 // ---------------------------------------------------------------------------
 // One in-process engine for one agent
 // ---------------------------------------------------------------------------
@@ -616,13 +401,11 @@ async function bootAgentEngine({
   prewarm,
   prewarmLeadMs,
   events,
-  onEngineReady,
 }) {
   const engine = new EngineClass();
   await engine.load(bundlePath);
   engine.startVoice({ bundleRoot, useFfiBackend: true, sink });
   await engine.armVoice();
-  onEngineReady?.(engine);
   const controller = await engine.startVoiceSession({
     roomId,
     micSource,
@@ -710,7 +493,7 @@ async function writeReport(reportPath, payload) {
   await fs.mkdir(path.dirname(out), { recursive: true }).catch(() => {});
   await fs.writeFile(out, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   // A markdown sidecar.
-  const mdPath = out.replace(/\.json$/i, "") + ".md";
+  const mdPath = `${out.replace(/\.json$/i, "")}.md`;
   const h = payload.latency?.histograms ?? {};
   const m = payload.runMetrics ?? {};
   const lines = [
@@ -760,30 +543,6 @@ function fmtPct(v) {
 }
 function fmtNum(v) {
   return v == null || !Number.isFinite(v) ? "—" : v.toFixed(1);
-}
-function nonNegativeMs(v) {
-  return v == null || !Number.isFinite(v) ? null : Math.max(0, v);
-}
-function speculativeLeadMs(v) {
-  return v == null || !Number.isFinite(v) || v >= 0 ? 0 : -v;
-}
-
-function summarizeOutcome(outcome) {
-  if (!outcome) return null;
-  return {
-    transcript: outcome.transcript ?? null,
-    replyText: outcome.replyText ?? null,
-    slotId: outcome._slotId ?? null,
-    firstTokenMs: outcome._firstTokenMs ?? null,
-    generationMs: outcome._generationMs ?? null,
-    tokensPerSecond: outcome._tokensPerSecond ?? null,
-    usage: outcome._usage ?? null,
-  };
-}
-
-function pushTrailingSilence(micSource, sampleRate = 16_000, durationMs = 900) {
-  const samples = Math.max(1, Math.round((sampleRate * durationMs) / 1000));
-  micSource.push(new Float32Array(samples));
 }
 
 // ---------------------------------------------------------------------------
@@ -842,20 +601,11 @@ async function main() {
 
   const bundleRoot = prereqs.bundleRoot;
   const catalogEntry = prereqs.catalogEntry;
-  if (!bundleRoot) {
+  if (!bundleRoot || !catalogEntry) {
     log(
       c(
         "red",
-        `[voice-duet] missing bundle root for ${args.model}; expected <state-dir>/local-inference/models/${args.model}.bundle/ or set ELIZA_AUTO_DOWNLOAD_BUNDLE=1.`,
-      ),
-    );
-    process.exit(1);
-  }
-  if (!catalogEntry) {
-    log(
-      c(
-        "red",
-        `[voice-duet] missing catalog entry for ${args.model}; @elizaos/shared did not return a usable model definition. Fix the shared local-inference catalog entry, then rerun this harness.`,
+        "[voice-duet] internal: prereqs OK but no bundleRoot/catalogEntry",
       ),
     );
     process.exit(1);
@@ -866,6 +616,12 @@ async function main() {
   // kernels — almost never in CI. The wiring/cancel/shape path is covered by
   // voice-duet.e2e.test.ts unconditionally with stub backends; this is the
   // real-output run.)
+  tag(
+    "duet",
+    "blue",
+    `booting two ${args.model} engines (${args.twoProcess ? "two-process" : "in-process"})…`,
+  );
+
   const { LocalInferenceEngine } = await import(
     "../src/services/local-inference/engine.ts"
   );
@@ -897,59 +653,7 @@ async function main() {
     );
     process.exit(1);
   }
-  const dflash = catalogEntry?.runtime?.dflash;
-  const drafter = dflash
-    ? installed.find((m) => m.id === dflash.drafterModelId)
-    : null;
-  if (!dflash || !drafter) {
-    log(
-      c(
-        "red",
-        `[voice-duet] ${args.model} requires a registered DFlash drafter companion; no target-only duet is allowed.`,
-      ),
-    );
-    process.exit(1);
-  }
-  try {
-    const {
-      getDflashRuntimeStatus,
-      validateDflashDrafterCompatibility,
-    } = await import("../src/services/local-inference/dflash-server.ts");
-    const status = getDflashRuntimeStatus();
-    if (!status.enabled || !status.binaryPath) {
-      throw new Error(status.reason);
-    }
-    const report = validateDflashDrafterCompatibility({
-      targetModelPath: target.path,
-      drafterModelPath: drafter.path,
-      binaryPath: status.binaryPath,
-    });
-    if (!report.compatible) {
-      throw new Error(report.reason);
-    }
-    tag("setup", "green", "DFlash drafter GGUF preflight passed");
-  } catch (err) {
-    log(
-      c(
-        "red",
-        `[voice-duet] DFlash drafter preflight failed: ${err instanceof Error ? err.message : String(err)}`,
-      ),
-    );
-    log(
-      c(
-        "dim",
-        "Eliza-1 voice mode requires DFlash; refusing to boot a target-only text server.",
-      ),
-    );
-    process.exit(1);
-  }
-  tag(
-    "duet",
-    "blue",
-    `booting two ${args.model} engines (${args.twoProcess ? "two-process" : "in-process"}, ${args.agentPipeline ? "agent-pipeline" : "simple-voice"})…`,
-  );
   const bundlePath = target.path;
-  const duetRunId = `${Date.now().toString(36)}-${process.pid}`;
 
   const [{ PushMicSource }, vadMod] = await Promise.all([
     import("../src/services/local-inference/voice/mic-source.ts"),
@@ -967,31 +671,21 @@ async function main() {
 
   const charA = await loadCharacter(args.characterA, DEFAULT_CHARACTER_A);
   const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
-  const roomA = duetUuid("room:A");
-  const roomB = duetUuid("room:B");
+  const roomA = "voice-duet-A";
+  const roomB = "voice-duet-B";
 
   // PushMicSources (16 kHz — the ASR/VAD rate the bridge resamples to).
   const pushA = new PushMicSource({ sampleRate: 16_000 });
   const pushB = new PushMicSource({ sampleRate: 16_000 });
   let aToBPcm = 0;
   let bToAPcm = 0;
-  const firstAudioMarked = { aToB: false, bToA: false };
   const bridge = new DuetAudioBridge({
     micSourceA: pushA,
     micSourceB: pushB,
     opts: {
       ringMs: args.ringMs,
       targetRate: 16_000,
-      pace: true,
-      frameMs: 32,
       onForward: (dir, pcm) => {
-        const producerRoom = dir === "aToB" ? roomA : roomB;
-        if (!firstAudioMarked[dir]) {
-          firstAudioMarked[dir] = true;
-          markVoiceLatency(producerRoom, "tts-first-audio-chunk");
-          markVoiceLatency(producerRoom, "audio-first-played");
-          markVoiceLatency(producerRoom, "audio-first-into-peer-ring");
-        }
         if (dir === "aToB") aToBPcm += pcm.length;
         else bToAPcm += pcm.length;
       },
@@ -1010,57 +704,19 @@ async function main() {
   let emotionSamples = 0;
   let emotionAgree = 0;
   let emotionPerceiver = "unknown";
-  const voiceEmitters = new Map();
-  const voicePushQueues = new Map();
-  const voiceTokenIndexes = new Map();
-
-  const installVoiceEmitter = (roomId, engine) => {
-    voiceEmitters.set(roomId, (delta) => {
-      const text = cleanVoiceChunk(delta);
-      if (!text) return;
-      const previous = voicePushQueues.get(roomId) ?? Promise.resolve();
-      const queued = previous.then(async () => {
-        const index = voiceTokenIndexes.get(roomId) ?? 0;
-        voiceTokenIndexes.set(roomId, index + 1);
-        await engine.pushAcceptedTokens([{ index, text }]);
-      });
-      voicePushQueues.set(
-        roomId,
-        queued.catch((err) => {
-          tag(
-            "error",
-            "red",
-            `${roomId}: voice-token push failed: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }),
-      );
-    });
-  };
-
-  const waitForVoicePushes = async (roomId) => {
-    await (voicePushQueues.get(roomId) ?? Promise.resolve());
-  };
 
   // The runtime + generate for each agent.
-  const bootedA = await bootVoiceResponder({
+  const bootedA = await bootAgentRuntime({
     roomId: roomA,
     character: charA,
     modelId: args.model,
-    agentPipeline: args.agentPipeline,
-    runId: duetRunId,
-    duetSlotId: 0,
   });
   const bootedB = args.twoProcess
     ? null /* B runs in a child process — see below */
-    : await bootVoiceResponder({
+    : await bootAgentRuntime({
         roomId: roomB,
         character: charB,
         modelId: args.model,
-        agentPipeline: args.agentPipeline,
-        runId: duetRunId,
-        duetSlotId: 1,
       });
 
   // Wrap each generate to: stream replyText to stdout, parse expressive tags
@@ -1070,25 +726,8 @@ async function main() {
     if (request.final) tag(label, "bold", `"${request.transcript}"`);
     process.stdout.write(c(label === "A" ? "cyan" : "yellow", `[${label}] `));
     let sawTag = false;
-    let streamedVoice = false;
-    let sawFirstToken = false;
-    let sawFirstReplyChar = false;
     const outcome = await booted.generate(request, async (delta) => {
-      if (!sawFirstToken) {
-        sawFirstToken = true;
-        markVoiceLatency(room, "llm-first-token");
-      }
       process.stdout.write(delta);
-      const emitVoice = voiceEmitters.get(room);
-      if (emitVoice && delta) {
-        if (!sawFirstReplyChar && cleanVoiceChunk(delta).trim().length > 0) {
-          sawFirstReplyChar = true;
-          markVoiceLatency(room, "llm-first-replytext-char");
-          markVoiceLatency(room, "phrase-1-to-tts");
-        }
-        streamedVoice = true;
-        emitVoice(delta);
-      }
       if (!sawTag && /\[[a-z][a-z-]*\]/i.test(delta)) {
         // First inline expressive markup in replyText — mark the overhead.
         const parsed = parseExpressiveTags(delta);
@@ -1098,23 +737,6 @@ async function main() {
         }
       }
     });
-    if (!streamedVoice && outcome?.replyText) {
-      const emitVoice = voiceEmitters.get(room);
-      if (emitVoice) {
-        if (!sawFirstToken) {
-          sawFirstToken = true;
-          markVoiceLatency(room, "llm-first-token");
-        }
-        if (!sawFirstReplyChar) {
-          sawFirstReplyChar = true;
-          markVoiceLatency(room, "llm-first-replytext-char");
-          markVoiceLatency(room, "phrase-1-to-tts");
-        }
-        streamedVoice = true;
-        emitVoice(outcome.replyText);
-      }
-    }
-    if (streamedVoice) await waitForVoicePushes(room);
     process.stdout.write("\n");
     // The dominant intended emotion (for the fidelity metric).
     const parsedFull = parseExpressiveTags(outcome.replyText ?? "");
@@ -1122,7 +744,7 @@ async function main() {
     return outcome;
   };
 
-  const sharedEvents = (room, label, onComplete) => ({
+  const sharedEvents = (_room, label, onComplete) => ({
     onSpeculativeStart: (t) =>
       tag("spec", "dim", `${label} off partial: "${t}"`),
     onSpeculativeAbort: () =>
@@ -1138,13 +760,11 @@ async function main() {
   // ── Boot agent A's engine (sink → aToB ring) ───────────────────────────
   const vadA = await vadMod.createSileroVadDetector({
     modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-    bundleRoot,
   });
   const vadB = args.twoProcess
     ? null
     : await vadMod.createSileroVadDetector({
         modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-        bundleRoot,
       });
 
   // The cross-agent loop bookkeeping.
@@ -1167,7 +787,6 @@ async function main() {
     consumerOutcome,
   }) => {
     completedTurns += 1;
-    lastProgressAt = Date.now();
     // Latency: snapshot the consumer's trace (it has the duet spans).
     const trace = await snapshotTrace(consumerRoom);
     // DFlash delta this turn.
@@ -1175,17 +794,7 @@ async function main() {
     let dflashAcc = null;
     let dflashAccepted = null;
     let dflashDrafted = null;
-    const outcomeDrafted =
-      Number(producerOutcome?._usage?.dflash_drafted_tokens ?? 0) +
-      Number(consumerOutcome?._usage?.dflash_drafted_tokens ?? 0);
-    const outcomeAccepted =
-      Number(producerOutcome?._usage?.dflash_accepted_tokens ?? 0) +
-      Number(consumerOutcome?._usage?.dflash_accepted_tokens ?? 0);
-    if (outcomeDrafted > 0) {
-      dflashDrafted = outcomeDrafted;
-      dflashAccepted = outcomeAccepted;
-      dflashAcc = outcomeAccepted / outcomeDrafted;
-    } else if (cur && priorMetrics) {
+    if (cur && priorMetrics) {
       const dDrafted = (cur.drafted ?? 0) - (priorMetrics.drafted ?? 0);
       const dAccepted = (cur.accepted ?? 0) - (priorMetrics.accepted ?? 0);
       if (dDrafted > 0) {
@@ -1196,14 +805,6 @@ async function main() {
     }
     if (cur) priorMetrics = cur;
     const rssMb = await readServerRssMb();
-    const tpsSamples = [
-      producerOutcome?._tokensPerSecond,
-      consumerOutcome?._tokensPerSecond,
-    ].filter((v) => Number.isFinite(v));
-    const tokensPerSecond =
-      tpsSamples.length > 0
-        ? tpsSamples.reduce((acc, v) => acc + v, 0) / tpsSamples.length
-        : (cur?.tokensPerSecond ?? null);
     runMetrics.recordTurn({
       dflashAcceptRate: dflashAcc,
       dflashAccepted,
@@ -1211,7 +812,7 @@ async function main() {
       // Structured-decode token-savings %: feed the guided-decode bench's
       // counter if exposed; null otherwise (recorded, not faked).
       structuredDecodeTokenSavingsPct: cur?.structuredDecodeSavingsPct ?? null,
-      tokensPerSecond,
+      tokensPerSecond: cur?.tokensPerSecond ?? null,
       serverRssMb: rssMb,
     });
     // Emotion fidelity: A intended `producerOutcome._intendedEmotion`; B's ASR
@@ -1248,10 +849,6 @@ async function main() {
       intendedEmotion: intended,
       perceivedEmotion: perceived,
       dflashAcceptRate: dflashAcc,
-      dflashAccepted,
-      dflashDrafted,
-      producer: summarizeOutcome(producerOutcome),
-      consumer: summarizeOutcome(consumerOutcome),
       aToBPcm,
       bToAPcm,
     });
@@ -1269,13 +866,6 @@ async function main() {
   // side's controller fires its turn off the incoming PCM via VAD/ASR; we hang
   // role-flip logic on `onTurnComplete`.
   const limit = Number.isFinite(args.turns) ? args.turns : Infinity;
-  const turnTimeoutMs =
-    args.turnTimeoutMs && args.turnTimeoutMs > 0
-      ? args.turnTimeoutMs
-      : Number.isFinite(args.turns)
-        ? 240_000
-        : null;
-  let lastProgressAt = Date.now();
   let pendingProducerOutcome = null;
 
   const onAComplete = async (outcomeA) => {
@@ -1286,19 +876,9 @@ async function main() {
       .voice()
       ?.settle?.()
       .catch(() => {});
-    await bridge.aToB.settle?.().catch(() => {});
     afterProducerSettled(roomB);
-    // The in-memory channel is not a real microphone, so it needs an explicit
-    // trailing silence tail; otherwise long single-shot TTS can leave VAD
-    // waiting forever for the speech-end edge.
-    pushTrailingSilence(pushB);
+    markVoiceLatency(roomB, "audio-first-into-peer-ring"); // A's audio landed in B's ring already
     pendingProducerOutcome = outcomeA;
-    if (Number.isFinite(limit) && completedTurns + 1 >= limit) {
-      // The requested round-trip ends with B's reply audio landing back in A's
-      // ring. Stop A's listener now so the benchmark does not start an extra
-      // post-limit A turn while B's reply is still streaming.
-      engineA.controller?.stop?.();
-    }
     if (completedTurns >= limit || stopping) return;
   };
 
@@ -1307,18 +887,17 @@ async function main() {
       ?.voice?.()
       ?.settle?.()
       .catch(() => {});
-    await bridge.bToA.settle?.().catch(() => {});
     afterProducerSettled(roomA);
-    pushTrailingSilence(pushA);
+    markVoiceLatency(roomA, "audio-first-into-peer-ring");
     // One round-trip done (A→B→A): A asked, B answered, audio's back at A.
-    // Close the consumer's latency turn before snapshotting it into the report.
-    endVoiceLatencyTurn(roomB);
     await recordTurnMetrics({
       producerRoom: roomA,
       consumerRoom: roomB,
       producerOutcome: pendingProducerOutcome ?? outcomeB,
       consumerOutcome: outcomeB,
     });
+    // Close the consumer's latency turn so the histograms get the deltas.
+    endVoiceLatencyTurn(roomB);
     if (completedTurns >= limit || stopping) {
       await shutdown(0);
     }
@@ -1344,7 +923,6 @@ async function main() {
     },
     prewarmLeadMs: args.prewarmLeadMs,
     events: sharedEvents(roomA, "A", onAComplete),
-    onEngineReady: (engine) => installVoiceEmitter(roomA, engine),
   });
 
   // Boot B's engine (in-process; the --two-process path is handled below).
@@ -1369,7 +947,6 @@ async function main() {
       },
       prewarmLeadMs: args.prewarmLeadMs,
       events: sharedEvents(roomB, "B", onBComplete),
-      onEngineReady: (engine) => installVoiceEmitter(roomB, engine),
     });
   } else {
     // --two-process: spawn a child running THIS script with --as-peer-b. The
@@ -1394,14 +971,13 @@ async function main() {
       onPeerTurn: async (outcomeB) => {
         afterProducerSettled(roomA);
         markVoiceLatency(roomA, "audio-first-into-peer-ring");
-        pushTrailingSilence(pushA);
-        endVoiceLatencyTurn(roomB);
         await recordTurnMetrics({
           producerRoom: roomA,
           consumerRoom: roomB,
           producerOutcome: pendingProducerOutcome ?? outcomeB,
           consumerOutcome: outcomeB,
         });
+        endVoiceLatencyTurn(roomB);
         if (completedTurns >= limit || stopping) await shutdown(0);
       },
     });
@@ -1414,12 +990,10 @@ async function main() {
 
   // ── Shutdown ───────────────────────────────────────────────────────────
   let shuttingDown = false;
-  let watchdog = null;
   async function shutdown(code = 0) {
     if (shuttingDown) return;
     shuttingDown = true;
     stopping = true;
-    if (watchdog) clearInterval(watchdog);
     log(c("dim", "\n[shutdown] stopping engines, writing report…"));
     try {
       engineA.controller?.stop();
@@ -1448,7 +1022,7 @@ async function main() {
       /* ignore */
     }
     try {
-      await bootedA.runtime?.stop?.();
+      await bootedA.runtime.stop?.();
       await bootedB?.runtime?.stop?.();
     } catch {
       /* ignore */
@@ -1456,10 +1030,6 @@ async function main() {
     // Write the report.
     if (args.report) {
       const histograms = await snapshotHistograms();
-      const ttftFromUtteranceEnd =
-        histograms?.ttftFromUtteranceEndMs?.p50 ?? null;
-      const firstAudioFromUtteranceEnd =
-        histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null;
       const accuracy =
         emotionSamples > 0 ? emotionAgree / emotionSamples : null;
       const payload = {
@@ -1481,13 +1051,8 @@ async function main() {
           prewarmLeadMs: args.prewarmLeadMs,
           chunkWords: args.chunkWords,
           kvCacheType: args.kvCacheType,
-          turnTimeoutMs: args.turnTimeoutMs,
         },
         latency: { histograms, derivedKeys: Object.keys(histograms ?? {}) },
-        speculativeLead: {
-          firstTokenLeadMs: speculativeLeadMs(ttftFromUtteranceEnd),
-          firstAudioLeadMs: speculativeLeadMs(firstAudioFromUtteranceEnd),
-        },
         runMetrics: runMetrics.summary(),
         emotionFidelity: {
           perceiver:
@@ -1499,14 +1064,13 @@ async function main() {
           confusionMatrix: Object.fromEntries(emotionMatrix),
         },
         // Gate-name-aligned mirror so eliza1_gates_collect.mjs can ingest it.
-        // Speculative-on-pause can make the raw peer-utterance-end spans
-        // negative (the response started before the peer finished speaking).
-        // Gate values clamp that to zero while `latency.histograms` and
-        // `speculativeLead` preserve the raw measurement.
         gates: {
-          first_token_latency_ms: nonNegativeMs(ttftFromUtteranceEnd),
-          first_audio_latency_ms: nonNegativeMs(firstAudioFromUtteranceEnd),
-          duet_round_trip_ms: nonNegativeMs(firstAudioFromUtteranceEnd),
+          first_token_latency_ms:
+            histograms?.ttftFromUtteranceEndMs?.p50 ?? null,
+          first_audio_latency_ms:
+            histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null,
+          duet_round_trip_ms:
+            histograms?.firstAudioIntoPeerRingFromUtteranceEndMs?.p50 ?? null,
           structured_decode_token_savings_pct:
             runMetrics.summary().structuredDecodeTokenSavingsPct?.p50 ?? null,
           dflash_acceptance: runMetrics.summary().dflashAcceptRate,
@@ -1536,21 +1100,6 @@ async function main() {
   }
   process.on("SIGINT", () => void shutdown(0));
   process.on("SIGTERM", () => void shutdown(0));
-  if (turnTimeoutMs !== null) {
-    watchdog = setInterval(() => {
-      if (shuttingDown || completedTurns >= limit) return;
-      const idleMs = Date.now() - lastProgressAt;
-      if (idleMs < turnTimeoutMs) return;
-      log(
-        c(
-          "red",
-          `[voice-duet] no completed turn after ${idleMs}ms; failing the finite harness run instead of hanging`,
-        ),
-      );
-      void shutdown(1);
-    }, Math.min(10_000, Math.max(1_000, Math.floor(turnTimeoutMs / 8))));
-    watchdog.unref?.();
-  }
 
   // ── Kick off: agent A speaks first off the seed ───────────────────────
   tag(
@@ -1635,9 +1184,6 @@ async function spawnPeerB({
       ...process.env,
       ELIZA_DUET_PEER_BUNDLE: bundlePath,
       ELIZA_DUET_PEER_BUNDLE_ROOT: bundleRoot,
-      ELIZA_DUET_AGENT_PIPELINE: args.agentPipeline ? "1" : "0",
-      ELIZA_DUET_RUN_ID:
-        process.env.ELIZA_DUET_RUN_ID ?? `${Date.now().toString(36)}-${process.pid}`,
     },
   });
   let buf = "";
@@ -1719,16 +1265,11 @@ async function runAsPeerB(args) {
     const vadMod = await import("../src/services/local-inference/voice/vad.ts");
     const { DuetSink } = await import("./lib/duet-bridge.mjs");
     const charB = await loadCharacter(args.characterB, DEFAULT_CHARACTER_B);
-    const roomB = duetUuid("room:B");
-    const booted = await bootVoiceResponder({
+    const roomB = "voice-duet-B";
+    const booted = await bootAgentRuntime({
       roomId: roomB,
       character: charB,
       modelId: args.model,
-      agentPipeline: process.env.ELIZA_DUET_AGENT_PIPELINE === "1",
-      runId:
-        process.env.ELIZA_DUET_RUN_ID ??
-        `peer-b-${Date.now().toString(36)}-${process.pid}`,
-      duetSlotId: 0,
     });
     const push = new PushMicSource({ sampleRate: 16_000 });
     await push.start();
@@ -1741,7 +1282,7 @@ async function runAsPeerB(args) {
             "base64",
           ),
         }),
-      { targetRate: 16_000, pace: true, frameMs: 32 },
+      { targetRate: 16_000 },
     );
     const engine = new LocalInferenceEngine();
     await engine.load(bundlePath);
@@ -1749,7 +1290,6 @@ async function runAsPeerB(args) {
     await engine.armVoice();
     const vad = await vadMod.createSileroVadDetector({
       modelPath: process.env.ELIZA_VAD_MODEL_PATH,
-      bundleRoot,
     });
     await engine.startVoiceSession({
       roomId: roomB,
@@ -1773,7 +1313,6 @@ async function runAsPeerB(args) {
             .voice()
             ?.settle?.()
             .catch(() => {});
-          await replySink.settle().catch(() => {});
           send({
             kind: "turn",
             outcome: {

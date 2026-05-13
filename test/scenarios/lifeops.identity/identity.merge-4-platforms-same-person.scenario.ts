@@ -120,7 +120,13 @@ export default scenario({
       predicate: expectMemoryWrite({
         table: ["messages", "facts"],
         description: "all 4 handles persisted on one entity",
-        contentIncludesAny: ["Jordan", "gmail", "signal", "telegram", "discord"],
+        contentIncludesAny: [
+          "Jordan",
+          "gmail",
+          "signal",
+          "telegram",
+          "discord",
+        ],
       }),
     },
     judgeRubric({

@@ -83,7 +83,7 @@ function expandPattern(pattern) {
       // Glob segment — list the directory and match
       if (!existsSync(base) || !statSync(base).isDirectory()) return;
       const regex = new RegExp(
-        "^" + segment.replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+        `^${segment.replace(/\*/g, ".*").replace(/\?/g, ".")}$`,
       );
       for (const entry of readdirSync(base)) {
         // Never walk into node_modules, dist, or hidden directories
@@ -244,7 +244,7 @@ if (RESTORE_MODE) {
     }
 
     if (changed) {
-      writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + "\n");
+      writeFileSync(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`);
     }
   }
 
@@ -326,7 +326,7 @@ for (const dir of workspaceDirs) {
   }
 
   if (changed) {
-    writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + "\n");
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`);
   }
 }
 
@@ -372,7 +372,7 @@ for (const dir of workspaceDirs) {
   }
 
   if (changed) {
-    writeFileSync(pkgPath, JSON.stringify(pkg, null, indent) + "\n");
+    writeFileSync(pkgPath, `${JSON.stringify(pkg, null, indent)}\n`);
   }
 }
 

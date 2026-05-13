@@ -2,6 +2,7 @@
   "schema": "eliza.eliza1_action_aliases.v1",
   "description": "Removed/renamed action name -> current canonical action name. Applied during Eliza-1 trajectory SFT preparation (scripts/prepare_eliza1_trajectory_dataset.py) to every action / tool-call name, including eliza_native_v1 response.toolCalls[].toolName. Exact aliases are applied before prefix aliases. The canonical action catalog is packages/core/src/generated/action-docs.ts; see packages/training/docs/dataset/CANONICAL_RECORD.md for the two-layer corpus-record / training-example model.",
   "aliases": {
+    "SHELL_COMMAND": "SHELL",
     "RUN_COMMAND": "SHELL",
     "SHELL_COMMAND": "SHELL",
     "EXECUTE_COMMAND": "SHELL",

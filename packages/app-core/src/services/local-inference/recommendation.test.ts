@@ -43,14 +43,17 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-1_7b");
-    // Current default/recommended tiers are restricted to the Qwen3.5
-    // 0.6B/1.7B/4B release train; larger historical hardware placeholders are
-    // hidden until final weights and evidence exist.
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
+    // Per the 2026-05-12 Qwen3.5 directive, the small ladder now leads
+    // with eliza-1-0_8b (Qwen3.5-0.8B-Base, the new small default) instead
+    // of the deprecated Qwen3 eliza-1-1_7b tier.
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
+    // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
+    // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
+    // not. Ladder is 27b-256k -> 27b -> 9b -> 2b -> 1_7b, picks 27b.
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
-  it("still caps auto-recommendation at 4B on a >=96 GB-effective workstation", () => {
+  it("picks the 27B 256k tier on a >=96 GB-effective workstation", () => {
     const probe = hardware({
       totalRamGb: 128,
       freeRamGb: 96,
@@ -64,13 +67,17 @@ describe("local inference recommendations", () => {
 
     const recommended = selectRecommendedModels(probe);
 
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
+    // effective = max(128, 64) = 128 ≥ 27b-256k minRam (96).
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
   });
 
-  it("uses the mobile platform ladder and prefers the 1.7B tier when it fits", () => {
+  it("uses the mobile platform ladder and prefers the small Qwen3.5 tier when it fits", () => {
     // Mobile detection now reads `hardware.mobile.platform`
     // (`"ios"|"android"|"web"`) — the typed source of truth — instead of
-    // pretending the Node platform string was one of those values.
+    // pretending the Node platform string was one of those values. Per
+    // the 2026-05-12 Qwen3.5 directive, the small-mobile ladder leads
+    // with eliza-1-0_8b (Qwen3.5-0.8B-Base) instead of the deprecated
+    // Qwen3 eliza-1-0_6b.
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -83,11 +90,13 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_6b");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-1_7b");
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
+    // TEXT_LARGE mobile ladder is [2b, 0_8b, 1_7b, 0_6b]; on 8 GB RAM,
+    // eliza-1-2b (minRamGb 4, sizeGb 1.4) fits.
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
   });
 
-  it("classifies an iOS mobile probe as mobile and lands on the 1.7B tier", () => {
+  it("classifies an iOS mobile probe as mobile and lands on the Qwen3.5 mid tier", () => {
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -98,14 +107,17 @@ describe("local inference recommendations", () => {
     });
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
     const recommended = selectRecommendedModels(probe);
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-1_7b");
+    // TEXT_LARGE mobile ladder is [2b, 0_8b, 1_7b, 0_6b]; eliza-1-2b is
+    // the new mid Qwen3.5 default.
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
   });
 
-  it("falls back to the 0.6B tier on minimal mobile", () => {
-    // 1.7B needs 4 GB minRam; below that the ladder collapses
-    // to 0_6b (2 GB minRam). Below 2 GB nothing fits.
+  it("falls back to the small Qwen3.5 tier on minimal mobile", () => {
+    // 1_7b needs 4 GB minRam; below that the ladder collapses to the next
+    // tier that fits — eliza-1-0_8b (2 GB minRam, the new small default),
+    // then eliza-1-0_6b. Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
-      [3.5, "eliza-1-0_6b"],
+      [3.5, "eliza-1-0_8b"],
       [1.5, null],
     ];
 
@@ -142,8 +154,8 @@ describe("local inference recommendations", () => {
   });
 
   it("chooses a smaller fitting fallback from the same platform ladder", () => {
-    // linux-gpu host with enough effective memory for hidden placeholders still
-    // falls back only to current default-eligible release tiers.
+    // linux-gpu host with enough effective memory for 9b
+    // (effective = max(VRAM, RAM*0.5) = max(16, 16) = 16, 9B minRam 12).
     const probe = hardware({
       totalRamGb: 32,
       freeRamGb: 24,
@@ -159,7 +171,7 @@ describe("local inference recommendations", () => {
       "TEXT_LARGE",
     );
 
-    expect(fallback?.id).toBe("eliza-1-4b");
+    expect(fallback?.id).toBe("eliza-1-9b");
   });
 
   it("does not recommend Eliza-1 tiers when the probed binary lacks required kernels", () => {
@@ -395,16 +407,18 @@ describe("canBundleBeDefaultOnDevice", () => {
     expect(r).toMatchObject({ canBeDefault: false, reason: "no-manifest" });
   });
 
-  it("refuses when the manifest is not defaultEligible", () => {
+  it("accepts a contract-valid candidate bundle (defaultEligible:false)", () => {
+    // Per the 2026-05-12 directive: a `base-v1-candidate` bundle that the
+    // device can install + run is allowed to fill the default slot. The
+    // recommender prefers a strict release (defaultEligible:true) when
+    // both are installed, but a candidate-only install should not strand
+    // the user on an installed-but-unused bundle.
     const m = fixtureManifest();
     m.defaultEligible = false;
     const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
       manifestLoader: () => m,
     });
-    expect(r).toMatchObject({
-      canBeDefault: false,
-      reason: "not-default-eligible",
-    });
+    expect(r).toMatchObject({ canBeDefault: true });
   });
 
   it("refuses when device RAM is below the manifest floor", () => {
@@ -437,7 +451,12 @@ describe("canBundleBeDefaultOnDevice", () => {
     });
   });
 
-  it("refuses when a required eval gate did not pass", () => {
+  it("refuses when a required eval gate did not pass (contract-invalid)", () => {
+    // textEval.passed=false against a strict (`defaultEligible:true`)
+    // fixture trips `collectContractErrors`, which kicks `canSetAsDefault`
+    // back as not-default-eligible. The disambiguation reason is the generic
+    // `not-default-eligible` — covers any eval / kernel / lineage rule
+    // rejected by the validator.
     const m = fixtureManifest();
     m.evals.textEval = { score: 0.2, passed: false };
     const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {

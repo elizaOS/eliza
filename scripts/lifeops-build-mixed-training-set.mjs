@@ -19,12 +19,20 @@
  *     --output <path>        # destination JSONL
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 
 function arg(name, fallback) {
   const idx = process.argv.indexOf(name);
-  return idx >= 0 && idx + 1 < process.argv.length ? process.argv[idx + 1] : fallback;
+  return idx >= 0 && idx + 1 < process.argv.length
+    ? process.argv[idx + 1]
+    : fallback;
 }
 
 const passFrom = resolve(arg("--pass-from", ""));
@@ -61,7 +69,7 @@ function loadCases(runDir) {
     let r;
     try {
       r = JSON.parse(readFileSync(reportFile, "utf8"));
-    } catch (err) {
+    } catch (_err) {
       continue;
     }
     for (const result of r.results ?? []) {
@@ -87,13 +95,17 @@ function plannerFromTrajectory(trajPath, cases) {
     return null;
   }
   if (!trajectory?.stages) return null;
-  const planner = trajectory.stages.find((s) => s.kind === "planner" && s.model);
+  const planner = trajectory.stages.find(
+    (s) => s.kind === "planner" && s.model,
+  );
   if (!planner) return null;
   // Capture the FULL recorded prompt (system block + user) so the optimizer
   // sees the runtime context the agent actually had. Otherwise the scorer's
   // model has nothing to ground LIFE/CALENDAR/etc. against.
   let systemPrompt = "";
-  const messages = Array.isArray(planner.model.messages) ? planner.model.messages : [];
+  const messages = Array.isArray(planner.model.messages)
+    ? planner.model.messages
+    : [];
   const sysMsg = messages.find((m) => m && m.role === "system");
   systemPrompt = typeof sysMsg?.content === "string" ? sysMsg.content : "";
   const userMsg = messages.find((m) => m && m.role === "user");
@@ -101,9 +113,15 @@ function plannerFromTrajectory(trajPath, cases) {
     (typeof planner.model.prompt === "string" ? planner.model.prompt : "") ||
     (typeof userMsg?.content === "string" ? userMsg.content : "");
   let modelOutput = "";
-  if (typeof planner.model.response === "string" && planner.model.response.trim().length > 0) {
+  if (
+    typeof planner.model.response === "string" &&
+    planner.model.response.trim().length > 0
+  ) {
     modelOutput = planner.model.response;
-  } else if (Array.isArray(planner.model.toolCalls) && planner.model.toolCalls.length > 0) {
+  } else if (
+    Array.isArray(planner.model.toolCalls) &&
+    planner.model.toolCalls.length > 0
+  ) {
     modelOutput = JSON.stringify({ toolCalls: planner.model.toolCalls });
   }
   if (!userPrompt || !modelOutput) return null;
@@ -142,7 +160,8 @@ function rowFromTrajectory(extracted, runDir) {
 }
 
 const passCases = loadCases(passFrom);
-const failCases = failFrom && existsSync(failFrom) ? loadCases(failFrom) : new Map();
+const failCases =
+  failFrom && existsSync(failFrom) ? loadCases(failFrom) : new Map();
 
 const lines = [];
 let passCount = 0;

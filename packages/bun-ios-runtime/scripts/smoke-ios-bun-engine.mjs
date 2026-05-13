@@ -69,4 +69,6 @@ for (const symbol of [
 }
 
 console.log(`[bun-ios-runtime] Smoke prerequisites OK for ${appPath}`);
-console.log("[bun-ios-runtime] Runtime call smoke requires the app to expose the full-engine ABI through Capacitor start({ engine: 'bun' }).");
+console.log(
+  "[bun-ios-runtime] Runtime call smoke requires the app to expose the full-engine ABI through Capacitor start({ engine: 'bun' }).",
+);

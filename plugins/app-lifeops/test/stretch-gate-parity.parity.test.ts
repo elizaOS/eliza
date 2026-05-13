@@ -37,8 +37,8 @@ import {
   registerBuiltInGates,
 } from "../src/lifeops/scheduled-task/gate-registry.js";
 import type {
-  ScheduledTask,
   GateEvaluationContext,
+  ScheduledTask,
 } from "../src/lifeops/scheduled-task/types.js";
 
 /** Reproduces the legacy stretch-decider's weekend + late-evening rules. */

@@ -111,10 +111,12 @@ export function resolveEffectiveLadder(
   const fallbackKey = PRIORITY_DEFAULT_LADDER_KEYS[task.priority];
   const fallback = registry.get(fallbackKey);
   if (fallback) return fallback;
-  return DEFAULT_ESCALATION_LADDERS[fallbackKey] ?? {
-    ladderKey: fallbackKey,
-    steps: [],
-  };
+  return (
+    DEFAULT_ESCALATION_LADDERS[fallbackKey] ?? {
+      ladderKey: fallbackKey,
+      steps: [],
+    }
+  );
 }
 
 export interface EscalationCursor {

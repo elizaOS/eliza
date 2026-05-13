@@ -9,19 +9,34 @@
     "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
     "users": [{ "id": "alice", "role": "OWNER" }],
     "openThreads": [
-      { "id": "thread-travel-001", "owner": "alice", "status": "active", "instruction": "plan a weekend trip to Big Sur in May", "roomId": "dm-alice" }
+      {
+        "id": "thread-travel-001",
+        "owner": "alice",
+        "status": "active",
+        "instruction": "plan a weekend trip to Big Sur in May",
+        "roomId": "dm-alice"
+      }
     ],
     "scheduledTasks": [],
     "memory": []
   },
   "script": [
-    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "actually scrap the trip stuff. find me a good electrician in Oakland." }
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "actually scrap the trip stuff. find me a good electrician in Oakland."
+    }
   ],
   "quiesceAfterMs": 3000,
   "expectedFinalState": {
     "threads": [
       { "id": "thread-travel-001", "status": "stopped" },
-      { "ownerEq": "alice", "statusEq": "active", "instructionContains": ["electrician", "Oakland"] }
+      {
+        "ownerEq": "alice",
+        "statusEq": "active",
+        "instructionContains": ["electrician", "Oakland"]
+      }
     ],
     "scheduledTasks": [],
     "repliesByChannel": {

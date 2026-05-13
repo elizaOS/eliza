@@ -173,6 +173,60 @@ export function readBackendOverride(): BackendOverride {
   return "auto";
 }
 
+function envFlag(name: string): boolean {
+  const v = process.env[name]?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "yes" || v === "on";
+}
+
+/**
+ * Opt-in "reduced-optimization local mode" (the cross-platform escape hatch
+ * documented in `docs/voice-interactive.md` and `packages/inference/AGENTS.md`
+ * §4): when the installed `llama-server` binary does not advertise the
+ * custom Eliza-1 KV kernels (`turbo3`/`qjl_full`/`polarquant`/…) — i.e. the
+ * fork hasn't been built with those kernels dispatched on this backend yet —
+ * setting `ELIZA_LOCAL_ALLOW_STOCK_KV=1` lets the model load anyway with
+ * stock `f16` KV cache instead of hard-refusing. The voice pipeline runs;
+ * it just runs without the KV-compression speedups on that backend. A loud
+ * one-time warning is emitted (see `warnReducedOptimizationLocalMode`).
+ *
+ * §3-vs-"works everywhere" reconciliation: AGENTS.md §3 says these kernels
+ * are *mandatory* and there is *no* "fallback to unoptimized" path. The
+ * user's directive for SA-1 is "works everywhere regardless of GPU". The
+ * reconciliation: the kernels DO build on every backend where they can be
+ * dispatched (Metal, CUDA, Vulkan-source-patched, CPU SIMD TUs), and this
+ * fallback is the *opt-in*, *loudly-warned*, *non-publishable* mode for the
+ * backends where dispatch isn't wired yet — it is not a silent downgrade,
+ * and `defaultEligible` bundles still require the verified kernels.
+ */
+export function localAllowStockKv(): boolean {
+  // Canonical `ELIZA_LOCAL_ALLOW_STOCK_KV`; the legacy `MILADY_LOCAL_ALLOW_STOCK_KV` is still honored.
+  return (
+    envFlag("ELIZA_LOCAL_ALLOW_STOCK_KV") ||
+    envFlag("MILADY_LOCAL_ALLOW_STOCK_KV")
+  );
+}
+
+let reducedModeWarned = false;
+export function warnReducedOptimizationLocalMode(detail: string): void {
+  if (reducedModeWarned) return;
+  reducedModeWarned = true;
+  console.warn(
+    `\n[local-inference] ⚠️  REDUCED-OPTIMIZATION LOCAL MODE — ${detail}\n` +
+      `  ELIZA_LOCAL_ALLOW_STOCK_KV=1 is set, so the model is loading with stock\n` +
+      `  f16 KV cache instead of the Eliza-1 TurboQuant/QJL/PolarQuant KV kernels.\n` +
+      `  The voice pipeline will run, but slower and using more memory than a build\n` +
+      `  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
+      `  patched; CPU: SIMD TUs). Rebuild the fork with the matching backend\n` +
+      `  (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>)\n` +
+      `  to get the optimized path. This mode is NOT publishable and NOT a default.\n`,
+  );
+}
+
+/** Reset the one-time warning latch (tests only). */
+export function __resetReducedModeWarnedForTests(): void {
+  reducedModeWarned = false;
+}
+
 export interface BackendDecision {
   backend: "node-llama-cpp" | "llama-server";
   /** Why this backend was chosen — for diagnostics and warnings. */
@@ -381,12 +435,32 @@ export class BackendDispatcher implements LocalInferenceBackend {
   }
 
   async load(plan: BackendPlan): Promise<void> {
+    let effectivePlan = plan;
     const decision = this.decide(plan);
     if (decision.unsatisfiedKernels && decision.unsatisfiedKernels.length > 0) {
       const missing = decision.unsatisfiedKernels.join(", ");
-      throw new Error(
-        `[local-inference] Catalog model requires kernel(s) {${missing}}, but the installed llama-server binary does not advertise them in CAPABILITIES.json. Rebuild the fork with the matching backend (e.g. node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>) or pick a different model.`,
-      );
+      if (localAllowStockKv()) {
+        // Reduced-optimization local mode: the build hasn't dispatched these
+        // kernels on this backend yet, but the user opted into running with
+        // stock f16 KV instead of hard-refusing. Strip any custom cache-type
+        // override from the plan so the llama-server spawn uses f16, and warn
+        // loudly exactly once.
+        warnReducedOptimizationLocalMode(
+          `catalog model requires kernel(s) {${missing}}, not advertised by the installed llama-server binary`,
+        );
+        if (
+          plan.overrides &&
+          (plan.overrides.cacheTypeK !== undefined ||
+            plan.overrides.cacheTypeV !== undefined)
+        ) {
+          const { cacheTypeK: _k, cacheTypeV: _v, ...rest } = plan.overrides;
+          effectivePlan = { ...plan, overrides: { ...rest } };
+        }
+      } else {
+        throw new Error(
+          `[local-inference] Catalog model requires kernel(s) {${missing}}, but the installed llama-server binary does not advertise them in CAPABILITIES.json. Rebuild the fork with the matching backend (e.g. node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>), pick a different model, or set ELIZA_LOCAL_ALLOW_STOCK_KV=1 to load with stock f16 KV (reduced-optimization local mode — loud warning, not publishable).`,
+        );
+      }
     }
     const target =
       decision.backend === "llama-server"
@@ -396,7 +470,7 @@ export class BackendDispatcher implements LocalInferenceBackend {
       await this.active.unload();
     }
     this.active = target;
-    await target.load(plan);
+    await target.load(effectivePlan);
   }
 
   async unload(): Promise<void> {

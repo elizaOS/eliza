@@ -18,7 +18,8 @@ function checkProposalAvoidsKnownConflicts(
   if (!reply) return "empty reply";
   // Agent must have called CALENDAR with availability/free intent.
   const calls = ctx.actionsCalled.filter((a) => a.actionName === "CALENDAR");
-  if (calls.length === 0) return "expected CALENDAR action to query availability";
+  if (calls.length === 0)
+    return "expected CALENDAR action to query availability";
   return undefined;
 }
 

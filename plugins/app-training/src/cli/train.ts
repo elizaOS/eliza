@@ -30,9 +30,13 @@ Options:
   --backend NAME       native (required)
   --dataset PATH       Path to eliza_native_v1 JSONL file (required)
   --task NAME          should_respond | context_routing | action_planner | response | media_description
-  --optimizer NAME     instruction-search | prompt-evolution | bootstrap-fewshot
-                       | dspy-bootstrap-fewshot | dspy-copro | dspy-mipro
+  --optimizer NAME     instruction-search | prompt-evolution | gepa
+                       | bootstrap-fewshot | dspy-bootstrap-fewshot
+                       | dspy-copro | dspy-mipro
                        Defaults to instruction-search.
+                       gepa is the formal Pareto+feedback variant (Goyal et
+                       al. 2024); prompt-evolution is the simpler genetic
+                       mutation variant — both stay registered.
                        The dspy-* variants use the native DSPy primitives
                        (Signature + Predict + privacy-filtered Example loader)
                        and emit eliza_native_v1-compatible artifacts.
@@ -179,13 +183,11 @@ export async function runTrainCli(argv: string[]): Promise<number> {
       // working regardless of which write path produced the artifact.
       const path = await import("node:path");
       const os = await import("node:os");
-      const { OptimizedPromptService } = await import("@elizaos/core");
       const stateDir =
         process.env.ELIZA_STATE_DIR?.trim() ||
+        process.env.MILADY_STATE_DIR?.trim() ||
         path.join(os.homedir(), ".eliza");
-      const service = new OptimizedPromptService();
-      service.setStoreRoot(path.join(stateDir, "optimized-prompts"));
-      const artifactPath = await service.setPrompt(task, {
+      const artifactPayload = {
         task,
         optimizer,
         baseline: baselinePrompt,
@@ -196,13 +198,36 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         datasetId: parsed.dataset,
         generatedAt: new Date().toISOString(),
         lineage: result.result.lineage,
-        // Carry few-shot demonstrations through to the runtime so
-        // OptimizedPromptService.parseOptimizedPromptArtifact picks them up.
         ...(result.result.fewShotExamples
           ? { fewShotExamples: result.result.fewShotExamples }
           : {}),
-      });
-      console.log(`[train] artifact: ${artifactPath}`);
+      };
+      try {
+        const { OptimizedPromptService } = await import("@elizaos/core");
+        const service = new OptimizedPromptService();
+        service.setStoreRoot(path.join(stateDir, "optimized-prompts"));
+        const artifactPath = await service.setPrompt(task, artifactPayload);
+        console.log(`[train] artifact: ${artifactPath}`);
+      } catch (err) {
+        // Fallback: write the artifact directly to <stateDir>/optimized-prompts/<task>/vN.json
+        // when @elizaos/core fails to load (e.g. transient drizzle-orm
+        // resolution issues during cleanup). Keeps the optimizer output
+        // recoverable.
+        const fs = await import("node:fs");
+        const dir = path.join(stateDir, "optimized-prompts", task);
+        fs.mkdirSync(dir, { recursive: true });
+        const existing = fs
+          .readdirSync(dir)
+          .filter((f) => /^v\d+\.json$/.test(f))
+          .map((f) => Number.parseInt(f.replace(/^v|\.json$/g, ""), 10))
+          .filter((n) => Number.isFinite(n));
+        const nextVersion = (existing.length ? Math.max(...existing) : 0) + 1;
+        const out = path.join(dir, `v${nextVersion}.json`);
+        fs.writeFileSync(out, JSON.stringify(artifactPayload, null, 2));
+        console.warn(
+          `[train] OptimizedPromptService unavailable (${(err as Error)?.message ?? err}); wrote raw artifact -> ${out}`,
+        );
+      }
       return 0;
     }
     default: {

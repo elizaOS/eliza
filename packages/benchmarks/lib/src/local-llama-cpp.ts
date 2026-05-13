@@ -19,19 +19,27 @@
  * fork is not built.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-const DFLASH_FORK_ROOT = path.join(homedir(), ".cache", "eliza-dflash", "eliza-llama-cpp");
+const DFLASH_FORK_ROOT = path.join(
+  homedir(),
+  ".cache",
+  "eliza-dflash",
+  "eliza-llama-cpp",
+);
 const DFLASH_BINARY_RELATIVE = path.join("build", "bin", "llama-server");
 
 /** Absolute filesystem path to where the dflash fork is expected to live. */
 export const DFLASH_FORK_PATH = DFLASH_FORK_ROOT;
 
 /** Absolute filesystem path to the expected `llama-server` binary. */
-export const DFLASH_BINARY_PATH = path.join(DFLASH_FORK_ROOT, DFLASH_BINARY_RELATIVE);
+export const DFLASH_BINARY_PATH = path.join(
+  DFLASH_FORK_ROOT,
+  DFLASH_BINARY_RELATIVE,
+);
 
 /**
  * Expand a leading `~` to the user's home directory. No-op for absolute

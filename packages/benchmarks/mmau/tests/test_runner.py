@@ -141,34 +141,6 @@ def test_cascaded_agent_without_stt_uses_empty_transcript() -> None:
     assert "(no transcript available)" in captured["prompt"]
 
 
-def test_cascaded_agent_uses_fixture_transcript_without_audio() -> None:
-    captured: dict[str, str] = {}
-
-    async def agent_fn(prompt: str, _audio: bytes | None) -> str:
-        captured["prompt"] = prompt
-        return "A"
-
-    cascaded = CascadedSTTAgent(agent_fn=agent_fn, stt_fn=None)
-    sample = MMAUSample(
-        id="fixture_transcript",
-        question="Who is speaking?",
-        choices=("(A) Man", "(B) Woman"),
-        answer_letter="A",
-        answer_text="(A) Man",
-        category=MMAUCategory.SPEECH,
-        skill="Speaker Identification",
-        information_category="Information Extraction",
-        difficulty="easy",
-        dataset="test",
-        transcript="An adult man is speaking.",
-    )
-
-    prediction = asyncio.run(cascaded.predict(sample))
-
-    assert prediction.transcript == "An adult man is speaking."
-    assert "Audio transcript:\nAn adult man is speaking." in captured["prompt"]
-
-
 def test_format_mcq_prompt_layout() -> None:
     sample = MMAUSample(
         id="p1",

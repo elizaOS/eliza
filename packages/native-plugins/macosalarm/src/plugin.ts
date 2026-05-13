@@ -1,5 +1,5 @@
 import type { Plugin } from "@elizaos/core";
-import { type MacosAlarmActionDeps, createAlarmAction } from "./actions";
+import { createAlarmAction, type MacosAlarmActionDeps } from "./actions";
 
 export function createMacosAlarmPlugin(
   deps: MacosAlarmActionDeps = {},

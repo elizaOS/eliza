@@ -1,3 +1,16 @@
+// `health-bridge` lives in `@elizaos/plugin-health`; re-export so existing
+// `from "./lifeops"` callers keep resolving.
+export {
+  detectHealthBackend,
+  getDailySummary,
+  getDataPoints,
+  getRecentSummaries,
+  type HealthBackend,
+  type HealthBridgeConfig,
+  HealthBridgeError,
+  type HealthDailySummary,
+  type HealthDataPoint,
+} from "@elizaos/plugin-health";
 export * from "./app-state.js";
 export * from "./apple-reminders.js";
 export * from "./bulk-review.js";
@@ -11,19 +24,6 @@ export * from "./engine.js";
 export * from "./goal-grounding.js";
 export * from "./goal-semantic-evaluator.js";
 export * from "./google-plugin-delegates.js";
-// `health-bridge` lives in `@elizaos/plugin-health`; re-export so existing
-// `from "./lifeops"` callers keep resolving.
-export {
-  detectHealthBackend,
-  getDailySummary,
-  getDataPoints,
-  getRecentSummaries,
-  HealthBridgeError,
-  type HealthBackend,
-  type HealthBridgeConfig,
-  type HealthDailySummary,
-  type HealthDataPoint,
-} from "@elizaos/plugin-health";
 export * from "./intent-sync.js";
 export * from "./owner-profile.js";
 export * from "./password-manager-bridge.js";

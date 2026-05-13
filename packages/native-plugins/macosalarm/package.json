@@ -11,6 +11,8 @@
     "./package.json": "./package.json",
     ".": {
       "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     }

@@ -40,6 +40,7 @@ import {
   type OptimizerResult,
   type PromptScorer,
   runBootstrapFewshot,
+  runGepa,
   runInstructionSearch,
   runPromptEvolution,
   scorePlannerAction,
@@ -62,9 +63,12 @@ export interface NativeBackendOptions {
   /** Override adapter (tests). */
   adapter?: LlmAdapter;
   /**
-   * Fraction reserved for the promotion gate's held-out comparison. The split
-   * is deterministic over each row's stable id, so the same dataset always
-   * produces the same train/holdout partition.
+   * Fraction of the dataset reserved for the promotion gate's held-out
+   * comparison (0..1). The split is deterministic via FNV-1a over each row's
+   * stable id, so re-running the optimizer with the same dataset always
+   * yields the same train/holdout partition. Set to 0 to disable splitting
+   * (legacy behavior: optimizer and gate see the full dataset — vulnerable
+   * to train-on-test contamination). Default: 0.2.
    */
   holdoutFraction?: number;
 }
@@ -86,9 +90,18 @@ export interface NativeBackendResult {
    * re-parsing the file.
    */
   dataset: OptimizationExample[];
-  /** Training subset the optimizer consumed. */
+  /**
+   * Training subset the optimizer actually consumed. When `holdoutFraction>0`
+   * this is a strict subset of `dataset`; when 0 it equals `dataset`.
+   */
   trainSet: OptimizationExample[];
-  /** Held-out subset reserved for the promotion gate. */
+  /**
+   * Held-out subset the optimizer never saw. The promotion gate scores
+   * incumbent vs candidate on this set to avoid train-on-test contamination.
+   * Empty when `holdoutFraction=0` or the deterministic split produced no
+   * holdout rows (small datasets); callers fall back to `dataset` in that
+   * case so the gate still has something to score against.
+   */
   holdoutSet: OptimizationExample[];
   /**
    * Scorer instance used during optimization. Surfaced for the same reason as
@@ -99,6 +112,10 @@ export interface NativeBackendResult {
   scorer: PromptScorer;
 }
 
+/**
+ * Deterministic 32-bit FNV-1a hash. Used to assign each example to
+ * train/holdout in a reproducible way without keeping any state across runs.
+ */
 function fnv1aHash(input: string): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i += 1) {
@@ -108,6 +125,12 @@ function fnv1aHash(input: string): number {
   return hash >>> 0;
 }
 
+/**
+ * Split a dataset into train + holdout subsets deterministically by hashing
+ * each row's `id` (falling back to position when missing). The fraction is
+ * an upper bound — small datasets may produce 0 holdout rows, in which case
+ * the caller should reuse the full dataset for gating.
+ */
 export function splitTrainHoldout(
   dataset: OptimizationExample[],
   holdoutFraction: number,
@@ -115,30 +138,28 @@ export function splitTrainHoldout(
   if (holdoutFraction <= 0 || dataset.length < 2) {
     return { trainSet: dataset, holdoutSet: [] };
   }
-
   const fraction = Math.min(Math.max(holdoutFraction, 0), 0.5);
   const trainSet: OptimizationExample[] = [];
   const holdoutSet: OptimizationExample[] = [];
   const threshold = Math.floor(fraction * 0xffffffff);
-
-  dataset.forEach((example, index) => {
-    const key = example.id ?? `row-${index}`;
-    if (fnv1aHash(key) < threshold) {
-      holdoutSet.push(example);
+  dataset.forEach((ex, index) => {
+    const key = ex.id ?? `row-${index}`;
+    const h = fnv1aHash(key);
+    if (h < threshold) {
+      holdoutSet.push(ex);
     } else {
-      trainSet.push(example);
+      trainSet.push(ex);
     }
   });
-
+  // Degenerate edge cases: ensure the optimizer always has at least one row,
+  // and ensure the holdout has at least one row when the dataset is large
+  // enough that the operator clearly expected a split.
   if (trainSet.length === 0 && holdoutSet.length > 0) {
-    const firstHoldout = holdoutSet.shift();
-    if (firstHoldout) trainSet.push(firstHoldout);
+    trainSet.push(holdoutSet.shift() as OptimizationExample);
   }
   if (holdoutSet.length === 0 && dataset.length >= 5) {
-    const lastTrain = trainSet.pop();
-    if (lastTrain) holdoutSet.push(lastTrain);
+    holdoutSet.push(trainSet.pop() as OptimizationExample);
   }
-
   return { trainSet, holdoutSet };
 }
 
@@ -254,6 +275,8 @@ function dispatchOptimizer(
       return runInstructionSearch(input);
     case "prompt-evolution":
       return runPromptEvolution(input);
+    case "gepa":
+      return runGepa(input);
     case "bootstrap-fewshot":
       return runBootstrapFewshot(input);
     case "dspy-bootstrap-fewshot":
@@ -436,10 +459,7 @@ export async function runNativeBackend(
   }
 
   const holdoutFraction = options.holdoutFraction ?? DEFAULT_HOLDOUT_FRACTION;
-  const { trainSet, holdoutSet } = splitTrainHoldout(
-    dataset,
-    holdoutFraction,
-  );
+  const { trainSet, holdoutSet } = splitTrainHoldout(dataset, holdoutFraction);
 
   const result = await dispatchOptimizer(options.optimizer, {
     baselinePrompt: options.baselinePrompt,
@@ -477,6 +497,7 @@ export async function runNativeBackend(
 export const NATIVE_OPTIMIZERS: readonly OptimizerName[] = [
   "instruction-search",
   "prompt-evolution",
+  "gepa",
   "bootstrap-fewshot",
   "dspy-bootstrap-fewshot",
   "dspy-copro",

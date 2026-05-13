@@ -115,7 +115,7 @@ class CascadedSTTAgent:
 
     async def predict(self, sample: MMAUSample) -> MMAUPrediction:
         started = time.time()
-        transcript = sample.transcript
+        transcript = ""
         if self._stt_fn is not None and sample.audio_bytes is not None:
             transcript = await self._stt_fn(sample.audio_bytes)
         prompt = format_mcq_prompt(sample, transcript=transcript)

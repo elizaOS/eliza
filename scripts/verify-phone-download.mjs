@@ -56,7 +56,7 @@ function parseArgs(argv) {
     } else if (a === "--diff-first") {
       args.diffFirst = true;
     } else if (a === "--help" || a === "-h") {
-      process.stdout.write(import.meta.url + "\n");
+      process.stdout.write(`${import.meta.url}\n`);
       process.stdout.write(
         "Usage: verify-phone-download.mjs --model-id <id> [--catalog-diff path] [--diff-first]\n",
       );
@@ -150,7 +150,9 @@ async function loadDownloader() {
   // path under the worktree (vitest pulls TS directly with bun, which
   // we don't have in pure node here).
   try {
-    const mod = await import("@elizaos/app-core/services/local-inference/downloader");
+    const mod = await import(
+      "@elizaos/app-core/services/local-inference/downloader"
+    );
     return mod.Downloader;
   } catch (err) {
     throw new Error(
@@ -332,7 +334,7 @@ async function main() {
     finalPath: result.finalPath,
   };
 
-  process.stdout.write(JSON.stringify(report, null, 2) + "\n");
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
   await fsp.rm(stagingRoot, { recursive: true, force: true });
 

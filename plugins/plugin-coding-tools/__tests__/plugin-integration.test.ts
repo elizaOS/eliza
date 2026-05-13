@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, Service, UUID } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-
+import * as pluginModule from "../src/index.js";
 import codingToolsPlugin, {
   availableToolsProvider,
   CODING_TOOLS_CONTEXTS,
@@ -16,13 +16,8 @@ import codingToolsPlugin, {
   SESSION_CWD_SERVICE,
   SessionCwdService,
 } from "../src/index.js";
-import * as pluginModule from "../src/index.js";
 
-const EXPECTED_ACTIONS = [
-  "FILE",
-  "SHELL",
-  "WORKTREE",
-];
+const EXPECTED_ACTIONS = ["FILE", "SHELL", "WORKTREE"];
 
 describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
   it("exports a Plugin with the expected name", () => {
@@ -112,7 +107,7 @@ describe("@elizaos/plugin-coding-tools — plugin export shape", () => {
     } as IAgentRuntime;
     const message = { roomId: "r" } as Memory;
     for (const action of codingToolsPlugin.actions ?? []) {
-      const ok = await action.validate!(runtime, message);
+      const ok = await action.validate?.(runtime, message);
       expect(ok, action.name).toBe(true);
     }
   });
@@ -122,7 +117,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   let tmpDir: string;
   let runtime: IAgentRuntime;
   let services: Map<string, Service>;
-  let cleanup: Array<() => Promise<void>> = [];
+  const cleanup: Array<() => Promise<void>> = [];
 
   beforeAll(async () => {
     tmpDir = await fs.realpath(
@@ -185,8 +180,11 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
   it("FILE action=read returns a known file's contents", async () => {
     const action = findAction("FILE");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
-      parameters: { action: "read", file_path: path.join(tmpDir, "needle.txt") },
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
+      parameters: {
+        action: "read",
+        file_path: path.join(tmpDir, "needle.txt"),
+      },
     });
     expect(result.success).toBe(true);
     expect(result.text).toContain("NEEDLE");
@@ -195,7 +193,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
   it("FILE action=write creates a new file", async () => {
     const action = findAction("FILE");
     const target = path.join(tmpDir, "smoke-out.txt");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
       parameters: { action: "write", file_path: target, content: "smoke ok" },
     });
     expect(result.success).toBe(true);
@@ -205,7 +203,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
   it("SHELL echo hello", async () => {
     const action = findAction("SHELL");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
       parameters: { command: "echo smoke-bash-ok", cwd: tmpDir },
     });
     expect(result.success).toBe(true);
@@ -215,7 +213,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
   it("FILE action=glob lists *.txt files", async () => {
     const action = findAction("FILE");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
       parameters: { action: "glob", pattern: "*.txt", path: tmpDir },
     });
     expect(result.success).toBe(true);
@@ -224,7 +222,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
   it("FILE action=ls shows fixture entries", async () => {
     const action = findAction("FILE");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
       parameters: { action: "ls", path: tmpDir },
     });
     expect(result.success).toBe(true);
@@ -248,7 +246,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
       (rg as { rgPath: string }).rgPath = sys;
     }
     const action = findAction("FILE");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
       parameters: { action: "grep", pattern: "NEEDLE", path: tmpDir },
     });
     expect(result.success).toBe(true);
@@ -257,7 +255,7 @@ describe("@elizaos/plugin-coding-tools — end-to-end smoke", () => {
 
   it("WORKTREE action=enter in a non-git dir fails cleanly", async () => {
     const action = findAction("WORKTREE");
-    const result = await action.handler!(runtime, makeMessage(), undefined, {
+    const result = await action.handler?.(runtime, makeMessage(), undefined, {
       parameters: { action: "enter" },
     });
     expect(result.success).toBe(false);

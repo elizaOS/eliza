@@ -3,12 +3,7 @@
  * Formats results as a readable table.
  */
 
-import type {
-  BenchmarkResult,
-  CategoryScore,
-  DetectionResult,
-  TestCase,
-} from "./types";
+import type { BenchmarkResult, DetectionResult, TestCase } from "./types";
 
 function padRight(str: string, len: number): string {
   return str.length >= len

@@ -17,14 +17,13 @@
  * Idempotent: detects the patched header and exits early.
  */
 
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(fileURLToPath(import.meta.url), "..", "..");
 
-const PATCHED_MARKER =
-  "// Patched: skip the native binding. Bun's libuv shim";
+const PATCHED_MARKER = "// Patched: skip the native binding. Bun's libuv shim";
 
 const PATCH = `'use strict';
 

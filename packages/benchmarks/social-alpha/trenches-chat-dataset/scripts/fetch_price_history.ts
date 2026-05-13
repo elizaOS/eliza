@@ -5,7 +5,6 @@ import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { config } from "dotenv";
-import pLimit from "p-limit";
 import {
   type HistoricalPriceData,
   HistoricalPriceService,
@@ -74,7 +73,7 @@ const mockRuntime = {
 } satisfies HistoricalPriceRuntime;
 
 // Paths
-const PROJECT_ROOT = path.join(process.cwd(), "..");
+const _PROJECT_ROOT = path.join(process.cwd(), "..");
 const DATASET_DIR = process.cwd();
 const DATA_DIR = path.join(DATASET_DIR, "data");
 const PRICE_HISTORY_DIR = path.join(DATA_DIR, "price_history");
@@ -133,7 +132,10 @@ function convertToOHLCV(priceHistory: RawPricePoint[]): PricePoint[] {
   // Convert from Birdeye/DexScreener format to our standard format
   return priceHistory.map((point) => {
     // Handle different formats
-    if (typeof point.price === "number" && typeof point.timestamp === "number") {
+    if (
+      typeof point.price === "number" &&
+      typeof point.timestamp === "number"
+    ) {
       // Simple price point format
       return {
         timestamp: point.timestamp,
@@ -217,11 +219,7 @@ async function fetchTokenPriceHistory(
       );
     }
 
-    if (
-      !priceData ||
-      !priceData.priceHistory ||
-      priceData.priceHistory.length === 0
-    ) {
+    if (!priceData?.priceHistory || priceData.priceHistory.length === 0) {
       logger.warn(`⚠️  No price data found for ${token.symbol}`);
       return null;
     }
@@ -341,7 +339,7 @@ async function main() {
     }
 
     // Final summary
-    logger.info("\n" + "=".repeat(60));
+    logger.info(`\n${"=".repeat(60)}`);
     logger.info("📊 FINAL SUMMARY:");
     logger.info(`✅ Successfully fetched: ${progress.completed.length}`);
     logger.info(`❌ Failed to fetch: ${progress.failed.length}`);

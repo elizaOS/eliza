@@ -1360,9 +1360,7 @@ describe("Agent Runtime E2E", () => {
       "creates trigger, executes it, LLM processes instruction, run history records success",
       async () => {
         // Register the trigger worker on the real runtime (same as eliza-plugin.ts does).
-        const { registerTriggerTaskWorker } = await import(
-          "@elizaos/agent"
-        );
+        const { registerTriggerTaskWorker } = await import("@elizaos/agent");
         registerTriggerTaskWorker(runtime);
 
         // 1. Create a trigger via the real REST API

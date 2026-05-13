@@ -6,23 +6,23 @@ This is the operator entry point behind ``bun run publish:eliza1``. It does
 .orchestrator``) is invoked in ``--dry-run`` here for the bundle repos and
 *correctly refuses* on a red gate; this script just sequences the things that
 do publish (the privacy-filtered SFT datasets, the eval/bench results, the
-single-repo bundle status) and prints a single summary.
+honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizaos/eliza-1-0_8b-sft``    (the 0.8B-tier Cerebras-augmented
+  - dataset ``elizaos/eliza-1-0_6b-sft``    (the 0.6B-tier Cerebras-augmented
     SFT corpus, privacy-filtered, staged at
-    ``packages/training/datasets/eliza1-sft-0_8b/``)
+    ``packages/training/datasets/eliza1-sft-0_6b/``)
   - dataset ``elizaos/eliza-1-training``    (the broader SFT corpus — refreshed
     only if ``data/final/{train,val,test}.jsonl`` exists locally)
   - dataset ``elizaos/eliza-1-evals``       (the eval/bench results, kernel-verify
     evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
 
 Gated (this script reports the blocker, never bypasses it):
-  - the device bundles under the single model repo ``elizaos/eliza-1`` as
-    ``bundles/<tier>/...`` — gated on fork-built GGUFs + per-backend
-    dispatch/verify evidence + the runnable-on-base evals + license review.
+  - the per-tier device bundles ``elizaos/eliza-1-<tier>`` — gated on the
+    fork-built GGUFs + per-backend dispatch/verify evidence + the runnable-on-
+    base evals + the released license review (orchestrator stage 2/3/4).
   - the fine-tuned ``recommended``-channel weights — gated on the full-corpus
-    SFT clearing ``format_ok`` and beating the ``Qwen3.5-0.8B`` baseline.
+    SFT clearing ``format_ok`` and beating the ``Qwen3-0.6B`` baseline.
 
 Usage::
 
@@ -48,13 +48,25 @@ log = logging.getLogger("publish_eliza1_all")
 TRAINING_ROOT = Path(__file__).resolve().parents[2]
 REPO_ROOT = TRAINING_ROOT.parents[1]
 ORG = "elizaos"
-MODEL_REPO = f"{ORG}/eliza-1"
 
-# Active release-line device bundles — all publish under one model repo:
-# ``elizaos/eliza-1/bundles/<tier>/...``. Larger 9B/27B-class recipes remain
-# hidden future placeholders until final weights/evals/licenses/platform
-# evidence exist.
-BUNDLE_TIERS = ("0_8b", "2b", "4b")
+# Tier device bundles — we dry-run the orchestrator against the locally-staged
+# bundle (if present) and record which gate blocks a real publish. The active
+# Qwen3.5 line is `0_8b` / `2b` / `4b` / `9b` / `27b`{,-256k,-1m}; `0_6b` /
+# `1_7b` / `4b`-legacy stay in the list as DEPRECATED tier ids (HF repos
+# remain public; cards say DEPRECATED) so an operator checking publish
+# status sees them. See packages/shared/src/local-inference/catalog.ts +
+# packages/training/scripts/training/model_registry.py.
+BUNDLE_TIERS = (
+    "0_8b",
+    "2b",
+    "0_6b",
+    "1_7b",
+    "4b",
+    "9b",
+    "27b",
+    "27b-256k",
+    "27b-1m",
+)
 
 # Where the staged bundles live on a dev box (see RELEASE_V1.md). The path can
 # be overridden with --bundles-root.
@@ -95,11 +107,11 @@ def _upload_dataset_folder(api, repo_id: str, folder: Path, *, message: str,
 def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
     out: list[Outcome] = []
 
-    # 1) eliza-1-0_8b-sft — the 0.8B-tier Cerebras-augmented SFT corpus.
-    sft08 = TRAINING_ROOT / "datasets" / "eliza1-sft-0_8b"
+    # 1) eliza-1-0_6b-sft — the 0.6B-tier Cerebras-augmented SFT corpus.
+    sft06 = TRAINING_ROOT / "datasets" / "eliza1-sft-0_6b"
     out.append(_upload_dataset_folder(
-        api, f"{ORG}/eliza-1-0_8b-sft", sft08,
-        message="Refresh 0.8b SFT corpus (privacy-filtered; structured_decode + "
+        api, f"{ORG}/eliza-1-0_6b-sft", sft06,
+        message="Refresh 0.6b SFT corpus (privacy-filtered; structured_decode + "
                 "voice_emotion + tool_use + action_selection + personality tasks)",
         ignore=["UPLOAD_MANIFEST.json", "*.errors.jsonl"],
         dry_run=dry_run,
@@ -160,18 +172,18 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
 
 def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
     """Dry-run the bundle orchestrator and turn its verdict into an Outcome."""
-    repo = MODEL_REPO
+    repo = f"{ORG}/eliza-1-{tier}"
     if not bundle_dir.is_dir():
         return Outcome(repo, "model-bundle", "pending",
-                       f"{tier}: no staged bundle at {bundle_dir} — assemble it (RELEASE_V1.md), "
+                       f"no staged bundle at {bundle_dir} — assemble it (RELEASE_V1.md), "
                        "then the orchestrator dry-run reports the gate")
     cmd = [sys.executable, "-m", "scripts.publish.orchestrator",
            "--tier", tier, "--bundle-dir", str(bundle_dir), "--base-v1", "--dry-run"]
     proc = subprocess.run(cmd, cwd=str(TRAINING_ROOT), capture_output=True, text=True)
     if proc.returncode == 0:
         return Outcome(repo, "model-bundle", "published",
-                       f"{tier}: orchestrator dry-run is GREEN — upload it under "
-                       f"{MODEL_REPO}/bundles/{tier}/ with HF_TOKEN set")
+                       "orchestrator dry-run is GREEN — re-run without --dry-run with "
+                       "HF_TOKEN set to publish the base-v1 bundle")
     # Pull the first "orchestrator error: ..." line + the bulleted blockers.
     msg = ""
     capture = False
@@ -185,7 +197,7 @@ def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
         elif capture and line.strip() and not line.startswith("  "):
             break
     return Outcome(repo, "model-bundle", "pending",
-                   f"{tier}: orchestrator dry-run exit={proc.returncode}: {msg or 'see stderr'}")
+                   f"orchestrator dry-run exit={proc.returncode}: {msg or 'see stderr'}")
 
 
 def _bundle_status(bundles_root: Path) -> list[Outcome]:
@@ -197,13 +209,13 @@ def _bundle_status(bundles_root: Path) -> list[Outcome]:
 
 
 def _sft_weights_status() -> Outcome:
-    """Report whether the 0.8b full-corpus SFT is done + cleared its gate."""
+    """Report whether the 0.6b full-corpus SFT is done + cleared its gate."""
     ckpt_root = TRAINING_ROOT / "checkpoints"
-    repo = f"{ORG}/eliza-1-0_8b-sft-weights"
-    runs = sorted(ckpt_root.glob("eliza-1-0_8b-apollo-fullcorpus-*")) if ckpt_root.is_dir() else []
+    repo = f"{ORG}/eliza-1-0_6b-sft-weights"
+    runs = sorted(ckpt_root.glob("eliza-1-0_6b-apollo-fullcorpus-*")) if ckpt_root.is_dir() else []
     if not runs:
         return Outcome(repo, "model-weights", "pending",
-                       "0.8b full-corpus SFT run not found in checkpoints/")
+                       "0.6b full-corpus SFT run not found in checkpoints/")
     run = runs[-1]
     final = run / "final"
     gate = run / "gate_report.json"
@@ -217,7 +229,7 @@ def _sft_weights_status() -> Outcome:
     if blob.get("passed") is True:
         return Outcome(repo, "model-weights", "published",
                        f"SFT gate GREEN ({run.name}) — run "
-                       "`python scripts/push_model_to_hf.py --registry-key eliza-1-0_8b "
+                       "`python scripts/push_model_to_hf.py --registry-key eliza-1-0_6b "
                        f"--checkpoint {final}` then the bundle orchestrator")
     return Outcome(repo, "model-weights", "pending",
                    f"SFT gate RED ({run.name}): {blob.get('failures') or blob.get('error')}")
@@ -260,7 +272,7 @@ def main(argv: list[str] | None = None) -> int:
         log.info("=== per-tier bundle status (orchestrator dry-run, refuses-on-red) ===")
         outcomes += _bundle_status(args.bundles_root)
 
-    log.info("=== 0.8b SFT weights status ===")
+    log.info("=== 0.6b SFT weights status ===")
     outcomes.append(_sft_weights_status())
 
     published = [o for o in outcomes if o.status == "published"]

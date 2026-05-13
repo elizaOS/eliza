@@ -322,7 +322,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 <p className="mt-1 text-xs text-muted">
                   {t("messages.emptyBody", {
                     defaultValue:
-                      "Start a message or grant Android SMS access.",
+                      "Start a message, or grant SMS permissions on Android to load existing conversations.",
                   })}
                 </p>
               </div>
@@ -376,8 +376,8 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
             <>
               <div className="shrink-0 border-b border-border/24 px-4 py-3">
                 <label
-                  className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted"
                   htmlFor="messages-compose-address"
+                  className="text-2xs font-semibold uppercase tracking-[0.12em] text-muted"
                 >
                   {t("messages.to", { defaultValue: "To" })}
                 </label>
@@ -434,7 +434,7 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                       <p className="mt-1 text-xs text-muted">
                         {t("messages.composeBody", {
                           defaultValue:
-                            "Android handles carrier delivery through SMS.",
+                            "Enter a phone number and message body. Android handles carrier delivery through the SMS bridge.",
                         })}
                       </p>
                     </div>

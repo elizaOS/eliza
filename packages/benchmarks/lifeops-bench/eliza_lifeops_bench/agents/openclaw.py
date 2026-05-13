@@ -74,6 +74,11 @@ def _build_system_prompt(tools: list[dict[str, Any]]) -> str:
     manifest for the upstream's hardcoded ``exec`` / ``write`` / ``read``
     triplet. The tool catalogue is rendered as ``- <name>: <description>``
     + a JSON schema block per tool.
+
+    P1-7: includes a shape-hint preamble so hermes/openclaw know the expected
+    action names, the ENTITY contact-create convention, and the search-before-
+    write rule — the same structural context the eliza-runtime adapter gets via
+    personality prompts.
     """
     if not tools:
         tool_section = "(no tools available — respond with a final summary only)"
@@ -93,6 +98,16 @@ def _build_system_prompt(tools: list[dict[str, Any]]) -> str:
     return (
         "You are a life-assistant agent operating through OpenClaw's "
         "text-embedded tool-call protocol.\n"
+        "\n"
+        # P1-7: shape-hint preamble — use exact action names, ENTITY.create
+        # convention, and search-before-write rule.
+        "SHAPE HINTS:\n"
+        "- Use the exact action names shown in AVAILABLE TOOLS below — do not "
+        "invent synonyms or alternative spellings.\n"
+        "- For contacts: use ENTITY with args.subaction='create', args.name, "
+        "and args.email at the top level of args.\n"
+        "- Always search for existing records (contacts, events, reminders) "
+        "before creating new ones.\n"
         "\n"
         "You MUST take action by emitting tool calls. Describing what you "
         "\"will do\" without emitting <tool_call> blocks counts as zero "

@@ -250,7 +250,9 @@ function parseArgs(argv: string[]): CliOptions {
     } else if (arg === "--capability") {
       const value = argv[++i];
       if (!value) throw new Error("--capability requires a value");
-      opts.capabilityFilter.add(`capability:${stripPrefix(value, "capability:")}`);
+      opts.capabilityFilter.add(
+        `capability:${stripPrefix(value, "capability:")}`,
+      );
     } else if (arg === "--surface") {
       const value = argv[++i];
       if (!value) throw new Error("--surface requires a value");
@@ -276,7 +278,7 @@ function stripPrefix(value: string, prefix: string): string {
 
 function printHelpAndExit(): never {
   process.stdout.write(
-    [
+    `${[
       "export-action-manifest — emit an OpenAI tool-spec manifest of life-relevant Actions",
       "",
       "Flags:",
@@ -294,7 +296,7 @@ function printHelpAndExit(): never {
       "Filter semantics: AND across categories (domain ∧ capability ∧ surface), OR within a category.",
       "",
       `Available plugin ids: ${PLUGIN_SOURCES.map((p) => p.id).join(", ")}`,
-    ].join("\n") + "\n",
+    ].join("\n")}\n`,
   );
   process.exit(0);
 }
@@ -356,7 +358,9 @@ function buildEntry(
       ? params.properties
       : {};
   const required: string[] = Array.isArray(params.required)
-    ? params.required.filter((entry): entry is string => typeof entry === "string")
+    ? params.required.filter(
+        (entry): entry is string => typeof entry === "string",
+      )
     : [];
 
   const tags = Array.isArray(action.tags) ? [...action.tags] : [];
@@ -381,7 +385,9 @@ function buildEntry(
       ? action.contexts.map((c) => String(c))
       : [],
     _priority: typeof action.priority === "number" ? action.priority : 100,
-    _examples_count: Array.isArray(action.examples) ? action.examples.length : 0,
+    _examples_count: Array.isArray(action.examples)
+      ? action.examples.length
+      : 0,
     _domain: projection.domain,
     _capabilities: projection.capabilities,
     _surfaces: projection.surfaces,
@@ -422,7 +428,9 @@ interface TaxonomyViolation {
   message: string;
 }
 
-function findTaxonomyViolations(entries: readonly ManifestEntry[]): TaxonomyViolation[] {
+function findTaxonomyViolations(
+  entries: readonly ManifestEntry[],
+): TaxonomyViolation[] {
   const violations: TaxonomyViolation[] = [];
   for (const entry of entries) {
     const tags = entry._tags;
@@ -464,7 +472,8 @@ function findTaxonomyViolations(entries: readonly ManifestEntry[]): TaxonomyViol
       violations.push({
         action: entry.function.name,
         plugin: entry._plugin,
-        message: "missing required capability tag (at least one capability:* required)",
+        message:
+          "missing required capability tag (at least one capability:* required)",
       });
     }
 
@@ -472,7 +481,8 @@ function findTaxonomyViolations(entries: readonly ManifestEntry[]): TaxonomyViol
       violations.push({
         action: entry.function.name,
         plugin: entry._plugin,
-        message: "missing required surface tag (at least one surface:* required)",
+        message:
+          "missing required surface tag (at least one surface:* required)",
       });
     }
 
@@ -509,7 +519,9 @@ function validateStrictShape(entry: ManifestEntry): void {
   }
   const p = fn.parameters;
   if (p.type !== "object") {
-    throw new Error(`Manifest entry ${fn.name}: parameters.type must be 'object'`);
+    throw new Error(
+      `Manifest entry ${fn.name}: parameters.type must be 'object'`,
+    );
   }
   if (p.additionalProperties !== false) {
     throw new Error(
@@ -517,10 +529,14 @@ function validateStrictShape(entry: ManifestEntry): void {
     );
   }
   if (typeof p.properties !== "object" || p.properties === null) {
-    throw new Error(`Manifest entry ${fn.name}: parameters.properties must be object`);
+    throw new Error(
+      `Manifest entry ${fn.name}: parameters.properties must be object`,
+    );
   }
   if (!Array.isArray(p.required)) {
-    throw new Error(`Manifest entry ${fn.name}: parameters.required must be array`);
+    throw new Error(
+      `Manifest entry ${fn.name}: parameters.required must be array`,
+    );
   }
 }
 
@@ -638,15 +654,21 @@ function buildSummaryMarkdown(
   for (const [domain, bucket] of [...byDomain.entries()].sort()) {
     lines.push(`### ${domain}`);
     lines.push("");
-    lines.push("| Action | Plugin | Risk | Capabilities | Surfaces | Description |");
+    lines.push(
+      "| Action | Plugin | Risk | Capabilities | Surfaces | Description |",
+    );
     lines.push("| --- | --- | :---: | --- | --- | --- |");
     const sorted = [...bucket].sort((a, b) =>
       a.function.name.localeCompare(b.function.name),
     );
     for (const e of sorted) {
       const risk = e._risk ?? "—";
-      const caps = e._capabilities.map((c) => c.replace("capability:", "")).join(", ");
-      const surfs = e._surfaces.map((s) => s.replace("surface:", "")).join(", ");
+      const caps = e._capabilities
+        .map((c) => c.replace("capability:", ""))
+        .join(", ");
+      const surfs = e._surfaces
+        .map((s) => s.replace("surface:", ""))
+        .join(", ");
       lines.push(
         `| \`${e.function.name}\` | ${escapeMarkdownCell(e._plugin)} | ${escapeMarkdownCell(risk)} | ${escapeMarkdownCell(caps)} | ${escapeMarkdownCell(surfs)} | ${escapeMarkdownCell(clip(e.function.description, 80))} |`,
       );
@@ -743,7 +765,7 @@ async function main(): Promise<void> {
     const stderr = (line: string) => process.stderr.write(`${line}\n`);
     if (taxonomyViolations.length === 0) {
       process.stdout.write(
-        JSON.stringify(
+        `${JSON.stringify(
           {
             ok: true,
             mode: "validate-taxonomy",
@@ -752,7 +774,7 @@ async function main(): Promise<void> {
           },
           null,
           2,
-        ) + "\n",
+        )}\n`,
       );
       process.exit(0);
     }
@@ -760,7 +782,7 @@ async function main(): Promise<void> {
       stderr(`[taxonomy] ${v.action} (${v.plugin}): ${v.message}`);
     }
     process.stdout.write(
-      JSON.stringify(
+      `${JSON.stringify(
         {
           ok: false,
           mode: "validate-taxonomy",
@@ -769,7 +791,7 @@ async function main(): Promise<void> {
         },
         null,
         2,
-      ) + "\n",
+      )}\n`,
     );
     process.exit(1);
   }
@@ -842,7 +864,7 @@ async function main(): Promise<void> {
   }
 
   process.stdout.write(
-    JSON.stringify(
+    `${JSON.stringify(
       {
         ok: true,
         outPath: opts.outPath,
@@ -856,12 +878,13 @@ async function main(): Promise<void> {
       },
       null,
       2,
-    ) + "\n",
+    )}\n`,
   );
 }
 
 main().catch((err) => {
-  const message = err instanceof Error ? err.stack ?? err.message : String(err);
+  const message =
+    err instanceof Error ? (err.stack ?? err.message) : String(err);
   process.stderr.write(`export-action-manifest failed: ${message}\n`);
   process.exit(1);
 });

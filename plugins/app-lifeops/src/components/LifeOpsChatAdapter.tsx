@@ -1,9 +1,9 @@
-import { useAppWorkspaceChatChrome, useChatComposer } from "@elizaos/ui";
 import type {
   LifeOpsActiveReminderView,
   LifeOpsCalendarEvent,
   LifeOpsInboxMessage,
 } from "@elizaos/shared";
+import { useAppWorkspaceChatChrome, useChatComposer } from "@elizaos/ui";
 import { type ReactNode, useCallback, useEffect } from "react";
 import {
   type LifeOpsSelection,

@@ -50,7 +50,10 @@ async function projectRelationshipIntoGraph(
       fromEntityId: SELF_ENTITY_ID,
       toEntityId: entity.entityId,
       type: record.relationshipType || "knows",
-      metadata: { ...record.metadata, ...(record.notes ? { notes: record.notes } : {}) },
+      metadata: {
+        ...record.metadata,
+        ...(record.notes ? { notes: record.notes } : {}),
+      },
       state: record.lastContactedAt
         ? { lastInteractionAt: record.lastContactedAt }
         : {},

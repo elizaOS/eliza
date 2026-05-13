@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Build the benchmark-aligned SFT dataset for the ``eliza-1-0_8b`` base.
+"""Build the benchmark-aligned SFT dataset for the ``eliza-1-0_6b`` base.
 
-Output: ``packages/training/datasets/eliza1-sft-0_8b/{train,val,test}.jsonl`` —
+Output: ``packages/training/datasets/eliza1-sft-0_6b/{train,val,test}.jsonl`` —
 ChatML ``{"messages": [...]}`` rows that ``train_local.py`` ingests directly via
 ``--train-file`` / ``--val-file`` (the ``chat_messages`` shape understood by
-``scripts/format_for_training.py::_format_messages_record``). The 0.8B base is
-upstream ``Qwen/Qwen3.5-0.8B`` (Qwen3.5 ChatML template, vocab 248,320); rows
+``scripts/format_for_training.py::_format_messages_record``). The 0.6b base is
+upstream ``Qwen/Qwen3-0.6B`` (Qwen2/Qwen3 ChatML template, vocab 151,936); rows
 are length-filtered against its 4096-token training window.
 
 Task mix (benchmark-aligned with ``scripts/eval/eliza1_eval_suite.py`` text gate
@@ -49,8 +49,8 @@ it, ``--no-augment`` builds the converted-only dataset.
 
 Usage::
 
-    CEREBRAS_API_KEY=... uv run python scripts/build_eliza1_sft_0_8b.py
-    uv run python scripts/build_eliza1_sft_0_8b.py --no-augment
+    CEREBRAS_API_KEY=... uv run python scripts/build_eliza1_sft_0_6b.py
+    uv run python scripts/build_eliza1_sft_0_6b.py --no-augment
 """
 
 from __future__ import annotations
@@ -74,13 +74,13 @@ if str(TRAINING_ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(TRAINING_ROOT / "scripts"))
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-LOG = logging.getLogger("build-eliza1-sft-0_8b")
+LOG = logging.getLogger("build-eliza1-sft-0_6b")
 
-OUT_DIR = TRAINING_ROOT / "datasets" / "eliza1-sft-0_8b"
+OUT_DIR = TRAINING_ROOT / "datasets" / "eliza1-sft-0_6b"
 ACTION_CASES_TS = REPO_ROOT / "packages" / "app-core" / "test" / "benchmarks" / "action-selection-cases.ts"
 PERSONALITY_DIR = REPO_ROOT / "packages" / "benchmarks" / "personality-bench" / "tests" / "calibration"
 
-# Qwen3.5-0.8B trains at seq 4096. Reserve a little headroom; a char≈4 tokens
+# Qwen3-0.6B trains at seq 4096. Reserve a little headroom; a char≈4 tokens
 # heuristic keeps us conservative without a tokenizer dependency at build time.
 MAX_SEQ_LEN = 4096
 CHARS_PER_TOKEN = 3.5
@@ -438,7 +438,7 @@ def _cerebras_assistant_and_refusals(client, n_batches: int, per_batch: int) -> 
 #    "contexts":[...],"contextSlices":[...],"candidateActions":[...],
 #    "parentActionHints":[...],"requiresTool":<bool>,"extract":{...}}
 # On the direct (DM/API/voice) path the same keys minus ``shouldRespond``,
-# starting at ``{"thought":...}``. These rows teach the 0.8b base to emit a
+# starting at ``{"thought":...}``. These rows teach the 0.6b base to emit a
 # well-formed envelope so the ``format_ok`` gate stops measuring 0%. They are
 # shaped to match the runtime grammar's fixed key order and value kinds. (A
 # byte-exact generator that calls ``buildResponseGrammar``+``compilePrefillPlan``
@@ -902,9 +902,9 @@ def main() -> int:
 
     all_rows = train + val + test
     manifest = {
-        "schema": "eliza.eliza1_sft_0_8b_manifest.v1",
-        "base_model": "Qwen/Qwen3.5-0.8B",
-        "published_name": "eliza-1-0_8b",
+        "schema": "eliza.eliza1_sft_0_6b_manifest.v1",
+        "base_model": "Qwen/Qwen3-0.6B",
+        "published_name": "eliza-1-0_6b",
         "chat_template": "qwen2/qwen3 chatml",
         "format": "chat_messages — {\"messages\":[...]} rows (train_local.py --train-file compatible)",
         "max_seq_len": MAX_SEQ_LEN,

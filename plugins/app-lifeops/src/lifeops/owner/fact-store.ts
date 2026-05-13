@@ -721,9 +721,7 @@ export function createOwnerFactStore(runtime: IAgentRuntime): OwnerFactStore {
 
 // --- Runtime registration -------------------------------------------------
 
-const STORE_KEY = Symbol.for(
-  "@elizaos/app-lifeops:owner-fact-store",
-);
+const STORE_KEY = Symbol.for("@elizaos/app-lifeops:owner-fact-store");
 
 interface FactStoreHostRuntime extends IAgentRuntime {
   [STORE_KEY]?: OwnerFactStore;

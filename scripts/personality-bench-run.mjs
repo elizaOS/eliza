@@ -77,6 +77,10 @@ import net from "node:net";
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  bridgePersonalityExpect,
+  canonicalBucket,
+} from "./personality-bench-bridge.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -175,191 +179,6 @@ console.log(
 console.log(`[personality-bench-run] scenarioRoot=${scenarioRoot}`);
 
 // ─────────────────────────────────────────────────────────────────────────
-// W3-2 ↔ W3-3 shape bridging.
-//
-// W3-2 scenarios author `personalityExpect.judgeKwargs` with 0-indexed
-// user-turn positions (probeTurnIndices, silentTurnIndices, etc.) plus
-// rubric-specific keys (styleKey, traitKey, ladderKey, direction,
-// variantKey, ...). The W3-3 judge expects 1-indexed assistant trajectory
-// positions in `personalityExpect.checkTurns` plus normalised
-// `personalityExpect.options.{style,trait,direction,mode,...}`.
-//
-// The trajectory we emit alternates user/assistant, so 1-indexed positions
-// map as: user_i (0-indexed in turns[]) → trajectory turn 2*i + 1;
-// assistant_i → trajectory turn 2*i + 2.
-//
-// All bridging happens here at the runner boundary so the judge stays
-// strict on its documented contract.
-// ─────────────────────────────────────────────────────────────────────────
-
-function canonicalBucket(bucket) {
-  if (bucket === "note_trait_unrelated_test") return "note_trait_unrelated";
-  return bucket;
-}
-
-function assistantTurnFor(userTurnIndex) {
-  // 0-indexed user turn → 1-indexed assistant trajectory turn.
-  return 2 * userTurnIndex + 2;
-}
-
-function userTurnTo1IndexedTrajectory(userTurnIndex) {
-  return 2 * userTurnIndex + 1;
-}
-
-const STYLE_KEY_TO_STYLE = {
-  no_hedging: "no-hedging",
-  haiku: "haiku",
-  pirate: "pirate",
-  terse_one_sentence: "terse",
-  all_lowercase: "terse", // closest deterministic check available
-};
-
-const TRAIT_KEY_TO_OPTIONS = {
-  no_emojis: { trait: "no-emojis" },
-  no_buddy_friend: { trait: "no-buddy", forbiddenPhrases: ["buddy", "friend"] },
-  code_blocks_only: { trait: "wants-code-blocks" },
-  no_apologies: {
-    trait: "forbidden-phrases",
-    forbiddenPhrases: ["i'm sorry", "i am sorry", "apologies", "my apologies"],
-  },
-  no_exclamation: { trait: "forbidden-phrases", forbiddenPhrases: ["!"] },
-  no_lists: {
-    trait: "forbidden-phrases",
-    // Bullet/numbered list markers commonly used by LLMs.
-    forbiddenPhrases: ["- ", "* ", "1.", "1)"],
-  },
-  no_questions_back: { trait: "forbidden-phrases", forbiddenPhrases: ["?"] },
-  // The remaining trait keys (first_name_only, metric_units, prefers_short)
-  // don't have a deterministic phrase rubric — leaving them unmapped routes
-  // them to NEEDS_REVIEW, which is the conservative call.
-};
-
-const DIRECTION_KEY_TO_OPTION = {
-  warmer: "warmer",
-  playful: "warmer",
-  cooler: "cooler",
-  blunt: "cooler",
-  more_formal: "cooler",
-  terser: "terser",
-  silence: "terser",
-  no_emoji: "terser",
-  looser: "looser",
-};
-
-const SCOPE_VARIANT_TO_MODE = {
-  per_user_isolation: "per-user-isolation",
-  user_overrides_persist_across_unrelated_turns: "per-user-isolation",
-  global_applies_to_admin_only: "global-applies",
-  admin_global_setting_applies_to_all: "global-applies",
-  global_rejected_for_non_admin: "global-rejected-for-non-admin",
-  user_tries_global_should_refuse: "user-tries-global-should-refuse",
-};
-
-function bridgePersonalityExpect(scenario) {
-  const expect = scenario.personalityExpect ?? {};
-  const bucket = canonicalBucket(expect.bucket);
-  const kw = (expect.judgeKwargs ?? {});
-  let checkTurns = [];
-  let directiveTurn = 1;
-  const options = {};
-
-  switch (bucket) {
-    case "shut_up": {
-      const silent = Array.isArray(kw.silentTurnIndices)
-        ? kw.silentTurnIndices
-        : [];
-      checkTurns = silent.map(assistantTurnFor);
-      const instr = typeof kw.instructionTurnIndex === "number"
-        ? kw.instructionTurnIndex
-        : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(instr);
-      if (typeof kw.releaseTurnIndex === "number" && kw.releaseTurnIndex !== null) {
-        options.releaseTurn = userTurnTo1IndexedTrajectory(kw.releaseTurnIndex);
-        options.releaseAssistantTurn = assistantTurnFor(kw.releaseTurnIndex);
-        // Include the post-release assistant turn as a check turn so the
-        // re-engagement layer fires.
-        checkTurns.push(options.releaseAssistantTurn);
-      }
-      break;
-    }
-    case "hold_style": {
-      const probe = Array.isArray(kw.probeTurnIndices)
-        ? kw.probeTurnIndices
-        : [];
-      checkTurns = probe.map(assistantTurnFor);
-      const instr = typeof kw.instructionTurnIndex === "number"
-        ? kw.instructionTurnIndex
-        : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(instr);
-      const styleKey = typeof kw.styleKey === "string" ? kw.styleKey : "";
-      const mapped = STYLE_KEY_TO_STYLE[styleKey];
-      if (mapped) options.style = mapped;
-      if (mapped === "terse") options.maxTokens = 16;
-      break;
-    }
-    case "note_trait_unrelated": {
-      const probe = Array.isArray(kw.traitCheckTurnIndices)
-        ? kw.traitCheckTurnIndices
-        : [];
-      checkTurns = probe.map(assistantTurnFor);
-      const instr = typeof kw.traitMentionTurnIndex === "number"
-        ? kw.traitMentionTurnIndex
-        : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(instr);
-      const traitKey = typeof kw.traitKey === "string" ? kw.traitKey : "";
-      const mapped = TRAIT_KEY_TO_OPTIONS[traitKey];
-      if (mapped) Object.assign(options, mapped);
-      break;
-    }
-    case "escalation": {
-      const probe = Array.isArray(kw.probeTurnIndices)
-        ? kw.probeTurnIndices
-        : [];
-      checkTurns = probe.map(assistantTurnFor);
-      const steps = Array.isArray(kw.escalationStepTurnIndices)
-        ? kw.escalationStepTurnIndices
-        : [];
-      const firstStep = steps.length > 0 ? steps[0] : 0;
-      directiveTurn = userTurnTo1IndexedTrajectory(firstStep);
-      const directionKey = typeof kw.direction === "string" ? kw.direction : "";
-      const mapped = DIRECTION_KEY_TO_OPTION[directionKey];
-      if (mapped) options.direction = mapped;
-      break;
-    }
-    case "scope_global_vs_user": {
-      const adminProbe = Array.isArray(kw.adminProbeTurnIndices)
-        ? kw.adminProbeTurnIndices
-        : [];
-      const userProbe = Array.isArray(kw.userProbeTurnIndices)
-        ? kw.userProbeTurnIndices
-        : [];
-      checkTurns = [...adminProbe, ...userProbe].map(assistantTurnFor);
-      directiveTurn = 1;
-      const variantKey =
-        typeof kw.variantKey === "string" ? kw.variantKey : "";
-      const mode = SCOPE_VARIANT_TO_MODE[variantKey];
-      if (mode) options.mode = mode;
-      if (kw.forbidGlobalChangeFromUser === true) {
-        // Tighten the mode: a forbidGlobalChangeFromUser flag overrides
-        // anything else — the regular user MUST be refused.
-        options.mode = "user-tries-global-should-refuse";
-      }
-      break;
-    }
-    default:
-      checkTurns = [];
-      directiveTurn = 1;
-  }
-
-  return {
-    bucket,
-    directiveTurn,
-    checkTurns,
-    options,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────
 // Step 1 — load scenarios.
 // ─────────────────────────────────────────────────────────────────────────
 function loadScenarios() {
@@ -368,15 +187,11 @@ function loadScenarios() {
     "scripts",
     "personality-bench-load-scenarios.ts",
   );
-  const result = spawnSync(
-    "bun",
-    ["--bun", loaderPath, scenarioRoot],
-    {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    },
-  );
+  const result = spawnSync("bun", ["--bun", loaderPath, scenarioRoot], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
   if (result.status !== 0) {
     console.error(
       `[personality-bench-run] scenario loader exited ${result.status}: ${result.stderr}`,
@@ -408,6 +223,105 @@ const BUCKETS_ORDERED = [
   "escalation",
   "scope_global_vs_user",
 ];
+
+// Stratified sampling (§11.2): when a limit is in effect, sample each bucket
+// proportionally across its natural strat key so the reduced corpus still
+// covers the full key space. Without stratification, `ELIZA_PERSONALITY_LIMIT=25`
+// only sees the first ~3 style/trait/ladder keys because scenarios are filename-
+// sorted and keys are not evenly distributed at the front of the sorted list.
+
+/**
+ * Extract the strat key for a scenario within its bucket.
+ * Returns a string used to group scenarios for proportional sampling.
+ */
+function stratKeyFor(scenario) {
+  const kw = scenario.personalityExpect?.judgeKwargs ?? {};
+  const bucket = canonicalBucket(scenario.bucket);
+  switch (bucket) {
+    case "hold_style":
+      return typeof kw.styleKey === "string" && kw.styleKey ? kw.styleKey : "_other";
+    case "note_trait_unrelated":
+      return typeof kw.traitKey === "string" && kw.traitKey ? kw.traitKey : "_other";
+    case "escalation":
+      return typeof kw.ladderKey === "string" && kw.ladderKey ? kw.ladderKey : "_other";
+    case "scope_global_vs_user":
+      return typeof kw.variantKey === "string" && kw.variantKey ? kw.variantKey : "_other";
+    case "shut_up": {
+      // Stratify by format tag (format:X), which captures the prose/code/length
+      // axis better than length bracket alone.
+      const tags = Array.isArray(scenario.tags) ? scenario.tags : [];
+      const fmt = tags.find((t) => typeof t === "string" && t.startsWith("format:"));
+      return fmt ? fmt.slice("format:".length) : "_other";
+    }
+    default:
+      return "_other";
+  }
+}
+
+/**
+ * Stratified sample from `items` returning at most `limit` elements.
+ *
+ * Groups items by `keyFn`, then distributes the limit proportionally:
+ * each key gets `floor(limit / numKeys)` items, with any remainder
+ * allocated to the keys that have the most scenarios (largest groups first).
+ * Within each key the original (filename-sorted) order is preserved.
+ *
+ * For buckets without a meaningful strat key ("_other" only) or when
+ * limit >= items.length, returns items as-is (no truncation bias).
+ */
+function stratifiedSample(items, limit, keyFn) {
+  if (limit >= items.length) return items;
+
+  // Group by strat key, preserving insertion order.
+  const groups = new Map();
+  for (const item of items) {
+    const k = keyFn(item);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(item);
+  }
+
+  // If every scenario maps to "_other" (no strat key for this bucket),
+  // fall back to simple head-truncation so behaviour is unchanged for
+  // buckets that don't have a natural strat key.
+  if (groups.size === 1 && groups.has("_other")) {
+    return items.slice(0, limit);
+  }
+
+  const keys = [...groups.keys()];
+  const numKeys = keys.length;
+  const base = Math.floor(limit / numKeys);
+  let remainder = limit - base * numKeys;
+
+  // Sort keys descending by group size so remainder goes to the richest groups.
+  keys.sort((a, b) => groups.get(b).length - groups.get(a).length);
+
+  const quotas = new Map();
+  for (const k of keys) {
+    const extra = remainder > 0 ? 1 : 0;
+    quotas.set(k, Math.min(base + extra, groups.get(k).length));
+    remainder -= extra;
+  }
+
+  // Interleave keys so the resulting list alternates across the key space
+  // rather than emitting all of key-A then all of key-B.
+  const result = [];
+  const cursors = new Map(keys.map((k) => [k, 0]));
+  let added = true;
+  while (added) {
+    added = false;
+    for (const k of keys) {
+      const quota = quotas.get(k);
+      const cursor = cursors.get(k);
+      if (cursor < quota) {
+        result.push(groups.get(k)[cursor]);
+        cursors.set(k, cursor + 1);
+        added = true;
+      }
+    }
+  }
+  return result;
+}
+
 const byBucket = new Map();
 for (const b of BUCKETS_ORDERED) byBucket.set(b, []);
 for (const s of allScenariosRaw) {
@@ -415,13 +329,58 @@ for (const s of allScenariosRaw) {
   if (!byBucket.has(b)) byBucket.set(b, []);
   byBucket.get(b).push(s);
 }
+
+// Compute per-bucket limits proportional to corpus size, then stratify within
+// each bucket before interleaving. This ensures the final `scenarios` array
+// covers the full key space for every bucket even at small limits.
+const totalScenarios = allScenariosRaw.length;
+const sampledByBucket = new Map();
+{
+  // Distribute the global limit across buckets by their raw count.
+  let remaining = Math.min(scenarioLimit, totalScenarios);
+  const bucketEntries = BUCKETS_ORDERED.map((b) => ({
+    b,
+    count: (byBucket.get(b) ?? []).length,
+  })).filter((e) => e.count > 0);
+  const totalInBuckets = bucketEntries.reduce((s, e) => s + e.count, 0);
+
+  // Floor allocation per bucket; remainder goes to largest buckets first.
+  const allocs = bucketEntries.map((e) => ({
+    b: e.b,
+    count: e.count,
+    alloc: Math.floor(remaining * (e.count / totalInBuckets)),
+  }));
+  let allocSum = allocs.reduce((s, a) => s + a.alloc, 0);
+  let allocRemainder = remaining - allocSum;
+  // Give remainder to buckets sorted by descending raw count.
+  allocs.sort((a, b) => b.count - a.count);
+  for (const a of allocs) {
+    if (allocRemainder <= 0) break;
+    const extra = Math.min(allocRemainder, a.count - a.alloc);
+    if (extra > 0) {
+      a.alloc += extra;
+      allocRemainder -= extra;
+    }
+  }
+
+  for (const { b, alloc } of allocs) {
+    const raw = byBucket.get(b) ?? [];
+    sampledByBucket.set(b, stratifiedSample(raw, alloc, stratKeyFor));
+  }
+}
+
+// Interleave the stratified per-bucket lists so bucket coverage is preserved
+// across the final slice (important when an agent runs only a subset).
 const interleaved = [];
 {
+  const queues = new Map(
+    BUCKETS_ORDERED.map((b) => [b, [...(sampledByBucket.get(b) ?? [])]]),
+  );
   let any = true;
   while (any) {
     any = false;
     for (const b of BUCKETS_ORDERED) {
-      const list = byBucket.get(b);
+      const list = queues.get(b);
       if (list && list.length > 0) {
         interleaved.push(list.shift());
         any = true;
@@ -429,7 +388,7 @@ const interleaved = [];
     }
   }
 }
-const scenarios = interleaved.slice(0, scenarioLimit);
+const scenarios = interleaved;
 console.log(
   `[personality-bench-run] running ${scenarios.length} scenario(s) per agent`,
 );
@@ -460,7 +419,11 @@ const SYSTEM_PROMPTS = {
     "If the user asks for a stylistic change, follow it.",
   openclaw:
     "You are an OpenClaw-style assistant operating through a text-embedded tool-call protocol. " +
-    "For pure conversational turns (no tools needed), respond naturally to the user with a brief, helpful answer.",
+    "For pure conversational turns (no tools needed), respond naturally to the user with a brief, helpful answer. " +
+    "When the user pins a stylistic constraint (casing, length, format, register), apply it to every subsequent turn — " +
+    "including acronyms, proper nouns, brand names, technical terms, and worked examples — until the user explicitly releases it. " +
+    "A casing directive (e.g. all lowercase) overrides English capitalization conventions: write acronyms, abbreviations, " +
+    "place names, brand names, and proper nouns in the requested case (e.g. 'nasa', 'paris', 'habitat for humanity').",
 };
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -484,10 +447,7 @@ async function callCerebrasOnce({ systemPrompt, messages, modelName }) {
     model: modelName,
     temperature: 0,
     max_tokens: 512,
-    messages: [
-      { role: "system", content: systemPrompt },
-      ...messages,
-    ],
+    messages: [{ role: "system", content: systemPrompt }, ...messages],
   };
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 60_000);
@@ -693,6 +653,19 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
   // enforcer / PERSONALITY action. The bench server reads this directly
   // (see `runtimeSettingKeys` in server.ts) and passes it through to the
   // AgentRuntime character settings.
+  //
+  // Optional runtime-inference override: when ELIZA_PERSONALITY_RUNTIME_OPENAI_BASE_URL
+  // is set, the agent-under-test routes its inference through that endpoint (e.g. a
+  // local llama-server hosting a checkpoint GGUF). Cerebras stays the judge.
+  const runtimeBaseUrlOverride = (
+    process.env.ELIZA_PERSONALITY_RUNTIME_OPENAI_BASE_URL ?? ""
+  ).trim();
+  const runtimeApiKeyOverride =
+    (process.env.ELIZA_PERSONALITY_RUNTIME_OPENAI_API_KEY ?? "").trim() ||
+    (runtimeBaseUrlOverride ? "local" : "");
+  const runtimeModelOverride =
+    (process.env.ELIZA_PERSONALITY_RUNTIME_MODEL ?? "").trim() || model;
+  const useRuntimeOverride = runtimeBaseUrlOverride.length > 0;
   const env = {
     ...process.env,
     ELIZA_BENCH_HOST: host,
@@ -701,16 +674,16 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     // Cerebras path — same provider config the bench server expects when
     // OPENAI_BASE_URL points at api.cerebras.ai.
     CEREBRAS_API_KEY: cerebrasApiKey,
-    OPENAI_BASE_URL: cerebrasBaseUrl,
-    OPENAI_API_KEY: cerebrasApiKey,
-    ELIZA_PROVIDER: "cerebras",
-    BENCHMARK_MODEL_PROVIDER: "cerebras",
-    OPENAI_LARGE_MODEL: model,
-    OPENAI_SMALL_MODEL: model,
-    OPENAI_MEDIUM_MODEL: model,
-    LARGE_MODEL: model,
-    SMALL_MODEL: model,
-    MEDIUM_MODEL: model,
+    OPENAI_BASE_URL: useRuntimeOverride ? runtimeBaseUrlOverride : cerebrasBaseUrl,
+    OPENAI_API_KEY: useRuntimeOverride ? runtimeApiKeyOverride : cerebrasApiKey,
+    ELIZA_PROVIDER: useRuntimeOverride ? "openai" : "cerebras",
+    BENCHMARK_MODEL_PROVIDER: useRuntimeOverride ? "openai" : "cerebras",
+    OPENAI_LARGE_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    OPENAI_SMALL_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    OPENAI_MEDIUM_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    LARGE_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    SMALL_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
+    MEDIUM_MODEL: useRuntimeOverride ? runtimeModelOverride : model,
     ADVANCED_CAPABILITIES: "true",
     // W1-9 fix — keep planner deterministic for benchmark turns.
     ELIZA_BENCH_FORCE_TOOL_CALL: process.env.ELIZA_BENCH_FORCE_TOOL_CALL ?? "1",
@@ -730,7 +703,16 @@ async function spawnElizaServer({ extraEnv = {} } = {}) {
     detached: true,
   });
 
-  const handle = { proc, port, host, token, baseUrl, stdoutLog, stderrLog, killed: false };
+  const handle = {
+    proc,
+    port,
+    host,
+    token,
+    baseUrl,
+    stdoutLog,
+    stderrLog,
+    killed: false,
+  };
   ACTIVE_RUNTIME_SERVER = handle;
   ensureRuntimeCleanupHooked();
 
@@ -774,18 +756,28 @@ function openLogFile(path) {
   return openSync(path, "a", 0o644);
 }
 
-async function postBenchMessage({ baseUrl, token, text, taskId, userId }) {
+async function postBenchMessage({
+  baseUrl,
+  token,
+  text,
+  taskId,
+  userId,
+  userRole,
+}) {
+  // P0-7: bench server now pins sender identity + role from these fields so
+  // `composeState`-driven role gates see the actual scenario actor (admin vs
+  // member). When only `userId` is present, the server defaults the role to
+  // GUEST. Per-room/user isolation in scope_global_vs_user scenarios still
+  // uses a separate `task_id` per "room" so each room ↔ session is distinct.
   const body = {
     text,
+    userId,
+    userRole,
     context: {
       benchmark: "personality_bench",
       task_id: taskId,
-      // The bench server doesn't currently pin userId from `context` — the
-      // session's `userEntityId` is fixed at reset time — but we still pass
-      // it through for trajectory diagnostics. Per-room/user isolation in
-      // scope_global_vs_user scenarios uses a separate `task_id` per "room"
-      // so each room ↔ session is distinct.
       user_id: userId,
+      user_role: userRole,
     },
   };
   const controller = new AbortController();
@@ -802,9 +794,7 @@ async function postBenchMessage({ baseUrl, token, text, taskId, userId }) {
     });
     const raw = await res.text();
     if (!res.ok) {
-      throw new Error(
-        `bench HTTP ${res.status}: ${raw.slice(0, 400)}`,
-      );
+      throw new Error(`bench HTTP ${res.status}: ${raw.slice(0, 400)}`);
     }
     const json = JSON.parse(raw);
     return {
@@ -812,7 +802,9 @@ async function postBenchMessage({ baseUrl, token, text, taskId, userId }) {
       thought: typeof json?.thought === "string" ? json.thought : null,
       actions: Array.isArray(json?.actions) ? json.actions : [],
       params:
-        json?.params && typeof json.params === "object" && !Array.isArray(json.params)
+        json?.params &&
+        typeof json.params === "object" &&
+        !Array.isArray(json.params)
           ? json.params
           : {},
       benchmark: typeof json?.benchmark === "string" ? json.benchmark : null,
@@ -824,20 +816,103 @@ async function postBenchMessage({ baseUrl, token, text, taskId, userId }) {
   }
 }
 
-async function resetBenchSession({ baseUrl, token, taskId }) {
+async function resetBenchSession({ baseUrl, token, taskId, roles = null }) {
+  const body = { task_id: taskId, benchmark: "personality_bench" };
+  if (roles && typeof roles === "object") body.roles = roles;
   const res = await fetch(`${baseUrl}/api/benchmark/reset`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ task_id: taskId, benchmark: "personality_bench" }),
+    body: JSON.stringify(body),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`bench reset HTTP ${res.status}: ${text.slice(0, 300)}`);
   }
   return res.json();
+}
+
+// Synthesis P0-7: derive a RoleSeedPayload from a scope_global_vs_user
+// scenario so the bench server can pin personality slots + roles before
+// the conversation starts. Returns null for non-scope scenarios.
+function buildScopeRoleSeed(scenario, roomId, roomMeta) {
+  if (scenario.bucket !== "scope_global_vs_user") return null;
+  const kw = scenario.personalityExpect?.judgeKwargs ?? {};
+  const variantKey = typeof kw.variantKey === "string" ? kw.variantKey : "";
+
+  // Authored variant key → scoped seed mode for the new RoleSeedPayload
+  // shape. The rubric mode (from SCOPE_VARIANT_TO_MODE in
+  // personality-bench-bridge.mjs) is the canonical judge-side discriminator;
+  // scopeMode is only the server-side seeding tag used to pre-load roles.
+  let scopeMode = null;
+  if (
+    variantKey === "user_tries_global_should_refuse" ||
+    kw.forbidGlobalChangeFromUser === true
+  ) {
+    // User attempts a global change against a hardened admin global — refuse.
+    scopeMode = "conflict_implicit";
+  } else if (
+    variantKey === "admin_global_then_user_override" ||
+    variantKey === "admin_global_terse_user_verbose" ||
+    variantKey === "admin_global_formal_user_casual"
+  ) {
+    // Admin set a global; user has an allowed per-session override. The
+    // server must seed both the global slot and the user slot.
+    scopeMode = "conflict_explicit";
+  } else if (
+    variantKey === "global_applies_to_admin_only" ||
+    variantKey === "admin_global_setting_applies_to_all"
+  ) {
+    // Admin global directive — seed the global slot.
+    scopeMode = "global_wins";
+  } else if (
+    variantKey === "user_overrides_persist_across_unrelated_turns" ||
+    variantKey === "per_user_isolation"
+  ) {
+    // Per-user setting stays in the user's own room only.
+    scopeMode = "user_wins";
+  }
+
+  // Pull the first description-style directive out of the scenario when
+  // present; otherwise leave the directive fields empty (the rubric still
+  // gets a scopeMode tag and the runtime gets cleared slots).
+  const description =
+    typeof scenario.description === "string" ? scenario.description : "";
+  const globalDirective = description.includes("global")
+    ? description.slice(0, 200)
+    : undefined;
+
+  // Pick the regular-user room (non-admin) as the seeded user identity.
+  let userId;
+  for (const [id, meta] of roomMeta.entries()) {
+    if (meta.userRole !== "admin") {
+      userId = id;
+      break;
+    }
+  }
+  // Pick the admin room as the seeded global-role entity, if any.
+  let globalRoleId;
+  for (const [id, meta] of roomMeta.entries()) {
+    if (meta.userRole === "admin") {
+      globalRoleId = id;
+      break;
+    }
+  }
+
+  if (!scopeMode && !globalDirective && !userId && !globalRoleId) {
+    return null;
+  }
+
+  const out = {};
+  if (scopeMode) out.scopeMode = scopeMode;
+  if (globalDirective) out.globalDirective = globalDirective;
+  if (userId) out.userId = userId;
+  if (globalRoleId) out.globalRoleId = globalRoleId;
+  // The runner does not infer a userDirective; that comes from the user's
+  // first message in-scenario. Leaving it empty is intentional.
+  return out;
 }
 
 // PERSONALITY-action smoke. Sends a single canonical "set my verbosity to
@@ -857,9 +932,7 @@ async function smokeRuntimePersonalityAction({ baseUrl, token }) {
     });
     const sawPersonality =
       Array.isArray(res.actions) &&
-      res.actions.some((a) =>
-        typeof a === "string" && /personality/i.test(a),
-      );
+      res.actions.some((a) => typeof a === "string" && /personality/i.test(a));
     console.log(
       `[personality-bench-run]   smoke: actions=${JSON.stringify(res.actions)} sawPersonality=${sawPersonality}`,
     );
@@ -884,7 +957,8 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
   // expects. For other buckets there's one room, so one session id.
   const roomMeta = new Map();
   for (const r of scenario.rooms ?? []) {
-    const isAdmin = /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
+    const isAdmin =
+      /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
     roomMeta.set(r.id, {
       userId: r.id,
       userRole: isAdmin ? "admin" : "member",
@@ -892,8 +966,8 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
   }
 
   const trajectory = [];
-  let totalPrompt = 0;
-  let totalCompletion = 0;
+  const totalPrompt = 0;
+  const totalCompletion = 0;
   let totalWallMs = 0;
   let error = null;
   const usedTaskIds = new Map(); // room → taskId
@@ -909,9 +983,18 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
   };
 
   // Reset each room's session up front so the personality store starts clean.
+  // For scope_global_vs_user scenarios, send a `roles` payload so the bench
+  // server seeds global + per-user directives + ADMIN/USER role tags before
+  // any conversation begins. Non-scope scenarios reset without seeding.
   for (const r of scenario.rooms ?? []) {
     try {
-      await resetBenchSession({ baseUrl, token, taskId: taskIdFor(r.id) });
+      const roleSeed = buildScopeRoleSeed(scenario, r.id, roomMeta);
+      await resetBenchSession({
+        baseUrl,
+        token,
+        taskId: taskIdFor(r.id),
+        roles: roleSeed,
+      });
     } catch (e) {
       error = `reset ${r.id}: ${e?.message ?? e}`;
       break;
@@ -929,7 +1012,7 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
     const turn = scenario.turns[i];
     if (turn.kind !== "message" || typeof turn.text !== "string") continue;
     const meta = turn.room
-      ? roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" }
+      ? (roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" })
       : { userId: "user", userRole: "member" };
     trajectory.push({
       role: "user",
@@ -950,6 +1033,7 @@ async function runScenarioOnElizaRuntime(scenario, { baseUrl, token }) {
         text: turn.text,
         taskId: taskIdFor(turn.room),
         userId: meta.userId,
+        userRole: meta.userRole,
       });
       assistantText = res.text;
       actions = res.actions;
@@ -1021,7 +1105,8 @@ async function runScenarioForAgent(scenario, agent, modelName) {
   // userId is the room id ("admin"/"user"/"main"/...).
   const roomMeta = new Map();
   for (const r of scenario.rooms ?? []) {
-    const isAdmin = /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
+    const isAdmin =
+      /admin|owner/i.test(r.id) || /admin|owner/i.test(r.title ?? "");
     roomMeta.set(r.id, {
       userId: r.id,
       userRole: isAdmin ? "admin" : "member",
@@ -1039,7 +1124,7 @@ async function runScenarioForAgent(scenario, agent, modelName) {
     const turn = scenario.turns[i];
     if (turn.kind !== "message" || typeof turn.text !== "string") continue;
     const meta = turn.room
-      ? roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" }
+      ? (roomMeta.get(turn.room) ?? { userId: turn.room, userRole: "member" })
       : { userId: "user", userRole: "member" };
     messages.push({ role: "user", content: turn.text });
     trajectory.push({
@@ -1128,10 +1213,7 @@ async function runWithConcurrency(items, worker, conc) {
 // Per-agent main loop.
 // ─────────────────────────────────────────────────────────────────────────
 async function runAgent(agent) {
-  const runDir = join(
-    PERSONALITY_RUNS_DIR,
-    `personality-${agent}-${RUN_ID}`,
-  );
+  const runDir = join(PERSONALITY_RUNS_DIR, `personality-${agent}-${RUN_ID}`);
   const scenariosDir = join(runDir, "scenarios");
   mkdirSync(scenariosDir, { recursive: true });
 
@@ -1172,7 +1254,10 @@ async function runAgent(agent) {
               })
             : await runScenarioForAgent(scenario, agent, model);
         const fileName = `${String(i + 1).padStart(3, "0")}-${scenario.id.replace(/[^A-Za-z0-9._-]+/g, "_")}.json`;
-        writeFileSync(join(scenariosDir, fileName), JSON.stringify(out, null, 2));
+        writeFileSync(
+          join(scenariosDir, fileName),
+          JSON.stringify(out, null, 2),
+        );
         if ((i + 1) % 10 === 0 || i === scenarios.length - 1) {
           console.log(
             `[personality-bench-run]   ${agent}: ${i + 1}/${scenarios.length} scenarios complete`,
@@ -1285,11 +1370,15 @@ async function runAgent(agent) {
   lines.push(`Run ID: \`${RUN_ID}\``);
   lines.push(`Model: \`${model}\``);
   lines.push(`Scenarios: ${personalityScenarios.length}`);
-  lines.push(`Wall: ${(wallMs / 1000).toFixed(1)}s (judge ${(judgeWallMs / 1000).toFixed(1)}s)`);
+  lines.push(
+    `Wall: ${(wallMs / 1000).toFixed(1)}s (judge ${(judgeWallMs / 1000).toFixed(1)}s)`,
+  );
   lines.push(`Tokens: in=${totalPrompt} out=${totalCompletion}`);
   lines.push(`Cost: $${totalCost.toFixed(4)}`);
   if (errored > 0) {
-    lines.push(`Trajectory errors: ${errored} (responses recorded as empty content)`);
+    lines.push(
+      `Trajectory errors: ${errored} (responses recorded as empty content)`,
+    );
   }
   lines.push("");
   lines.push("## Totals");
@@ -1300,7 +1389,9 @@ async function runAgent(agent) {
     personalityScenarios.length > 0
       ? ((100 * totals.pass) / personalityScenarios.length).toFixed(1)
       : "0.0";
-  lines.push(`| ${totals.pass} | ${totals.fail} | ${totals.needsReview} | ${pct}% |`);
+  lines.push(
+    `| ${totals.pass} | ${totals.fail} | ${totals.needsReview} | ${pct}% |`,
+  );
   lines.push("");
   lines.push("## Per-bucket");
   lines.push("");
@@ -1395,7 +1486,9 @@ if (reporterResult.status !== 0) {
 
 const reportPath = join(multiRunDir, "report.md");
 if (existsSync(reportPath)) {
-  console.log("\n[personality-bench-run] ===== multi-agent report (head) =====");
+  console.log(
+    "\n[personality-bench-run] ===== multi-agent report (head) =====",
+  );
   console.log(
     readFileSync(reportPath, "utf8").split("\n").slice(0, 60).join("\n"),
   );

@@ -7,7 +7,7 @@
   "setup": {
     "agentId": "agent-test",
     "rooms": [
-      { "id": "dm-alice",   "kind": "dm",    "owner": "alice" },
+      { "id": "dm-alice", "kind": "dm", "owner": "alice" },
       { "id": "group-team", "kind": "group", "members": ["alice", "carol"] }
     ],
     "users": [
@@ -15,26 +15,41 @@
       { "id": "carol", "role": "USER" }
     ],
     "openThreads": [
-      { "id": "thread-deploy-001", "owner": "alice", "status": "waiting", "instruction": "deploy site once approved", "roomId": "dm-alice", "pendingPromptId": "prompt-deploy-approval-1" }
+      {
+        "id": "thread-deploy-001",
+        "owner": "alice",
+        "status": "waiting",
+        "instruction": "deploy site once approved",
+        "roomId": "dm-alice",
+        "pendingPromptId": "prompt-deploy-approval-1"
+      }
     ],
     "scheduledTasks": [],
     "memory": [],
     "pendingPrompts": [
-      { "id": "prompt-deploy-approval-1", "askedIn": "dm-alice", "askedAt": -60000, "question": "ready to deploy? yes/no" }
+      {
+        "id": "prompt-deploy-approval-1",
+        "askedIn": "dm-alice",
+        "askedAt": -60000,
+        "question": "ready to deploy? yes/no"
+      }
     ]
   },
   "script": [
-    { "t": 0, "channel": "group-team", "sender": "alice", "text": "yes go ahead and deploy" }
+    {
+      "t": 0,
+      "channel": "group-team",
+      "sender": "alice",
+      "text": "yes go ahead and deploy"
+    }
   ],
   "quiesceAfterMs": 3000,
   "expectedFinalState": {
-    "threads": [
-      { "id": "thread-deploy-001", "status": "active" }
-    ],
+    "threads": [{ "id": "thread-deploy-001", "status": "active" }],
     "scheduledTasks": [],
     "repliesByChannel": {
       "group-team": { "count": { "min": 0, "max": 1 } },
-      "dm-alice":   { "count": { "min": 0, "max": 1 } }
+      "dm-alice": { "count": { "min": 0, "max": 1 } }
     },
     "pendingPrompts": {
       "prompt-deploy-approval-1": { "resolved": true }

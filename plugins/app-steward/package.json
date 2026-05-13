@@ -23,10 +23,10 @@
   },
   "dependencies": {
     "@elizaos/agent": "2.0.0-beta.1",
-    "@elizaos/app-core": "2.0.0-beta.1",
+    "@elizaos/app-core": "2.0.0-beta.3",
     "@elizaos/core": "2.0.0-beta.1",
     "@elizaos/plugin-wallet": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.1",
+    "@elizaos/ui": "2.0.0-beta.2",
     "@noble/curves": "2.2.0",
     "@simplewebauthn/browser": "^13.0.0",
     "@solana/web3.js": "1.98.4",

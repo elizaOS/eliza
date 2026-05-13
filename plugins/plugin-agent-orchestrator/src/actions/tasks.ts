@@ -2587,6 +2587,78 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       {
         name: "{{name1}}",
         content: {
+          text: "Spawn a coding sub-agent to refactor the auth module.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spinning up a coding sub-agent for the auth refactor.",
+          actions: ["TASKS"],
+          thought:
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to PTYService.spawnSession with the configured adapter (claude / codex / opencode).",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Delegate this to a sub-agent: build a small python CLI at /tmp/oc-todo with main.py + tests.py.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Delegating the multi-file CLI build to a coding sub-agent.",
+          actions: ["TASKS"],
+          thought:
+            "Explicit delegation request → TASKS action=spawn_agent. Multi-file project work is exactly what sub-agent isolation is for; do NOT use inline FILE.write for delegated work.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "use opencode to write a script that prints hello world",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spawning an opencode sub-agent for the script.",
+          actions: ["TASKS"],
+          thought:
+            "User explicitly named the coding adapter (opencode). TASKS action=spawn_agent with agentType=opencode hands off to the configured opencode provider (cerebras / openrouter / etc. via auto-detected key).",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "fire up a coding agent to investigate why the migration is hanging",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spawning a coding sub-agent to investigate the migration.",
+          actions: ["TASKS"],
+          thought:
+            "Investigation / debugging tasks benefit from sub-agent process isolation (own workspace, own tool loop). TASKS action=spawn_agent.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
           text: "Spawn a coding agent to refactor the auth module.",
           source: "chat",
         },

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFailureReplyPrompt, stripReasoningBlocks } from "../message";
+import { buildFailureReplyPrompt } from "../message";
 
 /**
  * Pinned hard rules for the transient-failure reply prompt.
@@ -113,30 +113,5 @@ describe("buildFailureReplyPrompt", () => {
 		const prompt = buildFailureReplyPrompt(RECENT);
 		expect(prompt.endsWith("Reply:")).toBe(true);
 		expect(prompt).not.toContain("```");
-	});
-});
-
-describe("stripReasoningBlocks", () => {
-	it("removes closed reasoning blocks from user-visible model output", () => {
-		expect(stripReasoningBlocks("<think>private</think>\nVisible reply.")).toBe(
-			"Visible reply.",
-		);
-	});
-
-	it("removes truncated reasoning blocks instead of exposing them", () => {
-		expect(stripReasoningBlocks("<think>private reasoning so far")).toBe("");
-	});
-
-	it("removes dangling closing reasoning tags from user-visible output", () => {
-		expect(stripReasoningBlocks("private</think>\nVisible reply.")).toBe(
-			"Visible reply.",
-		);
-	});
-
-	it("removes no-think control tokens from user-visible output", () => {
-		expect(stripReasoningBlocks("/no_think\nVisible reply.")).toBe(
-			"Visible reply.",
-		);
-		expect(stripReasoningBlocks("no_think")).toBe("");
 	});
 });

@@ -1,5 +1,4 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
-import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import type {
   CreateLifeOpsGoalRequest,
   LifeOpsGoalDefinition,
@@ -13,6 +12,7 @@ import {
   mergeGoalGroundingMetadata,
 } from "../../lifeops/goal-grounding.js";
 import { runExtractorPipeline } from "../../lifeops/llm/extractor-pipeline.js";
+import { parseJsonModelRecord } from "../../utils/json-model-output.js";
 import { recentConversationTexts } from "./recent-context.js";
 
 export const GOAL_GROUNDING_FIELD_VALUES = [

@@ -1,9 +1,9 @@
-import {
-  type IAgentRuntime,
-  type Memory,
-  type Provider,
-  type ProviderResult,
-  type State,
+import type {
+  IAgentRuntime,
+  Memory,
+  Provider,
+  ProviderResult,
+  State,
 } from "@elizaos/core";
 import { getRs2004scapeStateService } from "./service-access.js";
 
@@ -113,9 +113,13 @@ export const mapAreaProvider: Provider = {
       const state = service?.getBotState?.();
       if (!state?.connected || !state.inGame || !state.player) {
         return {
-          text: JSON.stringify({
-            rs_2004_map_area: { status: "not_in_game" },
-          }, null, 2),
+          text: JSON.stringify(
+            {
+              rs_2004_map_area: { status: "not_in_game" },
+            },
+            null,
+            2,
+          ),
         };
       }
 
@@ -123,40 +127,51 @@ export const mapAreaProvider: Provider = {
       const area = identifyArea(x, z);
 
       return {
-        text: JSON.stringify({
-          rs_2004_map_area: area
-            ? {
-                status: "known",
-                name: area.name,
-                position: { x, z },
-                features: area.features.slice(0, MAX_AREA_FEATURES),
-                notableNpcs: area.npcs.slice(0, MAX_AREA_NPCS),
-                adjacentAreas: area.adjacentAreas.slice(0, MAX_ADJACENT_AREAS),
-                travelCoords: area.travelCoords
-                  .slice(0, MAX_TRAVEL_COORDS)
-                  .map((coord) => ({
-                    ...coord,
-                    distance: Math.max(
-                      Math.abs(coord.x - x),
-                      Math.abs(coord.z - z),
-                    ),
-                  })),
-              }
-            : {
-                status: "unknown",
-                position: { x, z },
-                instruction: "Explore cautiously and update nearby context.",
-              },
-        }, null, 2),
+        text: JSON.stringify(
+          {
+            rs_2004_map_area: area
+              ? {
+                  status: "known",
+                  name: area.name,
+                  position: { x, z },
+                  features: area.features.slice(0, MAX_AREA_FEATURES),
+                  notableNpcs: area.npcs.slice(0, MAX_AREA_NPCS),
+                  adjacentAreas: area.adjacentAreas.slice(
+                    0,
+                    MAX_ADJACENT_AREAS,
+                  ),
+                  travelCoords: area.travelCoords
+                    .slice(0, MAX_TRAVEL_COORDS)
+                    .map((coord) => ({
+                      ...coord,
+                      distance: Math.max(
+                        Math.abs(coord.x - x),
+                        Math.abs(coord.z - z),
+                      ),
+                    })),
+                }
+              : {
+                  status: "unknown",
+                  position: { x, z },
+                  instruction: "Explore cautiously and update nearby context.",
+                },
+          },
+          null,
+          2,
+        ),
       };
     } catch (error) {
       return {
-        text: JSON.stringify({
-          rs_2004_map_area: {
-            status: "error",
-            reason: error instanceof Error ? error.message : String(error),
+        text: JSON.stringify(
+          {
+            rs_2004_map_area: {
+              status: "error",
+              reason: error instanceof Error ? error.message : String(error),
+            },
           },
-        }, null, 2),
+          null,
+          2,
+        ),
       };
     }
   },

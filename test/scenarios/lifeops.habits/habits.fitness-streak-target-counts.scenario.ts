@@ -45,9 +45,7 @@ export default scenario({
       type: "custom",
       name: "agent-credits-partial",
       predicate: (ctx) => {
-        const reply = String(
-          ctx.turns?.[0]?.responseText ?? "",
-        ).toLowerCase();
+        const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
         if (!reply) return "empty reply";
         if (reply.includes("reset") || reply.includes("doesn't count")) {
           return `agent should credit partial completion, not reset streak. Reply: ${reply.slice(0, 300)}`;

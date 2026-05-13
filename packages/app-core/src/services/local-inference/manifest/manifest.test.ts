@@ -84,16 +84,15 @@ describe("Eliza-1 manifest schema constants", () => {
     expect(ELIZA_1_MANIFEST_SCHEMA_VERSION).toBe("1");
   });
 
-  it("uses canonical small-tier ids and tokenizer family", () => {
+  it("uses Qwen3.5 small-tier ids and tokenizer family", () => {
     expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
-    expect(ELIZA_1_TIERS.slice(0, 3)).toEqual(["0_8b", "2b", "4b"]);
+    // Tier order — `0_8b` and `2b` are the active Qwen3.5 small/mid local
+    // tiers; the legacy Qwen3 tiers `0_6b` / `1_7b` / `4b` remain
+    // enumerated for existing bundle ids. The schema-level enum stays
+    // size-ordered.
+    expect(ELIZA_1_TIERS.slice(0, 4)).toEqual(["0_8b", "0_6b", "1_7b", "2b"]);
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
-      expect.arrayContaining(["0_8b", "2b", "4b"]),
-    );
-    const staleSmallTier = "0_" + "6b";
-    const staleMobileTier = "1_" + "7b";
-    expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).not.toEqual(
-      expect.arrayContaining([staleSmallTier, staleMobileTier]),
+      expect.arrayContaining(["0_6b", "0_8b", "1_7b", "2b"]),
     );
   });
 });
@@ -306,8 +305,8 @@ describe("validateManifest — contract rejections", () => {
   });
 
   it("does not require cuda or rocm for tiers that don't ship on cuda/rocm", () => {
-    const m = baseManifest("0_8b");
-    // 0.8B tier doesn't ship on cuda/rocm; failures there should not block.
+    const m = baseManifest("0_6b");
+    // 0.6B tier doesn't ship on cuda/rocm; failures there should not block.
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",
@@ -380,10 +379,27 @@ describe("canSetAsDefault", () => {
     expect(canSetAsDefault(baseManifest("9b"), device)).toBe(true);
   });
 
-  it("returns false when the manifest's defaultEligible is false", () => {
+  it("returns true for a contract-valid candidate bundle on a supported backend", () => {
+    // A `base-v1-candidate` manifest with every backend verified pass and
+    // every eval green is still contract-valid — it is just not the strict
+    // release. The on-device gate accepts it as the auto-default fallback
+    // when no `defaultEligible: true` bundle is installed; the recommender
+    // is the layer that prefers a strict release when both are present.
     const m = baseManifest("9b");
     m.defaultEligible = false;
-    expect(canSetAsDefault(m, device)).toBe(false);
+    m.provenance = {
+      releaseState: "base-v1-candidate",
+      finetuned: false,
+      sourceModels: {
+        text: { repo: "Qwen/Qwen3.5-9B" },
+        voice: { repo: "Serveurperso/OmniVoice-GGUF" },
+        drafter: { repo: "elizaos/eliza-1-9b" },
+        asr: { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" },
+        vad: { repo: "onnx-community/silero-vad" },
+        vision: { repo: "unsloth/Qwen3.5-9B-GGUF" },
+      },
+    };
+    expect(canSetAsDefault(m, device)).toBe(true);
   });
 
   it("returns false when device RAM is below the manifest minimum", () => {
@@ -407,5 +423,61 @@ describe("canSetAsDefault", () => {
     const m = baseManifest("9b");
     m.kernels.required = ["turboquant_q4"]; // missing qjl/polarquant/dflash
     expect(canSetAsDefault(m, device)).toBe(false);
+  });
+});
+
+describe("releaseChannel", () => {
+  it("accepts an absent releaseChannel (defaults to recommended)", () => {
+    const result = validateManifest(baseManifest("9b"));
+    expect(result.ok).toBe(true);
+  });
+
+  it("accepts releaseChannel=recommended", () => {
+    const m = { ...baseManifest("9b"), releaseChannel: "recommended" as const };
+    expect(validateManifest(m).ok).toBe(true);
+  });
+
+  it("accepts releaseChannel=base-v1 only when defaultEligible is false", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: false,
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(true);
+  });
+
+  it("rejects releaseChannel=base-v1 with defaultEligible=true", () => {
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: true,
+    };
+    const result = validateManifest(m);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.some((e) => e.includes("base-v1"))).toBe(true);
+    }
+  });
+
+  it("rejects an unknown releaseChannel value", () => {
+    const m = { ...baseManifest("9b"), releaseChannel: "v3" as never };
+    expect(validateManifest(m).ok).toBe(false);
+  });
+
+  it("a contract-valid base-v1-channel manifest is allowed as a device default", () => {
+    // The publish-side claim ("this is the base, not the strict release")
+    // is encoded by releaseChannel + defaultEligible:false. The on-device
+    // gate is a separate question: if the bundle is contract-valid and the
+    // device can run it, it is allowed to fill an empty default slot. The
+    // recommender prefers a strict-release bundle when both are installed.
+    const m = {
+      ...baseManifest("9b"),
+      releaseChannel: "base-v1" as const,
+      defaultEligible: false,
+    };
+    expect(
+      canSetAsDefault(m, { availableBackends: ["metal"], ramMb: 64_000 }),
+    ).toBe(true);
   });
 });

@@ -14,8 +14,8 @@
 import { describe, expect, it } from "vitest";
 import {
   createMultilingualPromptRegistry,
-  registerDefaultPromptPack,
   type PromptExampleEntry,
+  registerDefaultPromptPack,
 } from "../src/lifeops/i18n/prompt-registry.ts";
 
 const ACTION_NAME_PATTERN = /^[A-Z][A-Z0-9_]*$/;

@@ -146,6 +146,49 @@ describe("buildModelInputBudget", () => {
 			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
 		});
 
+		it("treats reserveTokens === DEFAULT as 'no override' so derivation fires (planner-loop call pattern)", () => {
+			// The planner-loop's call site always forwards
+			// `params.config.compactionReserveTokens` which defaults to
+			// `DEFAULT_COMPACTION_RESERVE_TOKENS` (10k). Without this special-
+			// case, the explicit-10k would always beat the per-model
+			// derivation, defeating the whole point of #7594's reserve
+			// scaling. The function recognizes the default value as "carrying
+			// the legacy fallback" and lets derivation win when the lookup
+			// hits.
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(100)],
+				modelName: "gpt-oss-120b",
+				reserveTokens: DEFAULT_COMPACTION_RESERVE_TOKENS,
+			});
+			expect(budget.reserveTokens).toBe(26_200); // 131k * 0.20
+			expect(budget.compactionThresholdTokens).toBe(131_000 - 26_200);
+			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
+		});
+
+		it("does NOT swap derivation in when reserveTokens===DEFAULT and lookup misses", () => {
+			// Lookup misses → no derived reserve available → the explicit
+			// default-equal must be honored. Otherwise we'd silently drop the
+			// caller's reserve.
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(100)],
+				modelName: "no-such-model-99",
+				reserveTokens: DEFAULT_COMPACTION_RESERVE_TOKENS,
+			});
+			expect(budget.reserveTokens).toBe(DEFAULT_COMPACTION_RESERVE_TOKENS);
+			expect(budget.resolvedModelKey).toBeNull();
+		});
+
+		it("explicit reserve of 0 is honored even when lookup hits (zero-reserve override is a valid edge case)", () => {
+			const budget = buildModelInputBudget({
+				messages: [userMessageOfChars(100)],
+				modelName: "gpt-oss-120b",
+				reserveTokens: 0,
+			});
+			expect(budget.reserveTokens).toBe(0);
+			expect(budget.compactionThresholdTokens).toBe(131_000);
+			expect(budget.resolvedModelKey).toBe("gpt-oss-120b");
+		});
+
 		it("lookup wins over an explicit contextWindowTokens (model is authoritative)", () => {
 			// A caller carrying the legacy 128k default on ChainingLoopConfig
 			// AND setting modelName should get the per-model ceiling, not 128k.

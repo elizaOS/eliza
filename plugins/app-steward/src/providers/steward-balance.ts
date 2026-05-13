@@ -14,8 +14,8 @@ import type {
   Provider,
   ProviderResult,
   State,
+  WalletBalancesResponse,
 } from "@elizaos/core";
-import type { WalletBalancesResponse } from "@elizaos/core";
 import {
   buildAuthHeaders,
   getWalletActionApiPort,

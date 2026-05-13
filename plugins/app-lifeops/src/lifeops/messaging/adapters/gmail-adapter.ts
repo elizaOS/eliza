@@ -24,7 +24,9 @@ interface GmailDraftContext {
 }
 
 function clip(value: string, maxLength: number): string {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 3)}...` : value;
+  return value.length > maxLength
+    ? `${value.slice(0, maxLength - 3)}...`
+    : value;
 }
 
 function refId(messageId: string): string {
@@ -32,7 +34,9 @@ function refId(messageId: string): string {
 }
 
 function lifeOpsId(messageId: string): string {
-  return messageId.startsWith("gmail:") ? messageId.slice("gmail:".length) : messageId;
+  return messageId.startsWith("gmail:")
+    ? messageId.slice("gmail:".length)
+    : messageId;
 }
 
 function externalMessageId(messageId: string): string {
@@ -161,22 +165,21 @@ export class LifeOpsGmailAdapter extends BaseMessageAdapter {
       forceSync: true,
       maxResults: opts.limit ?? 50,
     });
-    return this.cacheAndFilter(
-      feed.messages.map(mapGmailMessage),
-      opts,
-    );
+    return this.cacheAndFilter(feed.messages.map(mapGmailMessage), opts);
   }
 
   protected async getMessageImpl(
     runtime: IAgentRuntime,
     id: string,
   ): Promise<MessageRef | null> {
-    const cached = this.messageCache.get(id) ?? this.messageCache.get(refId(id));
+    const cached =
+      this.messageCache.get(id) ?? this.messageCache.get(refId(id));
     if (cached) return cached;
     const messages = await this.listMessages(runtime, { limit: 100 });
     return (
-      messages.find((message) => message.id === id || message.id === refId(id)) ??
-      null
+      messages.find(
+        (message) => message.id === id || message.id === refId(id),
+      ) ?? null
     );
   }
 
@@ -205,12 +208,15 @@ export class LifeOpsGmailAdapter extends BaseMessageAdapter {
     draft: DraftRequest,
   ): Promise<{ draftId: string; preview: string }> {
     if (!draft.inReplyToId) {
-      throw new Error("[LifeOpsGmailAdapter] Gmail replies require inReplyToId");
+      throw new Error(
+        "[LifeOpsGmailAdapter] Gmail replies require inReplyToId",
+      );
     }
     const cached =
       this.messageCache.get(draft.inReplyToId) ??
       this.messageCache.get(lifeOpsId(draft.inReplyToId));
-    const messageId = cached?.externalId ?? externalMessageId(draft.inReplyToId);
+    const messageId =
+      cached?.externalId ?? externalMessageId(draft.inReplyToId);
     const service = new LifeOpsService(runtime);
     const rendered = await service.createGmailReplyDraft(INTERNAL_URL, {
       messageId,
@@ -287,7 +293,10 @@ export class LifeOpsGmailAdapter extends BaseMessageAdapter {
     return { ok: true };
   }
 
-  private cacheAndFilter(messages: MessageRef[], opts: ListOptions): MessageRef[] {
+  private cacheAndFilter(
+    messages: MessageRef[],
+    opts: ListOptions,
+  ): MessageRef[] {
     const worlds = opts.worldIds ? new Set(opts.worldIds) : null;
     const channels = opts.channelIds ? new Set(opts.channelIds) : null;
     const out: MessageRef[] = [];
@@ -298,7 +307,10 @@ export class LifeOpsGmailAdapter extends BaseMessageAdapter {
       if (worlds && (!message.worldId || !worlds.has(message.worldId))) {
         continue;
       }
-      if (channels && (!message.channelId || !channels.has(message.channelId))) {
+      if (
+        channels &&
+        (!message.channelId || !channels.has(message.channelId))
+      ) {
         continue;
       }
       this.messageCache.set(message.id, message);

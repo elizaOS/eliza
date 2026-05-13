@@ -22,13 +22,13 @@
 
 import process from "node:process";
 import { makeSpeechWithSilenceFixture } from "../src/services/local-inference/voice/__test-helpers__/synthetic-speech";
+import type { VadEvent } from "../src/services/local-inference/voice/types";
 import {
   createSileroVadDetector,
   resolveSileroVadPath,
   SileroVad,
   VadUnavailableError,
 } from "../src/services/local-inference/voice/vad";
-import type { VadEvent } from "../src/services/local-inference/voice/types";
 import {
   loadBundledWakeWordModel,
   resolveWakeWordModel,
@@ -68,7 +68,8 @@ async function main(): Promise<void> {
     }
     throw err;
   }
-  if (vad.windowSamples !== WINDOW) fail(`unexpected window size ${vad.windowSamples}`);
+  if (vad.windowSamples !== WINDOW)
+    fail(`unexpected window size ${vad.windowSamples}`);
 
   // Sanity: pure silence reads low.
   vad.reset();
@@ -109,11 +110,15 @@ async function main(): Promise<void> {
   console.log(
     `[voice-vad-smoke] events: ${events.map((e) => e.type).join(", ")}`,
   );
-  if (starts.length !== 1) fail(`expected 1 speech-start, got ${starts.length}`);
+  if (starts.length !== 1)
+    fail(`expected 1 speech-start, got ${starts.length}`);
   if (ends.length !== 1) fail(`expected 1 speech-end, got ${ends.length}`);
   const start = starts[0];
   if (start.type !== "speech-start") fail("unreachable");
-  if (start.timestampMs <= speechStartMs - 100 || start.timestampMs >= speechEndMs) {
+  if (
+    start.timestampMs <= speechStartMs - 100 ||
+    start.timestampMs >= speechEndMs
+  ) {
     fail(
       `speech-start at ${start.timestampMs.toFixed(0)} ms is outside the voiced region [${speechStartMs.toFixed(0)}, ${speechEndMs.toFixed(0)}] — silence not gated out`,
     );
@@ -147,7 +152,9 @@ async function main(): Promise<void> {
     }
     throw err;
   }
-  console.log(`[voice-vad-smoke] max P(wake | silence) = ${maxWake.toFixed(4)}`);
+  console.log(
+    `[voice-vad-smoke] max P(wake | silence) = ${maxWake.toFixed(4)}`,
+  );
   if (maxWake >= 0.3) fail(`wake-word read too high on silence (${maxWake})`);
   console.log("[voice-vad-smoke] PASS: wake-word stayed quiet on silence.");
 }

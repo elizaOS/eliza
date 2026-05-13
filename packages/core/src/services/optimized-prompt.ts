@@ -82,6 +82,7 @@ export const OPTIMIZED_PROMPT_TASKS: readonly OptimizedPromptTask[] = [
 export type OptimizerName =
 	| "instruction-search"
 	| "prompt-evolution"
+	| "gepa"
 	| "bootstrap-fewshot"
 	| "dspy-bootstrap-fewshot"
 	| "dspy-copro"
@@ -149,6 +150,7 @@ function isOptimizerName(value: unknown): value is OptimizerName {
 	return (
 		value === "instruction-search" ||
 		value === "prompt-evolution" ||
+		value === "gepa" ||
 		value === "bootstrap-fewshot" ||
 		value === "dspy-bootstrap-fewshot" ||
 		value === "dspy-copro" ||

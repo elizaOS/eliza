@@ -52,26 +52,26 @@ interface Flags {
 }
 
 function parseFlags(argv: string[]): Flags {
-  const valueOf = (flag: string) => {
+  const flagValue = (flag: string) => {
     const i = argv.indexOf(flag);
     return i >= 0 ? argv[i + 1] : undefined;
   };
   return {
     brief:
-      valueOf("--brief") ??
+      flagValue("--brief") ??
       "a tiny memecoin celebrating sentient toasters that achieve enlightenment by burning the perfect bagel — wholesome, brief, internet-native",
-    buySol: Number(valueOf("--buy") ?? "0"),
+    buySol: Number(flagValue("--buy") ?? "0"),
     visitFlap: argv.includes("--visit-flap"),
     headed: argv.includes("--headed") || !process.env.CI,
     rpc:
-      valueOf("--rpc") ??
+      flagValue("--rpc") ??
       process.env.SOLANA_RPC_URL ??
       "https://api.mainnet-beta.solana.com",
     signToken:
       process.env.WALLET_BROWSER_SIGN_TOKEN ??
       `eliza-wallet-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     dryRun: argv.includes("--dry-run"),
-    slow: Number(valueOf("--slow") ?? "0"),
+    slow: Number(flagValue("--slow") ?? "0"),
   };
 }
 
@@ -97,8 +97,8 @@ function requireEnv(name: string): string {
   return v;
 }
 
-async function clickIfVisible(
-  page: Page,
+async function _clickIfVisible(
+  _page: Page,
   loc: Locator,
   what: string,
   timeoutMs = 1500,
@@ -125,9 +125,7 @@ async function clickByText(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const t of texts) {
-      const re = opts.exact
-        ? new RegExp("^" + t + "$", "i")
-        : new RegExp(t, "i");
+      const re = opts.exact ? new RegExp(`^${t}$`, "i") : new RegExp(t, "i");
       for (const role of ["button", "link"] as const) {
         try {
           const loc = page.getByRole(role, { name: re });
@@ -185,7 +183,10 @@ async function fillByLabel(
       const loc = page.locator(`#${label.toLowerCase()}`);
       if (await loc.first().isVisible({ timeout: 500 })) {
         await loc.first().fill(value);
-        log("fill", `${what} ← #${label} ← ${JSON.stringify(value).slice(0, 60)}`);
+        log(
+          "fill",
+          `${what} ← #${label} ← ${JSON.stringify(value).slice(0, 60)}`,
+        );
         return true;
       }
     } catch {
@@ -197,32 +198,28 @@ async function fillByLabel(
 }
 
 async function snapshotForms(page: Page, label: string): Promise<void> {
-  const buttons = await page
-    .locator("button, a[href]")
-    .evaluateAll((els) =>
-      els
-        .map((el) => ({
-          tag: el.tagName,
-          text: (el.textContent ?? "").trim().slice(0, 60),
-          aria: el.getAttribute("aria-label"),
-        }))
-        .filter((b) => b.text.length > 0 || b.aria),
-    );
-  const inputs = await page
-    .locator("input, textarea")
-    .evaluateAll((els) =>
-      els.map((el) => {
-        const e = el as HTMLInputElement;
-        return {
-          tag: e.tagName,
-          type: e.type,
-          name: e.name,
-          id: e.id,
-          ph: e.placeholder,
-          aria: e.getAttribute("aria-label"),
-        };
-      }),
-    );
+  const buttons = await page.locator("button, a[href]").evaluateAll((els) =>
+    els
+      .map((el) => ({
+        tag: el.tagName,
+        text: (el.textContent ?? "").trim().slice(0, 60),
+        aria: el.getAttribute("aria-label"),
+      }))
+      .filter((b) => b.text.length > 0 || b.aria),
+  );
+  const inputs = await page.locator("input, textarea").evaluateAll((els) =>
+    els.map((el) => {
+      const e = el as HTMLInputElement;
+      return {
+        tag: e.tagName,
+        type: e.type,
+        name: e.name,
+        id: e.id,
+        ph: e.placeholder,
+        aria: e.getAttribute("aria-label"),
+      };
+    }),
+  );
   console.log(`\n=== snapshot/${label} buttons (40) ===`);
   console.log(JSON.stringify(buttons.slice(0, 40), null, 2));
   console.log(`\n=== snapshot/${label} inputs ===`);
@@ -261,9 +258,14 @@ async function connectWallet(page: Page, shotDir: string): Promise<boolean> {
     }
   }
   warn("wallet", "Eliza Wallet not directly clickable; expanding 'View More'");
-  await clickByText(page, ["View More Wallets", "More wallets"], "expand wallet list", {
-    timeoutMs: 3000,
-  });
+  await clickByText(
+    page,
+    ["View More Wallets", "More wallets"],
+    "expand wallet list",
+    {
+      timeoutMs: 3000,
+    },
+  );
   await page.waitForTimeout(800);
   for (const t of candidates) {
     if (
@@ -470,12 +472,9 @@ async function buyOnJupiter(
   await page.waitForTimeout(1500);
 
   if (
-    !(await clickByText(
-      page,
-      ["Swap", "Confirm Swap", "Buy"],
-      "click swap",
-      { timeoutMs: 8000 },
-    ))
+    !(await clickByText(page, ["Swap", "Confirm Swap", "Buy"], "click swap", {
+      timeoutMs: 8000,
+    }))
   ) {
     warn("buy", "no swap button");
     return {};
@@ -505,7 +504,10 @@ async function visitFlap(page: Page, shotDir: string): Promise<void> {
 
   const status = await page.evaluate(() => {
     const w = window as unknown as {
-      ethereum?: { isMetaMask?: boolean; request: (a: { method: string }) => Promise<unknown> };
+      ethereum?: {
+        isMetaMask?: boolean;
+        request: (a: { method: string }) => Promise<unknown>;
+      };
     };
     return {
       hasEthereum: !!w.ethereum,
@@ -538,7 +540,7 @@ async function main(): Promise<void> {
   const solanaKey = requireEnv("SOLANA_PRIVATE_KEY");
   const evmKey =
     (process.env.EVM_PRIVATE_KEY as `0x${string}` | undefined) ??
-    (("0x" + "11".repeat(32)) as `0x${string}`); // throwaway for shim
+    (`0x${"11".repeat(32)}` as `0x${string}`); // throwaway for shim
 
   const shotDir = path.join(
     "/tmp",
@@ -559,14 +561,19 @@ async function main(): Promise<void> {
   ok("sign-server", `up at ${signer.url} (sol=${signer.solanaPublicKey})`);
 
   const conn = new Connection(flags.rpc, "confirmed");
-  const lamports = await conn.getBalance(new PublicKey(signer.solanaPublicKey!));
+  const lamports = await conn.getBalance(
+    new PublicKey(signer.solanaPublicKey!),
+  );
   const sol = lamports / 1e9;
   log("balance", `${sol.toFixed(4)} SOL`);
   if (sol < 0.03) warn("balance", "<0.03 SOL — launch + buy may fail");
 
   // 2. cerebras meta
   log("cerebras", "→ gpt-oss-120b");
-  const meta = await decideTokenMeta({ brief: flags.brief, apiKey: cerebrasKey });
+  const meta = await decideTokenMeta({
+    brief: flags.brief,
+    apiKey: cerebrasKey,
+  });
   ok("meta", JSON.stringify(meta, null, 2));
 
   // 3. icon
@@ -652,7 +659,9 @@ async function main(): Promise<void> {
       ok("LAUNCHED", `studio: ${launchResult.url}`);
       ok("LAUNCHED", `solscan: https://solscan.io/token/${launchResult.mint}`);
       try {
-        const info = await conn.getAccountInfo(new PublicKey(launchResult.mint));
+        const info = await conn.getAccountInfo(
+          new PublicKey(launchResult.mint),
+        );
         ok(
           "verify",
           info

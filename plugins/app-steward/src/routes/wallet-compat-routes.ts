@@ -8,29 +8,20 @@
  *   GET  /api/wallet/nfts      — EVM NFT fetch
  */
 import type http from "node:http";
+import { type ElizaConfig, loadElizaConfig } from "@elizaos/agent";
 import {
-  type ElizaConfig,
-  loadElizaConfig,
-} from "@elizaos/agent";
-import {
+  type CompatRuntimeState,
+  createNodePlatformSecureStore,
+  deriveAgentVaultId,
   ensureCompatApiAuthorized,
   ensureCompatSensitiveRouteAuthorized,
   getCompatApiToken,
   isDevEnvironment,
-} from "@elizaos/app-core";
-import {
-  type CompatRuntimeState,
   isLoopbackRemoteAddress,
+  isWalletOsStoreReadEnabled,
   readCompatJsonBody,
-} from "@elizaos/app-core";
-import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core";
-import { deriveAgentVaultId } from "@elizaos/app-core";
-import {
-  createNodePlatformSecureStore,
-  isWalletOsStoreReadEnabled,
 } from "@elizaos/app-core";
 import { logger } from "@elizaos/core";
 import { getWalletAddresses } from "../api/wallet";

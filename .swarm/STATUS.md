@@ -1,119 +1,288 @@
-# Swarm status — Eliza-1 "grind it down"
+# H200-MONITOR-3 status — Task #65
 
-_Updated: 2026-05-12 (resumed director run, has `Agent` tool)._
+## Last update
+2026-05-12 14:32 PDT (21:32 UTC)
 
-## Where we are
-- **Phase 1 (research):** DONE — `.swarm/plans/cluster-{1..5}.md` + `.swarm/done/cluster-{1..5}` committed.
-- **Phase 2 (synthesis):** DONE — `.swarm/IMPLEMENTATION_PLAN.md` (WS-1..WS-6, cross-cutting decisions resolved, H200/Cerebras job list).
-- **Phase 3 (implement):** IN PROGRESS.
-- **Phase 4 (verify/cleanup):** not started.
-- **Phase 5 (finalize):** not started.
+## v4 state
+- Run: `eliza-1-0_8b-apollo-fullcorpus-h200-1778619044`
+- VM: `eliza-train-h200-0_8b-v4` (Nebius project-e00kfz6cpr00q21z892vec)
+- Driver PID 3652060 alive (~41m elapsed)
+- Watcher PID 3652514 alive (~41m elapsed)
+- Training progress: step 43/9615 at ~24 s/iter (healthy, past chat-template fix)
+- Projected wall: ~65-67h. Watcher kills at 12h cap (2026-05-13T08:51Z).
+- Expected at cap: ~1800 steps → checkpoints at 500/1000/1500.
 
-## Merged on `develop` (this director session — single-agent, no `Agent`/`Task` tool)
-- `ea05f7606b` — plugin-sql biome format fix (`isDuplicateKeyError`) + added `bun run verify` / `bun run check` scripts (= `turbo run typecheck lint`).
-- `7fca7ae565` — plugin-wallet: declare `@meteora-ag/dlmm` + `uuid` deps (Docker CI smoke `build:client`); re-synced stale `bun.lock`.
-- `bd5ee1e180` — agent: pin `drizzle-orm` tsconfig path to app-core's copy (fixes the 56 `@elizaos/agent#typecheck` errors).
-- `119f6151ce` — ui/test: stub `@capacitor/app` + `@elizaos/{capacitor-llama,app-wallet}` for vitest (fixes Tests workflow Client Tests).
-- `326c415a49` — biome: exclude vendored `packages/inference/llama.cpp` from `biome check .` (−773 errors).
-- `0c6b199475` — biome format + safe lint over `scripts/` (89 files, mechanical, no behavior change).
-- `2bf9b38803` — repaired `cerebras-nightly.yml` YAML (broken block scalar made GitHub fail to parse the workflow on every event).
+## Plan
+- Phase A (now): passive Monitor watching for driver/watcher death + sentinel + progress.
+- Phase B/C: branch on outcome. With max 1500 steps (~16% of 1 epoch), gate likely will NOT clear `format_ok ≥ 0.70`. Most likely path is Case 2 (iterate) — need to write v5 plan if confirmed.
 
-## In flight / open (no sub-agents available — director works directly)
-- `Tests` workflow Plugin Tests: `Cannot find package 'ethers'` from `packages/agent/src/api/registry-service.ts` when `plugins/app-training`'s test pulls in the `@elizaos/agent` barrel. May be fixed by the `bun.lock` re-sync; verifying on the next run.
-- `Docker CI Smoke` was timing out at 40min — plugin-wallet build was one cause (fixed); watch the next run.
-- Repo-wide `bunx biome check .` still ~822 errors (after llama.cpp ignore + scripts/ sweep) — `benchmarks/`, `test/`, plugins, test fixtures, machine-JSON. Stretch goal per WS-1; doing it in safe scoped batches (avoid colliding with concurrent automation; never the mass `--write` over 1.2k files).
-- The big implementation workstreams (WS-2 kernel parity / build matrix, WS-3 fork builds / model bundles / 0.6b fine-tune, WS-4 guided structured decode fast-forward / W7 streaming, WS-5 the duet harness / latency grind / emotion) — these need GPU + sub-agent capacity; the 0.6b APOLLO SFT was launched by a prior session (commit `37f94a1307`). Director cannot drive these without sub-agents; concurrent automation sessions are carrying them.
+## Key files
+- Driver log: /tmp/q35-0_8b-v4-launch.log
+- Watcher log: /tmp/q35-0_8b-v4-watcher.log
+- Watcher script: /tmp/nebius-finish-q35-0_8b-v4.sh
+- Checkpoints will land: packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/
 
-## Known-red CI (targets)
-- `Tests` workflow — Client/Plugin Tests fail: `@elizaos/capacitor-llama` / `@elizaos/app-wallet` / `@capacitor/app` resolution → root cause is the CI postinstall cascade ("No bun/install.js found" → `bun run postinstall` aborts before `ensure-workspace-symlinks.mjs`). Fix: make `.github/actions/setup-bun-workspace/action.yml` run `node scripts/ensure-workspace-symlinks.mjs && node scripts/ensure-native-plugins-linked.mjs` explicitly after postinstall (and tolerate a partial postinstall).
-- `@elizaos/agent#typecheck` — 56 errors from a split `drizzle-orm@0.45.2+<hash>` install (two physical dirs). Fix: dedup via root `overrides`/`resolutions`.
-- `Docker CI Smoke` — failing (investigate).
-- `Quality (Extended)` Format Check — was plugin-sql (fixed `ea05f7606b`); re-check.
-- `.github/workflows/cerebras-nightly.yml` — needs `CEREBRAS_API_KEY` secret; not a code fix.
-- Repo-wide `bunx biome check .` (~2.3k non-`src` errors) — stretch goal per WS-1.
+## Auth
+- `nebius iam whoami` confirmed OK at 14:32 PDT (Shaw / federation-e00google)
 
-## Credentials available (operator, 2026-05-12)
-- `HF_TOKEN` (write to `elizaos`) — provided by the operator out-of-band; do not commit it.
-- `CEREBRAS_API_KEY` (gpt-oss-120b, OpenAI-compatible) — provided by the operator out-of-band; do not commit it.
-- Nebius H200: needs interactive `nebius` CLI browser-SSO login (operator completes the browser step).
-- Local: RTX 5080 Laptop (sm_120, CUDA 12.8), Intel ANV iGPU (Vulkan), x86-64 AVX2/AVX-VNNI.
+## v5 plan sketch (if Case 2)
+- train_local.py has NO --max-steps; supports --epochs (float) and --max-samples
+- To get ~1500 steps inside 12h: would need driver patch (train_nebius.sh hardcodes --epochs 1) OR set ELIZA1_FULLCORPUS_UPSAMPLE=1 + plumb a smaller epoch count
+- Cleaner alternative: edit train_nebius.sh to read EPOCHS env var (default 1) and pass through
 
-## Director session 2026-05-12 — additional CI fixes (this run)
-- `01054138cd` — ui: removed duplicate `./events` export entry (`bun install` in the docker-ci-smoke container warned on it; biome `noDuplicateObjectKeys`).
-- `13e18fc036` — ui: biome-formatted `tsconfig.json` + `tsconfig.build.json`.
-- `c46f41be14` — biome format + safe lint over `test/` (350 files, mechanical).
-- `84a96d2d40` — biome format + safe lint over `packages/benchmarks/` + ignore vendored upstream benchmark trees (OSWorld, HyperliquidBench, loca-bench/gem+vis_traj, *.html).
-- Verified locally: `bun install --frozen-lockfile` is clean & stable under bun 1.3.13 (the repo's `packageManager`); installed bun 1.3.13 locally for parity. The committed `bun.lock` (re-synced in `7fca7ae565`) does not drift under 1.3.13 — the CI "bun.lock changed during dependency install" / docker-ci-smoke "bun install failed after 3 attempts" failures are CI-infra (stale `~/.bun/install/cache` restored via `restore-keys: bun-Linux-`, apt-mirror flakes, the bun npm-package placeholder binary) plus the now-fixed duplicate `./events` key — not a bad lockfile.
-- Verified: `@elizaos/agent#typecheck` and `@elizaos/app-core#typecheck` and `@elizaos/ui#typecheck` all pass clean locally after the drizzle-orm tsconfig pin.
+## Monitor
+- bt6nuc7hc — every-10min progress + terminal events (driver_dead | watcher_dead | sentinel)
 
-## Known-remaining (honest)
-- Repo-wide `bunx biome check .` ≈ 800 diagnostics left, mostly `noNonNullAssertion`/`noExplicitAny` warnings + a few `format`/`organizeImports` in `plugins/app-lifeops` (140), `plugins/plugin-social-alpha` (vendor code, lint deliberately skipped, its `biome.json` is missing `"extends": "//"` so it formats with tabs — needs a 1-line fix), `packages/inference/**` (102 — deferred per the plan: C2/C3/C4 are rewriting it, sweep last), `packages/app-core` (81), various small plugins. The per-package `turbo run lint` (the CI contract) is green. Repo-wide-clean is a documented WS-1 stretch goal.
-- The big implementation workstreams (WS-2 kernel parity / build matrix, WS-3 fork-built GGUFs + model bundles + 0.6b APOLLO fine-tune + drafters, WS-4 guided structured-decode fork fast-forward + W7 fused streaming decoders, WS-5 the two-agents duet harness + scientific latency grind + emotion fidelity) are GPU- and sub-agent-bound; the 0.6b APOLLO SFT was launched by a prior session (`37f94a1307`). This director run has no `Agent`/`Task` tool — it can only work directly; concurrent automation sessions on `develop` are carrying the heavy lanes.
-- CI runs on `develop` are frequently `cancelled` by the high commit rate from concurrent automation (concurrency groups) — clean terminal-state reads require a quiet window.
+---
 
-## HF-publish agent run (2026-05-12)
-- **Created/refreshed `elizaos/*` HF repos** (token has write to `elizaos`): bundle repos `eliza-1-{0_6b,1_7b,9b,27b,27b-256k,27b-1m}` (the `27b*` three new — SKELETON: honest "pending — blocked on fork-built GGUFs + hardware evidence" card + manifest skeleton w/ per-component lineage [Qwen3.6 + OmniVoice + Qwen3-ASR + Silero + Qwen3-Embedding] + `requiresFork`); raw-fine-tune repos `eliza-1-{0_6b,1_7b,9b,27b}-sft` (pending cards — auto-publish on a green SFT gate); fused-kernel single-GGUF repos `eliza-1-{0_6b,1_7b,9b,27b}-optimized` (renamed off the legacy `-milady-optimized` infix); DFlash drafter companion repos `eliza-1-{0_6b,1_7b,9b,27b}-drafter` (renamed off `-milady-drafter`); datasets `eliza-1-{training,0_6b-sft,sft-0_6b,evals}`.
-- **Published now (no faking, no gate bypass):** `elizaos/eliza-1-0_6b-sft` (dataset — refreshed: + structured_decode + voice_emotion + tool_use tasks, privacy-filtered, seed 20260511 / build commit `2b54f7b52a`); `elizaos/eliza-1-evals` (dataset — refreshed: + `eliza1_gates.yaml`/`.py` thresholds + training `MODELS_STATUS.md`; already carried baseline-vs-test-SFT bench tables + CPU/Vulkan/CUDA kernel-verify evidence + throughput); `eliza-1-{0_6b,1_7b,9b}` bundle repos already held the honest upstream-base GGUF + manifest + card (`releaseState: local-standin`, not `defaultEligible`) — unchanged.
-- **Pending + which gate:** the `base-v1` bundles (`eliza-1-{0_6b,1_7b}`) — orchestrator `--base-v1 --dry-run` exits `EXIT_RELEASE_EVIDENCE_FAIL` (16): `releaseState=weights-staged` (substitute bytes, no fork build), `final.{evals,kernelDispatchReports,platformEvidence,sizeFirstRepoIds}=false`, no `finetuned`/`sourceModels` — *correct refusal*, not a bug; `eliza-1-{9b,27b,27b-256k,27b-1m}` bundles — no staged bundle dir yet; `eliza-1-0_6b-sft` (weights) + the `eliza-1-0_6b` `recommended` channel — the 0.6b full-corpus APOLLO SFT (`checkpoints/eliza-1-0_6b-apollo-fullcorpus-1778563093`) has no `final/` checkpoint yet (~checkpoint-1000, no live trainer process observed; finalize agent's lane); the `-optimized`/`-drafter` GGUFs — fork build + KD distill + acceptance eval (GPU-bound).
-- **Auto-publish hook:** `packages/training/scripts/run_pipeline.py` stage 7 now auto-selects the publish channel (`recommended` if held-out text-quality gate green, else `base-v1`), passes `--base-v1`/`--metal-verification` to `scripts.publish.orchestrator`, emits a clear `published: <url>` / `blocked: <gate>` line; a red eval gate already aborts at stage 4b. New `bun run publish:eliza1` (= `packages/training/scripts/publish/publish_eliza1_all.py`) publishes everything-currently-publishable + prints PUBLISHED/PENDING with the per-tier orchestrator-dry-run verdict; `bun run publish:eliza1:dry-run` reports without pushing. New test `packages/training/scripts/publish/test_publish_eliza1_all.py`. `python3 -m pytest packages/training/scripts/{test_hf_publish.py,publish/,manifest/,test_publish_eliza1_dataset_candidate.py}` → 157 passed, 1 skipped.
-- **`milady-ai/*` → `elizaos/*` org transfer:** no-op — `milady-ai` has no Eliza-1 model/dataset repos. `scripts/hf-transfer-eliza1.sh --execute` ran cleanly (all "skipped: not found"; canonical `elizaos/eliza-1-<tier>` repos `repo create --exist-ok`). Patched the script for `huggingface_hub` ≥ 1.x (`hf` replaced `huggingface-cli`; auto-detects either).
+# CUDA-FINISH-3 status — Task #66 (append, 2026-05-12 ~14:50 PDT)
 
-## Merge/finalize coordinator run (2026-05-12, Phase 3.5–5)
-- **WS branches:** all 5 (`worktree-agent-{a50abd8b33a68adce,a1898332bbcc5aa36,ad0eaefda20a24576,aace9f0cd12f1c752,ac30ba6e1a8a3a7b8}`) are effectively inert scaffolding — the implementation lanes are committing **directly to `develop`** via the concurrent automation sessions (WS-1 hygiene/biome, WS-2 TBQ3_TCQ + android-x86_64 + ROCm/HIP harness, WS-3 MLX adapter + Cuttlefish/TPU verdicts + nebius training scripts + the H200 0_6b full-corpus run launch, WS-5 voice-duet harness + DuetAudioBridge, WS-4 guided-decode wiring/docs — all landed on `develop`). Only `worktree-agent-aace9f0cd12f1c752` (WS-4) ever got commits; merged (`dc95daed22`, `ffc445ed47`). A WS-branch watcher polls all 5 and will merge any that land commits.
-- **Coordinator commits to `develop`:** `62936f71ff` (duet-bridge.d.mts → fixes app-core tsc gate), `d66ff3faed` (register voice:duet in root package.json), `e3b00c6245` (ios-local-agent-transport variable import → fixes @elizaos/app-contacts#typecheck → unblocks `bun run verify`), `defe6624d9` (ui-smoke /apps/tasks route case — accept automations-shell OR tasks-view, fixes the `tasks` regression that broke 3 playwright tests), `9f8aedaa9d` (ui-smoke companion VRM orbit-drag `force: true` past the chat-dock overlay) — plus checkpoint commits parking concurrent agents' dirty WIP before merges.
-- **Verified green on `develop`:** `bunx tsc -p packages/app-core/tsconfig.json --noEmit`; `bun run verify` (turbo typecheck+lint, 300/300); `bun run build` (190/190); inference verify gates `kernel-contract`/`reference-test`/`cpu-dispatch-smoke`/`cuda-verify`+`cuda-verify-fused` (RTX 5080 sm_120)/`vulkan-verify`+`vulkan-verify-multiblock`+`vulkan-verify-fused` (Intel ARL)/`cpu-bench`; `python3 -m pytest packages/training/scripts/`; `voice:interactive --list-active`, `voice:duet --list-active`; `voice-duet.test.ts` wiring (3 tests), `voice-duet.e2e.test.ts` correctly skipped (realBackendPresent-gated); CI workflows `Quality (Extended)` / `Docker CI Smoke` / `Scenario Matrix` all green.
-- **Documented-gated (not regressions):** `eliza1_gates_collect.mjs` blocking-fails on `e2e_loop_ok` (no GPU-built bundle yet — WS-2/WS-3/H200, per the plan); `release:v1:prep` 13 ok / 6 fail (the 6 = per-tier gates collect, same reason); `bargein_latency`/`thirty_turn_endurance`/`dflash_drafter_runtime --bench` honestly report `available=false`/`needs-hardware`; `hip-verify` documented-no-AMD-HW.
-- **Still red (handed to concurrent automation):** the `Tests` CI workflow's Client Tests + Plugin Tests (the postinstall-symlink cascade — `@elizaos/capacitor-llama`/`@elizaos/app-wallet` resolution + `Cannot find package 'ethers'`; concurrent automation landed `5e94865d03` "ci: postinstall symlink safety-net" toward this); the `Tests` workflow also gets `cancelled` constantly by the high commit rate. Two `@elizaos/app#test:e2e` playwright tests still red after the `tasks` fix: `apps-utility-interactions.spec.ts:118` "companion app controls" (pre-existing: the companion VRM asset `vrms/<slug>.vrm.gz` 404s in the preview-server test env — recent `.vrm.gz` path change; `RED_ERROR_TEXT` flags `Failed to load VRM`) and `:217` "utility app-window routes" (flaky transient `[eliza][startup:init] wallet addresses TypeError: Failed to fetch` — different route each run; only flakes on re-runs, passed on the first full run).
+## What happened
+- Picked up the in-flight `linux-x64-cuda-fused` build (PID 3658604, started ~13:58 PDT, `-j 6`).
+- Build **failed at 52%** (~14:42 PDT, ~44 min in) — last line: `cmake --build ... failed with null`.
+- `null` exit means the cmake child was killed by signal, not a normal non-zero exit. No `nvcc fatal` / `cc1plus: error` in the log — build was making linear progress (43%→52% in the last ~10 min) through `fattn-vec-instance-*.cu.o`.
+- Root cause: environmental — CPU thermal throttle events at 14:43 + 11 GB free / 10.7 GB swap in use, plus a flapping docker container (`5deb1ecabff84…` restartCount 4112→4113 during the failure window) competing for scheduler attention. No kernel OOM-kill recorded for the build window in `journalctl -k` (host has `kernel.dmesg_restrict=1`, may be filtered).
+- Per handoff guard ("Do not attempt a second build without diagnostic confirmation"): stopped. Did **not** start the vulkan-fused build (which was gated on cuda-fused finishing). Did **not** run e2e_loop_bench (publish gate `voice_rtf ≤ 0.5` unreachable without the fused install).
 
-## FINALIZE-2 run (2026-05-12 ~06:00–… PDT)
+## Phases completed
+- Phase 1: build failed; diagnosis + post-mortem written (this entry + `packages/inference/reports/porting/2026-05-12/cuda-fused-build-failure.md` + `.log`).
+- Phases 2–7: blocked.
 
-- **Item 1 (worktree branch merges):** done — checked all `worktree-agent-*` branches; the few that are 1–4 commits ahead branched off May-9 `develop` (pre the big monorepo restructure, ~2.7M lines behind) with content already landed on `develop` directly (getMetrics on DflashLlamaServer, AOSP/TBQ wiring, W3-D CUDA validation). Merging them would revert the restructure. Nothing merged — confirmed inert.
-- **Item 2 (fork-side):** PARTIAL. Fixed the *build-breaking* bug in `elizaOS/llama.cpp`: the W4-B kernel merge added `GGML_OP_ATTN_SCORE_TBQ`/`GGML_OP_ATTN_SCORE_POLAR` to the `ggml_op` enum but never bumped `static_assert(GGML_OP_COUNT == 97)` (×2) nor extended `GGML_OP_NAME`/`GGML_OP_SYMBOL` → ggml-base failed to compile on *every* dflash build. Fixed (97→99, +2 NAME/SYMBOL entries), committed `9bb08843` on fork `main`, **tagged `v1.1.0-eliza`** and pushed; bumped the `packages/inference/llama.cpp` gitlink to `9bb08843` in the eliza repo + `build-llama-cpp-dflash.mjs` REF default + `aosp/compile-libllama.mjs` LLAMA_CPP_TAG → `v1.1.0-eliza`; `--target linux-x64-cpu --dry-run` exit 0; `make -C packages/inference/verify kernel-contract reference-test` pass. **NOT done (genuinely-remaining):** the forced-token fast-forward (server-task/server-context/llama-grammar splice path + fork test), the W7 streaming decoders (omnivoice-stream.cpp / omnivoice-asr-stream.cpp + the special-token-map probe), the spec-loop→EliVerifierEvent wiring. These are ~500+ lines of careful C++; left for a babysit-able fork PR — the build now works without them.
-- **Item 3 (rebuild linux-x64-cpu-fused llama-server):** DONE. After the ggml fix, `bun run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cpu-fused` builds clean; install dir `~/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/` has all sidecars (`libmtmd.so*`, `libllama.so*`, `libggml*.so*`, `libelizainference.so`, `llama-omnivoice-server`, etc.); `ldd llama-server` resolves everything via `$ORIGIN` rpath (no "not found"); `llama-server --help` runs.
-- **Item 4 (cloud scripts):** `train_nebius.sh` was already rewritten 2026-05-12 against the live CLI (`--parent-id`, `--resources-platform gpu-h200-sxm`, `--boot-disk-existing-disk-id`, subnet discovery, tier-aware FSDP wrap class, `SYNC_FULLCORPUS_SOURCES`/`TRAIN_FILE` knobs) — left as-is. `train_vast.sh`: made the FSDP wrap class tier-aware (`Qwen3DecoderLayer` for 0.6b/1.7b/4b, `Qwen3_5DecoderLayer` for the larger tiers) + sync_tree ships `data/final-eliza1-fullcorpus/` + `datasets/eliza1-sft-0_6b/` when present. `cloud/run-on-cloud.sh`: added a `build` task (build linux-x64-cuda-fused remotely + ldd self-check + build-evidence JSON) so it dispatches build/kernel-verify/bench/train. All `--dry-run` pass. **GPU jobs NOT dispatched**: `nebius iam whoami` still hangs on browser-SSO in this headless context (re-verified); no live `vastai` key set. Left queued + documented (unblock commands below).
-- **Item 5 (NDK graft for *-fused mobile):** NOT done — `compile-libllama.mjs` (the AOSP cross-build path) still doesn't run the omnivoice-fuse graft for `android-{arm64,x86_64}-*-fused`. The `*-fused` android targets exist in `build-llama-cpp-dflash.mjs`'s target list but the AOSP `compile-libllama.mjs` graft wiring is unwritten. Left for a babysit run with the Android NDK present.
-- **Item 6 (voice:duet baseline):** BLOCKED by a real CPU-kernel bug. With the cpu-fused build working (item 3), the duet harness now boots both runtimes, registers both bundles, drives engine.load() — and `llama-server` **segfaults during the warmup forward pass** when the eliza-1 bundle's `--cache-type-k qjl1_256 --cache-type-v q4_polar` are active (confirmed by a direct `llama-server -m text.gguf --cache-type-k qjl1_256 --cache-type-v q4_polar` → `Segmentation fault`). The bundle's own manifest documents `kernels.verifiedBackends.cpu.status = "fail"` (`evals/cpu_reference.json`). This is a WS-2 CPU SIMD attention-kernel issue (qjl1_256/q4_polar fused-attn path), not a harness bug — the harness reports `status:needs-run` with no fabricated numbers. A `--kv-cache-type f16` run was attempted to get a plain-cache baseline (in flight at handoff).
-- **Item 7 (Tests CI):** the `5e94865d03` postinstall-symlink safety-net is in place (`setup-bun-workspace/action.yml` runs `ensure-workspace-symlinks.mjs` + `ensure-native-plugins-linked.mjs` after `bun run postinstall`). Root-caused the remaining `Tests` failures: `Client Tests` "Failed to resolve entry for package '@elizaos/native-activity-tracker' / '@elizaos/plugin-shell'" — the native-plugin packages + plugin-shell ship no `dist/` in git, so vitest (which has no built dist in CI) can't resolve them via `import`/`default`. Fix: added `bun` + `development` export conditions → the TS source for every `packages/native-plugins/*` + `plugins/plugin-shell` that lacked them (23 package.json files; production `import`/`default`/`require` → dist unchanged). The `bun.lock changed during dependency install` CI error is infra (stale `~/.bun/install/cache`), not a bad lockfile (verified locally). Re-triggered; `Tests` runs still get `cancelled` constantly by the high commit rate from concurrent automation.
-- **Item 8 (flaky playwright tests):** both fixed. `:217` "utility app-window routes" — `[eliza][startup:init] wallet addresses TypeError: Failed to fetch`: `startup-phase-hydrate.ts`'s `isTransientOptionalFetchFailure` now also treats a raw `TypeError: Failed to fetch` (fetch rejecting before any HTTP response) during optional startup hydration as transient (don't surface as a console warning). `:118` "companion app controls" — VRM `.vrm.gz` 404 → "Invalid typed array length" inside three-vrm: `installDefaultAppRoutes` now mocks `**/vrms/*.vrm.gz` with a real bundled VRM (`packages/app/dist/vrms/eliza-1.vrm.gz`). Couldn't run the playwright suite locally (ports 2138/31337 held by a concurrent dev server) — relying on CI.
-- **Item 9 (0.6b APOLLO SFT):** the full-corpus run (`eliza-1-0_6b-apollo-fullcorpus-1778563093`) had died ~04:09 PDT mid-epoch (step ~1936; checkpoint-1000 = step 1000/8538 saved), process gone, log ends abruptly mid-progress-bar (OOM-kill / eviction, no traceback). Added `--resume-from-checkpoint` to `train_local.py` + `run_pipeline.py` and **restarted the run from checkpoint-1000** on the (now-idle) RTX 5080 in the background — `run_pipeline.py` auto-chains to bench/quant/bundle. `--skip-publish` (the operator/PUBLISH-#46 publishes when it completes & clears `format_ok ≥ 0.70`).
-- **Item 10 (final phase-5 + workflows):** in progress at handoff (see below).
+## Phases blocked
+- Phase 2 (`make cuda-verify-fused` + `cuda-hardware` against the fused install) — blocked: install dir does not exist.
+- Phase 3 (e2e_loop_bench cuda, the publish gate) — blocked: `discoverEngine` in `verify/e2e_loop_bench.mjs` requires `~/.eliza/local-inference/bin/dflash/linux-x64-cuda-fused/` for `--backend cuda`.
+- Phase 4 (vulkan-fused build) — gated sequentially after cuda-fused (per handoff: "two heavy builds at once will OOM the 16 GB box" — but the box is 31 GB; the constraint is still serial-only).
+- Phase 5 (e2e_loop_bench vulkan) — blocked.
+- Phase 6 (master report + HF push of fused-build numbers) — blocked.
+- Phase 7 (commit + final report) — partial: this STATUS + post-mortem will commit.
 
-### FINALIZE-2 commits on `develop`
-- `d17e43eaca` — bump llama.cpp fork to v1.1.0-eliza (gitlink + REF + LLAMA_CPP_TAG); train_vast tier-aware FSDP + corpus sync; run-on-cloud `build` task; ui-smoke `TypeError: Failed to fetch` transient fix.
-- `a90e04b85b` — dev export conditions (`bun`/`development` → src) for TS-only native plugins + plugin-shell; serve a real VRM in ui-smoke `installDefaultAppRoutes`.
-- `373ad2433f` — `--resume-from-checkpoint` for train_local.py + run_pipeline.py.
-- (fork `elizaOS/llama.cpp`) `9bb08843` on `main`, tag `v1.1.0-eliza` — ggml GGML_OP_COUNT static_assert + name/symbol arrays fix.
+## Untouched
+- `~/.eliza/local-inference/bin/dflash/linux-x64-cuda/` — reference-good non-fused install (forkCommit `a61c93aaa5`, `libggml-cuda.so.0.9.7` 473 MB, llama-bench numbers in `packages/training/reports/eliza1-harness-benchmark-2026-05-12.md`). Not modified.
+- `~/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/` — also intact.
+- `packages/inference/llama.cpp/build/linux-x64-cuda-fused/` — preserved (52% of `.o` files cached). A retry will resume incrementally in ~30 min, not the full ~90 min.
+- H200 SFT siblings (PID 3652060 + watcher 3652514) — healthy, ~step 77/9615.
 
-### Genuinely-remaining (hardware / credential / babysit gated)
-- **Fork guided-decode fast-forward + W7 streaming decoders + spec-loop→EliVerifierEvent** (item 2 b/c) — babysit-able C++ PR on `elizaOS/llama.cpp` off `v1.1.0-eliza`. The build works without it.
-- **CPU qjl1_256/q4_polar fused-attn segfault** (blocks item 6 CPU duet baseline) — `make -C packages/inference/verify cpu-reference` reproduces; needs a WS-2 SIMD-kernel debug pass. Once fixed: `bun run voice:duet --turns 20 --report packages/inference/reports/porting/2026-05-12/voice-duet-bench-eliza-1-0_6b.json`.
-- **NDK omnivoice-fuse graft for `*-fused` android targets** (item 5) — `bun run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-x86_64-cpu` with the graft wired + Android NDK installed.
-- **GPU cloud jobs** (item 4): `linux-x64-cuda-fused` build (~30 GB), full ggml-cuda kernel-verify, native-NVIDIA-Vulkan, ROCm `hip_verify` — once a live `nebius` login (`nebius iam whoami` works) or `vastai` key is available: `bash packages/training/scripts/cloud/run-on-cloud.sh --provider vast --task kernel-verify --gpu h200 --yes-i-will-pay` (or `--task build` / `--gpu a100` if no H200/H100). ROCm needs a `gfx*` box. The 9b/27b SFT model builds: babysat operator run per `reports/eliza1-0_6b-apollo-fullcorpus-2026-05-12.md` §9 (scripts ready, don't launch unbabysat).
+## Recommended next-agent action
+- See `packages/inference/reports/porting/2026-05-12/cuda-fused-build-failure.md` §"Recommended next-agent action".
+- Short version: stop the flapping docker container `5deb1ecabff84…`, wait for thermals to drop, then retry with `--jobs 3` + `nice -n 19 ionice -c idle`. The cmake incremental cache will pick up at ~52% and finish in ~30 min.
 
-## FINALIZE-2 — additional progress (continued 2026-05-12)
+# ACTION-PERSONALITY-BENCH status — Task #66 (append, 2026-05-12 ~15:25 PDT)
 
-- **Item 8 (flaky playwright):** DONE — `bun run --filter @elizaos/app test:e2e`'s `apps-utility-interactions.spec.ts` now passes repeatably (3 tests × 2 repeats = 6/6 green locally). `:217` "utility app-window routes" fixed by the shared `isTransientOptionalFetchFailure` (`packages/ui/src/utils/transient-fetch.ts`) now used in `startup-phase-hydrate.ts` AND `useChatCallbacks.ts` (incl. the outermost `[chat:init] failed to hydrate conversations` catch that had no transient-check). `:118` "companion app controls" fixed by mocking `**/vrms/**` (real `eliza-1.vrm.gz` + 1×1 PNGs) in `installDefaultAppRoutes` + benign-filtering the residual `Failed to load VRM` / `[VrmEngine] Failed to load emote` / bare `Failed to load resource: 404` console noise (the companion emote `.glb` files 404 in the preview server — dist ships `.glb.gz`, catalog paths are `.glb`; that's orthogonal to a controls-interaction test).
-- **Item 7 (Tests CI):** root-caused the real `Client/Plugin Tests` failure — `Failed to resolve entry for package "@elizaos/skills"` (`bun run build:core` builds core/shared/cloud-sdk/cloud-routing/vault/plugin-local-inference but NOT `@elizaos/skills`, which ships no committed dist). Added `bun`/`development` → `./src/index.ts` to `@elizaos/skills` (commit `ab1dc779`) on top of the native-plugins + plugin-shell dev conditions (commit `a90e04b8`). The `5e94865d03` postinstall-symlink safety-net is verified in place. The `bun.lock changed during dependency install` log line is a `::error::` annotation that the job actually recovers from (`git diff --quiet` passes — the lockfile doesn't change) — not the real failure. **Tests CI still couldn't reach a clean terminal state during this run** — the high commit rate from concurrent automation cancels every Tests run within minutes, and the one run that did reach the test jobs (`ef52d7bd`, predating the skills fix) sat with Server Tests in_progress for 45+ min. The fixes are pushed; a quiet window is needed to confirm green.
-- **Item 10 (phase-5):** `bun run verify` = **310/310** ✅; `bun run build` = **190/190** ✅; `bun run test` — found one failure (`scripts/eliza1-gates-yaml.test.ts > covers every manifest tier`: the new `eliza-1-0_8b` tier was added to `ELIZA_1_TIERS`/the publish manifest but never got a `tiers.0_8b:` block in `eliza1_gates.yaml`) — **fixed** (commit `684a9167`, added the 0_8b gate block); `@elizaos/app-core` test then = **973 passed / 13 skipped / 0 failed** ✅. `bun run --filter @elizaos/app test:e2e` (ui-smoke) — the two known-flaky tests now green (item 8).
-- **Item 6 (voice:duet) — re-confirmed BLOCKED:** with the cpu-fused build working, `voice:duet --turns 20` boots both runtimes, registers both bundles, drives engine.load(), and `llama-server` **segfaults during the warmup forward pass** when the bundle's `--cache-type-k qjl1_256 --cache-type-v q4_polar` are active. Confirmed by `llama-server -m text.gguf --cache-type-k qjl1_256 --cache-type-v q4_polar` → `Segmentation fault`. Plain `llama-server -m text.gguf` works fine. The bundle's own manifest declares `kernels.verifiedBackends.cpu.status = "fail"`. The `--kv-cache-type f16` harness override doesn't take effect (the catalog default wins, so no plain-cache baseline either). This is a WS-2 CPU SIMD attention-kernel bug, not a harness bug.
+## What happened
+- Picked up the two deferred cells in `packages/training/reports/eliza1-harness-benchmark-2026-05-12.{md,json}` for the test-SFT 0_6b row: action-selection accuracy + personality PASS%.
+- Local llama-server stood up against `final-Q4_K_M.gguf` on port `19980` via the non-fused `linux-x64-cuda` install (`-c 32768 -ngl 99`, no-think chat template at `/tmp/chat_template_nothink.jinja`). 16 GB GPU, peak ~5 GB used.
+- **Action-selection: 15.6% (5/32)** — vitest `test/vitest/real.config.ts` + `packages/app-core/test/benchmarks/action-selection.real.test.ts`, 32-case curated `ELIZA_BENCHMARK_FILTER` covering every action surface. The 0_6b test-SFT defaults to REPLY for every tool-action prompt (`llm_chose_reply` on all 27 failures); the 5 chat/negative cases pass cleanly.
+- **Personality: 33.3% (2/6 PASS, 2 FAIL, 2 NEEDS_REVIEW)** — `scripts/personality-bench-run.mjs` profile `eliza-runtime`, 6 stratified scenarios (1 per bucket + 1 extra shut_up), Cerebras `gpt-oss-120b` judge. Cut from 25 scenarios for budget (per-scenario rate ~2.8 min; 25 would have run ~70 min). Judged the captured trajectories separately via `/tmp/judge-partial.mjs`.
+- Patched `scripts/personality-bench-run.mjs` to honour new env knobs `ELIZA_PERSONALITY_RUNTIME_OPENAI_BASE_URL` / `_API_KEY` / `_MODEL` so the agent under test can run on a local llama-server while the parent process keeps Cerebras as the judge. Default behaviour (all-Cerebras for both) preserved.
 
-### FINALIZE-2 commits on `develop` (continued)
-- `684a9167` — add the 0_8b tier to eliza1_gates.yaml (fixes `bun run test`'s `covers every manifest tier`).
-- `ab1dc779` — dev export condition for `@elizaos/skills`.
-- `ef52d7bd` — allowlist APOLLO classes (GradientProjector / APOLLOAdamW) for torch.load on `--resume-from-checkpoint` (fixes the SFT resume `UnpicklingError`).
-- `a7d6bc02` — document the run-on-cloud `build` task.
-- `87fb04b1` — STATUS update.
-- `9aca0705` — shared `isTransientOptionalFetchFailure`; robust ui-smoke VRM-mock path.
-- `1a8e6310` — ui-smoke: stabilize companion-controls test (mock vrms/* + benign-filter VRM/animation 404 noise).
+## Artifacts
+- Master report patched: `packages/training/reports/eliza1-harness-benchmark-2026-05-12.{md,json}` (test-SFT 0_6b row, footnote ², still_pending updated).
+- Per-bench raws committed: `packages/training/reports/action-selection-eliza1-0_6b-2026-05-12.{json,-report.md}` and `packages/training/reports/personality-bench-eliza1-0_6b-2026-05-12.json`.
+- HF dataset push: `elizaos/eliza-1-evals` under `bench/harness-2026-05-12/` — commit `https://huggingface.co/datasets/elizaos/eliza-1-evals/commit/873ae751b2ba6ab821b9fa9f9436c384dca1f7ce`. Includes the action-selection log + the full per-scenario trajectory dump for personality.
+- Local commit: `7ef890c688` on `develop`, pushed to `origin/develop`.
 
-### Final gate/workflow state (at handoff)
-- `bun run verify` 310/310 ✅ · `bun run build` 190/190 ✅ · `bun run test` (`@elizaos/app-core`) 973 ✅ · ui-smoke `apps-utility-interactions` 6/6 ✅ · `pytest packages/training/scripts/` 552 ✅ · `make -C packages/inference/verify kernel-contract reference-test` ✅ · `build-llama-cpp-dflash.mjs --target linux-x64-cpu(-fused) --dry-run` exit 0 ✅ · `linux-x64-cpu-fused` build → ldd-clean, `--help` runs ✅.
-- CI: `Quality (Extended)` / `Docker CI Smoke` / `Scenario Matrix` reliably green. `Tests` — fixes pushed, but couldn't get a clean terminal read (concurrent-commit cancel storm). `Training Stack` runs queue behind the commit rate. `CodeQL` green.
-- 0.6b APOLLO SFT (`eliza-1-0_6b-apollo-fullcorpus-1778563093`) — RUNNING on the RTX 5080, resumed from checkpoint-1000, at ~step 1220/8538 (~13 s/it on the longer combined-corpus rows, ~27 h ETA). `run_pipeline.py` auto-chains bench/quant/bundle on completion; HF publish is `--skip-publish` (operator/PUBLISH-#46 publishes when it clears `format_ok ≥ 0.70`).
+## Still owed (downgraded from "deferred" to "budget-capped")
+- Full 76-case action-selection run on an idle host (this run did 32 cases). The 12 cases that hit prompt-overflow (>32k tokens) under our setup might or might not change the headline number; the bottleneck is the 0_6b never producing a tool_call, so expect the same pattern with more samples.
+- Full 200-scenario personality run on an idle host (this run did 6). Stratified bucket coverage is intact at small-n, but the headline 33.3% has ±19 pp noise at n=6 — the full-corpus 0_6b SFT (still in flight) is the more useful target anyway.
+- Sibling agents (#64 CUDA-FINISH-3 / #65 H200-MONITOR-3) untouched.
 
-### Genuinely-remaining (hardware / credential / babysit gated) — unblock commands
-1. **Fork guided-decode fast-forward + W7 streaming decoders + spec-loop→EliVerifierEvent** (item 2 b/c): a babysit-able C++ PR on `elizaOS/llama.cpp` off tag `v1.1.0-eliza`. The build works without it.
-2. **CPU qjl1_256/q4_polar fused-attn segfault** (blocks the CPU duet baseline, item 6): reproduce with `~/.eliza/local-inference/bin/dflash/linux-x64-cpu-fused/llama-server -m <text.gguf> --cache-type-k qjl1_256 --cache-type-v q4_polar` (or `make -C packages/inference/verify cpu-reference`); needs a WS-2 SIMD-kernel debug pass. Then: `bun run voice:duet --turns 20 --report packages/inference/reports/porting/2026-05-12/voice-duet-bench-eliza-1-0_6b.json`.
-3. **NDK omnivoice-fuse graft for `*-fused` android targets** (item 5): wire `prepare.mjs`'s graft into `aosp/compile-libllama.mjs`'s `android-{arm64,x86_64}-*` cross-builds; verify with `--dry-run` + (with NDK) `bun run packages/app-core/scripts/aosp/compile-libllama.mjs --target android-x86_64-cpu`.
-4. **GPU cloud jobs** (item 4): once a live `nebius` login (`nebius iam whoami` works) or `vastai` key is available — `bash packages/training/scripts/cloud/run-on-cloud.sh --provider vast --task build --gpu h100 --yes-i-will-pay` (linux-x64-cuda-fused); `--task kernel-verify --gpu h200` (ggml-cuda kernel-verify + native-NVIDIA-Vulkan; A100 if no H200/H100); ROCm `hip_verify` needs a `gfx*` box. The 9b/27b SFT model builds: babysat operator run per `reports/eliza1-0_6b-apollo-fullcorpus-2026-05-12.md` §9.
-5. **`Tests` CI confirmation**: needs a quiet window with no concurrent commits to let a `Tests` run reach a terminal state and confirm the `@elizaos/skills` + native-plugins dev-condition fixes resolve Client/Plugin Tests.
+# H200-MONITOR-4 status — Task #65 (append, 2026-05-12 22:36 UTC)
+
+## CRITICAL: watcher 3652514 self-terminated due to expired nebius CLI auth
+
+### Sequence of events
+- 2026-05-12T20:51:13Z — v4 driver (3652060) + watcher (3652514) armed.
+- 2026-05-12T22:17:56Z — nebius CLI federation token expired (`expires_at: 1778624276` in `~/.nebius/credentials.yaml`).
+- 2026-05-12T22:28:02Z — watcher logged `instance eliza-train-h200-0_8b-v4 gone — full's trap already cleaned up. exiting.` and exited.
+- The watcher's `instance_up()` function silently swallows nebius CLI errors via `2>/dev/null` and returns `'no'` on any failure. Combined with auth-token expiry → false-positive teardown signal.
+- I verified the VM is **still alive** via direct SSH at 22:34Z:
+  - Hostname `computeinstance-e00j1mt79qhd4d3dds`, IP `89.169.122.196`
+  - `nvidia-smi`: NVIDIA H200, 22.8/143.8 GiB used, 14% util
+  - Remote log progressing; driver still tail-polling via SSH every 60s.
+- Driver (3652060) still alive at 22:34Z, step 233/9615 (~19s/iter), faster than initial projection.
+
+### Why this is dangerous
+- VM is billing (~$3-4/h class) but there is **no watcher** to teardown if the driver dies.
+- I cannot re-auth `nebius` CLI non-interactively — it requires browser OAuth federation (chrome already opened at 13:42 with an OAuth URL, evidently never completed).
+- I cannot run `nebius compute v1 instance delete` myself for the same reason.
+
+### What I will do next
+1. Re-arm a fixed watcher (`/tmp/nebius-finish-q35-0_8b-v4b.sh`) that uses **SSH-based VM liveness** instead of nebius CLI list output, so it doesn't get fooled by transient auth/network blips. Note: this watcher CANNOT execute teardown (no auth) — but it can:
+   - Detect driver death + VM-still-up
+   - Loudly notify (log + write to STATUS)
+   - Try the nebius teardown anyway (will fail but logs the attempt)
+2. Continue Phase A active polling for driver progress.
+3. **If driver dies before nebius re-auth**, the user needs to manually run nebius login then `bash packages/training/scripts/train_nebius.sh teardown` with `NEBIUS_VM_NAME=eliza-train-h200-0_8b-v4`.
+
+### Ask for the user (when they read this)
+- Please complete the nebius OAuth flow at the chrome tab from PID 3643529 (URL has `state=-1ejvo6kAZU2KcoTfKM40hNdP6vbJzHK`, expired by now — likely needs fresh `nebius iam get-access-token`).
+- After re-auth, please run `nebius compute v1 instance list --parent-id project-e00kfz6cpr00q21z892vec --format json` to verify the VM is the only one running, and let me know.
+
+### Direct-action affordance until re-auth
+If billing emergency hits before re-auth, the driver itself can be killed and the training-loss preserved by SSH-killing the remote `run_pipeline.py` cleanly:
+```
+ssh ubuntu@89.169.122.196 "tmux send-keys -t elizatrain C-c; sleep 10; tmux send-keys -t elizatrain C-c"
+```
+Then the user must still teardown the VM via nebius CLI after re-auth.
+
+# CUDA-FINISH-4 status — Task #64 follow-up (append, 2026-05-12 ~16:55 PDT)
+
+## What landed
+
+### Item 3 — linux-x64-cuda-fused build (RTX 5080 sm_120, CUDA 12.8)
+- Built from a clean dir against fork commit `a61c93aaa5` + omnivoice pin `38f824023d12` with `CUDACXX=/usr/local/cuda-12.8/bin/nvcc PATH=/usr/local/cuda-12.8/bin:$PATH … --jobs 3`. `-j 6` got OOM'd by the kernel at the `fattn.cu` long-pole (`failed with null` = SIGKILL by OOM-killer); `-j 3` survived ~85 min wall-clock.
+- Install: `~/.eliza/local-inference/bin/dflash/linux-x64-cuda-fused/`. CAPABILITIES.json `publishable: true`, `missingRequiredKernels: []`, all 8 kernels true (dflash, turbo3, turbo4, turbo3_tcq, qjl_full, polarquant, lookahead, ngramDraft). omnivoice-fuse symbol-verify `llama=0 omnivoice=10 abi=23`.
+- `make cuda-verify-fused`: 1920/1920 PASS on RTX 5080 sm_120, max diff 5.07e-07 → `packages/inference/verify/logs/cuda-verify-fused-fusedbuild-rtx5080-2026-05-12.log`.
+- `make cuda-hardware` against the install: 6/6 fixture sets PASS (`turbo3 / turbo4 / turbo3_tcq / qjl / polar / polar_qjl / fused_attn_qjl_tbq 1920/1920`). The optional `runtime_graph_smoke` step requires `llama-bench` (not in the fused-target list — non-blocking tooling gap). Log: `cuda-hardware-fusedbuild-rtx5080-2026-05-12.log`.
+
+### Item 4 — e2e_loop_bench cuda 1-turn against the fused install
+- voice_rtf **0.4255** ≤ 0.5 → **PASS** publish gate.
+- tg 64.82 tok/s, first_token 43.3 ms, dflash 12/12 accepted, peak RSS 2340 MB, total turn 3073.6 ms, e2eOk true.
+- Report: `packages/inference/reports/porting/2026-05-12/e2e-loop-cuda-2026-05-12.json`.
+
+### Item 5 — linux-x64-vulkan-fused build + e2e_loop_bench vulkan
+- Build: ~3 min wall (Vulkan is much lighter than CUDA — no per-arch SASS, just SPIR-V baked in). Installed `~/.eliza/local-inference/bin/dflash/linux-x64-vulkan-fused/`. CAPABILITIES.json `publishable: true`, `missingRequiredKernels: []`, fused SPIR-V baked in (`eliza_fused_attn_qjl_tbq_data` + `eliza_fused_attn_qjl_polar_data` symbols).
+- `make vulkan-verify-fused` on Intel ARL iGPU (Mesa ANV 25.2.8): 6912 outputs PASS across 4 fixture sets (fused_attn_qjl_tbq 1920+1536 + fused_attn_qjl_polar 1920+1536), max diff 6.26e-07.
+- `e2e_loop_bench vulkan` 1-turn: e2eOk true, dflash 31/31, but iGPU performance keeps voice_rtf at **1.7269** → **FAIL** publish gate on iGPU class. The gate is a discrete-GPU target. tg 12.13 tok/s, first_token 493 ms, peak RSS 1370 MB. Report: `packages/inference/reports/porting/2026-05-12/e2e-loop-vulkan-2026-05-12.json`.
+
+## Docs + HF push
+- `packages/training/reports/eliza1-harness-benchmark-2026-05-12.{md,json}` — added a new "Fused-build e2e_loop_bench" section + structured `fused_build_e2e_loop_bench_2026_05_12` field in JSON.
+- `packages/inference/verify/PLATFORM_MATRIX.md` — flipped `linux-x64-cuda-fused` + `linux-x64-vulkan-fused` rows to verified-here with measured numbers.
+- `packages/inference/verify/kernel-contract.json` — both fused targets bumped to `runtime-ready` / `runtime-ready` / `verified` (kernelVerification / runtimeDispatch / deviceRun). nextGate set to "additional sm classes" (CUDA) and "discrete Vulkan card" (Vulkan).
+- HF dataset push: `elizaos/eliza-1-evals` — 8 files (e2e-loop-cuda + e2e-loop-vulkan + cuda-verify-fused log + cuda-hardware log + vulkan-verify-fused log + PLATFORM_MATRIX.md + kernel-contract.json + harness-benchmark.md). Final HF commit: `2333dc2b5af2f8b5c940ffd75a75c0aeae88ddc6`.
+
+## Sibling agents — UNTOUCHED
+- H200-MONITOR-4 (Task #65): VM 89.169.122.196 still up, driver 3652060 still training, fixed watcher being armed by sibling.
+- ACTION-PERSONALITY-BENCH (Task #66): commit `7ef890c688` already on origin/develop.
+
+## Still owed (post this run)
+- Re-run `e2e_loop_bench --backend vulkan` on a discrete Vulkan-mode card (RDNA3 RX 7800 / Ada RTX 4080 in pure-Vulkan / Intel BMG) for a Vulkan voice-rtf number under the discrete-GPU class.
+- Re-run cuda-fused on additional sm classes (sm_89 Ada / sm_90 H100 / sm_100 datacenter Blackwell) to confirm no arch regression in `CMAKE_CUDA_ARCHITECTURES=90a;90;89;86;80;100;120a`.
+- `llama-bench` is not in the fused-target list — adding it would unblock `runtime_graph_smoke.sh --gen-check` against the fused install. Non-blocking; the cuda-verify-fused parity + e2e_loop_bench publish-gate pass cover the substance.
+
+
+# H200-MONITOR-4 status — UPDATE 2026-05-13 03:36 UTC
+
+## v4 RUN TERMINATED at step ~1241 due to driver's built-in 6h watchdog
+
+### What happened
+- 2026-05-13T03:33:34Z (6h after `run_remote` started polling): the driver hit `scripts/train_nebius.sh` line 439 cap: `if [ "$i" -gt 360 ]; then echo "ERROR: still running after 6h — bailing"; return 1; fi`.
+- `run_remote` returned 1 → bash's `set -euo pipefail` aborted the `full` flow → `fetch` was SKIPPED → EXIT trap ran only `teardown`.
+- The EXIT trap's `teardown` function (line 544) called `instance_id_by_name` → `nebius compute v1 instance list` → expired-auth hang → I had to kill the driver process (3652060) manually at 03:35:51Z.
+- **Final remote step: 1003** (per remote `run_eliza-1-0_8b-apollo-fullcorpus-h200-1778619044.log`).
+- Note: the local launch.log showed step 1241 in the local tail — that's because my Ctrl-C-via-tmux send-keys at 03:34:48Z killed the python training between the 1003 eval finish and the next eval/save. Eval at step 1000 finished: **eval_loss=1.145 at epoch 0.104**.
+
+### Artifacts on remote VM (89.169.122.196 still up)
+- `/opt/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-500/` (3.4 GB, eval done)
+- `/opt/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-1000/` (eval done, eval_loss=1.145)
+- No checkpoint-1500 (only got to step 1241ish before my Ctrl-C; would have needed step 1500).
+- README.md, environment.json present.
+
+### Manual rsync fetch in progress
+- PID 4024662: `rsync -avhz ubuntu@89.169.122.196:/opt/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/` → local.
+- Network speed thrashing 300-1500 KB/s. At ~500 KB/s sustained, the two 3.4GB checkpoints = ~7 GB total → **~4h fetch time worst case**.
+- Log: `/tmp/q35-0_8b-v4-manual-fetch.log`
+
+### CRITICAL: VM is up and billing, nebius CLI auth still broken
+- VM `eliza-train-h200-0_8b-v4` (instance + boot disk) is still active. GPU idle (0%) since 03:34:48Z, but VM compute is billing at ~$3-4/h.
+- Driver's EXIT trap teardown hung indefinitely on expired-token `nebius compute v1 instance list`.
+- My fallback watcher (`/tmp/nebius-finish-q35-0_8b-v4b.sh`) cannot teardown either (same auth issue).
+- **USER ACTION REQUIRED**: complete nebius OAuth federation (browser at PID 3643529 from 13:42Z, expired URL — likely needs `nebius iam get-access-token` triggered fresh). Then run:
+  ```
+  export NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec
+  cd /home/shaw/milady/eliza/packages/training
+  NEBIUS_VM_NAME=eliza-train-h200-0_8b-v4 bash scripts/train_nebius.sh teardown
+  ```
+
+### State of training quality at the artifact step
+- ~1000 steps done out of 9615 (10.4% of 1 epoch).
+- eval_loss 1.145 — meaningful but very early. Gate's format_ok ≥ 0.70 threshold cannot be evaluated without the SFT pipeline running its eval gate (`run_pipeline.py` post-train eval). Since we hit the driver's 6h cap before SFT completed and triggered the eval gate, **no gate_report.json was produced**.
+- This is a **Case 2 outcome** per the agent brief (partial checkpoint, no gate_report).
+
+### Decision: relaunch as v5 with `--max-steps` is NOT yet possible
+- Reasons:
+  - Need nebius auth restored before any new VM can be provisioned.
+  - `train_local.py` has no `--max-steps` flag (only `--epochs` / `--max-samples`); patching `train_nebius.sh` to plumb max-steps requires source edits to `scripts/run_pipeline.py` too.
+  - Bigger structural problem: the driver hit 6h not 12h. The `train_nebius.sh` 6h cap is hardcoded at line 439. A successful 1500-step run within the cap needs either: shorter eval (saw 50min eval at step 500), smaller test set, or per-step rate above ~6 it/s.
+- Recommended v5 plan documented separately in v5 below.
+
+## Cleanup state
+- Driver (3652060): killed at 03:35:51Z
+- Watcher v4 (3652514): self-terminated at 22:28:02Z (false positive)
+- Watcher v4b (3768788): killed at 03:36:11Z (would fail teardown)
+- Manual rsync (4024662): in progress
+- v4 launch.log: still on disk at `/tmp/q35-0_8b-v4-launch.log` for forensics
+- VM `eliza-train-h200-0_8b-v4`: **STILL UP, NEEDS USER MANUAL TEARDOWN**
+
+## v5 plan (post user re-auth)
+1. Patch `train_nebius.sh` line 439 to honor an `ELIZA_REMOTE_RUN_TIMEOUT_H` env var (default 12 to match watcher).
+2. Patch `scripts/run_pipeline.py` (or `train_local.py`) to honor `MAX_STEPS` env (the trainer.Trainer supports `max_steps` kwarg).
+3. Reduce eval frequency: change `save_steps` from 500 → 1500 (so single mid-run eval doesn't burn 50 min). OR keep save_steps=500 but reduce test set size.
+4. Relaunch v5 with `MAX_STEPS=1500 ELIZA_REMOTE_RUN_TIMEOUT_H=12 NEBIUS_VM_NAME=eliza-train-h200-0_8b-v5 bash scripts/train_nebius.sh full --registry-key qwen3.5-0.8b ...`
+5. Create proper v5 watcher with SSH-based liveness (use `/tmp/nebius-finish-q35-0_8b-v4b.sh` as template).
+
+I am DONE for this agent run — handing off to next H200-MONITOR or to user for nebius re-auth.
+
+
+# H200-MONITOR-4 — FINAL UPDATE 2026-05-13 05:14 UTC
+
+## Manual rsync fetch COMPLETED
+- Both checkpoints fully local at `/home/shaw/milady/eliza/packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/`
+- `checkpoint-500/`: 3.3 GB (model.safetensors 1.5GB + optimizer.pt 2.0GB + tokenizer/config)
+- `checkpoint-1000/`: 3.4 GB (same shape)
+- Total fetched: 7.14 GB at ~1.3 MB/s avg (1h35m wall)
+- rsync log: `/tmp/q35-0_8b-v4-manual-fetch.log` (PID 4024662 exited cleanly)
+
+## Training loss curve from trainer_state.json
+- **step 490 → 500**: train loss 8.95 → 8.82, eval_loss=1.255 (eval ran 37 min)
+- **step 990 → 1000**: train loss 7.22 → 7.06, eval_loss=1.145 (eval ran 15 min, eval cache warm)
+- LR schedule: linear warmup from 1e-5, currently 9.86e-6 at step 1000
+- grad_norm 83→100→125→144 (volatile, expected at very early epoch)
+- Conclusion: model is clearly learning, but eval_loss=1.145 at 10.4% of epoch 1 is too early for a quality `format_ok ≥ 0.70` gate clear. Loss curve trajectory looks sane and matches the 0.6b reference.
+
+## Gate eval: NOT RUN
+- The pipeline's gate eval (`run_pipeline.py --eval-mode full`) only runs AFTER training completes. We hit the driver's 6h cap mid-training. No `gate_report.json` exists.
+- Per Case 2 in the brief, this is a "partial checkpoint, no gate_report" outcome → iterate (not publish).
+
+## v5 cannot start until USER re-auths nebius
+
+### Steps for user
+1. `~/.nebius/bin/nebius iam get-access-token` (opens browser, complete federation OAuth)
+2. `~/.nebius/bin/nebius iam whoami` (verify)
+3. Teardown v4 VM:
+   ```
+   export PATH="$HOME/.nebius/bin:$PATH"
+   export NEBIUS_PROJECT_ID=project-e00kfz6cpr00q21z892vec
+   cd /home/shaw/milady/eliza/packages/training
+   NEBIUS_VM_NAME=eliza-train-h200-0_8b-v4 bash scripts/train_nebius.sh teardown
+   ```
+
+### v5 patch required first (before relaunch)
+1. **Patch `scripts/train_nebius.sh` line 439** — raise the 6h hardcoded cap to `${ELIZA_REMOTE_RUN_TIMEOUT_H:-12}*60`. Without this, any retry will hit the same 6h wall.
+2. **Patch the EXIT trap (line 582)** — change `teardown || true` to `fetch || true; teardown || true` so a 6h-cap bail still pulls partial checkpoints back before attempting nebius teardown. Right now `set -euo pipefail` causes `fetch` to be skipped after `run_remote` returns 1.
+3. **Patch `instance_up()` in watcher scripts** — don't swallow nebius CLI failures as "no" (the v4 watcher bug). Use SSH-based liveness as primary, nebius CLI as confirmation only.
+4. Consider plumbing `MAX_STEPS` from env → `run_pipeline.py` → `train_local.py` for budget-bound runs (1500 steps in 12h target).
+
+### v5 launch (after patches + auth)
+```
+NEBIUS_VM_NAME=eliza-train-h200-0_8b-v5 \
+  ELIZA_REMOTE_RUN_TIMEOUT_H=12 \
+  bash packages/training/scripts/train_nebius.sh full \
+  --registry-key qwen3.5-0.8b \
+  --run-name eliza-1-0_8b-apollo-fullcorpus-h200-v5-$(date +%s)
+```
+Then arm a fresh watcher copied from `/tmp/nebius-finish-q35-0_8b-v4b.sh` (SSH-based liveness).
+
+## Sibling agents NOT TOUCHED
+- CUDA-FINISH-3's failed cuda-fused build (no retry from me).
+- ACTION-PERSONALITY-BENCH's local llama-server (3712834) — left running.
+
+## Files for next agent
+- `/home/shaw/milady/eliza/.swarm/STATUS.md` — this file (state of affairs)
+- `/tmp/URGENT-NEBIUS-TEARDOWN-NEEDED.md` — user-facing teardown instructions
+- `/tmp/q35-0_8b-v4-launch.log` — full v4 driver log
+- `/tmp/q35-0_8b-v4-watcher.log` — original (broken) v4 watcher log
+- `/tmp/q35-0_8b-v4b-watcher.log` — fallback watcher log
+- `/tmp/q35-0_8b-v4-manual-fetch.log` — manual rsync log
+- `/tmp/nebius-finish-q35-0_8b-v4b.sh` — SSH-based watcher template for v5
+- `packages/training/checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/` — both partial checkpoints (500 + 1000) with full trainer state

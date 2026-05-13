@@ -13,7 +13,7 @@
  * be swapped without changing any optimizer code.
  */
 
-import type { LlmAdapter, OptimizationExample, PromptScorer } from "./types.js";
+import type { LlmAdapter, PromptScorer } from "./types.js";
 
 interface ScorerOptions {
   /** Cap on examples scored per call. Defaults to all examples. */
@@ -89,10 +89,7 @@ function parseJsonObject(text: string): Record<string, unknown> | null {
   }
 }
 
-function readLegacyField(
-  text: string,
-  fieldName: string,
-): string | undefined {
+function readLegacyField(text: string, fieldName: string): string | undefined {
   const lineMatch = new RegExp(`(^|\\n)${fieldName}:\\s*([^\\n]+)`, "i").exec(
     text,
   );

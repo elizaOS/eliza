@@ -1,5 +1,4 @@
-import { useApp } from "@elizaos/ui";
-import { Button } from "@elizaos/ui";
+import { Button, useApp } from "@elizaos/ui";
 import { useEffect, useRef } from "react";
 import { useWhatsAppPairing } from "../hooks/useWhatsAppPairing.js";
 

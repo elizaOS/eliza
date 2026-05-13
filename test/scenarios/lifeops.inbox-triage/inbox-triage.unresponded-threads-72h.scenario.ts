@@ -15,12 +15,12 @@
 
 import type { AgentRuntime } from "@elizaos/core";
 import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
-import { judgeRubric } from "../_helpers/action-assertions.ts";
+import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
 } from "../../../plugins/app-lifeops/src/lifeops/sql.ts";
-import { LifeOpsRepository } from "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkStaleThreadsSurfaced(ctx: ScenarioContext): string | undefined {
   const reply = String(ctx.turns?.[0]?.responseText ?? "").toLowerCase();
@@ -28,8 +28,15 @@ function checkStaleThreadsSurfaced(ctx: ScenarioContext): string | undefined {
   // The 7-day thread (most stale, recruiter offer) and the 72h thread
   // (vendor proposal) MUST appear. The 24h thread (just-sent intro)
   // should NOT (too fresh by user's 72h threshold).
-  const staleHits = ["recruiter", "offer", "interview", "vendor", "proposal", "pricing"];
-  const tooFresh = ["intro", "introduction", "this morning", "today"];
+  const staleHits = [
+    "recruiter",
+    "offer",
+    "interview",
+    "vendor",
+    "proposal",
+    "pricing",
+  ];
+  const _tooFresh = ["intro", "introduction", "this morning", "today"];
   const sawStale = staleHits.some((s) => reply.includes(s));
   if (!sawStale) {
     return `Stale threads (>72h unresponded) not surfaced. Reply: ${reply.slice(0, 400)}`;
@@ -41,13 +48,7 @@ export default scenario({
   id: "inbox-triage.unresponded-threads-72h",
   title: "Stale unresponded threads (>72h) surface in triage",
   domain: "lifeops.inbox-triage",
-  tags: [
-    "lifeops",
-    "inbox-triage",
-    "stale-threads",
-    "followup",
-    "freshness",
-  ],
+  tags: ["lifeops", "inbox-triage", "stale-threads", "followup", "freshness"],
   isolation: "per-scenario",
   requires: {
     plugins: ["@elizaos/plugin-agent-skills"],
@@ -75,23 +76,28 @@ export default scenario({
             id: "stale-24h",
             offsetHours: 24,
             sender: "intro-acquaintance@example.com",
-            snippet: "Hi, just sent the intro this morning, looking forward to your reply.",
+            snippet:
+              "Hi, just sent the intro this morning, looking forward to your reply.",
           },
           {
             id: "stale-72h",
             offsetHours: 72,
             sender: "vendor-acme@example.com",
-            snippet: "Following up on the pricing proposal from earlier this week.",
+            snippet:
+              "Following up on the pricing proposal from earlier this week.",
           },
           {
             id: "stale-7d",
             offsetHours: 24 * 7,
             sender: "recruiter@bigco.example",
-            snippet: "Re: senior eng role — you got back to me, then we never closed on the interview slot.",
+            snippet:
+              "Re: senior eng role — you got back to me, then we never closed on the interview slot.",
           },
         ];
         for (const row of rows) {
-          const ts = new Date(now - row.offsetHours * 60 * 60_000).toISOString();
+          const ts = new Date(
+            now - row.offsetHours * 60 * 60_000,
+          ).toISOString();
           await executeRawSql(
             runtime,
             `INSERT INTO app_lifeops.life_inbox_triage_entries (

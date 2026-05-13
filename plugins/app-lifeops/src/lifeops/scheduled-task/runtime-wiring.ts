@@ -9,7 +9,7 @@
 
 import crypto from "node:crypto";
 import { getAgentEventService } from "@elizaos/agent";
-import { logger, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 
 import { getChannelRegistry } from "../channels/index.js";
 import type { DispatchResult } from "../connectors/contract.js";
@@ -18,15 +18,15 @@ import {
   ownerFactsToView,
   resolveOwnerFactStore,
 } from "../owner/fact-store.js";
-import { getActivitySignalBus } from "../signals/bus.js";
 import {
   createAnchorRegistry,
   getAnchorRegistry,
-  registerAppLifeOpsAnchors,
   registerAnchorRegistry,
+  registerAppLifeOpsAnchors,
 } from "../registries/anchor-registry.js";
 import { LifeOpsRepository } from "../repository.js";
 import { getSendPolicyRegistry } from "../send-policy/index.js";
+import { getActivitySignalBus } from "../signals/bus.js";
 import {
   createCompletionCheckRegistry,
   registerBuiltInCompletionChecks,
@@ -43,6 +43,10 @@ import {
   createTaskGateRegistry,
   registerBuiltInGates,
 } from "./gate-registry.js";
+import type {
+  ScheduledTaskDispatcher,
+  ScheduledTaskDispatchRecord,
+} from "./runner.js";
 import {
   createScheduledTaskRunner,
   type ScheduledTaskRunnerHandle,
@@ -58,10 +62,6 @@ import type {
   ScheduledTaskLogEntry,
   SubjectStoreView,
 } from "./types.js";
-import type {
-  ScheduledTaskDispatcher,
-  ScheduledTaskDispatchRecord,
-} from "./runner.js";
 
 interface RepositoryBackedStores {
   store: ScheduledTaskStore;
@@ -183,9 +183,7 @@ function makeMissingActivityBusView(
  * Same warn-once semantics as the activity-bus shim; `subject_updated`
  * completion-checks will report no-update until a real store is wired.
  */
-function makeMissingSubjectStoreView(
-  runtime: IAgentRuntime,
-): SubjectStoreView {
+function makeMissingSubjectStoreView(runtime: IAgentRuntime): SubjectStoreView {
   let warned = false;
   return {
     wasUpdatedSince() {
@@ -215,7 +213,9 @@ function normalizeChannelTarget(
 
 function deniedDecisionToDispatchResult(
   decision: Awaited<
-    ReturnType<NonNullable<ReturnType<typeof getSendPolicyRegistry>>["evaluate"]>
+    ReturnType<
+      NonNullable<ReturnType<typeof getSendPolicyRegistry>>["evaluate"]
+    >
   >,
 ): DispatchResult | null {
   if (decision.kind === "allow") return null;
@@ -241,7 +241,9 @@ export function createProductionScheduledTaskDispatcher(opts: {
   runtime: IAgentRuntime;
 }): ScheduledTaskDispatcher {
   return {
-    async dispatch(record: ScheduledTaskDispatchRecord): Promise<DispatchResult> {
+    async dispatch(
+      record: ScheduledTaskDispatchRecord,
+    ): Promise<DispatchResult> {
       const registry = getChannelRegistry(opts.runtime);
       const channel = registry?.get(record.channelKey) ?? null;
       if (!channel?.send) {

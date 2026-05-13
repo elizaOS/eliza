@@ -10,12 +10,7 @@
  * Gated on ELIZA_LIVE_TEST=1.
  */
 import path from "node:path";
-import { trainingPlugin } from "@elizaos/app-training";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import {
-  type RuntimeHarness as Runtime,
-  startLiveRuntimeServer,
-} from "../../../packages/app-core/test/helpers/live-runtime-server";
 import { describeIf } from "../../../test/helpers/conditional-tests";
 import { req } from "../../../test/helpers/http";
 
@@ -29,10 +24,24 @@ try {
   /* dotenv optional */
 }
 
+// ``live-runtime-server`` and ``@elizaos/app-training`` are imported lazily
+// because ``startApiServer`` transitively imports ``@elizaos/plugin-imessage``,
+// which isn't symlinked into every workspace and would otherwise break
+// collection of this file even when the LIVE gate is off.
+type Runtime = Awaited<
+  ReturnType<
+    typeof import("../../../packages/app-core/test/helpers/live-runtime-server").startLiveRuntimeServer
+  >
+>;
+
 describeIf(LIVE)("App-Training: API e2e", () => {
   let runtime: Runtime;
 
   beforeAll(async () => {
+    const { startLiveRuntimeServer } = await import(
+      "../../../packages/app-core/test/helpers/live-runtime-server"
+    );
+    const { trainingPlugin } = await import("@elizaos/app-training");
     runtime = await startLiveRuntimeServer({
       plugins: [trainingPlugin],
       tempPrefix: "eliza-training-e2e-",
