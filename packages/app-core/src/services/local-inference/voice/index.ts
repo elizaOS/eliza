@@ -21,6 +21,18 @@ export {
   type PrefillOptimisticResult,
 } from "./prefill-client";
 export {
+  EOT_COMMIT_SILENCE_MS,
+  EOT_COMMIT_THRESHOLD,
+  EOT_HANGOVER_EXTENSION_MS,
+  EOT_MID_CLAUSE_THRESHOLD,
+  EOT_TENTATIVE_SILENCE_MS,
+  EOT_TENTATIVE_THRESHOLD,
+  type EotClassifier,
+  HeuristicEotClassifier,
+  type RemoteEotClassifierOptions,
+  RemoteEotClassifier,
+} from "./eot-classifier";
+export {
   type DrafterAbortReason,
   type DrafterHandle,
   type StartDrafterFn,

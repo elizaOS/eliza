@@ -55,6 +55,21 @@ import type {
   CheckpointHandle,
   CheckpointManagerLike,
 } from "./checkpoint-manager";
+import type { ContextPartial } from "./eager-context-builder";
+import {
+  EOT_COMMIT_SILENCE_MS,
+  EOT_COMMIT_THRESHOLD,
+  EOT_HANGOVER_EXTENSION_MS,
+  EOT_MID_CLAUSE_THRESHOLD,
+  EOT_TENTATIVE_SILENCE_MS,
+  EOT_TENTATIVE_THRESHOLD,
+  type EotClassifier,
+} from "./eot-classifier";
+import {
+  prefillOptimistic,
+  type PrefillOptimisticOptions,
+  type PrefillOptimisticResult,
+} from "./prefill-client";
 
 /** Public state. Closed union — exhaustive switches catch new variants. */
 export type VoiceState = "IDLE" | "LISTENING" | "PAUSE_TENTATIVE" | "SPEAKING";
@@ -68,7 +83,21 @@ export type VoiceStateEvent =
   | { type: "speech-pause"; timestampMs: number; partialTranscript: string }
   | { type: "speech-active"; timestampMs: number }
   | { type: "speech-end"; timestampMs: number; finalTranscript: string }
-  | { type: "barge-in"; timestampMs: number };
+  | { type: "barge-in"; timestampMs: number }
+  /**
+   * Tier-3 — streamed partial transcript chunk from the ASR. When an
+   * `eotClassifier` is configured the machine will run `checkEot()` and may
+   * transition to PAUSE_TENTATIVE early or commit immediately depending on
+   * the returned probability and the elapsed silence since the last speech
+   * audio frame (provided by the caller via `silenceSinceMs`).
+   */
+  | {
+      type: "partial-transcript";
+      timestampMs: number;
+      text: string;
+      /** Milliseconds of silence elapsed since the last speech audio frame. */
+      silenceSinceMs: number;
+    };
 
 /**
  * Reason a speculative drafter handle was aborted by the state machine.
@@ -113,8 +142,16 @@ export interface VoiceStateMachineEvents {
   /**
    * `speech-end` reached SPEAKING. The verifier should now run on top of
    * the speculative drafter output against the final transcript.
+   *
+   * `prefillResult` is present when the C7 optimistic prefill completed
+   * before `speech-end` arrived. The verifier can resume generation from
+   * `prefillResult.checkpointHandle` to skip one full prefill RTT.
    */
-  onCommit?(turnId: string, finalTranscript: string): void;
+  onCommit?(
+    turnId: string,
+    finalTranscript: string,
+    prefillResult?: PrefillOptimisticResult,
+  ): void;
   /**
    * A barge-in restored C1. The voice loop should drop any in-flight TTS
    * (separate concern owned by the barge-in controller) and begin a new
@@ -131,6 +168,23 @@ export interface VoiceStateMachineEvents {
     op: "save" | "restore" | "discard",
     error: unknown,
     turnId: string,
+  ): void;
+  /**
+   * Fired when the Tier-3 EOT classifier scores a partial transcript.
+   * Useful for telemetry and debugging — P values are emitted before the
+   * state machine decides whether to act on them.
+   */
+  onEotScore?(turnId: string, text: string, pDone: number): void;
+  /**
+   * Fired when the C7 optimistic prefill completes (either successfully or
+   * with an error). On success `result` is set; on error `error` is set.
+   * The state machine never blocks on the prefill result — it resolves or
+   * rejects in the background while PAUSE_TENTATIVE is active.
+   */
+  onPrefill?(
+    turnId: string,
+    result: PrefillOptimisticResult | null,
+    error: unknown | null,
   ): void;
 }
 
@@ -156,6 +210,37 @@ export interface VoiceStateMachineOptions {
   startDrafter: StartDrafterFn;
   /** Events sink. */
   events?: VoiceStateMachineEvents;
+  /**
+   * Tier-3 semantic EOT classifier. When provided, partial transcripts are
+   * scored on each `partial-transcript` dispatch:
+   *
+   *   P ≥ 0.9 AND silence ≥ 50 ms  → commit immediately (skip remaining hangover)
+   *   P ≥ 0.6 AND silence ≥ 20 ms  → enter PAUSE_TENTATIVE early (start drafter)
+   *   P < 0.4                        → extend hangover by 50 ms (user is mid-clause)
+   *
+   * When absent the machine behaves as before (tiers 1 + 2 only).
+   */
+  eotClassifier?: EotClassifier;
+  /**
+   * C7 — optimistic prefill configuration. When provided the machine fires
+   * `prefillOptimistic` on `PAUSE_TENTATIVE` entry (fire-and-forget) so the
+   * KV cache is pre-warmed with the partial transcript by the time ASR
+   * finalizes. The prefill result is passed to `onCommit` via `prefillResult`.
+   *
+   * Omit to disable the prefill path entirely.
+   */
+  prefillConfig?: {
+    /** Base URL of the llama-server (`http://host:port`). */
+    baseUrl: string;
+    /** `CheckpointManager` options forwarded to `prefillOptimistic`. */
+    checkpointOptions?: Omit<PrefillOptimisticOptions, "checkpointManager">;
+    /**
+     * Optional deterministic context from `EagerContextBuilder` (C3).
+     * When supplied, the prefill `/completion` call includes the system
+     * prompt + conversation history so the KV cache is maximally warm.
+     */
+    getContext?: () => ContextPartial | null;
+  };
 }
 
 // Lowered from 220ms; further reduction gated on semantic EOT classifier (V2).
@@ -183,6 +268,8 @@ export class VoiceStateMachine {
   private readonly mgr: CheckpointManagerLike;
   private readonly startDrafterFn: StartDrafterFn;
   private readonly events: VoiceStateMachineEvents;
+  /** Tier-3 semantic EOT classifier. Optional — omit for tiers 1+2 only. */
+  private readonly eotClassifier: EotClassifier | undefined;
 
   private state: VoiceState = "IDLE";
   private turnCounter = 0;
@@ -191,6 +278,12 @@ export class VoiceStateMachine {
   private activeDraft: ActiveDraft | null = null;
   private pauseTimestampMs: number | null = null;
   private disposed = false;
+  /**
+   * Accumulated hangover extension from EOT mid-clause detections (ms).
+   * Reset on each new turn (speech-start). Added to the effective hangover
+   * so that consecutive mid-clause detections stack.
+   */
+  private eotHangoverExtensionMs = 0;
 
   constructor(opts: VoiceStateMachineOptions) {
     this.slotId = opts.slotId;
@@ -199,6 +292,7 @@ export class VoiceStateMachine {
     this.mgr = opts.checkpointManager;
     this.startDrafterFn = opts.startDrafter;
     this.events = opts.events ?? {};
+    this.eotClassifier = opts.eotClassifier;
   }
 
   /** Current state — read-only view for tests / telemetry. */
@@ -217,6 +311,15 @@ export class VoiceStateMachine {
    */
   getActiveCheckpoint(): CheckpointHandle | null {
     return this.checkpoint;
+  }
+
+  /**
+   * Accumulated EOT hangover extension (ms). The `VadDetector` (Tier 2)
+   * should add this to its effective pause hangover so mid-clause pauses
+   * are not committed prematurely. Resets to 0 on each `speech-start`.
+   */
+  getEotHangoverExtensionMs(): number {
+    return this.eotHangoverExtensionMs;
   }
 
   /**
@@ -241,6 +344,12 @@ export class VoiceStateMachine {
         return this.handleSpeechEnd(event.finalTranscript);
       case "barge-in":
         return this.handleBargeIn();
+      case "partial-transcript":
+        return this.handlePartialTranscript(
+          event.timestampMs,
+          event.text,
+          event.silenceSinceMs,
+        );
       default: {
         const _exhaustive: never = event;
         void _exhaustive;
@@ -283,6 +392,7 @@ export class VoiceStateMachine {
       this.turnCounter += 1;
     }
     this.pauseTimestampMs = null;
+    this.eotHangoverExtensionMs = 0;
     this.setState("LISTENING");
   }
 
@@ -383,6 +493,75 @@ export class VoiceStateMachine {
     }
     this.turnCounter += 1;
     this.setState("LISTENING");
+  }
+
+  /**
+   * Handle a partial transcript chunk from streaming ASR.
+   *
+   * When an `eotClassifier` is configured, scores the text and applies:
+   *
+   *   P ≥ EOT_COMMIT_THRESHOLD  AND silence ≥ EOT_COMMIT_SILENCE_MS
+   *     → behave as `speech-end` (commit immediately, skip remaining hangover)
+   *
+   *   P ≥ EOT_TENTATIVE_THRESHOLD AND silence ≥ EOT_TENTATIVE_SILENCE_MS
+   *     AND state is LISTENING
+   *     → behave as `speech-pause` (enter PAUSE_TENTATIVE, start drafter)
+   *
+   *   P < EOT_MID_CLAUSE_THRESHOLD
+   *     → accumulate EOT_HANGOVER_EXTENSION_MS into the hangover extension
+   *       (the VadDetector reads this via `getEotHangoverExtensionMs()`)
+   *
+   * No-ops when `eotClassifier` is not set, or when the machine is not in
+   * LISTENING or PAUSE_TENTATIVE.
+   */
+  private async handlePartialTranscript(
+    timestampMs: number,
+    text: string,
+    silenceSinceMs: number,
+  ): Promise<void> {
+    if (!this.eotClassifier) return;
+    const validStates: VoiceState[] = ["LISTENING", "PAUSE_TENTATIVE"];
+    if (!validStates.includes(this.currentState())) return;
+
+    const pDone = await this.checkEot(text);
+    this.events.onEotScore?.(this.getTurnId(), text, pDone);
+
+    // Re-check state after async classifier — it may have changed.
+    const stateNow = this.currentState();
+    if (!validStates.includes(stateNow)) return;
+
+    if (pDone >= EOT_COMMIT_THRESHOLD && silenceSinceMs >= EOT_COMMIT_SILENCE_MS) {
+      // Treat as speech-end: commit immediately.
+      // Use the partial as the final transcript (streaming ASR may not have
+      // finalized yet; callers that have the final transcript should prefer
+      // dispatching `speech-end` directly).
+      this.handleSpeechEnd(text);
+      return;
+    }
+
+    if (
+      pDone >= EOT_TENTATIVE_THRESHOLD &&
+      silenceSinceMs >= EOT_TENTATIVE_SILENCE_MS &&
+      stateNow === "LISTENING"
+    ) {
+      // Enter PAUSE_TENTATIVE early — start the speculative drafter now.
+      await this.handleSpeechPause(timestampMs, text);
+      return;
+    }
+
+    if (pDone < EOT_MID_CLAUSE_THRESHOLD) {
+      // User is mid-clause — accumulate extra patience into the hangover.
+      this.eotHangoverExtensionMs += EOT_HANGOVER_EXTENSION_MS;
+    }
+  }
+
+  /**
+   * Score the partial transcript with the Tier-3 EOT classifier.
+   * Returns 0.5 when no classifier is configured (uncertain — let tiers 1+2 decide).
+   */
+  private async checkEot(partial: string): Promise<number> {
+    if (!this.eotClassifier) return 0.5;
+    return this.eotClassifier.score(partial);
   }
 
   // --- internal helpers ----------------------------------------------
