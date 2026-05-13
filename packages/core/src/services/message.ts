@@ -5255,6 +5255,18 @@ export async function runV5MessageRuntimeStage1(args: {
 				streamStructured: true,
 				responseSkeleton: responseGrammar.responseSkeleton,
 				grammar: responseGrammar.grammar,
+				// Force JSON-object output mode in addition to the tools+toolChoice
+				// hint. gpt-oss-120b on Cerebras's serverless inference ignores
+				// `toolChoice: "required"` (returns empty `toolCalls` every turn,
+				// emits the envelope as content text — or nothing). Cerebras
+				// honours `response_format: { type: "json_object" }` strictly,
+				// which forces the model to emit a parseable JSON object every
+				// call. Combined with the skeleton + grammar already embedded in
+				// the prompt body, this gives us a structured response even when
+				// the model declines to use the function-call API. Models that
+				// DO honour `toolChoice` still prefer the tool path; the JSON
+				// fallback only kicks in when they don't.
+				responseFormat: { type: "json_object" },
 				// Guided structured decode on by default for Stage 1 (the call always
 				// carries a forced skeleton): the local engine derives the
 				// deterministic-token prefill plan and the fork fast-forwards the
