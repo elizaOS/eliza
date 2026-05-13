@@ -54,6 +54,20 @@ function StateBadge({ state }: { state: CarrotState }) {
   );
 }
 
+function formatRelative(epochMs: number): string {
+  if (!Number.isFinite(epochMs) || epochMs <= 0) return "—";
+  const diffMs = Date.now() - epochMs;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return "just now";
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return new Date(epochMs).toLocaleDateString();
+}
+
 function permissionGroups(permissions: readonly DesktopCarrotPermissionTag[]): {
   host: string[];
   bun: string[];
@@ -195,6 +209,18 @@ function CarrotRow({
           <span className="font-medium text-txt/80">isolation:</span>{" "}
           {isolation ?? "shared-worker"}
         </div>
+      </div>
+
+      <div className="mt-1 flex gap-3 text-[10px] text-muted/70">
+        <span title={new Date(carrot.installedAt).toISOString()}>
+          installed {formatRelative(carrot.installedAt)}
+        </span>
+        {carrot.updatedAt !== carrot.installedAt ? (
+          <span title={new Date(carrot.updatedAt).toISOString()}>
+            updated {formatRelative(carrot.updatedAt)}
+          </span>
+        ) : null}
+        {carrot.devMode ? <span className="text-warn/80">dev-mode</span> : null}
       </div>
 
       {logsOpen ? (
