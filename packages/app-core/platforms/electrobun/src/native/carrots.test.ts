@@ -213,6 +213,83 @@ describe("CarrotManager", () => {
 			});
 		}));
 
+	it("dispatches host-request list-carrots back to the worker", () =>
+		withTempDir((dir) => {
+			const worker = new FakeWorkerHandle();
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => worker },
+				now: () => 1700000000000,
+			});
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+
+			worker.emit({ type: "host-request", requestId: 1, method: "list-carrots" });
+
+			return new Promise<void>((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						const response = worker.messages.find(
+							(m) => m.type === "host-response" && m.requestId === 1,
+						);
+						expect(response).toBeDefined();
+						expect(response).toMatchObject({
+							type: "host-response",
+							requestId: 1,
+							success: true,
+						});
+						const list = (
+							response as { payload: Array<{ id: string }> }
+						).payload;
+						expect(list).toHaveLength(1);
+						expect(list[0]).toMatchObject({ id: "bunny.search" });
+						resolve();
+					} catch (error) {
+						reject(error);
+					}
+				}, 10);
+			});
+		}));
+
+	it("returns an error response for unknown host-request methods", () =>
+		withTempDir((dir) => {
+			const worker = new FakeWorkerHandle();
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => worker },
+				now: () => 1700000000000,
+			});
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+
+			worker.emit({
+				type: "host-request",
+				requestId: 42,
+				method: "totally-made-up",
+			});
+
+			return new Promise<void>((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						const response = worker.messages.find(
+							(m) => m.type === "host-response" && m.requestId === 42,
+						);
+						expect(response).toMatchObject({
+							type: "host-response",
+							requestId: 42,
+							success: false,
+						});
+						expect(
+							(response as { error?: string }).error,
+						).toContain("totally-made-up");
+						resolve();
+					} catch (error) {
+						reject(error);
+					}
+				}, 10);
+			});
+		}));
+
 	it("ignores late worker events after stop", () =>
 		withTempDir((dir) => {
 			const worker = new FakeWorkerHandle();

@@ -10,8 +10,11 @@ import type {
 	CarrotStoreSnapshot,
 	CarrotWorkerMessage,
 	HostActionMessage,
+	HostRequestMessage,
+	HostResponseMessage,
 	InstalledCarrot,
 	InstalledCarrotSnapshot,
+	JsonValue,
 	WorkerInitMessage,
 } from "@elizaos/electrobun-carrots";
 import {
@@ -177,6 +180,20 @@ function buildWorkerInitMessage(
 			grantedPermissions: context.grantedPermissions,
 		},
 	};
+}
+
+function hostRequestStringField(
+	params: JsonValue | undefined,
+	key: string,
+): string {
+	if (!isRecord(params)) {
+		throw new Error(`Host request missing params object (expected ${key})`);
+	}
+	const value = params[key];
+	if (typeof value !== "string" || value.length === 0) {
+		throw new Error(`Host request missing or invalid ${key}`);
+	}
+	return value;
 }
 
 function actionLogPayload(message: HostActionMessage): string | null {
@@ -400,6 +417,11 @@ export class CarrotManager {
 			return;
 		}
 
+		if (message.type === "host-request") {
+			this.handleHostRequest(id, handle, message);
+			return;
+		}
+
 		if (message.type !== "action") return;
 		if (!record.context) return;
 
@@ -412,6 +434,64 @@ export class CarrotManager {
 
 		if (message.action === "stop-carrot") {
 			this.stopWorker(id);
+		}
+	}
+
+	private handleHostRequest(
+		callerId: string,
+		handle: CarrotWorkerHandle,
+		request: HostRequestMessage,
+	): void {
+		void this.dispatchHostRequest(callerId, request.method, request.params)
+			.then((payload) => {
+				this.postHostResponse(handle, {
+					type: "host-response",
+					requestId: request.requestId,
+					success: true,
+					payload,
+				});
+			})
+			.catch((error: unknown) => {
+				this.postHostResponse(handle, {
+					type: "host-response",
+					requestId: request.requestId,
+					success: false,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			});
+	}
+
+	private postHostResponse(
+		handle: CarrotWorkerHandle,
+		response: HostResponseMessage,
+	): void {
+		const record = [...this.workers.values()].find((r) => r.handle === handle);
+		if (!record) return;
+		handle.postMessage(response);
+	}
+
+	private async dispatchHostRequest(
+		callerId: string,
+		method: string,
+		params: JsonValue | undefined,
+	): Promise<JsonValue> {
+		switch (method) {
+			case "list-carrots":
+				return this.listCarrots() as unknown as JsonValue;
+			case "start-carrot": {
+				const targetId = hostRequestStringField(params, "id");
+				this.startWorker(targetId);
+				return { ok: true };
+			}
+			case "stop-carrot": {
+				const targetId = hostRequestStringField(params, "id");
+				this.stopWorker(targetId);
+				return { ok: true };
+			}
+			default:
+				throw new Error(
+					`Host request method not implemented: ${method} (caller=${callerId})`,
+				);
 		}
 	}
 
