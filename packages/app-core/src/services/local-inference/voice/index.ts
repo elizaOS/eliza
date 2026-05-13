@@ -15,6 +15,15 @@ export {
   type MockSnapshotSource,
 } from "./checkpoint-manager";
 export {
+  EagerContextBuilder,
+  type BuildDeterministicFn,
+  type BuildMessageDependentFn,
+  type ContextPartial,
+  type EagerContextBuilderOptions,
+  type FullContext,
+  mergeContext,
+} from "./eager-context-builder";
+export {
   prefillOptimistic,
   type PrefillOptimisticArgs,
   type PrefillOptimisticOptions,
