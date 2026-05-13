@@ -19,6 +19,33 @@ const DFLASH_DRAFT_SOURCE = path.join(
   "dflash_draft.cpp",
 );
 
+function usesModelSubclassApi(llamaCppRoot) {
+  const candidates = [
+    path.join(llamaCppRoot, "src", "models", "models.h"),
+    path.join(llamaCppRoot, "src", "llama-model.h"),
+  ];
+  return candidates.some((file) => {
+    if (!fs.existsSync(file)) return false;
+    const source = fs.readFileSync(file, "utf8");
+    return source.includes("llama_model_base");
+  });
+}
+
+function dflashDraftSourceForRoot(llamaCppRoot) {
+  const source = fs.readFileSync(DFLASH_DRAFT_SOURCE, "utf8");
+  if (usesModelSubclassApi(llamaCppRoot)) {
+    return source;
+  }
+  const start = source.indexOf(
+    "void llama_model_dflash_draft::load_arch_hparams",
+  );
+  const end = source.indexOf("class llm_graph_input_dflash");
+  if (start === -1 || end === -1 || end <= start) {
+    return source;
+  }
+  return `${source.slice(0, start)}${source.slice(end)}`;
+}
+
 function requireIncludes(source, needle, rel) {
   if (!source.includes(needle)) {
     throw new Error(
@@ -212,25 +239,30 @@ function patchModelHeader(source, rel) {
 
 function patchModelsHeader(source, rel) {
   if (
-    source.includes("struct llama_model_dflash_draft") &&
-    source.includes("struct llm_build_dflash_draft")
+    source.includes("struct llm_build_dflash_draft") &&
+    (!source.includes("struct llama_model_mistral3 : public llama_model_base") ||
+      source.includes("struct llama_model_dflash_draft"))
   ) {
     return source;
   }
-  let out = insertAfter(
-    source,
-    "struct llm_build_qwen3moe : public llm_graph_context {\n    llm_build_qwen3moe(const llama_model & model, const llm_graph_params & params);\n};\n",
-    `
+  let out = source;
+  if (!out.includes("struct llm_build_dflash_draft")) {
+    out = insertAfter(
+      out,
+      "struct llm_build_qwen3moe : public llm_graph_context {\n    llm_build_qwen3moe(const llama_model & model, const llm_graph_params & params);\n};\n",
+      `
 struct llm_build_dflash_draft : public llm_graph_context {
     llm_build_dflash_draft(const llama_model & model, const llm_graph_params & params);
 };
 `,
-    rel,
-  );
-  out = insertBefore(
-    out,
-    "struct llama_model_mistral3 : public llama_model_base {\n",
-    `
+      rel,
+    );
+  }
+  if (out.includes("struct llama_model_mistral3 : public llama_model_base {")) {
+    out = insertBefore(
+      out,
+      "struct llama_model_mistral3 : public llama_model_base {\n",
+      `
 struct llama_model_dflash_draft : public llama_model_base {
     llama_model_dflash_draft(const struct llama_model_params & params) : llama_model_base(params) {}
     void load_arch_hparams(llama_model_loader & ml) override;
@@ -239,8 +271,9 @@ struct llama_model_dflash_draft : public llama_model_base {
 };
 
 `,
-    rel,
-  );
+      rel,
+    );
+  }
   return out;
 }
 
@@ -375,9 +408,8 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
     ["src/llama-arch.cpp", '"dflash-draft"'],
     ["src/llama-hparams.h", "dflash_n_target_features"],
     ["src/llama-model.h", "dflash_hidden_norm"],
-    ["src/models/models.h", "llama_model_dflash_draft"],
-    ["src/llama-model.cpp", "new llama_model_dflash_draft"],
-    ["src/models/dflash_draft.cpp", "llama_model_dflash_draft::load_arch_hparams"],
+    ["src/models/models.h", "llm_build_dflash_draft"],
+    ["src/models/dflash_draft.cpp", "llm_build_dflash_draft::llm_build_dflash_draft"],
   ];
   const missing = [];
   for (const [rel, marker] of requiredMarkers) {
@@ -395,6 +427,18 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
       `[dflash-build] dflash-drafter-arch: patch verification failed: ${missing.join(", ")}`,
     );
   }
+  const modelCpp = fs.readFileSync(
+    path.join(llamaCppRoot, "src", "llama-model.cpp"),
+    "utf8",
+  );
+  if (
+    !modelCpp.includes("new llama_model_dflash_draft") &&
+    !modelCpp.includes("std::make_unique<llm_build_dflash_draft>")
+  ) {
+    throw new Error(
+      `[dflash-build] dflash-drafter-arch: patch verification failed: src/llama-model.cpp (missing dflash-draft model wiring)`,
+    );
+  }
 }
 
 export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
@@ -405,7 +449,7 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
       `[dflash-build] dflash-drafter-arch: missing source ${DFLASH_DRAFT_SOURCE}`,
     );
   }
-  const source = fs.readFileSync(DFLASH_DRAFT_SOURCE, "utf8");
+  const source = dflashDraftSourceForRoot(llamaCppRoot);
   if (!fs.existsSync(dest) || fs.readFileSync(dest, "utf8") !== source) {
     if (!dryRun) fs.writeFileSync(dest, source, "utf8");
     touched.push("src/models/dflash_draft.cpp");

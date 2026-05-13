@@ -9,7 +9,10 @@
 
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText } from "ai";
-import { agentSandboxesRepository, type AgentSandboxStatus } from "@/db/repositories/agent-sandboxes";
+import {
+  type AgentSandboxStatus,
+  agentSandboxesRepository,
+} from "@/db/repositories/agent-sandboxes";
 import { cache } from "@/lib/cache/client";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { logger } from "@/lib/utils/logger";
@@ -41,14 +44,12 @@ function buildSystemPrompt(status: AgentSandboxStatus | "none"): string {
     statusBlock =
       "Current container status: running. The user's dedicated container is ready! You can let them know their agent is available and they'll be transferred automatically.";
   } else if (status === "provisioning" || status === "pending") {
-    statusBlock =
-      `Current container status: ${status}. The container is still being set up (typically 2–5 minutes total). Mention this warmly once if the topic comes up, but don't repeat it on every turn. Focus on being genuinely helpful.`;
+    statusBlock = `Current container status: ${status}. The container is still being set up (typically 2–5 minutes total). Mention this warmly once if the topic comes up, but don't repeat it on every turn. Focus on being genuinely helpful.`;
   } else if (status === "error") {
     statusBlock =
       "Current container status: error. There was an issue provisioning the container. Be empathetic, let the user know the team is aware, and suggest they refresh or contact support if it persists.";
   } else {
-    statusBlock =
-      "Current container status: unknown. A container is being set up for the user.";
+    statusBlock = "Current container status: unknown. A container is being set up for the user.";
   }
 
   return `You are Eliza, a warm and knowledgeable AI assistant for the elizaOS platform. You're a serverless instance running on Cloudflare while the user's dedicated AI container is being provisioned.
@@ -105,10 +106,9 @@ export async function provisioningAgentChat(
   let resolvedAgentId: string | null = agentId ?? null;
 
   try {
-    let sandbox =
-      agentId
-        ? await agentSandboxesRepository.findByIdAndOrg(agentId, organizationId)
-        : undefined;
+    let sandbox = agentId
+      ? await agentSandboxesRepository.findByIdAndOrg(agentId, organizationId)
+      : undefined;
 
     if (!sandbox) {
       const sandboxes = await agentSandboxesRepository.listByOrganization(organizationId);
@@ -155,10 +155,7 @@ export async function provisioningAgentChat(
   }
 
   // Persist updated history with assistant reply
-  const finalHistory: ChatMessage[] = [
-    ...updatedHistory,
-    { role: "assistant", content: reply },
-  ];
+  const finalHistory: ChatMessage[] = [...updatedHistory, { role: "assistant", content: reply }];
   await saveHistory(userId, finalHistory);
 
   return {

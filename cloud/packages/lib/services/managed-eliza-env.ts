@@ -42,8 +42,7 @@ export async function prepareManagedElizaEnvironment(params: {
     environmentVars.STEWARD_AGENT_ID = params.sandboxId;
   }
 
-  const changed =
-    JSON.stringify(existingEnv) !== JSON.stringify(environmentVars);
+  const changed = JSON.stringify(existingEnv) !== JSON.stringify(environmentVars);
 
   return {
     apiToken: environmentVars.ELIZA_API_TOKEN,

@@ -23,6 +23,7 @@
       "@/types/*": ["./packages/types/*"],
       "@/*": ["./*"],
       "@/components/*": ["./packages/ui/src/components/*"],
+      "@elizaos/billing": ["./packages/billing/src/index.ts"],
       "@elizaos/cloud-ui": ["./packages/ui/src/index.ts"],
       "@elizaos/core": ["../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../packages/core/src/*"],
