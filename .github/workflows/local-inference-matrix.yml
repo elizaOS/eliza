@@ -253,8 +253,7 @@ jobs:
             exit 0
           fi
           hf download "${SMOKE_MODEL_REPO}" "${SMOKE_MODEL_FILE}" \
-            --local-dir "$MODEL_DIR" \
-            --local-dir-use-symlinks False
+            --local-dir "$MODEL_DIR"
           ls -lh "$MODEL_DIR/${SMOKE_MODEL_FILE}"
 
       - name: Run ablation (--quick, gated)
