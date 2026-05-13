@@ -17,6 +17,17 @@ export const BENCHMARK_MESSAGE_SERVER_ID = stringToUuid(
   "eliza-benchmark-message-server",
 );
 
+/**
+ * Fixed entity UUID used as the world ownership anchor for all benchmark
+ * sessions. Any message whose `entityId` matches this is treated as the
+ * canonical owner (OWNER role) by the role resolution path, which means
+ * `hasRoleAccess(runtime, msg, "ADMIN")` returns true without requiring
+ * an explicit `seedBenchUserRole` call.
+ */
+export const BENCHMARK_OWNER_ENTITY_ID: UUID = stringToUuid(
+  "eliza-benchmark-owner-entity",
+);
+
 export interface BenchmarkSession {
   benchmark: string;
   taskId: string;
@@ -558,11 +569,27 @@ export async function ensureBenchmarkSessionContext(
     metadata: {
       type: "benchmark",
       description: "World used for benchmark sessions",
+      ownership: { ownerId: BENCHMARK_OWNER_ENTITY_ID },
       extra: {
         benchmark: session.benchmark,
       },
     },
   });
+
+  // Backfill ownership.ownerId on pre-existing worlds that were created
+  // before this field was introduced.
+  const existingWorld = await runtime.getWorld(BENCHMARK_WORLD_ID);
+  if (existingWorld) {
+    const meta = (existingWorld.metadata ?? {}) as Record<string, unknown>;
+    const ownership = meta.ownership as Record<string, unknown> | undefined;
+    if (!ownership?.ownerId) {
+      meta.ownership = { ...(ownership ?? {}), ownerId: BENCHMARK_OWNER_ENTITY_ID };
+      await runtime.updateWorld({
+        ...existingWorld,
+        metadata: meta,
+      } as Parameters<typeof runtime.updateWorld>[0]);
+    }
+  }
 
   await runtime.ensureRoomExists({
     id: session.roomId,
@@ -626,4 +653,242 @@ export function createSession(
     relayRoomId: stringToUuid(`benchmark-relay:${seed}`),
     userEntityId: stringToUuid(`benchmark-user:${seed}`),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Bench-server role-seeding helpers (P0-7)
+// ---------------------------------------------------------------------------
+
+/** Canonical role names accepted by the bench server. */
+export type BenchRoleName = "OWNER" | "ADMIN" | "USER" | "GUEST";
+
+/**
+ * Normalize a role token from the runner's vocabulary to one of the four
+ * canonical BenchRoleName values. Returns null for unknown or missing values.
+ *
+ * The runner uses "member" as an alias for USER; case is not significant.
+ */
+export function normalizeBenchRoleName(value: unknown): BenchRoleName | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toUpperCase();
+  if (normalized === "OWNER") return "OWNER";
+  if (normalized === "ADMIN") return "ADMIN";
+  if (normalized === "USER" || normalized === "MEMBER") return "USER";
+  if (normalized === "GUEST") return "GUEST";
+  return null;
+}
+
+/**
+ * Write a role for `entityId` directly into the bench world's
+ * `metadata.roles` map. This bypasses the normal `setEntityRole` path
+ * (which requires a Memory object) so the bench runner can pin identities
+ * before any messages are sent.
+ */
+export async function seedBenchUserRole(
+  runtime: AgentRuntime,
+  _session: BenchmarkSession,
+  entityId: UUID,
+  role: BenchRoleName,
+): Promise<void> {
+  const world = await runtime.getWorld(BENCHMARK_WORLD_ID);
+  if (!world) {
+    throw new Error(
+      "[bench] BENCHMARK_WORLD_ID world not found — call ensureBenchmarkSessionContext first",
+    );
+  }
+  const meta = (world.metadata ?? {}) as Record<string, unknown>;
+  const roles = (meta.roles ?? {}) as Record<string, string>;
+  roles[entityId] = role;
+  meta.roles = roles;
+  await runtime.updateWorld({
+    ...world,
+    metadata: meta,
+  } as Parameters<typeof runtime.updateWorld>[0]);
+}
+
+// ---------------------------------------------------------------------------
+// Personality-store role-seeding helpers (P0-7 scope_global_vs_user)
+// ---------------------------------------------------------------------------
+
+/** Valid values for the `scopeMode` field in a RoleSeedPayload. */
+export type ScopeSeedMode =
+  | "global_wins"
+  | "user_wins"
+  | "conflict_explicit"
+  | "conflict_implicit";
+
+/** Payload accepted by `/api/benchmark/reset` for personality role seeding. */
+export interface RoleSeedPayload {
+  globalDirective?: string;
+  userDirective?: string;
+  scopeMode?: ScopeSeedMode;
+  userId?: string;
+  globalRoleId?: string;
+}
+
+const SCOPE_SEED_MODES: Set<string> = new Set([
+  "global_wins",
+  "user_wins",
+  "conflict_explicit",
+  "conflict_implicit",
+]);
+
+/** Type-guard for ScopeSeedMode values. */
+export function isScopeSeedMode(value: unknown): value is ScopeSeedMode {
+  return typeof value === "string" && SCOPE_SEED_MODES.has(value);
+}
+
+/**
+ * Parse and validate a raw role-seed payload from the request body.
+ * Returns undefined if the input is not an object or has no recognizable
+ * fields; drops individual fields that fail type checks.
+ */
+export function parseRoleSeedPayload(
+  raw: unknown,
+): RoleSeedPayload | undefined {
+  if (
+    !raw ||
+    typeof raw !== "object" ||
+    Array.isArray(raw)
+  ) {
+    return undefined;
+  }
+
+  const obj = raw as Record<string, unknown>;
+  const out: RoleSeedPayload = {};
+  let hasField = false;
+
+  if (typeof obj.globalDirective === "string") {
+    out.globalDirective = obj.globalDirective;
+    hasField = true;
+  }
+  if (typeof obj.userDirective === "string") {
+    out.userDirective = obj.userDirective;
+    hasField = true;
+  }
+  if (isScopeSeedMode(obj.scopeMode)) {
+    out.scopeMode = obj.scopeMode;
+    hasField = true;
+  }
+  if (typeof obj.userId === "string") {
+    out.userId = obj.userId;
+    hasField = true;
+  }
+  if (typeof obj.globalRoleId === "string") {
+    out.globalRoleId = obj.globalRoleId;
+    hasField = true;
+  }
+
+  return hasField ? out : undefined;
+}
+
+interface PersonalityStoreSlot {
+  userId: string;
+  agentId: string;
+  verbosity: string | null;
+  tone: string | null;
+  formality: string | null;
+  reply_gate: string | null;
+  custom_directives: string[];
+  updated_at: string;
+  source: string;
+}
+
+interface PersonalityStoreLike {
+  setSlot(slot: PersonalityStoreSlot): void;
+  clear(): void;
+}
+
+function isPersonalityStore(value: unknown): value is PersonalityStoreLike {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    typeof (value as Record<string, unknown>).clear === "function" &&
+    typeof (value as Record<string, unknown>).setSlot === "function"
+  );
+}
+
+/**
+ * Call `clear()` on the runtime's PersonalityStore service if one is
+ * registered. Returns true when the store was found and cleared, false when
+ * no store is available (no-op, not an error).
+ */
+export function clearPersonalityStateOnReset(
+  runtime: Pick<AgentRuntime, "getService">,
+): boolean {
+  const store = runtime.getService("PERSONALITY_STORE");
+  if (!isPersonalityStore(store)) return false;
+  store.clear();
+  return true;
+}
+
+export interface ApplyRoleSeedResult {
+  appliedGlobalDirective: boolean;
+  appliedUserDirective: boolean;
+  scopeMode: ScopeSeedMode | undefined;
+}
+
+/**
+ * Apply a parsed RoleSeedPayload to the runtime's PersonalityStore.
+ *
+ * Throws when the payload carries a directive but the runtime has no
+ * PersonalityStore service — the bench runner must install one before
+ * calling this function for personality scope tests.
+ */
+export function applyRoleSeedPayload(
+  runtime: Pick<AgentRuntime, "agentId" | "getService">,
+  payload: RoleSeedPayload,
+): ApplyRoleSeedResult {
+  const result: ApplyRoleSeedResult = {
+    appliedGlobalDirective: false,
+    appliedUserDirective: false,
+    scopeMode: payload.scopeMode,
+  };
+
+  const hasDirective = !!(payload.globalDirective || payload.userDirective);
+  if (!hasDirective) {
+    return result;
+  }
+
+  const store = runtime.getService("PERSONALITY_STORE");
+  if (!isPersonalityStore(store)) {
+    throw new Error(
+      "[bench] PersonalityStore service unavailable — cannot apply role-seed directives. " +
+      "Register a PersonalityStore service in the runtime before bench reset.",
+    );
+  }
+
+  const now = new Date().toISOString();
+
+  if (payload.globalDirective) {
+    store.setSlot({
+      userId: "global",
+      agentId: runtime.agentId,
+      verbosity: null,
+      tone: null,
+      formality: null,
+      reply_gate: null,
+      custom_directives: [payload.globalDirective],
+      updated_at: now,
+      source: "admin",
+    });
+    result.appliedGlobalDirective = true;
+  }
+
+  if (payload.userDirective && payload.userId) {
+    store.setSlot({
+      userId: payload.userId,
+      agentId: runtime.agentId,
+      verbosity: null,
+      tone: null,
+      formality: null,
+      reply_gate: null,
+      custom_directives: [payload.userDirective],
+      updated_at: now,
+      source: "user",
+    });
+    result.appliedUserDirective = true;
+  }
+
+  return result;
 }
