@@ -26,7 +26,7 @@ const DEFAULT_ROUND_TRIP_CAP = 32;
  */
 export class SubAgentRouter {
   static serviceType = "ACPX_SUB_AGENT_ROUTER";
-  static dependencies = ["ACP_SUBPROCESS_SERVICE"];
+  static dependencies = ["ACP_SUBPROCESS_SERVICE", "PTY_SERVICE"];
 
   capabilityDescription =
     "Routes ACPX sub-agent terminal events back into the runtime as inbound messages so the main agent decides reply-to-user vs reply-to-agent vs both.";
@@ -40,6 +40,8 @@ export class SubAgentRouter {
   private readonly capExceededSessions = new Set<string>();
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
+  private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private stopped = false;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
@@ -65,57 +67,90 @@ export class SubAgentRouter {
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
     const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
     if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
-    const acp = this.runtime.getService(
-      "ACP_SUBPROCESS_SERVICE",
-    ) as AcpService | null;
-    const acpUsable = !!acp && typeof acp.onSessionEvent === "function";
-    if (acpUsable) {
-      this.acp = acp;
-      this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
-        this.handleEvent(sid, event, data).catch((err) => {
-          this.log("error", "router event failed", {
-            sessionId: sid,
-            event,
-            error: err instanceof Error ? err.message : String(err),
+    // Service registration runs in parallel — when router.start() executes,
+    // AcpService and PTYService may not yet be registered with the runtime,
+    // so getService returns null. Static `dependencies` is not enough to
+    // order startup. Retry binding on a short backoff until both event
+    // sources are bound (or we give up after ~10s and stay idle).
+    this.tryBindSources(0);
+  }
+
+  private tryBindSources(attempt: number): void {
+    if (this.stopped) return;
+    const needsAcp = !this.unsubscribe;
+    const needsPty = !this.unsubscribePty;
+    if (!needsAcp && !needsPty) return;
+
+    if (needsAcp) {
+      const acp = this.runtime.getService(
+        "ACP_SUBPROCESS_SERVICE",
+      ) as AcpService | null;
+      if (acp && typeof acp.onSessionEvent === "function") {
+        this.acp = acp;
+        this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
+          this.handleEvent(sid, event, data).catch((err) => {
+            this.log("error", "router event failed", {
+              sessionId: sid,
+              event,
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
         });
-      });
+      }
     }
-    // PTY_SERVICE is a separate event channel from AcpService. The
-    // direct PTYService.spawnSession path used by opencode-run / codex-exec
-    // fast-path emits task_complete through PTYService.emitEvent — without
-    // this subscription, those completions never reach the router and the
-    // sub-agent's actual answer is dropped (user sees only the "On it…" ack).
-    // Bind PTY independently of ACP so this works even when ACP isn't loaded.
-    const pty = this.runtime.getService("PTY_SERVICE") as {
-      onSessionEvent?: (
-        cb: (sid: string, event: SessionEventName, data: unknown) => void,
-      ) => () => void;
-    } | null;
-    const ptyUsable = !!pty && typeof pty.onSessionEvent === "function";
-    if (ptyUsable) {
-      this.unsubscribePty = pty!.onSessionEvent!((sid, event, data) => {
-        this.handleEvent(sid, event, data).catch((err) => {
-          this.log("error", "router event failed (pty)", {
-            sessionId: sid,
-            event,
-            error: err instanceof Error ? err.message : String(err),
+    if (needsPty) {
+      // PTY_SERVICE is a separate event channel from AcpService. The
+      // direct PTYService.spawnSession path used by opencode-run / codex-exec
+      // fast-path emits task_complete through PTYService.emitEvent — without
+      // this subscription, those completions never reach the router and the
+      // sub-agent's actual answer is dropped (user sees only the "On it…" ack).
+      const pty = this.runtime.getService("PTY_SERVICE") as {
+        onSessionEvent?: (
+          cb: (sid: string, event: SessionEventName, data: unknown) => void,
+        ) => () => void;
+      } | null;
+      if (pty && typeof pty.onSessionEvent === "function") {
+        this.unsubscribePty = pty.onSessionEvent((sid, event, data) => {
+          this.handleEvent(sid, event, data).catch((err) => {
+            this.log("error", "router event failed (pty)", {
+              sessionId: sid,
+              event,
+              error: err instanceof Error ? err.message : String(err),
+            });
           });
         });
-      });
+      }
     }
-    if (acpUsable && ptyUsable) {
+
+    const acpBound = !!this.unsubscribe;
+    const ptyBound = !!this.unsubscribePty;
+    if (acpBound && ptyBound) {
       this.log("info", "router bound to AcpService + PTYService");
-    } else if (acpUsable) {
-      this.log("info", "router bound to AcpService (PTYService unavailable)");
-    } else if (ptyUsable) {
-      this.log("info", "router bound to PTYService (AcpService unavailable)");
-    } else {
-      this.log("debug", "no session-event source available; router idle");
+      return;
     }
+    // Give up after ~10s of polling and log what we got.
+    if (attempt >= 50) {
+      if (acpBound) {
+        this.log("info", "router bound to AcpService (PTYService unavailable)");
+      } else if (ptyBound) {
+        this.log("info", "router bound to PTYService (AcpService unavailable)");
+      } else {
+        this.log("debug", "no session-event source available; router idle");
+      }
+      return;
+    }
+    this.bindRetryTimer = setTimeout(
+      () => this.tryBindSources(attempt + 1),
+      200,
+    );
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.bindRetryTimer) {
+      clearTimeout(this.bindRetryTimer);
+      this.bindRetryTimer = undefined;
+    }
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.unsubscribePty?.();
