@@ -1418,7 +1418,7 @@ function cmakeFlagsForTarget(target, ctx) {
     // `ggml_backend_cpu_init` (per-backend symbol name), so the loader
     // fails and inference can't run. -DGGML_BACKEND_DL=OFF embeds the
     // backend's init directly into the binary.
-    flags.push("-DGGML_BACKEND_DL=OFF", "-DBUILD_SHARED_LIBS=OFF");
+    flags.push("-DGGML_BACKEND_DL=OFF");
   } else if (platform === "ios") {
     // iOS cross-compile (host must be macOS with Xcode). The Capacitor
     // plugin's xcframework patch consumes the resulting static archive +
