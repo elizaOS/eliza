@@ -2083,6 +2083,38 @@ function sourceContainsDflashDraft(root) {
   );
 }
 
+function sourceContainsCpuTbqKernels(root) {
+  if (!root) return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  const sources = [
+    path.join(root, "ggml", "include", "ggml.h"),
+    path.join(root, "ggml", "src", "ggml.c"),
+    path.join(root, "ggml", "src", "ggml-quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "quants.c"),
+    path.join(root, "ggml", "src", "ggml-cpu", "ggml-cpu.c"),
+  ];
+  if (sources.some((source) => !fs.existsSync(source))) {
+    return { turbo3: false, turbo4: false, turbo3_tcq: false };
+  }
+  const source = sources.map((file) => fs.readFileSync(file, "utf8")).join("\n");
+  return {
+    turbo3:
+      source.includes("GGML_TYPE_TBQ3_0") &&
+      source.includes("quantize_row_tbq3_0") &&
+      source.includes("dequantize_row_tbq3_0") &&
+      source.includes("ggml_vec_dot_tbq3_0_f32"),
+    turbo4:
+      source.includes("GGML_TYPE_TBQ4_0") &&
+      source.includes("quantize_row_tbq4_0") &&
+      source.includes("dequantize_row_tbq4_0") &&
+      source.includes("ggml_vec_dot_tbq4_0_f32"),
+    turbo3_tcq:
+      source.includes("GGML_TYPE_TBQ3_TCQ") &&
+      source.includes("quantize_row_tbq3_tcq") &&
+      source.includes("dequantize_row_tbq3_tcq") &&
+      source.includes("QK_TBQ3_TCQ"),
+  };
+}
+
 function ensureLegacyDflashDrafterCheckout(sourceDir) {
   if (fs.existsSync(path.join(sourceDir, ".git"))) {
     run("git", ["fetch", "--depth", "1", "origin", LEGACY_DFLASH_DRAFTER_REF], {
@@ -2423,14 +2455,21 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     kernels.turbo3_tcq = /turbo3[-_]?tcq|tcq/.test(names);
     kernels.qjl_full = /qjl/.test(names);
     kernels.polarquant = /polar(?:quant)?|q4[-_]?polar/.test(names);
-    // CPU build inlines the turbo quantization paths inside ggml-cpu and
-    // links a single ggml-turbo-quant.c.o into ggml-base. Treat its presence
-    // as evidence both turbo3 and turbo4 paths are compiled in. DFlash is
-    // not inferred from turbo/flash-attention objects: publishable Eliza-1
-    // builds must carry the native dflash-draft speculative state.
-    if (backend === "cpu" && /ggml-turbo-quant\.c\.o/.test(names)) {
-      kernels.turbo3 = true;
-      kernels.turbo4 = true;
+    if (backend === "cpu") {
+      if (/ggml-turbo-quant\.c\.(?:o|obj)/.test(names)) {
+        kernels.turbo3 = true;
+        kernels.turbo4 = true;
+      }
+      const hasCompiledTbqCore =
+        /ggml-quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]quants\.c\.(?:o|obj)/.test(names) &&
+        /ggml-cpu[/\\]ggml-cpu\.c\.(?:o|obj)/.test(names);
+      if (hasCompiledTbqCore) {
+        const sourceKernels = sourceContainsCpuTbqKernels(cacheDir);
+        kernels.turbo3 = kernels.turbo3 || sourceKernels.turbo3;
+        kernels.turbo4 = kernels.turbo4 || sourceKernels.turbo4;
+        kernels.turbo3_tcq = kernels.turbo3_tcq || sourceKernels.turbo3_tcq;
+      }
     }
   }
 
