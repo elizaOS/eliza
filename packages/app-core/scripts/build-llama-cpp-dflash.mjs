@@ -457,7 +457,8 @@ function findAndroidVulkanInclude(ndk) {
 // Locate a glslc usable for the host. The Android NDK ships its own glslc
 // under shader-tools/<host>/glslc.
 function findGlslc(ndk) {
-  if (has("glslc")) return "glslc";
+  const explicit = process.env.GLSLC?.trim();
+  if (explicit && fs.existsSync(explicit)) return explicit;
   if (ndk) {
     const hostDirs = [
       "linux-x86_64",
@@ -470,6 +471,7 @@ function findGlslc(ndk) {
       if (fs.existsSync(candidate)) return candidate;
     }
   }
+  if (has("glslc")) return "glslc";
   return null;
 }
 
@@ -850,6 +852,27 @@ function patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun = false } = {}) {
   }
   console.log(
     `[dflash-build] removed ${seen - 1} duplicate Qwen3A mtmd dispatch block(s)`,
+  );
+}
+
+function patchOmnivoiceMtmdApi(cacheDir, { dryRun = false } = {}) {
+  const ffiPath = path.join(cacheDir, "omnivoice", "src", "eliza-inference-ffi.cpp");
+  if (!fs.existsSync(ffiPath)) {
+    return;
+  }
+  const original = fs.readFileSync(ffiPath, "utf8");
+  const patched = original.replaceAll(
+    "mtmd_get_audio_bitrate(",
+    "mtmd_get_audio_sample_rate(",
+  );
+  if (patched === original) {
+    return;
+  }
+  if (!dryRun) {
+    fs.writeFileSync(ffiPath, patched, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched omnivoice ASR FFI for current mtmd_get_audio_sample_rate API",
   );
 }
 
@@ -1689,7 +1712,15 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });
   patchSpeculativeReplacementsField(cacheDir, { dryRun });
   patchMtmdQwen3aDuplicateDispatch(cacheDir, { dryRun });
-  patchDflashSpeculativeDispatch(cacheDir, { dryRun });
+  patchOmnivoiceMtmdApi(cacheDir, { dryRun });
+  if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
+    console.warn(
+      `[dflash-build] skipping DFlash speculative dispatch patch for target=${target}; ` +
+        "allowed only for graph-dispatch smoke bootstrap builds",
+    );
+  } else {
+    patchDflashSpeculativeDispatch(cacheDir, { dryRun });
+  }
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash drafter architecture patch for target=${target}; ` +
@@ -1936,7 +1967,8 @@ function sourceContainsDflashDraft(root) {
     specSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH") &&
     specSource.includes('"dflash"') &&
     argSource.includes("--spec-type") &&
-    argSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH")
+    (argSource.includes("common_speculative_types_from_names") ||
+      argSource.includes("COMMON_SPECULATIVE_TYPE_DFLASH"))
   );
 }
 

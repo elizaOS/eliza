@@ -1579,9 +1579,14 @@ export class LocalInferenceEngine {
 
   async synthesizeSpeech(text: string): Promise<Uint8Array> {
     this.markActivity();
-    return this.requireVoiceBridge("synthesize speech").synthesizeTextToWav(
-      text,
-    );
+    const bridge = this.requireVoiceBridge("synthesize speech");
+    if ((bridge.backend as { id?: string }).id === "stub") {
+      throw new VoiceStartupError(
+        "missing-fused-build",
+        "[voice] Cannot synthesize speech with StubOmniVoiceBackend (it emits silence). Start voice with useFfiBackend:true or inject a real backend.",
+      );
+    }
+    return bridge.synthesizeTextToWav(text);
   }
 
   async prewarmVoicePhrases(

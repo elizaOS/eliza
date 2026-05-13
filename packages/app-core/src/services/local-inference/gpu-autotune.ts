@@ -423,7 +423,7 @@ export function selectGpuConfig(
 
   const vramGb = gpu.totalMemoryMiB / 1024;
   const bucket = pickFallbackBucket(vramGb);
-  if (!bucket || !bucket.config_id) return null;
+  if (!bucket?.config_id) return null;
 
   return finalize({
     config: GPU_CONFIGS[bucket.config_id],
@@ -528,10 +528,7 @@ export function flagsToLlamaServerArgv(flags: LlamaServerFlags): string[] {
   // ctx-checkpoints/interval are only meaningful when the runtime probe
   // says the fork supports them; the spawn site applies them conditionally.
   argv.push("--ctx-checkpoints", String(flags.ctx_checkpoints));
-  argv.push(
-    "--ctx-checkpoint-interval",
-    String(flags.ctx_checkpoint_interval),
-  );
+  argv.push("--ctx-checkpoint-interval", String(flags.ctx_checkpoint_interval));
   return argv;
 }
 

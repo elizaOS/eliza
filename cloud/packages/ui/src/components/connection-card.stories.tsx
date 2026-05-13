@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
-import { DiscordIcon } from "./icons";
 import { ConnectionCard } from "./connection-card";
+import { DiscordIcon } from "./icons";
 
 const meta: Meta<typeof ConnectionCard> = {
   title: "Components/ConnectionCard",

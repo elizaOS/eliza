@@ -5,9 +5,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   FALLBACK_BUCKETS,
-  type GpuInfo,
-  GPU_CONFIGS,
   flagsToLlamaServerArgv,
+  GPU_CONFIGS,
+  type GpuInfo,
   pickFallbackBucket,
   selectGpuConfig,
   staticProfileFor,
@@ -16,10 +16,7 @@ import {
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
 // __tests__/ -> local-inference/ -> services/ -> src/ -> app-core/ -> packages/
 const monorepoRoot = path.resolve(fileDir, "../../../../../..");
-const configsDir = path.join(
-  monorepoRoot,
-  "packages/inference/configs/gpu",
-);
+const configsDir = path.join(monorepoRoot, "packages/inference/configs/gpu");
 
 const ALL_IDS = ["rtx-3090", "rtx-4090", "rtx-5090", "h200"] as const;
 
@@ -33,9 +30,7 @@ describe("GPU autotune — config table", () => {
 
   it("every config marks expected_metrics as extrapolated until measured", () => {
     for (const id of ALL_IDS) {
-      expect(GPU_CONFIGS[id].expected_metrics._provenance).toBe(
-        "extrapolated",
-      );
+      expect(GPU_CONFIGS[id].expected_metrics._provenance).toBe("extrapolated");
     }
   });
 
@@ -212,8 +207,9 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
     ]) {
       const res = selectGpuConfig(info(name, 24576), { bundleId: "voice" });
       expect(res).not.toBeNull();
+      if (!res) throw new Error(`No GPU config selected for ${name}`);
       // Every voice override sets a smaller ctx than the default.
-      expect(res!.flags.ctx_size).toBeLessThanOrEqual(16384);
+      expect(res.flags.ctx_size).toBeLessThanOrEqual(16384);
     }
   });
 
@@ -311,7 +307,8 @@ describe("flagsToLlamaServerArgv", () => {
       totalMemoryMiB: 24576,
     });
     expect(res).not.toBeNull();
-    const argv = flagsToLlamaServerArgv(res!.flags);
+    if (!res) throw new Error("No GPU config selected for RTX 4090");
+    const argv = flagsToLlamaServerArgv(res.flags);
     expect(argv).toContain("--n-gpu-layers");
     expect(argv).toContain("--ctx-size");
     expect(argv).toContain("--batch-size");
@@ -384,10 +381,7 @@ describe("JSON file schema validity", () => {
 
   it("schema file is valid JSON", () => {
     const schema = JSON.parse(
-      readFileSync(
-        path.join(configsDir, "gpu-config.schema.json"),
-        "utf8",
-      ),
+      readFileSync(path.join(configsDir, "gpu-config.schema.json"), "utf8"),
     );
     expect(schema.$schema).toBeDefined();
     expect(schema.type).toBe("object");
