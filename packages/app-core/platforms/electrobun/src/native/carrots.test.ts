@@ -361,6 +361,174 @@ describe("CarrotManager", () => {
 			});
 		}));
 
+	it("routes invoke-carrot request from A to B and returns the payload", () =>
+		withTempDir((dir) => {
+			const workerA = new FakeWorkerHandle();
+			const workerB = new FakeWorkerHandle();
+			let nextWorker: FakeWorkerHandle = workerA;
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => nextWorker },
+				now: () => 1700000000000,
+			});
+
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+
+			const secondDir = join(dir, "second");
+			mkdirSync(join(secondDir, "views"), { recursive: true });
+			writeFileSync(
+				join(secondDir, "carrot.json"),
+				JSON.stringify({
+					id: "bunny.calc",
+					name: "Calc",
+					version: "1.0.0",
+					description: "Calculator",
+					mode: "background",
+					permissions: { host: {}, bun: {} },
+					view: {
+						relativePath: "views/index.html",
+						title: "Calc",
+						width: 240,
+						height: 160,
+					},
+					worker: { relativePath: "worker.ts" },
+				}),
+				"utf8",
+			);
+			writeFileSync(join(secondDir, "worker.ts"), "postMessage({type:'ready'});");
+			writeFileSync(join(secondDir, "views", "index.html"), "<div>Calc</div>");
+			nextWorker = workerB;
+			manager.installFromDirectory({ sourceDir: secondDir });
+			manager.startWorker("bunny.calc");
+
+			// A invokes B
+			workerA.emit({
+				type: "host-request",
+				requestId: 99,
+				method: "invoke-carrot",
+				params: { carrotId: "bunny.calc", method: "add", params: { a: 2, b: 3 } },
+			});
+
+			// Host should have forwarded a request to B
+			const forwarded = workerB.messages.find((m) => m.type === "request");
+			expect(forwarded).toMatchObject({
+				type: "request",
+				method: "add",
+				params: { a: 2, b: 3 },
+			});
+			const forwardedId = (forwarded as { requestId: number }).requestId;
+
+			// B replies with a response
+			workerB.emit({
+				type: "response",
+				requestId: forwardedId,
+				success: true,
+				payload: { sum: 5 },
+			});
+
+			// A should receive the host-response with B's payload
+			const aResponse = workerA.messages.find(
+				(m) => m.type === "host-response" && m.requestId === 99,
+			);
+			expect(aResponse).toMatchObject({
+				type: "host-response",
+				requestId: 99,
+				success: true,
+				payload: { sum: 5 },
+			});
+		}));
+
+	it("invoke-carrot returns error when target isn't running", () =>
+		withTempDir((dir) => {
+			const workerA = new FakeWorkerHandle();
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => workerA },
+				now: () => 1700000000000,
+			});
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+
+			workerA.emit({
+				type: "host-request",
+				requestId: 7,
+				method: "invoke-carrot",
+				params: { carrotId: "does-not-exist", method: "noop" },
+			});
+
+			const response = workerA.messages.find(
+				(m) => m.type === "host-response" && m.requestId === 7,
+			);
+			expect(response).toMatchObject({
+				type: "host-response",
+				requestId: 7,
+				success: false,
+			});
+			expect((response as { error?: string }).error).toContain("does-not-exist");
+		}));
+
+	it("invoke-carrot fails caller when target stops mid-flight", () =>
+		withTempDir((dir) => {
+			const workerA = new FakeWorkerHandle();
+			const workerB = new FakeWorkerHandle();
+			let nextWorker: FakeWorkerHandle = workerA;
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => nextWorker },
+				now: () => 1700000000000,
+			});
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+
+			const secondDir = join(dir, "second");
+			mkdirSync(join(secondDir, "views"), { recursive: true });
+			writeFileSync(
+				join(secondDir, "carrot.json"),
+				JSON.stringify({
+					id: "bunny.calc",
+					name: "Calc",
+					version: "1.0.0",
+					description: "Calculator",
+					mode: "background",
+					permissions: { host: {}, bun: {} },
+					view: {
+						relativePath: "views/index.html",
+						title: "Calc",
+						width: 240,
+						height: 160,
+					},
+					worker: { relativePath: "worker.ts" },
+				}),
+				"utf8",
+			);
+			writeFileSync(join(secondDir, "worker.ts"), "postMessage({type:'ready'});");
+			writeFileSync(join(secondDir, "views", "index.html"), "<div>Calc</div>");
+			nextWorker = workerB;
+			manager.installFromDirectory({ sourceDir: secondDir });
+			manager.startWorker("bunny.calc");
+
+			workerA.emit({
+				type: "host-request",
+				requestId: 11,
+				method: "invoke-carrot",
+				params: { carrotId: "bunny.calc", method: "slow" },
+			});
+
+			// Stop B before it can reply
+			manager.stopWorker("bunny.calc");
+
+			const aResponse = workerA.messages.find(
+				(m) => m.type === "host-response" && m.requestId === 11,
+			);
+			expect(aResponse).toMatchObject({
+				type: "host-response",
+				requestId: 11,
+				success: false,
+			});
+			expect((aResponse as { error?: string }).error).toContain("stopped");
+		}));
+
 	it("routes emit-carrot-event between two running carrots", () =>
 		withTempDir((dir) => {
 			const workerA = new FakeWorkerHandle();
