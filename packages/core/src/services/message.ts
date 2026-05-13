@@ -5553,9 +5553,27 @@ export async function runV5MessageRuntimeStage1(args: {
 		const earlyReplyText =
 			routedResponseHandlerReply || parsedResponseHandlerReply;
 		const onResponseHandlerEarlyReply = args.onResponseHandlerEarlyReply;
+		// Delegation actions (e.g. TASKS_SPAWN_AGENT) opt out of the early reply:
+		// the model's draft is a speculative guess at the answer, but the canonical
+		// answer arrives asynchronously from the sub-agent and the action's own
+		// `callback` emits the in-turn ack. Shipping the draft alongside the ack
+		// duplicates the bot's voice and confuses the user.
+		const candidateActionNames = new Set(
+			getMessageHandlerCandidateActions(messageHandler).map(
+				normalizeActionIdentifier,
+			),
+		);
+		const earlyReplySuppressedByAction =
+			candidateActionNames.size > 0 &&
+			args.runtime.actions.some(
+				(action) =>
+					action.suppressEarlyReply === true &&
+					candidateActionNames.has(normalizeActionIdentifier(action.name)),
+			);
 		const earlyReplySent =
 			messageHandler.processMessage === "RESPOND" &&
 			earlyReplyText.length > 0 &&
+			!earlyReplySuppressedByAction &&
 			typeof onResponseHandlerEarlyReply === "function";
 		if (earlyReplySent && typeof onResponseHandlerEarlyReply === "function") {
 			await onResponseHandlerEarlyReply({
