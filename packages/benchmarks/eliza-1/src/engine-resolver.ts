@@ -15,6 +15,7 @@
  */
 
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 
 /**
@@ -66,6 +67,22 @@ interface SharedPathsLike {
   elizaModelsDir: () => string;
 }
 
+/**
+ * Inline mirror of `resolveStateDir()` + `elizaModelsDir()` from
+ * `@elizaos/shared/local-inference/paths`. Used as a fallback when the
+ * shared import chain is unreachable (the bench is at the edge of the
+ * dep graph; some host environments don't have shared's transitive
+ * `@elizaos/core` deps resolved). Same precedence as upstream:
+ *   ELIZA_STATE_DIR > MILADY_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}
+ */
+function benchElizaModelsDir(): string {
+  const explicit =
+    process.env.ELIZA_STATE_DIR ?? process.env.MILADY_STATE_DIR;
+  const ns = process.env.ELIZA_NAMESPACE ?? "eliza";
+  const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
+  return path.join(stateDir, "local-inference", "models");
+}
+
 interface SharedCatalogLike {
   findCatalogModel: (
     id: string,
@@ -95,15 +112,18 @@ export async function resolveElizaModelPath(
   tierId: Eliza1TierId = DEFAULT_TIER,
 ): Promise<{ modelPath: string; tierId: Eliza1TierId } | null> {
   const paths = await tryImport<SharedPathsLike>(
-    "@elizaos/shared/local-inference",
+    "@elizaos/shared/local-inference/paths",
   );
   const catalog = await tryImport<SharedCatalogLike>(
     "@elizaos/shared/local-inference/catalog",
   );
-  if (!paths || !catalog) return null;
+  if (!catalog) return null;
   const model = catalog.findCatalogModel(tierId);
   if (!model) return null;
-  const root = paths.elizaModelsDir();
+  // Prefer the shared module's `elizaModelsDir()` when its dep chain
+  // resolves; fall back to the inline mirror so the bench works in CI
+  // hosts where shared's transitive `@elizaos/core` deps aren't installed.
+  const root = paths?.elizaModelsDir?.() ?? benchElizaModelsDir();
   // The catalog `ggufFile` is relative to the model's bundle root; we look
   // for the file under `<root>/<tier>.bundle/<rel>` following the convention
   // used by the eliza-1 downloader (`bundleDirname()` appends `.bundle`).
