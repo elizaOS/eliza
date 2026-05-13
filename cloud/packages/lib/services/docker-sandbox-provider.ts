@@ -517,7 +517,7 @@ export class DockerSandboxProvider implements SandboxProvider {
     try {
       // Ensure volume directory exists
       await ssh.exec(
-        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)} ${shellQuote(`${volumePath}/eliza`)}`,
+        `mkdir -p ${shellQuote(volumePath)} ${shellQuote(`${volumePath}/eliza`)}`,
         DOCKER_CMD_TIMEOUT_MS,
       );
 
@@ -607,7 +607,6 @@ export class DockerSandboxProvider implements SandboxProvider {
           ? ["--cap-add=NET_ADMIN", "--device /dev/net/tun"]
           : []),
         `-v ${shellQuote(volumePath)}:/app/data`,
-        `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         `-v ${shellQuote(`${volumePath}/eliza`)}:/root/.eliza`,
         // The cloud image serves both API and web UI from PORT (default 3000).
         // Publish both externally allocated host ports to that live listener so
