@@ -19,81 +19,30 @@ fp4_supported: true                # future: KV in FP4 once the kernel lands
 nvlink: false
 
 bundle_recommendations:
-  eliza-1-0_6b:
+  eliza-1-0_8b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 32
     batch_size: 4096
     ubatch_size: 1024
-    kv_cache_k: turbo3_0
-    kv_cache_v: turbo4_0
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
     flash_attention: true
     estimated_decode_tps: 720
     estimated_prefill_tps: 38000
-    notes: "Bandwidth-bound; ~1.8x 3090 throughput from the GDDR7 jump."
-  eliza-1-1_7b:
+    notes: "Smallest active Qwen3.5 local tier; smoke/default fallback."
+  eliza-1-2b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 16
     batch_size: 4096
     ubatch_size: 1024
-    kv_cache_k: turbo3_0
-    kv_cache_v: turbo4_0
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
     flash_attention: true
     estimated_decode_tps: 460
     estimated_prefill_tps: 18000
-    notes: "Trivially fits; more parallel slots than the 4090 thanks to 32 GiB."
-  eliza-1-4b:
-    n_gpu_layers: -1
-    ctx_size: 131072
-    parallel: 8
-    batch_size: 4096
-    ubatch_size: 1024
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 320
-    estimated_prefill_tps: 11000
-    notes: "4B at 128k — KV ~3 GiB + weights ~2.8 GiB; fits comfortably in 32 GiB."
-  eliza-1-9b:
-    n_gpu_layers: -1
-    ctx_size: 131072
-    parallel: 8
-    batch_size: 4096
-    ubatch_size: 1024
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 170
-    estimated_prefill_tps: 6200
-    notes: "9B at 128k. Card's value tier — quality and headroom for higher --parallel."
-  eliza-1-27b:
-    # 27B Q4 (~16.8 GiB) + KV at 32k fits in 32 GiB with healthy headroom.
-    n_gpu_layers: -1
-    ctx_size: 32768
-    parallel: 4
-    batch_size: 4096
-    ubatch_size: 1024
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 62
-    estimated_prefill_tps: 1700
-    notes: "Best non-server fit for the 27B bundle — fully on-GPU at 32k."
-  eliza-1-27b-256k:
-    # 256k context KV with QJL+Polar quant is ~20 GiB. Weights + KV > 32 GiB;
-    # we partial-offload some layers to CPU and accept the throughput hit.
-    n_gpu_layers: 48
-    ctx_size: 262144
-    parallel: 2
-    batch_size: 2048
-    ubatch_size: 512
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 22
-    estimated_prefill_tps: 600
-    notes: "256k on 32 GiB requires partial offload; throughput drops vs 32k. H200 is the right home for this bundle."
+    notes: "First-run active Qwen3.5 tier."
 
 dflash:
   enabled: true
@@ -121,5 +70,5 @@ verify_recipe:
   # because some FP4 / FP8 fast paths may not be ported yet. The script
   # warns (not fails) when a kernel is absent — runtime falls back.
   warn_on_kernel_absent: true
-  smoke_bundle: eliza-1-4b
+  smoke_bundle: eliza-1-2b
   tolerance_pct: 15                 # wider tolerance — first-class kernels still maturing on Blackwell

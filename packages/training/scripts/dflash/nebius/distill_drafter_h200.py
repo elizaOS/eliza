@@ -136,7 +136,7 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
 
     # Validate APOLLO import.
     try:
-        from apollo_torch import APOLLO  # noqa: PLC0415
+        from apollo_torch import APOLLOAdamW as APOLLO  # noqa: PLC0415
         log.info("[synthetic-smoke] APOLLO import OK")
     except ImportError as exc:
         log.error("[synthetic-smoke] FAIL: apollo-torch not installed: %s", exc)
@@ -201,27 +201,11 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
             float(loss.detach().cpu()),
         )
 
-    out_dir = Path(args.output_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    manifest = {
-        "schemaVersion": 1,
-        "kind": "dflash-drafter-h200-smoke",
-        "tier": args.target_tier,
-        "drafterSizeB": args.drafter_size_b,
-        "vocabSize": QWEN3_VOCAB_SIZE,
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "synthetic": True,
-        "device": device,
-        "stepsRun": 2,
-        "apolloOk": True,
-        "flashAttn2Ok": True,
-        "trainingCommit": _git_commit(),
-        "notes": "Synthetic smoke. NOT a real distillation output.",
-    }
-    manifest_path = out_dir / f"smoke-{args.target_tier}.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-    log.info("[synthetic-smoke] wrote smoke manifest to %s", manifest_path)
-    log.info("[synthetic-smoke] PASS — environment validated (2 APOLLO steps, vocab=%d)", QWEN3_VOCAB_SIZE)
+    log.info(
+        "[synthetic-smoke] PASS — environment validated (2 APOLLO steps, vocab=%d); no artifacts written to %s",
+        QWEN3_VOCAB_SIZE,
+        args.output_dir,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -630,15 +614,12 @@ def main(argv: list[str] | None = None) -> None:
 
     # Load APOLLO — fail loudly if not installed.
     try:
-        from apollo_torch import APOLLO  # noqa: PLC0415
-    except ImportError:
-        try:
-            from apollo_torch.apollo import APOLLO  # noqa: PLC0415
-        except ImportError as exc:
-            raise SystemExit(
-                "apollo-torch is required for DFlash drafter distillation. "
-                "Run container_setup.sh or: uv pip install apollo-torch"
-            ) from exc
+        from apollo_torch import APOLLOAdamW as APOLLO  # noqa: PLC0415
+    except ImportError as exc:
+        raise SystemExit(
+            "apollo-torch is required for DFlash drafter distillation. "
+            "Run container_setup.sh or: uv pip install apollo-torch"
+        ) from exc
 
     student_model, student_tok = load_drafter_model(args)
     target_model, target_tok = load_target_model(args)

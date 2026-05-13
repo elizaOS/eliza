@@ -1529,11 +1529,11 @@ function getVoiceTurnSignalMetadata(
 	) {
 		signal.nextSpeaker = raw.nextSpeaker;
 	}
-	if (
-		typeof raw.agentShouldSpeak === "boolean" ||
-		raw.agentShouldSpeak === null
-	) {
-		signal.agentShouldSpeak = raw.agentShouldSpeak;
+	const agentShouldSpeak = raw.agentShouldSpeak;
+	if (typeof agentShouldSpeak === "boolean") {
+		signal.agentShouldSpeak = agentShouldSpeak;
+	} else if (agentShouldSpeak === null) {
+		signal.agentShouldSpeak = null;
 	}
 	if (typeof raw.source === "string") signal.source = raw.source;
 	if (typeof raw.model === "string") signal.model = raw.model;

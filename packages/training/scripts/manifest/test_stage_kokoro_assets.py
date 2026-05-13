@@ -20,11 +20,11 @@ def _sha(data: bytes) -> str:
 
 
 def _write_bundle(root: Path) -> Path:
-    bundle = root / "eliza-1-2b.bundle"
+    bundle = root / "eliza-1-1_7b.bundle"
     files = {
-        "text/eliza-1-2b-32k.gguf": b"text",
+        "text/eliza-1-1_7b-32k.gguf": b"text",
         "tts/omnivoice-base-Q4_K_M.gguf": b"omni",
-        "dflash/drafter-2b.gguf": b"draft",
+        "dflash/drafter-1_7b.gguf": b"draft",
         "cache/voice-preset-default.bin": b"cache",
     }
     for rel, payload in files.items():
@@ -33,20 +33,20 @@ def _write_bundle(root: Path) -> Path:
         p.write_bytes(payload)
     manifest = {
         "$schema": "https://elizaos.ai/schemas/eliza-1.manifest.v1.json",
-        "id": "eliza-1-2b",
-        "tier": "2b",
+        "id": "eliza-1-1_7b",
+        "tier": "1_7b",
         "version": "1.0.0",
         "publishedAt": "2026-05-12T00:00:00Z",
         "lineage": {
-            "text": {"base": "Qwen/Qwen3.5-2B", "license": "apache-2.0"},
+            "text": {"base": "Qwen/Qwen3.5-1.7B", "license": "apache-2.0"},
             "voice": {"base": "Serveurperso/OmniVoice-GGUF", "license": "apache-2.0"},
-            "drafter": {"base": "Qwen/Qwen3.5-2B", "license": "apache-2.0"},
+            "drafter": {"base": "Qwen/Qwen3.5-1.7B", "license": "apache-2.0"},
         },
         "files": {
             "text": [
                 {
-                    "path": "text/eliza-1-2b-32k.gguf",
-                    "sha256": _sha(files["text/eliza-1-2b-32k.gguf"]),
+                    "path": "text/eliza-1-1_7b-32k.gguf",
+                    "sha256": _sha(files["text/eliza-1-1_7b-32k.gguf"]),
                     "ctx": 32768,
                 }
             ],
@@ -60,8 +60,8 @@ def _write_bundle(root: Path) -> Path:
             "vision": [],
             "dflash": [
                 {
-                    "path": "dflash/drafter-2b.gguf",
-                    "sha256": _sha(files["dflash/drafter-2b.gguf"]),
+                    "path": "dflash/drafter-1_7b.gguf",
+                    "sha256": _sha(files["dflash/drafter-1_7b.gguf"]),
                 }
             ],
             "cache": [

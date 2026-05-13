@@ -24,8 +24,8 @@ bundle_recommendations:
     parallel: 16
     batch_size: 2048
     ubatch_size: 512
-    kv_cache_k: turbo3_0
-    kv_cache_v: turbo4_0
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
     flash_attention: true
     estimated_decode_tps: 520
     estimated_prefill_tps: 22000
@@ -36,8 +36,8 @@ bundle_recommendations:
     parallel: 8
     batch_size: 2048
     ubatch_size: 512
-    kv_cache_k: turbo3_0
-    kv_cache_v: turbo4_0
+    kv_cache_k: qjl1_256
+    kv_cache_v: q4_polar
     flash_attention: true
     estimated_decode_tps: 310
     estimated_prefill_tps: 11000

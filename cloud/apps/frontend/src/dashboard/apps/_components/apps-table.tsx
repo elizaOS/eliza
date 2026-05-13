@@ -27,7 +27,6 @@ import {
   Activity,
   Copy,
   ExternalLink,
-  // Sparkles,
   Loader2,
   MoreHorizontal,
   Settings,
@@ -133,16 +132,6 @@ export function AppsTable({ apps }: AppsTableProps) {
                     <MoreHorizontal className="h-4 w-4 text-white/60" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-44">
-                    {/* <DropdownMenuItem
-                    asChild
-                    className="cursor-pointer text-[#FF5800] bg-[#FF5800]/10 hover:bg-[#FF5800]/20 focus:bg-[#FF5800]/20 focus:text-[#FF5800]"
-                  >
-                    <Link href={`/dashboard/apps/create?appId=${app.id}`}>
-                      <Sparkles className="h-4 w-4 mr-2 text-[#FF5800]" />
-                      Continue Building
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator /> */}
                     <DropdownMenuItem asChild className="cursor-pointer">
                       <Link to={`/dashboard/apps/${app.id}`}>
                         <Settings className="h-4 w-4 mr-2" />

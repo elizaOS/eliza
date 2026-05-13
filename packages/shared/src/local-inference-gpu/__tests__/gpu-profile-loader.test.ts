@@ -97,12 +97,13 @@ describe("gpu-profile YAML files", () => {
     );
   });
 
-  it("H200 is the only profile that includes the 27b-1m bundle", () => {
-    const h200 = loadProfile("h200");
-    expect(h200.bundle_recommendations["eliza-1-27b-1m"]).toBeDefined();
-    for (const id of ["rtx-3090", "rtx-4090", "rtx-5090"] as const) {
-      const p = loadProfile(id);
-      expect(p.bundle_recommendations["eliza-1-27b-1m"]).toBeUndefined();
+  it("profiles include only the active Qwen3.5 release bundles", () => {
+    for (const id of ALL_IDS) {
+      const profile = loadProfile(id);
+      expect(Object.keys(profile.bundle_recommendations).sort()).toEqual([
+        "eliza-1-0_8b",
+        "eliza-1-2b",
+      ]);
     }
   });
 
@@ -223,11 +224,10 @@ describe("resolveProfileForHost", () => {
 describe("getGpuOverrides", () => {
   it("returns 'applied' for a bundle the profile knows about", () => {
     const profile = loadProfile("rtx-4090");
-    const result = getGpuOverrides({ profile, bundleId: "eliza-1-9b" });
+    const result = getGpuOverrides({ profile, bundleId: "eliza-1-2b" });
     expect(result.kind).toBe("applied");
     if (result.kind === "applied") {
-      // ctx_size from the 4090 YAML for 9B is 131072.
-      expect(result.overrides.contextSize).toBe(131072);
+      expect(result.overrides.contextSize).toBe(32768);
       expect(result.overrides.cacheTypeK).toBe("qjl1_256");
       expect(result.overrides.cacheTypeV).toBe("q4_polar");
       expect(result.overrides.nGpuLayers).toBe(-1);
@@ -239,31 +239,27 @@ describe("getGpuOverrides", () => {
     }
   });
 
+  it("does not attach DFlash draft flags to the single-file 0.8B tier", () => {
+    const profile = loadProfile("rtx-3090");
+    const result = getGpuOverrides({ profile, bundleId: "eliza-1-0_8b" });
+    expect(result.kind).toBe("applied");
+    if (result.kind !== "applied") return;
+    expect(result.overrides.draftMin).toBeUndefined();
+  });
+
   it("returns 'no-recommendation' when the bundle is missing from the profile", () => {
-    // 3090 yaml has no 27b-1m entry.
     const profile = loadProfile("rtx-3090");
-    const result = getGpuOverrides({ profile, bundleId: "eliza-1-27b-1m" });
+    const profileWithout2b = {
+      ...profile,
+      bundle_recommendations: {
+        "eliza-1-0_8b": profile.bundle_recommendations["eliza-1-0_8b"],
+      },
+    };
+    const result = getGpuOverrides({
+      profile: profileWithout2b,
+      bundleId: "eliza-1-2b",
+    });
     expect(result.kind).toBe("no-recommendation");
-  });
-
-  it("H200 applies the 1M-context override for eliza-1-27b-1m", () => {
-    const profile = loadProfile("h200");
-    const result = getGpuOverrides({ profile, bundleId: "eliza-1-27b-1m" });
-    expect(result.kind).toBe("applied");
-    if (result.kind === "applied") {
-      expect(result.overrides.contextSize).toBe(1048576);
-      expect(result.overrides.nGpuLayers).toBe(-1);
-    }
-  });
-
-  it("3090 uses partial offload (n_gpu_layers > 0) for 27B", () => {
-    const profile = loadProfile("rtx-3090");
-    const result = getGpuOverrides({ profile, bundleId: "eliza-1-27b" });
-    expect(result.kind).toBe("applied");
-    if (result.kind === "applied") {
-      expect(result.overrides.nGpuLayers).toBeGreaterThan(0);
-      expect(result.overrides.nGpuLayers).toBeLessThan(80);
-    }
   });
 });
 

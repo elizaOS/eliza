@@ -7,6 +7,8 @@ from pathlib import Path
 import pytest
 
 from scripts.distill_dflash_drafter import (
+    ACTIVE_TIERS,
+    DEFAULT_TARGET_MODEL,
     DEFAULT_STUDENT_BASE,
     _build_manifest,
     _resolve_student_base,
@@ -141,10 +143,19 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
     assert manifest["tokenizerParity"]["matches"] is True
 
 
-@pytest.mark.parametrize("tier", ["0_6b", "2b"])
-def test_sub_4b_tiers_default_to_smallest_qwen35_student_base(tier: str) -> None:
-    assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B"
-
-
-def test_legacy_0_8b_tier_is_not_an_active_release_default() -> None:
+def test_active_tier_matrix_has_no_retired_defaults() -> None:
+    assert ACTIVE_TIERS == ("0_6b", "1_7b", "4b", "9b", "27b", "27b-256k", "27b-1m")
     assert "0_8b" not in DEFAULT_STUDENT_BASE
+    assert "2b" not in DEFAULT_STUDENT_BASE
+    assert "0_8b" not in DEFAULT_TARGET_MODEL
+    assert "2b" not in DEFAULT_TARGET_MODEL
+
+
+@pytest.mark.parametrize("tier", ["0_6b", "1_7b"])
+def test_qwen3_tiers_default_to_qwen3_tokenizer_student_base(tier: str) -> None:
+    assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3-0.6B"
+
+
+@pytest.mark.parametrize("tier", ["4b", "9b", "27b", "27b-256k", "27b-1m"])
+def test_qwen35_tiers_default_to_qwen35_student_base(tier: str) -> None:
+    assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B"

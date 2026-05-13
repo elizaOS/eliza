@@ -160,44 +160,44 @@ dflash:
 # ---------------------------------------------------------------------------
 tiers:
   0_6b:
-    text_eval: { threshold: 0.50, required: true, provisional: true }
-    voice_rtf: { threshold: 0.55, required: true, provisional: true }
-    asr_wer: { threshold: 0.12, required: true, provisional: true }
-    vad_latency_ms: { threshold: 22, required: true, provisional: false }
+    text_eval: { threshold: 0.55, required: true, provisional: true }
+    voice_rtf: { threshold: 0.5, required: true, provisional: true }
+    asr_wer: { threshold: 0.10, required: true, provisional: true }
+    vad_latency_ms: { threshold: 20, required: true, provisional: false }
     vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
     vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
-    first_token_latency_ms: { threshold: 240, required: false, provisional: true }
-    first_audio_latency_ms: { threshold: 480, required: false, provisional: true }
-    barge_in_cancel_ms: { threshold: 85, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 220, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 450, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 80, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.55, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.3, required: false, provisional: true }
-    expressive_tag_faithfulness: { threshold: 0.75, required: false, provisional: true }
-    expressive_mos: { threshold: 3.4, required: false, provisional: true }
-    expressive_tag_leakage: { threshold: 0.06, required: false, provisional: true }
-    peak_rss_mb: { threshold: 1400, required: false, provisional: true, needs_hardware: true }
+    dflash_acceptance: { threshold: 0.60, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.4, required: false, provisional: true }
+    expressive_tag_faithfulness: { threshold: 0.80, required: false, provisional: true }
+    expressive_mos: { threshold: 3.6, required: false, provisional: true }
+    expressive_tag_leakage: { threshold: 0.05, required: false, provisional: true }
+    peak_rss_mb: { threshold: 1800, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
   1_7b:
-    text_eval: { threshold: 0.58, required: true, provisional: true }
-    voice_rtf: { threshold: 0.48, required: true, provisional: true }
-    asr_wer: { threshold: 0.09, required: true, provisional: true }
-    vad_latency_ms: { threshold: 19, required: true, provisional: false }
+    text_eval: { threshold: 0.60, required: true, provisional: true }
+    voice_rtf: { threshold: 0.45, required: true, provisional: true }
+    asr_wer: { threshold: 0.08, required: true, provisional: true }
+    vad_latency_ms: { threshold: 18, required: true, provisional: false }
     vad_boundary_mae_ms: { threshold: 40, required: true, provisional: false }
     vad_endpoint_p95_ms: { threshold: 650, required: true, provisional: false }
     vad_false_bargein_per_hour: { threshold: 0.2, required: true, provisional: false }
-    first_token_latency_ms: { threshold: 210, required: false, provisional: true }
-    first_audio_latency_ms: { threshold: 420, required: false, provisional: true }
-    barge_in_cancel_ms: { threshold: 75, required: true, provisional: false }
+    first_token_latency_ms: { threshold: 200, required: false, provisional: true }
+    first_audio_latency_ms: { threshold: 400, required: false, provisional: true }
+    barge_in_cancel_ms: { threshold: 70, required: true, provisional: false }
     thirty_turn_ok: { threshold: true, required: true, provisional: false }
     e2e_loop_ok: { threshold: true, required: true, provisional: false }
-    dflash_acceptance: { threshold: 0.62, required: false, provisional: true }
-    dflash_speedup: { threshold: 1.45, required: false, provisional: true }
-    expressive_tag_faithfulness: { threshold: 0.82, required: false, provisional: true }
-    expressive_mos: { threshold: 3.7, required: false, provisional: true }
-    expressive_tag_leakage: { threshold: 0.04, required: false, provisional: true }
-    peak_rss_mb: { threshold: 3200, required: false, provisional: true, needs_hardware: true }
+    dflash_acceptance: { threshold: 0.65, required: false, provisional: true }
+    dflash_speedup: { threshold: 1.5, required: false, provisional: true }
+    expressive_tag_faithfulness: { threshold: 0.85, required: false, provisional: true }
+    expressive_mos: { threshold: 3.8, required: false, provisional: true }
+    expressive_tag_leakage: { threshold: 0.03, required: false, provisional: true }
+    peak_rss_mb: { threshold: 4500, required: false, provisional: true, needs_hardware: true }
     thermal_throttle_pct: { threshold: 20, required: false, provisional: true, needs_hardware: true }
   4b:
     text_eval: { threshold: 0.62, required: true, provisional: true }

@@ -56,10 +56,12 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
 
 
-def test_voice_artifacts_follow_active_omnivoice_policy() -> None:
+def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
-    assert "tts/kokoro/model_q4.onnx" not in plan["0_8b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
+    assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["0_8b"].required_files
+    assert "tts/kokoro/model_q4.onnx" in plan["2b"].required_files
+    assert "tts/kokoro/model_q4.onnx" in plan["4b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
     assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files
@@ -162,7 +164,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "publishEligible": True,
                 "finetuned": False,
                 "sourceModels": {
-                    "text": {"repo": "Qwen/Qwen3.5-2B-GGUF"},
+                    "text": {"repo": "Qwen/Qwen3.5-2B"},
                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
@@ -220,7 +222,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "releaseState": "base-v1",
                 "publishEligible": True,
                 "finetuned": False,
-                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B-GGUF"}},
+                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B"}},
                 "final": {
                     "weights": False,
                     "hashes": True,
@@ -258,7 +260,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "publishEligible": True,
                 "finetuned": False,
                 "sourceModels": {
-                    "text": {"repo": "Qwen/Qwen3.5-2B-GGUF"},
+                    "text": {"repo": "Qwen/Qwen3.5-2B"},
                     "asr": {"repo": "ggml-org/Qwen3-ASR-2B-GGUF"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"},
                 },
@@ -299,7 +301,7 @@ def test_release_status_blockers_base_v1_requires_finetuned_false(
                 "releaseState": "base-v1",
                 "publishEligible": True,
                 "finetuned": True,  # contradicts base-v1
-                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B-GGUF"}},
+                "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-2B"}},
                 "final": {
                     "weights": False,
                     "hashes": True,

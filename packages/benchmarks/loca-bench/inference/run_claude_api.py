@@ -23,7 +23,18 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
-import fire
+try:
+    import fire
+except ModuleNotFoundError:  # pragma: no cover - only needed for programmatic runners
+    class _MissingFire:
+        @staticmethod
+        def Fire(*_args: object, **_kwargs: object) -> None:
+            raise ModuleNotFoundError(
+                "The optional 'fire' package is required only for the "
+                "run_claude_api.py command-line entrypoint."
+            )
+
+    fire = _MissingFire()
 import anthropic
 from dotenv import load_dotenv
 

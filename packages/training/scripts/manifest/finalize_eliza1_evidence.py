@@ -37,14 +37,17 @@ try:
         verify_bundle_licenses,
         write_bundle_licenses,
     )
-    from scripts.manifest.eliza1_manifest import SUPPORTED_BACKENDS_BY_TIER
+    from scripts.manifest.eliza1_manifest import (
+        SUPPORTED_BACKENDS_BY_TIER,
+        validate_manifest,
+    )
     from scripts.manifest.eliza1_platform_plan import (
         REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
         _target_backend,
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_licenses import verify_bundle_licenses, write_bundle_licenses  # type: ignore
-    from eliza1_manifest import SUPPORTED_BACKENDS_BY_TIER  # type: ignore
+    from eliza1_manifest import SUPPORTED_BACKENDS_BY_TIER, validate_manifest  # type: ignore
     from eliza1_platform_plan import (  # type: ignore
         REQUIRED_PLATFORM_EVIDENCE_BY_TIER,
         _target_backend,
@@ -316,9 +319,16 @@ def _evals_pass(bundle_dir: Path) -> tuple[bool, list[str]]:
     agg = _read_json(bundle_dir / "evals" / "aggregate.json")
     if not agg:
         return False, ["evals/aggregate.json missing or invalid"]
+    tier = _detect_tier(bundle_dir)
+    if agg.get("tier") != tier:
+        return False, [f"evals/aggregate.json tier {agg.get('tier')!r} != bundle tier {tier!r}"]
     gate_report = agg.get("gateReport")
     if not isinstance(gate_report, dict):
         return False, ["evals/aggregate.json missing gateReport"]
+    if gate_report.get("tier") != tier:
+        return False, [
+            f"evals/aggregate.json gateReport.tier {gate_report.get('tier')!r} != bundle tier {tier!r}"
+        ]
     failing: list[str] = []
     gates = gate_report.get("gates")
     if isinstance(gates, list):
@@ -332,6 +342,44 @@ def _evals_pass(bundle_dir: Path) -> tuple[bool, list[str]]:
     if not ok and not failing:
         failing.append("gateReport.passed is not true")
     return ok, sorted(set(failing))
+
+
+def _manifest_validation(bundle_dir: Path, tier: str) -> tuple[bool, list[str]]:
+    """Validate eliza-1.manifest.json shape and staged file digests."""
+    manifest_path = bundle_dir / "eliza-1.manifest.json"
+    manifest = _read_json(manifest_path)
+    if not manifest:
+        return False, ["eliza-1.manifest.json missing or invalid"]
+    errors = list(validate_manifest(manifest, require_publish_ready=False))
+    if manifest.get("tier") != tier:
+        errors.append(
+            f"eliza-1.manifest.json tier {manifest.get('tier')!r} != bundle tier {tier!r}"
+        )
+    files = manifest.get("files")
+    if not isinstance(files, dict):
+        return False, errors or ["eliza-1.manifest.json files object missing"]
+    for kind, entries in files.items():
+        if entries is None:
+            continue
+        if not isinstance(entries, list):
+            errors.append(f"manifest files.{kind}: must be an array")
+            continue
+        for index, entry in enumerate(entries):
+            if not isinstance(entry, dict):
+                errors.append(f"manifest files.{kind}[{index}]: must be an object")
+                continue
+            rel = entry.get("path")
+            digest = entry.get("sha256")
+            if not isinstance(rel, str) or not rel:
+                errors.append(f"manifest files.{kind}[{index}].path missing")
+                continue
+            path = bundle_dir / rel
+            if not path.is_file():
+                errors.append(f"manifest files.{kind}[{index}] missing staged file {rel}")
+                continue
+            if not isinstance(digest, str) or _sha256(path) != digest:
+                errors.append(f"manifest files.{kind}[{index}] sha256 mismatch for {rel}")
+    return not errors, sorted(set(errors))
 
 
 def _hashes_ok(bundle_dir: Path) -> bool:
@@ -407,7 +455,8 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
 
     # 4. Recompute final.* flags from artifacts present.
     weights_present = (bundle_dir / "text").is_dir() and any((bundle_dir / "text").iterdir())
-    hashes_ok = _hashes_ok(bundle_dir)
+    manifest_ok, manifest_errors = _manifest_validation(bundle_dir, tier)
+    hashes_ok = _hashes_ok(bundle_dir) and manifest_ok
     evals_ok, eval_failures = _evals_pass(bundle_dir)
     required_targets = REQUIRED_PLATFORM_EVIDENCE_BY_TIER[tier]
     platform_evidence_ok = bool(required_targets) and all(
@@ -458,7 +507,10 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     if not final["weights"]:
         blocking.append("text/ weights not staged")
     if not final["hashes"]:
-        blocking.append("checksums/SHA256SUMS missing or does not cover the bundle")
+        reason = "checksums/SHA256SUMS missing, stale, or manifest file digests do not match"
+        if manifest_errors:
+            reason += ": " + "; ".join(manifest_errors[:6])
+        blocking.append(reason)
     if not final["licenses"]:
         blocking.append("licenses/ set incomplete: " + "; ".join(license_problems))
     if not final["evals"]:
@@ -500,6 +552,10 @@ def finalize(bundle_dir: Path, repo_root: Path) -> dict[str, Any]:
     evidence["defaultEligible"] = default_eligible
     evidence["publishBlockingReasons"] = blocking
     evidence["checksumManifest"] = "checksums/SHA256SUMS"
+    evidence["manifestValidation"] = {
+        "ok": manifest_ok,
+        "errors": manifest_errors,
+    }
     # licenseFiles must equal what the orchestrator's _license_files_for_layout
     # expects: the always-required four + a component license only when that
     # component's weights subdir is present in the bundle layout (vision/,

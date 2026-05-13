@@ -105,9 +105,8 @@ export interface GpuProfile {
 /**
  * RTX 3090 — Ampere, 24 GiB, no FP8.
  *
- * Best current release fit: Eliza-1 2B. Larger hardware-tier plans are
- * intentionally excluded from the active catalog until final Qwen3.5 release
- * evidence exists. Flash-attn helps Ampere meaningfully.
+ * Best current release fit: Eliza-1 4B with compact tiers as fallbacks.
+ * Flash-attn helps Ampere meaningfully.
  */
 const RTX_3090: GpuProfile = {
   id: "rtx-3090",
@@ -116,7 +115,7 @@ const RTX_3090: GpuProfile = {
   computeCapability: "sm_86",
   memoryBandwidthGBs: 936,
   fp8: false,
-  recommendedBundles: ["eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   // Ampere doesn't have the q4_polar kernel on the Polar fork; fall back to
   // the Q8/Q4 KV quants which work on every sm_70+ GPU.
@@ -137,9 +136,7 @@ const RTX_3090: GpuProfile = {
 /**
  * RTX 4090 — Ada Lovelace, 24 GiB, FP8 (no flash-attn-FP8 yet).
  *
- * Best current release fit: Eliza-1 2B. Larger planning entries are
- * intentionally not recommended until those tiers have final weights and
- * release evidence.
+ * Best current release fit: Eliza-1 4B with compact tiers as fallbacks.
  */
 const RTX_4090: GpuProfile = {
   id: "rtx-4090",
@@ -148,7 +145,7 @@ const RTX_4090: GpuProfile = {
   computeCapability: "sm_89",
   memoryBandwidthGBs: 1008,
   fp8: true,
-  recommendedBundles: ["eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -167,7 +164,7 @@ const RTX_4090: GpuProfile = {
 /**
  * RTX 5090 — Blackwell, 32 GiB, FP8/FP4 first-class.
  *
- * Best current release fit: Eliza-1 2B. Blackwell sm_120 is new enough that
+ * Best current release fit: Eliza-1 4B. Blackwell sm_120 is new enough that
  * the Polar/QJL kernels may not be pre-built — the runtime should probe
  * `CAPABILITIES.json` and surface a structured error rather than silently
  * falling back.
@@ -179,7 +176,7 @@ const RTX_5090: GpuProfile = {
   computeCapability: "sm_120",
   memoryBandwidthGBs: 1792,
   fp8: true,
-  recommendedBundles: ["eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",
@@ -198,9 +195,8 @@ const RTX_5090: GpuProfile = {
 /**
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
- * Best current release fit: Eliza-1 2B. H200 still runs the full kernel
- * verification recipe, but larger tiers remain hidden until final weights and
- * release evidence exist.
+ * Best current release fit: Eliza-1 4B. H200 still runs the full kernel
+ * verification recipe before defaulting to the maximum-context bundle.
  */
 const H200: GpuProfile = {
   id: "h200",
@@ -209,7 +205,7 @@ const H200: GpuProfile = {
   computeCapability: "sm_90",
   memoryBandwidthGBs: 4800,
   fp8: true,
-  recommendedBundles: ["eliza-1-2b", "eliza-1-0_8b"],
+  recommendedBundles: ["eliza-1-4b", "eliza-1-2b", "eliza-1-0_8b"],
   flashAttn: true,
   kvCacheTypeK: "qjl1_256",
   kvCacheTypeV: "q4_polar",

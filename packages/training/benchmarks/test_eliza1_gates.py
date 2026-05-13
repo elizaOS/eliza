@@ -93,12 +93,12 @@ def test_none_measurement_counts_as_missing() -> None:
 
 
 def test_failing_numeric_gate_blocks() -> None:
-    # 0_6b text_eval threshold is 0.50; 0.40 fails (>=).
+    # 0_6b text_eval threshold is 0.55; 0.40 fails (>=).
     rep = apply_gates({"tier": "0_6b", "mode": "full", "results": _full_results(text_eval=0.40)})
     assert rep.passed is False
     row = next(g for g in rep.gates if g.name == "text_eval")
     assert row.passed is False
-    assert row.threshold == pytest.approx(0.50)
+    assert row.threshold == pytest.approx(0.55)
 
 
 def test_voice_rtf_uses_le_comparison() -> None:
@@ -150,8 +150,8 @@ def test_report_to_dict_shape() -> None:
 
 
 def test_different_tiers_have_different_thresholds() -> None:
-    # 1_7b text_eval threshold (0.58) is tighter than 0_6b (0.50); 0.56
+    # 1_7b text_eval threshold (0.60) is tighter than 0_6b (0.55); 0.57
     # passes 0_6b but fails 1_7b.
-    res = _full_results(text_eval=0.56)
+    res = _full_results(text_eval=0.57)
     assert apply_gates({"tier": "0_6b", "mode": "full", "results": res}).passed is True
     assert apply_gates({"tier": "1_7b", "mode": "full", "results": res}).passed is False

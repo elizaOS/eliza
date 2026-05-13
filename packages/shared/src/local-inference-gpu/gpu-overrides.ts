@@ -10,8 +10,7 @@
  * below for the documented integration diff (NOT applied here).
  *
  * Single-GPU only: no tensor-split, no NVLink. If `gpuOptions.nGpuLayers`
- * is `-1` the whole model goes to the one card; partial offload (used
- * by `eliza-1-27b` on the 3090) keeps the layer count finite.
+ * is `-1` the whole model goes to the one card.
  */
 import type { Eliza1TierId } from "../local-inference/catalog.js";
 
@@ -83,13 +82,14 @@ export function getGpuOverrides(input: GpuOverridesInput): GpuOverridesResult {
     kind: "applied",
     bundleId,
     gpuId: profile.gpu_id,
-    overrides: bundleToOverrides(rec, profile),
+    overrides: bundleToOverrides(rec, profile, bundleId),
   };
 }
 
 function bundleToOverrides(
   rec: BundleRecommendation,
   profile: GpuYamlProfile,
+  bundleId: Eliza1TierId,
 ): DflashServerOverrides {
   const out: DflashServerOverrides = {
     contextSize: rec.ctx_size,
@@ -102,7 +102,7 @@ function bundleToOverrides(
     cacheTypeV: rec.kv_cache_v,
   };
   if (rec.mlock !== undefined) out.mlock = rec.mlock;
-  if (profile.dflash.enabled) {
+  if (profile.dflash.enabled && bundleId === "eliza-1-2b") {
     out.draftMin = profile.dflash.draft_min;
     out.draftMax = profile.dflash.draft_max;
     out.draftGpuLayers = profile.dflash.draft_gpu_layers;

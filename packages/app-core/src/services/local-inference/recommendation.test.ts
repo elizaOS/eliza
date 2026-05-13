@@ -43,10 +43,10 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_6b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
     // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is 27b-1m -> 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
+    // not. Ladder is 27b-1m -> 27b-256k -> 27b -> 9b -> 4b -> 1_7b, picks 27b.
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
@@ -84,8 +84,8 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
-    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
+    expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_6b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-1_7b");
   });
 
   it("classifies an iOS mobile probe as mobile and lands on the modern-phone tier", () => {
@@ -99,14 +99,14 @@ describe("local inference recommendations", () => {
     });
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
     const recommended = selectRecommendedModels(probe);
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-1_7b");
   });
 
   it("falls back to the smallest tier on minimal mobile", () => {
-    // 2b needs 4 GB minRam; below that the ladder collapses to 0_8b.
+    // 1.7B needs 4 GB minRam; below that the ladder collapses to 0.6B.
     // Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
-      [3.5, "eliza-1-0_8b"],
+      [3.5, "eliza-1-0_6b"],
       [1.5, null],
     ];
 
@@ -272,7 +272,7 @@ describe("local inference recommendations", () => {
 
 const SHA = "0".repeat(64);
 
-function fixtureManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
+function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
   const pass = {
     status: "pass" as const,
     atCommit: "abc1234",
@@ -336,12 +336,12 @@ function installedFixture(
   overrides: Partial<InstalledModel> = {},
 ): InstalledModel {
   return {
-    id: "eliza-1-2b",
-    displayName: "eliza-1-2b",
-    path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
+    id: "eliza-1-1_7b",
+    displayName: "eliza-1-1_7b",
+    path: "/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-32k.gguf",
     sizeBytes: 1_000_000_000,
-    bundleRoot: "/models/eliza-1-2b.bundle",
-    manifestPath: "/models/eliza-1-2b.bundle/eliza-1.manifest.json",
+    bundleRoot: "/models/eliza-1-1_7b.bundle",
+    manifestPath: "/models/eliza-1-1_7b.bundle/eliza-1.manifest.json",
     installedAt: "2026-05-11T00:00:00Z",
     lastUsedAt: null,
     source: "eliza-download",
