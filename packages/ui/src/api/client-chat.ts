@@ -755,12 +755,7 @@ ElizaClient.prototype.sendChatRest = async function (
   channelType = "DM",
 ) {
   const sendToConversation = async (conversationId: string) =>
-    this.sendConversationMessage(
-      conversationId,
-      text,
-      channelType,
-      undefined,
-    );
+    this.sendConversationMessage(conversationId, text, channelType, undefined);
 
   const conversationId = await ensureLegacyChatConversationId(this);
   try {

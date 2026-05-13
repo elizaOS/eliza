@@ -33,9 +33,7 @@
   ],
   "author": "elizaOS",
   "license": "MIT",
-  "dependencies": {
-    "@elizaos/app-core": "workspace:*"
-  },
+  "dependencies": {},
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaOS/eliza"

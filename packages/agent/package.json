@@ -115,7 +115,7 @@
     "@elizaos/plugin-local-embedding": "workspace:*",
     "@elizaos/plugin-local-inference": "workspace:*",
     "@elizaos/plugin-mcp": "workspace:*",
-    "@elizaos/plugin-mlx": "file:../../plugins/plugin-mlx",
+    "@elizaos/plugin-mlx": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
@@ -145,7 +145,7 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@elizaos/signal-native": "*"
+    "@elizaos/signal-native": "latest"
   },
   "peerDependenciesMeta": {
     "@elizaos/signal-native": {

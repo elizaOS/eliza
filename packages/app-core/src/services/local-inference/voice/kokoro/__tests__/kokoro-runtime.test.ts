@@ -6,24 +6,23 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { KokoroOnnxRuntime } from "../kokoro-runtime";
 import { KokoroModelMissingError, type KokoroVoicePack } from "../types";
 
+type StubFeeds = Record<
+  string,
+  {
+    type: string;
+    dims: ReadonlyArray<number>;
+    data: Float32Array | Int32Array | BigInt64Array;
+  }
+>;
+
 // Stub ORT module — captures the feeds the runtime constructs without
 // running real onnxruntime-node. Mirrors the structural shape declared in
 // kokoro-runtime.ts (`OrtModule`).
 function makeStubOrt(args: {
   inputNames?: ReadonlyArray<string>;
   waveform?: Float32Array;
-  captured?: {
-    feeds: Record<
-      string,
-      {
-        type: string;
-        dims: ReadonlyArray<number>;
-        data: Float32Array | Int32Array | BigInt64Array;
-      }
-    > | null;
-  };
-}): { ort: unknown; captured: typeof args.captured } {
-  const captured = args.captured ?? { feeds: null };
+}): { ort: unknown; captured: { feeds: StubFeeds | null } } {
+  const captured: { feeds: StubFeeds | null } = { feeds: null };
   const waveform = args.waveform ?? new Float32Array([0.1, -0.1, 0.2, -0.2]);
   const session = {
     inputNames: args.inputNames,
@@ -133,8 +132,8 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(captured?.feeds).not.toBeNull();
-    const styleFeed = captured?.feeds?.style;
+    expect(captured.feeds).not.toBeNull();
+    const styleFeed = (captured.feeds as StubFeeds).style;
     expect(Array.from(styleFeed.data as Float32Array)).toEqual([1, 2, 3, 4]);
     expect(styleFeed.dims).toEqual([1, 4]);
   });
@@ -164,7 +163,7 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    const styleFeed = captured?.feeds?.style;
+    const styleFeed = (captured.feeds as StubFeeds).style;
     expect(Array.from(styleFeed.data as Float32Array)).toEqual([
       300, 301, 302, 303,
     ]);
@@ -198,7 +197,7 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    const styleFeed = captured?.feeds?.style;
+    const styleFeed = (captured.feeds as StubFeeds).style;
     expect(Array.from(styleFeed.data as Float32Array)).toEqual([
       200, 201, 202, 203,
     ]);
@@ -254,8 +253,8 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(Object.keys(captured?.feeds!)).toContain("input_ids");
-    expect(Object.keys(captured?.feeds!)).not.toContain("tokens");
+    expect(Object.keys(captured.feeds as StubFeeds)).toContain("input_ids");
+    expect(Object.keys(captured.feeds as StubFeeds)).not.toContain("tokens");
   });
 
   it("feeds `tokens` when the session lacks `input_ids` (older kokoro-onnx export)", async () => {
@@ -275,8 +274,8 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(Object.keys(captured?.feeds!)).toContain("tokens");
-    expect(Object.keys(captured?.feeds!)).not.toContain("input_ids");
+    expect(Object.keys(captured.feeds as StubFeeds)).toContain("tokens");
+    expect(Object.keys(captured.feeds as StubFeeds)).not.toContain("input_ids");
   });
 
   it("defaults to `input_ids` when the session does not report input names (test stubs without inputNames)", async () => {
@@ -294,6 +293,6 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(Object.keys(captured?.feeds!)).toContain("input_ids");
+    expect(Object.keys(captured.feeds as StubFeeds)).toContain("input_ids");
   });
 });
