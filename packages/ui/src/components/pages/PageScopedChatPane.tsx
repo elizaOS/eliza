@@ -495,7 +495,6 @@ export function PageScopedChatPane({
           options?.channelType ?? "DM",
           controller.signal,
           images.length > 0 ? images : undefined,
-          undefined,
           metadata,
         );
         if (response.text && response.text !== streamed) {
