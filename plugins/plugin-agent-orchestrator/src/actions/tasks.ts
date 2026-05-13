@@ -379,6 +379,28 @@ async function runSpawnAgent(
     );
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
 
+    // Resolve the connector source for routing the sub-agent's eventual
+    // reply back to the user. For messages that originated on a platform
+    // (discord etc.) content.source is the platform name. For messages
+    // SYNTHESIZED by SubAgentRouter (a previous sub-agent's task_complete
+    // routed back into the runtime so the planner could decide to reply or
+    // re-delegate), content.source is the router's marker string and
+    // `runtime.sendMessageToTarget` has no handler for it. Unwrap one
+    // level by reading the upstream `originSource` the router stamps onto
+    // its synthetic inbound's metadata, so nested spawns inherit the
+    // real user-facing platform.
+    const inboundOriginSource =
+      typeof content.metadata === "object" &&
+      content.metadata !== null &&
+      typeof (content.metadata as Record<string, unknown>).originSource ===
+        "string"
+        ? ((content.metadata as Record<string, unknown>).originSource as string)
+        : undefined;
+    const resolvedSpawnSource =
+      content.source === "sub_agent" && inboundOriginSource
+        ? inboundOriginSource
+        : content.source;
+
     const session = await service.spawnSession({
       agentType,
       workdir,
@@ -392,7 +414,7 @@ async function runSpawnAgent(
         worldId: message.worldId,
         userId: message.entityId,
         label,
-        source: content.source,
+        source: resolvedSpawnSource,
         keepAliveAfterComplete,
       },
     });
