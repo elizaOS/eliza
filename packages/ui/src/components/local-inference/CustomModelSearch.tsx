@@ -1,4 +1,3 @@
-import { Button } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
 import type {
@@ -16,6 +15,7 @@ import {
   listLocalModelSearchProviders,
   wrapLocalModelSearchResults,
 } from "../../services/local-inference/custom-search";
+import { Button } from "../ui/button";
 import { ModelCard } from "./ModelCard";
 
 interface CustomModelSearchProps {
@@ -67,16 +67,23 @@ export function CustomModelSearch({
   );
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<LocalModelSearchResult[]>([]);
+  const [resultsRequestKey, setResultsRequestKey] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastRequestRef = useRef<string>("");
   const provider = getLocalModelSearchProvider(providerId);
+  const trimmedQuery = query.trim();
+  const currentRequestKey =
+    provider.searchSupported && trimmedQuery.length >= 2
+      ? `${providerId}:${trimmedQuery}`
+      : "";
 
   useEffect(() => {
     const trimmed = query.trim();
     const requestKey = `${providerId}:${trimmed}`;
     if (trimmed.length < 2) {
       setResults([]);
+      setResultsRequestKey("");
       setError(null);
       setLoading(false);
       lastRequestRef.current = "";
@@ -86,11 +93,16 @@ export function CustomModelSearch({
     if (!provider.searchSupported) {
       lastRequestRef.current = requestKey;
       setResults([]);
+      setResultsRequestKey("");
       setError(null);
       setLoading(false);
       return;
     }
 
+    if (lastRequestRef.current !== requestKey) {
+      setResults([]);
+      setResultsRequestKey("");
+    }
     lastRequestRef.current = requestKey;
     const handle = setTimeout(async () => {
       setLoading(true);
@@ -99,11 +111,13 @@ export function CustomModelSearch({
         const nextResults = await searchProviderViaClient(providerId, trimmed);
         if (lastRequestRef.current === requestKey) {
           setResults(nextResults);
+          setResultsRequestKey(requestKey);
         }
       } catch (err) {
         if (lastRequestRef.current === requestKey) {
           setError(err instanceof Error ? err.message : "Search failed");
           setResults([]);
+          setResultsRequestKey("");
         }
       } finally {
         if (lastRequestRef.current === requestKey) {
@@ -114,13 +128,15 @@ export function CustomModelSearch({
 
     return () => clearTimeout(handle);
   }, [provider.searchSupported, providerId, query]);
+  const visibleResults =
+    resultsRequestKey === currentRequestKey ? results : [];
 
   const handleDownloadClick = useCallback(
     (modelId: string) => {
-      const result = results.find((entry) => entry.model.id === modelId);
+      const result = visibleResults.find((entry) => entry.model.id === modelId);
       if (result?.download.supported) onDownload(result.model);
     },
-    [onDownload, results],
+    [onDownload, visibleResults],
   );
 
   return (
@@ -140,6 +156,7 @@ export function CustomModelSearch({
                 onClick={() => {
                   setProviderId(candidate.id);
                   setResults([]);
+                  setResultsRequestKey("");
                   setError(null);
                 }}
                 className={`h-7 rounded-md px-2.5 text-xs font-medium transition-colors ${
@@ -168,6 +185,7 @@ export function CustomModelSearch({
             onClick={() => {
               setQuery("");
               setResults([]);
+              setResultsRequestKey("");
             }}
           >
             Clear
@@ -194,15 +212,15 @@ export function CustomModelSearch({
         !error &&
         provider.searchSupported &&
         query.trim().length >= 2 &&
-        results.length === 0 && (
+        visibleResults.length === 0 && (
           <div className="text-muted-foreground text-sm">
             No GGUF repos matched. Try a different keyword or owner/model id.
           </div>
         )}
 
-      {results.length > 0 && (
+      {visibleResults.length > 0 && (
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {results.map((result) => (
+          {visibleResults.map((result) => (
             <ModelCard
               key={result.model.id}
               model={result.model}

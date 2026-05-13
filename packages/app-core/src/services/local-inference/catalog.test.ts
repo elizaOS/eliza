@@ -19,16 +19,16 @@ describe("local inference catalog", () => {
     );
   });
 
-  it("uses the Qwen3.5 0.8B / 2B / 4B text source tiers, not stale Qwen3 small-tier sources", () => {
+  it("uses the Qwen3.5 0.6B / 1.7B / 4B text source tiers, not stale Qwen3 small-tier sources", () => {
     expect(ELIZA_1_TIER_IDS.slice(0, 3)).toEqual([
-      "eliza-1-0_8b",
-      "eliza-1-2b",
+      "eliza-1-0_6b",
+      "eliza-1-1_7b",
       "eliza-1-4b",
     ]);
-    expect(FIRST_RUN_DEFAULT_MODEL_ID).toBe("eliza-1-2b");
+    expect(FIRST_RUN_DEFAULT_MODEL_ID).toBe("eliza-1-1_7b");
     const serializedCatalog = JSON.stringify(MODEL_CATALOG);
-    expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.8B");
-    expect(serializedCatalog).toContain("Qwen/Qwen3.5-2B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-0.6B");
+    expect(serializedCatalog).toContain("Qwen/Qwen3.5-1.7B");
     expect(serializedCatalog).toContain("Qwen/Qwen3.5-4B");
     const staleSmallTierId = "eliza-1-0_" + "6b";
     const staleMobileTierId = "eliza-1-1_" + "7b";
@@ -107,6 +107,31 @@ describe("local inference catalog", () => {
     }
   });
 
+  it("declares the Kokoro/OmniVoice voice boundary by tier", () => {
+    expect(findCatalogModel("eliza-1-0_6b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-1_7b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
+    expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
+      "kokoro",
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-27b-1m")?.voiceBackends).toEqual([
+      "omnivoice",
+    ]);
+    expect(findCatalogModel("eliza-1-1_7b")?.sourceModel?.components.voice?.repo).toBe(
+      "onnx-community/Kokoro-82M-v1.0-ONNX",
+    );
+    expect(findCatalogModel("eliza-1-27b")?.sourceModel?.components.voice?.repo).toBe(
+      "Serveurperso/OmniVoice-GGUF",
+    );
+  });
+
   it("does not expose hidden companion entries in the hub", () => {
     const visible = localInferenceService.getCatalog();
     expect(visible.some((model) => model.category === "drafter")).toBe(false);
@@ -142,12 +167,12 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Size tiers: 0.8B / 2B = 32k, 4B/9B = 64k, 27B = 128k,
+    // Size tiers: 0.6B / 1.7B = 32k, 4B/9B = 64k, 27B = 128k,
     // 27B-256k = 256k. The catalog records the largest
     // ctx the bundle's manifest will advertise for each tier.
     const expected: Record<string, number> = {
-      "eliza-1-0_8b": 32768,
-      "eliza-1-2b": 32768,
+      "eliza-1-0_6b": 32768,
+      "eliza-1-1_7b": 32768,
       "eliza-1-4b": 65536,
       "eliza-1-9b": 65536,
       "eliza-1-27b": 131072,

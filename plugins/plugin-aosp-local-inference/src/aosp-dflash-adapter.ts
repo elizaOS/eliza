@@ -117,11 +117,43 @@ export interface DflashGenerateOptions {
   onTextChunk?: (chunk: string) => void | Promise<void>;
 }
 
+/**
+ * Structural mirror of `app-core`'s `DflashTextRunner` (the voice pipeline's
+ * draft/verify text contract) — re-declared here so this plugin can produce
+ * one without importing app-core (the dependency direction stays
+ * app-core → runtime → this plugin, never reversed). The host wires the
+ * returned runner into `LocalInferenceEngine.runVoiceTurn({ textRunner })`.
+ */
+export interface DflashVoiceTextRunner {
+  /** True only when a drafter model has been loaded. */
+  hasDrafter(): boolean;
+  /**
+   * Run one streamed completion and report verifier-shaped accept events
+   * (synthesized from streamed deltas — the FFI path's `--spec-type dflash`
+   * does the actual draft/verify; this surfaces accepted text).
+   */
+  generateWithVerifierEvents(
+    args: DflashGenerateOptions & {
+      onVerifierEvent: (event: {
+        kind: "accept";
+        tokens: Array<{ text: string }>;
+      }) => void | Promise<void>;
+    },
+  ): Promise<{ text: string }>;
+}
+
 export interface DflashAdapter {
   loadModel(args: DflashLoadOptions): Promise<void>;
   unloadModel(): Promise<void>;
   currentModelPath(): string | null;
   generate(args: DflashGenerateOptions): Promise<string>;
+  /**
+   * Adapt this adapter onto the voice pipeline's text-runner contract. The
+   * host passes the result into `engine.runVoiceTurn({ textRunner })` so the
+   * voice loop's drafter/verifier runs against the in-process libllama
+   * server instead of the desktop-spawned `llama-server`.
+   */
+  voiceTextRunner(): DflashVoiceTextRunner;
 }
 
 /**
@@ -220,6 +252,32 @@ class AospDflashAdapter implements DflashAdapter {
       onTextChunk: args.onTextChunk,
     });
     return result.text;
+  }
+
+  voiceTextRunner(): DflashVoiceTextRunner {
+    return {
+      hasDrafter: () => this.loadedDrafter !== null,
+      generateWithVerifierEvents: async (args) => {
+        const text = await this.generate({
+          prompt: args.prompt,
+          promptTokens: args.promptTokens,
+          maxTokens: args.maxTokens,
+          temperature: args.temperature ?? 0,
+          stopSequences: args.stopSequences,
+          signal: args.signal,
+          onTextChunk: (chunk) => {
+            // Synthesize verifier accept events from streamed deltas. The
+            // FFI path's `--spec-type dflash` does the real draft/verify;
+            // accepted text reaching us is, by construction, verifier-accepted.
+            void args.onVerifierEvent({
+              kind: "accept",
+              tokens: [{ text: chunk }],
+            });
+          },
+        });
+        return { text };
+      },
+    };
   }
 }
 

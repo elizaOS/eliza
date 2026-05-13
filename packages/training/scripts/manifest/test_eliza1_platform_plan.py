@@ -56,6 +56,16 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
 
 
+def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
+    plan = build_plan()
+    assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["0_8b"].required_files
+    assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
+    assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
+    assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files
+    assert "tts/omnivoice-base-Q8_0.gguf" in plan["27b"].required_files
+
+
 def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
     plan = build_plan()
     root = tmp_path / "bundles"

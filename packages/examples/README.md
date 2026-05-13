@@ -36,8 +36,8 @@ all of these; otherwise set the provider used by the example you are running.
 | --- | --- | --- |
 | `POSTGRES_URL` | `next`, `rest-api/*`, `telegram`, `discord`, `bluesky`, `twitter-xai`, `text-adventure`, `tic-tac-toe` | Optional in many examples because PGLite is used by default; required for production-like persistence. |
 | `DATABASE_URL` | `farcaster` | Optional PostgreSQL URL for the Farcaster agent. |
-| `CONVEX_URL` | `convex` test client | HTTP Actions URL printed by `npx convex dev` or from a deployed Convex project. |
-| Convex env keys | `convex` | Set one model provider in Convex with `npx convex env set OPENAI_API_KEY ...` or equivalent. |
+| `CONVEX_URL` | `convex` test client | HTTP Actions URL printed by `convex dev` or from a deployed Convex project. |
+| Convex env keys | `convex` | Set one model provider in Convex with `convex env set OPENAI_API_KEY ...` or equivalent. |
 | `SUPABASE_FUNCTION_URL`, `SUPABASE_ANON_KEY` | `supabase` test client | Required to test deployed Supabase Edge Functions. |
 | Supabase secrets | `supabase` | Set `OPENAI_API_KEY` with `supabase secrets set OPENAI_API_KEY=...`. |
 | Vercel env | `vercel` | Set `OPENAI_API_KEY` in Vercel env. `VERCEL_URL` can point the test client at a deployment. |
@@ -86,7 +86,7 @@ until the full flow is verified.
 | `chat` | One of `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `XAI_API_KEY`, `GOOGLE_GENERATIVE_AI_API_KEY`, `GROQ_API_KEY`. |
 | `cloudflare` | `OPENAI_API_KEY` as a Wrangler secret for deployed Worker tests. |
 | `code` | `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`; `ELIZA_CODE_PROVIDER=openai|anthropic` can force a provider. |
-| `convex` | Run `npx convex dev` or deploy Convex, set `CONVEX_URL`, and set one provider key in Convex env. |
+| `convex` | Run `convex dev` or deploy Convex, set `CONVEX_URL`, and set one provider key in Convex env. |
 | `discord` | Discord app ID/token plus a model provider key. |
 | `elizagotchi` | No API keys; local game logic only. |
 | `farcaster` | OpenAI key, Neynar key, FID, signer UUID. Keep dry-run enabled until posting is intended. |

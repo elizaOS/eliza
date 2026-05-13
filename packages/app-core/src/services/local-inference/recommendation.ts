@@ -32,8 +32,8 @@ import type {
 // The canonical tier-id set is `ELIZA_1_TIER_IDS` in
 // `packages/shared/src/local-inference/catalog.ts`. Ladders below reference
 // that canonical Qwen3.5-based tier line only.
-const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
-const TIER_2B: Eliza1TierId = "eliza-1-2b";
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_6b";
+const TIER_2B: Eliza1TierId = "eliza-1-1_7b";
 const TIER_4B: Eliza1TierId = "eliza-1-4b";
 
 export type RecommendationPlatformClass =

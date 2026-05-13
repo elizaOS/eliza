@@ -2,7 +2,11 @@ import {
   type AgentRuntime,
   ChannelType,
   elizaLogger,
+  type Memory,
   type Plugin,
+  type RoleName,
+  type RolesWorldMetadata,
+  setEntityRole,
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
@@ -18,15 +22,15 @@ export const BENCHMARK_MESSAGE_SERVER_ID = stringToUuid(
 );
 
 /**
- * Fixed entity UUID used as the world ownership anchor for all benchmark
- * sessions. Any message whose `entityId` matches this is treated as the
- * canonical owner (OWNER role) by the role resolution path, which means
- * `hasRoleAccess(runtime, msg, "ADMIN")` returns true without requiring
- * an explicit `seedBenchUserRole` call.
+ * Canonical OWNER entity for every benchmark world. We pin world.metadata
+ * .ownership.ownerId to this id at world-creation time so anything that
+ * resolves to `isCanonicalOwner` works without needing to set
+ * `ELIZA_ADMIN_ENTITY_ID` in the env.
+ *
+ * Roles for additional users (admin/user/guest) are seeded per-session by
+ * `seedBenchUserRole` below.
  */
-export const BENCHMARK_OWNER_ENTITY_ID: UUID = stringToUuid(
-  "eliza-benchmark-owner-entity",
-);
+export const BENCHMARK_OWNER_ENTITY_ID: UUID = stringToUuid("eliza-benchmark-owner");
 
 export interface BenchmarkSession {
   benchmark: string;
@@ -101,6 +105,12 @@ export interface BenchmarkTrajectoryStep {
   toolCalls?: BenchmarkToolCall[];
   metadata?: BenchmarkTurnMetadata;
   nativeTrajectory?: unknown;
+  /**
+   * Personality-action audit entries observed during this turn. Empty when
+   * no PERSONALITY mutation was recorded (most non-personality scenarios).
+   * Added in P0-7 so the scope-discrimination rubric has a real signal.
+   */
+  personality_audit_log?: BenchmarkPersonalityAuditEntry[];
 }
 
 export interface BenchmarkToolCall {
@@ -576,21 +586,21 @@ export async function ensureBenchmarkSessionContext(
     },
   });
 
-  // Backfill ownership.ownerId on pre-existing worlds that were created
-  // before this field was introduced.
+  // `ensureWorldExists` is create-if-missing. If a previous bench session
+  // created the world without ownership (older runtimes, hot reload, etc.),
+  // backfill the canonical owner so role resolution stays correct.
   const existingWorld = await runtime.getWorld(BENCHMARK_WORLD_ID);
   if (existingWorld) {
-    const meta = (existingWorld.metadata ?? {}) as Record<string, unknown>;
-    const ownership = meta.ownership as Record<string, unknown> | undefined;
-    if (!ownership?.ownerId) {
-      meta.ownership = {
-        ...(ownership ?? {}),
-        ownerId: BENCHMARK_OWNER_ENTITY_ID,
+    const existingMetadata = (existingWorld.metadata ??
+      {}) as RolesWorldMetadata;
+    if (existingMetadata.ownership?.ownerId !== BENCHMARK_OWNER_ENTITY_ID) {
+      (existingWorld as { metadata: RolesWorldMetadata }).metadata = {
+        ...existingMetadata,
+        ownership: { ownerId: BENCHMARK_OWNER_ENTITY_ID },
       };
-      await runtime.updateWorld({
-        ...existingWorld,
-        metadata: meta,
-      } as Parameters<typeof runtime.updateWorld>[0]);
+      await runtime.updateWorld(
+        existingWorld as Parameters<AgentRuntime["updateWorld"]>[0],
+      );
     }
   }
 

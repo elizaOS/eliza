@@ -317,9 +317,11 @@ export interface CatalogModel {
   params:
     | "360M"
     | "0.5B"
-    | "0.8B"
+    | "0.6B"
+    | "0.6B"
     | "1B"
-    | "2B"
+    | "1.7B"
+    | "1.7B"
     | "3B"
     | "4B"
     | "7B"
@@ -381,6 +383,12 @@ export interface CatalogModel {
       >
     >;
   };
+  /**
+   * Voice engines whose artifacts ship inside this bundle. Small/mobile tiers
+   * prefer Kokoro for low latency; large/server tiers prefer OmniVoice for
+   * higher-fidelity cloning.
+   */
+  voiceBackends?: ReadonlyArray<"kokoro" | "omnivoice">;
   /** Runtime-specific acceleration metadata. */
   runtime?: LocalRuntimeAcceleration;
   /**

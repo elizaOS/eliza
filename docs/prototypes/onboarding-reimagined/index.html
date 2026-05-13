@@ -299,8 +299,10 @@
         z-index: 0;
         pointer-events: none;
         background:
+          linear-gradient(180deg, rgba(0, 123, 226, 0.74) 0%, rgba(9, 145, 237, 0.62) 48%, rgba(42, 171, 246, 0.5) 100%),
           url("https://i.imgur.com/HRKpV6s.png") center / cover no-repeat,
-          linear-gradient(180deg, #1384df 0%, #48b8f5 48%, #b9ecff 100%);
+          linear-gradient(180deg, #0377df 0%, #139eed 48%, #5fcaff 100%);
+        background-blend-mode: soft-light, normal, normal;
       }
 
       .screen-cloud-shader::before {
@@ -422,7 +424,8 @@
       .state h1 {
         font-size: 33px;
         line-height: 1.08;
-        text-shadow: 0 1px 18px rgba(7, 43, 75, 0.26);
+        color: #ffffff;
+        text-shadow: 0 2px 18px rgba(4, 49, 93, 0.34);
       }
 
       .state h2 {
@@ -464,6 +467,13 @@
         color: var(--black);
       }
 
+      .choice-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
       .choice strong {
         font-size: 17px;
       }
@@ -472,6 +482,15 @@
         font-size: 12px;
         opacity: 0.72;
         line-height: 1.4;
+      }
+
+      .chip {
+        border-radius: 999px;
+        padding: 4px 8px;
+        background: var(--orange);
+        color: #ffffff;
+        font-size: 10px;
+        font-weight: 700;
       }
 
       .footer-actions {
@@ -485,6 +504,14 @@
         align-items: end;
         justify-content: space-between;
         margin-top: 20px;
+      }
+
+      .setup-language {
+        position: absolute;
+        top: 58px;
+        right: 22px;
+        width: 148px;
+        z-index: 6;
       }
 
       .language-inline {
@@ -505,6 +532,45 @@
         background: rgba(255, 255, 255, 0.92);
         color: var(--black);
         outline: none;
+      }
+
+      .setup-language select {
+        width: 100%;
+        min-width: 0;
+        height: 40px;
+        border: 0;
+        border-radius: 999px;
+        padding: 0 12px;
+        background: rgba(255, 255, 255, 0.9);
+        color: var(--black);
+        outline: none;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+      }
+
+      .setup-form {
+        display: grid;
+        gap: 10px;
+        margin-top: 22px;
+      }
+
+      .setup-input {
+        width: 100%;
+        height: 48px;
+        border: 0;
+        border-radius: 999px;
+        padding: 0 16px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--black);
+        outline: none;
+      }
+
+      .warning-note {
+        margin-top: 22px;
+        border-radius: 20px;
+        padding: 16px;
+        background: rgba(6, 19, 31, 0.2);
+        color: rgba(255, 255, 255, 0.88);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
       }
 
       .btn {
@@ -574,17 +640,44 @@
         padding-bottom: 22px;
       }
 
+      .audio-setup {
+        display: grid;
+        gap: 12px;
+        margin-top: auto;
+        padding-bottom: 18px;
+      }
+
+      .audio-actions {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+      }
+
+      .skip-row {
+        display: flex;
+        justify-content: flex-end;
+      }
+
+      .skip-link {
+        min-height: 30px;
+        padding: 0 10px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 11px;
+        font-weight: 700;
+        box-shadow: none;
+      }
+
       .mic-setup {
         display: grid;
-        gap: 14px;
+        gap: 12px;
         margin-top: 28px;
       }
 
-      .mic-row {
+      .mic-controls {
         display: grid;
-        grid-template-columns: auto minmax(0, 1fr);
         gap: 10px;
-        align-items: center;
+        margin-top: auto;
       }
 
       .select {
@@ -611,14 +704,6 @@
         height: 100px;
       }
 
-      .mic-status {
-        min-height: 20px;
-        margin: 0;
-        color: rgba(255, 255, 255, 0.76);
-        font-size: 12px;
-        text-align: center;
-      }
-
       .home {
         justify-content: space-between;
         gap: 18px;
@@ -635,6 +720,9 @@
       .wave-avatar {
         width: min(340px, 88vw);
         height: 210px;
+        filter:
+          drop-shadow(0 0 12px rgba(255, 255, 255, 0.78))
+          drop-shadow(0 3px 12px rgba(5, 48, 88, 0.38));
       }
 
       .avatar-label {
@@ -644,51 +732,6 @@
         transform: translate(-50%, -50%);
         color: rgba(255, 255, 255, 0.76);
         font-size: 14px;
-      }
-
-      .message-stack {
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        max-height: 150px;
-        overflow-y: auto;
-        padding-right: 2px;
-        mask-image: linear-gradient(to top, black 76%, transparent);
-      }
-
-      .message-stack.show-all {
-        max-height: 260px;
-        mask-image: none;
-      }
-
-      .message {
-        align-self: flex-start;
-        max-width: 84%;
-        min-height: 34px;
-        padding: 9px 12px;
-        border-radius: 16px;
-        background: rgba(255, 255, 255, 0.18);
-        color: rgba(255, 255, 255, 0.9);
-        font-size: 12px;
-        overflow: hidden;
-        transition: max-height 0.2s ease, background 0.2s ease;
-      }
-
-      .message.user {
-        align-self: flex-end;
-        background: rgba(255, 255, 255, 0.84);
-        color: var(--black);
-      }
-
-      .message .body {
-        display: none;
-        margin-top: 5px;
-        line-height: 1.35;
-      }
-
-      .message.expanded .body,
-      .message-stack.show-all .message .body {
-        display: block;
       }
 
       .composer {
@@ -1047,68 +1090,125 @@
               <div class="status"><span>10:30</span><span>5G 100%</span></div>
 
               <section class="state centered active" id="state-setup">
-                <h1>Choose how Eliza runs</h1>
+                <div class="setup-language">
+                  <select id="language-select" aria-label="Language">
+                    <option>🇺🇸 English</option>
+                    <option>🇪🇸 Spanish</option>
+                    <option>🇯🇵 Japanese</option>
+                    <option>🇰🇷 Korean</option>
+                  </select>
+                </div>
+                <h1>Run Eliza</h1>
                 <div class="choice-list" role="list">
                   <button class="choice selected" data-runtime="cloud">
-                    <strong>Cloud</strong>
+                    <span class="choice-top"><strong>Cloud</strong><span class="chip">Recommended</span></span>
                     <span>Sign in, talk immediately, and move into your container when it is ready.</span>
+                  </button>
+                  <button class="choice" data-runtime="device">
+                    <strong>On-Device</strong>
+                    <span>Download the preferred Eliza-1 model and run on this device.</span>
                   </button>
                   <button class="choice" data-runtime="remote">
                     <strong>Remote</strong>
                     <span>Connect to an agent URL you already host.</span>
                   </button>
-                  <button class="choice" data-runtime="local">
-                    <strong>Local</strong>
-                    <span>Download the preferred Eliza-1 model and run on this device.</span>
-                  </button>
                 </div>
                 <div class="footer-actions setup-footer">
-                  <label class="language-inline">
-                    <span>Language</span>
-                    <select id="language-select" aria-label="Language">
-                      <option>English</option>
-                      <option>Spanish</option>
-                      <option>Japanese</option>
-                      <option>Korean</option>
-                    </select>
-                  </label>
-                  <button class="btn orange" data-next="speaker" data-audio="hello" data-transcript="Can you hear me?">Continue</button>
+                  <span></span>
+                  <button class="btn orange" id="setup-continue">Continue</button>
                 </div>
               </section>
 
-              <section class="state centered" id="state-speaker">
-                <h1>Can I say hello?</h1>
+              <section class="state centered" id="state-cloud-login">
+                <h1>Eliza Cloud</h1>
+                <p>Sign in to start your tenant-isolated agent.</p>
+                <div class="footer-actions">
+                  <button class="btn secondary" data-prev="setup">Back</button>
+                  <button class="btn orange" data-next="speaker" data-audio="hello" data-transcript="Can you hear me?">Log in</button>
+                </div>
+              </section>
+
+              <section class="state centered" id="state-remote-pair">
+                <h1>Remote Agent</h1>
+                <div class="setup-form">
+                  <input class="setup-input" placeholder="Agent URL" autocomplete="off" />
+                  <input class="setup-input" placeholder="Pairing code" autocomplete="off" />
+                </div>
+                <div class="footer-actions">
+                  <button class="btn secondary" data-prev="setup">Back</button>
+                  <button class="btn orange" data-next="speaker" data-audio="hello" data-transcript="Can you hear me?">Pair</button>
+                </div>
+              </section>
+
+              <section class="state centered" id="state-device-mode">
+                <h1>On-Device</h1>
+                <div class="choice-list" role="list">
+                  <button class="choice selected" data-device-path="cloud-services" data-next="cloud-login">
+                    <strong>Use cloud services</strong>
+                    <span>Run locally where it helps, with Eliza Cloud for speed and fallback.</span>
+                  </button>
+                  <button class="choice" data-device-path="local-only" data-next="local-warning">
+                    <strong>Local only</strong>
+                    <span>Keep setup on this device and download local models.</span>
+                  </button>
+                </div>
+                <div class="footer-actions">
+                  <button class="btn secondary" data-prev="setup">Back</button>
+                </div>
+              </section>
+
+              <section class="state centered" id="state-local-warning">
+                <h1>Local Only</h1>
+                <div class="warning-note">
+                  Local-only can be slow without 24GB+ unified memory on Mac or 16GB+ VRAM on CUDA. Use Cloud if speed matters.
+                </div>
+                <div class="footer-actions">
+                  <button class="btn secondary" data-next="cloud-login" data-device-path="cloud-services">Use Cloud</button>
+                  <button class="btn orange" data-next="speaker" data-device-path="local-only" data-audio="hello" data-transcript="Can you hear me?">Continue</button>
+                </div>
+              </section>
+
+              <section class="state" id="state-speaker">
                 <div class="setup-agent">
                   <canvas class="agent-wave-canvas" width="640" height="220"></canvas>
                   <div class="agent-transcript" data-agent-transcript>Can you hear me?</div>
                 </div>
-                <div class="setup-actions speaker-actions">
-                  <button class="btn orange" data-next="mic" data-audio="great_mic" data-transcript="Great, now lets see if I can hear you.">Yes</button>
+                <div class="audio-setup">
+                  <select class="select" id="audio-output" aria-label="Audio output">
+                    <option value="">Default speaker</option>
+                  </select>
+                  <div class="audio-actions">
                   <button class="btn secondary" data-audio-cycle>Try again</button>
-                  <button class="btn secondary" data-next="home" data-audio="setup_done">Skip Setup</button>
+                    <button class="btn orange" data-next="mic" data-audio="great_mic" data-transcript="Great, now lets see if I can hear you.">Sounds good</button>
+                  </div>
+                  <div class="skip-row">
+                    <button class="btn skip-link" data-next="home" data-audio="setup_done">skip this setup</button>
+                  </div>
                 </div>
               </section>
 
-              <section class="state centered" id="state-mic">
+              <section class="state" id="state-mic">
                 <div class="setup-agent">
                   <canvas class="agent-wave-canvas" width="640" height="220"></canvas>
                   <div class="agent-transcript" data-agent-transcript>Great, now lets see if I can hear you.</div>
                 </div>
                 <div class="mic-setup">
-                  <div class="mic-row">
-                  <button class="btn orange" id="mic-permission">Enable microphone</button>
-                    <select class="select" id="mic-source" aria-label="Audio input">
-                      <option value="">Default microphone</option>
-                  </select>
-                  </div>
                   <div class="mic-wave-wrap" aria-label="Microphone waveform preview">
                     <canvas class="mic-wave-canvas" id="mic-wave-canvas" width="640" height="170"></canvas>
                   </div>
-                  <p class="mic-status" id="mic-status">Speak and the line should move.</p>
-                  <div class="setup-actions">
-                    <button class="btn secondary" data-audio-cycle>Try again</button>
-                    <button class="btn orange" data-next="home" data-audio="setup_done">I see it</button>
-                    <button class="btn secondary" data-next="home" data-audio="setup_done">Skip Setup</button>
+                </div>
+                <div class="mic-controls">
+                  <select class="select" id="mic-source" aria-label="Audio input">
+                    <option value="">Default microphone</option>
+                  </select>
+                  <div class="audio-actions">
+                    <button class="icon-btn" id="mic-permission" type="button" aria-label="Microphone">
+                      <svg class="mic-icon" viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /><path d="M9 21h6" /></svg>
+                    </button>
+                    <button class="btn orange" data-next="home" data-audio="setup_done">Continue</button>
+                  </div>
+                  <div class="skip-row">
+                    <button class="btn skip-link" data-next="home" data-audio="setup_done">skip this setup</button>
                   </div>
                 </div>
               </section>
@@ -1117,20 +1217,6 @@
                 <div class="avatar">
                   <canvas class="wave-avatar" id="avatar-canvas" width="520" height="320"></canvas>
                   <div class="avatar-label">I am listening</div>
-                </div>
-                <div class="message-stack" id="messages" aria-label="Recent messages">
-                  <button class="message expanded">
-                    Eliza
-                    <span class="body">Everything is set up. I am running from your new agent now.</span>
-                  </button>
-                  <button class="message user">
-                    You
-                    <span class="body">Can you remember that my brother is visiting next week?</span>
-                  </button>
-                  <button class="message">
-                    Eliza
-                    <span class="body">Yes. I will keep it as a relationship fact and avoid asking for it again.</span>
-                  </button>
                 </div>
                 <form class="composer" id="composer">
                   <button class="icon-btn" type="button" aria-label="Attach">
@@ -1142,7 +1228,7 @@
                     <svg class="mic-icon" viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /><path d="M9 21h6" /></svg>
                   </button>
                   <button class="icon-btn primary" id="send-or-voice" type="button" aria-label="Continuous voice">
-                    <svg id="action-icon" class="continuous-icon" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 0 1 15 0" /><path d="M7.5 12a4.5 4.5 0 0 1 9 0" /><path d="M4.75 15.5c2.1 2.5 4.5 3.75 7.25 3.75s5.15-1.25 7.25-3.75" /><path d="M12 11.75v.5" /></svg>
+                    <svg id="action-icon" class="continuous-icon" viewBox="0 0 24 24"><path d="M4 12h.01" /><path d="M7 10v4" /><path d="M10 7.5v9" /><path d="M13 5.5v13" /><path d="M16 8.5v7" /><path d="M19 11v2" /><path d="M5.5 5.25a9 9 0 0 1 13 0" opacity=".58" /></svg>
                   </button>
                 </form>
               </section>
@@ -1162,7 +1248,7 @@
 
           <div class="panel-card" data-panel-card="onboarding">
             <h2>Flow</h2>
-            <p>Prototype path: runtime and language, speaker, microphone, then companion chat.</p>
+            <p>Prototype path: runtime, connection, speaker, microphone, then companion chat.</p>
             <div class="footer-actions">
               <button class="btn secondary" data-jump="setup">Restart</button>
               <button class="btn secondary" data-jump="home">Skip to chat</button>
@@ -1202,7 +1288,7 @@
                 <button class="icon-btn" type="button" aria-label="Add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
                 <div class="desktop-tray-handle" aria-hidden="true"></div>
                 <button class="icon-btn" type="button" aria-label="Dictate"><svg class="mic-icon" viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /><path d="M9 21h6" /></svg></button>
-                <button class="icon-btn primary" type="button" aria-label="Continuous voice"><svg class="continuous-icon" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 0 1 15 0" /><path d="M7.5 12a4.5 4.5 0 0 1 9 0" /><path d="M4.75 15.5c2.1 2.5 4.5 3.75 7.25 3.75s5.15-1.25 7.25-3.75" /><path d="M12 11.75v.5" /></svg></button>
+                <button class="icon-btn primary" type="button" aria-label="Continuous voice"><svg class="continuous-icon" viewBox="0 0 24 24"><path d="M4 12h.01" /><path d="M7 10v4" /><path d="M10 7.5v9" /><path d="M13 5.5v13" /><path d="M16 8.5v7" /><path d="M19 11v2" /><path d="M5.5 5.25a9 9 0 0 1 13 0" opacity=".58" /></svg></button>
               </div>
             </div>
           </div>
@@ -1229,14 +1315,14 @@
           <p>Date: 2026-05-12</p>
           <h2>Summary</h2>
           <p>Replace the current pre-chat runtime gate with a calm, voice-first companion start. The first frame is a blue sky, then slow infinite clouds, a reactive avatar, compact conversation history, and a ChatGPT-like composer optimized for text, voice, dictation, and attachments.</p>
-          <p>The setup path stays simple: choose Cloud, Remote, or Local; choose language; verify speaker and microphone; collect owner facts; land in the companion chat. Desktop should converge on the same companion experience plus a tray runtime and a thin always-available bottom bar.</p>
+          <p>The setup path stays simple: choose Cloud, On-Device, or Remote; choose language; complete the selected connection path; verify speaker and microphone; land in the companion chat. Desktop should converge on the same companion experience plus a tray runtime and a thin always-available bottom bar.</p>
           <h2>Goals</h2>
           <ul>
           <li>Remove the white startup flash by setting the app/page background to blue before React mounts.</li>
           <li>Make sky/clouds a replaceable background module that can be edited through a <code>BACKGROUND_EDIT</code> agent action.</li>
           <li>Make onboarding feel like the product: an assistant is immediately available, especially during Cloud setup.</li>
           <li>Collapse Cloud onboarding to one agent per user. No cloud agent picker.</li>
-          <li>Start Local model download immediately when Local is selected, with hardware and disk warnings before completion.</li>
+          <li>Start local model download immediately when On-Device local-only is selected, with hardware and disk warnings before completion.</li>
           <li>Move language selection into onboarding and remove theme selection from onboarding.</li>
           <li>Make voice setup first-class: speaker test, mic permission, input selection, live waveform, retries, and skip paths.</li>
           <li>Make the companion screen the post-onboarding default on mobile and desktop.</li>
@@ -1272,11 +1358,11 @@
           <li>Background replacement code must be sandboxed, versioned, revertible, and benchmarked before activation.</li>
           </ul>
           <h3>2. Runtime Choice</h3>
-          <p>The first decision is still where the agent runs, but the choices are equal and visible:</p>
+          <p>The first decision is still where the agent runs, with Cloud recommended and the choices visible in this order:</p>
           <ul>
           <li>Cloud: sign in with Eliza Cloud, chat immediately with a tenant-isolated setup agent, provision the container in the background, then transfer conversation and memories into the container agent.</li>
-          <li>Remote: enter or discover an existing agent URL, verify connectivity, and continue.</li>
-          <li>Local: start model download immediately, warn about slow hardware or insufficient disk, and continue through setup while download runs.</li>
+          <li>On-Device: choose whether to use Eliza Cloud services or stay local-only.</li>
+          <li>Remote: enter existing remote agent credentials, pair, verify connectivity, and continue.</li>
           </ul>
           <p>Cloud behavior:</p>
           <ul>
@@ -1286,13 +1372,13 @@
           <li>When the container is ready, chat transcript, extracted facts, and memories are handed to the container agent.</li>
           <li>The agent says and writes that setup is complete, then subsequent responses come from the container.</li>
           </ul>
-          <p>Local behavior:</p>
+          <p>On-Device behavior:</p>
           <ul>
-          <li>Local selection starts downloading the preferred Eliza-1 model immediately.</li>
-          <li>If the user also has Eliza Cloud available, the app can use Cloud while the local model downloads.</li>
+          <li>Cloud services routes the user through Eliza Cloud sign-in and can use Cloud while local capability is prepared.</li>
+          <li>Local-only starts downloading the preferred Eliza-1 model immediately.</li>
           <li>If no model is loaded, the agent tells the user it is still loading/downloading.</li>
           <li>At the end of onboarding, if the model is not ready, the agent says and writes: &quot;I&#39;m still downloading the local models, so you&#39;ll need to wait for me to finish to keep going.&quot;</li>
-          <li>Hardware checks warn below 24 GB effective VRAM/shared memory and on insufficient disk space.</li>
+          <li>Hardware checks warn below 24 GB unified memory on Mac, below 16 GB VRAM on CUDA devices, and on insufficient disk space.</li>
           </ul>
           <p>Remote behavior:</p>
           <ul>
@@ -1512,7 +1598,7 @@
           <li>No white frame appears during cold load in browser, desktop, iOS, or Android.</li>
           <li>Cloud path lands in chat immediately after sign-in while provisioning continues.</li>
           <li>Cloud user never sees an agent picker.</li>
-          <li>Local path starts model download before language selection and shows hardware/disk warnings when applicable.</li>
+          <li>On-Device local-only starts model download before audio setup and shows hardware/disk warnings when applicable.</li>
           <li>Language selection changes app copy and agent language.</li>
           <li>Speaker and mic flow can be completed, retried, or skipped.</li>
           <li>Companion screen is reachable after onboarding and is the default post-setup screen.</li>
@@ -1521,7 +1607,7 @@
           <li>User-facing navigation says Views, not Apps.</li>
           <li>Plugins can register <code>views</code>.</li>
           <li>Kokoro voice lines are generated or a build task documents why they could not be generated.</li>
-          <li>E2E tests cover Cloud, Remote, Local downloading, skipped audio, successful audio, and desktop bar.</li>
+          <li>E2E tests cover Cloud, On-Device cloud services, On-Device local-only downloading, Remote pairing, skipped audio, successful audio, and desktop bar.</li>
           </ul>
           <h2>Prototype</h2>
           <p>Interactive prototype:</p>
@@ -1670,7 +1756,7 @@
           <p>It includes:</p>
           <ul>
           <li>Blue first paint and slow independent cloud animation.</li>
-          <li>Runtime choices: Cloud, Remote, Local.</li>
+          <li>Runtime choices: Cloud, On-Device, Remote.</li>
           <li>Language step.</li>
           <li>Speaker/mic setup with generated Kokoro audio.</li>
           <li>Owner fact collection.</li>
@@ -1734,16 +1820,16 @@
           </ul>
           <p>Tasks:</p>
           <ul>
-          <li>Create explicit steps: runtime, language, speaker, microphone, owner facts, final handoff.</li>
+          <li>Create explicit steps: runtime, branch connection, language, speaker, microphone, final handoff.</li>
           <li>Persist progress and allow resume.</li>
           <li>Remove theme selector from onboarding.</li>
           <li>Move language into onboarding and update app/agent language together.</li>
-          <li>Render Cloud, Remote, and Local as equal cards.</li>
+          <li>Render Cloud, On-Device, and Remote as first-run cards, with Cloud recommended.</li>
           <li>Keep current <code>RuntimeGate</code> available behind fallback flag.</li>
           </ul>
           <p>Tests:</p>
           <ul>
-          <li>Cloud, Remote, Local can complete.</li>
+          <li>Cloud, On-Device cloud services, On-Device local-only, and Remote can complete.</li>
           <li>Back/forward/resume works.</li>
           <li>Theme controls do not appear.</li>
           <li>Language persists and changes copy before voice step.</li>
@@ -1781,7 +1867,7 @@
           <ul>
           <li>Can be developed against mocked UI contracts while Workstream B lands.</li>
           </ul>
-          <h2>Workstream D: Local Model Download, Hardware, and Disk Checks</h2>
+          <h2>Workstream D: On-Device Model Download, Hardware, and Disk Checks</h2>
           <p>Owner files:</p>
           <ul>
           <li><code>packages/ui/src/onboarding/auto-download-recommended.ts</code></li>
@@ -1791,20 +1877,20 @@
           </ul>
           <p>Tasks:</p>
           <ul>
-          <li>Start model download immediately when Local is selected, before later onboarding steps.</li>
+          <li>Start model download immediately when On-Device local-only is selected, before later onboarding steps.</li>
           <li>Add disk-space probe to local inference API.</li>
           <li>Warn below 24 GB effective VRAM/shared memory.</li>
           <li>Warn when free disk is below selected model size plus safety margin.</li>
-          <li>If Cloud is available, route temporary chat to Cloud while Local downloads.</li>
+          <li>If Cloud is available, route temporary chat to Cloud while local models download.</li>
           <li>If no model is available, make the agent answer with local-loading status.</li>
           <li>Add end-of-onboarding blocker message if model still downloading.</li>
           </ul>
           <p>Tests:</p>
           <ul>
-          <li>Download POST is sent once per local selection.</li>
+          <li>Download POST is sent once per local-only selection.</li>
           <li>Insufficient disk warning appears.</li>
           <li>Under-24 GB warning appears.</li>
-          <li>Cloud fallback responses stop once local model is active.</li>
+          <li>Cloud fallback responses stop once the local model is active.</li>
           <li>Download interruption/resume works.</li>
           </ul>
           <p>Parallel notes:</p>
@@ -1837,7 +1923,7 @@
           </ul>
           <p>Parallel notes:</p>
           <ul>
-          <li>Independent from Cloud and Local model work.</li>
+          <li>Independent from Cloud and On-Device model work.</li>
           </ul>
           <h2>Workstream F: Companion Chat Surface</h2>
           <p>Owner files:</p>
@@ -2027,7 +2113,7 @@
           </ul>
           <p>Tasks:</p>
           <ul>
-          <li>Add E2E matrix for Cloud, Remote, Local, audio skipped, audio accepted, desktop bar.</li>
+          <li>Add E2E matrix for Cloud, On-Device cloud services, On-Device local-only, Remote, audio skipped, audio accepted, desktop bar.</li>
           <li>Add screenshot baselines for desktop and mobile onboarding.</li>
           <li>Add first-paint no-white test.</li>
           <li>Add Lighthouse/performance budget for background animation.</li>
@@ -2063,8 +2149,8 @@
           <ol>
           <li>Land flags and blue first paint.</li>
           <li>Land background host with static slow-clouds module.</li>
-          <li>Land onboarding-v2 with mocked Cloud/Remote/Local outcomes.</li>
-          <li>Integrate Local download and warnings.</li>
+          <li>Land onboarding-v2 with mocked Cloud/On-Device/Remote outcomes.</li>
+          <li>Integrate On-Device local-only download and warnings.</li>
           <li>Integrate Cloud setup agent and handoff.</li>
           <li>Integrate voice setup and Kokoro assets.</li>
           <li>Switch post-onboarding target to companion screen.</li>
@@ -2080,7 +2166,7 @@
           <li>Always-on capture can create trust and compliance risk. Consent, visible state, retention, delete, and audit are part of MVP.</li>
           <li>Cloud handoff can lose memory or duplicate messages. Treat handoff as a transactional migration with idempotent replay.</li>
           <li>Apps-to-Views rename touches many files. Use compatibility aliases and route redirects until plugins migrate.</li>
-          <li>Local model download can fail or take too long. The UI needs honest status, cloud fallback, and resumable downloads.</li>
+          <li>Local model download can fail or take too long. The UI needs honest On-Device status, cloud fallback, and resumable downloads.</li>
           </ul>
         </article>
       </section>
@@ -2132,6 +2218,7 @@
       let micStream = null;
       let micSource = null;
       let micLoopStarted = false;
+      let deviceMode = "cloud-services";
 
       document.querySelectorAll("[data-root-tab]").forEach((tab) => {
         tab.addEventListener("click", () => {
@@ -2235,6 +2322,7 @@
         if (transcript) setAgentTranscript(transcript);
         try {
           ensureVoiceAnalyser();
+          await applyAudioOutput();
           if (voiceAudioContext?.state === "suspended") {
             await voiceAudioContext.resume();
           }
@@ -2248,18 +2336,32 @@
 
       function showState(id) {
         states.forEach((state) => state.classList.toggle("active", state.id === `state-${id}`));
-        if (id === "speaker") setAgentTranscript("Can you hear me?");
-        if (id === "mic") setAgentTranscript("Great, now lets see if I can hear you.");
+        if (id === "speaker") {
+          setAgentTranscript("Can you hear me?");
+          void populateAudioOutputs();
+        }
+        if (id === "mic") {
+          setAgentTranscript("Great, now lets see if I can hear you.");
+          void enableMic();
+        }
         if (id === "home") {
           startAvatar();
         }
       }
 
+      document.querySelector("#setup-continue")?.addEventListener("click", () => {
+        const next = runtime === "cloud" ? "cloud-login" : runtime === "remote" ? "remote-pair" : "device-mode";
+        showState(next);
+      });
+
       document.querySelectorAll("[data-next]").forEach((button) => {
         button.addEventListener("click", () => {
+          if (button.dataset.devicePath) {
+            deviceMode = button.dataset.devicePath;
+          }
           showState(button.dataset.next);
           if (button.dataset.audio) void playLine(button.dataset.audio, button.dataset.transcript);
-          if (button.dataset.next === "home" && runtime === "local") {
+          if (button.dataset.next === "home" && deviceMode === "local-only") {
             setTimeout(() => void playLine("local_downloading"), 450);
           }
         });
@@ -2276,7 +2378,19 @@
       document.querySelectorAll("[data-runtime]").forEach((button) => {
         button.addEventListener("click", () => {
           runtime = button.dataset.runtime;
+          if (runtime !== "device") {
+            deviceMode = "cloud-services";
+          }
           document.querySelectorAll("[data-runtime]").forEach((choice) => choice.classList.toggle("selected", choice === button));
+        });
+      });
+
+      document.querySelectorAll("[data-device-path]").forEach((button) => {
+        button.addEventListener("click", () => {
+          deviceMode = button.dataset.devicePath;
+          document.querySelectorAll("[data-device-path]").forEach((choice) => {
+            choice.classList.toggle("selected", choice === button);
+          });
         });
       });
 
@@ -2296,6 +2410,30 @@
 
       const voiceLine = document.querySelector("#voice-line");
       voiceLine.innerHTML = Array.from({ length: 34 }, (_, index) => `<i style="animation-delay:${-index * 0.035}s"></i>`).join("");
+
+      async function applyAudioOutput() {
+        const select = document.querySelector("#audio-output");
+        if (!select?.value || typeof audio.setSinkId !== "function") return;
+        await audio.setSinkId(select.value).catch(() => {});
+      }
+
+      async function populateAudioOutputs() {
+        const select = document.querySelector("#audio-output");
+        if (!select || !navigator.mediaDevices?.enumerateDevices) return;
+        const current = select.value;
+        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+        const outputs = devices.filter((device) => device.kind === "audiooutput");
+        select.innerHTML = '<option value="">Default speaker</option>';
+        outputs.forEach((device, index) => {
+          const option = document.createElement("option");
+          option.value = device.deviceId;
+          option.textContent = device.label || `Speaker ${index + 1}`;
+          select.append(option);
+        });
+        if ([...select.options].some((option) => option.value === current)) {
+          select.value = current;
+        }
+      }
 
       async function populateMicSources() {
         const select = document.querySelector("#mic-source");
@@ -2332,11 +2470,9 @@
       }
 
       async function enableMic() {
-        const status = document.querySelector("#mic-status");
         const select = document.querySelector("#mic-source");
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
         if (!navigator.mediaDevices?.getUserMedia || !AudioCtx) {
-          if (status) status.textContent = "Microphone input is not available in this browser.";
           return;
         }
         await stopMic();
@@ -2354,20 +2490,19 @@
           micData = new Uint8Array(micAnalyser.fftSize);
           micSource = micAudioContext.createMediaStreamSource(micStream);
           micSource.connect(micAnalyser);
-          if (status) status.textContent = "Listening. Speak and the line should move.";
           if (!micLoopStarted) {
             micLoopStarted = true;
             drawMicAudio();
           }
-        } catch {
-          if (status) status.textContent = "I still cannot hear this microphone yet.";
-        }
+        } catch {}
       }
 
       document.querySelector("#mic-permission")?.addEventListener("click", () => void enableMic());
       document.querySelector("#mic-source")?.addEventListener("change", () => {
         if (micStream) void enableMic();
       });
+      document.querySelector("#audio-output")?.addEventListener("change", () => void applyAudioOutput());
+      void populateAudioOutputs();
       void populateMicSources();
 
       const composer = document.querySelector("#composer");
@@ -2378,7 +2513,7 @@
       let dictateMode = false;
       let voiceMode = false;
       const dictateMicIcon = '<svg class="mic-icon" viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /><path d="M9 21h6" /></svg>';
-      const continuousVoiceIcon = '<path d="M4.5 12a7.5 7.5 0 0 1 15 0" /><path d="M7.5 12a4.5 4.5 0 0 1 9 0" /><path d="M4.75 15.5c2.1 2.5 4.5 3.75 7.25 3.75s5.15-1.25 7.25-3.75" /><path d="M12 11.75v.5" />';
+      const continuousVoiceIcon = '<path d="M4 12h.01" /><path d="M7 10v4" /><path d="M10 7.5v9" /><path d="M13 5.5v13" /><path d="M16 8.5v7" /><path d="M19 11v2" /><path d="M5.5 5.25a9 9 0 0 1 13 0" opacity=".58" />';
       const sendIcon = '<path d="M5 12h14" /><path d="M13 6l6 6-6 6" />';
       const checkIcon = '<path d="M5 13l4 4L19 7" />';
 
@@ -2387,6 +2522,7 @@
         composer.classList.toggle("voice-active", voiceMode);
         if (dictateMode) {
           dictate.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>';
+          actionIcon.classList.remove("continuous-icon");
           actionIcon.innerHTML = checkIcon;
           sendOrVoice.setAttribute("aria-label", "Accept dictation");
           return;
@@ -2417,23 +2553,7 @@
         updateComposer();
       });
 
-      function addMessage(label, body, user) {
-        const messages = document.querySelector("#messages");
-        const button = document.createElement("button");
-        button.className = `message expanded${user ? " user" : ""}`;
-        button.innerHTML = `${label}<span class="body">${body}</span>`;
-        button.addEventListener("click", () => button.classList.toggle("expanded"));
-        messages.append(button);
-        messages.scrollTop = messages.scrollHeight;
-      }
-
-      document.querySelectorAll(".message").forEach((message) => {
-        message.addEventListener("click", () => message.classList.toggle("expanded"));
-      });
-
-      const messages = document.querySelector("#messages");
-      messages.addEventListener("wheel", () => messages.classList.add("show-all"), { passive: true });
-      messages.addEventListener("touchmove", () => messages.classList.add("show-all"), { passive: true });
+      function addMessage() {}
 
       document.querySelectorAll(".tab").forEach((tab) => {
         tab.addEventListener("click", () => {
@@ -2506,24 +2626,69 @@
           ctx.lineWidth = 3;
           ctx.stroke();
         } else {
-          ctx.strokeStyle = "rgba(255,255,255,0.94)";
-          ctx.lineWidth = 2;
+          const pulse = 0.45 + 0.55 * Math.sin(frame / 34) ** 2;
+          const glow = ctx.createRadialGradient(0, 0, 8, 0, 0, 150);
+          glow.addColorStop(0, "rgba(6,74,128,0.2)");
+          glow.addColorStop(0.42, "rgba(255,255,255,0.08)");
+          glow.addColorStop(1, "rgba(255,255,255,0)");
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(0, 0, 150, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.save();
+          ctx.setLineDash([2, 8]);
+          ctx.strokeStyle = "rgba(255,255,255,0.34)";
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.moveTo(-235, 0);
+          ctx.lineTo(235, 0);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.strokeStyle = "rgba(255,255,255,0.88)";
+          ctx.shadowColor = "rgba(255,255,255,0.75)";
+          ctx.shadowBlur = 14;
+          ctx.lineWidth = 1.5;
+          ctx.lineCap = "round";
+          for (let x = -216; x <= 216; x += 8) {
+            const center = Math.exp(-Math.abs(x) / 72);
+            const tremor = Math.abs(Math.sin(x / 13 + frame / 12) + 0.42 * Math.sin(x / 7 - frame / 18));
+            const height = 4 + (15 + 84 * center) * tremor * (0.32 + pulse * 0.78);
+            ctx.globalAlpha = 0.18 + center * 0.76;
+            ctx.beginPath();
+            ctx.moveTo(x, -height / 2);
+            ctx.lineTo(x, height / 2);
+            ctx.stroke();
+          }
+          ctx.globalAlpha = 1;
+          ctx.shadowBlur = 0;
+
+          ctx.strokeStyle = "rgba(255,255,255,0.96)";
+          ctx.lineWidth = 2.2;
           ctx.beginPath();
           for (let x = -220; x <= 220; x += 4) {
-            const amp = 8 + 54 * Math.exp(-Math.abs(x) / 82);
-            const y = Math.sin(x / 9 + frame / 10) * amp * (0.35 + 0.65 * Math.sin(frame / 30) ** 2);
+            const amp = 7 + 58 * Math.exp(-Math.abs(x) / 74);
+            const y =
+              (Math.sin(x / 10 + frame / 13) + 0.35 * Math.sin(x / 4.8 - frame / 19)) *
+              amp *
+              (0.34 + pulse * 0.72);
             if (x === -220) ctx.moveTo(x, y);
             else ctx.lineTo(x, y);
           }
           ctx.stroke();
-          ctx.fillStyle = "rgba(255,255,255,0.4)";
-          for (let i = 0; i < 36; i += 1) {
-            const angle = i * 0.9 + frame / 80;
-            const radius = 18 + ((i * 17 + frame) % 98);
+
+          ctx.fillStyle = "rgba(255,255,255,0.48)";
+          for (let i = 0; i < 54; i += 1) {
+            const angle = i * 1.17 + frame / 72;
+            const radius = 18 + ((i * 23 + frame * 1.5) % 118);
+            const size = 0.9 + ((i * 7) % 13) / 16;
+            ctx.globalAlpha = 0.22 + Math.exp(-radius / 116) * 0.48;
             ctx.beginPath();
-            ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.55, 1.3, 0, Math.PI * 2);
+            ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius * 0.58, size, 0, Math.PI * 2);
             ctx.fill();
           }
+          ctx.globalAlpha = 1;
         }
         ctx.restore();
         requestAnimationFrame(drawAvatar);

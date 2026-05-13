@@ -21,8 +21,9 @@ Important caveats:
 
 Required files:
 - `text/eliza-1-0_8b-32k.gguf`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
+- `tts/kokoro/model_q4.onnx`
+- `tts/kokoro/tokenizer.json`
+- `tts/kokoro/voices/af_bella.bin`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
@@ -91,8 +92,9 @@ Missing files/evidence:
 - `quantization/qjl_config.json`
 - `quantization/turboquant.json`
 - `text/eliza-1-0_8b-32k.gguf`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
+- `tts/kokoro/model_q4.onnx`
+- `tts/kokoro/tokenizer.json`
+- `tts/kokoro/voices/af_bella.bin`
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-0_8b.gguf`
 
@@ -110,8 +112,9 @@ Publish-blocking status:
 Required files:
 - `text/eliza-1-2b-32k.gguf`
 - `text/eliza-1-2b-64k.gguf`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
+- `tts/kokoro/model_q4.onnx`
+- `tts/kokoro/tokenizer.json`
+- `tts/kokoro/voices/af_bella.bin`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
@@ -172,7 +175,7 @@ Publish-blocking status:
 - `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
 - `evidence/release.json`: publishEligible is not true
 - `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
-- `evidence/release.json`: weights missing final payload path(s): ['text/eliza-1-2b-64k.gguf', 'vad/silero-vad-v5.1.2.ggml.bin', 'vision/mmproj-2b.gguf']
+- `evidence/release.json`: weights missing final payload path(s): ['text/eliza-1-2b-64k.gguf', 'tts/kokoro/model_q4.onnx', 'tts/kokoro/tokenizer.json', 'tts/kokoro/voices/af_bella.bin', 'vad/silero-vad-v5.1.2.ggml.bin', 'vision/mmproj-2b.gguf']
 
 ## 4b
 
@@ -184,8 +187,9 @@ Publish-blocking status:
 Required files:
 - `text/eliza-1-4b-64k.gguf`
 - `text/eliza-1-4b-128k.gguf`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
+- `tts/kokoro/model_q4.onnx`
+- `tts/kokoro/tokenizer.json`
+- `tts/kokoro/voices/af_bella.bin`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
@@ -264,11 +268,274 @@ Missing files/evidence:
 - `quantization/turboquant.json`
 - `text/eliza-1-4b-128k.gguf`
 - `text/eliza-1-4b-64k.gguf`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
+- `tts/kokoro/model_q4.onnx`
+- `tts/kokoro/tokenizer.json`
+- `tts/kokoro/voices/af_bella.bin`
 - `vad/silero-vad-v5.1.2.ggml.bin`
 - `vision/mmproj-4b.gguf`
 
 Publish-blocking status:
 - `bundle`: missing canonical local bundle `eliza-1-4b.bundle` or `eliza-1-4b`; final payloads, checksums, license evidence, and HF upload evidence cannot be verified
+- `evidence/release.json`: missing; release state, final flags, source models, and HF upload evidence are not proven
+
+## 9b
+
+- Text quant: `Q4_K_M`
+- Voice quant: `Q8_0`
+- Contexts: `64k`, `128k`
+- Required platform evidence: `darwin-arm64-metal`, `linux-x64-vulkan`, `linux-x64-cuda`, `linux-x64-rocm`, `windows-x64-cuda`, `windows-x64-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`
+
+Required files:
+- `text/eliza-1-9b-64k.gguf`
+- `text/eliza-1-9b-128k.gguf`
+- `tts/kokoro/model_q4.onnx`
+- `tts/kokoro/tokenizer.json`
+- `tts/kokoro/voices/af_bella.bin`
+- `tts/omnivoice-base-Q8_0.gguf`
+- `tts/omnivoice-tokenizer-Q8_0.gguf`
+- `asr/eliza-1-asr.gguf`
+- `asr/eliza-1-asr-mmproj.gguf`
+- `vad/silero-vad-v5.1.2.ggml.bin`
+- `vision/mmproj-9b.gguf`
+- `dflash/drafter-9b.gguf`
+- `dflash/target-meta.json`
+- `cache/voice-preset-default.bin`
+- `evals/aggregate.json`
+- `evals/metal_verify.json`
+- `evals/vulkan_verify.json`
+- `evals/cuda_verify.json`
+- `evals/rocm_verify.json`
+- `evals/cpu_reference.json`
+- `evals/metal_dispatch.json`
+- `evals/vulkan_dispatch.json`
+- `evals/cuda_dispatch.json`
+- `evals/rocm_dispatch.json`
+- `evals/cpu_dispatch.json`
+- `licenses/LICENSE.text`
+- `licenses/LICENSE.voice`
+- `licenses/LICENSE.asr`
+- `licenses/LICENSE.vad`
+- `licenses/LICENSE.dflash`
+- `licenses/LICENSE.eliza-1`
+- `licenses/LICENSE.vision`
+- `checksums/SHA256SUMS`
+- `evidence/release.json`
+- `quantization/turboquant.json`
+- `quantization/fused_turboquant.json`
+- `quantization/qjl_config.json`
+- `quantization/polarquant_config.json`
+
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
+Missing files/evidence:
+- `vad/silero-vad-v5.1.2.ggml.bin`
+
+Publish-blocking status:
+- `evidence/release.json`: final.evals is not true
+- `evidence/release.json`: final.kernelDispatchReports is not true
+- `evidence/release.json`: final.platformEvidence is not true
+- `evidence/release.json`: final.sizeFirstRepoIds is not true
+- `evidence/release.json`: hf.repoId is not `elizaos/eliza-1`
+- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
+- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
+- `evidence/release.json`: publishEligible is not true
+- `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
+- `evidence/release.json`: weights missing final payload path(s): ['tts/kokoro/model_q4.onnx', 'tts/kokoro/tokenizer.json', 'tts/kokoro/voices/af_bella.bin', 'vad/silero-vad-v5.1.2.ggml.bin']
+
+## 27b
+
+- Text quant: `Q4_K_M`
+- Voice quant: `Q8_0`
+- Contexts: `128k`
+- Required platform evidence: `darwin-arm64-metal`, `linux-x64-vulkan`, `linux-x64-cuda`, `linux-x64-rocm`, `windows-x64-cuda`, `windows-x64-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`
+
+Required files:
+- `text/eliza-1-27b-128k.gguf`
+- `tts/omnivoice-base-Q8_0.gguf`
+- `tts/omnivoice-tokenizer-Q8_0.gguf`
+- `asr/eliza-1-asr.gguf`
+- `asr/eliza-1-asr-mmproj.gguf`
+- `vad/silero-vad-v5.1.2.ggml.bin`
+- `vision/mmproj-27b.gguf`
+- `dflash/drafter-27b.gguf`
+- `dflash/target-meta.json`
+- `cache/voice-preset-default.bin`
+- `evals/aggregate.json`
+- `evals/metal_verify.json`
+- `evals/vulkan_verify.json`
+- `evals/cuda_verify.json`
+- `evals/rocm_verify.json`
+- `evals/cpu_reference.json`
+- `evals/metal_dispatch.json`
+- `evals/vulkan_dispatch.json`
+- `evals/cuda_dispatch.json`
+- `evals/rocm_dispatch.json`
+- `evals/cpu_dispatch.json`
+- `licenses/LICENSE.text`
+- `licenses/LICENSE.voice`
+- `licenses/LICENSE.asr`
+- `licenses/LICENSE.vad`
+- `licenses/LICENSE.dflash`
+- `licenses/LICENSE.eliza-1`
+- `licenses/LICENSE.vision`
+- `checksums/SHA256SUMS`
+- `evidence/release.json`
+- `quantization/turboquant.json`
+- `quantization/fused_turboquant.json`
+- `quantization/qjl_config.json`
+- `quantization/polarquant_config.json`
+
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
+Missing files/evidence:
+- `evidence/platform/windows-x64-cpu.json`
+- `vad/silero-vad-v5.1.2.ggml.bin`
+
+Publish-blocking status:
+- `evidence/release.json`: final.evals is not true
+- `evidence/release.json`: final.kernelDispatchReports is not true
+- `evidence/release.json`: final.platformEvidence is not true
+- `evidence/release.json`: final.sizeFirstRepoIds is not true
+- `evidence/release.json`: hf.repoId is not `elizaos/eliza-1`
+- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
+- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
+- `evidence/release.json`: publishEligible is not true
+- `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
+- `evidence/release.json`: weights missing final payload path(s): ['vad/silero-vad-v5.1.2.ggml.bin']
+
+## 27b-256k
+
+- Text quant: `Q4_K_M`
+- Voice quant: `Q8_0`
+- Contexts: `256k`
+- Required platform evidence: `linux-x64-cuda`, `linux-x64-rocm`, `windows-x64-cuda`
+
+Required files:
+- `text/eliza-1-27b-256k-256k.gguf`
+- `tts/omnivoice-base-Q8_0.gguf`
+- `tts/omnivoice-tokenizer-Q8_0.gguf`
+- `asr/eliza-1-asr.gguf`
+- `asr/eliza-1-asr-mmproj.gguf`
+- `vad/silero-vad-v5.1.2.ggml.bin`
+- `vision/mmproj-27b-256k.gguf`
+- `dflash/drafter-27b-256k.gguf`
+- `dflash/target-meta.json`
+- `cache/voice-preset-default.bin`
+- `evals/aggregate.json`
+- `evals/metal_verify.json`
+- `evals/vulkan_verify.json`
+- `evals/cuda_verify.json`
+- `evals/rocm_verify.json`
+- `evals/cpu_reference.json`
+- `evals/metal_dispatch.json`
+- `evals/vulkan_dispatch.json`
+- `evals/cuda_dispatch.json`
+- `evals/rocm_dispatch.json`
+- `evals/cpu_dispatch.json`
+- `licenses/LICENSE.text`
+- `licenses/LICENSE.voice`
+- `licenses/LICENSE.asr`
+- `licenses/LICENSE.vad`
+- `licenses/LICENSE.dflash`
+- `licenses/LICENSE.eliza-1`
+- `licenses/LICENSE.vision`
+- `checksums/SHA256SUMS`
+- `evidence/release.json`
+- `quantization/turboquant.json`
+- `quantization/fused_turboquant.json`
+- `quantization/qjl_config.json`
+- `quantization/polarquant_config.json`
+
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
+Missing files/evidence:
+- `evidence/platform/windows-x64-cuda.json`
+- `text/eliza-1-27b-256k-256k.gguf`
+- `vad/silero-vad-v5.1.2.ggml.bin`
+
+Publish-blocking status:
+- `evidence/release.json`: final.evals is not true
+- `evidence/release.json`: final.kernelDispatchReports is not true
+- `evidence/release.json`: final.platformEvidence is not true
+- `evidence/release.json`: final.sizeFirstRepoIds is not true
+- `evidence/release.json`: hf.repoId is not `elizaos/eliza-1`
+- `evidence/release.json`: hf.status is not `uploaded`; final Hugging Face payload upload is not proven
+- `evidence/release.json`: hf.uploadEvidence missing; final Hugging Face commit/url/uploaded paths are not proven
+- `evidence/release.json`: publishEligible is not true
+- `evidence/release.json`: releaseState is `local-standin`, not one of ['base-v1', 'upload-candidate', 'final']
+- `evidence/release.json`: weights missing final payload path(s): ['text/eliza-1-27b-256k-256k.gguf', 'vad/silero-vad-v5.1.2.ggml.bin']
+
+## 27b-1m
+
+- Text quant: `Q4_K_M`
+- Voice quant: `Q8_0`
+- Contexts: `1m`
+- Required platform evidence: `linux-x64-cuda`, `linux-aarch64-cuda`
+
+Required files:
+- `text/eliza-1-27b-1m-1m.gguf`
+- `tts/omnivoice-base-Q8_0.gguf`
+- `tts/omnivoice-tokenizer-Q8_0.gguf`
+- `asr/eliza-1-asr.gguf`
+- `asr/eliza-1-asr-mmproj.gguf`
+- `vad/silero-vad-v5.1.2.ggml.bin`
+- `vision/mmproj-27b-1m.gguf`
+- `dflash/drafter-27b-1m.gguf`
+- `dflash/target-meta.json`
+- `cache/voice-preset-default.bin`
+- `evals/aggregate.json`
+- `evals/cuda_verify.json`
+- `evals/cuda_dispatch.json`
+- `licenses/LICENSE.text`
+- `licenses/LICENSE.voice`
+- `licenses/LICENSE.asr`
+- `licenses/LICENSE.vad`
+- `licenses/LICENSE.dflash`
+- `licenses/LICENSE.eliza-1`
+- `licenses/LICENSE.vision`
+- `checksums/SHA256SUMS`
+- `evidence/release.json`
+- `quantization/turboquant.json`
+- `quantization/fused_turboquant.json`
+- `quantization/qjl_config.json`
+- `quantization/polarquant_config.json`
+
+Optional fallback files:
+- `vad/silero-vad-int8.onnx`
+
+Missing files/evidence:
+- `asr/eliza-1-asr-mmproj.gguf`
+- `asr/eliza-1-asr.gguf`
+- `cache/voice-preset-default.bin`
+- `checksums/SHA256SUMS`
+- `dflash/drafter-27b-1m.gguf`
+- `dflash/target-meta.json`
+- `evals/aggregate.json`
+- `evals/cuda_dispatch.json`
+- `evals/cuda_verify.json`
+- `evidence/platform/linux-aarch64-cuda.json`
+- `evidence/platform/linux-x64-cuda.json`
+- `evidence/release.json`
+- `licenses/LICENSE.asr`
+- `licenses/LICENSE.dflash`
+- `licenses/LICENSE.eliza-1`
+- `licenses/LICENSE.text`
+- `licenses/LICENSE.vad`
+- `licenses/LICENSE.vision`
+- `licenses/LICENSE.voice`
+- `quantization/fused_turboquant.json`
+- `quantization/polarquant_config.json`
+- `quantization/qjl_config.json`
+- `quantization/turboquant.json`
+- `text/eliza-1-27b-1m-1m.gguf`
+- `tts/omnivoice-base-Q8_0.gguf`
+- `tts/omnivoice-tokenizer-Q8_0.gguf`
+- `vad/silero-vad-v5.1.2.ggml.bin`
+- `vision/mmproj-27b-1m.gguf`
+
+Publish-blocking status:
+- `bundle`: missing canonical local bundle `eliza-1-27b-1m.bundle` or `eliza-1-27b-1m`; final payloads, checksums, license evidence, and HF upload evidence cannot be verified
 - `evidence/release.json`: missing; release state, final flags, source models, and HF upload evidence are not proven

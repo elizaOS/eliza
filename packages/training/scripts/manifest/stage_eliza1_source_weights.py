@@ -70,28 +70,28 @@ class SourceArtifact:
 
 
 TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
-    "0_8b": SourceArtifact(
+    "0_6b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-0.8B-GGUF",
-        filename="Qwen3.5-0.8B-Q8_0.gguf",
-        destination="source/text/qwen3.5-0.8b-q8_0.gguf",
+        repo="unsloth/Qwen3.5-0.6B-GGUF",
+        filename="Qwen3.5-0.6B-Q8_0.gguf",
+        destination="source/text/qwen3.5-0.6b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-0.8B base.",
-            "Final Eliza-1 0.8B still needs training plus Q3_K_M quantization.",
+            "GGUF mirror of the official Qwen/Qwen3.5-0.6B base.",
+            "Final Eliza-1 0.6B still needs training plus Q3_K_M quantization.",
         ),
     ),
-    "2b": SourceArtifact(
+    "1_7b": SourceArtifact(
         kind="text",
-        repo="unsloth/Qwen3.5-2B-GGUF",
-        filename="Qwen3.5-2B-Q8_0.gguf",
-        destination="source/text/qwen3.5-2b-q8_0.gguf",
+        repo="unsloth/Qwen3.5-1.7B-GGUF",
+        filename="Qwen3.5-1.7B-Q8_0.gguf",
+        destination="source/text/qwen3.5-1_7b-q8_0.gguf",
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-2B base.",
-            "Final Eliza-1 2B still needs training plus Q4_K_M quantization.",
+            "GGUF mirror of the official Qwen/Qwen3.5-1.7B base.",
+            "Final Eliza-1 1.7B still needs training plus Q4_K_M quantization.",
         ),
     ),
     "4b": SourceArtifact(
@@ -106,14 +106,14 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
 }
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_8b": None,
-    "2b": None,
+    "0_6b": None,
+    "1_7b": None,
     "4b": None,
 }
 
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
-    "0_8b": None,
-    "2b": None,
+    "0_6b": None,
+    "1_7b": None,
     "4b": SourceArtifact(
         kind="vision",
         repo="unsloth/Qwen3.5-4B-GGUF",

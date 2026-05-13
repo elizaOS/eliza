@@ -1,14 +1,5 @@
 "use node";
 
-/**
- * Convex Node.js action that runs an elizaOS agent.
- *
- * The "use node" directive enables full Node.js runtime so we can import
- * @elizaos/core and LLM provider plugins. The action receives a chat message,
- * processes it through runtime.messageService.handleMessage, persists both the
- * user message and the agent response to Convex, and returns the result.
- */
-
 import {
   AgentRuntime,
   ChannelType,
@@ -28,10 +19,6 @@ import xaiPlugin from "@elizaos/plugin-xai";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
-
-// ============================================================================
-// LLM Provider Detection
-// ============================================================================
 
 interface LLMProvider {
   name: string;
@@ -75,7 +62,7 @@ function hasValidApiKey(envKey: string): boolean {
 function detectLLMPlugin(): {
   plugin: Plugin;
   providerName: string;
-} | null> {
+} | null {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
       return { plugin: provider.plugin, providerName: provider.name };
@@ -83,10 +70,6 @@ function detectLLMPlugin(): {
   }
   return null;
 }
-
-// ============================================================================
-// Cached Runtime (survives warm-start reuse within the same Convex isolate)
-// ============================================================================
 
 let cachedRuntime: AgentRuntime | null = null;
 let cachedProviderName: string | null = null;
@@ -125,21 +108,6 @@ async function getOrCreateRuntime(): Promise<{
   return { runtime, providerName: llmResult.providerName };
 }
 
-// ============================================================================
-// Chat Action
-// ============================================================================
-
-/**
- * Process a chat message through the elizaOS agent.
- *
- * Flow:
- *   1. Initialise (or reuse) the AgentRuntime
- *   2. Ensure a connection for this user + conversation room
- *   3. Persist the user message to Convex
- *   4. Call runtime.messageService.handleMessage with a callback
- *   5. Persist the agent response to Convex
- *   6. Return the response text
- */
 export const chat = internalAction({
   args: {
     message: v.string(),
@@ -159,7 +127,6 @@ export const chat = internalAction({
     const roomId = stringToUuid(`convex-room-${args.conversationId}`);
     const worldId = stringToUuid("convex-world");
 
-    // Ensure the agent knows about this user / room
     await runtime.ensureConnection({
       entityId: userId,
       roomId,
@@ -170,7 +137,6 @@ export const chat = internalAction({
       type: ChannelType.DM,
     });
 
-    // Persist the incoming user message
     await ctx.runMutation(internal.messages.store, {
       conversationId: args.conversationId,
       role: "user" as const,
@@ -178,7 +144,6 @@ export const chat = internalAction({
       entityId: userId,
     });
 
-    // Build an elizaOS Memory object for the incoming message
     const memory = createMessageMemory({
       id: crypto.randomUUID() as UUID,
       entityId: userId,
@@ -190,29 +155,23 @@ export const chat = internalAction({
       },
     });
 
-    // ---- core integration: messageService.handleMessage ----
     let responseText = "";
 
     const messageService = runtime.messageService;
     if (!messageService) {
       throw new Error("Message service not initialized");
     }
-    await messageService.handleMessage(
-      runtime,
-      memory,
-      async (content) => {
-        if (content?.text) {
-          responseText += content.text;
-        }
-        return [];
-      },
-    );
+    await messageService.handleMessage(runtime, memory, async (content) => {
+      if (content?.text) {
+        responseText += content.text;
+      }
+      return [];
+    });
 
     if (!responseText) {
       responseText = "I'm sorry, I wasn't able to generate a response.";
     }
 
-    // Persist the agent response
     await ctx.runMutation(internal.messages.store, {
       conversationId: args.conversationId,
       role: "assistant" as const,

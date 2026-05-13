@@ -88,7 +88,7 @@ describe("Eliza-1 manifest schema constants", () => {
     expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
     expect(ELIZA_1_TIERS.slice(0, 3)).toEqual(["0_8b", "2b", "4b"]);
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
-      expect.arrayContaining(["0_8b", "2b"]),
+      expect.arrayContaining(["0_8b", "2b", "4b"]),
     );
     const staleSmallTier = "0_" + "6b";
     const staleMobileTier = "1_" + "7b";

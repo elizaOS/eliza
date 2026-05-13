@@ -14,6 +14,7 @@ from scripts.manifest.eliza1_manifest import (
     Eliza1ManifestError,
     FileEntry,
     KernelVerification,
+    VOICE_BACKENDS_BY_TIER,
     LineageEntry,
     build_manifest,
     parse_ctx_string,
@@ -87,9 +88,19 @@ def test_schema_version_constant():
 
 
 def test_eliza1_tier_ids_are_canonical():
-    assert ELIZA_1_TIERS[:3] == ("0_8b", "2b", "4b")
+    assert ELIZA_1_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
     assert "0_8b" in REQUIRED_KERNELS_BY_TIER
     assert "2b" in REQUIRED_KERNELS_BY_TIER
+    assert REQUIRED_KERNELS_BY_TIER["27b-1m"] == (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    )
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
+    assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
     stale_small_tier = "0_" + "6b"
     stale_mobile_tier = "1_" + "7b"
     assert stale_small_tier not in REQUIRED_KERNELS_BY_TIER
