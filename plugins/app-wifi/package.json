@@ -33,7 +33,6 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/capacitor-wifi": "workspace:*",
     "@elizaos/core": "workspace:*",

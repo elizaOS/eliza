@@ -72,7 +72,7 @@
   },
   "peerDependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/signal-native": "*"
+    "@elizaos/signal-native": "latest"
   },
   "peerDependenciesMeta": {
     "@elizaos/signal-native": {

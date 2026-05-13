@@ -4,30 +4,25 @@ import {
 	type ActionParametersJsonSchema,
 	actionToJsonSchema,
 	type JsonSchema,
+	normalizeActionJsonSchema,
 } from "./action-schema";
 
 export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 
 /**
- * The two canonical tool names exposed to the LLM. Holding the tool list
- * to a fixed pair keeps the prompt-cache key byte-stable across requests
- * even when the available action set or selected contexts change per turn.
+ * Canonical Stage 1 tool name.
  *
  * - HANDLE_RESPONSE: stage 1, called once per inbound message. The model
  *   declares intent (RESPOND / IGNORE / STOP), picks contexts to engage,
  *   may emit a simple-mode reply directly, and may extract durable
  *   facts / relationships for the memory pipeline.
  *
- * - PLAN_ACTIONS: stage 2, called repeatedly during the planner loop to
- *   invoke an action (or sub-action) by name with parameters.
- *
- * Both tools are present in tool-capable requests. Stage 2 normally uses
- * `tool_choice: "auto"` for cache stability, but can force `"required"` when
- * the Stage 1 router has already determined that the current turn must run a
- * non-terminal tool.
+ * Stage 2 (planning) no longer goes through a single wrapper tool. Each
+ * Action is exposed to the LLM as its own native tool whose name is the
+ * action name and whose `parameters` is the action's parameter JSONSchema.
+ * The model picks the action by name and calls it directly.
  */
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
-export const PLAN_ACTIONS_TOOL_NAME = "PLAN_ACTIONS" as const;
 
 /**
  * Schema for the `extract` field on HANDLE_RESPONSE. Populated only when
@@ -210,13 +205,10 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
+	"Stage 1 — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. Set shouldRespond to RESPOND/IGNORE/STOP. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any PLAN_ACTIONS calls. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
-
-const PLAN_ACTIONS_DESCRIPTION =
-	"Stage 2 — invoke an action by name with parameters. Use multiple times in sequence to build up a turn's work. Action names and parameter schemas are listed under available_actions in the conversation; the system prompt only describes the protocol. Use exactly the parameter names from that action schema; for routed actions the selector is usually `action` inside `parameters`. Use REPLY to emit a user-facing reply; IGNORE / STOP to terminate the turn.";
+	"Stage 1 (direct-message channel) — pick how to handle this turn. Call exactly once per inbound message before any action tool calls. shouldRespond is implicit RESPOND for DMs. Always write replyText (the user-facing reply). List contexts to engage (directly after replyText); set requiresTool=true when tools/actions/providers/subagents, filesystem/runtime inspection, live/current/external data, side effects, long-running work, or verification are needed. For trivial replies set contexts=['simple'] (replyText is the whole answer). Optionally include action-retrieval hints in candidateActions / parentActionHints / contextSlices and populate `extract` with durable facts/relationships from the message.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /
@@ -249,7 +241,7 @@ export function createHandleResponseTool(options?: {
  * Stage 1 tool. The model uses this once per inbound message to declare
  * how it wants to handle the turn. Output drives the rest of the pipeline:
  *
- *   shouldRespond = "RESPOND" → engage `contexts`, run planner with PLAN_ACTIONS
+ *   shouldRespond = "RESPOND" → engage `contexts`, run planner against the per-action tools
  *   shouldRespond = "IGNORE"  → terminate silently
  *   shouldRespond = "STOP"    → terminate with terminal stop signal
  *
@@ -263,58 +255,146 @@ export function createHandleResponseTool(options?: {
 export const HANDLE_RESPONSE_TOOL: ToolDefinition = createHandleResponseTool();
 
 /**
- * Stage 2 tool. The model uses this to invoke an action with parameters.
- * Action names + their parameter schemas
- * live in the available_actions block of the conversation, NOT in the
- * static system prompt — the system prompt only describes the protocol.
+ * Synthetic terminal-sentinel action shapes. REPLY and IGNORE are real
+ * runtime Actions (see `features/basic-capabilities/actions/`) but they
+ * are not always part of the per-turn narrowed action surface. The
+ * planner needs a stable, always-available way for the model to end the
+ * turn — these shapes are converted into `ToolDefinition`s by
+ * {@link CORE_PLANNER_TERMINALS} so every Stage 2 request exposes them.
  *
- * The dispatcher in planner-loop unwraps `PLAN_ACTIONS` calls at the parse
- * boundary so all downstream logic (context-event lookup, trajectory
- * recording, REPLY/IGNORE/STOP terminal sentinels) sees the actual action
- * name.
+ * STOP is purely a terminal sentinel (no runtime handler — the planner
+ * loop's `isTerminalToolCall` recognises the name).
  */
-export const PLAN_ACTIONS_TOOL: ToolDefinition = {
-	name: PLAN_ACTIONS_TOOL_NAME,
-	description: PLAN_ACTIONS_DESCRIPTION,
-	type: "function",
-	strict: true,
-	parameters: {
-		type: "object",
-		additionalProperties: false,
-		properties: {
-			action: {
-				type: "string",
-				description:
-					"Action name to invoke. Must match one of the names listed under available_actions in the conversation. Use REPLY for terminal user-facing replies; IGNORE / STOP to terminate the turn.",
-			},
-			parameters: {
-				type: "object",
-				description:
-					"Action-shaped parameters object. Shape depends on the action; use only parameter names listed in that action's available_actions schema.",
-				additionalProperties: true,
-			},
-			thought: {
-				type: "string",
-				description: "Short reasoning trace, recorded to the trajectory.",
-			},
+const REPLY_TERMINAL_ACTION: Pick<
+	Action,
+	| "name"
+	| "description"
+	| "descriptionCompressed"
+	| "parameters"
+	| "allowAdditionalParameters"
+> = {
+	name: "REPLY",
+	description:
+		"Emit a user-facing reply to terminate the turn. Use this once the work is done and the model has produced the final answer.",
+	descriptionCompressed:
+		"reply to the user with text; terminates the turn",
+	parameters: [
+		{
+			name: "text",
+			description: "The user-facing reply text.",
+			required: false,
+			schema: { type: "string" },
 		},
-		required: ["action", "parameters", "thought"],
-	},
+	],
+};
+
+const IGNORE_TERMINAL_ACTION: Pick<
+	Action,
+	| "name"
+	| "description"
+	| "descriptionCompressed"
+	| "parameters"
+	| "allowAdditionalParameters"
+> = {
+	name: "IGNORE",
+	description:
+		"Terminate the turn silently. Use when no reply is appropriate.",
+	descriptionCompressed: "terminate the turn silently; emit no reply",
+	parameters: [],
+};
+
+const STOP_TERMINAL_ACTION: Pick<
+	Action,
+	| "name"
+	| "description"
+	| "descriptionCompressed"
+	| "parameters"
+	| "allowAdditionalParameters"
+> = {
+	name: "STOP",
+	description:
+		"Stop the current turn immediately with a terminal stop signal.",
+	descriptionCompressed: "stop the turn with a terminal stop signal",
+	parameters: [],
 };
 
 /**
- * The fixed Stage 2 wrapper tool array sent to the LLM on every planner request.
- * Reference this directly when constructing a request — never build a
- * per-turn tool list, which would defeat tool-block caching.
+ * Build a per-turn list of `ToolDefinition`s from the narrowed Stage 2
+ * action surface. Each action becomes a native tool whose name is the
+ * action name and whose `parameters` is the action's parameter
+ * JSONSchema, so the LLM calls each action directly by name.
+ *
+ * Tool description is composed from (in order):
+ *   - the action's `routingHint` (if present, on its own line)
+ *   - `descriptionCompressed ?? compressedDescription ?? description`
+ *
+ * The order of `actions` is preserved in the output (callers control
+ * tool ordering by ordering the input). Names are validated against
+ * {@link NATIVE_TOOL_NAME_PATTERN}; an invalid name throws.
  */
-export const STABLE_PLANNER_TOOLS: ReadonlyArray<ToolDefinition> = [
-	PLAN_ACTIONS_TOOL,
-];
+export function buildPlannerToolsFromActions(
+	actions: ReadonlyArray<
+		Pick<
+			Action,
+			| "name"
+			| "description"
+			| "descriptionCompressed"
+			| "compressedDescription"
+			| "routingHint"
+			| "parameters"
+			| "allowAdditionalParameters"
+		>
+	>,
+): ToolDefinition[] {
+	const tools: ToolDefinition[] = [];
+	for (const action of actions) {
+		assertNativeToolName(action.name);
+		const baseDescription =
+			action.descriptionCompressed ??
+			action.compressedDescription ??
+			action.description ??
+			"";
+		const routingHint = action.routingHint?.trim();
+		const description = routingHint
+			? `${routingHint}\n${baseDescription}`.trim()
+			: baseDescription;
+		const parameters = normalizeActionJsonSchema({
+			parameters: action.parameters,
+			allowAdditionalParameters: action.allowAdditionalParameters,
+		});
+		tools.push({
+			name: action.name,
+			description,
+			type: "function",
+			strict: true,
+			parameters,
+		});
+	}
+	return tools;
+}
 
 /**
- * Build a per-action tool definition. Used internally to render an action's
- * parameter schema into the conversation's available-actions block — NOT
- * passed to the LLM as a tool. The LLM only sees {@link STABLE_PLANNER_TOOLS}.
+ * Universal terminal-sentinel tools. Always exposed to the planner regardless
+ * of action narrowing so the model can end the turn with a stable, known
+ * surface. REPLY emits the final user-facing message; IGNORE / STOP terminate
+ * without a reply.
+ *
+ * Computed lazily inside the array so a static import does not pull in the
+ * action runtime; the shapes are simple data.
+ */
+export const CORE_PLANNER_TERMINALS: ReadonlyArray<ToolDefinition> =
+	buildPlannerToolsFromActions([
+		REPLY_TERMINAL_ACTION,
+		IGNORE_TERMINAL_ACTION,
+		STOP_TERMINAL_ACTION,
+	]);
+
+/**
+ * Build a per-action tool definition. Retained for internal renderers and
+ * external callers (e.g. local-AI grammar wiring) that still want the
+ * `{type, function: {...}}` envelope shape. Stage 2 planning itself uses
+ * {@link buildPlannerToolsFromActions} instead — that shape is the flat
+ * `ToolDefinition` accepted by the provider plumbing.
  */
 export function actionToTool(action: Action): PlannerToolDefinition {
 	assertNativeToolName(action.name);

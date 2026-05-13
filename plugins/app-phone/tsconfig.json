@@ -27,8 +27,6 @@
         "../../packages/native-plugins/phone/src/index.ts"
       ],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
-      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],

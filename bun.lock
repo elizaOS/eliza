@@ -1419,9 +1419,6 @@
     "packages/native-plugins/gateway": {
       "name": "@elizaos/capacitor-gateway",
       "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-      },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
         "@capacitor/android": "^8.0.0",
@@ -1459,9 +1456,6 @@
     "packages/native-plugins/location": {
       "name": "@elizaos/capacitor-location",
       "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-      },
       "devDependencies": {
         "@capacitor/cli": "^8.0.0",
         "@capacitor/core": "^8.3.1",
@@ -1550,9 +1544,6 @@
     "packages/native-plugins/screencapture": {
       "name": "@elizaos/capacitor-screencapture",
       "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-      },
       "devDependencies": {
         "@capacitor/android": "^8.0.0",
         "@capacitor/core": "^8.3.1",
@@ -1573,9 +1564,6 @@
     "packages/native-plugins/swabble": {
       "name": "@elizaos/capacitor-swabble",
       "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-      },
       "devDependencies": {
         "@capacitor/android": "^8.0.0",
         "@capacitor/core": "^8.3.1",
@@ -1606,9 +1594,6 @@
     "packages/native-plugins/talkmode": {
       "name": "@elizaos/capacitor-talkmode",
       "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-      },
       "devDependencies": {
         "@capacitor/cli": "^8.0.0",
         "@capacitor/core": "^8.3.1",
@@ -1880,7 +1865,6 @@
       "name": "@elizaos/app-contacts",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-contacts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
@@ -2060,7 +2044,6 @@
         "@capacitor/haptics": "8.0.2",
         "@capacitor/preferences": "^8.0.1",
         "@capacitor/push-notifications": "^8.0.0",
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-phone": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-browser": "workspace:*",
@@ -2247,7 +2230,6 @@
       "name": "@elizaos/app-wifi",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/app-core": "workspace:*",
         "@elizaos/capacitor-system": "workspace:*",
         "@elizaos/capacitor-wifi": "workspace:*",
         "@elizaos/core": "workspace:*",

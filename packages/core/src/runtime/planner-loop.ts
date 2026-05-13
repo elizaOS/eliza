@@ -1,6 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { PLAN_ACTIONS_TOOL_NAME } from "../actions/to-tool";
 import { logger } from "../logger";
 import { plannerSchema, plannerTemplate } from "../prompts/planner";
 import { resolveOptimizedPromptForRuntime } from "../services/optimized-prompt-resolver";
@@ -43,7 +42,6 @@ import {
 	type ModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "./model-input-budget";
-import { extractPlanActionsFromContent } from "./plan-actions-extractor";
 import {
 	cacheProviderOptions,
 	toolMessageContent,
@@ -79,16 +77,6 @@ export {
 
 // Test-only re-exports for the rendering memoization unit tests.
 // Underscore-prefixed so they're impossible to mistake for production API.
-export function __renderAvailableActionsBlockForTests(
-	context: ContextObject,
-): string | null {
-	return renderAvailableActionsBlock(context);
-}
-export function __renderToolForAvailableActionsForTests(
-	tool: ContextObjectTool,
-): string {
-	return renderToolForAvailableActions(tool);
-}
 export function __renderRoutingHintsBlockForTests(
 	context: ContextObject,
 ): string | null {
@@ -521,15 +509,13 @@ function renderPlannerModelInput(params: {
 	const stepMessages = trajectoryStepsToMessages(params.trajectory.steps, {
 		maxToolResultChars: params.maxToolResultChars,
 	});
-	const liveActionsBlock = renderAvailableActionsBlock(params.context);
-	const availableActionsBlock = params.runtime
-		? resolveOptimizedActionDescriptions(params.runtime, liveActionsBlock)
-		: liveActionsBlock;
+	// Action names + parameter schemas now ride directly on the tools array
+	// (each Action is exposed as its own native tool), so there is no separate
+	// available_actions block rendered into the prompt. Routing hints stay as a
+	// dedicated section since they layer business advice on top of the bare
+	// action descriptions.
 	const routingHintsBlock = renderRoutingHintsBlock(params.context);
 	const extraSegments: PromptSegment[] = [];
-	if (availableActionsBlock) {
-		extraSegments.push({ content: availableActionsBlock, stable: false });
-	}
 	if (routingHintsBlock) {
 		extraSegments.push({ content: routingHintsBlock, stable: false });
 	}
@@ -582,105 +568,6 @@ function normalizePlannerToolName(name: string): string {
 		.replace(/[^A-Z0-9]/g, "");
 }
 
-function isPlannerWrapperTool(name: string): boolean {
-	return (
-		normalizePlannerToolName(name) ===
-		normalizePlannerToolName(PLAN_ACTIONS_TOOL_NAME)
-	);
-}
-
-function compactToolParameters(parameters: unknown): unknown {
-	if (!parameters || typeof parameters !== "object") {
-		return undefined;
-	}
-	const record = parameters as {
-		type?: unknown;
-		properties?: unknown;
-		required?: unknown;
-		additionalProperties?: unknown;
-	};
-	return {
-		...(typeof record.type === "string" ? { type: record.type } : {}),
-		...(record.properties &&
-		typeof record.properties === "object" &&
-		!Array.isArray(record.properties)
-			? { properties: record.properties }
-			: {}),
-		...(Array.isArray(record.required) ? { required: record.required } : {}),
-		...(record.additionalProperties !== undefined
-			? { additionalProperties: record.additionalProperties }
-			: {}),
-	};
-}
-
-/**
- * Module-level memo for `renderToolForAvailableActions`.
- * `ContextObjectTool` instances come from the action registry and are
- * reference-stable across iterations within a turn (and across turns when the
- * registry is unchanged), so we can WeakMap the rendered text directly. On
- * cache miss we fall through to the recompute. WeakMap = no leak when the
- * tool is GC'd.
- *
- * Output bytes are identical to the unmemoized path — the cache-stability
- * gate guards this.
- */
-const RENDERED_TOOL_MEMO = new WeakMap<ContextObjectTool, string>();
-
-/**
- * When `ELIZA_SHORT_FORM_ENUMS=1` is set, expose a short-form hint line on
- * tools whose single parameter is a closed enum. The hint lives on a NEW line
- * after the existing `parameters: { ... }` JSON so the byte-stable JSON shape
- * is preserved exactly when the flag is off. The dispatch side (see
- * `execute-planned-tool-call.ts::expandEnumShortForm`) expands a short-form
- * string emission back into the full JSON shape before validation.
- */
-function shortFormEnumHint(tool: ContextObjectTool): string | undefined {
-	if (process.env.ELIZA_SHORT_FORM_ENUMS !== "1") return undefined;
-	const action = tool.action;
-	if (!action) return undefined;
-	const parameters = action.parameters ?? [];
-	if (parameters.length !== 1) return undefined;
-	const param = parameters[0];
-	if (!param) return undefined;
-	const enumValues =
-		(param.schema as { enumValues?: unknown[]; enum?: unknown[] }).enumValues ??
-		(param.schema as { enumValues?: unknown[]; enum?: unknown[] }).enum;
-	if (!Array.isArray(enumValues) || enumValues.length === 0) return undefined;
-	const values = enumValues
-		.filter(
-			(value): value is string | number | boolean =>
-				typeof value === "string" ||
-				typeof value === "number" ||
-				typeof value === "boolean",
-		)
-		.map((value) => String(value));
-	if (values.length === 0) return undefined;
-	return `  short_form: <${values.join("|")}>  (sets parameters.${param.name})`;
-}
-
-function renderToolForAvailableActions(tool: ContextObjectTool): string {
-	const memoKey = process.env.ELIZA_SHORT_FORM_ENUMS === "1" ? null : tool;
-	if (memoKey !== null) {
-		const cached = RENDERED_TOOL_MEMO.get(memoKey);
-		if (cached !== undefined) return cached;
-	}
-	const description = tool.description?.trim();
-	const parameterSummary = compactToolParameters(tool.parameters);
-	const lines = [`- ${tool.name}:${description ? ` ${description}` : ""}`];
-	if (parameterSummary !== undefined) {
-		lines.push(`  parameters: ${JSON.stringify(parameterSummary)}`);
-	}
-	const enumHint = shortFormEnumHint(tool);
-	if (enumHint) {
-		lines.push(enumHint);
-	}
-	const rendered = lines.join("\n");
-	if (memoKey !== null) {
-		RENDERED_TOOL_MEMO.set(memoKey, rendered);
-	}
-	return rendered;
-}
-
 /**
  * Build a "Routing hints" block from each available action's
  * {@link Action.routingHint}. Replaces the hand-written domain-routing prose
@@ -728,11 +615,9 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 }
 
 /**
- * Collect the tool/action events exposed for the current planner scope. The
- * filter mirrors `renderAvailableActionsBlock` (sub-planner scoping, the
- * PLAN_ACTIONS wrapper, dedup by normalized name) — both the rendered prompt
- * block and the per-turn `PLAN_ACTIONS` grammar derive their action universe
- * from this single source.
+ * Collect the tool/action events exposed for the current planner scope. Used
+ * to drive the per-turn planner-action grammar emitter (response-grammar.ts)
+ * and for sub-planner scoping (parent-action narrowing).
  */
 function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	const parentAction =
@@ -748,7 +633,7 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 			continue;
 		}
 		const tool = event.tool as ContextObjectTool;
-		if (!tool?.name || isPlannerWrapperTool(tool.name)) {
+		if (!tool?.name) {
 			continue;
 		}
 		const parentMatches =
@@ -769,59 +654,6 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 		tools.push(tool);
 	}
 	return tools;
-}
-
-/**
- * Memo for the joined available-actions block. Keyed on
- * `context.events` array identity (immutable per iteration) so within-turn
- * recomputation is free. WeakMap; no leak when the context object is GC'd.
- *
- * The short-form-enum env flag flips the per-tool render output, so when
- * that flag is set we skip the block-level memo to avoid serving a stale
- * shape. The per-tool memo also self-disables in that mode.
- */
-const AVAILABLE_ACTIONS_BLOCK_MEMO = new WeakMap<
-	NonNullable<ContextObject["events"]>,
-	string | null
->();
-function renderAvailableActionsBlock(context: ContextObject): string | null {
-	const events = context.events;
-	const useMemo =
-		events !== undefined && process.env.ELIZA_SHORT_FORM_ENUMS !== "1";
-	if (useMemo && AVAILABLE_ACTIONS_BLOCK_MEMO.has(events)) {
-		return AVAILABLE_ACTIONS_BLOCK_MEMO.get(events) ?? null;
-	}
-	const parentAction =
-		typeof context.metadata?.subPlannerParentAction === "string"
-			? context.metadata.subPlannerParentAction
-			: "";
-	const inSubPlanner = parentAction.length > 0;
-	const tools = collectExposedTools(context);
-
-	if (tools.length === 0) {
-		if (useMemo) {
-			AVAILABLE_ACTIONS_BLOCK_MEMO.set(events, null);
-		}
-		return null;
-	}
-
-	const scope = inSubPlanner
-		? [
-				`sub_planner_scope: parent=${parentAction}`,
-				`Use only the child actions listed below. Do not call ${parentAction} from inside its own sub-planner.`,
-				"",
-			]
-		: [];
-
-	const result = [
-		...scope,
-		"# Available Actions",
-		...tools.map(renderToolForAvailableActions),
-	].join("\n");
-	if (useMemo) {
-		AVAILABLE_ACTIONS_BLOCK_MEMO.set(events, result);
-	}
-	return result;
 }
 
 export function parsePlannerOutput(raw: string | GenerateTextResult): {
@@ -865,35 +697,6 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 	};
 }
 
-/**
- * Try to recover a single PLAN_ACTIONS invocation from raw model text using
- * the strict extractor. Returns null when ambiguous (surrounding prose, multiple
- * blocks, malformed JSON) so the caller can fall through to other paths.
- *
- * Logs when recovery fires so deployments can see whether weak-planner models
- * are silently relying on this path instead of the native tool-call API.
- */
-export function tryRecoverPlanActionsFromText(
-	text: string,
-): PlannerToolCall | null {
-	const extracted = extractPlanActionsFromContent(text);
-	if (!extracted) return null;
-
-	logger.info(
-		{
-			src: "planner-loop",
-			action: extracted.action,
-			recoverySource: extracted.recoverySource,
-		},
-		"Recovered planner action from content (Stage 2 planner)",
-	);
-
-	return {
-		name: extracted.action,
-		params: extracted.parameters,
-	};
-}
-
 function parseJsonPlannerOutput(raw: string): {
 	thought?: string;
 	toolCalls: PlannerToolCall[];
@@ -911,18 +714,6 @@ function parseJsonPlannerOutput(raw: string): {
 				toolCalls: arrayToolCalls,
 				messageToUser: undefined,
 				raw: { toolCalls: array } as Record<string, unknown>,
-			};
-		}
-		// Strict PLAN_ACTIONS-in-content extractor: fires when the model emitted
-		// exactly one PLAN_ACTIONS({...}) block as text with no surrounding prose.
-		// Must run AFTER the JSON/array paths fail so we don't shadow valid JSON.
-		const recovered = tryRecoverPlanActionsFromText(trimmed);
-		if (recovered) {
-			return {
-				thought: undefined,
-				toolCalls: [recovered],
-				messageToUser: undefined,
-				raw: { text: trimmed, recoveredFromContent: true },
 			};
 		}
 		return {
@@ -2064,26 +1855,6 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			rawFunction?.parameters,
 	);
 
-	if (name.toUpperCase() === PLAN_ACTIONS_TOOL_NAME) {
-		const inner = args ?? {};
-		const actionName =
-			typeof inner.action === "string" ? inner.action.trim() : "";
-		if (!actionName) {
-			return null;
-		}
-		const baseParameters =
-			inner.parameters &&
-			typeof inner.parameters === "object" &&
-			!Array.isArray(inner.parameters)
-				? (inner.parameters as Record<string, unknown>)
-				: {};
-		return {
-			id: typeof record.id === "string" ? record.id : undefined,
-			name: actionName,
-			params: baseParameters,
-		};
-	}
-
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,
 		name,
@@ -2482,27 +2253,6 @@ function loadOptimizedPlannerFromDisk(): string | null {
 		}
 	}
 	return null;
-}
-
-/**
- * Substitute the live `# Available Actions` block with an optimized version
- * when `OptimizedPromptService` has an `action_descriptions` artifact loaded.
- * Returns the live block unchanged when no artifact is present, or when the
- * live block is null (no exposed tools — nothing to substitute).
- */
-function resolveOptimizedActionDescriptions(
-	runtime: PlannerRuntime,
-	liveBlock: string | null,
-): string | null {
-	if (liveBlock === null) return null;
-	const optimized = resolveOptimizedPromptForRuntime(
-		runtime as PlannerRuntime & {
-			getService?: <T>(name: string) => T | null | undefined;
-		},
-		"action_descriptions",
-		liveBlock,
-	);
-	return optimized;
 }
 
 function resolveOptimizedPlannerTemplate(runtime: PlannerRuntime): string {

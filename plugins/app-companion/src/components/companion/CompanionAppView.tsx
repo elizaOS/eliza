@@ -95,13 +95,6 @@ const CompanionOverlay = memo(function CompanionOverlay() {
     [],
   );
 
-  useEffect(() => {
-    setState(
-      "chatMode",
-      elizaCloudEnabled || elizaCloudConnected ? "power" : "simple",
-    );
-  }, [elizaCloudConnected, elizaCloudEnabled, setState]);
-
   const hasInterruptedAssistant = useMemo(
     () =>
       conversationMessages.some((m) => m.role === "assistant" && m.interrupted),

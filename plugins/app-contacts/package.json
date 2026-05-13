@@ -33,7 +33,6 @@
     }
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-contacts": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",

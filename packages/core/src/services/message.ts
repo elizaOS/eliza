@@ -3,11 +3,10 @@ import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
 	actionToTool,
+	buildPlannerToolsFromActions,
+	CORE_PLANNER_TERMINALS,
 	createHandleResponseTool,
 	HANDLE_RESPONSE_TOOL_NAME,
-	PLAN_ACTIONS_TOOL,
-	PLAN_ACTIONS_TOOL_NAME,
-	STABLE_PLANNER_TOOLS,
 } from "../actions/to-tool";
 import { evaluateConnectorAccountPolicies } from "../connectors/account-manager";
 import { createUniqueUuid } from "../entities";
@@ -73,7 +72,6 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "../runtime/model-input-budget";
-import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
@@ -2210,10 +2208,10 @@ async function createV5MessageContextObject(args: {
 		character: args.runtime.character,
 		userRole: args.userRoles?.[0],
 	});
-	// Stage 2 sees one stable wrapper tool: PLAN_ACTIONS. Per-action specs live in
-	// `events[type=tool]` and are rendered into the conversation's
-	// available-actions block by the available_actions provider; the LLM picks
-	// one by name and passes it back via `PLAN_ACTIONS({ action, ... })`.
+	// Stage 2 exposes each Action as its own native tool. Per-action specs live
+	// in `events[type=tool]`; the LLM calls each action directly by name. We
+	// also expose the universal terminal-sentinel tools (REPLY / IGNORE / STOP)
+	// so the planner has a stable way to end the turn regardless of narrowing.
 	// Empty when no actions are gated so the planner can short-circuit.
 	const hasAnyAction = events.some(
 		(event) =>
@@ -2224,7 +2222,7 @@ async function createV5MessageContextObject(args: {
 			),
 	);
 	const expandedTools: ToolDefinition[] = hasAnyAction
-		? [PLAN_ACTIONS_TOOL]
+		? [...CORE_PLANNER_TERMINALS]
 		: [];
 	return createContextObject({
 		id: String(args.message.id ?? v4()),
@@ -3382,13 +3380,11 @@ function parseMessageHandlerModelOutput(
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
 			parseMessageHandlerOutput(text) ??
-			recoverPlanActionsFromContentText(text) ??
 			synthesizeSimpleReplyFromPlainText(text)
 		);
 	}
 	return (
 		parseMessageHandlerOutput(raw) ??
-		recoverPlanActionsFromContentText(raw) ??
 		synthesizeSimpleReplyFromPlainText(raw)
 	);
 }
@@ -3420,49 +3416,6 @@ function synthesizeSimpleReplyFromPlainText(
 			contexts: [SIMPLE_CONTEXT_ID],
 			reply: replyText,
 			simple: true,
-		},
-	};
-}
-
-/**
- * Stage 1 tolerant recovery: when the model emitted a single well-formed
- * PLAN_ACTIONS({...}) block as message-content text instead of invoking the
- * HANDLE_RESPONSE tool (symptom: Cerebras / weak-planner LLMs), synthesize a
- * planning envelope that will let Stage 2 dispatch the intended action.
- *
- * Only fires when the raw text is exclusively the PLAN_ACTIONS call (strict
- * mode) so explanatory text like "here's how you'd call it: PLAN_ACTIONS({...})"
- * falls through to the existing simple-reply path.
- *
- * The envelope sets requiresTool=true and candidateActions=[extracted.action]
- * so the Stage 2 planner narrows to the right action. Role-gate checks and
- * action resolution still run normally in Stage 2 — this is a parse-layer
- * recovery only.
- */
-function recoverPlanActionsFromContentText(
-	text: string,
-): MessageHandlerResult | null {
-	const extracted = extractPlanActionsFromContent(text);
-	if (!extracted) return null;
-
-	logger.info(
-		{
-			src: "service:message",
-			action: extracted.action,
-			recoverySource: extracted.recoverySource,
-		},
-		"Recovered planner action from content (Stage 1 RESPONSE_HANDLER)",
-	);
-
-	return {
-		processMessage: "RESPOND",
-		thought: `Tolerant recovery: model emitted PLAN_ACTIONS as content text rather than tool call; routing to Stage 2 with candidateActions=[${extracted.action}].`,
-		plan: {
-			contexts: ["general"],
-			reply: "",
-			simple: false,
-			requiresTool: true,
-			candidateActions: [extracted.action],
 		},
 	};
 }
@@ -3541,57 +3494,6 @@ interface ExecuteV5PlannedToolCallParams {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
 	plannerLoopConfig?: PlannerLoopParams["config"];
-}
-
-/**
- * Unwrap a `PLAN_ACTIONS` tool call into its target action.
- *
- * The LLM sees the stable Stage 2 wrapper surface, so every invocation
- * arrives wrapped: `{ name: "PLAN_ACTIONS",
- * params: { action, parameters, thought } }`. Returns a
- * normalized tool call where `name` is the actual action name and `params`
- * are the action-shaped parameters, ready for the rest of the dispatch
- * pipeline.
- *
- * Legacy planner payloads may still include `subaction`; when present, it is
- * mirrored into canonical `params.action` for parent-action dispatch.
- *
- * Pass-through for other tool calls (REPLY/IGNORE/STOP terminal sentinels,
- * already-unwrapped action calls) so they keep their existing semantics.
- */
-function unwrapPlanActionsToolCall(toolCall: PlannerToolCall): PlannerToolCall {
-	if (toolCall.name !== PLAN_ACTIONS_TOOL_NAME) {
-		return toolCall;
-	}
-	const params = toolCall.params ?? {};
-	const rawAction = params.action;
-	const rawActionName = typeof rawAction === "string" ? rawAction.trim() : "";
-	const compoundAction = splitPlannerCompoundActionName(rawActionName);
-	const actionName = compoundAction?.actionName ?? rawActionName;
-	const rawSubaction = params.subaction ?? compoundAction?.subaction;
-	const subaction =
-		typeof rawSubaction === "string" && rawSubaction.trim().length > 0
-			? rawSubaction.trim()
-			: undefined;
-	const rawActionParameters = params.parameters;
-	const baseParameters =
-		rawActionParameters &&
-		typeof rawActionParameters === "object" &&
-		!Array.isArray(rawActionParameters)
-			? (rawActionParameters as Record<string, unknown>)
-			: {};
-	const mergedParameters: Record<string, unknown> = subaction
-		? {
-				...baseParameters,
-				action: baseParameters.action ?? subaction,
-				subaction,
-			}
-		: baseParameters;
-	return {
-		id: toolCall.id,
-		name: actionName,
-		params: mergedParameters,
-	};
 }
 
 function normalizeCompoundPlannerToolCall(
@@ -4533,13 +4435,11 @@ function normalizeAliasedPlannerToolCall(
 async function executeV5PlannedToolCall(
 	args: ExecuteV5PlannedToolCallParams,
 ): Promise<PlannerToolResult> {
-	const unwrappedToolCall = normalizeCompoundPlannerToolCall(
-		unwrapPlanActionsToolCall(args.toolCall),
-	);
+	const unwrappedToolCall = normalizeCompoundPlannerToolCall(args.toolCall);
 	if (!unwrappedToolCall.name) {
 		return {
 			success: false,
-			error: `${PLAN_ACTIONS_TOOL_NAME} requires a non-empty action`,
+			error: "Planner tool call requires a non-empty action name",
 		};
 	}
 
@@ -4712,17 +4612,19 @@ function subPlannerResultToPlannerToolResult(
 }
 
 /**
- * Planner-loop tool surface. We always expose the same fixed Stage 2 wrapper
- * list so the prompt-cache key stays stable across requests no matter which
- * actions are gated this turn. Action names + parameter schemas live in the
- * conversation's available-actions block; the LLM picks one and passes it
- * through PLAN_ACTIONS({ action, ... }).
+ * Planner-loop tool surface. Each narrowed Action is exposed as its own native
+ * tool whose name is the action name and whose `parameters` is the action's
+ * JSONSchema. We also always include the universal terminal-sentinel tools
+ * (REPLY / IGNORE / STOP) so the planner has a stable way to end the turn.
  *
  * When no actions are gated for the current turn we fall back to an empty
  * tool array so the planner can short-circuit (the pipeline's stage-1
  * shortcut still emits HANDLE_RESPONSE through its own dedicated call).
  */
-function collectPlannerTools(context: ContextObject): ToolDefinition[] {
+function collectPlannerTools(
+	context: ContextObject,
+	narrowedActions?: ReadonlyArray<Action>,
+): ToolDefinition[] {
 	const hasAnyAction = context.events.some(
 		(event) =>
 			event.type === "tool" &&
@@ -4731,7 +4633,35 @@ function collectPlannerTools(context: ContextObject): ToolDefinition[] {
 				(event as { tool?: { name?: string } }).tool?.name?.trim().length,
 			),
 	);
-	return hasAnyAction ? [...STABLE_PLANNER_TOOLS] : [];
+	if (!hasAnyAction) return [];
+	const actions = narrowedActions ?? collectActionsFromContext(context);
+	return [
+		...buildPlannerToolsFromActions(actions),
+		...CORE_PLANNER_TERMINALS,
+	];
+}
+
+/**
+ * Pull each action surfaced as a `tool` event in the context. Mirrors the
+ * filtering used by the planner-loop's tools rendering — sub-planner scoping
+ * and dedup by normalised name happen there, while here we just keep the
+ * action references in the order they appear so per-turn tool ordering is
+ * deterministic.
+ */
+function collectActionsFromContext(context: ContextObject): Action[] {
+	const seen = new Set<string>();
+	const actions: Action[] = [];
+	for (const event of context.events ?? []) {
+		if (event.type !== "tool" || !("tool" in event)) continue;
+		const tool = event.tool as { action?: Action; name?: string } | undefined;
+		const action = tool?.action;
+		if (!action || typeof action.name !== "string") continue;
+		const normalized = action.name.trim();
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		actions.push(action);
+	}
+	return actions;
 }
 
 function collectPreviousActionResults(
