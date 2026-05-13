@@ -418,3 +418,31 @@ export function subscribeDesktopBridgeEvent(options: {
 
   return () => {};
 }
+
+export function subscribeDesktopCarrotStoreChanged(
+  listener: (snapshot: DesktopCarrotStoreSnapshot) => void,
+): () => void {
+  return subscribeDesktopBridgeEvent({
+    rpcMessage: "carrotStoreChanged",
+    ipcChannel: "carrot:storeChanged",
+    listener: (payload) => {
+      const snapshot = (payload as { snapshot?: DesktopCarrotStoreSnapshot })
+        ?.snapshot;
+      if (snapshot) listener(snapshot);
+    },
+  });
+}
+
+export function subscribeDesktopCarrotWorkerChanged(
+  listener: (status: DesktopCarrotWorkerStatus) => void,
+): () => void {
+  return subscribeDesktopBridgeEvent({
+    rpcMessage: "carrotWorkerChanged",
+    ipcChannel: "carrot:workerChanged",
+    listener: (payload) => {
+      const status = (payload as { status?: DesktopCarrotWorkerStatus })
+        ?.status;
+      if (status) listener(status);
+    },
+  });
+}
