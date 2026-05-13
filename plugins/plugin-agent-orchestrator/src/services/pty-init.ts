@@ -621,9 +621,14 @@ export async function initializePTYManager(
   nodeManager.on(
     "session_stopped",
     async (session: SessionHandle, reason: string) => {
+      // pty-manager emits `reason="normal exit"` for exit code 0 and
+      // `reason="exit code N"` for non-zero. The session handle's
+      // `exitCode` is not always populated by `toHandle()`. Accept all
+      // documented clean-exit shapes.
       const stoppedCleanly =
         (session as { exitCode?: number }).exitCode === 0 ||
-        /exit code 0/i.test(reason);
+        /exit code 0\b/i.test(reason) ||
+        /^normal exit$/i.test(reason);
       // Fast-path completion for non-interactive sub-agents — codex
       // exec mode and opencode `run` mode are both shaped the same way
       // (single-shot CLI, prompt as positional arg, exit when done).
