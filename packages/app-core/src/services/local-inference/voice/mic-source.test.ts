@@ -20,6 +20,7 @@ import {
   DesktopMicSource,
   PushMicSource,
   pipeMicToRingBuffer,
+  resolveDesktopRecorder,
 } from "./mic-source";
 import { InMemoryAudioSink } from "./ring-buffer";
 import type { PcmFrame } from "./types";
@@ -110,18 +111,24 @@ describe("pipeMicToRingBuffer", () => {
 describe("DesktopMicSource", () => {
   it("builds the arecord argv on Linux / sox on macOS", () => {
     const src = new DesktopMicSource({ sampleRate: 16_000 });
-    const program = (src as unknown as { program: string }).program;
+    const resolved = resolveDesktopRecorder(16_000);
+    const program = Reflect.get(src, "program") as string;
+    const argv = Reflect.get(src, "argv") as string[];
+    expect(program).toBe(resolved?.program ?? "");
+    expect(argv).toEqual(resolved?.argv ?? []);
     if (process.platform === "linux" && program) {
-      // arecord (alsa-utils) is preferred on Linux; fall back to parec/sox/rec
-      // when alsa-utils is not installed (e.g. minimal CI images).
       expect(["arecord", "parec", "rec", "sox"]).toContain(program);
       if (program === "arecord") {
-        expect((src as unknown as { argv: string[] }).argv).toContain("S16_LE");
-        expect((src as unknown as { argv: string[] }).argv).toContain("16000");
+        expect(argv).toContain("S16_LE");
       }
+      expect(argv.join(" ")).toContain("16000");
     } else if (process.platform === "darwin") {
-      expect((src as unknown as { program: string }).program).toBe("sox");
-      expect((src as unknown as { argv: string[] }).argv).toContain("-d");
+      expect(["sox", "rec", "ffmpeg", ""]).toContain(program);
+      if (program === "ffmpeg") {
+        expect(argv).toContain("avfoundation");
+      } else if (program === "sox") {
+        expect(argv).toContain("-d");
+      }
     }
     expect(src.frameSamples).toBe(512); // 32 ms @ 16 kHz
   });

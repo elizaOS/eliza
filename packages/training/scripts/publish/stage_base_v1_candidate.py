@@ -169,7 +169,6 @@ def main(argv: list[str] | None = None) -> int:
         (out / sub).mkdir(parents=True, exist_ok=True)
 
     generated_at = now_iso()
-    git_sha = git_short_sha()
 
     # --- text GGUF (real fine-tune) ---
     text_dest = out / text_rel
@@ -286,12 +285,10 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- run eval suite (optional; folds into evals block) ---
     eval_results: dict[str, Any] = {}
-    eval_gate_report: dict[str, Any] | None = None
     eval_aggregate_full: dict[str, Any] | None = None
     if args.evals_aggregate and args.evals_aggregate.is_file():
         eval_aggregate_full = json.loads(args.evals_aggregate.read_text())
         eval_results = eval_aggregate_full.get("results", {})
-        eval_gate_report = eval_aggregate_full.get("gateReport")
         # Carry the sibling per-axis JSON the eval suite wrote alongside it.
         for sib in args.evals_aggregate.parent.glob("*.json"):
             if sib.name == "aggregate.json":
@@ -308,7 +305,6 @@ def main(argv: list[str] | None = None) -> int:
         if agg.is_file():
             eval_aggregate_full = json.loads(agg.read_text())
             eval_results = eval_aggregate_full.get("results", {})
-            eval_gate_report = eval_aggregate_full.get("gateReport")
 
     # --- write evals block for the bundle ---
     # Defaults: not-run / not-passed. Folded from the eval suite where present.

@@ -200,6 +200,22 @@ ${qjlSourceListBlock()}
     patched = patched.replace(incAnchor, defsBlock);
   }
 
+  const linkSentinel = `${SENTINEL} QJL pthread link dependency`;
+  if (!patched.includes(linkSentinel)) {
+    const linkAnchor =
+      "    target_compile_features(${GGML_CPU_NAME} PRIVATE c_std_11 cxx_std_17)";
+    if (!patched.includes(linkAnchor)) {
+      throw new Error(
+        `[cpu-simd-kernels] QJL pthread link anchor not found in ${cmakePath}`,
+      );
+    }
+    const linkBlock = `    ${linkSentinel}
+    target_link_libraries(\${GGML_CPU_NAME} PRIVATE Threads::Threads)
+
+${linkAnchor}`;
+    patched = patched.replace(linkAnchor, linkBlock);
+  }
+
   if (patched !== original && !dryRun) {
     fs.writeFileSync(cmakePath, patched, "utf8");
   }

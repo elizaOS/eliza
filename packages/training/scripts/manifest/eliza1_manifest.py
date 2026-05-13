@@ -559,7 +559,6 @@ def validate_manifest(
     # ── kernels ──────────────────────────────────────────────────────────
     kernels = manifest["kernels"]
     declared_required: tuple[str, ...] = ()
-    declared_optional: tuple[str, ...] = ()
     backends: Mapping[str, Any] = {}
     if not _is_object(kernels):
         errors.append("kernels: must be an object")
@@ -576,7 +575,6 @@ def validate_manifest(
             if k not in ELIZA_1_KERNELS:
                 errors.append(f"kernels: unknown kernel {k!r}")
         declared_required = tuple(k for k in req if k in ELIZA_1_KERNELS)
-        declared_optional = tuple(k for k in opt if k in ELIZA_1_KERNELS)
 
         vb = kernels.get("verifiedBackends")
         if not _is_object(vb):

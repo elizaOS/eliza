@@ -28,17 +28,17 @@ const DEFAULT_VARIANTS = [
   {
     name: "turbo4_polar_kv",
     label: "target only, Turbo/Polar KV turbo4",
-    args: ["--cache-type-k", "turbo4", "--cache-type-v", "turbo4"],
+    args: ["--cache-type-k", "tbq4_0", "--cache-type-v", "tbq4_0"],
   },
   {
     name: "turbo3_polar_kv",
     label: "target only, Turbo/Polar KV turbo3",
-    args: ["--cache-type-k", "turbo3", "--cache-type-v", "turbo3"],
+    args: ["--cache-type-k", "tbq3_0", "--cache-type-v", "tbq3_0"],
   },
   {
     name: "qjl_tcq_forced",
-    label: "target only, forced QJL/TCQ turbo3_tcq",
-    args: ["--cache-type-k", "turbo3_tcq", "--cache-type-v", "turbo3_tcq"],
+    label: "target only, QJL K + TBQ3 V",
+    args: ["--cache-type-k", "qjl1_256", "--cache-type-v", "tbq3_0"],
   },
   {
     name: "dflash_only",
@@ -54,30 +54,30 @@ const DEFAULT_VARIANTS = [
       "--spec-type",
       "dflash",
       "--cache-type-k",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-v",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-k-draft",
-      "turbo4",
+      "tbq4_0",
       "--cache-type-v-draft",
-      "turbo4",
+      "tbq4_0",
     ],
   },
   {
     name: "all_dflash_qjl_tcq",
-    label: "DFlash + forced QJL/TCQ turbo3_tcq",
+    label: "DFlash + QJL K + TBQ3 V",
     needsDrafter: true,
     args: [
       "--spec-type",
       "dflash",
       "--cache-type-k",
-      "turbo3_tcq",
+      "qjl1_256",
       "--cache-type-v",
-      "turbo3_tcq",
+      "tbq3_0",
       "--cache-type-k-draft",
-      "turbo3_tcq",
+      "qjl1_256",
       "--cache-type-v-draft",
-      "turbo3_tcq",
+      "tbq3_0",
     ],
   },
 ];
@@ -117,15 +117,132 @@ function defaultBinary(backend) {
   );
 }
 
+const KERNEL_BY_CACHE_TYPE = new Map([
+  ["turbo3", "turbo3"],
+  ["tbq3_0", "turbo3"],
+  ["turbo4", "turbo4"],
+  ["tbq4_0", "turbo4"],
+  ["turbo3_tcq", "turbo3_tcq"],
+  ["tbq3_tcq", "turbo3_tcq"],
+  ["qjl", "qjl_full"],
+  ["qjl_full", "qjl_full"],
+  ["qjl1_256", "qjl_full"],
+  ["polar", "polarquant"],
+  ["polarquant", "polarquant"],
+  ["q4_polar", "polarquant"],
+]);
+
+function normalizeKernelArg(value) {
+  return String(value).trim().toLowerCase().replaceAll("-", "_");
+}
+
+function kernelForCacheType(value) {
+  return KERNEL_BY_CACHE_TYPE.get(normalizeKernelArg(value)) ?? null;
+}
+
+function optionValue(argv, index) {
+  const arg = argv[index];
+  const eq = arg.indexOf("=");
+  if (eq !== -1) return { value: arg.slice(eq + 1), consumed: 0 };
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) return { value: null, consumed: 0 };
+  return { value, consumed: 1 };
+}
+
+function variantRequiredKernels(variant) {
+  const required = new Set();
+  const argv = variant.args ?? [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--spec-type" || arg.startsWith("--spec-type=")) {
+      const parsed = optionValue(argv, i);
+      if (parsed.value && normalizeKernelArg(parsed.value) === "dflash") {
+        required.add("dflash");
+      }
+      i += parsed.consumed;
+      continue;
+    }
+    if (arg.startsWith("--cache-type")) {
+      const parsed = optionValue(argv, i);
+      if (parsed.value) {
+        const kernel = kernelForCacheType(parsed.value);
+        if (kernel) required.add(kernel);
+      }
+      i += parsed.consumed;
+    }
+  }
+  return [...required];
+}
+
+function loadCapabilities(binary) {
+  const filePath = path.join(path.dirname(binary), "CAPABILITIES.json");
+  if (!fs.existsSync(filePath)) return null;
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const kernels = parsed?.kernels;
+  if (!kernels || typeof kernels !== "object" || Array.isArray(kernels)) {
+    throw new Error(`invalid CAPABILITIES.json kernels map: ${filePath}`);
+  }
+  return { path: filePath, kernels };
+}
+
+function missingVariantKernels(variant, capabilities) {
+  const required = variantRequiredKernels(variant);
+  return required.filter((kernel) => capabilities.kernels[kernel] !== true);
+}
+
 function defaultModelPath(name) {
   return path.join(stateDir(), "local-inference", "models", name);
 }
 
-function parseArgs(argv) {
-  const backend = detectBackend();
-  const args = {
+const QUICK_VARIANTS = [
+  "baseline_f16_kv",
+  "turbo4_polar_kv",
+  "dflash_only",
+];
+
+const OPTION_ALIASES = new Map([
+  ["-b", "--batch-size"],
+  ["-ub", "--ubatch-size"],
+]);
+
+const NUMBER_OPTIONS = new Map([
+  ["--runs", "runs"],
+  ["--max-tokens", "maxTokens"],
+  ["--warmup-tokens", "warmupTokens"],
+  ["--ctx-size", "contextSize"],
+  ["--ctx-size-draft", "draftContextSize"],
+  ["--draft-min", "draftMin"],
+  ["--draft-max", "draftMax"],
+  ["--batch-size", "batchSize"],
+  ["--ubatch-size", "ubatchSize"],
+  ["--gpu-layers", "gpuLayers"],
+  ["--draft-gpu-layers", "draftGpuLayers"],
+  ["--timeout-ms", "timeoutMs"],
+  ["--start-timeout-ms", "startTimeoutMs"],
+]);
+
+const PATH_OPTIONS = new Map([
+  ["--binary", "binary"],
+  ["--model", "model"],
+  ["--drafter", "drafter"],
+  ["--out-dir", "outDir"],
+  ["--config", "config"],
+  ["--gate", "gate"],
+]);
+
+const VALUE_OPTIONS = new Set([
+  ...NUMBER_OPTIONS.keys(),
+  ...PATH_OPTIONS.keys(),
+  "--backend",
+  "--prompt",
+  "--variants",
+]);
+
+function defaultArgsForBackend(backend) {
+  const defaultGpuLayers = backend === "cpu" ? 0 : 99;
+  return {
     backend,
-    binary: defaultBinary(backend),
+    binary: null,
     model: defaultModelPath("eliza-1-2b.gguf"),
     drafter: defaultModelPath("eliza-1-2b-drafter-q4.repaired.gguf"),
     runs: 3,
@@ -137,8 +254,8 @@ function parseArgs(argv) {
     draftMax: 16,
     batchSize: 256,
     ubatchSize: 64,
-    gpuLayers: 99,
-    draftGpuLayers: 99,
+    gpuLayers: defaultGpuLayers,
+    draftGpuLayers: defaultGpuLayers,
     timeoutMs: 180_000,
     startTimeoutMs: 120_000,
     prompt: DEFAULT_PROMPT,
@@ -148,68 +265,80 @@ function parseArgs(argv) {
     gate: null,
     requireAll: false,
   };
+}
+
+function requireArgValue(argv, index, arg) {
+  const value = argv[index + 1];
+  if (!value || value.startsWith("--")) {
+    throw new Error(`${arg} requires a value`);
+  }
+  return value;
+}
+
+function setNumberOption(args, key, value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) throw new Error(`${key} must be a number`);
+  args[key] = parsed;
+}
+
+function applyValueOption(args, option, value) {
+  if (option === "--backend") {
+    args.backend = value;
+    return;
+  }
+  if (option === "--prompt") {
+    args.prompt = value;
+    return;
+  }
+  if (option === "--variants") {
+    args.variants = value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+    return;
+  }
+  const numberKey = NUMBER_OPTIONS.get(option);
+  if (numberKey) {
+    setNumberOption(args, numberKey, value);
+    return;
+  }
+  const pathKey = PATH_OPTIONS.get(option);
+  if (pathKey) {
+    args[pathKey] = path.resolve(value);
+    return;
+  }
+  throw new Error(`Unknown argument: ${option}`);
+}
+
+function applyFlagOption(args, arg) {
+  if (arg === "--require-all") {
+    args.requireAll = true;
+    return true;
+  }
+  if (arg === "--quick") {
+    args.runs = 1;
+    args.maxTokens = 96;
+    args.warmupTokens = 16;
+    args.variants = QUICK_VARIANTS;
+    return true;
+  }
+  if (arg === "--help" || arg === "-h") {
+    printHelp();
+    process.exit(0);
+  }
+  return false;
+}
+
+function parseArgs(argv) {
+  const args = defaultArgsForBackend(detectBackend());
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
-    const next = () => {
-      const value = argv[i + 1];
-      if (!value || value.startsWith("--"))
-        throw new Error(`${arg} requires a value`);
-      i += 1;
-      return value;
-    };
-    if (arg === "--backend") args.backend = next();
-    else if (arg === "--binary") args.binary = path.resolve(next());
-    else if (arg === "--model") args.model = path.resolve(next());
-    else if (arg === "--drafter") args.drafter = path.resolve(next());
-    else if (arg === "--runs") args.runs = Number.parseInt(next(), 10);
-    else if (arg === "--max-tokens")
-      args.maxTokens = Number.parseInt(next(), 10);
-    else if (arg === "--warmup-tokens")
-      args.warmupTokens = Number.parseInt(next(), 10);
-    else if (arg === "--ctx-size")
-      args.contextSize = Number.parseInt(next(), 10);
-    else if (arg === "--ctx-size-draft")
-      args.draftContextSize = Number.parseInt(next(), 10);
-    else if (arg === "--draft-min") args.draftMin = Number.parseInt(next(), 10);
-    else if (arg === "--draft-max") args.draftMax = Number.parseInt(next(), 10);
-    else if (arg === "--batch-size" || arg === "-b")
-      args.batchSize = Number.parseInt(next(), 10);
-    else if (arg === "--ubatch-size" || arg === "-ub")
-      args.ubatchSize = Number.parseInt(next(), 10);
-    else if (arg === "--gpu-layers")
-      args.gpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--draft-gpu-layers")
-      args.draftGpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--timeout-ms")
-      args.timeoutMs = Number.parseInt(next(), 10);
-    else if (arg === "--start-timeout-ms")
-      args.startTimeoutMs = Number.parseInt(next(), 10);
-    else if (arg === "--prompt") args.prompt = next();
-    else if (arg === "--variants")
-      args.variants = next()
-        .split(",")
-        .map((v) => v.trim())
-        .filter(Boolean);
-    else if (arg === "--out-dir") args.outDir = path.resolve(next());
-    else if (arg === "--config") args.config = path.resolve(next());
-    else if (arg === "--gate") args.gate = path.resolve(next());
-    else if (arg === "--require-all") args.requireAll = true;
-    else if (arg === "--quick") {
-      args.runs = 1;
-      args.maxTokens = 96;
-      args.warmupTokens = 16;
-      args.variants = [
-        "baseline_f16_kv",
-        "turbo4_polar_kv",
-        "qjl_tcq_forced",
-        "dflash_only",
-      ];
-    } else if (arg === "--help" || arg === "-h") {
-      printHelp();
-      process.exit(0);
-    } else {
-      throw new Error(`Unknown argument: ${arg}`);
-    }
+    if (applyFlagOption(args, arg)) continue;
+    const option = OPTION_ALIASES.get(arg) ?? arg;
+    if (!VALUE_OPTIONS.has(option)) throw new Error(`Unknown argument: ${arg}`);
+    const value = requireArgValue(argv, i, option);
+    applyValueOption(args, option, value);
+    i += 1;
   }
   args.binary = args.binary || defaultBinary(args.backend);
   return args;
@@ -248,12 +377,22 @@ function loadVariants(args) {
   }
   const targetExists = fs.existsSync(args.model);
   const drafterExists = fs.existsSync(args.drafter);
+  const capabilities = loadCapabilities(args.binary);
   return variants.map((variant) => {
     if (!targetExists) {
       return { ...variant, skipReason: `model missing: ${args.model}` };
     }
     if (variant.needsDrafter && !drafterExists) {
       return { ...variant, skipReason: `drafter missing: ${args.drafter}` };
+    }
+    if (capabilities) {
+      const missing = missingVariantKernels(variant, capabilities);
+      if (missing.length > 0) {
+        return {
+          ...variant,
+          skipReason: `kernel(s) not advertised by ${capabilities.path}: ${missing.join(", ")}`,
+        };
+      }
     }
     return variant;
   });
@@ -410,18 +549,12 @@ function serverArgs(args, variant, port) {
     HOST,
     "--port",
     String(port),
-    "--n-gpu-layers",
-    String(args.gpuLayers),
     "--ctx-size",
     String(args.contextSize),
     "--parallel",
     "1",
     "--metrics",
     "--jinja",
-    "--reasoning",
-    "off",
-    "--chat-template-kwargs",
-    '{"enable_thinking":false}',
     "-fa",
     "on",
     "-b",
@@ -429,6 +562,9 @@ function serverArgs(args, variant, port) {
     "-ub",
     String(args.ubatchSize),
   ];
+  if (args.backend !== "cpu") {
+    out.push("--n-gpu-layers", String(args.gpuLayers));
+  }
   if (variant.needsDrafter || variant.args?.includes("--spec-type")) {
     out.push(
       "-md",
@@ -439,9 +575,10 @@ function serverArgs(args, variant, port) {
       String(args.draftMin),
       "--draft-max",
       String(args.draftMax),
-      "--n-gpu-layers-draft",
-      String(args.draftGpuLayers),
     );
+    if (args.backend !== "cpu") {
+      out.push("--n-gpu-layers-draft", String(args.draftGpuLayers));
+    }
   }
   out.push(...(variant.args || []));
   return out;

@@ -16,6 +16,29 @@ export function optionalString(value: unknown): string | undefined | false {
 	return typeof value === "string" ? value : false;
 }
 
+export function requiredString(
+	body: Record<string, unknown>,
+	key: string,
+): string | null {
+	const value = body[key];
+	return typeof value === "string" ? value : null;
+}
+
+export function requiredBoolean(
+	body: Record<string, unknown>,
+	key: string,
+): boolean | null {
+	const value = body[key];
+	return typeof value === "boolean" ? value : null;
+}
+
+export function hasBooleanFields(
+	body: Record<string, unknown>,
+	keys: readonly string[],
+): boolean {
+	return keys.every((key) => typeof body[key] === "boolean");
+}
+
 export function optionalFiniteNumber(
 	value: unknown,
 ): number | undefined | false {

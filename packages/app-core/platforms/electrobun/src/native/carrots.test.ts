@@ -212,4 +212,37 @@ describe("CarrotManager", () => {
 				error: "boom",
 			});
 		}));
+
+	it("ignores late worker events after stop", () =>
+		withTempDir((dir) => {
+			const worker = new FakeWorkerHandle();
+			const workerEvents: string[] = [];
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => worker },
+				now: () => 1700000000000 + workerEvents.length,
+				events: {
+					workerChanged: (status) => {
+						workerEvents.push(`${status.id}:${status.state}`);
+					},
+				},
+			});
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+			manager.stopWorker("bunny.search");
+
+			worker.emit({ type: "ready" });
+			worker.fail("late boom");
+
+			expect(manager.getWorkerStatus("bunny.search")).toMatchObject({
+				id: "bunny.search",
+				state: "stopped",
+				error: null,
+			});
+			expect(workerEvents).toEqual([
+				"bunny.search:starting",
+				"bunny.search:running",
+				"bunny.search:stopped",
+			]);
+		}));
 });

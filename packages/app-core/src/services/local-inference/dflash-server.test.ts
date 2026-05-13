@@ -1,6 +1,4 @@
 import fs from "node:fs";
-import http from "node:http";
-import type { AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -1077,28 +1075,22 @@ describe("DFlash streaming callbacks", () => {
   });
 
   it("uses final streaming timings as DFlash evidence when metrics counters lag", async () => {
-    const server = http.createServer(async (req, res) => {
-      if (req.method === "GET" && req.url === "/metrics") {
-        res.statusCode = 200;
-        res.end(
+    installDflashFetchMock((url) => {
+      if (url.pathname === "/metrics") {
+        return new Response(
           [
             "llamacpp:prompt_tokens_total 0",
             "llamacpp:n_tokens_predicted_total 0",
             "llamacpp:n_drafted_total 0",
             "llamacpp:n_accepted_total 0",
           ].join("\n"),
+          { status: 200 },
         );
-        return;
       }
-      if (req.method === "POST" && req.url === "/v1/chat/completions") {
-        res.writeHead(200, { "content-type": "text/event-stream" });
-        res.write(
-          `data: ${JSON.stringify({
-            choices: [{ delta: { content: "Hello" } }],
-          })}\n\n`,
-        );
-        res.write(
-          `data: ${JSON.stringify({
+      if (url.pathname === "/v1/chat/completions") {
+        return sseResponse([
+          { choices: [{ delta: { content: "Hello" } }] },
+          {
             choices: [{ finish_reason: "stop", index: 0, delta: {} }],
             timings: {
               prompt_n: 12,
@@ -1106,18 +1098,11 @@ describe("DFlash streaming callbacks", () => {
               draft_n: 4,
               draft_n_accepted: 3,
             },
-          })}\n\n`,
-        );
-        res.end("data: [DONE]\n\n");
-        return;
+          },
+        ]);
       }
-      res.statusCode = 404;
-      res.end();
+      return notFoundResponse();
     });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const target = dflashLlamaServer as unknown as {
       baseUrl: string | null;
       cacheParallel: number;
@@ -1126,7 +1111,7 @@ describe("DFlash streaming callbacks", () => {
       baseUrl: target.baseUrl,
       cacheParallel: target.cacheParallel,
     };
-    target.baseUrl = baseUrl;
+    target.baseUrl = "http://dflash.test";
     target.cacheParallel = 4;
     try {
       const result = await dflashLlamaServer.generateWithUsage({
@@ -1145,7 +1130,6 @@ describe("DFlash streaming callbacks", () => {
     } finally {
       target.baseUrl = previous.baseUrl;
       target.cacheParallel = previous.cacheParallel;
-      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
@@ -1201,34 +1185,27 @@ describe("DFlash streaming callbacks", () => {
   });
 
   it("consumes native DFlash events when the bundle opts in and /health advertises the capability", async () => {
-    const server = http.createServer(async (req, res) => {
-      if (req.method === "GET" && req.url === "/health") {
-        res.statusCode = 200;
-        res.setHeader("content-type", "application/json");
-        res.end(
-          JSON.stringify({
-            status: "ok",
-            capabilities: { dflashNativeEvents: true },
-          }),
-        );
-        return;
+    installDflashFetchMock((url) => {
+      if (url.pathname === "/health") {
+        return Response.json({
+          status: "ok",
+          capabilities: { dflashNativeEvents: true },
+        });
       }
-      if (req.method === "GET" && req.url === "/metrics") {
-        res.statusCode = 200;
-        res.end(
+      if (url.pathname === "/metrics") {
+        return new Response(
           [
             "llamacpp:prompt_tokens_total 0",
             "llamacpp:n_tokens_predicted_total 0",
             "llamacpp:n_drafted_total 4",
             "llamacpp:n_accepted_total 3",
           ].join("\n"),
+          { status: 200 },
         );
-        return;
       }
-      if (req.method === "POST" && req.url === "/v1/chat/completions") {
-        res.writeHead(200, { "content-type": "text/event-stream" });
-        res.write(
-          `data: ${JSON.stringify({
+      if (url.pathname === "/v1/chat/completions") {
+        return sseResponse([
+          {
             choices: [{ delta: { content: "Hel" } }],
             dflash: [
               { kind: "speculate-start", round: 0, ts: 0 },
@@ -1239,10 +1216,8 @@ describe("DFlash streaming callbacks", () => {
                 ts: 1,
               },
             ],
-          })}\n\n`,
-        );
-        res.write(
-          `data: ${JSON.stringify({
+          },
+          {
             choices: [{ delta: { content: "lo" } }],
             dflash: {
               kind: "accept",
@@ -1250,10 +1225,8 @@ describe("DFlash streaming callbacks", () => {
               accepted: [12],
               ts: 2,
             },
-          })}\n\n`,
-        );
-        res.write(
-          `data: ${JSON.stringify({
+          },
+          {
             choices: [{ delta: { content: "" } }],
             dflash: {
               kind: "speculate-end",
@@ -1262,18 +1235,11 @@ describe("DFlash streaming callbacks", () => {
               totalAccepted: 3,
               ts: 3,
             },
-          })}\n\n`,
-        );
-        res.end("data: [DONE]\n\n");
-        return;
+          },
+        ]);
       }
-      res.statusCode = 404;
-      res.end();
+      return notFoundResponse();
     });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const target = dflashLlamaServer as unknown as {
       baseUrl: string | null;
       cacheParallel: number;
@@ -1286,7 +1252,7 @@ describe("DFlash streaming callbacks", () => {
       lastOptimizations: target.lastOptimizations,
       nativeDflashEventsCapability: target.nativeDflashEventsCapability,
     };
-    target.baseUrl = baseUrl;
+    target.baseUrl = "http://dflash.test";
     target.cacheParallel = 4;
     target.lastOptimizations = { nativeDflashEvents: true };
     target.nativeDflashEventsCapability = null;
@@ -1326,48 +1292,35 @@ describe("DFlash streaming callbacks", () => {
       target.lastOptimizations = previous.lastOptimizations;
       target.nativeDflashEventsCapability =
         previous.nativeDflashEventsCapability;
-      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 
   it("falls back to JS synthesis when /health does not advertise dflashNativeEvents", async () => {
-    const server = http.createServer(async (req, res) => {
-      if (req.method === "GET" && req.url === "/health") {
-        res.statusCode = 200;
-        res.setHeader("content-type", "application/json");
-        res.end(JSON.stringify({ status: "ok", capabilities: {} }));
-        return;
+    installDflashFetchMock((url) => {
+      if (url.pathname === "/health") {
+        return Response.json({ status: "ok", capabilities: {} });
       }
-      if (req.method === "GET" && req.url === "/metrics") {
-        res.statusCode = 200;
-        res.end(
+      if (url.pathname === "/metrics") {
+        return new Response(
           [
             "llamacpp:prompt_tokens_total 0",
             "llamacpp:n_tokens_predicted_total 0",
             "llamacpp:n_drafted_total 0",
             "llamacpp:n_accepted_total 0",
           ].join("\n"),
+          { status: 200 },
         );
-        return;
       }
-      if (req.method === "POST" && req.url === "/v1/chat/completions") {
-        res.writeHead(200, { "content-type": "text/event-stream" });
-        res.write(
-          `data: ${JSON.stringify({
+      if (url.pathname === "/v1/chat/completions") {
+        return sseResponse([
+          {
             choices: [{ delta: { content: "Hi" } }],
             dflash: { kind: "accept", drafted: [1], accepted: [1], ts: 0 },
-          })}\n\n`,
-        );
-        res.end("data: [DONE]\n\n");
-        return;
+          },
+        ]);
       }
-      res.statusCode = 404;
-      res.end();
+      return notFoundResponse();
     });
-    await new Promise<void>((resolve) =>
-      server.listen(0, "127.0.0.1", resolve),
-    );
-    const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
     const target = dflashLlamaServer as unknown as {
       baseUrl: string | null;
       cacheParallel: number;
@@ -1380,7 +1333,7 @@ describe("DFlash streaming callbacks", () => {
       lastOptimizations: target.lastOptimizations,
       nativeDflashEventsCapability: target.nativeDflashEventsCapability,
     };
-    target.baseUrl = baseUrl;
+    target.baseUrl = "http://dflash.test";
     target.cacheParallel = 4;
     target.lastOptimizations = { nativeDflashEvents: true };
     target.nativeDflashEventsCapability = null;
@@ -1407,7 +1360,6 @@ describe("DFlash streaming callbacks", () => {
       target.lastOptimizations = previous.lastOptimizations;
       target.nativeDflashEventsCapability =
         previous.nativeDflashEventsCapability;
-      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   });
 });

@@ -1818,12 +1818,6 @@ function main(): void {
   }
 }
 
-/**
- * Defense-in-depth check run after the copy + prune phases. Verifies that
- * every package in `alwaysBundled` has a `package.json` on disk inside
- * `nodeModulesDir`. Throws with the full list of missing packages so ops
- * can locate the exact expected path without guessing.
- */
 if (
   process.argv[1] &&
   path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)

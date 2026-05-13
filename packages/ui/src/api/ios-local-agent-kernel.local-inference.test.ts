@@ -37,15 +37,24 @@ type MockOptions = {
   generate?: GenerateFn;
 };
 
-function eliza1MobileManifest(): Record<string, unknown> {
+function eliza1MobileManifest(modelId = "eliza-1-2b"): Record<string, unknown> {
+  const textPath =
+    modelId === "eliza-1-4b"
+      ? "text/eliza-1-4b-64k.gguf"
+      : "text/eliza-1-2b-32k.gguf";
+  const drafterPath =
+    modelId === "eliza-1-4b"
+      ? "dflash/drafter-4b.gguf"
+      : "dflash/drafter-2b.gguf";
+
   return {
-    id: "eliza-1-2b",
+    id: modelId,
     version: "1.0.0",
     defaultEligible: true,
     files: {
       text: [
         {
-          path: "text/eliza-1-2b-32k.gguf",
+          path: textPath,
           sha256: "0".repeat(64),
           ctx: 32768,
         },
@@ -65,14 +74,14 @@ function eliza1MobileManifest(): Record<string, unknown> {
       vision: [],
       dflash: [
         {
-          path: "dflash/drafter-2b.gguf",
+          path: drafterPath,
           sha256: "0".repeat(64),
           ctx: 32768,
         },
       ],
       cache: [
         {
-          path: "cache/eliza-1-2b.kvcache",
+          path: `cache/${modelId}.kvcache`,
           sha256: "0".repeat(64),
         },
       ],
@@ -218,11 +227,14 @@ async function loadKernel(options: MockOptions = {}): Promise<KernelModule> {
   vi.stubGlobal("navigator", { hardwareConcurrency: 8 });
   vi.stubGlobal(
     "fetch",
-    vi.fn(async () =>
-      Response.json(eliza1MobileManifest(), {
+    vi.fn(async (input: string | URL | Request) => {
+      const modelId = String(input).includes("eliza-1-4b")
+        ? "eliza-1-4b"
+        : "eliza-1-2b";
+      return Response.json(eliza1MobileManifest(modelId), {
         status: 200,
-      }),
-    ),
+      });
+    }),
   );
 
   await handleIosLocalAgentRequest(

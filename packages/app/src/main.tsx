@@ -3,10 +3,10 @@ import "@elizaos/ui/styles";
 import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
+import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import { BackgroundRunner } from "@capacitor-community/background-runner";
 import {
   CompanionShell,
   createVectorBrowserRenderer,

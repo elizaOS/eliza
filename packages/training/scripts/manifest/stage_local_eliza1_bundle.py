@@ -59,8 +59,8 @@ except ImportError:  # pragma: no cover - direct script execution path
     )
     from eliza1_platform_plan import CONTEXTS_BY_TIER, text_artifact_name
 
-from benchmarks.eliza1_gates import apply_gates
-from scripts.quantization._kernel_manifest import kernel_manifest_fragment
+from benchmarks.eliza1_gates import apply_gates  # noqa: E402
+from scripts.quantization._kernel_manifest import kernel_manifest_fragment  # noqa: E402
 
 LOCAL_MODEL_ROOT: Final[Path] = (
     Path.home() / ".eliza" / "local-inference" / "models"

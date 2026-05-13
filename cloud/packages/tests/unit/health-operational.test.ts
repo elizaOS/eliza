@@ -81,7 +81,10 @@ describe("/api/health/operational", () => {
 
     expect(status).toBe(200);
     expect(body.status).toBe("ok");
-    const checks = body.checks as Record<string, { configured?: boolean; evm_configured?: boolean; solana_configured?: boolean }>;
+    const checks = body.checks as Record<
+      string,
+      { configured?: boolean; evm_configured?: boolean; solana_configured?: boolean }
+    >;
     expect(checks.steward_platform.configured).toBe(true);
     expect(checks.payouts.evm_configured).toBe(true);
     expect(checks.payouts.solana_configured).toBe(true);
@@ -119,7 +122,10 @@ describe("/api/health/operational", () => {
     const { body } = await fetchHealth();
 
     expect(body.status).toBe("degraded");
-    const checks = body.checks as Record<string, { evm_configured: boolean; solana_configured: boolean; message: string }>;
+    const checks = body.checks as Record<
+      string,
+      { evm_configured: boolean; solana_configured: boolean; message: string }
+    >;
     expect(checks.payouts.evm_configured).toBe(false);
     expect(checks.payouts.solana_configured).toBe(false);
     expect(checks.payouts.message).toContain("No payout wallets");
@@ -133,7 +139,10 @@ describe("/api/health/operational", () => {
     const { body } = await fetchHealth();
 
     expect(body.status).toBe("ok");
-    const checks = body.checks as Record<string, { evm_configured: boolean; solana_configured: boolean }>;
+    const checks = body.checks as Record<
+      string,
+      { evm_configured: boolean; solana_configured: boolean }
+    >;
     expect(checks.payouts.evm_configured).toBe(false);
     expect(checks.payouts.solana_configured).toBe(true);
   });
