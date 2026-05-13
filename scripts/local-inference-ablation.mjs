@@ -550,8 +550,6 @@ function serverArgs(args, variant, port) {
     HOST,
     "--port",
     String(port),
-    "--n-gpu-layers",
-    String(args.gpuLayers),
     "--ctx-size",
     String(args.contextSize),
     "--parallel",
@@ -569,6 +567,9 @@ function serverArgs(args, variant, port) {
     "-ub",
     String(args.ubatchSize),
   ];
+  if (args.backend !== "cpu") {
+    out.push("--n-gpu-layers", String(args.gpuLayers));
+  }
   if (variant.needsDrafter || variant.args?.includes("--spec-type")) {
     out.push(
       "-md",
@@ -579,9 +580,10 @@ function serverArgs(args, variant, port) {
       String(args.draftMin),
       "--draft-max",
       String(args.draftMax),
-      "--n-gpu-layers-draft",
-      String(args.draftGpuLayers),
     );
+    if (args.backend !== "cpu") {
+      out.push("--n-gpu-layers-draft", String(args.draftGpuLayers));
+    }
   }
   out.push(...(variant.args || []));
   return out;

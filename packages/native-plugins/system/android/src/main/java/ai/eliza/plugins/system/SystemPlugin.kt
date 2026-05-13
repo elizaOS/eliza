@@ -218,11 +218,6 @@ class SystemPlugin : Plugin() {
                 Settings.System.SCREEN_BRIGHTNESS,
                 (clamped * 255.0).toInt().coerceIn(0, 255)
             )
-            activity?.window?.let { window ->
-                val attrs = window.attributes
-                attrs.screenBrightness = clamped.toFloat()
-                window.attributes = attrs
-            }
             call.resolve(deviceSettingsResult())
         } catch (error: RuntimeException) {
             call.reject("Failed to set screen brightness", error)
@@ -278,12 +273,7 @@ class SystemPlugin : Plugin() {
             Settings.System.getInt(context.contentResolver, Settings.System.SCREEN_BRIGHTNESS)
                 .coerceIn(0, 255) / 255.0
         } catch (_: Settings.SettingNotFoundException) {
-            val windowBrightness = activity?.window?.attributes?.screenBrightness
-            if (windowBrightness != null && windowBrightness >= 0f) {
-                windowBrightness.toDouble().coerceIn(0.0, 1.0)
-            } else {
-                0.75
-            }
+            0.75
         }
     }
 
