@@ -25,4 +25,29 @@ self.postMessage({
   payload: { level: "info", message: `hello-carrot ready, permissions=${context.permissions.join(",")}` },
 });
 
+// Demonstrate the host-request round-trip end-to-end. Equivalent to upstream's
+// `Carrots.list()` which resolves to `bridge.requestHost("list-carrots")`.
+// Done by raw postMessage to keep the example free of the electrobun import.
+const LIST_REQUEST_ID = 1;
+self.addEventListener("message", (event) => {
+  const data = event.data;
+  if (
+    data &&
+    typeof data === "object" &&
+    data.type === "host-response" &&
+    data.requestId === LIST_REQUEST_ID
+  ) {
+    const summary = data.success
+      ? `ok ${Array.isArray(data.payload) ? data.payload.length : "?"} carrots`
+      : `err ${data.error ?? "unknown"}`;
+    appendFileSync(context.logsPath, `[list-carrots] ${summary}\n`, "utf8");
+  }
+});
+
+self.postMessage({
+  type: "host-request",
+  requestId: LIST_REQUEST_ID,
+  method: "list-carrots",
+});
+
 self.postMessage({ type: "ready" });
