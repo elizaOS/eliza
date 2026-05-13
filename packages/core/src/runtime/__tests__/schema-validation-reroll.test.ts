@@ -33,9 +33,9 @@ import {
 
 /**
  * Tool-call shape used in these tests: `{ action: <enum>, parameters: { ... } }`
- * with a closed enum of `[REPLY, IGNORE]`. Matches the planner's PLAN_ACTIONS
- * envelope structurally, so the test exercises the same code path that real
- * remote-model outputs flow through.
+ * with a closed enum of `[REPLY, IGNORE]`. Matches the planner's per-action
+ * native-tool envelope structurally, so the test exercises the same code path
+ * that real remote-model outputs flow through.
  */
 const PLAN_ACTION_SCHEMA: JsonSchema = {
 	type: "object",

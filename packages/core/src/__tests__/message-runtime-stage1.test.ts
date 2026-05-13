@@ -475,7 +475,7 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("exposes only validated actions and enforces tool-required routing through PLAN_ACTIONS", async () => {
+	it("exposes only validated actions as native tools and enforces tool-required routing", async () => {
 		const runtime = makeRuntime([
 			JSON.stringify({
 				processMessage: "RESPOND",
@@ -496,11 +496,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "call-1",
-						name: "PLAN_ACTIONS",
-						arguments: {
-							action: "CHECK_RUNTIME",
-							parameters: {},
-						},
+						name: "CHECK_RUNTIME",
+						arguments: {},
 					},
 				],
 			},
@@ -544,12 +541,12 @@ describe("runV5MessageRuntimeStage1", () => {
 			tools?: Array<{ name?: string }>;
 			messages?: Array<{ role?: string; content?: string | null }>;
 		};
-		expect(firstPlannerParams.tools?.map((tool) => tool.name)).toEqual([
-			"PLAN_ACTIONS",
-		]);
+		const firstPlannerToolNames =
+			firstPlannerParams.tools?.map((tool) => tool.name) ?? [];
+		expect(firstPlannerToolNames).toContain("CHECK_RUNTIME");
+		expect(firstPlannerToolNames).not.toContain("SKIP_RUNTIME");
+		expect(firstPlannerToolNames).toContain("REPLY");
 		const firstPlannerPrompt = JSON.stringify(firstPlannerParams.messages);
-		expect(firstPlannerPrompt).toContain("CHECK_RUNTIME");
-		expect(firstPlannerPrompt).not.toContain("SKIP_RUNTIME");
 		expect(firstPlannerPrompt).toContain(
 			"Stage 1 router marked this current turn as requiring a tool",
 		);
@@ -610,11 +607,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "call-1",
-						name: "PLAN_ACTIONS",
-						arguments: {
-							action: "CHECK_RUNTIME",
-							parameters: {},
-						},
+						name: "CHECK_RUNTIME",
+						arguments: {},
 					},
 				],
 			},
@@ -667,11 +661,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "call-1",
-						name: "PLAN_ACTIONS",
-						arguments: {
-							action: "CHECK_RUNTIME",
-							parameters: {},
-						},
+						name: "CHECK_RUNTIME",
+						arguments: {},
 					},
 				],
 			},

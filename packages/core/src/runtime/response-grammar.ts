@@ -777,10 +777,11 @@ export function buildPlannerActionGrammar(
 	const actionSchemas: Record<string, JSONSchema> = {};
 	for (const d of descriptors) actionSchemas[d.name] = d.parametersSchema;
 
-	// Skeleton: { "action": <enum>, "thought": <free-string>, "parameters": <free-json> }
-	// (key order matches PLAN_ACTIONS_TOOL's `required: [action, parameters,
-	// thought]` properties order — actually properties order there is action,
-	// parameters, thought; we keep that.)
+	// Skeleton: { "action": <enum>, "parameters": <free-json>, "thought": <free-string> }
+	// Legacy PLAN_ACTIONS-style envelope kept here as the local engine's
+	// guided-decode contract: the model's first sampled field pins the action
+	// name, the second the action's parameters, the third a short thought.
+	// Property order is action, parameters, thought.
 	const spans: ResponseSkeletonSpan[] = [];
 	const builder = new GbnfBuilder();
 	const rootParts: string[] = [];

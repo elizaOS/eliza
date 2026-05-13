@@ -1,10 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import type { OptimizedPromptService } from "../../services/optimized-prompt";
 import { resolveOptimizedPrompt } from "../../services/optimized-prompt-resolver";
-import {
-	__renderAvailableActionsBlockForTests,
-	__renderRoutingHintsBlockForTests,
-} from "../planner-loop";
+import { __renderRoutingHintsBlockForTests } from "../planner-loop";
 import type { ContextObject } from "../planner-types";
 
 // Wave 2-D: `ELIZA_PROMPT_COMPRESS=1` is the Cerebras token-budget escape
@@ -94,18 +91,5 @@ describe("Wave 2-D compress mode (ELIZA_PROMPT_COMPRESS)", () => {
 		process.env.ELIZA_PROMPT_COMPRESS = "1";
 		const compressed = __renderRoutingHintsBlockForTests(makeContext());
 		expect(compressed).toBeNull();
-	});
-
-	it("does NOT change the available-actions block (only routing hints + few-shots compress)", () => {
-		const ctx = makeContext();
-		const before = __renderAvailableActionsBlockForTests(ctx);
-
-		process.env.ELIZA_PROMPT_COMPRESS = "1";
-		const compressed = __renderAvailableActionsBlockForTests(makeContext());
-
-		// Available-actions block bytes are identical — top-K capping happens
-		// at the action-retrieval layer (action-retrieval.ts) before the
-		// retrieved actions become tool events on the context.
-		expect(compressed).toEqual(before);
 	});
 });

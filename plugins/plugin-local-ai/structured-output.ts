@@ -1,4 +1,4 @@
-import { extractPlanActionsFromContent, type JSONSchema, type ToolDefinition } from "@elizaos/core";
+import type { JSONSchema, ToolDefinition } from "@elizaos/core";
 import {
   type ChatModelFunctionCall,
   type ChatSessionModelFunctions,
@@ -103,28 +103,9 @@ export function extractToolCalls(
     }
   }
 
-  if (calls.length === 0) {
-    // Collect the full text from any string entries in the response array.
-    const textParts = response.filter((e) => typeof e === "string").join("");
-    if (textParts.trim().length > 0) {
-      const recovered = extractPlanActionsFromContent(textParts);
-      if (recovered) {
-        // Synthesize a PLAN_ACTIONS wrapper so downstream normalizeToolCall
-        // unwraps it correctly via the name === PLAN_ACTIONS_TOOL_NAME path.
-        calls.push({
-          id: `call_recovered_${i++}`,
-          name: "PLAN_ACTIONS",
-          arguments: {
-            action: recovered.action,
-            parameters: recovered.parameters,
-            ...(recovered.thought ? { thought: recovered.thought } : {}),
-          },
-          type: "function",
-        });
-      }
-    }
-  }
-
+  // No content-text recovery: actions are exposed to the model as individual
+  // native tools, so any non-tool-call text is treated as a plain message
+  // (and surfaced via the regular planner-loop messageToUser path).
   return calls;
 }
 
