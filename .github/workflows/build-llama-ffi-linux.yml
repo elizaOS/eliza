@@ -79,7 +79,7 @@ jobs:
           cmake --version
 
       - name: Cache llama.cpp cmake build dir
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/inference/llama.cpp/build
           key: llama-ffi-linux-cpu-${{ hashFiles('packages/inference/llama.cpp/CMakeLists.txt') }}

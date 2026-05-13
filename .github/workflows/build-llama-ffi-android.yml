@@ -111,7 +111,7 @@ jobs:
           add-to-path: false
 
       - name: Cache llama.cpp android build dir
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: packages/inference/llama.cpp/build-android-${{ matrix.abi }}
           key: llama-ffi-android-${{ matrix.abi }}-${{ hashFiles('packages/inference/llama.cpp/CMakeLists.txt') }}
