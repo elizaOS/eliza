@@ -252,6 +252,22 @@ export async function pickDesktopWorkspaceFolder(options?: {
   });
 }
 
+export async function desktopOpenPath(path: string): Promise<void> {
+  await invokeDesktopBridgeRequest<undefined>({
+    rpcMethod: "desktopOpenPath",
+    ipcChannel: "desktop:openPath",
+    params: { path },
+  });
+}
+
+export async function desktopShowItemInFolder(path: string): Promise<void> {
+  await invokeDesktopBridgeRequest<undefined>({
+    rpcMethod: "desktopShowItemInFolder",
+    ipcChannel: "desktop:showItemInFolder",
+    params: { path },
+  });
+}
+
 export async function migrateDesktopStateDir(
   fromPath: string,
 ): Promise<StateDirMigrationResult | null> {
