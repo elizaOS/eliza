@@ -145,6 +145,24 @@ import {
  */
 const TASK_COMPLETE_STOP_DELAY_MS = 5_000;
 
+export const OPENCODE_AGENTS_MD_BEGIN_MARKER =
+  "<!-- orchestrator:opencode:begin -->";
+export const OPENCODE_AGENTS_MD_END_MARKER =
+  "<!-- orchestrator:opencode:end -->";
+
+export function mergeOpencodeAgentsMd(existing: string, brief: string): string {
+  const stripped = existing
+    .replace(
+      new RegExp(
+        `${OPENCODE_AGENTS_MD_BEGIN_MARKER}[\\s\\S]*?${OPENCODE_AGENTS_MD_END_MARKER}\\n*`,
+      ),
+      "",
+    )
+    .trim();
+  const block = `${OPENCODE_AGENTS_MD_BEGIN_MARKER}\n${brief}\n${OPENCODE_AGENTS_MD_END_MARKER}`;
+  return stripped ? `${block}\n\n${stripped}` : block;
+}
+
 export function shouldSuppressCodexExecPtyManagerEvent(options: {
   codexExecMode: boolean;
   event: string;
@@ -1687,7 +1705,7 @@ export class PTYService {
         | undefined);
     if (
       fromRuntimeOrEnv &&
-      ["claude", "gemini", "codex", "aider"].includes(
+      ["claude", "gemini", "codex", "aider", "opencode"].includes(
         fromRuntimeOrEnv.toLowerCase(),
       )
     ) {
