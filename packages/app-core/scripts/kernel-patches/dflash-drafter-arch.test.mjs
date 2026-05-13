@@ -57,6 +57,11 @@ function makeLlamaCppFixture() {
   );
   write(
     root,
+    "src/llama-model-loader.h",
+    "struct llama_model_loader {\n    gguf_context_ptr meta;\n};\n",
+  );
+  write(
+    root,
     "src/models/models.h",
     [
       "struct llm_build_qwen3moe : public llm_graph_context {",
@@ -126,6 +131,12 @@ describe("patchDflashDrafterArch", () => {
     expect(
       fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
     ).toMatch(/std::make_unique<llm_build_dflash_draft>/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
+    ).toMatch(/ml\.meta\.get\(\)/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
+    ).not.toMatch(/ml\.metadata/);
     expect(
       fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
     ).not.toMatch(/llama_model_dflash_draft::/);
