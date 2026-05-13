@@ -12,6 +12,10 @@ export default defineConfig({
       "@elizaos/core": path.join(repoRoot, "packages/core/src/index.ts"),
       "@elizaos/agent": path.join(repoRoot, "packages/agent/src/index.ts"),
       "@elizaos/shared": path.join(repoRoot, "packages/shared/src/index.ts"),
+      "@elizaos/plugin-signal": path.join(
+        repoRoot,
+        "plugins/plugin-signal/src/index.ts",
+      ),
     },
   },
   test: {

@@ -52,6 +52,7 @@ cat > /tmp/prune-workspace.mjs << 'JS'
 const fs = require("fs");
 
 const KEEP = [
+  "packages/core",
   "packages/agent",
   "packages/app-core",
   "packages/shared",
@@ -59,6 +60,8 @@ const KEEP = [
   "packages/app-core/platforms/electrobun",
   "packages/app-core/deploy/cloud-agent-template",
   "packages/workflows",
+  "plugins/plugin-sql",
+  "plugins/plugin-elizacloud",
   "plugins/plugin-workflow",
   "packages/app",
 ];
@@ -137,10 +140,11 @@ function prune(path) {
     const deps = pkg[section];
     if (!deps) continue;
     for (const [name, spec] of Object.entries(deps)) {
-      const isWorkspace =
-        typeof spec === "string" && spec.startsWith("workspace:");
+      const isLocal =
+        typeof spec === "string" &&
+        (spec.startsWith("workspace:") || spec.startsWith("file:"));
       const isStripName = STRIP_NAMES.test(name);
-      if ((isWorkspace && !ALLOW.has(name)) || isStripName) {
+      if ((isLocal && !ALLOW.has(name)) || isStripName) {
         delete deps[name];
       }
     }
