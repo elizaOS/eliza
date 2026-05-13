@@ -1,0 +1,22 @@
+{
+  "id": "carrot-clock",
+  "name": "Carrot Clock",
+  "version": "0.1.0",
+  "description": "Window-mode reference carrot — opens its own webview with a tiny live clock. Validates BrowserView + viewsRoot scheme resolution and window-close → stopWorker.",
+  "mode": "window",
+  "permissions": {
+    "host": {},
+    "bun": {},
+    "isolation": "shared-worker"
+  },
+  "view": {
+    "relativePath": "view/index.html",
+    "title": "Carrot Clock",
+    "width": 320,
+    "height": 200,
+    "titleBarStyle": "default"
+  },
+  "worker": {
+    "relativePath": "worker.mjs"
+  }
+}

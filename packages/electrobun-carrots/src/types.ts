@@ -198,6 +198,11 @@ export type HostRequestMethod =
   | "clipboard-write-text"
   | "window-get-frame"
   | "invoke-carrot"
+  | "list-carrots"
+  | "start-carrot"
+  | "stop-carrot"
+  | "get-auth-token"
+  | "set-auth-token"
   | "screen-get-primary-display"
   | "screen-get-cursor-screen-point";
 
