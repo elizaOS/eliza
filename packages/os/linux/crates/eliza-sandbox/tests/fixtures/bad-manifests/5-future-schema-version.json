@@ -1,0 +1,12 @@
+{
+    "schema_version": 999,
+    "slug": "calendar",
+    "title": "Calendar",
+    "intent": "show me my calendar",
+    "runtime": "webview",
+    "entry": "src/index.html",
+    "capabilities": [{ "kind": "time:read" }],
+    "version": 1,
+    "last_built_by": "test",
+    "last_built_at": "2026-05-10T00:00:00Z"
+}

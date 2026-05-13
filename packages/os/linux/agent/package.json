@@ -1,0 +1,31 @@
+{
+  "name": "usbeliza-agent",
+  "version": "0.0.1",
+  "private": true,
+  "license": "Apache-2.0",
+  "description": "The Bun-hosted eliza-agent subprocess for usbeliza. Wraps @elizaos/agent at 127.0.0.1:41337.",
+  "type": "module",
+  "engines": {
+    "bun": ">=1.3.0"
+  },
+  "scripts": {
+    "dev": "bun --hot run src/main.ts",
+    "start": "bun run src/main.ts",
+    "test": "bun test",
+    "lint": "bun run typecheck",
+    "typecheck": "bun --bun tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/agent": "^2.0.0-alpha.537",
+    "@elizaos/core": "^2.0.0-alpha.537",
+    "@elizaos/plugin-bootstrap": "^1.7.3-alpha.4",
+    "node-llama-cpp": "3.10.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.6.0"
+  },
+  "trustedDependencies": [
+    "node-llama-cpp"
+  ]
+}

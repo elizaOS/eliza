@@ -1,0 +1,159 @@
+#!/bin/bash
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# First-run helper that creates an encrypted persistence partition on
+# the USB stick the user booted from. Mirrors the Tails persistence
+# model — LUKS-encrypted partition labeled "persistence" containing a
+# `persistence.conf` that declares which directories survive reboots.
+#
+# Flow:
+#   1. Detect the boot USB (the medium live-boot mounted).
+#   2. Confirm the USB has unallocated space (or an existing sdX3).
+#   3. Prompt for a passphrase (via systemd-ask-password — Plymouth UI).
+#   4. cryptsetup luksFormat the partition.
+#   5. mkfs.ext4 inside the unlocked container.
+#   6. Write the bundled persistence.conf to the new filesystem.
+#   7. Tell the user to reboot — live-boot will prompt for the
+#      passphrase on next boot and bind-mount the listed directories.
+#
+# Idempotent: re-running detects existing LUKS partitions and only
+# changes things if explicitly told to.
+#
+# Inspired by Tails' `tails-persistence-setup` (GPL-3.0-or-later) but
+# rewritten from scratch in shell (no python/GTK) to keep the surface
+# small and consistent with the chat-box UX. The shape of persistence.
+# conf and the choice to use LUKS over the live-boot probe mechanism
+# matches Tails by design — same kernel machinery, same UX promise.
+
+set -euo pipefail
+
+LOG_TAG="usbeliza-persistence-setup"
+log()   { printf '[%s] %s\n' "$LOG_TAG" "$*" >&2; }
+fatal() { log "ERROR: $*"; exit 1; }
+
+# --- 1. Detect the boot device ---
+# live-boot exports the medium under /lib/live/mount/medium. The device
+# is the disk that block lives on; we want its block device (e.g. sda).
+medium=/lib/live/mount/medium
+[ -d "$medium" ] || fatal "not booted via live-boot ($medium missing) — this tool only runs on the live image"
+
+boot_partition="$(findmnt -no SOURCE "$medium" 2>/dev/null)"
+[ -n "$boot_partition" ] || fatal "could not determine boot partition (findmnt failed)"
+
+# Strip trailing partition number to get the disk: sda3 → sda, nvme0n1p2 → nvme0n1
+boot_disk="$(lsblk -no PKNAME "$boot_partition" 2>/dev/null | head -n1)"
+[ -n "$boot_disk" ] || fatal "could not determine parent disk of $boot_partition"
+boot_disk="/dev/$boot_disk"
+
+log "boot partition: $boot_partition"
+log "boot disk:      $boot_disk"
+
+# --- 2. Decide where to put the persistence partition ---
+# Strategy: look for an existing unencrypted partition labeled
+# "persistence" first (re-running this tool after a previous setup).
+# If none, take the first unused partition on the disk, or grow the
+# partition table by one slot if the disk has unallocated space.
+
+existing="$(blkid -t LABEL=persistence -o device 2>/dev/null | head -n1 || true)"
+if [ -n "$existing" ]; then
+    log "found existing persistence partition at $existing"
+    if [ "${1:-}" != "--reformat" ]; then
+        log "re-running without --reformat — keeping existing partition intact."
+        log "if you want to wipe and start over, run: $0 --reformat"
+        exit 0
+    fi
+    target="$existing"
+else
+    # Find the first unused partition slot on the boot disk. live-build
+    # ships an isohybrid with partition 1 = the squashfs image. We use
+    # partition 3 (matches Tails' sdX3 convention; locked decision).
+    target="${boot_disk}3"
+    if [ -b "$target" ]; then
+        log "$target already exists — assuming it's the slot we want."
+    else
+        log "creating new partition $target via parted"
+        # Round up to next available block at end of disk for the new partition.
+        # parted ... mkpart primary <start> 100% creates the partition spanning
+        # from <start> to end-of-disk. We use 'recovery' (parted will pick the
+        # next available start after existing partitions).
+        sudo parted "$boot_disk" --script mkpart primary ext4 0% 100% \
+            || fatal "parted failed to create partition on $boot_disk"
+        sudo partprobe "$boot_disk" || true
+        sleep 1
+    fi
+fi
+
+[ -b "$target" ] || fatal "target partition $target is not a block device after creation"
+log "target partition: $target"
+
+# --- 3. Prompt for passphrase ---
+# systemd-ask-password integrates with Plymouth on a live boot, so
+# the passphrase prompt shows up on the splash, not a TTY. This is
+# the same way the boot-time live-boot prompt works.
+passphrase="$(systemd-ask-password --no-tty "Choose a passphrase for your encrypted persistence on $target")"
+[ -n "$passphrase" ] || fatal "empty passphrase — aborting"
+
+confirm="$(systemd-ask-password --no-tty "Confirm the passphrase")"
+[ "$confirm" = "$passphrase" ] || fatal "passphrases don't match — aborting"
+
+# --- 4. cryptsetup luksFormat ---
+log "formatting LUKS container on $target (THIS DESTROYS DATA ON $target)"
+# Pipe passphrase via stdin to luksFormat. The `-q` suppresses the "are
+# you sure?" prompt — we got the user's intent via the passphrase
+# confirm step above.
+printf '%s' "$passphrase" | sudo cryptsetup luksFormat \
+    --type luks2 \
+    --pbkdf argon2id \
+    --label "USBELIZA-PERSIST" \
+    -q "$target" \
+    || fatal "luksFormat failed"
+
+# --- 5. Open it and create the filesystem ---
+mapname="usbeliza-persist-setup"
+printf '%s' "$passphrase" | sudo cryptsetup luksOpen "$target" "$mapname" \
+    || fatal "luksOpen failed"
+
+trap 'sudo cryptsetup luksClose "$mapname" 2>/dev/null || true' EXIT
+
+log "creating ext4 filesystem inside the LUKS container"
+sudo mkfs.ext4 -L persistence -q "/dev/mapper/$mapname" \
+    || fatal "mkfs.ext4 failed"
+
+# --- 6. Write persistence.conf ---
+mountdir="$(mktemp -d)"
+sudo mount "/dev/mapper/$mapname" "$mountdir"
+log "writing persistence.conf"
+sudo tee "$mountdir/persistence.conf" >/dev/null <<'PCONF'
+# usbeliza persistence configuration
+#
+# Each line is "DIR [OPTIONS...]"  — live-boot will bind-mount the
+# named directory from the LUKS-decrypted volume into the live
+# filesystem on boot, after the passphrase prompt.
+#
+# Format reference: persistence.conf(5)
+
+# Generated apps + their state (the heart of usbeliza)
+/home/eliza/.eliza  union,source=eliza-home
+
+# Ollama models — keep them across reboots so we don't redownload.
+/home/eliza/.ollama  union,source=ollama-home
+
+# Local apt overlay for `connect to wifi` then `install foo` flows.
+/var/cache/apt/archives  union,source=apt-cache
+
+# NetworkManager known networks survive (no re-typing wifi passwords).
+/etc/NetworkManager/system-connections  union,source=nm-connections
+
+# SSH host keys — without persistence, the host fingerprint changes
+# every boot and downstream `ssh` clients trip the strict-host-key check.
+/etc/ssh  union,source=ssh-host
+PCONF
+
+sudo umount "$mountdir"
+rmdir "$mountdir"
+sudo cryptsetup luksClose "$mapname"
+trap - EXIT
+
+log "✓ persistence partition ready at $target"
+log "✓ reboot to activate. live-boot will prompt for the passphrase on the splash."

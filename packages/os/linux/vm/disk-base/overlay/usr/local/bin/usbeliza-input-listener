@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# In-VM input listener.
+#
+# Reads JSON commands from /dev/virtio-ports/usbeliza.input (the channel
+# `vm/scripts/boot.sh` exposes via virtio-serial) and dispatches them to the
+# host actions the test harness needs. This is the in-VM half of
+# `vm/scripts/inject.py` — paired so harness assertions on the host
+# correspond to real keystrokes / clicks inside the guest.
+#
+# Protocol: one JSON object per line. Schema:
+#
+#   {"action": "type",       "text": "<utf-8>"}
+#   {"action": "submit"}
+#   {"action": "click",      "selector": "<css-selector>"}
+#   {"action": "wait_for",   "selector": "<css-selector>", "timeout_ms": 30000}
+#   {"action": "screenshot", "tag": "<filename-friendly>"}
+#   {"action": "ping"}
+#
+# Replies are not sent over the same channel; the harness reads side-effects
+# (filesystem changes, QMP screenshots, sshd-served curl, etc.) for assertions.
+#
+# Phase 0 supports `type`, `submit`, `wait_for`, `screenshot`, `ping`.
+# `click` lands when we wire actual webview automation in Phase 1.
+#
+# This listener depends on `wlrctl` (Wayland keyboard injection) being
+# installed in the qcow2. If not present, falls back to `ydotool`.
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+INPUT_PATH = Path("/dev/virtio-ports/usbeliza.input")
+SCREENSHOTS_DIR = Path("/var/tmp/usbeliza-screenshots")
+SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def log(message: str) -> None:
+    sys.stderr.write(f"[input-listener] {message}\n")
+    sys.stderr.flush()
+
+
+def have(cmd: str) -> bool:
+    return shutil.which(cmd) is not None
+
+
+def detect_wayland_display() -> str | None:
+    """Find sway's wayland socket and return its basename (e.g. `wayland-1`).
+
+    PAMName=login on the session service strips WAYLAND_DISPLAY, so we
+    can't rely on systemd's `Environment=`. Sway picks the next free
+    wayland-N. We poll /run/user/1000/wayland-*[0-9] for the actual socket.
+    """
+    runtime_dir = Path(os.environ.get("XDG_RUNTIME_DIR", "/run/user/1000"))
+    for _ in range(20):
+        candidates = sorted(runtime_dir.glob("wayland-[0-9]*"))
+        # Skip *.lock files; the socket itself has no suffix.
+        sockets = [p for p in candidates if not p.name.endswith(".lock") and p.is_socket()]
+        if sockets:
+            return sockets[0].name
+        time.sleep(0.5)
+    return None
+
+
+def ensure_wayland_env() -> None:
+    """Set WAYLAND_DISPLAY to whatever socket sway actually created."""
+    found = detect_wayland_display()
+    if found is not None:
+        if os.environ.get("WAYLAND_DISPLAY") != found:
+            log(f"WAYLAND_DISPLAY auto-detect: {found}")
+        os.environ["WAYLAND_DISPLAY"] = found
+    else:
+        log("no wayland socket detected; wtype/grim will likely fail")
+
+
+def type_text(text: str) -> None:
+    """Type `text` into the focused window via wtype (Wayland)."""
+    ensure_wayland_env()
+    if have("wtype"):
+        result = subprocess.run(["wtype", text], capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            log(f"wtype failed (rc={result.returncode}): {result.stderr.strip()}")
+        return
+    if have("ydotool"):
+        subprocess.run(["ydotool", "type", text], check=False)
+        return
+    log("no wtype/ydotool installed; cannot type")
+
+
+def press_enter() -> None:
+    ensure_wayland_env()
+    if have("wtype"):
+        result = subprocess.run(["wtype", "-k", "Return"], capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            log(f"wtype enter failed (rc={result.returncode}): {result.stderr.strip()}")
+        return
+    if have("ydotool"):
+        subprocess.run(["ydotool", "key", "28:1", "28:0"], check=False)  # KEY_ENTER
+        return
+    log("no wtype/ydotool installed; cannot press enter")
+
+
+def screenshot(tag: str) -> None:
+    """Capture the Wayland output to a PNG using grim, if installed."""
+    ensure_wayland_env()
+    out = SCREENSHOTS_DIR / f"{int(time.time())}-{tag}.png"
+    if have("grim"):
+        result = subprocess.run(["grim", str(out)], capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            log(f"saved {out}")
+        else:
+            log(f"grim failed (rc={result.returncode}): {result.stderr.strip()}")
+        return
+    log("grim not installed; cannot screenshot")
+
+
+def wait_for(selector: str, timeout_ms: int) -> None:
+    """Wait for a marker on the filesystem.
+
+    Phase 0 implementation: poll /tmp/usbeliza-marker-<selector> for
+    existence. The chat UI writes such markers via simple sentinel files
+    (e.g. `~/.eliza/apps/<slug>/manifest.json` once codegen succeeds).
+    Selector starting with `file:` waits on a literal path; otherwise
+    waits on the manifest of an app named <selector>.
+    """
+    deadline = time.monotonic() + (timeout_ms / 1000.0)
+    if selector.startswith("file:"):
+        target = Path(selector.removeprefix("file:"))
+    else:
+        home = Path(os.environ.get("HOME", "/home/eliza"))
+        target = home / ".eliza/apps" / selector / "manifest.json"
+    while time.monotonic() < deadline:
+        if target.exists():
+            log(f"wait_for satisfied: {target}")
+            return
+        time.sleep(0.5)
+    log(f"wait_for timed out after {timeout_ms}ms: {target}")
+
+
+def dispatch(cmd: dict) -> None:
+    action = cmd.get("action")
+    if action == "type":
+        type_text(str(cmd.get("text", "")))
+    elif action == "submit":
+        press_enter()
+    elif action == "screenshot":
+        screenshot(str(cmd.get("tag", "screen")))
+    elif action == "wait_for":
+        wait_for(
+            str(cmd.get("selector", "")),
+            int(cmd.get("timeout_ms", 30_000)),
+        )
+    elif action == "ping":
+        log("ping")
+    elif action == "click":
+        log("click is a Phase 1 affordance")
+    else:
+        log(f"unknown action: {action!r}")
+
+
+def main() -> int:
+    if not INPUT_PATH.exists():
+        log(f"input port {INPUT_PATH} not present; sleeping forever")
+        while True:
+            time.sleep(60)
+
+    # virtio-port files return EOF when the host disconnects (which on
+    # qemu's chardev socket happens whenever nothing is currently
+    # connected). Python's `for line in port:` exits the iterator on
+    # that EOF — so we wrap in an outer loop that re-opens on EOF, with
+    # a short backoff to avoid busy-spinning.
+    log(f"watching {INPUT_PATH}")
+    while True:
+        try:
+            with INPUT_PATH.open("r", encoding="utf-8") as port:
+                for line in port:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        cmd = json.loads(line)
+                    except json.JSONDecodeError as e:
+                        log(f"bad JSON: {e}: {line!r}")
+                        continue
+                    try:
+                        dispatch(cmd)
+                    except (RuntimeError, OSError, subprocess.SubprocessError) as e:
+                        log(f"dispatch error: {e}")
+        except OSError as e:
+            log(f"open error: {e}; retrying in 1s")
+        # EOF or error → small backoff before reopening.
+        time.sleep(1)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
