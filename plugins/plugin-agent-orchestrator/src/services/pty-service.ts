@@ -1262,6 +1262,16 @@ export class PTYService {
     const codexExecOutputFile = codexExecOutputDir
       ? join(codexExecOutputDir, "last-message.txt")
       : undefined;
+    // OpenCode `run` mode is non-interactive — it consumes the prompt as
+    // a positional CLI arg, runs a single agent loop, and exits when
+    // done. Functionally identical to codex-exec mode. The fast-path
+    // task-completion capture in pty-init.ts gates on this flag and
+    // grabs the PTY's captured stdout as the response. Without it,
+    // opencode just exits 0 and the bot never sees the answer the
+    // sub-agent produced — Discord shows only the "On it" ack and the
+    // user gets silence after.
+    const opencodeRunMode =
+      resolvedAgentType === "opencode" && !!options.initialTask?.trim();
     const resolvedMetadata = {
       ...metadataWithoutModelPrefs,
       requestedType: linkedMetadata?.requestedType ?? options.agentType,
@@ -1270,6 +1280,7 @@ export class PTYService {
       ...(codexExecMode ? { codexExecMode: true } : {}),
       ...(codexExecOutputDir ? { codexExecOutputDir } : {}),
       ...(codexExecOutputFile ? { codexExecOutputFile } : {}),
+      ...(opencodeRunMode ? { opencodeRunMode: true } : {}),
       // Persist the per-session Codex home so the trajectory capture hook
       // (W1-T2 / C1 Codex path) can locate rollout JSONLs after task_complete.
       ...(resolvedCodexHome ? { codexHome: resolvedCodexHome } : {}),

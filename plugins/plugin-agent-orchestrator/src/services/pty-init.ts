@@ -324,11 +324,23 @@ export async function initializePTYManager(
               : "session stopped";
       const cleanExit = code === 0 || /\bexit code 0\b/i.test(reason);
 
-      if (cleanExit && ctx.sessionMetadata.get(id)?.codexExecMode === true) {
+      // Fast-path task completion for non-interactive sub-agents (codex
+      // exec mode and opencode `run` mode are both shaped the same way:
+      // single-shot CLI run that exits when the agent loop finishes).
+      // Capture the PTY's stdout as the response, emit task_complete so
+      // the downstream consumer (sub-agent result forwarder) can post
+      // the answer back to the originating Discord room. Without this
+      // for opencode, the bot only acks 'On it — spawning…' and the
+      // sub-agent's actual answer is dropped on the floor.
+      const meta = ctx.sessionMetadata.get(id);
+      const codexExec = meta?.codexExecMode === true;
+      const opencodeRun = meta?.opencodeRunMode === true;
+      if (cleanExit && (codexExec || opencodeRun)) {
         const response = await captureFastPathTaskResponse(ctx, id);
-        ctx.metricsTracker.recordCompletion("codex", "fast-path", 0);
+        const fastPathAgent: string = codexExec ? "codex" : "opencode";
+        ctx.metricsTracker.recordCompletion(fastPathAgent, "fast-path", 0);
         ctx.log(
-          `Task complete for ${id} (codex exec exit), response: ${response.length} chars`,
+          `Task complete for ${id} (${fastPathAgent} ${codexExec ? "exec" : "run"} exit), response: ${response.length} chars`,
         );
         ctx.emitEvent(id, "task_complete", {
           session,
