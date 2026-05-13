@@ -30,7 +30,7 @@
         "tsup": "^8.5.1"
     },
     "devDependencies": {
-        "@biomejs/biome": "2.4.14"
+        "@biomejs/biome": "2.4.15"
     },
     "scripts": {
         "build": "tsup --format esm --dts",
