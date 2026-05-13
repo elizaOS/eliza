@@ -165,6 +165,7 @@ export interface DesktopInstalledCarrotSnapshot {
   currentHash: string | null;
   installedAt: number;
   updatedAt: number;
+  devMode: boolean;
   lastBuildAt: number | null;
   lastBuildError: string | null;
   requestedPermissions: DesktopCarrotPermissionGrant;
