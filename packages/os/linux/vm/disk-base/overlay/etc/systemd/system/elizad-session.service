@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Phase 0 session unit: starts sway as the `eliza` user on tty1, which in
+# turn execs elizad. The QEMU base image's default target is set to
+# graphical.target so this unit fires automatically on boot.
+#
+# In Phase 1 (live ISO) this unit is replaced by greetd + a custom session
+# script. The Phase 0 form is intentionally simpler — no display manager, no
+# auth — because the QEMU image is single-user, ephemeral, and snapshot-restored.
+
+[Unit]
+Description=Eliza chat-box session
+After=systemd-user-sessions.service plymouth-quit-wait.service eliza-agent.service live-config.service
+Wants=systemd-user-sessions.service eliza-agent.service
+ConditionPathExists=/etc/sway/config
+
+[Service]
+Type=simple
+User=eliza
+Group=eliza
+PAMName=login
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=usbeliza
+UtmpMode=user
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=XDG_SESSION_TYPE=wayland
+Environment=WLR_NO_HARDWARE_CURSORS=1
+# `WLR_BACKENDS=headless` makes wlroots render to memory (no DRM, no real
+# TTY needed) which is the right shape for the QEMU `-display none`
+# smoke harness. The compositor still serves Wayland clients; grim still
+# screenshots the output. For a real bare-metal boot this var is unset.
+Environment=WLR_BACKENDS=headless
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+# elizad's agent_supervisor::locate_agent_dir looks for $USBELIZA_AGENT_DIR
+# first; deploy.sh rsyncs the Bun agent source into /opt/usbeliza/agent.
+Environment=USBELIZA_AGENT_DIR=/opt/usbeliza/agent
+# Codegen stub mode for the in-VM smoke. The qcow2 doesn't carry Anthropic
+# credentials; the real `claude --print` path is verified on the host
+# and via mocked-spawn unit tests. Set to 0 (or unset) when running with
+# real credentials available.
+Environment=USBELIZA_CODEGEN_STUB=1
+# Wrap sway in /bin/sh so PAMName=login's env-cleanse can't strip the
+# WAYLAND_DISPLAY pin set above; the shell re-asserts it before exec.
+ExecStart=/bin/sh -c 'export WAYLAND_DISPLAY=wayland-0; exec /usr/bin/sway'
+
+[Install]
+WantedBy=graphical.target

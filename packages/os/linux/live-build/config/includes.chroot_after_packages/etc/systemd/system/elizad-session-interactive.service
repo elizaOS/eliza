@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Interactive (DRM) variant of elizad-session.service. Used by
+# `vm/scripts/boot.sh --gui` for the live QEMU demo and as the basis for
+# bare-metal Phase 1 boots. The committed `elizad-session.service` is the
+# headless variant (WLR_BACKENDS=headless) used by `just vm-test` smoke.
+# `boot.sh --gui` swaps which one is active via SSH at boot — the swap is
+# ephemeral because QEMU runs with snapshot=on.
+
+[Unit]
+Description=Eliza chat-box session (interactive DRM)
+After=systemd-user-sessions.service plymouth-quit-wait.service eliza-agent.service live-config.service
+Wants=systemd-user-sessions.service eliza-agent.service
+ConditionPathExists=/etc/sway/config
+
+[Service]
+Type=simple
+User=eliza
+Group=eliza
+PAMName=login
+StandardInput=null
+StandardOutput=journal
+StandardError=journal
+UtmpIdentifier=usbeliza
+UtmpMode=user
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=XDG_SESSION_TYPE=wayland
+# virtio-gpu doesn't always wire up HW cursor planes cleanly under QEMU,
+# so let wlroots draw the cursor in software.
+Environment=WLR_NO_HARDWARE_CURSORS=1
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=USBELIZA_AGENT_DIR=/opt/usbeliza/agent
+Environment=USBELIZA_CODEGEN_STUB=1
+ExecStart=/usr/bin/sway
+
+[Install]
+WantedBy=graphical.target

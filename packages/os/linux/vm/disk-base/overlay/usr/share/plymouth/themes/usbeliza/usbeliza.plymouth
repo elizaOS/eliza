@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=usbeliza
+Description=Eliza-themed boot splash for usbeliza
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/usbeliza
+ScriptFile=/usr/share/plymouth/themes/usbeliza/usbeliza.script

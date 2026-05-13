@@ -1,0 +1,132 @@
+# SPDX-License-Identifier: Apache-2.0
+# Packages installed into the live ISO chroot.
+# This mirrors vm/disk-base/mmdebstrap.recipe's VM_PACKAGES, plus the
+# bits live-build needs that the cloud-image qcow2 happened to already have.
+#
+# live-build's --linux-flavours=amd64 already pulls linux-image-amd64
+# (the FULL kernel) so we don't list it here — the full kernel ships
+# virtio-gpu.ko + bochsdrm.ko + the rest of the DRM stack, which is the
+# whole reason we moved from cloud kernel.
+
+# Wayland + display stack
+sway
+swaybg
+foot
+wl-clipboard
+xwayland
+
+# Terminal emulator popped by OPEN_TERMINAL chat action + Ctrl+Alt+T sway
+# bind. foot above is the fallback; alacritty is preferred (faster cold
+# start, GPU-accelerated rendering).
+alacritty
+
+# File manager popped by OPEN_FILES chat action + Ctrl+Alt+D sway bind.
+# Lightweight GTK3 manager — the agent probe chain falls back to pcmanfm
+# / nautilus if a derived ISO swaps this out, but thunar is what ships.
+thunar
+
+# Sandboxing
+bubblewrap
+
+# Tauri runtime deps (the elizad binary links against these via webkit2gtk)
+libwebkit2gtk-4.1-0
+libgtk-3-0
+libayatana-appindicator3-1
+librsvg2-2
+
+# Ergonomics
+ca-certificates
+curl
+htop
+less
+nano
+openssh-server
+sudo
+
+# Diagnostic tools (kept minimal; debug helpers, not production deps)
+procps
+psmisc
+strace
+
+# JSON-RPC handling and serial console
+socat
+
+# Generated-app runtime in the bubblewrap (locked decision #7)
+chromium
+
+# ImageMagick — backs the SET_WALLPAPER action's procedural wallpaper
+# generator (dream-world feature). `convert` reads our brief-derived
+# arguments and writes 1920x1080 PNGs under ~/.eliza/wallpapers/.
+imagemagick
+
+# NetworkManager for the deterministic `connect to wifi` chat-command path
+# (locked decision #24). NOTE: live-build uses systemd-networkd by default;
+# we mask it (Tails pattern) and let NetworkManager own everything.
+network-manager
+network-manager-gnome
+
+# Test-harness helpers (also present in qcow2; useful for in-ISO smoke too)
+wtype
+grim
+python3
+
+# rsync used by vm/scripts/deploy.sh to push agent/ from the host (also
+# useful in-ISO for persistence sync).
+rsync
+
+# unzip is needed by the upstream Bun installer (used by a chroot hook).
+unzip
+
+# zstd is needed by the upstream Ollama installer (the tarball is zstd-compressed).
+# Without this the chroot hook fails partway through with
+# "ERROR: This version requires zstd for extraction".
+zstd
+
+# console-setup so /etc/console-setup is populated and setupcon doesn't warn
+# during initramfs generation. Required for live-config.keyboard-layouts.
+console-setup
+
+# Mesa userspace GL stack — sway needs these to render on virtio-gpu /
+# DRM. The full kernel pulled by --linux-flavours=amd64 has the kernel
+# side; mesa is the userspace side.
+libgl1-mesa-dri
+libegl-mesa0
+libglx-mesa0
+libgbm1
+libdrm2
+mesa-utils
+mesa-vulkan-drivers
+
+# Plymouth boot splash + Eliza theme renderer.
+plymouth
+plymouth-themes
+plymouth-label
+
+# DejaVu fonts so Plymouth + sway have a usable monospace at boot.
+fonts-dejavu-core
+fonts-dejavu
+
+# live-config so the chroot becomes a real live system at boot (user
+# autocreate, locale, keyboard, hostname). We pass live-config args via
+# the kernel cmdline (--bootappend-live in auto/config).
+live-config
+live-config-systemd
+
+# live-boot (live-build pulls this implicitly via --initramfs=live-boot
+# but list it for clarity — it's the initramfs hook that mounts the
+# squashfs and sets up the writable overlay).
+live-boot
+
+# LUKS / cryptsetup for Phase 1 persistence (locked decision: encrypted
+# sdX3 partition with Plymouth passphrase prompt).
+cryptsetup
+cryptsetup-initramfs
+
+# Partition table tools for usbeliza-persistence-setup. We need to be
+# able to (a) introspect the GPT to find the squashfs slot reliably
+# (sgdisk's "Gap1" name) and (b) grow the table by adding a new
+# partition above the squashfs on first run from a freshly dd'd USB.
+# util-linux gives us sfdisk/partx/losetup/wipefs but not parted/sgdisk
+# /partprobe — pull them in explicitly.
+parted
+gdisk

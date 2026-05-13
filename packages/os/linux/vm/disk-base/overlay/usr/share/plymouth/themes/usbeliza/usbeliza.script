@@ -1,0 +1,68 @@
+// SPDX-License-Identifier: Apache-2.0
+// Copyright 2026 NubsCarson and contributors
+//
+// Plymouth script for the usbeliza boot splash.
+//
+// Dark background, a centered "Eliza" wordmark, a single dot under it
+// that pulses while the kernel + systemd are coming up. The aesthetic
+// mirrors the chat-box UI: words on near-black, no progress bar, no
+// branding clutter. The user meets the same surface from power-on
+// through the final chat surface.
+
+Window.SetBackgroundTopColor(0.04, 0.04, 0.04);     // #0a0a0a
+Window.SetBackgroundBottomColor(0.04, 0.04, 0.04);
+
+// "Eliza" wordmark — pure text so this works on every text-mode fallback.
+wordmark = Image.Text("Eliza", 0.95, 0.95, 0.95, 1.0, "Monospace 32");
+wordmark_sprite = Sprite(wordmark);
+wordmark_sprite.SetPosition(
+    Window.GetX() + Window.GetWidth() / 2 - wordmark.GetWidth() / 2,
+    Window.GetY() + Window.GetHeight() / 2 - wordmark.GetHeight() / 2
+);
+
+// Subtitle.
+subtitle = Image.Text("the operating system on this stick", 0.53, 0.53, 0.53, 1.0, "Monospace 12");
+subtitle_sprite = Sprite(subtitle);
+subtitle_sprite.SetPosition(
+    Window.GetX() + Window.GetWidth() / 2 - subtitle.GetWidth() / 2,
+    Window.GetY() + Window.GetHeight() / 2 + wordmark.GetHeight() / 2 + 20
+);
+
+// Pulsing dot.
+dot_phase = 0;
+fun refresh_callback() {
+    dot_phase = dot_phase + 0.06;
+    pulse = 0.4 + 0.5 * Math.Cos(dot_phase) * Math.Cos(dot_phase);
+    dot = Image.Text("·", pulse, pulse, pulse, 1.0, "Monospace 32");
+    dot_sprite = Sprite(dot);
+    dot_sprite.SetPosition(
+        Window.GetX() + Window.GetWidth() / 2 - dot.GetWidth() / 2,
+        Window.GetY() + Window.GetHeight() / 2 + wordmark.GetHeight() / 2 + 60
+    );
+}
+Plymouth.SetRefreshFunction(refresh_callback);
+
+// Quiet password prompt for LUKS unlock (Phase 1 persistence flow).
+fun display_password_callback(prompt, bullets) {
+    prompt_text = Image.Text(prompt, 0.95, 0.95, 0.95, 1.0, "Monospace 14");
+    prompt_sprite = Sprite(prompt_text);
+    prompt_sprite.SetPosition(
+        Window.GetX() + Window.GetWidth() / 2 - prompt_text.GetWidth() / 2,
+        Window.GetY() + Window.GetHeight() * 0.72
+    );
+    if (bullets > 0) {
+        bullet_str = "";
+        for (i = 0; i < bullets; i++) bullet_str += "•";
+        bullets_image = Image.Text(bullet_str, 0.95, 0.95, 0.95, 1.0, "Monospace 14");
+        bullets_sprite = Sprite(bullets_image);
+        bullets_sprite.SetPosition(
+            Window.GetX() + Window.GetWidth() / 2 - bullets_image.GetWidth() / 2,
+            Window.GetY() + Window.GetHeight() * 0.78
+        );
+    }
+}
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+// Suppress kernel messages on the splash; the journal is still there for diagnosis.
+fun message_callback(text) { }
+Plymouth.SetMessageFunction(message_callback);

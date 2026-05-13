@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# The Bun-hosted eliza-agent process, listening on 127.0.0.1:41337.
+# Decoupled from sway/elizad so it starts unconditionally on boot —
+# elizad's supervisor short-circuits when /api/status is already
+# responding. This keeps the agent alive across UI restarts and lets
+# the smoke harness drive it via curl independent of the chat UI.
+
+[Unit]
+Description=usbeliza eliza-agent (Bun)
+# live-config.service creates the `eliza` user on the live ISO at boot.
+# Without After=live-config.service we race it — User=eliza in this unit
+# resolves to "user not found" when the unit starts before live-config
+# finishes seeding /etc/passwd + /home/eliza.
+After=network-online.target live-config.service
+
+[Service]
+Type=simple
+User=eliza
+Group=eliza
+WorkingDirectory=/opt/usbeliza/agent
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=USBELIZA_AGENT_DIR=/opt/usbeliza/agent
+# Codegen mode: 0 = real claude/codex CLI (production); 1 = deterministic
+# stub (testing only). Real-world testing showed the stub was always-on
+# in shipping ISOs, so BUILD_APP never actually used cloud Claude. Default
+# is now OFF — when claude is signed in, the action shells out to claude
+# and writes real codegen. The action falls back to the stub automatically
+# when claude isn't signed in (sign-in pending or offline).
+Environment=USBELIZA_CODEGEN_STUB=0
+Environment=HOME=/home/eliza
+# Trajectory persistence (the @elizaos/core Documents service) wants a SQL
+# adapter to record every turn. We run with the in-memory adapter (no DB
+# until LUKS persistence is unlocked) which doesn't expose db.execute() —
+# the service start fails noisily with "db2.execute is not a function" on
+# every boot. Disable trajectory logging until we wire @elizaos/plugin-sql
+# against the persistence partition. Same env name milady uses.
+Environment=ELIZA_DISABLE_TRAJECTORY_LOGGING=1
+# Local GGUF path resolved by runtime/local-llama-plugin.ts. The chroot
+# hook bakes one into /usr/share/usbeliza/models/.
+Environment=LOCAL_LARGE_MODEL=/usr/share/usbeliza/models/llama-3.2-1b-instruct-q4_k_m.gguf
+# Silence AT-SPI bus warning emitted by Tauri webkit when no a11y daemon
+# is running. The orange chat surface doesn't need an accessibility bus.
+Environment=NO_AT_BRIDGE=1
+# Display env so chromium (spawned by LOGIN_CLAUDE / OPEN_URL) can find
+# sway's Wayland socket. live-config creates UID 1000 = eliza, and sway
+# binds wayland-1 in /run/user/1000/. Without these env vars chromium
+# silently exits — the user sees "I've opened the sign-in page" but no
+# browser pops. The DISPLAY=:0 fallback is for X11 sessions on bare-metal.
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-1
+Environment=DISPLAY=:0
+# Onboarding rephrase: default OFF for snappy first-boot (preset questions
+# match the smoke harness regex). User flips it on with:
+#   sudo mkdir -p /etc/systemd/system/eliza-agent.service.d
+#   echo -e "[Service]\nEnvironment=USBELIZA_LLM_ONBOARDING=1" | \
+#     sudo tee /etc/systemd/system/eliza-agent.service.d/onboarding-llm.conf
+#   sudo systemctl daemon-reload && sudo systemctl restart eliza-agent
+# Action replies (post-onboarding) follow llmRepliesEnabled() — auto-on
+# when Claude/Codex is signed in.
+# Wait until the source tree exists AND the user is resolvable. On the
+# live ISO both happen at first-boot via live-config (the user) and
+# our chroot rsync (the source). On dev VM both are pre-staged by the
+# qcow2 build.
+ExecStartPre=/bin/sh -c 'until [ -d /opt/usbeliza/agent/src ] && id -u eliza >/dev/null 2>&1; do sleep 1; done'
+# bun caches under $HOME/.bun. live-config creates /home/eliza from
+# /etc/skel, but the cache dir won't exist until first user login.
+# Pre-create with the right ownership so `bun run` doesn't fail with EACCES.
+ExecStartPre=/bin/sh -c 'install -d -o eliza -g eliza -m 0755 /home/eliza/.bun /home/eliza/.cache'
+ExecStart=/usr/local/bin/bun run start
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

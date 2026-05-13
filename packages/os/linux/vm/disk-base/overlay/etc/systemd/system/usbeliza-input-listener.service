@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Reads JSON commands from /dev/virtio-ports/usbeliza.input and acts on them.
+# Depends on the user-mode session (sway + elizad) being up so wtype/grim
+# can talk to the running Wayland compositor.
+
+[Unit]
+Description=usbeliza in-VM test-harness input listener
+After=elizad-session.service live-config.service
+Wants=elizad-session.service
+
+[Service]
+Type=simple
+User=eliza
+Group=eliza
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=WAYLAND_DISPLAY=wayland-0
+# /dev/virtio-ports/usbeliza.input is mode 0600 root:root by default. We
+# need the eliza user to read it. Run two `+`-prefixed (i.e. as root)
+# pre-execs to make the device file readable by the eliza group before
+# the listener drops to the eliza user.
+ExecStartPre=+/bin/sh -c 'until [ -e /dev/virtio-ports/usbeliza.input ]; do sleep 0.5; done'
+ExecStartPre=+/usr/bin/chgrp eliza /dev/virtio-ports/usbeliza.input
+ExecStartPre=+/usr/bin/chmod 0660 /dev/virtio-ports/usbeliza.input
+ExecStart=/usr/local/bin/usbeliza-input-listener
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target

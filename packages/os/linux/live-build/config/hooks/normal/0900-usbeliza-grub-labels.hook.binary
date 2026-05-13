@@ -1,0 +1,42 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Binary-stage hook that rewrites the auto-generated live menuentry
+# labels in binary/boot/grub/grub.cfg.
+#
+# live-build's binary_grub_cfg expands the `@LINUX_LIVE@` placeholder
+# we ship in our custom grub.cfg into hardcoded `menuentry "Live system
+# (amd64)" { ... }` blocks (see Grub_live_menu_entry in
+# /usr/lib/live/build/binary_grub_cfg). There's no flag to override the
+# label, so we patch the rendered file in place — same trick Tails uses
+# for its `Tails (legacy mode)` rename.
+#
+# Runs from binary/ as the working directory (binary_hooks does `cd
+# binary` before executing). Idempotent: re-running on an already-patched
+# tree is a no-op because the source strings are gone.
+
+set -e
+set -u
+
+GRUB_CFG="boot/grub/grub.cfg"
+
+if [ ! -f "$GRUB_CFG" ]; then
+    echo "==> usbeliza grub-labels hook: $GRUB_CFG missing, nothing to rewrite" >&2
+    exit 0
+fi
+
+echo "==> usbeliza grub-labels hook: rebranding live menuentries in $GRUB_CFG"
+
+# Rewrite the longer fail-safe label first so the shorter base label
+# regex doesn't eat its prefix.
+sed -i \
+    -e 's|"Live system (amd64 fail-safe mode)"|"Boot Eliza (safe mode)"|g' \
+    -e 's|"Live system (686 fail-safe mode)"|"Boot Eliza (safe mode)"|g' \
+    -e 's|"Live system (autodetect) (fail-safe mode)"|"Boot Eliza (safe mode)"|g' \
+    -e 's|"Live system (amd64)"|"Boot Eliza"|g' \
+    -e 's|"Live system (686)"|"Boot Eliza"|g' \
+    -e 's|"Live system (autodetect)"|"Boot Eliza"|g' \
+    "$GRUB_CFG"
+
+echo "==> usbeliza grub-labels hook: done"

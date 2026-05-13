@@ -1,0 +1,74 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Live-build config script for usbeliza. Run by `lb config` (which is
+# what `just iso-config` invokes from the repo Justfile).
+#
+# Builds a Debian live ISO that boots identically in QEMU/KVM and on
+# real USB hardware via dd. Same boot mechanism Tails uses:
+# GRUB → kernel + initramfs → live-boot mounts the squashfs and
+# overlays a tmpfs (or, Phase 1, a LUKS-backed sdX3 partition).
+#
+# This file uses the flag set for live-build 20250814 (newer than Tails'
+# 2.x reference); flags marked REMOVED in the comments don't exist here.
+
+set -e
+set -u
+
+DISTRIBUTION="trixie"   # Debian 14 / stable as of build date
+ARCHITECTURE="amd64"
+
+# SOURCE_DATE_EPOCH — reproducible build seed. live-build, dpkg, gzip,
+# squashfs-tools, xorriso, debhelper all honor it: two checkouts at the
+# same git SHA produce bit-identical ISOs. Tails uses this pattern.
+# We pin to the latest commit's timestamp so dev iteration on dirty
+# trees uses "now" while CI builds against a clean git history are
+# deterministic.
+if [ -n "${SOURCE_DATE_EPOCH:-}" ]; then
+    : # caller already set it (CI)
+elif git rev-parse HEAD >/dev/null 2>&1; then
+    SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct HEAD 2>/dev/null || date +%s)"
+    export SOURCE_DATE_EPOCH
+else
+    SOURCE_DATE_EPOCH="$(date +%s)"
+    export SOURCE_DATE_EPOCH
+fi
+echo "==> SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH ($(date -u -d "@$SOURCE_DATE_EPOCH" 2>/dev/null || true))"
+
+# Kernel cmdline passed to GRUB → kernel. `live-config.*` settings are
+# consumed by live-config at boot to autocreate the eliza user, set
+# hostname, locale, keyboard.
+CMDLINE_APPEND="boot=live components quiet splash loglevel=3 rd.systemd.show_status=false vt.global_cursor_default=0 console=tty0 console=ttyS0,115200 live-media=removable live-config.username=eliza live-config.user-fullname=Eliza live-config.user-default-groups=audio,cdrom,video,plugdev,netdev,sudo,render,input live-config.hostname=usbeliza live-config.timezone=UTC live-config.locales=C.UTF-8 live-config.keyboard-layouts=us noeject persistence persistence-encryption=luks,none"
+
+lb config noauto \
+    --verbose \
+    --apt-recommends false \
+    --apt-indices true \
+    --architecture "$ARCHITECTURE" \
+    --backports false \
+    --binary-image iso-hybrid \
+    --bootloaders grub-pc,grub-efi \
+    --cache true \
+    --cache-indices false \
+    --cache-packages true \
+    --cache-stages "bootstrap chroot" \
+    --chroot-squashfs-compression-type zstd \
+    --checksums none \
+    --debian-installer none \
+    --distribution "$DISTRIBUTION" \
+    --archive-areas "main contrib non-free non-free-firmware" \
+    --initramfs live-boot \
+    --iso-application "Eliza" \
+    --iso-publisher "https://github.com/NubsCarson/usbeliza" \
+    --iso-volume "Eliza" \
+    --linux-flavours amd64 \
+    --linux-packages linux-image \
+    --memtest none \
+    --updates true \
+    --security true \
+    --source false \
+    --bootappend-live "$CMDLINE_APPEND" \
+    "${@}"
+
+echo "==> lb config: usbeliza configured for $DISTRIBUTION / $ARCHITECTURE"

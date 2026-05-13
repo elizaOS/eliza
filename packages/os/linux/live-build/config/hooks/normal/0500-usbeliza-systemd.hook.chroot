@@ -1,0 +1,165 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Chroot-local hook that runs INSIDE the chroot after package install
+# and includes.chroot copy. Mirrors what `vm/scripts/build-base.sh`
+# does to the qcow2, but for the live ISO chroot.
+#
+# Adapted from Tails' `chroot_local-hooks/52-update-systemd-units` —
+# the masking pattern is theirs (and the reason we don't hang on
+# `multi-user.target` for 2 minutes waiting for the network).
+
+set -e
+set -u
+
+echo "==> usbeliza chroot hook: configuring systemd, eliza user, Plymouth, GRUB"
+
+# --- 1. systemd defaults ---
+# Boot to graphical.target (sway + elizad). live-config will handle
+# creating the eliza user via the kernel cmdline args we set in
+# auto/config (live-config.username=eliza, etc).
+systemctl set-default graphical.target
+
+# --- 2. Enable our units ---
+# These ship in chroot_local-includes/etc/systemd/system/ and need
+# explicit enablement because [Install] sections aren't auto-processed
+# without `systemctl enable`.
+# Live ISO uses the INTERACTIVE sway session (WLR_BACKENDS unset → DRM
+# via virtio-gpu / bare-metal i915 / amdgpu). The headless variant
+# (`elizad-session.service`) is for the qcow2 vm-test smoke harness only,
+# which boots with WLR_BACKENDS=headless and captures frames via grim.
+# Both unit files ship in the chroot; we just pick which one is wanted
+# by graphical.target.
+#
+# NOTE: the authoritative policy lives in the preset file
+# `usr/lib/systemd/system-preset/00-usbeliza.preset` (loaded by
+# `systemctl preset-all` at first boot). The explicit enable/disable/mask
+# calls below mirror it so the chroot's persistent symlinks are correct
+# from build time — without them, live-config-systemd's first-boot preset
+# pass would briefly enable BOTH session variants and they'd race.
+systemctl enable elizad-session-interactive.service
+# Same delete-and-mask treatment for two qcow2-only test-harness units that
+# kept landing in the live ISO chroot:
+#   * elizad-session.service — Phase 0 headless session for `just vm-test`.
+#     Has WantedBy=graphical.target, so two sway compositors raced over
+#     /dev/dri/card0 in v7 → black screen.
+#   * usbeliza-input-listener.service — reads JSON from /dev/virtio-ports/
+#     usbeliza.input, only present in the qcow2 vm-test pipe. On bare
+#     metal / live USB the ExecStartPre's `until [ -e <port> ]` blocks
+#     forever and the unit fails with a noisy timeout every 90s.
+# Both belong to the qcow2 harness only; we explicitly DELETE the unit
+# files here and mask them so a stray re-add can't activate them.
+rm -f /etc/systemd/system/elizad-session.service \
+      /etc/systemd/system/usbeliza-input-listener.service
+systemctl mask elizad-session.service usbeliza-input-listener.service 2>/dev/null || true
+systemctl enable eliza-agent.service
+systemctl enable ssh.service
+
+# elizad ships in /opt/usbeliza/bin/ (per `just iso-stage`); sway's
+# `exec elizad` line in /etc/sway/config relies on PATH. The session
+# units explicitly set PATH but don't include /opt/usbeliza/bin (and we
+# don't want to leak that one-off path into all child processes). The
+# clean fix is a symlink into /usr/local/bin so the binary is on the
+# stock PATH. v7 shipped without this and sway couldn't exec elizad —
+# the chat box never appeared, leaving sway with just a cursor on black.
+install -d -m 0755 /usr/local/bin
+ln -snf /opt/usbeliza/bin/elizad /usr/local/bin/elizad
+
+# Ollama unit + binary leaked across from the v6 chroot stage cache even
+# after we dropped Ollama in v7 (replaced by Shaw's node-llama-cpp). Tear
+# them out explicitly so `ollama.service` doesn't run on a live ISO whose
+# agent doesn't talk to it.
+systemctl mask ollama.service 2>/dev/null || true
+rm -f /etc/systemd/system/ollama.service \
+      /usr/bin/ollama /usr/local/bin/ollama \
+      /var/log/ollama-build.log
+rm -rf /usr/share/ollama /usr/lib/ollama /var/lib/ollama
+userdel ollama 2>/dev/null || true
+
+# --- 3. Mask blockers (Tails pattern) ---
+# `*-wait-online.service` blocks multi-user.target for 2 min when the
+# network never settles "completely" — which is normal in QEMU and on
+# many bare-metal Wi-Fi setups. Same logic as Tails' 52-update-systemd-units.
+# Also disabled in 00-usbeliza.preset; we `mask` here for belt-and-braces
+# (preset only governs `enable/disable`, not `mask`).
+systemctl mask systemd-networkd-wait-online.service
+systemctl mask NetworkManager-wait-online.service
+
+# systemd-networkd fights NetworkManager. Tails masks it; so do we
+# (locked decision #24: NetworkManager owns network).
+systemctl mask systemd-networkd.service
+
+# getty@tty1 grabs tty1 before sway can. Mask + disable.
+systemctl mask getty@tty1.service
+systemctl disable getty@tty1.service 2>/dev/null || true
+
+# --- 4. eliza user setup (at build time, not live-config) ---
+# We learned the hard way: relying on live-config.username=eliza races
+# eliza-agent.service (User=eliza resolves to "not found"), and the
+# /etc/skel/.ssh/authorized_keys we shipped doesn't always land at the
+# right ownership under /home/eliza when live-config runs `useradd -m`.
+# Create the user at BUILD time so /etc/passwd, /home/eliza, and
+# /home/eliza/.ssh/authorized_keys all ship inside the squashfs with
+# correct ownership and perms. live-config will see the user already
+# exists and skip its own creation pass.
+if ! id eliza >/dev/null 2>&1; then
+    useradd --create-home --shell /bin/bash --uid 1000 eliza
+fi
+
+# Add to the groups our session/sandbox + chat-driven NetworkManager
+# need. Matches live-config.user-default-groups in auto/config so
+# behavior is identical whether live-config or this hook seeded the
+# user.
+usermod -aG audio,cdrom,video,plugdev,netdev,sudo,render,input eliza || true
+
+# Sudo: NOPASSWD because we have no other auth surface yet; the user
+# is the only person who'll ever sit at this USB. Phase 1.5 swaps this
+# for the unlocked-persistence gate.
+if [ ! -f /etc/sudoers.d/eliza ]; then
+    echo "eliza ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/eliza
+    chmod 440 /etc/sudoers.d/eliza
+fi
+
+# Seed /home/eliza/.ssh/authorized_keys directly (we already ship the
+# pub key at /etc/skel/.ssh/authorized_keys via includes; copy it into
+# the actual home dir with correct ownership now so live-config doesn't
+# need to). Without this the SSH dev key never works at first boot —
+# live-config 11.x copies /etc/skel files but the .ssh subdir doesn't
+# always arrive with eliza:eliza ownership.
+if [ -f /etc/skel/.ssh/authorized_keys ]; then
+    install -d -o eliza -g eliza -m 0700 /home/eliza/.ssh
+    install -o eliza -g eliza -m 0600 /etc/skel/.ssh/authorized_keys /home/eliza/.ssh/authorized_keys
+fi
+
+# Set a known password so console / chage / passwd flows work for
+# diagnostic logins. "eliza" — the user can change this from chat
+# later. Chosen over "live-config defaults" because the latter varies
+# by live-config version and is genuinely confusing.
+echo 'eliza:eliza' | chpasswd
+
+# --- 5. /run/eliza shared cap-bus parent dir ---
+# Created at boot by tmpfiles.d, but pre-create here too so the layout
+# is visible in the squashfs.
+install -d -o root -g root -m 0755 /run
+
+# --- 6. Plymouth theme ---
+# Set our `usbeliza` theme as the default. The theme files were copied
+# in via chroot_local-includes/usr/share/plymouth/themes/usbeliza/.
+# --rebuild-initrd ensures Plymouth picks up the theme on next boot.
+plymouth-set-default-theme usbeliza --rebuild-initrd || true
+
+# --- 7. GRUB cosmetic config ---
+# /etc/default/grub.d/usbeliza.cfg is already in place via includes.chroot.
+# We do NOT call `update-grub` here because grub-pc isn't installed in the
+# chroot at this hook stage — live-build handles bootloader installation in
+# the `binary` stage after chroot hooks finish. The grub-d drop-in we
+# shipped will be picked up automatically when that stage runs.
+
+# --- 8. Make our local-bin scripts executable ---
+# Files in chroot_local-includes lose their +x bit during the live-build
+# copy; restore it.
+chmod +x /usr/local/bin/usbeliza-input-listener 2>/dev/null || true
+chmod +x /usr/local/bin/usbeliza-persistence-setup 2>/dev/null || true
+
+echo "==> usbeliza chroot hook: done"

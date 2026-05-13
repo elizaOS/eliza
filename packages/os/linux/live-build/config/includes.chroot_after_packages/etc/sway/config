@@ -1,0 +1,159 @@
+# SPDX-License-Identifier: Apache-2.0
+# Copyright 2026 NubsCarson and contributors
+#
+# Sway config for the Phase 0 QEMU base image.
+#
+# Single window. No bar. No app launcher. The chat box IS the desktop.
+# Power-user escape: Ctrl+Alt+T pops a floating terminal (also reachable
+# via the OPEN_TERMINAL chat action). Ctrl+Alt+F2 → TTY still TODO.
+
+# No status bar; the chat box owns the screen.
+bar { mode invisible }
+
+# Default workspace = the only workspace.
+workspace 1
+
+# Output resolution. virtio-vga renegotiates dynamically to the QEMU
+# window size, so on a 4K host the chat box gets a full 4K canvas. On
+# bare-metal the laptop's EDID drives it. The hint below is a sensible
+# default in case virtio-vga starts in a low mode before the host
+# resizes the window. `scale 1` keeps webview render at native pixels
+# (no fractional scaling blur).
+output * resolution 2560x1440 position 0,0 scale 1
+
+# Drop sway's own window frame globally — the chat box is the only window,
+# so there's nothing to distinguish with a border. Webkit's own title bar is
+# disabled via tauri.conf.json (`decorations: false`); this kills the other
+# frame so we don't get two stacked title bars in QEMU / on bare-metal.
+default_border none
+default_floating_border none
+
+# elizad takes the whole workspace by default tiling (one window in
+# workspace 1 fills the output), so we DON'T set `fullscreen enable` —
+# sway's true-fullscreen mode hides ALL other windows including
+# `sticky` + floating overlays, which means the OAuth chromium opened
+# by LOGIN_CLAUDE / OPEN_URL would render invisibly behind Eliza
+# (sway tree shows it but `visible: false`). With normal tiling Eliza
+# still fills the screen but floating windows correctly layer on top.
+# Tauri 2 on Wayland sets app_id from the bundle identifier
+# (`dev.usbeliza.elizad`), but older builds and the X11 fallback report the
+# productName (`elizad`) — match both, plus a regex fallback for any future
+# rename to `*-elizad-*` style ids.
+for_window [app_id="dev.usbeliza.elizad"] floating disable
+for_window [app_id="elizad"] floating disable
+for_window [app_id=".*elizad.*"] floating disable
+for_window [class="elizad"] floating disable
+
+# Dream-world: positioning rules for the runtimes the AI emits in app
+# manifests. The launcher tags each spawned chromium window with the
+# class `usbeliza.<runtime>.<slug>`, and sway matches the runtime
+# prefix here to dock / float / pin the window.
+#
+# Generated apps that ask for a normal fullscreen surface use
+# runtime: "webview" → app_id prefix `usbeliza.app.` — fullscreen.
+for_window [app_id="^usbeliza\.app\..*"] fullscreen enable, floating disable
+
+# A top-docked panel: ~40px strip across the top edge.
+# Sticky pins it across workspaces. Border off so it blends seamlessly.
+# Sized for the pinned 2560x1440 output set above. Bare-metal monitors
+# at higher EDID resolutions may show a gap at the right edge — sway
+# `for_window` doesn't know the current output size; v1.5 will switch
+# to ppt + dynamic recompute on output change.
+for_window [app_id="^usbeliza\.panel-top\..*"] floating enable, sticky enable, \
+    border none, resize set 2560 px 40 px, move position 0 px 0 px
+for_window [app_id="^usbeliza\.panel-bottom\..*"] floating enable, sticky enable, \
+    border none, resize set 2560 px 40 px, move position 0 px 1400 px
+for_window [app_id="^usbeliza\.panel-left\..*"] floating enable, sticky enable, \
+    border none, resize set 80 px 1440 px, move position 0 px 0 px
+for_window [app_id="^usbeliza\.panel-right\..*"] floating enable, sticky enable, \
+    border none, resize set 80 px 1440 px, move position 2480 px 0 px
+# A draggable dock (music controls etc): floating + the user can move it.
+for_window [app_id="^usbeliza\.dock\..*"] floating enable, sticky enable, \
+    resize set 400 px 96 px, move position 1080 px 1300 px
+# Ambient widget (Pomodoro, weather pill): small floating, never takes focus.
+for_window [app_id="^usbeliza\.widget\..*"] floating enable, sticky enable, \
+    focus_on_window_activation none, border none, resize set 280 px 280 px, \
+    move position 2200 px 80 px
+# Power-user terminal popped by OPEN_TERMINAL (chat) or Ctrl+Alt+T (sway).
+# Floating + centered keeps it out of the way of the chat surface; the user
+# closes the window when they're done.
+for_window [app_id="^usbeliza\.terminal\..*"] floating enable, \
+    resize set 900 px 600 px, move position center
+for_window [class="^usbeliza\.terminal\..*"] floating enable, \
+    resize set 900 px 600 px, move position center
+
+# File manager popped by OPEN_FILES (chat) or Ctrl+Alt+D (sway). Three
+# binaries cover the probe chain in agent/src/runtime/actions/open-files.ts:
+# thunar (preferred), pcmanfm (lightweight fallback), nautilus (universal).
+# None of them accept an app-id override flag — they always advertise
+# their built-in app_id — so we match those defaults directly. Larger
+# than the terminal because file managers earn the extra real estate.
+for_window [app_id="^[Tt]hunar.*"] floating enable, \
+    resize set 1200 px 800 px, move position center
+for_window [app_id="^pcmanfm$"] floating enable, \
+    resize set 1200 px 800 px, move position center
+for_window [app_id="^[Nn]autilus$"] floating enable, \
+    resize set 1200 px 800 px, move position center
+
+# OAuth and ad-hoc browser windows opened by LOGIN_CLAUDE / OPEN_URL.
+# Float center, 1280x720 — small enough that the chat box behind stays
+# readable + interactive while the user finishes the OAuth flow. Sticky
+# pins it across workspaces; a thin border so the user can tell focus
+# apart from the chat. Replaces the old --kiosk fullscreen behavior which
+# hid the chat entirely (users thought the chat had frozen).
+for_window [app_id="^usbeliza\.browser\..*"] floating enable, sticky enable, \
+    border pixel 2, resize set 1280 px 720 px, move position center
+for_window [class="^usbeliza\.browser\..*"] floating enable, sticky enable, \
+    border pixel 2, resize set 1280 px 720 px, move position center
+# Catch-all for chromium under Ozone-Wayland. The launcher tags each
+# browser window with `--class=usbeliza.browser.<slug>` but chromium
+# 148+ ignores --class for the Wayland app_id (reports app_id=null,
+# X11 class="Chromium") so the rules above miss. Without this fallback
+# the OAuth window opens tiled at 0×0 behind the fullscreen elizad
+# surface — invisible to the user. Safe because elizad is native
+# Wayland with app_id="elizad" and won't match `class="Chromium"`.
+for_window [class="^Chromium$"] floating enable, sticky enable, \
+    border pixel 2, resize set 1280 px 720 px, move position center
+for_window [instance="^chromium$"] floating enable, sticky enable, \
+    border pixel 2, resize set 1280 px 720 px, move position center
+# Chromium's `--app=URL` PWA mode generates a synthetic app_id of the
+# form `chrome-DOMAIN__PATH-PROFILE`. That doesn't match our `usbeliza.
+# browser.*` rule above so the OAuth window tiles next to Eliza and
+# eats half the screen. Catch it here too — anything matching the
+# `chrome-` prefix is an app-mode chromium and gets the float/center
+# treatment.
+for_window [app_id="^chrome-.*"] floating enable, sticky enable, \
+    border pixel 2, resize set 1280 px 720 px, move position center
+
+# Default font and colors match the elizad chat palette: pure black with a
+# warm orange accent. Border format: <border> <background> <text> <indicator> <child_border>.
+font pango:monospace 10
+client.focused          #FF6B35 #0a0a0a #f2f2f2 #FF6B35 #FF6B35
+client.focused_inactive #1f1208 #0a0a0a #f2f2f2 #1f1208 #1f1208
+client.unfocused        #0a0a0a #0a0a0a #6e6e6e #0a0a0a #0a0a0a
+client.urgent           #FF6B35 #1f1208 #f2f2f2 #FF6B35 #FF6B35
+client.background       #0a0a0a
+
+# Phase 0 minimum: Alt+Q closes the focused window. Used by the test harness
+# to dismiss app windows between scenarios. Real keybindings ship in milestone #10.
+bindsym Mod1+q kill
+
+# Ctrl+Alt+T — power-user escape hatch to a terminal emulator. Mirrors the
+# OPEN_TERMINAL chat action so the user can drop into a shell from either
+# surface. Tagged with the same usbeliza.terminal.* app-id so the floating
+# rule above picks it up.
+bindsym Control+Mod1+t exec alacritty --class=usbeliza.terminal.keybind
+
+# Ctrl+Alt+D — escape hatch to the file manager. Mirrors OPEN_FILES; the
+# `for_window [app_id="^[Tt]hunar.*"]` rule above floats + centers it.
+bindsym Control+Mod1+d exec thunar
+
+# Ctrl+Alt+Esc — always-available "return to chat" hatch from any
+# window, any workspace. The chat surface is the only window whose
+# app_id matches `*elizad*` (Tauri 2 bundle id is `dev.usbeliza.elizad`,
+# older builds report just `elizad`; the X11 fallback uses the matching
+# class). The OR fallback covers the X11 case where app_id is unset.
+bindsym Control+Mod1+Escape exec swaymsg '[app_id="^.*elizad.*"] focus' || exec swaymsg '[class="^.*elizad.*"] focus'
+
+# Autostart: launch elizad on session start. Path is set by virt-customize.
+exec elizad

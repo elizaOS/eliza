@@ -1,0 +1,8 @@
+# Make `lb_chroot_install-packages` non-interactive across Trixie point
+# releases. Without this, an apt-get update inside the cached chroot can
+# pull a new base-files etc. and dpkg will prompt about our customized
+# /etc/issue conffile, breaking the unattended build. force-confdef
+# resolves any conflict in favor of the package maintainer's default;
+# force-confold preserves OUR copy (our customized /etc/issue wins).
+force-confdef
+force-confold

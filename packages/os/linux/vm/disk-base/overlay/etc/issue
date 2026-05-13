@@ -1,0 +1,9 @@
+
+                                Eliza
+              the operating system on this stick
+
+       Live-USB session — sway+elizad starts on graphical.target.
+       If you see this prompt, sway didn't auto-start. Try:
+         sudo systemctl start elizad-session.service
+         sudo journalctl -u elizad-session.service
+

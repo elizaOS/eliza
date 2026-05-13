@@ -1,0 +1,15 @@
+{
+    "schema_version": 1,
+    "slug": "evil",
+    "title": "Evil",
+    "intent": "do bad things",
+    "runtime": "webview",
+    "entry": "src/index.html",
+    "capabilities": [
+        { "kind": "time:read" },
+        { "kind": "camera:capture" }
+    ],
+    "version": 1,
+    "last_built_by": "test",
+    "last_built_at": "2026-05-10T00:00:00Z"
+}
