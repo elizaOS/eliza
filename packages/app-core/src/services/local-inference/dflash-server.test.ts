@@ -6,6 +6,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   __resetCtxCheckpointsProbeCacheForTests,
+  __resetLlamaServerHelpTextForTests,
+  __setCtxCheckpointsProbeCacheForTests,
+  __setLlamaServerHelpTextForTests,
   appendCtxCheckpointFlags,
   appendKvOffloadFlags,
   appendOptimizationFlags,
@@ -32,6 +35,7 @@ const originalEnv = { ...process.env };
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  __resetLlamaServerHelpTextForTests();
 });
 
 function makeManagedBinary(root: string): string {
@@ -506,7 +510,11 @@ describe("validateDflashDrafterCompatibility", () => {
     const target = path.join(root, "target.gguf");
     const drafter = path.join(root, "drafter.gguf");
     const binary = path.join(root, "llama-server");
-    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.writeFileSync(
+      binary,
+      "#!/bin/sh\necho '--spec-type none,draft,dflash'\n",
+      "utf8",
+    );
     writeTinyGguf(target, { architecture: "qwen3" });
     writeTinyGguf(drafter, { architecture: "qwen3" });
 
@@ -525,7 +533,11 @@ describe("validateDflashDrafterCompatibility", () => {
     const target = path.join(root, "target.gguf");
     const drafter = path.join(root, "drafter.gguf");
     const binary = path.join(root, "llama-server");
-    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.writeFileSync(
+      binary,
+      "#!/bin/sh\necho '--spec-type none,draft,dflash'\n",
+      "utf8",
+    );
     writeTinyGguf(target, { architecture: "qwen3", tokens: ["a", "b", "c"] });
     writeTinyGguf(drafter, { architecture: "qwen3", tokens: ["x", "y", "z"] });
 
@@ -547,7 +559,11 @@ describe("validateDflashDrafterCompatibility", () => {
     const target = path.join(root, "target.gguf");
     const drafter = path.join(root, "drafter.gguf");
     const binary = path.join(root, "llama-server");
-    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.writeFileSync(
+      binary,
+      "#!/bin/sh\necho '--spec-type none,draft,dflash'\n",
+      "utf8",
+    );
     writeTinyGguf(target, { architecture: "qwen3" });
     writeTinyGguf(drafter, { architecture: "dflash-draft" });
 
@@ -613,8 +629,16 @@ describe("validateDflashDrafterCompatibility", () => {
     const target = path.join(root, "target.gguf");
     const drafter = path.join(root, "drafter.gguf");
     const binary = path.join(root, "llama-server");
-    fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+    fs.writeFileSync(
+      binary,
+      "#!/bin/sh\necho '--spec-type none,draft,dflash'\n",
+      "utf8",
+    );
     fs.chmodSync(binary, 0o755);
+    __setLlamaServerHelpTextForTests(
+      binary,
+      "--spec-type none,draft,dflash\n",
+    );
     writeTinyGguf(target, { architecture: "qwen3", tokens: ["a", "b", "c"] });
     writeTinyGguf(drafter, {
       architecture: "dflash-draft",
@@ -1159,13 +1183,12 @@ describe("appendCtxCheckpointFlags", () => {
    * runtime probe returns `true` without a real llama-server install.
    */
   function fakeBinaryPath(): string {
-    const tmp = os.tmpdir();
-    const name = `fake-llama-server-${Date.now()}`;
-    const p = path.join(tmp, name);
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "fake-llama-server-"));
+    const p = path.join(tmp, "llama-server");
     // Write a shell script that echoes a --help blurb containing the flag.
     fs.writeFileSync(
       p,
-      "#!/bin/sh\necho '--ctx-checkpoints N'\n",
+      "#!/bin/sh\necho '--ctx-checkpoints N'\necho '--ctx-checkpoint-interval M'\nexit 0\n",
       "utf8",
     );
     fs.chmodSync(p, 0o755);
@@ -1183,6 +1206,7 @@ describe("appendCtxCheckpointFlags", () => {
 
   it("applies module defaults when optimizations provide no checkpoint values", () => {
     const binary = fakeBinaryPath();
+    __setCtxCheckpointsProbeCacheForTests(binary, true);
     const args: string[] = [];
     appendCtxCheckpointFlags(args, null, binary);
     expect(args).toEqual([
@@ -1195,6 +1219,7 @@ describe("appendCtxCheckpointFlags", () => {
 
   it("uses catalog values when provided, ignoring defaults", () => {
     const binary = fakeBinaryPath();
+    __setCtxCheckpointsProbeCacheForTests(binary, true);
     const args: string[] = [];
     appendCtxCheckpointFlags(
       args,

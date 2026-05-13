@@ -715,7 +715,7 @@ function helpAdvertisesCacheType(binaryPath: string, value: string): boolean {
 function helpAdvertisesDflashSpecType(binaryPath: string): boolean {
   const help = llamaServerHelpText(binaryPath).toLowerCase();
   if (!help) return false;
-  return /--spec-type[\s\S]{0,256}\bdflash\b/.test(help);
+  return help.includes("--spec-type") && /\bdflash\b/.test(help);
 }
 
 function assertCacheTypeSupportedOnBackend(
@@ -804,6 +804,13 @@ export function __resetCtxCheckpointsProbeCacheForTests(): void {
   ctxCheckpointsProbeCache.clear();
 }
 
+export function __setCtxCheckpointsProbeCacheForTests(
+  binaryPath: string,
+  supported: boolean,
+): void {
+  ctxCheckpointsProbeCache.set(binaryPath, supported);
+}
+
 /** Default number of mid-prefill KV snapshots the server keeps per slot. */
 export const DEFAULT_CTX_CHECKPOINTS = 4;
 /** Default token interval between automatic mid-prefill snapshots. */
@@ -851,8 +858,11 @@ export function appendCtxCheckpointFlags(
 }
 
 const disableThinkingProbeCache = new Map<string, string[]>();
+const llamaServerHelpTextOverrideForTests = new Map<string, string>();
 
 function llamaServerHelpText(binaryPath: string): string {
+  const override = llamaServerHelpTextOverrideForTests.get(binaryPath);
+  if (override !== undefined) return override;
   try {
     const result = spawnSync(binaryPath, ["--help"], {
       encoding: "utf8",
@@ -863,6 +873,17 @@ function llamaServerHelpText(binaryPath: string): string {
   } catch {
     return "";
   }
+}
+
+export function __setLlamaServerHelpTextForTests(
+  binaryPath: string,
+  helpText: string,
+): void {
+  llamaServerHelpTextOverrideForTests.set(binaryPath, helpText);
+}
+
+export function __resetLlamaServerHelpTextForTests(): void {
+  llamaServerHelpTextOverrideForTests.clear();
 }
 
 export function resolveDisableThinkingFlags(binaryPath: string): string[] {
