@@ -1356,7 +1356,18 @@ export class PTYService {
     // Defer initial task until session is ready.
     // IMPORTANT: Set up the listener BEFORE pushDefaultRules (which has a 1500ms sleep),
     // otherwise session_ready fires during pushDefaultRules and the listener misses it.
-    if (resolvedInitialTask) {
+    //
+    // Non-interactive spawns (codex exec mode, opencode `run` mode) already
+    // pass the task as a positional CLI arg to the adapter — the process
+    // runs to completion and exits. Sending the task again via PTY stdin
+    // after a "ready" timeout is pointless: the session may have already
+    // exited (then the stdin write fails silently) OR the agent is still
+    // running and stdin during execution corrupts its protocol. Skip the
+    // deferred-delivery path entirely for these spawns.
+    const isNonInteractiveSpawn =
+      codexExecMode ||
+      (resolvedAgentType === "opencode" && !!options.initialTask?.trim());
+    if (resolvedInitialTask && !isNonInteractiveSpawn) {
       setupDeferredTaskDelivery(
         ctx,
         session,

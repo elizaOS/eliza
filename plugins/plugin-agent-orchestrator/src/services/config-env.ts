@@ -25,9 +25,18 @@ function readConfig(): Record<string, unknown> | undefined {
 }
 
 export function readConfigEnvKey(key: string): string | undefined {
+  // Prefer the config file's env section: the UI writes settings there and
+  // changes take effect without a process restart. Fall back to process.env
+  // so operators who set values via a systemd EnvironmentFile (service.env)
+  // or shell export are honoured — these paths were silently ignored before,
+  // causing `PARALLAX_OPENCODE_*` overrides to be dropped on the floor.
   const config = readConfig();
   const val = (config?.env as Record<string, unknown> | undefined)?.[key];
-  return typeof val === "string" ? val : undefined;
+  if (typeof val === "string" && val.length > 0) return val;
+  const fromProcessEnv = process.env[key];
+  return typeof fromProcessEnv === "string" && fromProcessEnv.length > 0
+    ? fromProcessEnv
+    : undefined;
 }
 
 /** Read a key from the cloud section of the config (e.g. "apiKey"). */
