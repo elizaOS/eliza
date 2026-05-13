@@ -29,9 +29,11 @@ import {
 	uninstallInstalledCarrot,
 } from "@elizaos/electrobun-carrots";
 import { resolveApiToken } from "@elizaos/shared";
-import { Utils } from "electrobun/bun";
+import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import { logger } from "../logger.js";
 import type { SendToWebview } from "../types.js";
+
+type CarrotWindowInstance = InstanceType<typeof BrowserWindow>;
 
 export type CarrotWorkerState = "stopped" | "starting" | "running" | "error";
 
@@ -76,6 +78,7 @@ interface CarrotWorkerRecord {
 	status: CarrotWorkerStatus;
 	handle: CarrotWorkerHandle | null;
 	context: CarrotRuntimeContext | null;
+	window: CarrotWindowInstance | null;
 }
 
 interface CarrotManagerEvents {
@@ -300,7 +303,12 @@ export class CarrotManager {
 			stoppedAt: null,
 			error: null,
 		};
-		const record: CarrotWorkerRecord = { status, handle: null, context };
+		const record: CarrotWorkerRecord = {
+			status,
+			handle: null,
+			context,
+			window: null,
+		};
 		this.workers.set(id, record);
 		this.emitWorkerChanged(status);
 
@@ -312,6 +320,9 @@ export class CarrotManager {
 			);
 			handle.onError((error) => this.markWorkerError(id, handle, error));
 			handle.postMessage(buildWorkerInitMessage(carrot, context));
+			if (carrot.manifest.mode === "window") {
+				record.window = this.openCarrotWindow(carrot);
+			}
 			status.state = "running";
 			this.emitWorkerChanged(status);
 			return status;
@@ -324,6 +335,82 @@ export class CarrotManager {
 		}
 	}
 
+	/**
+	 * Open the carrot's view window. Used for `mode: "window"` carrots; the
+	 * carrot's `view/index.html` (and friends) is served via Electrobun's
+	 * `views://` scheme rooted at `carrot.currentDir`. Background carrots
+	 * never call this.
+	 *
+	 * Guarded against test stubs: vitest replaces `electrobun/bun` with a
+	 * non-constructor stub, so `BrowserWindow` won't be callable in the
+	 * test environment. We typeof-check before constructing and log a
+	 * warning if the runtime can't open windows (which is harmless in
+	 * tests and informative in dev where the host hasn't initialized FFI).
+	 */
+	private openCarrotWindow(
+		carrot: InstalledCarrot,
+	): CarrotWindowInstance | null {
+		if (
+			typeof BrowserWindow !== "function" ||
+			typeof BrowserView !== "function"
+		) {
+			logger.warn(
+				`[carrots] ${carrot.manifest.id}: skipping window-mode open — Electrobun BrowserWindow not available in this runtime (typeof=${typeof BrowserWindow}).`,
+			);
+			return null;
+		}
+
+		const { width, height, title, titleBarStyle, transparent } =
+			carrot.manifest.view;
+		try {
+			const win = new BrowserWindow({
+				title,
+				url: null,
+				preload: null,
+				frame: { x: 120, y: 120, width, height },
+				...(titleBarStyle === undefined ? {} : { titleBarStyle }),
+				...(transparent === undefined ? {} : { transparent }),
+			});
+			try {
+				win.webview.remove();
+			} catch {
+				// Some Electrobun builds expose webview lazily; safe to ignore.
+			}
+			new BrowserView({
+				url: carrot.viewUrl,
+				viewsRoot: carrot.currentDir,
+				renderer: "cef",
+				frame: { x: 0, y: 0, width, height },
+				windowId: win.id,
+			});
+			win.on("close", () => {
+				this.handleCarrotWindowClosed(carrot.manifest.id);
+			});
+			return win;
+		} catch (error) {
+			logger.warn(
+				`[carrots] ${carrot.manifest.id}: failed to open window — ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+			);
+			return null;
+		}
+	}
+
+	private handleCarrotWindowClosed(id: string): void {
+		const record = this.workers.get(id);
+		if (!record) return;
+		record.window = null;
+		// Closing the window stops the underlying worker — `mode: "window"`
+		// carrots have no UI-less lifetime.
+		if (
+			record.status.state === "running" ||
+			record.status.state === "starting"
+		) {
+			this.stopWorker(id);
+		}
+	}
+
 	stopWorker(id: string): CarrotWorkerStatus {
 		const record = this.workers.get(id);
 		if (!record) {
@@ -332,6 +419,13 @@ export class CarrotManager {
 			return status;
 		}
 		record.handle?.terminate();
+		if (record.window) {
+			try {
+				record.window.close();
+			} catch {
+				// BrowserWindow.close() may throw if already destroyed.
+			}
+		}
 		const status: CarrotWorkerStatus = {
 			id,
 			state: "stopped",
@@ -339,7 +433,12 @@ export class CarrotManager {
 			stoppedAt: this.now(),
 			error: null,
 		};
-		this.workers.set(id, { status, handle: null, context: record.context });
+		this.workers.set(id, {
+			status,
+			handle: null,
+			context: record.context,
+			window: null,
+		});
 		this.emitWorkerChanged(status);
 		return status;
 	}
@@ -553,9 +652,7 @@ export class CarrotManager {
 				}
 				const token = params.token;
 				if (token !== null && typeof token !== "string") {
-					throw new Error(
-						"set-auth-token: token must be a string or null.",
-					);
+					throw new Error("set-auth-token: token must be a string or null.");
 				}
 				record.context.authToken = token;
 				return { ok: true };
