@@ -50,6 +50,10 @@ import { Readable, type Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 import { localInferenceRoot } from "../paths";
+import {
+  makeOpenVinoWhisperDecoder,
+  resolveOpenVinoWhisperRuntime,
+} from "./openvino-whisper-asr";
 import type {
   ElizaInferenceContextHandle,
   ElizaInferenceFfi,
@@ -578,6 +582,13 @@ export interface WhisperCppOptions {
   binaryPath?: string;
   /** Whisper GGUF model path override. */
   modelPath?: string;
+  /**
+   * Extra cleanup invoked from `dispose()` after segment buffers are reset.
+   * Used when an injected `decoder` owns a persistent subprocess (the
+   * OpenVINO whisper worker) that needs to be torn down with the
+   * transcriber.
+   */
+  onDispose?: () => void;
 }
 
 interface WhisperConfig {
@@ -599,6 +610,7 @@ interface WhisperConfig {
 export class WhisperCppStreamingTranscriber extends BaseStreamingTranscriber {
   private readonly cfg: WhisperConfig;
   private readonly decode: WhisperDecoder;
+  private readonly extraDispose: (() => void) | undefined;
   /** All 16 kHz samples accumulated for the current speech segment. */
   private buf: Float32Array = new Float32Array(0);
   /** Samples in `buf` already folded into `committed`. */
@@ -630,6 +642,7 @@ export class WhisperCppStreamingTranscriber extends BaseStreamingTranscriber {
         modelPath: opts.modelPath,
         language: this.cfg.language,
       });
+    this.extraDispose = opts.onDispose;
   }
 
   protected onFrame(frame: PcmFrame): void {
@@ -650,6 +663,13 @@ export class WhisperCppStreamingTranscriber extends BaseStreamingTranscriber {
 
   protected onDispose(): void {
     this.resetSegment();
+    if (this.extraDispose) {
+      try {
+        this.extraDispose();
+      } catch {
+        /* dispose hooks are best-effort */
+      }
+    }
   }
 
   private resetSegment(): void {
@@ -1027,19 +1047,31 @@ export interface CreateStreamingTranscriberOptions {
   ffiBatch?: Omit<FfiBatchTranscriberOptions, "ffi" | "getContext">;
   /**
    * Force a specific backend.
-   *   `"fused"`     → fused streaming ASR only (throws if unavailable),
-   *   `"ffi-batch"` → fused batch (interim) only (throws if unavailable),
-   *   `"whisper"`   → whisper.cpp legacy interim only,
-   *   `"auto"`      (default) → fused streaming → fused batch → whisper → throw.
+   *   `"fused"`            → fused streaming ASR only (throws if unavailable),
+   *   `"ffi-batch"`        → fused batch (interim) only (throws if unavailable),
+   *   `"openvino-whisper"` → OpenVINO Whisper (NPU→CPU autoprobe) only,
+   *   `"whisper"`          → whisper.cpp legacy interim only,
+   *   `"auto"`             (default) → fused streaming → fused batch
+   *                                    → OpenVINO whisper → whisper.cpp → throw.
    */
-  prefer?: "auto" | "fused" | "ffi-batch" | "whisper";
+  prefer?: "auto" | "fused" | "ffi-batch" | "openvino-whisper" | "whisper";
   /**
    * Permit the legacy whisper.cpp adapter when fused ASR is unavailable.
    * Standalone tooling keeps this enabled by default; Eliza-1 voice bridges
    * pass false so a missing bundled ASR model fails closed instead of
-   * silently running a second model family.
+   * silently running a second model family. Setting this to `false` also
+   * turns off `OpenVINO Whisper` auto-discovery unless `allowOpenVinoWhisper`
+   * is explicitly `true` — both are "second model family" fallbacks.
    */
   allowWhisperFallback?: boolean;
+  /**
+   * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). When unset,
+   * defaults to the value of `allowWhisperFallback` — both are non-fused
+   * fallback paths, so callers that block whisper.cpp also block OpenVINO
+   * Whisper. Set explicitly to `true` to keep the OpenVINO Whisper tier
+   * even when `allowWhisperFallback: false`.
+   */
+  allowOpenVinoWhisper?: boolean;
 }
 
 /**
@@ -1048,8 +1080,14 @@ export interface CreateStreamingTranscriberOptions {
  *      path, W7),
  *   2. fused batch (interim) — windowed `eliza_inference_asr_transcribe` (ABI
  *      v1); contract-clean (one ggml, shared text vocab) and available now,
- *   3. whisper.cpp legacy interim — separate ggml, used only when neither
- *      fused path is available.
+ *   3. OpenVINO Whisper — Intel NPU→CPU autoprobe via the persistent Python
+ *      worker (`scripts/openvino-whisper-asr-worker.py`). Reuses the
+ *      `WhisperCppStreamingTranscriber` sliding-window logic via decoder
+ *      injection; only the decode call is swapped. ~50× RTF on Lunar Lake
+ *      NPU, ~28× on CPU. Selected only when the OpenVINO runtime + Whisper
+ *      IR are present on disk.
+ *   4. whisper.cpp legacy interim — separate ggml, used only when none of the
+ *      above is available.
  * No silent fallback to an empty transcript — if nothing is available the
  * caller gets a hard, actionable failure (AGENTS.md §3 + §9).
  */
@@ -1058,6 +1096,13 @@ export function createStreamingTranscriber(
 ): StreamingTranscriber {
   const prefer = opts.prefer ?? "auto";
   const allowWhisperFallback = opts.allowWhisperFallback !== false;
+  // OpenVINO Whisper is the same family of "second-model-family fallback" as
+  // whisper.cpp — when the caller blocks the whisper.cpp tier, default to
+  // also blocking the OpenVINO tier unless explicitly opted back in. This
+  // keeps the existing Eliza-1 contract (`allowWhisperFallback: false`)
+  // semantically intact: no non-fused ASR runs in mandatory-fused contexts.
+  const allowOpenVinoWhisper =
+    opts.allowOpenVinoWhisper ?? allowWhisperFallback;
 
   const tryFusedStreaming = (): StreamingTranscriber | null => {
     if (!opts.ffi || !opts.getContext) return null;
@@ -1086,6 +1131,20 @@ export function createStreamingTranscriber(
     });
   };
 
+  const tryOpenVinoWhisper = (): StreamingTranscriber | null => {
+    const runtime = resolveOpenVinoWhisperRuntime();
+    if (!runtime) return null;
+    const { decoder, dispose } = makeOpenVinoWhisperDecoder(runtime);
+    return new WhisperCppStreamingTranscriber({
+      ...opts.whisper,
+      vad: opts.vad,
+      metadata: opts.whisper?.metadata ?? opts.metadata,
+      source: opts.whisper?.source ?? opts.source,
+      decoder,
+      onDispose: dispose,
+    });
+  };
+
   if (prefer === "fused") {
     const fused = tryFusedStreaming();
     if (fused) return fused;
@@ -1100,12 +1159,23 @@ export function createStreamingTranscriber(
       "[asr] fused batch ASR was requested but is not available (no libelizainference handle, no bundled ASR model, or the build does not export eliza_inference_asr_transcribe)",
     );
   }
+  if (prefer === "openvino-whisper") {
+    const ov = tryOpenVinoWhisper();
+    if (ov) return ov;
+    throw new AsrUnavailableError(
+      "[asr] OpenVINO whisper ASR was requested but is not available (no openvino python venv, no whisper IR model, or worker script missing — set ELIZA_OPENVINO_PYTHON / ELIZA_OPENVINO_WHISPER_MODEL / ELIZA_OPENVINO_WHISPER_WORKER)",
+    );
+  }
 
   if (prefer === "auto") {
     const fused = tryFusedStreaming();
     if (fused) return fused;
     const batch = tryFusedBatch();
     if (batch) return batch;
+    if (allowOpenVinoWhisper) {
+      const ov = tryOpenVinoWhisper();
+      if (ov) return ov;
+    }
   }
 
   if (!allowWhisperFallback && prefer !== "whisper") {
