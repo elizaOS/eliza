@@ -248,24 +248,38 @@ export class SubAgentRouter {
     // The synthetic sub-agent entityId is a deterministic UUID for the
     // session — but it doesn't exist in the entities table yet, so the
     // FK on memories.entity_id rejects the insert and the router post
-    // dies before the planner ever sees it. Register the entity (and
-    // its participation in the origin room/world) before saving.
+    // dies before the planner ever sees it.
+    //
+    // Create just the entity, NOT a full ensureConnection. ensureConnection
+    // upserts the room with `channelId: c.channelId ?? c.roomId` — we don't
+    // have the source channelId snowflake here, so it would overwrite the
+    // Discord plugin's `channelId = snowflake` with `channelId = UUID` and
+    // break outbound delivery via runtime.sendMessageToTarget. The room
+    // already exists (the user's inbound Discord message created it); we
+    // only need the entity + room participation.
     await this.runtime
-      .ensureConnection({
-        entityId: subAgentEntityId,
-        roomId: origin.roomId,
-        ...(origin.worldId ? { worldId: origin.worldId } : {}),
-        userName: `sub-agent-${session.agentType}`,
-        name: `sub-agent: ${origin.label}`,
-        source: ACPX_ROUTER_SOURCE,
+      .createEntity({
+        id: subAgentEntityId,
+        agentId: this.runtime.agentId,
+        names: [`sub-agent: ${origin.label}`],
         metadata: {
-          subAgent: true,
-          subAgentSessionId: sessionId,
-          subAgentAgentType: session.agentType,
+          [ACPX_ROUTER_SOURCE]: {
+            subAgentSessionId: sessionId,
+            subAgentAgentType: session.agentType,
+          },
         },
       })
       .catch((err) => {
-        this.log("warn", "ensureConnection for sub-agent entity failed", {
+        this.log("warn", "createEntity for sub-agent failed", {
+          sessionId,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    await this.runtime
+      .addParticipant(subAgentEntityId, origin.roomId)
+      .catch((err) => {
+        this.log("warn", "addParticipant for sub-agent failed", {
           sessionId,
           event,
           error: err instanceof Error ? err.message : String(err),
