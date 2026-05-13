@@ -9,6 +9,7 @@ import {
   __resetLlamaServerHelpTextForTests,
   __setCtxCheckpointsProbeCacheForTests,
   __setLlamaServerHelpTextForTests,
+  appendDflashDraftTuningFlags,
   appendCtxCheckpointFlags,
   appendKvOffloadFlags,
   appendOptimizationFlags,
@@ -361,6 +362,61 @@ describe("fused-vs-two-process spawn selection", () => {
   });
 });
 
+describe("DFlash draft CLI flag drift", () => {
+  it("uses current speculative draft count flags and omits removed draft ctx flag", () => {
+    const bin = "/tmp/current-llama-server";
+    __setLlamaServerHelpTextForTests(
+      bin,
+      [
+        "--spec-draft-n-min N",
+        "--spec-draft-n-max N",
+        "--spec-draft-ngl, --n-gpu-layers-draft N",
+      ].join("\n"),
+    );
+    const args: string[] = [];
+
+    appendDflashDraftTuningFlags(args, {
+      binaryPath: bin,
+      draftContextSize: 2048,
+      draftMin: 1,
+      draftMax: 4,
+    });
+
+    expect(args).toEqual([
+      "--spec-draft-n-min",
+      "1",
+      "--spec-draft-n-max",
+      "4",
+    ]);
+    expect(args).not.toContain("--ctx-size-draft");
+  });
+
+  it("keeps legacy aliases for older fork binaries that still advertise them", () => {
+    const bin = "/tmp/legacy-llama-server";
+    __setLlamaServerHelpTextForTests(
+      bin,
+      ["--ctx-size-draft N", "--draft-min N", "--draft-max N"].join("\n"),
+    );
+    const args: string[] = [];
+
+    appendDflashDraftTuningFlags(args, {
+      binaryPath: bin,
+      draftContextSize: 2048,
+      draftMin: 1,
+      draftMax: 4,
+    });
+
+    expect(args).toEqual([
+      "--ctx-size-draft",
+      "2048",
+      "--draft-min",
+      "1",
+      "--draft-max",
+      "4",
+    ]);
+  });
+});
+
 describe("ELIZA_DFLASH_DISABLE developer kill-switch", () => {
   it("disables DFlash even when ELIZA_DFLASH_ENABLED forces it on", () => {
     delete process.env.ELIZA_DFLASH_DISABLE;
@@ -660,7 +716,7 @@ describe("validateDflashDrafterCompatibility", () => {
         draftGpuLayers: 0,
         disableThinking: false,
       }),
-    ).rejects.toThrow(/refusing to launch target-only/);
+    ).rejects.toThrow(/refusing to launch/);
     expect(server.hasLoadedModel()).toBe(false);
   });
 });
@@ -1207,6 +1263,10 @@ describe("appendCtxCheckpointFlags", () => {
   it("applies module defaults when optimizations provide no checkpoint values", () => {
     const binary = fakeBinaryPath();
     __setCtxCheckpointsProbeCacheForTests(binary, true);
+    __setLlamaServerHelpTextForTests(
+      binary,
+      "--ctx-checkpoints N\n--ctx-checkpoint-interval N\n",
+    );
     const args: string[] = [];
     appendCtxCheckpointFlags(args, null, binary);
     expect(args).toEqual([
@@ -1220,6 +1280,10 @@ describe("appendCtxCheckpointFlags", () => {
   it("uses catalog values when provided, ignoring defaults", () => {
     const binary = fakeBinaryPath();
     __setCtxCheckpointsProbeCacheForTests(binary, true);
+    __setLlamaServerHelpTextForTests(
+      binary,
+      "--ctx-checkpoints N\n--ctx-checkpoint-interval N\n",
+    );
     const args: string[] = [];
     appendCtxCheckpointFlags(
       args,
@@ -1251,5 +1315,16 @@ describe("appendCtxCheckpointFlags", () => {
     const args: string[] = [];
     appendCtxCheckpointFlags(args, null, noFlagBinary);
     expect(args).toHaveLength(0);
+  });
+
+  it("does not append a checkpoint interval flag when a partial fork lacks it", () => {
+    const bin = "/tmp/partial-ctx-checkpoint-llama-server";
+    __setCtxCheckpointsProbeCacheForTests(bin, true);
+    __setLlamaServerHelpTextForTests(bin, "--ctx-checkpoints N\n");
+    const args: string[] = [];
+
+    appendCtxCheckpointFlags(args, null, bin);
+
+    expect(args).toEqual(["--ctx-checkpoints", String(DEFAULT_CTX_CHECKPOINTS)]);
   });
 });
