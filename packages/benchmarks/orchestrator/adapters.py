@@ -1580,6 +1580,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "mint": {
             "agent": "eliza",
         },
+        "mind2web": {
+            "max_tasks": 1,
+        },
         "terminal_bench": {
             "max_tasks": 1,
             "sample": True,
