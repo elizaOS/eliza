@@ -184,11 +184,26 @@ async function captureFastPathTaskResponse(
     }
   }
 
-  return captureTaskResponse(
+  // `captureTaskResponse` returns the buffered output from the LAST
+  // marker (set on STDIN-delivery). Non-interactive sub-agents
+  // (codex-exec, opencode-run) NEVER take a STDIN delivery — the task
+  // is in the CLI args — so the marker is never set and the function
+  // returns empty even though the buffer holds the entire run's stdout.
+  // For these modes, fall back to the full session output buffer so
+  // the sub-agent's answer actually reaches Discord.
+  const markerCapture = captureTaskResponse(
     sessionId,
     ctx.sessionOutputBuffers,
     ctx.taskResponseMarkers,
   );
+  if (markerCapture) {
+    return markerCapture;
+  }
+  const buffer = ctx.sessionOutputBuffers.get(sessionId);
+  if (!buffer || buffer.length === 0) {
+    return "";
+  }
+  return cleanForChat(buffer.join("\n"));
 }
 
 // NOTE: A previous implementation defined `forwardReadyAsTaskComplete` here,
