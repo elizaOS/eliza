@@ -426,48 +426,41 @@ void oneOf;
  */
 export function completionMessage(answers: Partial<CalibrationBlock>): string {
     const name = typeof answers.name === "string" ? answers.name : "there";
-    const focus =
-        typeof answers.workFocus === "string" ? answers.workFocus.toLowerCase() : "";
+    const intent = typeof answers.buildIntent === "string" ? answers.buildIntent.trim() : "";
+    const intentLower = intent.toLowerCase();
+    const skipped =
+        intentLower === "" ||
+        /^(nothing|skip|later|nah|no|none|nope|not now|not yet|nope nothing|nothing yet)\b/.test(
+            intentLower,
+        );
 
-    // First sentence: a contextual ack, not a "great that's everything".
-    const intro = `OK, ${name}. I have what I need to start.`;
-
-    // Second beat: one warm contextual nudge, picked from workFocus.
-    // No catalog of commands. Just one thing.
-    let suggestion: string;
-    if (/cod|program|dev|engineer/.test(focus)) {
-        suggestion = "If you'd like, I can build you a quick scratchpad for code snippets. Or just talk — what's on your mind?";
-    } else if (/writ|note|journal|book/.test(focus)) {
-        suggestion = "I can build you a notes app whenever you'd like, or we can just talk for now.";
-    } else if (/design|art|sketch|draw|create/.test(focus)) {
-        suggestion = "I could build you a quick sketch surface, or we can just talk. What's first?";
-    } else if (/game|play|fun/.test(focus)) {
-        suggestion = "Anything you'd like to make? I can build small games on this stick if you want to try one.";
-    } else if (/research|read|study|learn/.test(focus)) {
-        suggestion = "I can build you a notes app or a reader if you want a place to keep things. Or just tell me what you're curious about.";
-    } else {
-        suggestion = "What would you like to make first? I can build a calendar, a notes app, a clock — whatever's useful.";
+    if (skipped) {
+        // No build requested. Open-ended invitation — chat is the desktop.
+        return `OK, ${name}. Ready when you are. Say "build me X" anytime — a clock, a notes app, anything you can think of — and I'll make it.`;
     }
 
-    // Third beat: when the user picked anything non-default for keyboard
-    // or timezone, tell them what's about to happen — keeps the system
-    // changes audible instead of silent. Locale is rarely worth
-    // surfacing (changing LANG mid-session has no visible effect until
-    // the next reboot), so we only mention keyboard + tz.
-    const kb = typeof answers.keyboardLayout === "string" ? answers.keyboardLayout : "";
-    const tz = typeof answers.timezone === "string" ? answers.timezone : "";
-    const wantsKb = kb !== "" && kb !== "us";
-    const wantsTz = tz !== "" && tz !== "UTC";
-    let systemNote = "";
-    if (wantsKb && wantsTz) {
-        systemNote = ` I'll set your keyboard to ${kb} and your time to ${tz} now.`;
-    } else if (wantsKb) {
-        systemNote = ` I'll set your keyboard to ${kb} now.`;
-    } else if (wantsTz) {
-        systemNote = ` I'll set your time to ${tz} now.`;
-    }
-
-    return `${intro}${systemNote} ${suggestion}`;
+    // Build IS in flight (the dispatcher fired BUILD_APP async). Frame the
+    // wait time honestly so the user doesn't wonder if it's stuck:
+    // claude-codegen runs ~20-60s with claude signed in, ~2-5 min on the
+    // local 1B if not.
+    //
+    // Don't try to grammar-fix the user's phrasing — they already said
+    // "a clock" or "calendar" or "build me a notes app"; we strip the
+    // leading "build me" / "make me" if they used it but otherwise
+    // leave the words alone. The slug for "open <thing>" is the last
+    // meaningful word so they don't have to remember articles.
+    const cleanedIntent =
+        intent.replace(/^(build me|make me|build|make)\s+/i, "").trim() || intent;
+    const lastWord =
+        cleanedIntent
+            .split(/\s+/)
+            .filter((w) => w.length > 0 && !/^(a|an|the|some|me|my)$/i.test(w))
+            .pop() ?? cleanedIntent;
+    return (
+        `OK, ${name}. I'm building ${cleanedIntent} now — should take ` +
+        `about 30 seconds. When it's ready, say "open ${lastWord}" ` +
+        `and I'll pop it open. Anything else you want to chat about while I work?`
+    );
 }
 
 /**

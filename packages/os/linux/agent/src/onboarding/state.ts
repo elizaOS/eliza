@@ -239,7 +239,9 @@ function parseTomlState(text: string): OnboardingState {
                       ? "errorCommunication"
                       : key === "work_focus"
                         ? "workFocus"
-                        : key;
+                        : key === "build_intent"
+                          ? "buildIntent"
+                          : key;
             (answers as Record<string, unknown>)[camelKey] = value;
             continue;
         }
@@ -257,14 +259,22 @@ function serializeCalibrationToml(c: CalibrationBlock): string {
         `schema_version = 1`,
         `created_at = "${created}"`,
         `name = ${JSON.stringify(c.name)}`,
-        `work_focus = ${JSON.stringify(c.workFocus)}`,
-        `multitasking = "${c.multitasking}"`,
-        `chronotype = "${c.chronotype}"`,
-        `error_communication = "${c.errorCommunication}"`,
     ];
-    // System fields are optional — only emit them when set so calibration
-    // files written by an older agent (5 fields) and a newer agent (8
-    // fields) both parse cleanly against the same toml grammar.
+    // Every non-name field is optional — only emit when actually set.
+    // The v36 onboarding drops most of these; older calibration files
+    // still parse cleanly because parse just ignores unknown keys.
+    if (typeof c.workFocus === "string" && c.workFocus !== "") {
+        lines.push(`work_focus = ${JSON.stringify(c.workFocus)}`);
+    }
+    if (c.multitasking === "single-task" || c.multitasking === "multi-task") {
+        lines.push(`multitasking = ${JSON.stringify(c.multitasking)}`);
+    }
+    if (c.chronotype === "morning" || c.chronotype === "evening" || c.chronotype === "flexible") {
+        lines.push(`chronotype = ${JSON.stringify(c.chronotype)}`);
+    }
+    if (c.errorCommunication === "transparent" || c.errorCommunication === "quiet") {
+        lines.push(`error_communication = ${JSON.stringify(c.errorCommunication)}`);
+    }
     if (typeof c.keyboardLayout === "string" && c.keyboardLayout !== "") {
         lines.push(`keyboard_layout = ${JSON.stringify(c.keyboardLayout)}`);
     }
@@ -274,15 +284,16 @@ function serializeCalibrationToml(c: CalibrationBlock): string {
     if (typeof c.timezone === "string" && c.timezone !== "") {
         lines.push(`timezone = ${JSON.stringify(c.timezone)}`);
     }
-    // Offer flags: persist so a reboot doesn't re-prompt for Wi-Fi or
-    // Claude/Codex login after the user already answered Q2 / Q3. The
-    // SSID + auth tokens themselves live elsewhere (NetworkManager,
-    // ~/.eliza/auth/) — these booleans only record "we asked".
     if (typeof c.wifiOfferAccepted === "boolean") {
         lines.push(`wifi_offer_accepted = ${String(c.wifiOfferAccepted)}`);
     }
     if (typeof c.claudeOfferAccepted === "boolean") {
         lines.push(`claude_offer_accepted = ${String(c.claudeOfferAccepted)}`);
+    }
+    // v36 final question. Persist the user's first-build intent so a
+    // future "show me what we built together" surface can lead with it.
+    if (typeof c.buildIntent === "string" && c.buildIntent !== "") {
+        lines.push(`build_intent = ${JSON.stringify(c.buildIntent)}`);
     }
     return lines.join("\n") + "\n";
 }
