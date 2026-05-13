@@ -165,6 +165,7 @@ export interface DesktopInstalledCarrotSnapshot {
   currentHash: string | null;
   installedAt: number;
   updatedAt: number;
+  devMode: boolean;
   lastBuildAt: number | null;
   lastBuildError: string | null;
   requestedPermissions: DesktopCarrotPermissionGrant;
@@ -248,6 +249,22 @@ export async function pickDesktopWorkspaceFolder(options?: {
     rpcMethod: "desktopPickWorkspaceFolder",
     ipcChannel: "desktop:pickWorkspaceFolder",
     params: options ?? {},
+  });
+}
+
+export async function desktopOpenPath(path: string): Promise<void> {
+  await invokeDesktopBridgeRequest<undefined>({
+    rpcMethod: "desktopOpenPath",
+    ipcChannel: "desktop:openPath",
+    params: { path },
+  });
+}
+
+export async function desktopShowItemInFolder(path: string): Promise<void> {
+  await invokeDesktopBridgeRequest<undefined>({
+    rpcMethod: "desktopShowItemInFolder",
+    ipcChannel: "desktop:showItemInFolder",
+    params: { path },
   });
 }
 
@@ -417,4 +434,32 @@ export function subscribeDesktopBridgeEvent(options: {
   }
 
   return () => {};
+}
+
+export function subscribeDesktopCarrotStoreChanged(
+  listener: (snapshot: DesktopCarrotStoreSnapshot) => void,
+): () => void {
+  return subscribeDesktopBridgeEvent({
+    rpcMessage: "carrotStoreChanged",
+    ipcChannel: "carrot:storeChanged",
+    listener: (payload) => {
+      const snapshot = (payload as { snapshot?: DesktopCarrotStoreSnapshot })
+        ?.snapshot;
+      if (snapshot) listener(snapshot);
+    },
+  });
+}
+
+export function subscribeDesktopCarrotWorkerChanged(
+  listener: (status: DesktopCarrotWorkerStatus) => void,
+): () => void {
+  return subscribeDesktopBridgeEvent({
+    rpcMessage: "carrotWorkerChanged",
+    ipcChannel: "carrot:workerChanged",
+    listener: (payload) => {
+      const status = (payload as { status?: DesktopCarrotWorkerStatus })
+        ?.status;
+      if (status) listener(status);
+    },
+  });
 }
