@@ -56,8 +56,6 @@ function judgeResponseToResult(
 }
 
 function parseJudgeJson(raw: string): JudgeResult | null {
-  // Kept for the non-Cerebras path (runtime.useModel fallback). Uses the
-  // same tolerant parser the shared CerebrasJudge transport uses.
   const balanced = extractBalancedJsonObject(raw);
   if (!balanced) return null;
   let parsed: Record<string, unknown>;

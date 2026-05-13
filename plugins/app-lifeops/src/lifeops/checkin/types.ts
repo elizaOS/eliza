@@ -83,10 +83,9 @@ export interface CheckinCollectorErrors {
  * sleep stats today, and the night path falls back gracefully when the
  * baseline has fewer than 5 episodes (`baseline === null`).
  *
- * Moved to `@elizaos/plugin-health` in Wave-1 (W1-B). Re-exported here for
- * backward compatibility with the existing `from "./types.js"` importers,
- * and brought into local scope for downstream `SleepRecap | null` usages
- * inside this file.
+ * Canonical home: `@elizaos/plugin-health`. Re-exported here for backward
+ * compatibility with `from "./types.js"` importers, and brought into local
+ * scope for downstream `SleepRecap | null` usages inside this file.
  */
 import type { SleepRecap } from "@elizaos/plugin-health";
 
