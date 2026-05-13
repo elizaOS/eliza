@@ -1003,7 +1003,6 @@ def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
     )
     from benchmarks.eliza1_gates import apply_gates  # noqa: PLC0415
     from scripts.manifest.eliza1_manifest import (  # noqa: PLC0415
-        Eliza1ManifestError,
         KernelVerification,
     )
 

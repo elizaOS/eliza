@@ -575,7 +575,6 @@ def test_polarquant_block_dequant_parity_against_c_ref():
     c_decoded = np.frombuffer(out, dtype=np.float32, count=QK_POLAR).copy()
 
     # --- Python equivalent: replicate the C decoder math. ---
-    from polarquant.polar_quant import _hadamard_matrix
     centroids = np.array(_C_POLAR_Q4_CENTROIDS, dtype=np.float32)
 
     py_buf = np.array([centroids[c] for c in codes], dtype=np.float32)

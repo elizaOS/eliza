@@ -822,8 +822,6 @@ def audit(
                     ),
                 })
 
-    decoder.close()
-
     # Build the structured report.
     report: dict[str, Any] = {
         "n_audited": n_seen,
