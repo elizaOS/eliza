@@ -24,6 +24,8 @@ WORKDIR /src
 
 # Copy only the manifests Bun needs to resolve the production dependency graph.
 COPY package.json bun.lock ./
+# Root-level patches (e.g. @capacitor/barcode-scanner) referenced by package.json patchedDependencies.
+COPY patches ./patches
 COPY packages/app-core/patches ./packages/app-core/patches
 COPY packages/core/package.json ./packages/core/package.json
 COPY packages/agent/package.json ./packages/agent/package.json
