@@ -297,7 +297,6 @@ describe("Experience extraction live LLM E2E", () => {
           "Sure, I can help with that.",
           {
             actions: ["REPLY"],
-            conversationMode: "simple",
           },
         );
         await runtime.setCache(

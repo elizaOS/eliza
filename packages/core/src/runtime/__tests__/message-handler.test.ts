@@ -174,6 +174,79 @@ describe("v5 message handler routing", () => {
 		]);
 	});
 
+	describe("refusal suppression on planning path (elizaOS/eliza#7620)", () => {
+		// Cerebras-hosted `gpt-oss-120b` / `qwen-3-235b-instruct` occasionally
+		// emit a refusal in `replyText` even when the same turn correctly
+		// routed to a planning context with valid candidateActions. Suppress
+		// the refusal so it does not ship via the early-reply path; the
+		// planner stage's reply is then the only one the user sees.
+		it("suppresses 'I'm unable to spawn a sub-agent' refusal on tasks-context planning", () => {
+			const parsed = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					thought: "User wants to spawn a sub-agent.",
+					replyText:
+						"I'm unable to spawn a sub-agent in this context. I can create /tmp/foo.py directly with the line: print('hello').",
+					contexts: ["tasks"],
+					candidateActions: ["TASKS_SPAWN_AGENT"],
+					requiresTool: true,
+				}),
+			);
+			expect(parsed?.plan.contexts).toEqual(["tasks"]);
+			expect(parsed?.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+			// Refusal text is dropped — planner stage's reply will replace it.
+			expect(parsed?.plan.reply).toBe("");
+			expect(parsed?.plan.requiresTool).toBe(true);
+		});
+
+		it("suppresses 'I cannot help with that' refusal when candidateActions is populated", () => {
+			const parsed = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					replyText:
+						"I cannot help with sending email. I do not have email access.",
+					contexts: [],
+					candidateActions: ["SEND_EMAIL"],
+					requiresTool: true,
+				}),
+			);
+			expect(parsed?.plan.candidateActions).toEqual(["SEND_EMAIL"]);
+			expect(parsed?.plan.reply).toBe("");
+		});
+
+		it("does NOT suppress a refusal on the simple-reply path", () => {
+			// When contexts === ['simple'] (or simple === true), the refusal IS
+			// the whole answer — no planner runs afterwards, so we must not
+			// blank it out.
+			const parsed = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					replyText: "I'm unable to look up real-time prices in this context.",
+					contexts: ["simple"],
+				}),
+			);
+			expect(parsed?.plan.contexts).toEqual(["simple"]);
+			expect(parsed?.plan.reply).toBe(
+				"I'm unable to look up real-time prices in this context.",
+			);
+		});
+
+		it("does NOT suppress an acknowledgement on the planning path", () => {
+			const parsed = parseMessageHandlerOutput(
+				JSON.stringify({
+					shouldRespond: "RESPOND",
+					replyText: "Spawning a coding sub-agent to create /tmp/foo.py.",
+					contexts: ["tasks"],
+					candidateActions: ["TASKS_SPAWN_AGENT"],
+					requiresTool: true,
+				}),
+			);
+			expect(parsed?.plan.reply).toBe(
+				"Spawning a coding sub-agent to create /tmp/foo.py.",
+			);
+		});
+	});
+
 	it("maps shouldRespond IGNORE/STOP through routing", () => {
 		const ignore = parseMessageHandlerOutput(
 			JSON.stringify({

@@ -69,7 +69,12 @@ export function eliza1TierPublishStatus(
 ): "published" | "pending" {
   const override = readPublishStatusOverride(id);
   if (override) return override;
-  const hint = (ELIZA_1_TIER_PUBLISH_STATUS as Record<string, "published" | "pending" | undefined>)[id];
+  const hint = (
+    ELIZA_1_TIER_PUBLISH_STATUS as Record<
+      string,
+      "published" | "pending" | undefined
+    >
+  )[id];
   return hint ?? "published";
 }
 

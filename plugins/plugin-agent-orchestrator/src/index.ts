@@ -97,14 +97,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated sub-agent process (claude / codex / opencode / etc., selected from configured providers). USE THIS when the user explicitly asks to 'spawn a sub-agent', 'delegate this', 'use a coding sub-agent', 'fire up a coder', or for substantial multi-step coding work that benefits from process isolation, its own workspace, or running in parallel. The sub-agent has its own PTY session, can run shell/edit/test, and reports back when done. Prefer this over inline FILE/BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
+                "Delegate a coding task to a dedicated coding sub-agent (claude / codex / opencode / gemini / aider — selected from configured providers). USE THIS when the user explicitly asks to delegate, spawn, fire up, use a coding adapter by name, or for substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "spawn coding sub-agent (claude/codex/opencode/gemini/aider) — use for 'spawn/delegate/use opencode/fire up coding agent' or any multi-step dev work; prefer over inline FILE/BASH when delegation is the user's intent",
+                "delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider) — use when the user asks to delegate / fire up a coder / use an adapter by name / for any multi-step dev work; prefer over inline FILE/BASH when delegation is the user's intent",
             },
           },
         }),

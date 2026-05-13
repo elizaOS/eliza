@@ -27,7 +27,6 @@ import type {
   ChatTokenUsage,
   ConnectionStateInfo,
   ConversationChannelType,
-  ConversationMode,
   ImageAttachment,
   LocalInferenceChatMetadata,
   WebSocketConnectionState,
@@ -861,7 +860,6 @@ export class ElizaClient {
     channelType: ConversationChannelType = "DM",
     signal?: AbortSignal,
     images?: ImageAttachment[],
-    conversationMode?: ConversationMode,
     metadata?: Record<string, unknown>,
   ): Promise<{
     text: string;
@@ -882,7 +880,6 @@ export class ElizaClient {
         text,
         channelType,
         ...(images?.length ? { images } : {}),
-        ...(conversationMode ? { conversationMode } : {}),
         ...(metadata ? { metadata } : {}),
       }),
       signal,

@@ -1,7 +1,7 @@
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
-  eliza1TierPublishStatus,
   type Eliza1TierId,
+  eliza1TierPublishStatus,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
@@ -612,8 +612,7 @@ export function recommendForFirstRun(
     model.runtimeRole !== "dflash-drafter" &&
     DEFAULT_ELIGIBLE_MODEL_IDS.has(model.id);
   const publishStatusFor = (model: CatalogModel): "published" | "pending" =>
-    model.publishStatus ??
-    eliza1TierPublishStatus(model.id as Eliza1TierId);
+    model.publishStatus ?? eliza1TierPublishStatus(model.id as Eliza1TierId);
   const isPublishedEligibleChat = (model: CatalogModel): boolean =>
     isEligibleChat(model) && publishStatusFor(model) === "published";
 

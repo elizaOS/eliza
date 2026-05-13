@@ -523,7 +523,7 @@ Goal: prove that a Tauri chat box, talking to a Bun-hosted *real* `@elizaos/agen
 
 #### Phase 0 — Milestone 11a (DONE)
 
-- ✅ `bun add @elizaos/agent@alpha @elizaos/core@alpha @elizaos/plugin-bootstrap@alpha`. Real dep, not LARP.
+- ✅ `bun add @elizaos/agent@alpha @elizaos/core@alpha @elizaos/plugin-sql@alpha`. Real dep, not LARP.
 - ✅ Eliza `Character` defined at `agent/src/characters/eliza.ts` with the persona base + OS-context preamble; validated by `@elizaos/agent`'s `CharacterSchema` (Zod) at module load.
 - ✅ `persona.ts` rebuilt around the validated character; appends the dynamic `<calibration>` block at runtime.
 - ✅ CI updated: `node-gyp + build-essential` apt-installed in the bun job so `node-pty` (transitive dep) rebuilds cleanly.

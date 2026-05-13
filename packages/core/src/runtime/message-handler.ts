@@ -6,6 +6,7 @@ import type {
 } from "../types/components";
 import type { AgentContext } from "../types/contexts";
 import { parseJsonObject } from "./json-output";
+import { looksLikeRefusal } from "./refusal-detector";
 
 export type V5MessageHandlerOutput = MessageHandlerResult;
 
@@ -109,9 +110,22 @@ export function parseMessageHandlerOutput(
 
 	const extract = parseExtract(parsed.extract);
 
+	// Mirror of the refusal-suppression in `messageHandlerFromFieldResult`
+	// (services/message.ts): when the model contradicted its own routing —
+	// chose to plan (non-simple contexts OR candidateActions present) but
+	// wrote a refusal in replyText — drop the refusal text so it does not
+	// ship via the early-reply path. See elizaOS/eliza#7620.
+	const planningContexts = contexts.filter(
+		(context) => context !== SIMPLE_CONTEXT_ID,
+	);
+	const willPlan =
+		simple !== true &&
+		(planningContexts.length > 0 || candidateActions.length > 0);
+	const sanitizedReply = willPlan && looksLikeRefusal(reply) ? "" : reply;
+
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
-		reply,
+		reply: sanitizedReply,
 		...(requiresTool !== undefined ? { requiresTool } : {}),
 		...(simple !== undefined ? { simple } : {}),
 	};

@@ -9,7 +9,6 @@ import {
 
 export type ChannelExecutionProfile =
   | "voice_fast"
-  | "text_fast"
   | "group_compact"
   | "default_full";
 
@@ -17,10 +16,6 @@ function resolveChannelProfile(
   content: Record<string, unknown> | undefined,
 ): ChannelExecutionProfile {
   const channelType = content?.channelType;
-  const conversationMode =
-    typeof content?.conversationMode === "string"
-      ? content.conversationMode.toLowerCase()
-      : null;
   if (
     channelType === ChannelType.VOICE_DM ||
     channelType === ChannelType.VOICE_GROUP
@@ -29,9 +24,6 @@ function resolveChannelProfile(
   }
   if (channelType === ChannelType.GROUP) {
     return "group_compact";
-  }
-  if (conversationMode === "simple") {
-    return "text_fast";
   }
   return "default_full";
 }

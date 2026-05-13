@@ -16,9 +16,8 @@
     "typecheck": "bun --bun tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/agent": "^2.0.0-alpha.537",
-    "@elizaos/core": "^2.0.0-alpha.537",
-    "@elizaos/plugin-bootstrap": "^1.7.3-alpha.4",
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "node-llama-cpp": "3.10.0"
   },
   "devDependencies": {

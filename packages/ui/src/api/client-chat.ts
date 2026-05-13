@@ -17,7 +17,6 @@ import type {
   ConversationGreeting,
   ConversationMessage,
   ConversationMetadata,
-  ConversationMode,
   CreateConversationOptions,
   DatabaseConfigResponse,
   DatabaseStatus,
@@ -278,7 +277,6 @@ declare module "./client-base" {
     sendChatRest(
       text: string,
       channelType?: ConversationChannelType,
-      conversationMode?: ConversationMode,
     ): Promise<{
       text: string;
       agentName: string;
@@ -291,7 +289,6 @@ declare module "./client-base" {
       onToken: (token: string, accumulatedText?: string) => void,
       channelType?: ConversationChannelType,
       signal?: AbortSignal,
-      conversationMode?: ConversationMode,
     ): Promise<{
       text: string;
       agentName: string;
@@ -392,7 +389,6 @@ declare module "./client-base" {
       text: string,
       channelType?: ConversationChannelType,
       images?: ImageAttachment[],
-      conversationMode?: ConversationMode,
       metadata?: Record<string, unknown>,
     ): Promise<{
       text: string;
@@ -416,7 +412,6 @@ declare module "./client-base" {
       channelType?: ConversationChannelType,
       signal?: AbortSignal,
       images?: ImageAttachment[],
-      conversationMode?: ConversationMode,
       metadata?: Record<string, unknown>,
     ): Promise<{
       text: string;
@@ -758,7 +753,6 @@ ElizaClient.prototype.sendChatRest = async function (
   this: ElizaClient,
   text,
   channelType = "DM",
-  conversationMode?,
 ) {
   const sendToConversation = async (conversationId: string) =>
     this.sendConversationMessage(
@@ -766,7 +760,6 @@ ElizaClient.prototype.sendChatRest = async function (
       text,
       channelType,
       undefined,
-      conversationMode,
     );
 
   const conversationId = await ensureLegacyChatConversationId(this);
@@ -791,7 +784,6 @@ ElizaClient.prototype.sendChatStream = async function (
   onToken,
   channelType = "DM",
   signal?,
-  conversationMode?,
 ) {
   const streamConversation = async (conversationId: string) =>
     this.sendConversationMessageStream(
@@ -801,7 +793,6 @@ ElizaClient.prototype.sendChatStream = async function (
       channelType,
       signal,
       undefined,
-      conversationMode,
     );
 
   const conversationId = await ensureLegacyChatConversationId(this);
@@ -1026,7 +1017,6 @@ ElizaClient.prototype.sendConversationMessage = async function (
   text,
   channelType = "DM",
   images?,
-  conversationMode?,
   metadata?,
 ) {
   const response = await this.fetch<{
@@ -1042,7 +1032,6 @@ ElizaClient.prototype.sendConversationMessage = async function (
       text,
       channelType,
       ...(images?.length ? { images } : {}),
-      ...(conversationMode ? { conversationMode } : {}),
       ...(metadata ? { metadata } : {}),
     }),
   });
@@ -1063,7 +1052,6 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
   channelType = "DM",
   signal?,
   images?,
-  conversationMode?,
   metadata?,
 ) {
   return this.streamChatEndpoint(
@@ -1073,7 +1061,6 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     channelType,
     signal,
     images,
-    conversationMode,
     metadata,
   );
 };

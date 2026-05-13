@@ -25,7 +25,6 @@ import type {
   Conversation,
   ConversationChannelType,
   ConversationMessage,
-  ConversationMode,
   CreateTriggerRequest,
   DropStatus,
   ExtensionStatus,
@@ -368,7 +367,6 @@ export interface AppState {
   chatLastUsage: ChatTurnUsage | null;
   chatAvatarVisible: boolean;
   chatAgentVoiceMuted: boolean;
-  chatMode: ConversationMode;
   chatAvatarSpeaking: boolean;
   conversations: Conversation[];
   activeConversationId: string | null;

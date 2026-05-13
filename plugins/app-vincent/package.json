@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-vincent",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -22,11 +22,11 @@
     }
   },
   "dependencies": {
-    "@elizaos/agent": "2.0.0-beta.2",
-    "@elizaos/app-core": "2.0.0-beta.3",
-    "@elizaos/core": "2.0.0-beta.1",
-    "@elizaos/shared": "2.0.0-beta.1",
-    "@elizaos/ui": "2.0.0-beta.2",
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
   "elizaos": {

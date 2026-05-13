@@ -211,7 +211,9 @@ try {
       samples: warmupSamples,
       audioSeconds: warmupAudioSeconds,
       rtf:
-        warmupAudioSeconds > 0 ? warmupSynthMs / 1000 / warmupAudioSeconds : null,
+        warmupAudioSeconds > 0
+          ? warmupSynthMs / 1000 / warmupAudioSeconds
+          : null,
       cancelled: result.cancelled,
     });
   }

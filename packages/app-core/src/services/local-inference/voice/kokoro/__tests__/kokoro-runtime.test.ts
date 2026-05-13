@@ -133,8 +133,8 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(captured!.feeds).not.toBeNull();
-    const styleFeed = captured!.feeds!.style;
+    expect(captured?.feeds).not.toBeNull();
+    const styleFeed = captured?.feeds?.style;
     expect(Array.from(styleFeed.data as Float32Array)).toEqual([1, 2, 3, 4]);
     expect(styleFeed.dims).toEqual([1, 4]);
   });
@@ -164,7 +164,7 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    const styleFeed = captured!.feeds!.style;
+    const styleFeed = captured?.feeds?.style;
     expect(Array.from(styleFeed.data as Float32Array)).toEqual([
       300, 301, 302, 303,
     ]);
@@ -198,7 +198,7 @@ describe("KokoroOnnxRuntime — voice .bin loader formats", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    const styleFeed = captured!.feeds!.style;
+    const styleFeed = captured?.feeds?.style;
     expect(Array.from(styleFeed.data as Float32Array)).toEqual([
       200, 201, 202, 203,
     ]);
@@ -254,8 +254,8 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(Object.keys(captured!.feeds!)).toContain("input_ids");
-    expect(Object.keys(captured!.feeds!)).not.toContain("tokens");
+    expect(Object.keys(captured?.feeds!)).toContain("input_ids");
+    expect(Object.keys(captured?.feeds!)).not.toContain("tokens");
   });
 
   it("feeds `tokens` when the session lacks `input_ids` (older kokoro-onnx export)", async () => {
@@ -275,8 +275,8 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(Object.keys(captured!.feeds!)).toContain("tokens");
-    expect(Object.keys(captured!.feeds!)).not.toContain("input_ids");
+    expect(Object.keys(captured?.feeds!)).toContain("tokens");
+    expect(Object.keys(captured?.feeds!)).not.toContain("input_ids");
   });
 
   it("defaults to `input_ids` when the session does not report input names (test stubs without inputNames)", async () => {
@@ -294,6 +294,6 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
       cancelSignal: { cancelled: false },
       onChunk: () => false,
     });
-    expect(Object.keys(captured!.feeds!)).toContain("input_ids");
+    expect(Object.keys(captured?.feeds!)).toContain("input_ids");
   });
 });

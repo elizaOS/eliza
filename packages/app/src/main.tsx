@@ -1007,7 +1007,6 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         body: JSON.stringify({
           text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
           channelType: "DM",
-          conversationMode: "simple",
           source: "ios-local",
           metadata: { smoke: "ios-full-bun" },
         }),
@@ -1026,7 +1025,6 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
         body: JSON.stringify({
           text: IOS_FULL_BUN_SMOKE_CHAT_TEXT,
           channelType: "DM",
-          conversationMode: "simple",
           source: "ios-local",
           metadata: { smoke: "ios-full-bun-stream" },
         }),

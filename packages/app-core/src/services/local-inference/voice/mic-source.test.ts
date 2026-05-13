@@ -159,7 +159,19 @@ describe("DesktopMicSource", () => {
     // `cat` writes the file to stdout then exits. (A real `arecord`/`sox`
     // streams forever, so the source treats that exit as an error — fine
     // for this test, which only cares that the byte→frame path works.)
-    await new Promise((r) => setTimeout(r, 200));
+    // Wait for cat's exit to propagate: the exit event fires *after* all
+    // stdout data events, so once the error listener fires we know every
+    // frame has been emitted. A 2 s safety-net timeout prevents a hang if
+    // cat somehow never exits.
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        const unsub = src.onError(() => {
+          unsub();
+          resolve();
+        });
+      }),
+      new Promise<void>((resolve) => setTimeout(resolve, 2000)),
+    ]);
     await src.stop();
 
     expect(frames.length).toBeGreaterThanOrEqual(3);

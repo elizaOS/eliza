@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-local-ai",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "",
   "type": "module",
   "main": "dist/node/index.node.js",
@@ -54,8 +54,8 @@
     "format:check": "bunx @biomejs/biome format ."
   },
   "dependencies": {
-    "@elizaos/core": "2.0.0-beta.1",
-    "@elizaos/plugin-local-inference": "2.0.0-beta.1",
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-local-inference": "workspace:*",
     "@huggingface/transformers": "^4.0.0",
     "node-llama-cpp": "3.18.1",
     "stream-browserify": "^3.0.0",
@@ -69,7 +69,7 @@
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
-    "@elizaos/core": "2.0.0-beta.1"
+    "@elizaos/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public"

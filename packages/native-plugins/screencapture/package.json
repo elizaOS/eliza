@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-screencapture",
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.2",
   "description": "Captures screenshots and records the screen across web, mobile, and desktop.",
   "keywords": [
     "screen-capture",
@@ -34,7 +34,7 @@
   "author": "elizaOS",
   "license": "MIT",
   "dependencies": {
-    "@elizaos/app-core": "2.0.0-beta.3"
+    "@elizaos/app-core": "workspace:*"
   },
   "repository": {
     "type": "git",
