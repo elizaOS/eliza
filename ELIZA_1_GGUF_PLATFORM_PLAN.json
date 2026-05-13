@@ -91,8 +91,16 @@
         "id": "windows-arm64-vulkan"
       }
     ],
-    "text_quant": "Q3_K_M",
+    "text_quant": "Q4_K_M",
+    "text_quantizations": [
+      "Q4_K_M",
+      "Q6_K",
+      "Q8_0"
+    ],
     "tier": "0_8b",
+    "voice_backends": [
+      "kokoro"
+    ],
     "voice_quant": "Q4_K_M"
   },
   "27b": {
@@ -181,7 +189,15 @@
       }
     ],
     "text_quant": "Q4_K_M",
+    "text_quantizations": [
+      "Q4_K_M",
+      "Q6_K",
+      "Q8_0"
+    ],
     "tier": "27b",
+    "voice_backends": [
+      "omnivoice"
+    ],
     "voice_quant": "Q8_0"
   },
   "27b-1m": {
@@ -232,7 +248,15 @@
       }
     ],
     "text_quant": "Q4_K_M",
+    "text_quantizations": [
+      "Q4_K_M",
+      "Q6_K",
+      "Q8_0"
+    ],
     "tier": "27b-1m",
+    "voice_backends": [
+      "omnivoice"
+    ],
     "voice_quant": "Q8_0"
   },
   "27b-256k": {
@@ -296,7 +320,15 @@
       }
     ],
     "text_quant": "Q4_K_M",
+    "text_quantizations": [
+      "Q4_K_M",
+      "Q6_K",
+      "Q8_0"
+    ],
     "tier": "27b-256k",
+    "voice_backends": [
+      "omnivoice"
+    ],
     "voice_quant": "Q8_0"
   },
   "2b": {
@@ -394,7 +426,15 @@
       }
     ],
     "text_quant": "Q4_K_M",
+    "text_quantizations": [
+      "Q4_K_M",
+      "Q6_K",
+      "Q8_0"
+    ],
     "tier": "2b",
+    "voice_backends": [
+      "kokoro"
+    ],
     "voice_quant": "Q4_K_M"
   },
   "4b": {
@@ -501,7 +541,15 @@
       }
     ],
     "text_quant": "Q4_K_M",
+    "text_quantizations": [
+      "Q4_K_M",
+      "Q6_K",
+      "Q8_0"
+    ],
     "tier": "4b",
+    "voice_backends": [
+      "kokoro"
+    ],
     "voice_quant": "Q4_K_M"
   },
   "9b": {
@@ -595,7 +643,16 @@
       }
     ],
     "text_quant": "Q4_K_M",
+    "text_quantizations": [
+      "Q4_K_M",
+      "Q6_K",
+      "Q8_0"
+    ],
     "tier": "9b",
+    "voice_backends": [
+      "kokoro",
+      "omnivoice"
+    ],
     "voice_quant": "Q8_0"
   }
 }

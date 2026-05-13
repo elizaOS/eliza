@@ -10,6 +10,7 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { analyticsService } from "@/lib/services/analytics";
+import { analyticsAlertsService } from "@/lib/services/analytics-alerts";
 import { organizationsService } from "@/lib/services/organizations";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -43,6 +44,13 @@ app.get("/", async (c) => {
     const creditBalance = Number(organization.credit_balance ?? 0);
     const projections = generateProjections(historicalData, periods);
     const alerts = generateProjectionAlerts(historicalData, projections, creditBalance);
+    const alertEvents = await analyticsAlertsService.persistProjectionAlerts({
+      organizationId: user.organization_id,
+      alerts,
+      historicalData,
+      projectedData: projections,
+      creditBalance,
+    });
 
     return c.json({
       success: true,
@@ -56,7 +64,16 @@ app.get("/", async (c) => {
           successRate: point.successRate,
         })),
         projections,
-        alerts,
+        alerts: alerts.map((alert) => {
+          const event = alertEvents.find((candidate) => candidate.title === alert.title);
+          return {
+            ...alert,
+            eventId: event?.id,
+            severity: event?.severity,
+            status: event?.status,
+          };
+        }),
+        alertEvents,
         creditBalance,
       },
     });

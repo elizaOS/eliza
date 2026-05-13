@@ -1126,23 +1126,15 @@ public class ElizaAgentService extends Service {
             // or via `adb shell run-as`).
             File devNull = new File("/dev/null");
             pb.redirectInput(ProcessBuilder.Redirect.from(devNull));
-            // TEMP DEBUG: force stdio to file so we can inspect the
-            // agent.log mid-iteration. Revert to the env-gated branch
-            // (below, commented) before shipping.
-            {
-                pb.redirectErrorStream(true);
+            pb.redirectErrorStream(true);
+            if ("1".equals(env.get("ELIZA_LOG_STDOUT"))) {
                 File logFile = new File(root, AGENT_LOG_NAME);
                 try { logFile.createNewFile(); } catch (IOException ignored) {}
-                pb.redirectOutput(ProcessBuilder.Redirect.to(logFile));
+                pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
+                Log.i(TAG, "Agent stdout/stderr capture enabled at " + logFile.getAbsolutePath());
+            } else {
+                pb.redirectOutput(ProcessBuilder.Redirect.to(devNull));
             }
-            // if ("1".equals(System.getenv("ELIZA_LOG_STDOUT"))) {
-            //     pb.redirectErrorStream(true);
-            //     File logFile = new File(root, AGENT_LOG_NAME);
-            //     pb.redirectOutput(ProcessBuilder.Redirect.appendTo(logFile));
-            // } else {
-            //     pb.redirectErrorStream(true);
-            //     pb.redirectOutput(ProcessBuilder.Redirect.to(devNull));
-            // }
 
             Process started;
             try {

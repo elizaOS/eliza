@@ -187,7 +187,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts the legacy { modelId } body shape (no overrides)", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "eliza-1-2b",
+      modelId: "eliza-1-1_7b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -197,7 +197,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "eliza-1-2b" },
+        body: { modelId: "eliza-1-1_7b" },
       }),
       res.res,
       STATE,
@@ -205,12 +205,12 @@ describe("POST /api/local-inference/active", () => {
 
     expect(handled).toBe(true);
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", undefined);
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-1_7b", undefined);
   });
 
   it("forwards a parsed overrides block to setActive", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "eliza-1-2b",
+      modelId: "eliza-1-1_7b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -221,7 +221,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-2b",
+          modelId: "eliza-1-1_7b",
           overrides: {
             contextSize: 131072,
             cacheTypeK: "f16",
@@ -236,7 +236,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-1_7b", {
       contextSize: 131072,
       cacheTypeK: "f16",
       cacheTypeV: "q8_0",
@@ -252,7 +252,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-2b",
+          modelId: "eliza-1-1_7b",
           overrides: { cacheTypeK: "tbq4_0" },
         },
       }),
@@ -275,7 +275,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-2b",
+          modelId: "eliza-1-1_7b",
           overrides: { contextSize: 100 },
         },
       }),
@@ -295,7 +295,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-2b",
+          modelId: "eliza-1-1_7b",
           overrides: { kvOffload: "magic" },
         },
       }),
@@ -309,7 +309,7 @@ describe("POST /api/local-inference/active", () => {
 
   it("accepts kvOffload object form { gpuLayers: N }", async () => {
     setActiveMock.mockResolvedValue({
-      modelId: "eliza-1-2b",
+      modelId: "eliza-1-1_7b",
       loadedAt: "2026-05-09T00:00:00.000Z",
       status: "ready",
     });
@@ -320,7 +320,7 @@ describe("POST /api/local-inference/active", () => {
         method: "POST",
         pathname: "/api/local-inference/active",
         body: {
-          modelId: "eliza-1-2b",
+          modelId: "eliza-1-1_7b",
           overrides: { kvOffload: { gpuLayers: 16 } },
         },
       }),
@@ -329,7 +329,7 @@ describe("POST /api/local-inference/active", () => {
     );
 
     expect(res.status()).toBe(200);
-    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-2b", {
+    expect(setActiveMock).toHaveBeenCalledWith(null, "eliza-1-1_7b", {
       kvOffload: { gpuLayers: 16 },
     });
   });
@@ -340,7 +340,7 @@ describe("POST /api/local-inference/active", () => {
       fakeReq({
         method: "POST",
         pathname: "/api/local-inference/active",
-        body: { modelId: "eliza-1-2b", overrides: "nope" },
+        body: { modelId: "eliza-1-1_7b", overrides: "nope" },
       }),
       res.res,
       STATE,

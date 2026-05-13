@@ -119,6 +119,7 @@
     "@elizaos/shared": "2.0.0-beta.1",
     "@elizaos/ui": "2.0.0-beta.2",
     "@elizaos/vault": "2.0.0-beta.1",
+    "@huggingface/transformers": "^4.0.0",
     "@node-rs/argon2": "^2.0.2",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-dialog": "^1.1.15",

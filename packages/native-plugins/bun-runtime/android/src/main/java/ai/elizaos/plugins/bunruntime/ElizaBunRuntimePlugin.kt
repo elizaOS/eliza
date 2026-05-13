@@ -1,5 +1,8 @@
 package ai.elizaos.plugins.bunruntime
 
+import android.content.ComponentName
+import android.content.Intent
+import android.content.pm.PackageManager
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
@@ -21,10 +24,10 @@ import java.util.Locale
  * extraction, process lifecycle, watchdog health-checks, and crash restarts.
  *
  * This plugin therefore delegates lifecycle operations to the host app's
- * `ElizaAgentService` via reflection (no compile-time dependency on the
- * host package) and routes all RPC calls — `sendMessage`, `call`,
- * `getStatus` — over the loopback HTTP surface that the service binds on
- * `127.0.0.1:31337`.
+ * `ElizaAgentService` through the host app package (no compile-time
+ * dependency on the host package) and routes all RPC calls — `sendMessage`,
+ * `call`, `getStatus` — over the loopback HTTP surface that the service
+ * binds on `127.0.0.1:31337`.
  *
  * Wire protocol parity with the iOS side:
  *   - `start(opts)`      → start the `ElizaAgentService`; poll readiness
@@ -54,9 +57,6 @@ class ElizaBunRuntimePlugin : Plugin() {
         private const val POLL_INTERVAL_MS = 2_000L
         private const val DEFAULT_TIMEOUT_MS = 30_000
         private const val MAX_BODY_BYTES = 10 * 1024 * 1024 // 10 MB
-
-        // Reflected class names to avoid a hard compile-time dep on the host app.
-        private const val AGENT_SERVICE_CLASS = "ai.milady.milady.ElizaAgentService"
     }
 
     // ── start ───────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ class ElizaBunRuntimePlugin : Plugin() {
         val startTimeoutMs = DEFAULT_START_TIMEOUT_MS
 
         // Spawn a background thread to:
-        //   1. Start the ElizaAgentService via reflection.
+        //   1. Start the ElizaAgentService through the host app package.
         //   2. Poll /api/health until the agent is ready or the timeout elapses.
         // We must not block the Capacitor executor thread — agent boot takes
         // 30-120 s on first launch (PGlite WASM extraction + plugin resolution).
@@ -76,7 +76,7 @@ class ElizaBunRuntimePlugin : Plugin() {
             try {
                 startServiceReflective()
             } catch (e: Exception) {
-                android.util.Log.w(TAG, "start: could not start ElizaAgentService via reflection: ${e.message}")
+                android.util.Log.w(TAG, "start: could not start ElizaAgentService: ${e.message}")
             }
 
             val deadline = System.currentTimeMillis() + startTimeoutMs
@@ -202,7 +202,7 @@ class ElizaBunRuntimePlugin : Plugin() {
         try {
             stopServiceReflective()
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "stop: could not stop ElizaAgentService via reflection: ${e.message}")
+            android.util.Log.w(TAG, "stop: could not stop ElizaAgentService: ${e.message}")
         }
         call.resolve()
     }
@@ -307,11 +307,13 @@ class ElizaBunRuntimePlugin : Plugin() {
         }
     }
 
-    // ── Service reflection helpers ───────────────────────────────────────────
+    // ── Service helpers ──────────────────────────────────────────────────────
 
     /**
-     * Call `ElizaAgentService.start(context)` via reflection so this plugin
-     * does not take a compile-time dependency on the host app package.
+     * Start the host app's `ElizaAgentService` without a compile-time
+     * dependency on the host package. White-label builds can change the
+     * application id, so resolve the service from the current app package
+     * instead of baking in one Java package name.
      *
      * The host app registers `AgentPlugin` and keeps `ElizaAgentService` as
      * the canonical process owner. This plugin simply asks it to (re)start.
@@ -319,27 +321,33 @@ class ElizaBunRuntimePlugin : Plugin() {
     private fun startServiceReflective() {
         val ctx = context ?: return
         try {
-            val cls = Class.forName(AGENT_SERVICE_CLASS)
-            val startMethod = cls.getMethod("start", android.content.Context::class.java)
-            startMethod.invoke(null, ctx)
-        } catch (e: ClassNotFoundException) {
-            // The host app may not expose ElizaAgentService under this exact
-            // class name (white-label builds, AOSP variants). Log and continue;
-            // the service may already be running or managed externally.
-            android.util.Log.d(TAG, "ElizaAgentService not found at $AGENT_SERVICE_CLASS: ${e.message}")
+            val serviceClassName = resolveAgentServiceClassName() ?: run {
+                android.util.Log.d(TAG, "ElizaAgentService not registered in ${ctx.packageName}")
+                return
+            }
+            val intent = Intent().apply {
+                component = ComponentName(ctx.packageName, serviceClassName)
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                ctx.startForegroundService(intent)
+            } else {
+                ctx.startService(intent)
+            }
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "Could not reflectively start ElizaAgentService: ${e.message}")
+            android.util.Log.w(TAG, "Could not start ElizaAgentService: ${e.message}")
         }
     }
 
     private fun stopServiceReflective() {
         val ctx = context ?: return
         try {
-            val cls = Class.forName(AGENT_SERVICE_CLASS)
-            val stopMethod = cls.getMethod("stop", android.content.Context::class.java)
-            stopMethod.invoke(null, ctx)
+            val serviceClassName = resolveAgentServiceClassName() ?: return
+            val intent = Intent().apply {
+                component = ComponentName(ctx.packageName, serviceClassName)
+            }
+            ctx.stopService(intent)
         } catch (e: Exception) {
-            android.util.Log.w(TAG, "Could not reflectively stop ElizaAgentService: ${e.message}")
+            android.util.Log.w(TAG, "Could not stop ElizaAgentService: ${e.message}")
         }
     }
 
@@ -350,13 +358,31 @@ class ElizaBunRuntimePlugin : Plugin() {
      */
     private fun readLocalAgentToken(): String? {
         return try {
-            val cls = Class.forName(AGENT_SERVICE_CLASS)
+            val serviceClassName = resolveAgentServiceClassName() ?: return null
+            val cls = Class.forName(serviceClassName)
             val m = cls.getMethod("localAgentToken")
             val token = m.invoke(null) as? String
             token?.trim()?.takeIf { it.isNotEmpty() }
         } catch (_: Exception) {
             null
         }
+    }
+
+    private fun resolveAgentServiceClassName(): String? {
+        val ctx = context ?: return null
+        val packageName = ctx.packageName
+        val packageInfo = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            ctx.packageManager.getPackageInfo(
+                packageName,
+                PackageManager.PackageInfoFlags.of(PackageManager.GET_SERVICES.toLong()),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            ctx.packageManager.getPackageInfo(packageName, PackageManager.GET_SERVICES)
+        }
+        return packageInfo.services
+            ?.firstOrNull { it.packageName == packageName && it.name.endsWith(".ElizaAgentService") }
+            ?.name
     }
 
     // ── Loopback HTTP helpers ────────────────────────────────────────────────

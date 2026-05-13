@@ -45,31 +45,34 @@ export function useProvisioningChat(
   const [containerStatus, setContainerStatus] = React.useState("pending");
   const [bridgeUrl, setBridgeUrl] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
-  const stoppedRef = React.useRef(false);
+  const pollSequenceRef = React.useRef(0);
 
   const isContainerReady = containerStatus === "running" && bridgeUrl !== null;
 
   // Poll provisioning agent status every 5 seconds.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: cloudApiBase triggers client re-creation
   React.useEffect(() => {
     if (isContainerReady) return;
     if (containerStatus === "error") return;
-    stoppedRef.current = false;
+    const sequence = pollSequenceRef.current + 1;
+    pollSequenceRef.current = sequence;
+    let stopped = false;
+    const isCurrent = () => !stopped && pollSequenceRef.current === sequence;
 
     const poll = async () => {
-      if (stoppedRef.current) return;
+      if (!isCurrent()) return;
       try {
         const url = new URL(
           `/api/v1/provisioning-agent${agentId ? `?agentId=${encodeURIComponent(agentId)}` : ""}`,
           cloudApiBase,
         );
         const resp = await fetch(url.toString());
-        if (stoppedRef.current) return;
+        if (!isCurrent()) return;
         if (resp.ok) {
           const json = (await resp.json()) as {
             success?: boolean;
             data?: { status?: string; bridgeUrl?: string };
           };
+          if (!isCurrent()) return;
           if (json.success && json.data) {
             const newStatus = json.data.status ?? containerStatus;
             setContainerStatus(newStatus);
@@ -77,7 +80,7 @@ export function useProvisioningChat(
               setBridgeUrl(json.data.bridgeUrl);
             }
             if (newStatus === "running" && json.data.bridgeUrl) {
-              stoppedRef.current = true;
+              stopped = true;
               setMessages((prev) => [
                 ...prev,
                 {
@@ -100,7 +103,7 @@ export function useProvisioningChat(
     }, POLL_INTERVAL_MS);
 
     return () => {
-      stoppedRef.current = true;
+      stopped = true;
       clearInterval(timer);
     };
   }, [agentId, cloudApiBase, isContainerReady, containerStatus]);
@@ -118,16 +121,26 @@ export function useProvisioningChat(
       setIsLoading(true);
 
       try {
-        const chatUrl = new URL("/api/v1/provisioning-agent/chat", cloudApiBase);
+        const chatUrl = new URL(
+          "/api/v1/provisioning-agent/chat",
+          cloudApiBase,
+        );
         const resp = await fetch(chatUrl.toString(), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: content.trim(), agentId: agentId ?? undefined }),
+          body: JSON.stringify({
+            message: content.trim(),
+            agentId: agentId ?? undefined,
+          }),
         });
         if (resp.ok) {
           const json = (await resp.json()) as {
             success?: boolean;
-            data?: { reply?: string; containerStatus?: string; bridgeUrl?: string };
+            data?: {
+              reply?: string;
+              containerStatus?: string;
+              bridgeUrl?: string;
+            };
           };
           if (json.success && json.data) {
             if (json.data.containerStatus) {
@@ -159,7 +172,7 @@ export function useProvisioningChat(
         setIsLoading(false);
       }
     },
-    [agentId, isLoading],
+    [agentId, isLoading, cloudApiBase],
   );
 
   return {

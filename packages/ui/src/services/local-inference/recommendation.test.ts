@@ -39,12 +39,10 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
-    // Per the 2026-05-12 Qwen3.5 directive, the small ladder leads with
-    // eliza-1-0_8b (Qwen3.5-0.8B-Base, the new small default).
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
     // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is 27b-256k -> 27b -> 9b -> 2b -> 1_7b, picks 27b.
+    // not. Ladder is 27b-1m -> 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
@@ -65,7 +63,7 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
   });
 
-  it("uses the mobile platform ladder and prefers the small Qwen3.5 tier when it fits", () => {
+  it("uses the mobile platform ladder and prefers the small Eliza-1 tier when it fits", () => {
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -77,16 +75,13 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
-    // Per the 2026-05-12 Qwen3.5 directive, mobile ladders lead with the
-    // Qwen3.5 small/mid tiers (eliza-1-0_8b / eliza-1-2b) over the
-    // deprecated Qwen3 tiers.
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
   });
 
   it("falls back to the 0.8B tier on minimal mobile", () => {
-    // 2b needs 4 GB minRam; below that the mobile TEXT_LARGE ladder steps
-    // down to 0_8b (2 GB minRam). Below 2 GB nothing fits.
+    // 2B needs 4 GB minRam; below that the mobile TEXT_LARGE ladder steps
+    // down to 0.8B. Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
       [3.5, "eliza-1-0_8b"],
       [1.5, null],

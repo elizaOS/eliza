@@ -22,8 +22,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useRenderGuard } from "../../runtime/render-telemetry";
 import { cn } from "../../lib/utils";
+import { useRenderGuard } from "../../runtime/render-telemetry";
 import { Button } from "../button";
 
 type BranchContextType = {
@@ -104,10 +104,7 @@ export type BranchMessagesProps = HTMLAttributes<HTMLDivElement>;
 
 export const BranchMessages = ({ children, ...props }: BranchMessagesProps) => {
   const { currentBranch, setTotalBranches } = useBranch();
-  const childrenArray = useMemo(
-    () => Children.toArray(children) as ReactNode[],
-    [children],
-  );
+  const childrenArray = useMemo(() => Children.toArray(children) as ReactNode[], [children]);
 
   useEffect(() => {
     setTotalBranches(childrenArray.length);

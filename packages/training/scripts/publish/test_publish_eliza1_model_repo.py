@@ -62,6 +62,32 @@ def _write_bundle(
         },
     }
     (bundle / "eliza-1.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    release = {
+        "schemaVersion": 1,
+        "tier": tier,
+        "releaseState": "base-v1",
+        "publishEligible": True,
+        "final": {
+            "weights": True,
+            "hashes": True,
+            "evals": True,
+            "licenses": True,
+            "kernelDispatchReports": True,
+            "platformEvidence": True,
+            "sizeFirstRepoIds": True,
+        },
+        "hf": {
+            "repoId": "elizaos/eliza-1",
+            "pathPrefix": f"bundles/{tier}",
+            "status": "upload-ready",
+        },
+    }
+    evidence_dir = bundle / "evidence"
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "release.json").write_text(
+        json.dumps(release),
+        encoding="utf-8",
+    )
     return bundle
 
 
@@ -137,6 +163,23 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     assert any("OmniVoice" in w for w in warning_plan.warnings)
     assert strict_plan.uploadable is False
     assert any("OmniVoice" in e for e in strict_plan.errors)
+
+
+def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "2b")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["releaseState"] = "weights-staged"
+    release["publishEligible"] = False
+    release["final"]["evals"] = False
+    release_path.write_text(json.dumps(release), encoding="utf-8")
+
+    plan = P.plan_bundle(tmp_path, "2b")
+
+    assert plan.uploadable is False
+    assert any("releaseState" in e for e in plan.errors)
+    assert any("publishEligible" in e for e in plan.errors)
+    assert any("final.evals" in e for e in plan.errors)
 
 
 def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):

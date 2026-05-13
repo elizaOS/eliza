@@ -76,7 +76,7 @@ export function detectNvidiaGpu(): DetectedGpu | null {
     if (!name) return null;
 
     const vram_mb = parseInt(memRaw, 10);
-    if (isNaN(vram_mb) || vram_mb <= 0) return null;
+    if (Number.isNaN(vram_mb) || vram_mb <= 0) return null;
 
     // compute_cap may be "N/A" on very old drivers.
     const cuda_compute =
@@ -101,7 +101,7 @@ export function detectNvidiaGpu(): DetectedGpu | null {
  * Never throws.
  */
 export function autoSelectProfile(): GpuProfile | null {
-  const envOverride = process.env["ELIZA_GPU_PROFILE"];
+  const envOverride = process.env.ELIZA_GPU_PROFILE;
   if (envOverride) {
     return getGpuProfile(envOverride);
   }

@@ -65,7 +65,6 @@ import { ramHeadroomReserveMb, resolveRamBudget } from "./ram-budget";
 import {
   grammarRequestFields,
   repairStructuredOutput,
-  resolveGrammarForParams,
   resolveGuidedDecodeForParams,
   type StructuredGenerateParams,
   StructuredOutputRepairStream,
@@ -1677,6 +1676,7 @@ function binarySupportsDflashDraftArchitecture(binaryPath: string): boolean {
     path.join(path.dirname(binaryPath), "CAPABILITIES.json"),
   );
   if (!caps) return false;
+  if (!capabilitiesAreFreshForBinary(binaryPath)) return false;
   const raw = caps as DflashBinaryCapabilities & Record<string, unknown>;
   if (raw.dflashDraftArchitecture === true) return true;
   const draftArchitectures = raw.draftArchitectures;

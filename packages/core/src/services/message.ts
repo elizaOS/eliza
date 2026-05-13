@@ -1502,6 +1502,56 @@ function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
 	);
 }
 
+type VoiceTurnSignalMetadata = {
+	endOfTurnProbability?: number;
+	nextSpeaker?: "agent" | "user" | "unknown";
+	agentShouldSpeak?: boolean | null;
+	source?: string;
+	model?: string;
+};
+
+function getVoiceTurnSignalMetadata(
+	message: Pick<Memory, "content">,
+): VoiceTurnSignalMetadata | null {
+	const value = message.content?.voiceTurnSignal;
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	const raw = value as Record<string, unknown>;
+	const signal: VoiceTurnSignalMetadata = {};
+	if (typeof raw.endOfTurnProbability === "number") {
+		signal.endOfTurnProbability = raw.endOfTurnProbability;
+	}
+	if (
+		raw.nextSpeaker === "agent" ||
+		raw.nextSpeaker === "user" ||
+		raw.nextSpeaker === "unknown"
+	) {
+		signal.nextSpeaker = raw.nextSpeaker;
+	}
+	if (
+		typeof raw.agentShouldSpeak === "boolean" ||
+		raw.agentShouldSpeak === null
+	) {
+		signal.agentShouldSpeak = raw.agentShouldSpeak;
+	}
+	if (typeof raw.source === "string") signal.source = raw.source;
+	if (typeof raw.model === "string") signal.model = raw.model;
+	return Object.keys(signal).length > 0 ? signal : null;
+}
+
+function voiceTurnSignalSuppressesAgent(
+	signal: VoiceTurnSignalMetadata | null,
+): boolean {
+	if (!signal) return false;
+	return (
+		signal.agentShouldSpeak === false ||
+		signal.nextSpeaker === "user" ||
+		(typeof signal.endOfTurnProbability === "number" &&
+			signal.endOfTurnProbability < 0.4)
+	);
+}
+
 function normalizeVisibleTextForDuplicateCheck(text: string): string {
 	return text.replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -2784,6 +2834,27 @@ function buildKnownToolRequestResponseHandlerPatch(args: {
 
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
+		{
+			name: "core.voice_turn_signal",
+			description:
+				"Deterministically suppresses voice replies when semantic turn-taking says the next speaker is not the agent.",
+			priority: 0,
+			shouldRun: ({ message }) =>
+				isVoiceChannelMessage(message) &&
+				voiceTurnSignalSuppressesAgent(getVoiceTurnSignalMetadata(message)),
+			evaluate: ({ message }) => {
+				const signal = getVoiceTurnSignalMetadata(message);
+				return {
+					processMessage: "IGNORE",
+					requiresTool: false,
+					simple: true,
+					clearReply: true,
+					debug: [
+						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
+					],
+				};
+			},
+		},
 		{
 			name: "core.known_tool_request_repair",
 			description:
@@ -4739,7 +4810,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
 			args.message.content?.channelType === ChannelType.DM ||
-			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
@@ -5632,60 +5702,6 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
 	}
 	return out;
-}
-
-/**
- * Build the prompt sent to the fallback "failure reply" model when the
- * planner trajectory errors out (rate limits, transient network failure,
- * provider 5xx). The prompt forbids the model from emitting any
- * substantive answer to the user's question — including answers that
- * appear "obvious" from recent-conversation context — because the
- * grounding trajectory never ran.
- *
- * Why a separate exported function: this prompt is load-bearing for
- * correctness (a previous version's "if you can plausibly act, do it"
- * escape hatch caused gpt-oss-120b on Cerebras to hallucinate a git
- * SHA from prior chat context during a live battle test, even though
- * no tool was actually called). Pinning the hard rules in tests means
- * a future "let's make the failure reply more helpful" refactor can't
- * silently re-introduce the hallucination vector.
- *
- * @param recentMessages Plain-text projection of the recent conversation
- * (whatever the caller has at hand — typically `state.values.recentMessages`).
- */
-export function buildFailureReplyPrompt(recentMessages: string): string {
-	return [
-		"You hit a transient model error and have to send a short user-facing reply.",
-		"Write a one or two sentence reply in plain language.",
-		"",
-		"Hard rules:",
-		"- Stay in character. Keep your usual voice and tone.",
-		"- NEVER mention internal mechanism words such as: planner, action_planner,",
-		"  XML, JSON, schema, structured output, model, retries, sonnet,",
-		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-		"  loop, runtime, dispatch, or hand off. The user does not know or care",
-		"  what those are.",
-		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-		"- Acknowledge that something went wrong and suggest a retry. Examples:",
-		'  "something flaked, try again in a sec",',
-		'  "weird hiccup, give me another shot in a moment",',
-		'  "got stuck on my end, retry that?"',
-		"- NEVER answer the user's question on the merits in this reply. Even",
-		"  if the answer looks obvious from context (a SHA, a count, a price,",
-		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
-		"  The trajectory that would have GROUNDED the answer failed, so any",
-		"  factual claim you make here is by definition ungrounded. The user",
-		"  will retry, the real run will produce the grounded answer, and",
-		"  meanwhile you must not invent one from recent-conversation context.",
-		"- Do not paraphrase or echo the user's question as if you were about",
-		"  to answer it. Just say something went wrong and invite a retry.",
-		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-		"",
-		"Recent Conversation:",
-		recentMessages,
-		"",
-		"Reply:",
-	].join("\n");
 }
 
 /**

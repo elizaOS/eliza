@@ -57,13 +57,12 @@ import type {
 const SHOULD_RESPOND_VALUES = ["RESPOND", "IGNORE", "STOP"] as const;
 
 /**
- * Channel types that drop the explicit `shouldRespond` flag (DM / API /
- * VOICE_DM / SELF) — the agent always responds, so the schema (and skeleton)
- * omit the key entirely. Mirrors `HANDLE_RESPONSE_DIRECT_SCHEMA`.
+ * Channel types that drop the explicit `shouldRespond` flag (DM / API / SELF).
+ * Voice is intentionally excluded: turn-taking can be IGNORE when VAD/STT says
+ * the user is mid-utterance or the next speaker is not the agent.
  */
 const DIRECT_CHANNEL_TYPES: ReadonlySet<string> = new Set([
 	"DM",
-	"VOICE_DM",
 	"API",
 	"SELF",
 ]);
@@ -148,8 +147,8 @@ export interface BuildResponseGrammarOptions {
 	contexts: ReadonlyArray<string>;
 	/**
 	 * The inbound message's channel type (`ChannelType.*` string). On
-	 * DM/API/VOICE_DM/SELF the `shouldRespond` span is dropped (the agent always
-	 * responds), matching `HANDLE_RESPONSE_DIRECT_SCHEMA`.
+	 * DM/API/SELF drop the `shouldRespond` span. Voice channels keep it because
+	 * semantic turn-taking can choose IGNORE.
 	 */
 	channelType?: string;
 	/**

@@ -74,7 +74,7 @@ const dylib = arg(
 );
 const bundle = arg(
   "--bundle",
-  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-0_8b.bundle`,
+  `${process.env.HOME}/.eliza/local-inference/models/eliza-1-0_6b.bundle`,
 );
 const wav = arg("--wav", "/tmp/eliza-asr-hello.wav");
 const out = process.argv.includes("--out") ? arg("--out", "") : "";

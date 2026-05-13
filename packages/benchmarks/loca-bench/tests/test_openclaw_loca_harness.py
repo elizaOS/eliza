@@ -63,6 +63,7 @@ def test_loca_context_preserves_full_messages_tools_and_generation_options() -> 
     assert context["tool_choice"] == "required"
     assert context["max_tokens"] == 77
     assert context["reasoning_effort"] == "low"
+    assert context["task_id"] == "sess-1"
     assert context["session_id"] == "sess-1"
 
 

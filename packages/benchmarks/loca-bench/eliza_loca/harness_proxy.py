@@ -84,7 +84,7 @@ class _HarnessHandler(BaseHTTPRequestHandler):
             payload = self._read_json()
             context = _context_from_payload(payload, self.server.session_id)
             response = self.server.client.send_message(
-                _last_user_text(payload.get("messages")),
+                _eliza_prompt_from_payload(payload),
                 context=context,
             )
             self._write_json(
@@ -173,12 +173,15 @@ def _context_from_payload(
     session_id: str,
 ) -> dict[str, object]:
     messages = payload.get("messages", [])
-    tools = payload.get("tools", [])
+    tools = _normalize_tool_manifest(
+        payload.get("tools", payload.get("functions", []))
+    )
     context: dict[str, object] = {
         "benchmark": "loca_bench",
+        "task_id": session_id,
         "messages": messages if isinstance(messages, list) else [],
         "system_prompt": _first_system_text(messages),
-        "tools": tools if isinstance(tools, list) else [],
+        "tools": tools,
         "session_id": session_id,
     }
     for key in (
@@ -193,6 +196,33 @@ def _context_from_payload(
         if value is not None:
             context[key] = value
     return context
+
+
+def _normalize_tool_manifest(raw_tools: object) -> list[dict[str, Any]]:
+    """Return OpenAI function tools as a flat list.
+
+    LOCA's wrapper normally sends ``tools`` as a list of function definitions,
+    but some upstream paths use ``functions`` or accidentally pass a nested
+    ``[tools]`` shape. The benchmark proxy is the last bridge before Eliza, so
+    it normalizes those equivalent OpenAI-compatible shapes instead of letting
+    the planner see an empty tool inventory and invent helper calls.
+    """
+
+    if not isinstance(raw_tools, Sequence) or isinstance(
+        raw_tools, (str, bytes, bytearray)
+    ):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in raw_tools:
+        if isinstance(item, Mapping):
+            normalized.append(dict(item))
+        elif isinstance(item, Sequence) and not isinstance(
+            item, (str, bytes, bytearray)
+        ):
+            for nested in item:
+                if isinstance(nested, Mapping):
+                    normalized.append(dict(nested))
+    return normalized
 
 
 def _response_metadata(harness_name: str, response: Any) -> dict[str, Any]:
@@ -300,6 +330,35 @@ def _first_system_text(messages: object) -> str | None:
         if isinstance(item, Mapping) and item.get("role") == "system":
             return _content_text(item.get("content"))
     return None
+
+
+def _eliza_prompt_from_payload(payload: Mapping[str, Any]) -> str:
+    messages = payload.get("messages")
+    user_text = _last_user_text(messages)
+    tools = _normalize_tool_manifest(payload.get("tools", payload.get("functions", [])))
+    tool_names = [_tool_name(tool) for tool in tools]
+    tool_names = [name for name in tool_names if name]
+    if not tool_names:
+        return user_text
+
+    return "\n\n".join(
+        [
+            user_text,
+            "LOCA tool contract: call only one of the exact available function tool names below. "
+            "Do not invent aggregate helper tools such as process_assignments_and_quizzes. "
+            "If work remains, call a filesystem, memory, Canvas, python_execute, or claim_done tool.",
+            "Available LOCA function tools:\n" + "\n".join(f"- {name}" for name in tool_names),
+        ]
+    )
+
+
+def _tool_name(tool: Mapping[str, Any]) -> str:
+    function = tool.get("function")
+    if isinstance(function, Mapping):
+        name = function.get("name")
+        return name if isinstance(name, str) else ""
+    name = tool.get("name")
+    return name if isinstance(name, str) else ""
 
 
 def _last_user_text(messages: object) -> str:

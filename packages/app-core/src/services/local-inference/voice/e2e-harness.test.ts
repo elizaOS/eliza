@@ -44,10 +44,10 @@ describe("voice E2E harness artifact validation", () => {
     expect(() =>
       assertRequiredVoiceArtifacts(
         [
-          { kind: "bundle-root", path: "/models/eliza-1-0_8b.bundle" },
+          { kind: "bundle-root", path: "/models/eliza-1-0_6b.bundle" },
           {
             kind: "asr-model",
-            path: "/models/eliza-1-0_8b.bundle/asr/eliza-1-asr.gguf",
+            path: "/models/eliza-1-0_6b.bundle/asr/eliza-1-asr.gguf",
             magic: "GGUF",
           },
         ],

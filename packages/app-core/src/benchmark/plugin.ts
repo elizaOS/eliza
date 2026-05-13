@@ -919,6 +919,9 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     sections.push(
       `Progress replies are invalid in LOCA-bench. If the task is not complete, call exactly one tool. Only use REPLY after the requested files have been written or claim_done has been called.`,
     );
+    sections.push(
+      `Never invent aggregate helper tools. In particular, do not call process_assignments_and_quizzes or any tool name not listed under Available Tools.`,
+    );
   } else if (ctx.tools && ctx.tools.length > 0) {
     // Tau-bench-style harnesses: emphasise tool calling
     sections.push(

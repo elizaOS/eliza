@@ -19,7 +19,7 @@ fp4_supported: true                # future: KV in FP4 once the kernel lands
 nvlink: false
 
 bundle_recommendations:
-  eliza-1-0_8b:
+  eliza-1-0_6b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 32
@@ -31,7 +31,7 @@ bundle_recommendations:
     estimated_decode_tps: 720
     estimated_prefill_tps: 38000
     notes: "Bandwidth-bound; ~1.8x 3090 throughput from the GDDR7 jump."
-  eliza-1-2b:
+  eliza-1-1_7b:
     n_gpu_layers: -1
     ctx_size: 32768
     parallel: 16

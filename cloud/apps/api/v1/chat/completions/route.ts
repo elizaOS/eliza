@@ -54,11 +54,16 @@ import {
   recordUsageAnalytics,
   reserveCredits,
 } from "@/lib/services/ai-billing";
+import { aiBillingRecordsService } from "@/lib/services/ai-billing-records";
 import type { PricingBillingSource } from "@/lib/services/ai-pricing-definitions";
 import { appCreditsService } from "@/lib/services/app-credits";
 import { appsService } from "@/lib/services/apps";
 import { contentModerationService } from "@/lib/services/content-moderation";
-import { type CreditReservation, creditsService } from "@/lib/services/credits";
+import {
+  type CreditReconciliationResult,
+  type CreditReservation,
+  creditsService,
+} from "@/lib/services/credits";
 import { createCreditReservationSettler } from "@/lib/utils/credit-reservation";
 import { logger } from "@/lib/utils/logger";
 import { getRouteTimeoutMs } from "@/lib/utils/request-timeout";
@@ -85,6 +90,27 @@ function buildProviderReconciliationMetadata(
     metadata.vastWorkergroupId = process.env.VAST_WORKERGROUP_ID ?? null;
   }
   return metadata;
+}
+
+function buildProviderBillingFields(
+  provider: string,
+  model: string,
+): {
+  providerInstanceId?: string | null;
+  providerEndpoint?: string | null;
+} {
+  if (provider !== "vast" && !model.startsWith("vast/")) {
+    return {};
+  }
+  return {
+    providerInstanceId:
+      process.env.VAST_PROVIDER_INSTANCE_ID ?? process.env.VAST_INSTANCE_ID ?? null,
+    providerEndpoint:
+      process.env.VAST_PROVIDER_ENDPOINT ??
+      process.env.VAST_ENDPOINT_URL ??
+      process.env.VAST_BASE_URL ??
+      null,
+  };
 }
 
 /**
@@ -613,8 +639,11 @@ export async function handleChatCompletionsPOST(
 ) {
   const startTime = Date.now();
   const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
+  const idempotencyKey = req.headers.get("idempotency-key") || requestId;
   const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
-  let settleReservation: ((actualCost: number) => Promise<void>) | null = null;
+  let settleReservation:
+    | ((actualCost: number) => Promise<CreditReconciliationResult | null>)
+    | null = null;
 
   try {
     // 1. Authenticate
@@ -835,6 +864,7 @@ export async function handleChatCompletionsPOST(
         apiKey ? { id: apiKey.id } : null,
         appCreditsInfo,
         affiliateCode,
+        idempotencyKey,
         requestId,
         appId,
         startTime,
@@ -856,6 +886,7 @@ export async function handleChatCompletionsPOST(
         apiKey ? { id: apiKey.id } : null,
         appCreditsInfo,
         affiliateCode,
+        idempotencyKey,
         requestId,
         appId,
         startTime,
@@ -920,12 +951,13 @@ async function handleStreamingRequest(
   apiKey: { id: string } | null,
   appCreditsInfo: { appId: string; estimatedBaseCost: number; app: unknown } | undefined,
   affiliateCode: string | null,
+  idempotencyKey: string,
   requestId: string,
   appId: string | null,
   startTime: number,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
-  settleReservation: (actualCost: number) => Promise<void>,
+  settleReservation: (actualCost: number) => Promise<CreditReconciliationResult | null>,
   cotOptions: ReturnType<typeof mergeAnthropicCotProviderOptions>,
   effectiveMaxTokens: number | undefined,
   webSearchOptions: ReturnType<typeof buildProviderNativeWebSearchTools>,
@@ -963,21 +995,20 @@ async function handleStreamingRequest(
     ...cotOptions,
     onFinish: async ({ text, usage }) => {
       try {
-        const billing = await billUsage(
-          {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId: apiKey?.id,
-            model,
-            provider,
-            billingSource,
-            requestId,
-            metadata: buildProviderReconciliationMetadata(provider, model, true, appId),
-            affiliateCode,
-          },
-          usage,
-        );
-        await settleReservation(billing.totalCost);
+        const billingContext = {
+          organizationId: user.organization_id,
+          userId: user.id,
+          apiKeyId: apiKey?.id,
+          model,
+          provider,
+          billingSource,
+          requestId,
+          metadata: buildProviderReconciliationMetadata(provider, model, true, appId),
+          affiliateCode,
+          ...buildProviderBillingFields(provider, model),
+        };
+        const billing = await billUsage(billingContext, usage);
+        const reconciliation = await settleReservation(billing.totalCost);
 
         // Handle app credits reconciliation
         if (appCreditsInfo) {
@@ -991,26 +1022,22 @@ async function handleStreamingRequest(
           });
         }
 
-        await recordUsageAnalytics(
-          {
-            organizationId: user.organization_id,
-            userId: user.id,
-            apiKeyId: apiKey?.id,
-            model,
-            provider,
-            billingSource,
-            requestId,
-            metadata: buildProviderReconciliationMetadata(provider, model, true, appId),
-          },
-          billing,
-          {
-            type: "chat",
-            content: text,
-            systemPrompt,
-            prompt: request.messages.map((m) => `[${m.role}] ${getMessageContent(m)}`).join("\n"),
-            latencyMs: Date.now() - startTime,
-          },
-        );
+        const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+          type: "chat",
+          content: text,
+          systemPrompt,
+          prompt: request.messages.map((m) => `[${m.role}] ${getMessageContent(m)}`).join("\n"),
+          latencyMs: Date.now() - startTime,
+        });
+        if (usageRecord) {
+          await aiBillingRecordsService.record({
+            context: billingContext,
+            billing,
+            usageRecord,
+            idempotencyKey,
+            reconciliation,
+          });
+        }
 
         logger.info("[Chat Completions] Streaming complete", {
           durationMs: Date.now() - startTime,
@@ -1216,12 +1243,13 @@ async function handleNonStreamingRequest(
   apiKey: { id: string } | null,
   appCreditsInfo: { appId: string; estimatedBaseCost: number; app: unknown } | undefined,
   affiliateCode: string | null,
+  idempotencyKey: string,
   requestId: string,
   appId: string | null,
   startTime: number,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
-  settleReservation: (actualCost: number) => Promise<void>,
+  settleReservation: (actualCost: number) => Promise<CreditReconciliationResult | null>,
   cotOptions: ReturnType<typeof mergeAnthropicCotProviderOptions>,
   effectiveMaxTokens: number | undefined,
   webSearchOptions: ReturnType<typeof buildProviderNativeWebSearchTools>,
@@ -1263,21 +1291,20 @@ async function handleNonStreamingRequest(
     });
 
     // Bill using actual usage from SDK response
-    const billing = await billUsage(
-      {
-        organizationId: user.organization_id,
-        userId: user.id,
-        apiKeyId: apiKey?.id,
-        model,
-        provider,
-        billingSource,
-        requestId,
-        metadata: buildProviderReconciliationMetadata(provider, model, false, appId),
-        affiliateCode,
-      },
-      result.usage,
-    );
-    await settleReservation(billing.totalCost);
+    const billingContext = {
+      organizationId: user.organization_id,
+      userId: user.id,
+      apiKeyId: apiKey?.id,
+      model,
+      provider,
+      billingSource,
+      requestId,
+      metadata: buildProviderReconciliationMetadata(provider, model, false, appId),
+      affiliateCode,
+      ...buildProviderBillingFields(provider, model),
+    };
+    const billing = await billUsage(billingContext, result.usage);
+    const reconciliation = await settleReservation(billing.totalCost);
 
     // Handle app credits
     if (appCreditsInfo) {
@@ -1291,26 +1318,22 @@ async function handleNonStreamingRequest(
       });
     }
 
-    await recordUsageAnalytics(
-      {
-        organizationId: user.organization_id,
-        userId: user.id,
-        apiKeyId: apiKey?.id,
-        model,
-        provider,
-        billingSource,
-        requestId,
-        metadata: buildProviderReconciliationMetadata(provider, model, false, appId),
-      },
-      billing,
-      {
-        type: "chat",
-        content: result.text,
-        systemPrompt,
-        prompt: request.messages.map((m) => `[${m.role}] ${getMessageContent(m)}`).join("\n"),
-        latencyMs: Date.now() - startTime,
-      },
-    );
+    const usageRecord = await recordUsageAnalytics(billingContext, billing, {
+      type: "chat",
+      content: result.text,
+      systemPrompt,
+      prompt: request.messages.map((m) => `[${m.role}] ${getMessageContent(m)}`).join("\n"),
+      latencyMs: Date.now() - startTime,
+    });
+    if (usageRecord) {
+      await aiBillingRecordsService.record({
+        context: billingContext,
+        billing,
+        usageRecord,
+        idempotencyKey,
+        reconciliation,
+      });
+    }
 
     logger.info("[Chat Completions] Non-streaming complete", {
       durationMs: Date.now() - startTime,

@@ -1679,12 +1679,7 @@ export async function registerAospLlamaLoader(
         );
         return null;
       }
-      dflashAdapter = buildDflashAdapter({
-        ffi: ffiCtx.ffi,
-        ctx: ffiCtx.handle,
-        runnerFactory: (a) =>
-          ffiCtx.buildStreamingRunner({ ffi: a.ffi, ctx: a.ctx }),
-      });
+      dflashAdapter = buildDflashAdapter();
       if (dflashAdapter) {
         logger.info(
           "[aosp-llama] FFI streaming DFlash adapter ready (in-process drafter+target)",

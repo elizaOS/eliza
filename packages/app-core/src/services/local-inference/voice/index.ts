@@ -40,6 +40,15 @@ export {
   embeddingServerForRoute,
 } from "./embedding-server";
 export {
+  attributeVoiceEmotion,
+  type VoiceEmotionAsrFeatures,
+  type VoiceEmotionAttribution,
+  type VoiceEmotionAttributionInput,
+  type VoiceEmotionAttributionMethod,
+  type VoiceEmotionAudioFeatures,
+  type VoiceEmotionEvidence,
+} from "./emotion-attribution";
+export {
   decodeMonoPcm16Wav,
   defaultLifecycleLoaders,
   EngineVoiceBridge,
@@ -49,6 +58,8 @@ export {
   StubOmniVoiceBackend,
 } from "./engine-bridge";
 export {
+  createBundledLiveKitTurnDetector,
+  DEFAULT_LIVEKIT_TURN_DETECTOR_DIR,
   EOT_COMMIT_SILENCE_MS,
   EOT_COMMIT_THRESHOLD,
   EOT_HANGOVER_EXTENSION_MS,
@@ -57,8 +68,13 @@ export {
   EOT_TENTATIVE_THRESHOLD,
   type EotClassifier,
   HeuristicEotClassifier,
+  LiveKitTurnDetector,
+  type LiveKitTurnDetectorOptions,
   RemoteEotClassifier,
   type RemoteEotClassifierOptions,
+  turnSignalFromProbability,
+  type VoiceNextSpeaker,
+  type VoiceTurnSignal,
 } from "./eot-classifier";
 export { VoiceStartupError } from "./errors";
 export {
@@ -225,6 +241,22 @@ export {
   type VoicePresetSeedPhrase,
   writeVoicePresetFile,
 } from "./voice-preset-format";
+export {
+  analyzeVoiceProfileWav,
+  canonicalVoiceProfileJson,
+  createVoiceProfileArtifact,
+  VOICE_PROFILE_ARTIFACT_SCHEMA_VERSION,
+  VOICE_PROFILE_FEATURE_EMBEDDING_MODEL,
+  type VoiceProfileArtifact,
+  type VoiceProfileArtifactSample,
+  type VoiceProfileArtifactStatus,
+  type VoiceProfileArtifactVerification,
+  type VoiceProfileAudioFeatures,
+  type VoiceProfileConsent,
+  type VoiceProfileReferenceMetadata,
+  type VoiceProfileSampleInput,
+  verifyVoiceProfileArtifact,
+} from "./voice-profile-artifact";
 export {
   type DrafterAbortReason,
   type DrafterHandle,

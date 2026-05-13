@@ -3,8 +3,8 @@
  *
  *   1. HeuristicEotClassifier — punctuation, conjunctions, short utterances, etc.
  *   2. State machine integration — P≥0.9 commits early, P<0.4 extends hangover.
- *   3. Interface contract — both HeuristicEotClassifier and a mock RemoteEotClassifier
- *      satisfy EotClassifier.
+ *   3. Interface contract — heuristic and fail-closed remote classifiers
+ *      satisfy EotClassifier without synthetic fallbacks.
  */
 
 import { describe, expect, it, vi } from "vitest";
@@ -381,29 +381,26 @@ describe("EotClassifier interface contract", () => {
     expect(typeof clf.score).toBe("function");
   });
 
-  it("RemoteEotClassifier satisfies EotClassifier (stub; no real network call in unit tests)", () => {
+  it("RemoteEotClassifier satisfies EotClassifier without a unit-test network call", () => {
     const clf: EotClassifier = new RemoteEotClassifier({
       endpoint: "http://localhost:9999/eot",
     });
     expect(typeof clf.score).toBe("function");
   });
 
-  it("mock RemoteEotClassifier satisfies EotClassifier", () => {
-    const mockClf: EotClassifier = {
+  it("injected classifiers satisfy EotClassifier for controller tests", () => {
+    const testClf: EotClassifier = {
       score: async (_text: string) => 0.5,
     };
-    expect(typeof mockClf.score).toBe("function");
+    expect(typeof testClf.score).toBe("function");
   });
 
-  it("RemoteEotClassifier returns fallbackScore on network error", async () => {
-    // The endpoint doesn't exist; fetch will throw. We expect the fallback.
+  it("RemoteEotClassifier throws on network error instead of manufacturing a score", async () => {
     const clf = new RemoteEotClassifier({
       endpoint: "http://127.0.0.1:1/nonexistent",
       timeoutMs: 50,
-      fallbackScore: 0.42,
     });
-    const result = await clf.score("will this error?");
-    expect(result).toBe(0.42);
+    await expect(clf.score("will this error?")).rejects.toThrow();
   });
 
   it("score() always returns a value in [0, 1] for heuristic classifier", async () => {

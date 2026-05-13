@@ -88,11 +88,11 @@ describe("embeddingServerForRoute", () => {
   it("0_8b pooled-text route → sidecar over the text backbone GGUF with --embeddings --pooling last", () => {
     const bundleRoot = tmpBundle();
     const textPath = writeGguf(
-      path.join(bundleRoot, "text", "eliza-1-0_8b-32k.gguf"),
+      path.join(bundleRoot, "text", "eliza-1-0_6b-32k.gguf"),
     );
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_8b",
+      tierId: "eliza-1-0_6b",
       textModelPath: textPath,
     });
     // No throw → the sidecar's GGUF (the text backbone) exists and the
@@ -105,11 +105,11 @@ describe("embeddingServerForRoute", () => {
   it("2b pooled-text route → sidecar over the text backbone GGUF", () => {
     const bundleRoot = tmpBundle();
     const textPath = writeGguf(
-      path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf"),
+      path.join(bundleRoot, "text", "eliza-1-1_7b-32k.gguf"),
     );
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-2b",
+      tierId: "eliza-1-1_7b",
       textModelPath: textPath,
     });
     const srv = embeddingServerForRoute(route);
@@ -133,7 +133,7 @@ describe("embeddingServerForRoute", () => {
     const textPath = writeGguf(path.join(bundleRoot, "text", "t.gguf"));
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_8b",
+      tierId: "eliza-1-0_6b",
       textModelPath: textPath,
     });
     const srv = embeddingServerForRoute(route, { gpuLayers: 0, threads: 4 });

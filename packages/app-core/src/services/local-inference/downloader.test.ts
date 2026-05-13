@@ -19,7 +19,7 @@ function eliza1Manifest(overrides: {
   >;
   shaFor: (key: string) => string;
 }): string {
-  const textPath = "text/eliza-1-0_8b-32k.gguf";
+  const textPath = "text/eliza-1-0_6b-32k.gguf";
   const voicePath = "tts/voice.gguf";
   const asrPath = "asr/asr.gguf";
   const drafterPath = "dflash/drafter-0_8b.gguf";
@@ -33,7 +33,7 @@ function eliza1Manifest(overrides: {
     cpu: { status: "pass", atCommit: "t", report: "cpu" },
   };
   return JSON.stringify({
-    id: "eliza-1-0_8b",
+    id: "eliza-1-0_6b",
     tier: "0_8b",
     version: "1.0.0",
     publishedAt: "2026-05-11T00:00:00.000Z",
@@ -121,13 +121,13 @@ function bundleRemotePath(
 }
 
 function eliza1BundleRemotePath(rel: string): string {
-  const model = findCatalogModel("eliza-1-0_8b");
+  const model = findCatalogModel("eliza-1-0_6b");
   if (!model) throw new Error("missing 0_8b catalog model");
   return bundleRemotePath(model, rel);
 }
 
 function eliza1BundleManifestPath(): string {
-  const model = findCatalogModel("eliza-1-0_8b");
+  const model = findCatalogModel("eliza-1-0_6b");
   if (!model?.bundleManifestFile) {
     throw new Error("missing 0_8b bundle manifest path");
   }
@@ -219,7 +219,7 @@ describe("local inference downloader status", () => {
         jobs: [
           {
             jobId: "job-1",
-            modelId: "eliza-1-2b",
+            modelId: "eliza-1-1_7b",
             state: "failed",
             received: 64,
             total: 128,
@@ -236,7 +236,7 @@ describe("local inference downloader status", () => {
 
     const [job] = new Downloader().snapshot();
 
-    expect(job?.modelId).toBe("eliza-1-2b");
+    expect(job?.modelId).toBe("eliza-1-1_7b");
     expect(job?.state).toBe("failed");
     expect(job?.error).toBe("network reset");
   });
@@ -244,7 +244,7 @@ describe("local inference downloader status", () => {
   it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_8b");
+    const model = findCatalogModel("eliza-1-0_6b");
     expect(model).toBeDefined();
     if (!model) throw new Error("missing test catalog model");
     const manifestFile = model.bundleManifestFile;
@@ -256,14 +256,14 @@ describe("local inference downloader status", () => {
     const vad = "VAD model";
     const drafter = "GGUF drafter model";
     const cache = "voice preset";
-    const textPath = "text/eliza-1-0_8b-32k.gguf";
+    const textPath = "text/eliza-1-0_6b-32k.gguf";
     const voicePath = "tts/voice.gguf";
     const asrPath = "asr/asr.gguf";
     const vadPath = "vad/eliza-1-vad.onnx";
     const drafterPath = "dflash/drafter-0_8b.gguf";
     const cachePath = "cache/voice-preset-default.bin";
     const manifest = JSON.stringify({
-      id: "eliza-1-0_8b",
+      id: "eliza-1-0_6b",
       tier: "0_8b",
       version: "1.0.0",
       publishedAt: "2026-05-11T00:00:00.000Z",
@@ -363,7 +363,7 @@ describe("local inference downloader status", () => {
     const installed = await listInstalledModels();
     const main = installed.find((entry) => entry.id === model.id);
     const companion = installed.find(
-      (entry) => entry.id === "eliza-1-0_8b-drafter",
+      (entry) => entry.id === "eliza-1-0_6b-drafter",
     );
     expect(main).toBeDefined();
     expect(companion).toBeDefined();
@@ -376,7 +376,7 @@ describe("local inference downloader status", () => {
     expect(job.state).toBe("completed");
     expect(main.path.endsWith(textPath)).toBe(true);
     expect(bundleRoot).toBe(
-      path.join(root, "local-inference", "models", "eliza-1-0_8b.bundle"),
+      path.join(root, "local-inference", "models", "eliza-1-0_6b.bundle"),
     );
     expect(main.manifestPath).toBe(path.join(bundleRoot, manifestFile));
     expect(main.bundleVersion).toBe("1.0.0");
@@ -395,13 +395,13 @@ describe("local inference downloader status", () => {
   it("rejects a pinned bundle manifest sha before fetching weights", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_8b");
+    const model = findCatalogModel("eliza-1-0_6b");
     if (!model) throw new Error("missing test catalog model");
 
     const fetchSpy = installManifestOnlyFetch("tampered manifest");
     const pinnedModel = {
       ...model,
-      id: "eliza-1-0_8b-manifest-hash-test",
+      id: "eliza-1-0_6b-manifest-hash-test",
       companionModelIds: [],
       bundleManifestSha256: sha256("expected manifest"),
     };
@@ -429,7 +429,7 @@ describe("local inference downloader status", () => {
   it("restarts single-file partial downloads when a server ignores Range", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_8b-drafter");
+    const model = findCatalogModel("eliza-1-0_6b-drafter");
     expect(model).toBeDefined();
     if (!model) throw new Error("missing test catalog model");
 
@@ -441,7 +441,7 @@ describe("local inference downloader status", () => {
     const downloadsDir = path.join(root, "local-inference", "downloads");
     fs.mkdirSync(downloadsDir, { recursive: true });
     fs.writeFileSync(
-      path.join(downloadsDir, "eliza-1-0_8b-drafter.part"),
+      path.join(downloadsDir, "eliza-1-0_6b-drafter.part"),
       "stale partial",
     );
 
@@ -557,7 +557,7 @@ describe("local inference downloader status", () => {
   it("aborts before any weight byte when the RAM budget exceeds the device", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_8b");
+    const model = findCatalogModel("eliza-1-0_6b");
     if (!model) throw new Error("missing test catalog model");
 
     const manifest = eliza1Manifest({
@@ -589,7 +589,7 @@ describe("local inference downloader status", () => {
   it("runs the verify-on-device hook before the bundle fills a default slot", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_8b");
+    const model = findCatalogModel("eliza-1-0_6b");
     if (!model) throw new Error("missing test catalog model");
 
     const bytes = {
@@ -606,7 +606,7 @@ describe("local inference downloader status", () => {
     installFetchFixture(
       new Map([
         [eliza1BundleManifestPath(), manifest],
-        [eliza1BundleRemotePath("text/eliza-1-0_8b-32k.gguf"), bytes.text],
+        [eliza1BundleRemotePath("text/eliza-1-0_6b-32k.gguf"), bytes.text],
         [eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
         [eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
         [eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
@@ -629,7 +629,7 @@ describe("local inference downloader status", () => {
     expect(verifyCalls).toHaveLength(1);
     expect(verifyCalls[0]?.modelId).toBe(model.id);
     expect(
-      verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-0_8b-32k.gguf"),
+      verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-0_6b-32k.gguf"),
     ).toBe(true);
     const installed = await listInstalledModels();
     const main = installed.find((m) => m.id === model.id);
@@ -639,7 +639,7 @@ describe("local inference downloader status", () => {
   it("fails the download (no install) when the verify-on-device hook rejects", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-0_8b");
+    const model = findCatalogModel("eliza-1-0_6b");
     if (!model) throw new Error("missing test catalog model");
 
     const bytes = {
@@ -656,7 +656,7 @@ describe("local inference downloader status", () => {
     installFetchFixture(
       new Map([
         [eliza1BundleManifestPath(), manifest],
-        [eliza1BundleRemotePath("text/eliza-1-0_8b-32k.gguf"), bytes.text],
+        [eliza1BundleRemotePath("text/eliza-1-0_6b-32k.gguf"), bytes.text],
         [eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
         [eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
         [eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],

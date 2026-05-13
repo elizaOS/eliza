@@ -262,8 +262,15 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
             <div className="space-y-3">
               {alerts.map((alert, index) => {
                 const Icon = getAlertIcon(alert.type);
+                const severity =
+                  alert.severity ?? (alert.type === "danger" ? "critical" : alert.type);
                 return (
-                  <Alert key={index} variant={getAlertVariant(alert.type)}>
+                  <Alert
+                    key={alert.eventId ?? index}
+                    data-alert-event-id={alert.eventId}
+                    data-alert-severity={severity}
+                    variant={getAlertVariant(alert.type)}
+                  >
                     <Icon className="h-4 w-4" />
                     <AlertTitle>{alert.title}</AlertTitle>
                     <AlertDescription className="mt-2">

@@ -73,7 +73,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain("contextsarray ::=");
 	});
 
-	it("drops shouldRespond on direct channels (DM/API/VOICE_DM/SELF)", () => {
+	it("drops shouldRespond on non-voice direct channels (DM/API/SELF)", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
@@ -87,6 +87,18 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			value: '{"thought":',
 		});
 		expect(grammar).not.toContain("shouldrespond ::=");
+	});
+
+	it("keeps shouldRespond on voice channels", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton, grammar } = buildResponseGrammar(
+			{ actions: [] },
+			{ contexts: ["general"], channelType: "VOICE_DM" },
+		);
+		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
+			true,
+		);
+		expect(grammar).toContain("shouldrespond ::=");
 	});
 
 	it("always merges `simple` and `general` into the contexts element enum", () => {

@@ -43,13 +43,10 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(classifyRecommendationPlatform(probe)).toBe("linux-gpu");
-    // Per the 2026-05-12 Qwen3.5 directive, the small ladder now leads
-    // with eliza-1-0_8b (Qwen3.5-0.8B-Base, the new small default) instead
-    // of the deprecated Qwen3 eliza-1-1_7b tier.
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
     // assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
     // 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-    // not. Ladder is 27b-256k -> 27b -> 9b -> 2b -> 1_7b, picks 27b.
+    // not. Ladder is 27b-1m -> 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
   });
 
@@ -71,13 +68,10 @@ describe("local inference recommendations", () => {
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
   });
 
-  it("uses the mobile platform ladder and prefers the small Qwen3.5 tier when it fits", () => {
+  it("uses the mobile platform ladder and prefers the small Eliza-1 tier when it fits", () => {
     // Mobile detection now reads `hardware.mobile.platform`
     // (`"ios"|"android"|"web"`) — the typed source of truth — instead of
-    // pretending the Node platform string was one of those values. Per
-    // the 2026-05-12 Qwen3.5 directive, the small-mobile ladder leads
-    // with eliza-1-0_8b (Qwen3.5-0.8B-Base) instead of the deprecated
-    // Qwen3 eliza-1-0_6b.
+    // pretending the Node platform string was one of those values.
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -91,12 +85,10 @@ describe("local inference recommendations", () => {
 
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
     expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
-    // TEXT_LARGE mobile ladder is [2b, 0_8b, 1_7b, 0_6b]; on 8 GB RAM,
-    // eliza-1-2b (minRamGb 4, sizeGb 1.4) fits.
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
   });
 
-  it("classifies an iOS mobile probe as mobile and lands on the Qwen3.5 mid tier", () => {
+  it("classifies an iOS mobile probe as mobile and lands on the modern-phone tier", () => {
     const probe = hardware({
       totalRamGb: 8,
       freeRamGb: 5,
@@ -107,15 +99,12 @@ describe("local inference recommendations", () => {
     });
     expect(classifyRecommendationPlatform(probe)).toBe("mobile");
     const recommended = selectRecommendedModels(probe);
-    // TEXT_LARGE mobile ladder is [2b, 0_8b, 1_7b, 0_6b]; eliza-1-2b is
-    // the new mid Qwen3.5 default.
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-2b");
+    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-4b");
   });
 
-  it("falls back to the small Qwen3.5 tier on minimal mobile", () => {
-    // 1_7b needs 4 GB minRam; below that the ladder collapses to the next
-    // tier that fits — eliza-1-0_8b (2 GB minRam, the new small default),
-    // then eliza-1-0_6b. Below 2 GB nothing fits.
+  it("falls back to the smallest tier on minimal mobile", () => {
+    // 2b needs 4 GB minRam; below that the ladder collapses to 0_8b.
+    // Below 2 GB nothing fits.
     const cases: Array<[number, string | null]> = [
       [3.5, "eliza-1-0_8b"],
       [1.5, null],
@@ -283,7 +272,7 @@ describe("local inference recommendations", () => {
 
 const SHA = "0".repeat(64);
 
-function fixtureManifest(tier: Eliza1Tier = "1_7b"): Eliza1Manifest {
+function fixtureManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
   const pass = {
     status: "pass" as const,
     atCommit: "abc1234",
@@ -347,12 +336,12 @@ function installedFixture(
   overrides: Partial<InstalledModel> = {},
 ): InstalledModel {
   return {
-    id: "eliza-1-1_7b",
-    displayName: "Eliza-1 1.7B",
-    path: "/models/eliza-1-1_7b.bundle/text/eliza-1-1_7b-32k.gguf",
+    id: "eliza-1-2b",
+    displayName: "eliza-1-2b",
+    path: "/models/eliza-1-2b.bundle/text/eliza-1-2b-32k.gguf",
     sizeBytes: 1_000_000_000,
-    bundleRoot: "/models/eliza-1-1_7b.bundle",
-    manifestPath: "/models/eliza-1-1_7b.bundle/eliza-1.manifest.json",
+    bundleRoot: "/models/eliza-1-2b.bundle",
+    manifestPath: "/models/eliza-1-2b.bundle/eliza-1.manifest.json",
     installedAt: "2026-05-11T00:00:00Z",
     lastUsedAt: null,
     source: "eliza-download",

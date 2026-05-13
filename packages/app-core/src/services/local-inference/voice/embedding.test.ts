@@ -33,12 +33,12 @@ function tmpBundle(): string {
 describe("resolveLocalEmbeddingSource", () => {
   it("0_8b: uses the text backbone with --pooling last (no separate GGUF)", () => {
     const bundleRoot = tmpBundle();
-    const textPath = path.join(bundleRoot, "text", "eliza-1-0_8b-32k.gguf");
+    const textPath = path.join(bundleRoot, "text", "eliza-1-0_6b-32k.gguf");
     mkdirSync(path.dirname(textPath), { recursive: true });
     writeFileSync(textPath, "gguf");
     const src = resolveLocalEmbeddingSource({
       bundleRoot,
-      tierId: "eliza-1-0_8b",
+      tierId: "eliza-1-0_6b",
       textModelPath: textPath,
     });
     expect(src.kind).toBe("pooled-text");
@@ -50,12 +50,12 @@ describe("resolveLocalEmbeddingSource", () => {
 
   it("2b: reuses the text backbone with --pooling last (no duplicate GGUF)", () => {
     const bundleRoot = tmpBundle();
-    const textPath = path.join(bundleRoot, "text", "eliza-1-2b-32k.gguf");
+    const textPath = path.join(bundleRoot, "text", "eliza-1-1_7b-32k.gguf");
     mkdirSync(path.dirname(textPath), { recursive: true });
     writeFileSync(textPath, "gguf");
     const src = resolveLocalEmbeddingSource({
       bundleRoot,
-      tierId: "eliza-1-2b",
+      tierId: "eliza-1-1_7b",
       textModelPath: textPath,
     });
     expect(src.kind).toBe("pooled-text");
@@ -85,7 +85,7 @@ describe("buildLocalEmbeddingRoute", () => {
     writeFileSync(textPath, "gguf");
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_8b",
+      tierId: "eliza-1-0_6b",
       textModelPath: textPath,
     });
     expect(route.dimensions).toBe(1024);
@@ -115,7 +115,7 @@ describe("buildLocalEmbeddingRoute", () => {
     writeFileSync(textPath, "gguf");
     const route = buildLocalEmbeddingRoute({
       bundleRoot,
-      tierId: "eliza-1-0_8b",
+      tierId: "eliza-1-0_6b",
       textModelPath: textPath,
       defaultDim: 256,
     });
@@ -123,7 +123,7 @@ describe("buildLocalEmbeddingRoute", () => {
     expect(() =>
       buildLocalEmbeddingRoute({
         bundleRoot,
-        tierId: "eliza-1-0_8b",
+        tierId: "eliza-1-0_6b",
         textModelPath: textPath,
         defaultDim: 300,
       }),

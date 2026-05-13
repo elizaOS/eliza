@@ -88,7 +88,7 @@ describe("local inference downloader status", () => {
         jobs: [
           {
             jobId: "job-1",
-            modelId: "eliza-1-2b",
+            modelId: "eliza-1-1_7b",
             state: "failed",
             received: 64,
             total: 128,
@@ -105,7 +105,7 @@ describe("local inference downloader status", () => {
 
     const [job] = new Downloader().snapshot();
 
-    expect(job?.modelId).toBe("eliza-1-2b");
+    expect(job?.modelId).toBe("eliza-1-1_7b");
     expect(job?.state).toBe("failed");
     expect(job?.error).toBe("network reset");
   });
@@ -113,7 +113,7 @@ describe("local inference downloader status", () => {
   it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
     process.env.ELIZA_STATE_DIR = root;
-    const model = findCatalogModel("eliza-1-2b");
+    const model = findCatalogModel("eliza-1-1_7b");
     expect(model).toBeDefined();
     if (!model) throw new Error("missing test catalog model");
     const manifestFile = model.bundleManifestFile;
@@ -125,14 +125,14 @@ describe("local inference downloader status", () => {
     const drafter = "GGUF drafter model";
     const cache = "voice preset";
     const vad = "VAD runtime data";
-    const textPath = "text/eliza-1-2b-32k.gguf";
+    const textPath = "text/eliza-1-1_7b-32k.gguf";
     const voicePath = "tts/voice.gguf";
     const asrPath = "asr/eliza-1-asr.gguf";
     const drafterPath = "dflash/drafter-2b.gguf";
     const cachePath = "cache/default-voice-preset.bin";
     const vadPath = "vad/eliza-1-vad.bin";
     const manifest = JSON.stringify({
-      id: "eliza-1-2b",
+      id: "eliza-1-1_7b",
       version: "1.0.0",
       defaultEligible: true,
       files: {
@@ -180,7 +180,7 @@ describe("local inference downloader status", () => {
     const installed = await listInstalledModels();
     const main = installed.find((entry) => entry.id === model.id);
     const companion = installed.find(
-      (entry) => entry.id === "eliza-1-2b-drafter",
+      (entry) => entry.id === "eliza-1-1_7b-drafter",
     );
     expect(main).toBeDefined();
     expect(companion).toBeDefined();
@@ -193,7 +193,7 @@ describe("local inference downloader status", () => {
     expect(job.state).toBe("completed");
     expect(main.path.endsWith(textPath)).toBe(true);
     expect(bundleRoot).toBe(
-      path.join(root, "local-inference", "models", "eliza-1-2b.bundle"),
+      path.join(root, "local-inference", "models", "eliza-1-1_7b.bundle"),
     );
     expect(main.manifestPath).toBe(path.join(bundleRoot, manifestFile));
     expect(main.bundleVersion).toBe("1.0.0");
