@@ -3823,6 +3823,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-solana": "2.0.0-alpha.3",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@nrwl/devkit": "19.8.4",
