@@ -18,6 +18,7 @@
     "@elizaos/plugin-discord": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
+    "discord.js": "^14.26.4",
     "dotenv": "^17.2.3",
     "uuid": "^14.0.0"
   },
