@@ -32,7 +32,7 @@
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "generate:routes": "node scripts/generate-public-routes.mjs",
     "test": "vitest run",
-    "test:e2e": "vitest run src/live.e2e.test.ts",
+    "test:e2e": "vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

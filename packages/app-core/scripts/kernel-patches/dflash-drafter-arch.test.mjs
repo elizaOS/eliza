@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { describe, expect, it } from "vitest";
 
 import { patchDflashDrafterArch } from "./dflash-drafter-arch.mjs";
 
@@ -94,25 +93,29 @@ function makeLlamaCppFixture() {
   return root;
 }
 
-test("patchDflashDrafterArch registers the dflash-draft model loader", () => {
-  const root = makeLlamaCppFixture();
+describe("patchDflashDrafterArch", () => {
+  it("registers the dflash-draft model loader", () => {
+    const root = makeLlamaCppFixture();
 
-  patchDflashDrafterArch(root);
+    patchDflashDrafterArch(root);
 
-  assert.match(
-    fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
-    /"dflash-draft"/,
-  );
-  assert.match(
-    fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
-    /new llama_model_dflash_draft/,
-  );
-  assert.ok(fs.existsSync(path.join(root, "src/models/dflash_draft.cpp")));
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
+    ).toMatch(/"dflash-draft"/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
+    ).toMatch(/new llama_model_dflash_draft/);
+    expect(fs.existsSync(path.join(root, "src/models/dflash_draft.cpp"))).toBe(
+      true,
+    );
 
-  const before = fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8");
-  patchDflashDrafterArch(root);
-  assert.equal(
-    fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
-    before,
-  );
+    const before = fs.readFileSync(
+      path.join(root, "src/llama-model.cpp"),
+      "utf8",
+    );
+    patchDflashDrafterArch(root);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
+    ).toBe(before);
+  });
 });
