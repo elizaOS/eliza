@@ -21,7 +21,8 @@ export class VoiceStartupError extends Error {
     | "missing-fused-build"
     | "missing-turn-detector"
     | "already-started"
-    | "not-started";
+    | "not-started"
+    | "invalid-options";
 
   constructor(code: VoiceStartupError["code"], message: string) {
     super(message);
