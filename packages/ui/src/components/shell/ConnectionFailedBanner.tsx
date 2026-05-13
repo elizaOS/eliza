@@ -1,7 +1,7 @@
-import { Button } from "../ui/button";
-import { Spinner } from "../ui/spinner";
 import { Z_SYSTEM_CRITICAL } from "../../lib/floating-layers";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 
 /**
  * Banner shown during WebSocket reconnection attempts.

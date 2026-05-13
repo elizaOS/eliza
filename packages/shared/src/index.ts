@@ -200,15 +200,15 @@ export {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";
-export * from "./dev-settings-banner-style.js";
-// elizacloud helpers — pure utilities + config-driven server helpers used by
-// app-core and the agent so they don't reverse-import from plugin-elizacloud.
-export * from "./elizacloud/index.js";
 // db types — canonical handles for the runtime Drizzle database so consumers
 // don't reverse-import the plugin-sql package for type-only uses.
 export type { DrizzleDatabase } from "./db/drizzle-database.js";
+export * from "./dev-settings-banner-style.js";
 export * from "./dev-settings-figlet-heading.js";
 export * from "./dev-settings-table.js";
+// elizacloud helpers — pure utilities + config-driven server helpers used by
+// app-core and the agent so they don't reverse-import from plugin-elizacloud.
+export * from "./elizacloud/index.js";
 export * from "./env-utils.js";
 export * from "./events/index.js";
 export * from "./format-error.js";

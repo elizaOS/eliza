@@ -1,6 +1,3 @@
-import { Button } from "../ui/button";
-import { PagePanel } from "../composites/page-panel";
-import { Textarea } from "../ui/textarea";
 import {
   BadgeCheck,
   Bot,
@@ -22,6 +19,9 @@ import type {
 } from "../../api/client-types-chat";
 import { useApp } from "../../state/useApp";
 import { formatByteSize } from "../../utils/format";
+import { PagePanel } from "../composites/page-panel";
+import { Button } from "../ui/button";
+import { Textarea } from "../ui/textarea";
 
 export function getDocumentTypeLabel(contentType?: string): string {
   return contentType?.split("/").pop()?.toUpperCase() || "DOCUMENT";

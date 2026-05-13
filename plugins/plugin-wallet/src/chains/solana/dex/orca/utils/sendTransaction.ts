@@ -32,9 +32,10 @@ export async function sendTransaction(
 
   // Get prioritization fee
   const recentPrioritizationFees = await connection.getRecentPrioritizationFees();
-  const prioritizationFee = recentPrioritizationFees
-    .map((fee) => fee.prioritizationFee)
-    .sort((a, b) => a - b)[Math.ceil(0.95 * recentPrioritizationFees.length) - 1] ?? 0;
+  const prioritizationFee =
+    recentPrioritizationFees.map((fee) => fee.prioritizationFee).sort((a, b) => a - b)[
+      Math.ceil(0.95 * recentPrioritizationFees.length) - 1
+    ] ?? 0;
 
   // Add compute budget instructions
   const computeBudgetInstructions = [

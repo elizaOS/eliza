@@ -61,9 +61,7 @@ declare global {
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
-    __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (
-      event: Record<string, unknown>,
-    ) => void;
+    __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
 }
 

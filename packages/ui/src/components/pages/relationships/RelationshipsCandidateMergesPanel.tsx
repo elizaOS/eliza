@@ -1,6 +1,3 @@
-import { Button } from "../../ui/button";
-import { MetaPill } from "../../composites/page-panel/page-panel-header";
-import { PagePanel } from "../../composites/page-panel";
 import {
   CalendarClock,
   Check,
@@ -16,6 +13,9 @@ import type {
   RelationshipsMergeCandidate,
 } from "../../../api/client-types-relationships";
 import { formatDateTime } from "../../../utils/format";
+import { PagePanel } from "../../composites/page-panel";
+import { MetaPill } from "../../composites/page-panel/page-panel-header";
+import { Button } from "../../ui/button";
 import { evidenceSummary, personLabel } from "./relationships-utils";
 
 export function RelationshipsCandidateMergesPanel({

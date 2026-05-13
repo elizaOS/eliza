@@ -721,7 +721,19 @@ ElizaClient.prototype.getConversationMessages = async function (
   this: ElizaClient,
   id,
 ) {
-  const response = await this.fetch<{ messages: ConversationMessage[] }>(
+  let response: { messages: ConversationMessage[] } | null = null;
+  try {
+    response = await invokeDesktopBridgeRequest<{
+      messages: ConversationMessage[];
+    }>({
+      rpcMethod: "getConversationMessages",
+      ipcChannel: "agent",
+      params: { id },
+    });
+  } catch {
+    response = null;
+  }
+  response ??= await this.fetch<{ messages: ConversationMessage[] }>(
     `/api/conversations/${encodeURIComponent(id)}/messages`,
   );
   return {
@@ -755,6 +767,33 @@ ElizaClient.prototype.getInboxMessages = async function (
   }
   const query = params.toString();
   const path = query ? `/api/inbox/messages?${query}` : "/api/inbox/messages";
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<{
+      messages: Array<ConversationMessage & { roomId: string; source: string }>;
+      count: number;
+    }>({
+      rpcMethod: "getInboxMessages",
+      ipcChannel: "agent",
+      params: {
+        ...(typeof options?.limit === "number" && options.limit > 0
+          ? { limit: options.limit }
+          : {}),
+        ...(options?.sources && options.sources.length > 0
+          ? { sources: options.sources }
+          : {}),
+        ...(typeof options?.roomId === "string" && options.roomId.length > 0
+          ? { roomId: options.roomId }
+          : {}),
+        ...(typeof options?.roomSource === "string" &&
+        options.roomSource.length > 0
+          ? { roomSource: options.roomSource }
+          : {}),
+      },
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch<{
     messages: Array<ConversationMessage & { roomId: string; source: string }>;
     count: number;
@@ -762,6 +801,15 @@ ElizaClient.prototype.getInboxMessages = async function (
 };
 
 ElizaClient.prototype.getInboxSources = async function (this: ElizaClient) {
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<{ sources: string[] }>({
+      rpcMethod: "getInboxSources",
+      ipcChannel: "agent",
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch<{ sources: string[] }>("/api/inbox/sources");
 };
 
@@ -775,6 +823,34 @@ ElizaClient.prototype.getInboxChats = async function (
   }
   const query = params.toString();
   const path = query ? `/api/inbox/chats?${query}` : "/api/inbox/chats";
+  try {
+    const viaRpc = await invokeDesktopBridgeRequest<{
+      chats: Array<{
+        canSend?: boolean;
+        id: string;
+        source: string;
+        transportSource?: string;
+        worldId?: string;
+        worldLabel: string;
+        title: string;
+        avatarUrl?: string;
+        lastMessageText: string;
+        lastMessageAt: number;
+        messageCount: number;
+      }>;
+      count: number;
+    }>({
+      rpcMethod: "getInboxChats",
+      ipcChannel: "agent",
+      params:
+        options?.sources && options.sources.length > 0
+          ? { sources: options.sources }
+          : {},
+    });
+    if (viaRpc) return viaRpc;
+  } catch {
+    /* fall through */
+  }
   return this.fetch<{
     chats: Array<{
       canSend?: boolean;

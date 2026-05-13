@@ -1,9 +1,9 @@
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { createElement } from "react";
 import { useBranding } from "../../config/branding";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { DefinitionRow, partitionDescription, StatusPill } from "./shared";
 import type {
   AppReleaseStatus,

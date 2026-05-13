@@ -1,10 +1,10 @@
-import { Badge } from "../../ui/badge";
 import { ListTodo } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../../api";
 import type { WorkbenchTodo } from "../../../api/client-types-config";
 import { useApp } from "../../../state";
 import type { TranslateFn } from "../../../types";
+import { Badge } from "../../ui/badge";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,

@@ -1,7 +1,3 @@
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
-import { Switch } from "../ui/switch";
 import {
   ArrowLeft,
   CreditCard,
@@ -23,6 +19,10 @@ import { isElizaCloudRuntimeLocked } from "../../onboarding/mobile-runtime-mode"
 import { useApp } from "../../state";
 import { openExternalUrl, preOpenWindow } from "../../utils";
 import { StripeEmbeddedCheckout } from "../cloud/StripeEmbeddedCheckout";
+import { Button } from "../ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import {
   autoTopUpFormReducer,
   BILLING_PRESET_AMOUNTS,

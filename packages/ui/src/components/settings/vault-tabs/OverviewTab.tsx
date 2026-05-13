@@ -7,9 +7,6 @@
  * only renders the rows + the editable preference state.
  */
 
-import { Button } from "../../ui/button";
-import { Input } from "../../ui/input";
-import { Label } from "../../ui/label";
 import {
   AlertCircle,
   CheckCircle2,
@@ -29,6 +26,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
 import type {
   BackendId,
   BackendStatus,

@@ -332,9 +332,9 @@ export function resolveCloudProxyTtsModel(
   return normalizeElizaCloudTtsModelId(chosen);
 }
 
-export function mirrorCompatHeaders(
-  req: { headers: Record<string, string | string[] | undefined> },
-): void {
+export function mirrorCompatHeaders(req: {
+  headers: Record<string, string | string[] | undefined>;
+}): void {
   const HEADER_ALIASES = [
     ["x-elizaos-token", "x-eliza-token"],
     ["x-elizaos-export-token", "x-eliza-export-token"],

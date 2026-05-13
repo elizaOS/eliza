@@ -1,6 +1,3 @@
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
 import {
   Background,
   Controls,
@@ -24,6 +21,9 @@ import type {
   WorkflowDefinitionNode,
 } from "../../api/client-types-chat";
 import { useApp } from "../../state";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 
 // ── Node type colour families ─────────────────────────────────────────────────
 

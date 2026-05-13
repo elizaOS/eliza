@@ -10,7 +10,7 @@
  *   6. `mergeContext` assembles systemText + history in the correct order.
  */
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   type ContextPartial,
   EagerContextBuilder,

@@ -1,5 +1,3 @@
-import { Button } from "../ui/button";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import {
   Crown,
   Fingerprint,
@@ -27,6 +25,13 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonSummary,
 } from "../../api/client-types-relationships";
+import { Button } from "../ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../ui/tooltip";
 
 const GRAPH_WIDTH = 1320;
 const GRAPH_HEIGHT = 760;

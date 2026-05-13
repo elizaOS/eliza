@@ -109,10 +109,16 @@ export class LocalAgreementBuffer {
     }
     // Intersect: the agreed prefix is the longest common leading prefix
     // across all entries in the window.
-    const first = this.window[0]!;
+    const first = this.window[0];
+    if (!first) {
+      throw new Error("hypothesis window unexpectedly empty");
+    }
     let agreedLen = first.length;
     for (let i = 1; i < this.window.length; i++) {
-      const h = this.window[i]!;
+      const h = this.window[i];
+      if (!h) {
+        throw new Error(`missing hypothesis at index ${i}`);
+      }
       let matchLen = 0;
       const limit = Math.min(agreedLen, h.length);
       for (let j = 0; j < limit; j++) {

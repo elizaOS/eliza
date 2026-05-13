@@ -40,6 +40,14 @@ const FFI_STEPS: LlmStreamStep[] = [
 
 function makeFfiRunner(steps: LlmStreamStep[]): FfiStreamingRunner {
   let idx = 0;
+  const nextStep = () => {
+    const step = steps[idx];
+    if (step === undefined) {
+      throw new Error(`missing scripted FFI step at index ${idx}`);
+    }
+    idx += 1;
+    return step;
+  };
   const ffi = {
     libraryPath: "/fake",
     libraryAbiVersion: "3",
@@ -54,7 +62,7 @@ function makeFfiRunner(steps: LlmStreamStep[]): FfiStreamingRunner {
     llmStreamSupported: () => true,
     llmStreamOpen: vi.fn().mockReturnValue(1n as LlmStreamHandle),
     llmStreamPrefill: vi.fn(),
-    llmStreamNext: vi.fn(() => steps[idx++]!),
+    llmStreamNext: vi.fn(nextStep),
     llmStreamCancel: vi.fn(),
     llmStreamSaveSlot: vi.fn(),
     llmStreamRestoreSlot: vi.fn(),
@@ -103,6 +111,16 @@ async function drain(
   return out;
 }
 
+function expectDoneEvent(
+  events: InferenceStreamEvent[],
+): Extract<InferenceStreamEvent, { kind: "done" }> {
+  const event = events.at(-1);
+  if (!event || event.kind !== "done") {
+    throw new Error("expected terminal done event");
+  }
+  return event;
+}
+
 describe("dispatchGenerate (ffi-streaming)", () => {
   it("yields text + accept + done events in order", async () => {
     const runner = makeFfiRunner(FFI_STEPS);
@@ -129,10 +147,7 @@ describe("dispatchGenerate (ffi-streaming)", () => {
 
     const kinds = events.map((e) => e.kind);
     expect(kinds).toEqual(["text", "accept", "text", "accept", "done"]);
-    const done = events.at(-1)! as Extract<
-      InferenceStreamEvent,
-      { kind: "done" }
-    >;
+    const done = expectDoneEvent(events);
     expect(done.text).toBe("hi!");
     expect(done.drafted).toBe(3);
     expect(done.accepted).toBe(3);
@@ -174,10 +189,7 @@ describe("dispatchGenerate (http-server)", () => {
       "accept",
       "done",
     ]);
-    const done = events.at(-1)! as Extract<
-      InferenceStreamEvent,
-      { kind: "done" }
-    >;
+    const done = expectDoneEvent(events);
     expect(done.text).toBe("hello");
     expect(done.firstTokenMs).toBe(12);
   });

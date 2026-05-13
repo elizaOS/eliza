@@ -1,20 +1,20 @@
-import { Button } from "../ui/button";
-import { ConfirmDelete } from "../ui/confirm-delete";
-import { Input } from "../ui/input";
+import { Brain, Plus, RefreshCw, Sparkles, Store } from "lucide-react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
+import type { SkillInfo } from "../../api";
 import { PageLayout } from "../../layouts/page-layout/page-layout";
+import { useApp } from "../../state";
 import { PagePanel } from "../composites/page-panel";
 import { SidebarContent } from "../composites/sidebar/sidebar-content";
 import { SidebarHeader } from "../composites/sidebar/sidebar-header";
 import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
 import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { SkillSidebarItem } from "../composites/skills/skill-sidebar-item";
+import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { ConfirmDelete } from "../ui/confirm-delete";
+import { Input } from "../ui/input";
 import { StatusBadge } from "../ui/status-badge";
 import { Switch } from "../ui/switch";
-import { Brain, Plus, RefreshCw, Sparkles, Store } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
-import type { SkillInfo } from "../../api";
-import { useApp } from "../../state";
-import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { EditSkillModal, SkillsModalView } from "./skill-detail-panel";
 import { InstallModal } from "./skill-marketplace";
 
@@ -350,7 +350,11 @@ function SkillsFullView({ contentHeader }: { contentHeader?: ReactNode } = {}) {
                       {[
                         { label: "Install", icon: Store, tone: "text-info" },
                         { label: "Create", icon: Plus, tone: "text-ok" },
-                        { label: "Review", icon: Sparkles, tone: "text-warning" },
+                        {
+                          label: "Review",
+                          icon: Sparkles,
+                          tone: "text-warning",
+                        },
                       ].map((item) => {
                         const Icon = item.icon;
                         return (

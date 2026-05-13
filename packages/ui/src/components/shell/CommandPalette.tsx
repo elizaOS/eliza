@@ -1,6 +1,3 @@
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Input } from "../ui/input";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   useCallback,
@@ -21,6 +18,15 @@ import {
   openDesktopSurfaceWindow,
   requestDesktopBridge,
 } from "../../utils";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
 
 export function CommandPalette() {
   const {

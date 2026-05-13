@@ -1,10 +1,3 @@
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { cn } from "../../lib/utils";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
 import { RefreshCw, Star, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {
@@ -13,7 +6,21 @@ import type {
   ConnectorAccountUpdateInput,
 } from "../../api/client-agent";
 import { useModalState } from "../../hooks/useModalState";
+import { cn } from "../../lib/utils";
 import { EditableAccountLabel } from "../accounts/EditableAccountLabel";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import { ConnectorAccountPrivacySelector } from "./ConnectorAccountPrivacySelector";
 import { ConnectorAccountPurposeSelector } from "./ConnectorAccountPurposeSelector";
 

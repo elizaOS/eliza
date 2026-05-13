@@ -1,8 +1,3 @@
-import { Button } from "../ui/button";
-import { PagePanel } from "../composites/page-panel";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { StatusBadge } from "../ui/status-badge";
-import { Switch } from "../ui/switch";
 import { AlertCircle, CheckCircle2, ChevronRight } from "lucide-react";
 import { type ReactNode, type RefCallback, useState } from "react";
 import {
@@ -13,6 +8,7 @@ import {
 } from "../../api";
 import { useApp } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
+import { PagePanel } from "../composites/page-panel";
 import {
   ConnectorModeSelector,
   useConnectorMode,
@@ -22,6 +18,16 @@ import {
   hasConnectorSetupPanel,
 } from "../connectors/ConnectorSetupPanel";
 import { getBrandIcon } from "../conversations/brand-icons";
+import { Button } from "../ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { StatusBadge } from "../ui/status-badge";
+import { Switch } from "../ui/switch";
 import {
   buildManagedDiscordSettingsReturnUrl,
   resolveManagedDiscordAgentChoice,

@@ -16,7 +16,6 @@ export class ConcentratedLiquidityService
   public static readonly serviceType = "concentrated-liquidity";
   public readonly capabilityDescription =
     "Manages concentrated liquidity positions with range selection and automated rebalancing";
-  private isInitialized = false;
 
   static async start(
     runtime: IAgentRuntime,
@@ -32,15 +31,12 @@ export class ConcentratedLiquidityService
 
   async start(_runtime: IAgentRuntime): Promise<void> {
     // Service initialization
-    this.isInitialized = true;
     console.info(
       "ConcentratedLiquidityService started - awaiting DEX integration",
     );
   }
 
-  async stop(): Promise<void> {
-    this.isInitialized = false;
-  }
+  async stop(): Promise<void> {}
 
   async createConcentratedPosition(
     _userId: string,

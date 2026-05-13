@@ -264,7 +264,10 @@ describe("GatedCheckpointManager — REST round trip when enabled", () => {
     expect(handle).not.toBeNull();
     const ok1 = await mgr.restore(4, "pre-speculative-T1");
     expect(ok1).toBe(true);
-    const ok2 = await mgr.restore(4, handle!);
+    if (handle === null) {
+      throw new Error("expected checkpoint handle");
+    }
+    const ok2 = await mgr.restore(4, handle);
     expect(ok2).toBe(true);
     const restoreCalls = recorded.filter((r) =>
       /\/slots\/\d+\/restore/.test(r.url),

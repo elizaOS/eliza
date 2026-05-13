@@ -7,8 +7,6 @@ import {
   normalizeOnboardingProviderId,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared";
-import { Button } from "../ui/button";
-import { Switch } from "../ui/switch";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api";
 import {
@@ -18,6 +16,8 @@ import {
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import { useApp } from "../../state";
 import type { TranslateFn as AppTranslateFn, ConfigUiHint } from "../../types";
+import { Button } from "../ui/button";
+import { Switch } from "../ui/switch";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
 

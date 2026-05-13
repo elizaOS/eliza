@@ -74,7 +74,10 @@ describe("CheckpointManager (REST-backed)", () => {
     expect(recorded).toHaveLength(2);
     expect(recorded[1].method).toBe("POST");
     expect(recorded[1].url).toMatch(/\/slots\/5\/restore\?filename=/);
-    expect(recorded[1].url).toContain(handle.backendRef!.filename);
+    if (!handle.backendRef) {
+      throw new Error("expected checkpoint backend reference");
+    }
+    expect(recorded[1].url).toContain(handle.backendRef.filename);
   });
 
   it("discardCheckpoint hits DELETE /slots/<id> and invalidates the handle", async () => {

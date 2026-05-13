@@ -10,50 +10,44 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import anthropicPlugin from "@elizaos/plugin-anthropic";
+import googleGenAIPlugin from "@elizaos/plugin-google-genai";
+import groqPlugin from "@elizaos/plugin-groq";
+import openaiPlugin from "@elizaos/plugin-openai";
 import sqlPlugin from "@elizaos/plugin-sql";
-import { v4 as uuidv4 } from "uuid";
+import xaiPlugin from "@elizaos/plugin-xai";
 
-// ============================================================================
-// LLM Provider Detection
-// ============================================================================
-
-interface LLMProvider {
+type LLMProvider = {
   name: string;
   envKey: string;
-  importPath: string;
-  exportName: string;
-}
+  plugin: Plugin;
+};
 
 const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
-    importPath: "@elizaos/plugin-openai",
-    exportName: "openaiPlugin",
+    plugin: openaiPlugin,
   },
   {
     name: "Anthropic (Claude)",
     envKey: "ANTHROPIC_API_KEY",
-    importPath: "@elizaos/plugin-anthropic",
-    exportName: "anthropicPlugin",
+    plugin: anthropicPlugin,
   },
   {
     name: "xAI (Grok)",
     envKey: "XAI_API_KEY",
-    importPath: "@elizaos/plugin-xai",
-    exportName: "xaiPlugin",
+    plugin: xaiPlugin,
   },
   {
     name: "Google GenAI (Gemini)",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-    importPath: "@elizaos/plugin-google-genai",
-    exportName: "googleGenaiPlugin",
+    plugin: googleGenAIPlugin,
   },
   {
     name: "Groq",
     envKey: "GROQ_API_KEY",
-    importPath: "@elizaos/plugin-groq",
-    exportName: "groqPlugin",
+    plugin: groqPlugin,
   },
 ];
 
@@ -62,69 +56,54 @@ function hasValidApiKey(envKey: string): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-async function loadLLMPlugin(): Promise<{
+function detectLLMPlugin(): {
   plugin: Plugin;
   providerName: string;
-} | null> {
+} | null {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
-      try {
-        const module = await import(provider.importPath);
-        const plugin = module[provider.exportName] || module.default;
-        if (plugin) {
-          return { plugin, providerName: provider.name };
-        }
-      } catch (error) {
-        console.warn(`⚠️  Failed to load ${provider.name} plugin: ${error}`);
-      }
+      return { plugin: provider.plugin, providerName: provider.name };
     }
   }
   return null;
 }
 
 function printAvailableProviders(): void {
-  console.log("\n📋 Supported LLM providers and their API keys:\n");
+  console.log("\nSupported LLM providers and their API keys:\n");
   for (const provider of LLM_PROVIDERS) {
     const hasKey = hasValidApiKey(provider.envKey);
-    const status = hasKey ? "✅" : "❌";
+    const status = hasKey ? "set" : "missing";
     console.log(`   ${status} ${provider.name.padEnd(25)} ${provider.envKey}`);
   }
-  console.log("\n💡 Set one of these environment variables in your .env file");
+  console.log("\nSet one of these environment variables in your .env file");
   console.log("   or export it in your shell before running this example.\n");
 }
 
-// ============================================================================
-// Main
-// ============================================================================
-
 async function main() {
-  console.log("🚀 Starting Eliza Chat...\n");
+  console.log("Starting Eliza Chat...\n");
 
-  // Load LLM plugin dynamically
-  const llmResult = await loadLLMPlugin();
+  const llmResult = detectLLMPlugin();
 
   if (!llmResult) {
-    console.error("❌ No valid LLM API key found!\n");
+    console.error("No valid LLM API key found.\n");
     printAvailableProviders();
     process.exit(1);
   }
 
-  console.log(`✅ Using ${llmResult.providerName} for language model\n`);
+  console.log(`Using ${llmResult.providerName} for language model\n`);
 
   const character: Character = createCharacter({
     name: "Eliza",
     bio: "A helpful AI assistant.",
   });
 
-  // Create runtime with detected LLM plugin
   const runtime = new AgentRuntime({
     character,
     plugins: [sqlPlugin, llmResult.plugin],
   });
   await runtime.initialize();
 
-  // Setup connection
-  const userId = uuidv4() as UUID;
+  const userId = crypto.randomUUID() as UUID;
   const roomId = stringToUuid("chat-room");
   const worldId = stringToUuid("chat-world");
 
@@ -138,20 +117,19 @@ async function main() {
     type: ChannelType.DM,
   });
 
-  // Create readline interface
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
   });
 
-  console.log("💬 Chat with Eliza (type 'exit' to quit)\n");
+  console.log("Chat with Eliza (type 'exit' to quit)\n");
 
   const prompt = () => {
     rl.question("You: ", async (input) => {
       const text = input.trim();
 
       if (text.toLowerCase() === "exit") {
-        console.log("\n👋 Goodbye!");
+        console.log("\nGoodbye.");
         rl.close();
         await runtime.stop();
         process.exit(0);
@@ -162,9 +140,8 @@ async function main() {
         return;
       }
 
-      // Create and send message
       const message = createMessageMemory({
-        id: uuidv4() as UUID,
+        id: crypto.randomUUID() as UUID,
         entityId: userId,
         roomId,
         content: {
@@ -174,20 +151,19 @@ async function main() {
         },
       });
 
-      let _response = "";
+      const messageService = runtime.messageService;
+      if (!messageService) {
+        throw new Error("Message service not initialized");
+      }
+
       process.stdout.write("Eliza: ");
 
-      await runtime?.messageService?.handleMessage(
-        runtime,
-        message,
-        async (content) => {
-          if (content?.text) {
-            _response += content.text;
-            process.stdout.write(content.text);
-          }
-          return [];
-        },
-      );
+      await messageService.handleMessage(runtime, message, async (content) => {
+        if (content?.text) {
+          process.stdout.write(content.text);
+        }
+        return [];
+      });
 
       console.log("\n");
       prompt();

@@ -15,7 +15,7 @@
 import type { Scenario, ScenarioScriptStep } from "./types.ts";
 import type { SimulatorState } from "./state.ts";
 
-export interface RenderArgs {
+interface RenderArgs {
   scenario: Scenario;
   history: ScenarioScriptStep[];
   message: ScenarioScriptStep;

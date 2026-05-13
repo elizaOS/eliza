@@ -1,9 +1,8 @@
 import type { StylePreset } from "@elizaos/shared";
-import { Button } from "../ui/button";
-
 import { useEffect, useState } from "react";
 import { useApp } from "../../state";
 import { getVrmPreviewUrl } from "../../state/vrm";
+import { Button } from "../ui/button";
 
 /* ── Shared constants ─────────────────────────────────────────────────── */
 

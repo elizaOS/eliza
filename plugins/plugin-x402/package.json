@@ -57,6 +57,7 @@
   },
   "dependencies": {
     "@elizaos/core": "2.0.0-beta.1",
+    "@solana/web3.js": "1.98.4",
     "drizzle-orm": "0.45.2",
     "viem": "^2.48.8"
   },

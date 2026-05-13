@@ -1,5 +1,5 @@
-import { PagePanel } from "../composites/page-panel";
 import { useApp } from "../../state";
+import { PagePanel } from "../composites/page-panel";
 import type { MemoryRecord } from "./vector-browser-utils";
 
 export function MemoryDetailPanel({ memory }: { memory: MemoryRecord | null }) {

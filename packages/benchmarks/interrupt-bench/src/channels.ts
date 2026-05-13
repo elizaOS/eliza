@@ -16,11 +16,11 @@ import type { FakeClock } from "./clock.ts";
 import type { Scenario, ScenarioScriptStep, TraceEvent } from "./types.ts";
 import type { Trace } from "./trace.ts";
 
-export interface ChannelDelivery {
+interface ChannelDelivery {
   step: ScenarioScriptStep;
 }
 
-export type OnMessageCallback = (
+type OnMessageCallback = (
   delivery: ChannelDelivery,
 ) => Promise<void>;
 

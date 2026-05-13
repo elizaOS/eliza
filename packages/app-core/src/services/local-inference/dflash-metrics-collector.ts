@@ -18,7 +18,6 @@ import { logger } from "@elizaos/core";
 import {
   type DflashStreamEvent,
   type DflashTurnStats,
-  type DflashVerifyStreamEvent,
   summarizeEvents,
 } from "./dflash-event-schema";
 

@@ -1,7 +1,3 @@
-import { Button } from "../ui/button";
-import { Checkbox } from "../ui/checkbox";
-import { Input } from "../ui/input";
-import { Textarea } from "../ui/textarea";
 import {
   Bot,
   FileUp,
@@ -22,6 +18,10 @@ import {
 } from "react";
 import type { DocumentScope } from "../../api/client-types-chat";
 import { useApp } from "../../state/useApp";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 export const MAX_UPLOAD_REQUEST_BYTES = 32 * 1_048_576;
 export const BULK_UPLOAD_TARGET_BYTES = 24 * 1_048_576;

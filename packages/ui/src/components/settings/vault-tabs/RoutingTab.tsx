@@ -8,9 +8,6 @@
  * supports wildcard key patterns (e.g. `OPENROUTER_*`).
  */
 
-import { Button } from "../../ui/button";
-import { Input } from "../../ui/input";
-import { Label } from "../../ui/label";
 import { ArrowRight, Loader2, Plus, Trash2 } from "lucide-react";
 import {
   type FormEvent,
@@ -19,6 +16,9 @@ import {
   useMemo,
   useState,
 } from "react";
+import { Button } from "../../ui/button";
+import { Input } from "../../ui/input";
+import { Label } from "../../ui/label";
 import type {
   AgentSummary,
   InstalledApp,

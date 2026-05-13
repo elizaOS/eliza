@@ -1,6 +1,3 @@
-import { Button } from "../../ui/button";
-import { MetaPill } from "../../composites/page-panel/page-panel-header";
-import { PagePanel } from "../../composites/page-panel";
 import {
   AtSign,
   BadgeCheck,
@@ -41,6 +38,9 @@ import type {
 } from "../../../api/client-types-relationships";
 import { shouldUseHashNavigation } from "../../../navigation";
 import { formatDateTime, formatShortDate } from "../../../utils/format";
+import { PagePanel } from "../../composites/page-panel";
+import { MetaPill } from "../../composites/page-panel/page-panel-header";
+import { Button } from "../../ui/button";
 import { RelationshipsIdentityCluster } from "../RelationshipsIdentityCluster";
 import {
   profilePrimaryValue,

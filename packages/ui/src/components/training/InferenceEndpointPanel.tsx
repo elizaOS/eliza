@@ -1,7 +1,7 @@
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
 import { Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import {
   useCreateInferenceEndpoint,
   useDeleteInferenceEndpoint,

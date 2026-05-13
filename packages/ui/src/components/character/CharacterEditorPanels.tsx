@@ -1,7 +1,4 @@
 import type { MessageExampleGroup } from "@elizaos/core";
-import { Button } from "../ui/button";
-import { Input } from "../ui/input";
-import { Textarea } from "../ui/textarea";
 import {
   type ChangeEvent,
   type DragEvent,
@@ -9,6 +6,9 @@ import {
   useState,
 } from "react";
 import type { CharacterData } from "../../api/client-types-config";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Textarea } from "../ui/textarea";
 
 /* ── Small plus icon used for inline "add" actions ───────────────── */
 const PlusIconSvg = ({ className }: { className?: string }) => (

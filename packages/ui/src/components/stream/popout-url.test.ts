@@ -31,9 +31,7 @@ describe("buildStreamPopoutUrl", () => {
     openStreamPopout("https://your-agent.example.com");
 
     expect(open).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "apiBase=https%3A%2F%2Fyour-agent.example.com",
-      ),
+      expect.stringContaining("apiBase=https%3A%2F%2Fyour-agent.example.com"),
       "elizaos-stream",
       "width=1280,height=720,menubar=no,toolbar=no,location=no,status=no",
     );

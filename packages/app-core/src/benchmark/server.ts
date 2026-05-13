@@ -11,7 +11,6 @@ import {
   AgentRuntime,
   type Content,
   elizaLogger,
-  getTrajectoryContext,
   type Memory,
   type MessageProcessingResult,
   type Plugin,

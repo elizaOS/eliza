@@ -1,10 +1,17 @@
-import { Button } from "../ui/button";
-import { cn } from "../../lib/utils";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "../ui/dropdown-menu";
-import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
 import { Check, ChevronDown, RefreshCw, UserRound } from "lucide-react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "../ui/dropdown-menu";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import {
   connectorAccountDisplayName,
   isConnectorAccountUsable,

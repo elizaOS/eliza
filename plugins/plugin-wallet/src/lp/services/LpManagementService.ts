@@ -1,6 +1,6 @@
 import {
   type IAgentRuntime,
-  ILpService,
+  type ILpService,
   type LpPositionDetails,
   logger,
   type PoolInfo,

@@ -1,8 +1,8 @@
+import type { PluginInfo } from "../../api";
+import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { AdminDialog } from "../ui/admin-dialog";
 import { Button } from "../ui/button";
 import { Dialog, DialogDescription, DialogTitle } from "../ui/dialog";
-import type { PluginInfo } from "../../api";
-import { ConnectorSetupPanel } from "../connectors/ConnectorSetupPanel";
 import { PluginConfigForm, TelegramPluginConfig } from "./PluginConfigForm";
 import {
   iconImageSource,

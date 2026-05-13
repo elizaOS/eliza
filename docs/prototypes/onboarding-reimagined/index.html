@@ -32,15 +32,15 @@
       }
 
       html {
-        background: var(--sky-0);
+        background: #ffffff;
       }
 
       body {
         min-height: 100vh;
         margin: 0;
         overflow-x: hidden;
-        background: var(--sky-0);
-        color: var(--white);
+        background: #ffffff;
+        color: var(--black);
         font-family: "Open Sans", Arial, sans-serif;
         letter-spacing: 0;
       }
@@ -57,105 +57,33 @@
         cursor: pointer;
       }
 
-      .sky {
-        position: fixed;
-        inset: 0;
-        overflow: hidden;
-        background:
-          radial-gradient(circle at 76% 18%, rgba(255, 255, 255, 0.35), transparent 18rem),
-          linear-gradient(180deg, #1178da 0%, var(--sky-1) 52%, var(--sky-2) 100%);
-        z-index: 0;
-        pointer-events: none;
-      }
-
-      .sky::before {
-        content: "";
-        position: absolute;
-        inset: 0;
-        background:
-          linear-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
-        background-size: 48px 48px;
-        opacity: 0.12;
-        mask-image: linear-gradient(to bottom, transparent, black 16%, transparent 92%);
-      }
-
-      .cloud-lane {
-        position: absolute;
-        left: -55vw;
-        width: 210vw;
-        height: 34vh;
-        min-height: 210px;
-        background-repeat: repeat-x;
-        transform: translate3d(0, 0, 0);
-        will-change: transform;
-        pointer-events: none;
-      }
-
-      .clouds-a {
-        top: 8vh;
-        opacity: 0.42;
-        filter: blur(0.4px);
-        animation: drift-a 92s linear infinite;
-        background-size: 520px 220px;
-        background-image:
-          radial-gradient(ellipse at 12% 60%, rgba(255, 255, 255, 0.9) 0 28px, transparent 29px),
-          radial-gradient(ellipse at 23% 48%, rgba(255, 255, 255, 0.92) 0 42px, transparent 43px),
-          radial-gradient(ellipse at 34% 58%, rgba(255, 255, 255, 0.82) 0 34px, transparent 35px),
-          radial-gradient(ellipse at 48% 45%, rgba(255, 255, 255, 0.72) 0 58px, transparent 59px),
-          radial-gradient(ellipse at 66% 63%, rgba(255, 255, 255, 0.75) 0 38px, transparent 39px);
-      }
-
-      .clouds-b {
-        top: 42vh;
-        opacity: 0.34;
-        animation: drift-b 128s linear infinite;
-        background-size: 720px 260px;
-        background-image:
-          radial-gradient(ellipse at 8% 64%, rgba(255, 255, 255, 0.82) 0 36px, transparent 37px),
-          radial-gradient(ellipse at 18% 54%, rgba(255, 255, 255, 0.8) 0 58px, transparent 59px),
-          radial-gradient(ellipse at 33% 67%, rgba(255, 255, 255, 0.7) 0 42px, transparent 43px),
-          radial-gradient(ellipse at 54% 52%, rgba(255, 255, 255, 0.78) 0 72px, transparent 73px),
-          radial-gradient(ellipse at 76% 64%, rgba(255, 255, 255, 0.62) 0 52px, transparent 53px);
-      }
-
-      .clouds-c {
-        bottom: -3vh;
-        opacity: 0.72;
-        animation: drift-c 156s linear infinite;
-        background-size: 880px 300px;
-        background-image:
-          radial-gradient(ellipse at 7% 82%, rgba(255, 255, 255, 0.92) 0 58px, transparent 59px),
-          radial-gradient(ellipse at 19% 75%, rgba(255, 255, 255, 0.86) 0 86px, transparent 87px),
-          radial-gradient(ellipse at 37% 84%, rgba(255, 255, 255, 0.82) 0 64px, transparent 65px),
-          radial-gradient(ellipse at 57% 78%, rgba(255, 255, 255, 0.88) 0 92px, transparent 93px),
-          radial-gradient(ellipse at 82% 84%, rgba(255, 255, 255, 0.82) 0 70px, transparent 71px);
-      }
-
-      @keyframes drift-a {
+      @keyframes cloud-drift-soft {
         from {
-          transform: translate3d(0, 0, 0);
+          transform: translate3d(-620px, 0, 0) scale(var(--scale, 1));
         }
         to {
-          transform: translate3d(-520px, 0, 0);
+          transform: translate3d(720px, 0, 0) scale(var(--scale, 1));
         }
       }
 
-      @keyframes drift-b {
+      @keyframes cloud-drift-slow {
         from {
-          transform: translate3d(0, 0, 0);
+          transform: translate3d(-680px, 0, 0) scale(var(--scale, 1));
         }
         to {
-          transform: translate3d(-720px, 0, 0);
+          transform: translate3d(760px, 0, 0) scale(var(--scale, 1));
         }
       }
 
-      @keyframes drift-c {
+      @keyframes cloud-breathe {
         from {
-          transform: translate3d(0, 0, 0);
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.035);
         }
         to {
-          transform: translate3d(-880px, 0, 0);
+          transform: scale(1);
         }
       }
 
@@ -184,11 +112,11 @@
       .brand strong {
         font-size: 24px;
         font-weight: 700;
+        color: #07131f;
       }
 
-      .brand span,
-      .navlink {
-        color: rgba(255, 255, 255, 0.76);
+      .brand span {
+        color: rgba(6, 19, 31, 0.64);
         font-size: 13px;
       }
 
@@ -198,18 +126,29 @@
         gap: 10px;
       }
 
-      .navlink {
+      .root-tab {
         padding: 9px 13px;
+        border: 0;
         border-radius: 999px;
-        background: rgba(6, 19, 31, 0.16);
-        color: rgba(255, 255, 255, 0.86);
-        text-decoration: none;
+        background: rgba(29, 145, 232, 0.1);
+        color: #0c5f9e;
+        font-size: 13px;
+        font-weight: 700;
         transition: opacity 0.16s ease, background 0.16s ease;
       }
 
-      .navlink:hover {
+      .root-tab:hover {
         opacity: 0.78;
-        background: rgba(6, 19, 31, 0.24);
+        background: rgba(29, 145, 232, 0.16);
+      }
+
+      .root-tab.active {
+        background: #07131f;
+        color: #ffffff;
+      }
+
+      .root-panel[hidden] {
+        display: none;
       }
 
       .stage {
@@ -217,6 +156,97 @@
         grid-template-columns: minmax(360px, 1fr) minmax(340px, 430px);
         gap: 32px;
         align-items: start;
+      }
+
+      .doc-shell {
+        width: min(1040px, 100%);
+        margin: 0 auto;
+        padding-bottom: 40px;
+      }
+
+      .doc-content {
+        border-radius: 28px;
+        background: #ffffff;
+        color: #07131f;
+        box-shadow:
+          inset 0 0 0 1px rgba(29, 145, 232, 0.14),
+          0 24px 80px rgba(18, 96, 155, 0.12);
+        padding: clamp(24px, 5vw, 58px);
+      }
+
+      .doc-content h1,
+      .doc-content h2,
+      .doc-content h3,
+      .doc-content h4 {
+        margin: 1.35em 0 0.55em;
+        line-height: 1.12;
+        color: #07131f;
+      }
+
+      .doc-content h1 {
+        margin-top: 0;
+        font-size: clamp(32px, 5vw, 54px);
+      }
+
+      .doc-content h2 {
+        font-size: clamp(22px, 3vw, 32px);
+      }
+
+      .doc-content h3 {
+        font-size: 20px;
+      }
+
+      .doc-content p,
+      .doc-content li {
+        color: rgba(6, 19, 31, 0.72);
+        font-size: 15px;
+        line-height: 1.68;
+      }
+
+      .doc-content a {
+        color: #0c73bd;
+      }
+
+      .doc-content ul,
+      .doc-content ol {
+        padding-left: 1.3rem;
+      }
+
+      .doc-content code {
+        border-radius: 7px;
+        background: rgba(29, 145, 232, 0.1);
+        padding: 0.16em 0.38em;
+        color: #0a4e82;
+        font-size: 0.92em;
+      }
+
+      .doc-content pre {
+        overflow: auto;
+        border-radius: 18px;
+        background: #07131f;
+        color: #eef8ff;
+        padding: 18px;
+      }
+
+      .doc-content pre code {
+        background: transparent;
+        color: inherit;
+        padding: 0;
+      }
+
+      .doc-content img {
+        width: 100%;
+        height: auto;
+        margin: 14px 0 26px;
+        border-radius: 20px;
+        box-shadow: 0 18px 60px rgba(6, 19, 31, 0.18);
+      }
+
+      .doc-content blockquote {
+        margin: 18px 0;
+        border-left: 4px solid var(--orange);
+        padding-left: 16px;
+        color: rgba(6, 19, 31, 0.72);
       }
 
       .phone-wrap {
@@ -261,23 +291,96 @@
         box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
       }
 
-      .screen .sky {
+      .screen-cloud-shader {
         position: absolute;
+        inset: 0;
+        overflow: hidden;
         border-radius: inherit;
         z-index: 0;
+        pointer-events: none;
+        background:
+          url("https://i.imgur.com/HRKpV6s.png") center / cover no-repeat,
+          linear-gradient(180deg, #1384df 0%, #48b8f5 48%, #b9ecff 100%);
       }
 
-      .screen .clouds-a {
-        top: -7vh;
-        opacity: 0.34;
+      .screen-cloud-shader::before {
+        content: "";
+        position: absolute;
+        inset: -16%;
+        background:
+          radial-gradient(ellipse at 18% 18%, rgba(255, 255, 255, 0.36), transparent 18%),
+          radial-gradient(ellipse at 72% 26%, rgba(255, 255, 255, 0.2), transparent 24%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent 56%);
+        animation: cloud-breathe 14s ease-in-out infinite;
       }
 
-      .screen .clouds-b {
-        opacity: 0.28;
+      .screen-cloud-shader::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(11, 84, 144, 0.06), transparent 28%),
+          radial-gradient(ellipse at 50% 50%, transparent 0 58%, rgba(5, 57, 98, 0.16) 100%);
       }
 
-      .screen .clouds-c {
-        opacity: 0.58;
+      .cloud-filter {
+        position: absolute;
+        width: 0;
+        height: 0;
+      }
+
+      .codepen-clouds {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .codepen-cloud {
+        position: absolute;
+        top: var(--top);
+        left: -72%;
+        width: 112px;
+        height: 112px;
+        opacity: var(--opacity, 0.8);
+        animation: cloud-drift-soft var(--duration, 90s) linear infinite;
+        animation-delay: var(--delay, 0s);
+        transform: translate3d(-620px, 0, 0) scale(var(--scale, 1));
+        will-change: transform;
+      }
+
+      .codepen-cloud.is-slow {
+        animation-name: cloud-drift-slow;
+      }
+
+      .codepen-cloud-part {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        transform: translate3d(-300px, -300px, 0);
+      }
+
+      .codepen-cloud-part.back {
+        filter: url("#cloud-filter-back");
+        box-shadow:
+          300px 300px 32px -24px rgba(255, 255, 255, 0.72),
+          342px 286px 42px -30px rgba(255, 255, 255, 0.52),
+          254px 312px 36px -30px rgba(255, 255, 255, 0.44);
+      }
+
+      .codepen-cloud-part.mid {
+        filter: url("#cloud-filter-mid");
+        box-shadow:
+          300px 300px 30px -22px rgba(255, 255, 255, 0.9),
+          355px 303px 34px -28px rgba(255, 255, 255, 0.66),
+          245px 294px 38px -30px rgba(255, 255, 255, 0.58);
+      }
+
+      .codepen-cloud-part.front {
+        filter: url("#cloud-filter-front");
+        box-shadow:
+          300px 300px 26px -20px rgba(255, 255, 255, 0.96),
+          330px 326px 31px -27px rgba(255, 255, 255, 0.7),
+          272px 278px 28px -26px rgba(255, 255, 255, 0.66);
       }
 
       .status {
@@ -375,6 +478,33 @@
         display: flex;
         gap: 10px;
         margin-top: 18px;
+        justify-content: flex-end;
+      }
+
+      .setup-footer {
+        align-items: end;
+        justify-content: space-between;
+        margin-top: 20px;
+      }
+
+      .language-inline {
+        display: grid;
+        gap: 6px;
+        min-width: 168px;
+        color: rgba(255, 255, 255, 0.82);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .language-inline select {
+        width: 100%;
+        height: 42px;
+        border: 0;
+        border-radius: 999px;
+        padding: 0 34px 0 14px;
+        background: rgba(255, 255, 255, 0.92);
+        color: var(--black);
+        outline: none;
       }
 
       .btn {
@@ -411,125 +541,82 @@
         color: #fff7ee;
       }
 
-      .lang-grid {
+      .setup-agent {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        margin-top: 24px;
+        place-items: center;
+        gap: 18px;
+        margin-top: 58px;
       }
 
-      .language {
-        min-height: 70px;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.18);
-        color: var(--white);
-        font-weight: 700;
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+      .agent-wave-canvas {
+        width: min(270px, 78vw);
+        height: 112px;
       }
 
-      .language.selected {
-        background: rgba(255, 255, 255, 0.92);
-        color: var(--black);
+      .agent-transcript {
+        min-height: 28px;
+        color: rgba(255, 255, 255, 0.9);
+        font-size: 20px;
+        font-weight: 600;
+        text-align: center;
+        text-shadow: 0 1px 12px rgba(6, 19, 31, 0.16);
       }
 
-      .speaker-card,
-      .mic-card,
-      .chat-card {
-        margin-top: 22px;
-        border-radius: 24px;
-        background: rgba(6, 19, 31, 0.2);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18);
-        padding: 18px;
-      }
-
-      .speaker-card .line {
-        color: rgba(255, 255, 255, 0.92);
-        font-size: 18px;
-        font-weight: 700;
-      }
-
-      .audio-row {
+      .setup-actions {
         display: flex;
+        justify-content: center;
         gap: 10px;
-        margin-top: 18px;
         flex-wrap: wrap;
+      }
+
+      .speaker-actions {
+        margin-top: auto;
+        padding-bottom: 22px;
+      }
+
+      .mic-setup {
+        display: grid;
+        gap: 14px;
+        margin-top: 28px;
+      }
+
+      .mic-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
       }
 
       .select {
         width: 100%;
         height: 44px;
-        margin-top: 14px;
         padding: 0 14px;
-        border-radius: 14px;
+        border-radius: 999px;
         border: 0;
         color: var(--black);
         background: rgba(255, 255, 255, 0.92);
+        outline: none;
       }
 
-      .mic-meter {
+      .mic-wave-wrap {
         display: flex;
         align-items: center;
         justify-content: center;
         height: 110px;
-        margin-top: 15px;
-        border-radius: 18px;
-        background: rgba(255, 255, 255, 0.14);
         overflow: hidden;
       }
 
-      .bars {
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        height: 70px;
+      .mic-wave-canvas {
+        width: 100%;
+        height: 100px;
       }
 
-      .bars i {
-        display: block;
-        width: 4px;
-        height: 20px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.9);
-        animation: meter 1.1s ease-in-out infinite;
-      }
-
-      .bars i:nth-child(2n) {
-        animation-delay: -0.25s;
-      }
-
-      .bars i:nth-child(3n) {
-        animation-delay: -0.55s;
-      }
-
-      .bars i:nth-child(4n) {
-        animation-delay: -0.78s;
-      }
-
-      @keyframes meter {
-        0%,
-        100% {
-          transform: scaleY(0.28);
-        }
-        50% {
-          transform: scaleY(1);
-        }
-      }
-
-      .personal-stack {
-        display: grid;
-        gap: 10px;
-        margin-top: 20px;
-      }
-
-      .text-input {
-        min-height: 48px;
-        resize: none;
-        border: 0;
-        border-radius: 18px;
-        padding: 14px;
-        color: var(--black);
-        background: rgba(255, 255, 255, 0.92);
-        outline: none;
+      .mic-status {
+        min-height: 20px;
+        margin: 0;
+        color: rgba(255, 255, 255, 0.76);
+        font-size: 12px;
+        text-align: center;
       }
 
       .home {
@@ -542,17 +629,17 @@
         display: grid;
         place-items: center;
         flex: 1;
-        min-height: 370px;
+        min-height: 390px;
       }
 
       .wave-avatar {
-        width: 260px;
-        height: 160px;
+        width: min(340px, 88vw);
+        height: 210px;
       }
 
       .avatar-label {
         position: absolute;
-        top: 64%;
+        top: calc(50% + 92px);
         left: 50%;
         transform: translate(-50%, -50%);
         color: rgba(255, 255, 255, 0.76);
@@ -639,6 +726,26 @@
         color: var(--black);
       }
 
+      .icon-btn svg {
+        display: block;
+        width: 19px;
+        height: 19px;
+        pointer-events: none;
+      }
+
+      .icon-btn.primary svg {
+        width: 23px;
+        height: 23px;
+      }
+
+      .icon-btn .continuous-icon {
+        stroke-width: 1.75;
+      }
+
+      .icon-btn .mic-icon {
+        stroke-width: 2.05;
+      }
+
       .composer input {
         min-width: 0;
         height: 38px;
@@ -684,20 +791,21 @@
 
       .panel-card {
         border-radius: 26px;
-        background: rgba(255, 255, 255, 0.14);
+        background: #ffffff;
         box-shadow:
-          inset 0 0 0 1px rgba(255, 255, 255, 0.2),
-          var(--shadow);
+          inset 0 0 0 1px rgba(29, 145, 232, 0.14),
+          0 20px 70px rgba(18, 96, 155, 0.12);
         padding: 20px;
         backdrop-filter: blur(16px);
       }
 
       .panel-card h2 {
         font-size: 18px;
+        color: #07131f;
       }
 
       .panel-card p {
-        color: rgba(255, 255, 255, 0.76);
+        color: rgba(6, 19, 31, 0.62);
         font-size: 13px;
         line-height: 1.5;
       }
@@ -711,13 +819,39 @@
       .tab {
         padding: 9px 12px;
         border-radius: 999px;
-        color: rgba(255, 255, 255, 0.84);
-        background: rgba(6, 19, 31, 0.16);
+        color: #0c5f9e;
+        background: rgba(29, 145, 232, 0.1);
       }
 
       .tab.active {
-        background: rgba(255, 255, 255, 0.9);
+        background: #07131f;
+        color: #ffffff;
+      }
+
+      .panel-card .btn.secondary {
+        background: rgba(29, 145, 232, 0.1);
+        color: #0c5f9e;
+        box-shadow: inset 0 0 0 1px rgba(29, 145, 232, 0.14);
+      }
+
+      .panel-card .btn.orange {
+        box-shadow: 0 10px 24px rgba(255, 138, 36, 0.2);
+      }
+
+      .panel-card .btn {
         color: var(--black);
+      }
+
+      .panel-card .btn.orange {
+        color: #ffffff;
+      }
+
+      .panel-card .btn.secondary {
+        color: #0c5f9e;
+      }
+
+      .panel-card .tab.active {
+        color: #ffffff;
       }
 
       .preset-grid,
@@ -730,8 +864,8 @@
       .view-item,
       .bg-code {
         border-radius: 18px;
-        background: rgba(6, 19, 31, 0.18);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+        background: rgba(29, 145, 232, 0.07);
+        box-shadow: inset 0 0 0 1px rgba(29, 145, 232, 0.12);
         padding: 13px;
       }
 
@@ -740,12 +874,12 @@
         align-items: center;
         justify-content: space-between;
         gap: 10px;
-        color: rgba(255, 255, 255, 0.9);
+        color: var(--black);
       }
 
       .preset.selected {
-        background: rgba(255, 255, 255, 0.86);
-        color: var(--black);
+        background: #07131f;
+        color: #ffffff;
       }
 
       .view-item strong,
@@ -764,7 +898,7 @@
 
       .bg-code {
         overflow: auto;
-        color: rgba(255, 255, 255, 0.84);
+        color: #173955;
         font-size: 12px;
         line-height: 1.45;
         white-space: pre-wrap;
@@ -775,50 +909,61 @@
         min-height: 174px;
         border-radius: 22px;
         background:
-          linear-gradient(180deg, rgba(255, 255, 255, 0.22), transparent),
-          rgba(6, 19, 31, 0.2);
+          radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.1), transparent 42%),
+          linear-gradient(180deg, #171717, #0f0f0f);
         overflow: hidden;
       }
 
       .desktop-bar {
         position: absolute;
-        left: 20px;
-        right: 20px;
-        bottom: 18px;
+        left: 50%;
+        bottom: 20px;
         display: grid;
-        grid-template-columns: 34px 1fr 36px;
+        grid-template-columns: 30px 54px 30px 34px;
         align-items: center;
-        gap: 8px;
-        height: 40px;
-        padding: 4px;
+        gap: 6px;
+        width: 168px;
+        height: 34px;
+        padding: 3px;
         border-radius: 999px;
-        background: rgba(7, 16, 25, 0.78);
+        transform: translateX(-50%);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.08));
+        backdrop-filter: blur(18px) saturate(150%);
         box-shadow:
-          0 0 22px rgba(255, 84, 64, 0.18),
-          inset 0 0 0 1px rgba(255, 255, 255, 0.13);
+          0 12px 38px rgba(0, 0, 0, 0.34),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.42),
+          inset 0 -10px 24px rgba(255, 255, 255, 0.05);
       }
 
-      .desktop-bar.open {
-        height: 112px;
-        grid-template-columns: 34px 1fr 36px;
-        align-items: end;
-        border-radius: 24px;
+      .desktop-bar.is-listening {
+        box-shadow:
+          0 0 26px rgba(255, 95, 72, 0.24),
+          0 12px 38px rgba(0, 0, 0, 0.34),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.46);
       }
 
-      .desktop-bar .recent {
-        display: none;
-        grid-column: 1 / -1;
-        color: rgba(255, 255, 255, 0.78);
-        padding: 0 12px 8px;
-        font-size: 12px;
+      .desktop-bar .icon-btn {
+        width: 28px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.11);
+        color: rgba(255, 255, 255, 0.88);
       }
 
-      .desktop-bar.open .recent {
-        display: block;
+      .desktop-bar .icon-btn.primary {
+        width: 32px;
+        height: 32px;
+        background: rgba(255, 255, 255, 0.88);
+        color: var(--black);
       }
 
-      .glow {
-        color: #ff6b57;
+      .desktop-tray-handle {
+        width: 54px;
+        height: 12px;
+        border-radius: 999px;
+        background: rgba(5, 7, 10, 0.36);
+        box-shadow:
+          inset 0 0 0 1px rgba(255, 255, 255, 0.46),
+          0 0 18px rgba(255, 255, 255, 0.08);
       }
 
       svg {
@@ -852,8 +997,8 @@
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .cloud-lane,
-        .bars i,
+        .codepen-cloud,
+        .screen-cloud-shader::before,
         .voice-line i {
           animation: none;
         }
@@ -861,39 +1006,48 @@
     </style>
   </head>
   <body>
-    <div class="sky" aria-hidden="true">
-      <div class="cloud-lane clouds-a"></div>
-      <div class="cloud-lane clouds-b"></div>
-      <div class="cloud-lane clouds-c"></div>
-    </div>
-
     <main class="app">
       <header class="topbar">
         <div class="brand">
           <strong>Eliza onboarding prototype</strong>
           <span>Cloud setup, voice calibration, companion chat, avatar and views controls.</span>
         </div>
-        <nav class="navlinks" aria-label="Prototype documents">
-          <a class="navlink" href="../../product/onboarding-reimagined-prd.md">PRD</a>
-          <a class="navlink" href="../../product/onboarding-reimagined-research-report.md">Research</a>
-          <a class="navlink" href="../../product/onboarding-reimagined-implementation-plan.md">Plan</a>
+        <nav class="navlinks" aria-label="Prototype tabs">
+          <button class="root-tab active" type="button" data-root-tab="prototype">Prototype</button>
+          <button class="root-tab" type="button" data-root-tab="prd">PRD</button>
+          <button class="root-tab" type="button" data-root-tab="research">Research</button>
+          <button class="root-tab" type="button" data-root-tab="plan">Plan</button>
         </nav>
       </header>
 
-      <section class="stage" aria-label="Interactive onboarding prototype">
+      <section class="stage root-panel" data-root-panel="prototype" aria-label="Interactive onboarding prototype">
         <div class="phone-wrap">
           <div class="phone" aria-label="iPhone preview frame">
             <div class="screen">
-              <div class="sky" aria-hidden="true">
-                <div class="cloud-lane clouds-a"></div>
-                <div class="cloud-lane clouds-b"></div>
-                <div class="cloud-lane clouds-c"></div>
+              <div class="screen-cloud-shader" aria-hidden="true">
+                <svg class="cloud-filter" aria-hidden="true" focusable="false">
+                  <filter id="cloud-filter-back" x="-50%" y="-50%" width="200%" height="200%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.011 0.019" numOctaves="3" seed="7" result="noise" />
+                    <feDisplacementMap in="SourceGraphic" in2="noise" scale="50" />
+                    <feGaussianBlur stdDeviation="1.1" />
+                  </filter>
+                  <filter id="cloud-filter-mid" x="-50%" y="-50%" width="200%" height="200%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.014 0.022" numOctaves="4" seed="11" result="noise" />
+                    <feDisplacementMap in="SourceGraphic" in2="noise" scale="36" />
+                    <feGaussianBlur stdDeviation="0.8" />
+                  </filter>
+                  <filter id="cloud-filter-front" x="-50%" y="-50%" width="200%" height="200%">
+                    <feTurbulence type="fractalNoise" baseFrequency="0.018 0.028" numOctaves="4" seed="17" result="noise" />
+                    <feDisplacementMap in="SourceGraphic" in2="noise" scale="24" />
+                    <feGaussianBlur stdDeviation="0.35" />
+                  </filter>
+                </svg>
+                <div class="codepen-clouds" id="codepen-clouds"></div>
               </div>
               <div class="status"><span>10:30</span><span>5G 100%</span></div>
 
               <section class="state centered active" id="state-setup">
-                <h1>Where should I run?</h1>
-                <p>Choose once. You can change it later in settings.</p>
+                <h1>Choose how Eliza runs</h1>
                 <div class="choice-list" role="list">
                   <button class="choice selected" data-runtime="cloud">
                     <strong>Cloud</strong>
@@ -908,76 +1062,54 @@
                     <span>Download the preferred Eliza-1 model and run on this device.</span>
                   </button>
                 </div>
-                <div class="chat-card" id="runtime-note">
-                  Cloud creates one tenant-isolated agent. No agent picker.
-                </div>
-                <div class="footer-actions">
-                  <button class="btn orange" data-next="language">Continue</button>
-                </div>
-              </section>
-
-              <section class="state centered" id="state-language">
-                <h1>Choose language</h1>
-                <p>This sets the app language and the agent language.</p>
-                <div class="lang-grid">
-                  <button class="language selected" data-lang="English">English</button>
-                  <button class="language" data-lang="Spanish">Spanish</button>
-                  <button class="language" data-lang="Japanese">Japanese</button>
-                  <button class="language" data-lang="Korean">Korean</button>
-                </div>
-                <div class="footer-actions">
-                  <button class="btn secondary" data-prev="setup">Back</button>
-                  <button class="btn orange" data-next="speaker">Continue</button>
+                <div class="footer-actions setup-footer">
+                  <label class="language-inline">
+                    <span>Language</span>
+                    <select id="language-select" aria-label="Language">
+                      <option>English</option>
+                      <option>Spanish</option>
+                      <option>Japanese</option>
+                      <option>Korean</option>
+                    </select>
+                  </label>
+                  <button class="btn orange" data-next="speaker" data-audio="hello" data-transcript="Can you hear me?">Continue</button>
                 </div>
               </section>
 
               <section class="state centered" id="state-speaker">
                 <h1>Can I say hello?</h1>
-                <p>We will test the speaker before asking for the microphone.</p>
-                <div class="speaker-card">
-                  <div class="line" id="speaker-line">Hey, can you hear me?</div>
-                  <div class="audio-row">
-                    <button class="btn orange" data-audio="hello">Play</button>
-                    <button class="btn secondary" data-next="mic" data-audio="great_mic">Yes</button>
-                    <button class="btn secondary" data-audio-cycle>Try again</button>
-                    <button class="btn secondary" data-next="personal">Skip</button>
-                  </div>
+                <div class="setup-agent">
+                  <canvas class="agent-wave-canvas" width="640" height="220"></canvas>
+                  <div class="agent-transcript" data-agent-transcript>Can you hear me?</div>
+                </div>
+                <div class="setup-actions speaker-actions">
+                  <button class="btn orange" data-next="mic" data-audio="great_mic" data-transcript="Great, now lets see if I can hear you.">Yes</button>
+                  <button class="btn secondary" data-audio-cycle>Try again</button>
+                  <button class="btn secondary" data-next="home" data-audio="setup_done">Skip Setup</button>
                 </div>
               </section>
 
               <section class="state centered" id="state-mic">
-                <h1>Now I listen</h1>
-                <p>Enable the microphone and pick an input if there is more than one.</p>
-                <div class="mic-card">
+                <div class="setup-agent">
+                  <canvas class="agent-wave-canvas" width="640" height="220"></canvas>
+                  <div class="agent-transcript" data-agent-transcript>Great, now lets see if I can hear you.</div>
+                </div>
+                <div class="mic-setup">
+                  <div class="mic-row">
                   <button class="btn orange" id="mic-permission">Enable microphone</button>
-                  <select class="select" aria-label="Audio input">
-                    <option>MacBook Pro Microphone</option>
-                    <option>Studio Display Microphone</option>
-                    <option>USB Audio Interface</option>
+                    <select class="select" id="mic-source" aria-label="Audio input">
+                      <option value="">Default microphone</option>
                   </select>
-                  <div class="mic-meter" aria-label="Microphone level preview">
-                    <div class="bars" id="mic-bars"></div>
                   </div>
-                  <p id="mic-hint">If you are speaking, I should see the waveform move.</p>
-                  <div class="audio-row">
+                  <div class="mic-wave-wrap" aria-label="Microphone waveform preview">
+                    <canvas class="mic-wave-canvas" id="mic-wave-canvas" width="640" height="170"></canvas>
+                  </div>
+                  <p class="mic-status" id="mic-status">Speak and the line should move.</p>
+                  <div class="setup-actions">
                     <button class="btn secondary" data-audio-cycle>Try again</button>
-                    <button class="btn orange" data-next="personal">I see it</button>
-                    <button class="btn secondary" data-next="personal">Skip</button>
+                    <button class="btn orange" data-next="home" data-audio="setup_done">I see it</button>
+                    <button class="btn secondary" data-next="home" data-audio="setup_done">Skip Setup</button>
                   </div>
-                </div>
-              </section>
-
-              <section class="state centered" id="state-personal">
-                <h1>What should I know?</h1>
-                <p>Short answers are fine. I will remember only useful owner facts.</p>
-                <div class="personal-stack">
-                  <textarea class="text-input" placeholder="Your name"></textarea>
-                  <textarea class="text-input" placeholder="Family, friends, relationships"></textarea>
-                  <textarea class="text-input" placeholder="Work, interests, goals"></textarea>
-                </div>
-                <div class="footer-actions">
-                  <button class="btn secondary" data-prev="mic">Back</button>
-                  <button class="btn orange" data-next="home" data-audio="setup_done">Finish</button>
                 </div>
               </section>
 
@@ -1007,10 +1139,10 @@
                   <input id="chat-text" placeholder="Ask anything" autocomplete="off" />
                   <div class="voice-line" id="voice-line" aria-hidden="true"></div>
                   <button class="icon-btn" id="dictate" type="button" aria-label="Dictate">
-                    <svg viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v2" /></svg>
+                    <svg class="mic-icon" viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /><path d="M9 21h6" /></svg>
                   </button>
-                  <button class="icon-btn primary" id="send-or-voice" type="button" aria-label="Voice mode">
-                    <svg id="action-icon" viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /></svg>
+                  <button class="icon-btn primary" id="send-or-voice" type="button" aria-label="Continuous voice">
+                    <svg id="action-icon" class="continuous-icon" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 0 1 15 0" /><path d="M7.5 12a4.5 4.5 0 0 1 9 0" /><path d="M4.75 15.5c2.1 2.5 4.5 3.75 7.25 3.75s5.15-1.25 7.25-3.75" /><path d="M12 11.75v.5" /></svg>
                   </button>
                 </form>
               </section>
@@ -1030,7 +1162,7 @@
 
           <div class="panel-card" data-panel-card="onboarding">
             <h2>Flow</h2>
-            <p>Prototype path: runtime choice, language, speaker, microphone, owner facts, then companion chat.</p>
+            <p>Prototype path: runtime and language, speaker, microphone, then companion chat.</p>
             <div class="footer-actions">
               <button class="btn secondary" data-jump="setup">Restart</button>
               <button class="btn secondary" data-jump="home">Skip to chat</button>
@@ -1065,13 +1197,12 @@
 
           <div class="panel-card" data-panel-card="desktop" hidden>
             <h2>Desktop tray bar</h2>
-            <p>Collapsed by default. Click or press Ctrl Space to expand. Hold mic for push-to-talk.</p>
             <div class="desktop-preview">
               <div class="desktop-bar" id="desktop-bar">
                 <button class="icon-btn" type="button" aria-label="Add"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg></button>
-                <input class="text-input" placeholder="Ask Eliza" />
-                <button class="icon-btn glow" type="button" aria-label="Mic"><svg viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /></svg></button>
-                <div class="recent">Eliza: I heard that. I will respond only when it sounds like you are addressing me.</div>
+                <div class="desktop-tray-handle" aria-hidden="true"></div>
+                <button class="icon-btn" type="button" aria-label="Dictate"><svg class="mic-icon" viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /><path d="M9 21h6" /></svg></button>
+                <button class="icon-btn primary" type="button" aria-label="Continuous voice"><svg class="continuous-icon" viewBox="0 0 24 24"><path d="M4.5 12a7.5 7.5 0 0 1 15 0" /><path d="M7.5 12a4.5 4.5 0 0 1 9 0" /><path d="M4.75 15.5c2.1 2.5 4.5 3.75 7.25 3.75s5.15-1.25 7.25-3.75" /><path d="M12 11.75v.5" /></svg></button>
               </div>
             </div>
           </div>
@@ -1083,22 +1214,886 @@
               <button class="btn orange" id="background-edit">Rewrite background</button>
             </div>
             <pre class="bg-code" id="bg-code">registerBackground({
-  id: "slow-clouds",
-  kind: "css-compositor",
-  fpsBudget: 1,
+  id: "codepen-cloud-shader",
+  kind: "svg-filtered-clouds",
+  fpsBudget: 3,
   action: "BACKGROUND_EDIT"
 });</pre>
           </div>
         </aside>
       </section>
+      <!-- GENERATED_DOC_TABS_START -->
+      <section class="doc-shell root-panel" data-root-panel="prd" hidden>
+        <article class="doc-content">
+          <h1>Eliza Start and Onboarding Reimagining PRD</h1>
+          <p>Date: 2026-05-12</p>
+          <h2>Summary</h2>
+          <p>Replace the current pre-chat runtime gate with a calm, voice-first companion start. The first frame is a blue sky, then slow infinite clouds, a reactive avatar, compact conversation history, and a ChatGPT-like composer optimized for text, voice, dictation, and attachments.</p>
+          <p>The setup path stays simple: choose Cloud, Remote, or Local; choose language; verify speaker and microphone; collect owner facts; land in the companion chat. Desktop should converge on the same companion experience plus a tray runtime and a thin always-available bottom bar.</p>
+          <h2>Goals</h2>
+          <ul>
+          <li>Remove the white startup flash by setting the app/page background to blue before React mounts.</li>
+          <li>Make sky/clouds a replaceable background module that can be edited through a <code>BACKGROUND_EDIT</code> agent action.</li>
+          <li>Make onboarding feel like the product: an assistant is immediately available, especially during Cloud setup.</li>
+          <li>Collapse Cloud onboarding to one agent per user. No cloud agent picker.</li>
+          <li>Start Local model download immediately when Local is selected, with hardware and disk warnings before completion.</li>
+          <li>Move language selection into onboarding and remove theme selection from onboarding.</li>
+          <li>Make voice setup first-class: speaker test, mic permission, input selection, live waveform, retries, and skip paths.</li>
+          <li>Make the companion screen the post-onboarding default on mobile and desktop.</li>
+          <li>Rename user-facing &quot;Apps&quot; to &quot;Views&quot;; plugins expose generated React views through a <code>views</code> array.</li>
+          <li>Add avatar customization as a dynamic module with initial presets: waveform shader, Jarvis, and VRM 3D model.</li>
+          <li>Enable compact, expandable message history that fades in and expands smoothly on scroll.</li>
+          <li>Add desktop tray behavior and a thin Wispr Flow-style bottom bar with global shortcut, push-to-talk, and always-on mic mode.</li>
+          </ul>
+          <h2>Non-Goals</h2>
+          <ul>
+          <li>This PRD does not require changing LifeOps task architecture.</li>
+          <li>This PRD does not replace <code>ScheduledTask</code> for reminders, follow-ups, recaps, watchers, or approvals.</li>
+          <li>This PRD does not decide final model weights or licensing beyond requiring the local flow to use the preferred Eliza-1 model registry.</li>
+          <li>This PRD does not silently enable always-on capture. Consent, controls, retention, and delete UX are required.</li>
+          </ul>
+          <h2>Primary Experience</h2>
+          <h3>1. First Paint and Background</h3>
+          <p>Requirements:</p>
+          <ul>
+          <li><code>html</code>, <code>body</code>, root shell, and startup containers use the same blue background color before assets load.</li>
+          <li>The cloud layer loads after the blue paint. The blue background must still look intentional if cloud assets fail.</li>
+          <li>The cloud animation is infinite, slow, and seamless. No visual seam should cross the screen.</li>
+          <li>Implementation must prefer compositor-friendly transforms over layout-changing animation.</li>
+          <li>Background modules are isolated from content modules.</li>
+          <li>A <code>BACKGROUND_EDIT</code> action lets the agent replace the background implementation with versioned code.</li>
+          </ul>
+          <p>Performance budget:</p>
+          <ul>
+          <li>Startup background CSS must be inline or in the first critical CSS bundle.</li>
+          <li>No large background images required for first paint.</li>
+          <li>Cloud animation should use at most three layers and <code>transform: translate3d(...)</code>.</li>
+          <li>Respect <code>prefers-reduced-motion</code>.</li>
+          <li>Background replacement code must be sandboxed, versioned, revertible, and benchmarked before activation.</li>
+          </ul>
+          <h3>2. Runtime Choice</h3>
+          <p>The first decision is still where the agent runs, but the choices are equal and visible:</p>
+          <ul>
+          <li>Cloud: sign in with Eliza Cloud, chat immediately with a tenant-isolated setup agent, provision the container in the background, then transfer conversation and memories into the container agent.</li>
+          <li>Remote: enter or discover an existing agent URL, verify connectivity, and continue.</li>
+          <li>Local: start model download immediately, warn about slow hardware or insufficient disk, and continue through setup while download runs.</li>
+          </ul>
+          <p>Cloud behavior:</p>
+          <ul>
+          <li>No agent selection in Cloud. Each user gets one cloud agent.</li>
+          <li>The setup agent uses the default Eliza character but is tenant-scoped and limited.</li>
+          <li>A setup provider tells the agent setup is in progress and actions are limited.</li>
+          <li>When the container is ready, chat transcript, extracted facts, and memories are handed to the container agent.</li>
+          <li>The agent says and writes that setup is complete, then subsequent responses come from the container.</li>
+          </ul>
+          <p>Local behavior:</p>
+          <ul>
+          <li>Local selection starts downloading the preferred Eliza-1 model immediately.</li>
+          <li>If the user also has Eliza Cloud available, the app can use Cloud while the local model downloads.</li>
+          <li>If no model is loaded, the agent tells the user it is still loading/downloading.</li>
+          <li>At the end of onboarding, if the model is not ready, the agent says and writes: &quot;I&#39;m still downloading the local models, so you&#39;ll need to wait for me to finish to keep going.&quot;</li>
+          <li>Hardware checks warn below 24 GB effective VRAM/shared memory and on insufficient disk space.</li>
+          </ul>
+          <p>Remote behavior:</p>
+          <ul>
+          <li>Accept HTTPS/LAN URLs plus optional token.</li>
+          <li>Clearly show connection verification and failure states.</li>
+          <li>Remote is a setup path, not a separate product mode.</li>
+          </ul>
+          <h3>3. Language</h3>
+          <p>Requirements:</p>
+          <ul>
+          <li>Ask for language after runtime choice.</li>
+          <li>Language changes app copy and the agent&#39;s default language.</li>
+          <li>No theme selector appears in onboarding.</li>
+          <li>Language choice is persisted before voice setup, so voice prompts use the selected language when localized assets exist.</li>
+          </ul>
+          <h3>4. Speaker and Microphone Setup</h3>
+          <p>Speaker step:</p>
+          <ul>
+          <li>Ask if it is okay to say hello out loud.</li>
+          <li>If yes, play: &quot;Hey, can you hear me?&quot;</li>
+          <li>User choices: Yes, Try again, Skip audio for now.</li>
+          <li>If Yes, play: &quot;Great, now lets see if I can hear you.&quot;</li>
+          </ul>
+          <p>Retry voice lines:</p>
+          <ul>
+          <li>&quot;Uhhh, how about now?&quot;</li>
+          <li>&quot;If you&#39;re speaking, I can&#39;t hear you yet.&quot;</li>
+          <li>&quot;Eh, still nothing.&quot;</li>
+          <li>&quot;Helloooooo.&quot;</li>
+          <li>&quot;Testing, testing, one two, one two.&quot;</li>
+          <li>&quot;I mean it has to work this time.&quot;</li>
+          <li>&quot;Okay, this is getting a bit ridiculous.&quot;</li>
+          <li>&quot;Maybe the mic is shy.&quot;</li>
+          <li>&quot;I am listening as hard as software can listen.&quot;</li>
+          <li>&quot;Last one before I start blaming the cable.&quot;</li>
+          </ul>
+          <p>Microphone step:</p>
+          <ul>
+          <li>Request mic permission.</li>
+          <li>On desktop, show input selector when more than one input exists.</li>
+          <li>Show a live waveform that moves when the mic has input.</li>
+          <li>If no signal arrives, cycle voice lines every few seconds, then loop.</li>
+          <li>User can confirm, retry, or skip.</li>
+          </ul>
+          <h3>5. Companion Screen</h3>
+          <p>The post-onboarding screen is the companion screen:</p>
+          <ul>
+          <li>Sky/cloud background.</li>
+          <li>Full-screen dynamic avatar module.</li>
+          <li>Compact message stack.</li>
+          <li>Composer pinned at bottom.</li>
+          <li>Audio on/off state visible but restrained.</li>
+          </ul>
+          <p>Composer behavior:</p>
+          <ul>
+          <li>Left button opens attachment source choices: image, music, PDF, file, camera/photo where available.</li>
+          <li>Text input placeholder: &quot;Ask anything&quot;.</li>
+          <li>If there is no text, the right button is voice mode.</li>
+          <li>If text exists, the right button becomes send.</li>
+          <li>A dictate microphone sits next to the right button.</li>
+          <li>Dictate mode turns dictate into X and right button into a checkmark.</li>
+          <li>Voice mode turns the whole text input area into a live waveform until stopped.</li>
+          </ul>
+          <p>Messages:</p>
+          <ul>
+          <li>Recent messages appear as compact headers/icons.</li>
+          <li>Tapping expands a message.</li>
+          <li>Only the last few messages show by default.</li>
+          <li>Scrolling upward fades in the full history and expands collapsed messages smoothly.</li>
+          </ul>
+          <h3>6. Avatar Runtime</h3>
+          <p>Requirements:</p>
+          <ul>
+          <li>Avatar is a full-screen dynamically loaded JS module.</li>
+          <li>Initial preset: waveform shader.</li>
+          <li>Additional presets: Jarvis and VRM 3D model.</li>
+          <li>Character view includes an Avatar side menu item.</li>
+          <li>Agent can edit avatar, create new avatars, and restore previous versions.</li>
+          <li>Avatar modules must have a sandbox boundary, version history, and fallback.</li>
+          </ul>
+          <p>Initial module contract:</p>
+          <pre><code class="language-ts">export interface AvatarModule {
+            id: string;
+            title: string;
+            kind: &quot;canvas&quot; | &quot;webgl&quot; | &quot;react&quot; | &quot;vrm&quot;;
+            mount(target: HTMLElement, context: AvatarContext): AvatarHandle;
+          }
+
+          export interface AvatarContext {
+            audioLevel: () =&gt; number;
+            speakingState: () =&gt; &quot;idle&quot; | &quot;listening&quot; | &quot;thinking&quot; | &quot;speaking&quot;;
+            theme: &quot;sky&quot;;
+            ownerName?: string;
+          }
+          </code></pre>
+          <h3>7. Desktop Runtime</h3>
+          <p>Requirements:</p>
+          <ul>
+          <li>On macOS, Windows, and Linux, Eliza runs as a tray app.</li>
+          <li>After setup, desktop opens to the companion screen rather than the current multi-page shell.</li>
+          <li>Desktop still exposes Views, Character, Settings, and other app surfaces.</li>
+          <li>Add a thin bottom bar similar to Wispr Flow:<ul>
+          <li>Collapsed by default.</li>
+          <li>Click or Ctrl Space expands into a chat bar with recent messages.</li>
+          <li>Mic button supports click-to-toggle and press-and-hold push-to-talk.</li>
+          <li>When always-on audio is enabled and the bar is collapsed, it glows softly red.</li>
+          <li>On macOS, holding Fn enables push-to-talk only when it does not interfere with normal Fn use.</li>
+          </ul>
+          </li>
+          </ul>
+          <h3>8. Always-On Voice and Replay Buffer</h3>
+          <p>Requirements:</p>
+          <ul>
+          <li>Always-on mode is encouraged but consented.</li>
+          <li>The system records and transcribes ambient audio when enabled.</li>
+          <li>Voice mode maintains a replay buffer of recent audio, including ignored speech.</li>
+          <li>The agent only responds when addressed or when a response is expected.</li>
+          <li>Users can pause, delete, export, and inspect captured audio/transcripts.</li>
+          <li>Sensitive data handling must be explicit and auditable.</li>
+          </ul>
+          <p>Response gating:</p>
+          <ul>
+          <li>Use VAD, wake intent, direct address detection, device context, and conversation state.</li>
+          <li>Prefer silence when uncertain.</li>
+          <li>Surface a subtle &quot;heard but did not respond&quot; trace in debug/history views.</li>
+          </ul>
+          <h3>9. Owner Knowledge</h3>
+          <p>The onboarding agent should learn:</p>
+          <ul>
+          <li>User name and nicknames.</li>
+          <li>Family, relationships, and friends.</li>
+          <li>Work and role.</li>
+          <li>Interests and routines.</li>
+          <li>Goals and active projects.</li>
+          <li>Important preferences.</li>
+          </ul>
+          <p>Extraction rules:</p>
+          <ul>
+          <li>Facts are extracted by evaluators and post-actions, not brittle prompt text.</li>
+          <li>Known facts are not repeatedly re-extracted unless new evidence changes them.</li>
+          <li>Add nickname support either as a dedicated evaluator or as a typed fact subtype.</li>
+          <li>Facts must be auditable, editable, and deletable.</li>
+          </ul>
+          <h3>10. Diarization and Voice Profiles</h3>
+          <p>Requirements:</p>
+          <ul>
+          <li>Diarize speakers in chat/audio logs.</li>
+          <li>Build voice profiles for speakers over time.</li>
+          <li>Compare unknown speech to known profiles.</li>
+          <li>Track more than 100 profiles.</li>
+          <li>Know when the speaker is likely the owner.</li>
+          <li>If confidence is low and protected access is requested, ask a private/personal challenge before granting access.</li>
+          </ul>
+          <p>Data contract:</p>
+          <pre><code class="language-ts">interface VoiceProfile {
+            id: string;
+            displayName?: string;
+            owner: boolean;
+            embeddingModel: string;
+            embeddings: VoiceEmbeddingSummary[];
+            quality: {
+              samples: number;
+              seconds: number;
+              noiseFloor: number;
+              lastUpdatedAt: string;
+            };
+            consent: &quot;explicit&quot; | &quot;implicit-household&quot; | &quot;unknown&quot;;
+          }
+          </code></pre>
+          <h3>11. Apps Become Views</h3>
+          <p>Requirements:</p>
+          <ul>
+          <li>Rename user-facing &quot;Apps&quot; to &quot;Views&quot;.</li>
+          <li>Rename the Apps tab to Views.</li>
+          <li>A view is a mini app generated by the agent or registered by a plugin.</li>
+          <li>Plugins expose a <code>views</code> array of complete React-based views.</li>
+          <li>The Views page itself is a view.</li>
+          <li>Existing app terminology can remain internally during migration only behind compatibility aliases.</li>
+          </ul>
+          <p>Plugin contract:</p>
+          <pre><code class="language-ts">export interface PluginViewRegistration {
+            id: string;
+            title: string;
+            description?: string;
+            icon?: React.ComponentType;
+            component: React.ComponentType&lt;PluginViewProps&gt;;
+            permissions?: ViewPermission[];
+            developerOnly?: boolean;
+          }
+
+          export interface ElizaPlugin {
+            views?: PluginViewRegistration[];
+            apps?: PluginViewRegistration[]; // deprecated compatibility alias
+          }
+          </code></pre>
+          <p>Agent view actions:</p>
+          <ul>
+          <li><code>VIEW_CREATE</code></li>
+          <li><code>VIEW_EDIT</code></li>
+          <li><code>VIEW_REVERT</code></li>
+          <li><code>VIEW_DELETE</code></li>
+          <li><code>VIEW_RESTORE</code></li>
+          <li><code>VIEW_OPEN</code></li>
+          </ul>
+          <h3>12. Security and Privacy</h3>
+          <ul>
+          <li>Cloud setup agent must be tenant-isolated.</li>
+          <li>Setup actions are limited until provisioning completes.</li>
+          <li>Memory transfer is explicit, logged, and scoped.</li>
+          <li>Dynamic background/avatar/view code must be sandboxed and permissioned.</li>
+          <li>Voice profiles require consent and local-first storage by default.</li>
+          <li>Always-on capture requires visible state and fast pause.</li>
+          <li>Protected actions require owner confidence or private challenge.</li>
+          </ul>
+          <h2>Acceptance Criteria</h2>
+          <ul>
+          <li>No white frame appears during cold load in browser, desktop, iOS, or Android.</li>
+          <li>Cloud path lands in chat immediately after sign-in while provisioning continues.</li>
+          <li>Cloud user never sees an agent picker.</li>
+          <li>Local path starts model download before language selection and shows hardware/disk warnings when applicable.</li>
+          <li>Language selection changes app copy and agent language.</li>
+          <li>Speaker and mic flow can be completed, retried, or skipped.</li>
+          <li>Companion screen is reachable after onboarding and is the default post-setup screen.</li>
+          <li>Composer switches correctly between mic, send, dictate, and waveform modes.</li>
+          <li>Desktop bar opens with Ctrl Space and supports push-to-talk/toggle mic states.</li>
+          <li>User-facing navigation says Views, not Apps.</li>
+          <li>Plugins can register <code>views</code>.</li>
+          <li>Kokoro voice lines are generated or a build task documents why they could not be generated.</li>
+          <li>E2E tests cover Cloud, Remote, Local downloading, skipped audio, successful audio, and desktop bar.</li>
+          </ul>
+          <h2>Prototype</h2>
+          <p>Interactive prototype:</p>
+          <p><code>docs/prototypes/onboarding-reimagined/index.html</code></p>
+          <p>Generated Kokoro audio assets:</p>
+          <p><code>docs/prototypes/onboarding-reimagined/audio/</code></p>
+        </article>
+      </section>
+
+      <section class="doc-shell root-panel" data-root-panel="research" hidden>
+        <article class="doc-content">
+          <h1>Current Onboarding Research Report</h1>
+          <p>Date: 2026-05-12</p>
+          <h2>Scope</h2>
+          <p>This report reviews the current Eliza startup/onboarding implementation, captures its visual state from the local app, and assesses the gap against the proposed sky/cloud companion onboarding.</p>
+          <h2>Capture Notes</h2>
+          <p>Screenshots were captured from the local Vite app with the mock API returning <code>onboardingComplete: false</code>.</p>
+          <p>Two harness-only workarounds were required:</p>
+          <ul>
+          <li><code>onnxruntime-node</code> was stubbed because Vite dependency optimization attempted to bundle native <code>.node</code> files.</li>
+          <li><code>packages/app/src/main.tsx</code> was transformed in memory to add a <code>React</code> binding because this checkout emitted <code>React.createElement</code> and otherwise produced <code>ReferenceError: React is not defined</code>.</li>
+          </ul>
+          <p>The first failed attempt produced a blank white page, which is relevant to the requested &quot;no white blip&quot; requirement. After the harness-only transform, the current onboarding screens rendered.</p>
+          <h2>Screenshot Gallery</h2>
+          <h3>Desktop Welcome</h3>
+          <p><img src="../../product/onboarding-reimagined-current-screenshots/desktop-welcome.png" alt="Current desktop welcome"></p>
+          <h3>Desktop Cloud Sign-In</h3>
+          <p><img src="../../product/onboarding-reimagined-current-screenshots/desktop-cloud.png" alt="Current desktop cloud sign-in"></p>
+          <h3>Desktop Advanced Options</h3>
+          <p><img src="../../product/onboarding-reimagined-current-screenshots/desktop-advanced-open.png" alt="Current desktop advanced options"></p>
+          <h3>Desktop Remote Form</h3>
+          <p><img src="../../product/onboarding-reimagined-current-screenshots/desktop-remote-form.png" alt="Current desktop remote form"></p>
+          <h3>Desktop Local Click Failure</h3>
+          <p><img src="../../product/onboarding-reimagined-current-screenshots/desktop-use-local-click.png" alt="Current desktop local click failure"></p>
+          <h3>Mobile Welcome</h3>
+          <p><img src="../../product/onboarding-reimagined-current-screenshots/mobile-welcome.png" alt="Current mobile welcome"></p>
+          <h3>Mobile Cloud Sign-In</h3>
+          <p><img src="../../product/onboarding-reimagined-current-screenshots/mobile-cloud.png" alt="Current mobile cloud sign-in"></p>
+          <h2>Current Implementation</h2>
+          <h3>Startup Shell</h3>
+          <p>The main app boot config is wired in <code>packages/app/src/main.tsx</code>. It registers branding, default apps, VRM assets, onboarding styles, companion shell, and desktop runtime hooks around <code>appBootConfig</code> at <code>packages/app/src/main.tsx:306</code>.</p>
+          <p>The UI root is gated by <code>StartupShell</code> before the app shell renders. <code>packages/ui/src/App.tsx:1190</code> makes the startup coordinator the authority for loading, pairing, onboarding, and error states.</p>
+          <h3>Runtime Gate</h3>
+          <p><code>packages/ui/src/components/shell/RuntimeGate.tsx:1</code> explicitly describes the current pre-chat setup as a single runtime decision: Cloud, Local, or Remote. It also states that LLM provider, subscriptions, connectors, and capabilities now happen inside chat/settings rather than the old wizard.</p>
+          <p>The current chooser prefers a primary Cloud path:</p>
+          <ul>
+          <li><code>packages/ui/src/components/shell/RuntimeGate.tsx:1396</code> renders the chooser.</li>
+          <li><code>packages/ui/src/components/shell/RuntimeGate.tsx:1403</code> makes Get started choose Cloud first when available.</li>
+          <li><code>packages/ui/src/components/shell/RuntimeGate.tsx:1414</code> hides Local/Remote behind &quot;I want to run it myself.&quot;</li>
+          <li><code>packages/ui/src/components/shell/RuntimeGate.tsx:1478</code> renders Cloud sign-in and provisioning.</li>
+          <li><code>packages/ui/src/components/shell/RuntimeGate.tsx:1644</code> still contains a Local provider/API-key wizard.</li>
+          </ul>
+          <p>This is simpler than the removed multi-step wizard, but it conflicts with the new requirement that Cloud, Remote, and Local be visible equal choices during first setup.</p>
+          <h3>Language and Theme</h3>
+          <p><code>RuntimeGate</code> imports both <code>LanguageDropdown</code> and <code>ThemeToggle</code> at <code>packages/ui/src/components/shell/RuntimeGate.tsx:74</code>. Screenshots show both controls in the top right. The new flow should move language into onboarding and remove theme selection from onboarding entirely.</p>
+          <h3>Apps Navigation</h3>
+          <p>User-facing navigation still says Apps:</p>
+          <ul>
+          <li>Navigation group label: <code>packages/ui/src/navigation/index.ts:202</code>.</li>
+          <li>Tab title resolution: <code>packages/ui/src/navigation/index.ts:518</code>.</li>
+          <li>App page components still use Apps naming, including <code>AppsPageView</code> and <code>AppsView</code>.</li>
+          </ul>
+          <p>The new taxonomy needs a compatibility migration from Apps to Views.</p>
+          <h3>Dynamic Pages and Existing View-Like Architecture</h3>
+          <p><code>packages/ui/src/App.tsx:467</code> routes the active tab through <code>ViewRouter</code>. At <code>packages/ui/src/App.tsx:475</code>, dynamic plugin pages are already resolved before the switch statement. This is a useful foundation for plugin <code>views</code> registration.</p>
+          <h3>Local Model Download</h3>
+          <p><code>packages/ui/src/onboarding/auto-download-recommended.ts:1</code> already describes background auto-download of a recommended local model after Local mode. It waits for the local agent, gets the local inference hub, selects a recommended model, and starts download at <code>packages/ui/src/onboarding/auto-download-recommended.ts:85</code>.</p>
+          <p>Gap: the current user path can still look like &quot;bring your own AI provider key&quot; in the advanced local copy, and the local click captured a backend unreachable error in the mock desktop path. The proposed flow should make model download the first-class local onboarding behavior, not provider-key setup.</p>
+          <h3>Hardware Detection</h3>
+          <p><code>packages/app-core/src/services/local-inference/hardware.ts:1</code> probes RAM, GPU backend, VRAM, and architecture. Apple Silicon shared memory is considered in the bucket recommendation at <code>packages/app-core/src/services/local-inference/hardware.ts:23</code>. The fit assessment returns <code>fits</code>, <code>tight</code>, or <code>wontfit</code> at <code>packages/app-core/src/services/local-inference/hardware.ts:188</code>.</p>
+          <p>This is enough substrate for the new local warnings, but disk-space checks need to be added to the onboarding path.</p>
+          <h3>Kokoro Voice</h3>
+          <p>The repo has Kokoro runtime scaffolding but not checked-in model weights:</p>
+          <ul>
+          <li><code>packages/app-core/src/services/local-inference/voice/kokoro/kokoro-runtime.ts:1</code> describes ONNX, GGUF, and Python execution paths.</li>
+          <li><code>packages/app-core/src/services/local-inference/voice/kokoro/kokoro-runtime.ts:26</code> says the runtime itself does not auto-download in that session.</li>
+          <li>Canonical model/voice URLs are documented at <code>packages/app-core/src/services/local-inference/voice/kokoro/kokoro-runtime.ts:28</code>.</li>
+          </ul>
+          <p>Prototype audio in <code>docs/prototypes/onboarding-reimagined/audio/</code> was generated with the Python Kokoro package and the <code>hexgrad/Kokoro-82M</code> model.</p>
+          <h2>Design Assessment</h2>
+          <h3>What Works</h3>
+          <ul>
+          <li>The current runtime gate is materially simpler than the old multi-step wizard.</li>
+          <li>The default Cloud path is clear for users who do not care where the agent runs.</li>
+          <li>The visual background is brand-forward and memorable.</li>
+          <li>The current code already has startup coordination, companion shell assets, desktop tray runtime, dynamic page routing, local inference hardware probing, and background model download pieces.</li>
+          </ul>
+          <h3>What Does Not Work For The New Direction</h3>
+          <ul>
+          <li>The current aesthetic is loud and retro: anime beach scene, high-contrast yellow, clipped panels, monospace type, heavy drop shadows. The requested direction is minimal future: Open Sans, blue sky, orange accents, white translucency, and fewer borders.</li>
+          <li>The visual density is high before the user understands the product. The background competes with the runtime decision.</li>
+          <li>Mobile welcome crops the branded image severely and leaves a large black region. It does not feel like a native companion start.</li>
+          <li>Language and theme controls are global chrome, not part of a guided setup.</li>
+          <li>Cloud sign-in is still a blocking panel, not an immediate conversation while provisioning continues.</li>
+          <li>Cloud onboarding includes a local embeddings option on the sign-in panel. That is technically useful, but it increases cognitive load at the wrong moment.</li>
+          <li>Local setup messaging says &quot;Bring your own AI provider key,&quot; which conflicts with the new local model download requirement.</li>
+          <li>The advanced local click failed in the mock desktop harness with &quot;Backend Unreachable.&quot; Even if this is a test harness artifact, the new flow needs resilient local-download status and a useful blocked state.</li>
+          <li>There is no first-class speaker/mic calibration.</li>
+          <li>There is no compact companion chat as the start screen.</li>
+          <li>Apps naming is still user-facing.</li>
+          <li>Avatar customization is not presented as an editable character surface.</li>
+          </ul>
+          <h2>Background Animation Assessment</h2>
+          <p>The referenced CodePen (<code>https://codepen.io/najarro93/full/NWvmyGQ</code>) has the right conceptual feel: layered drifting cloud mass across a blue sky. It appears too fast for this product and should not be copied directly. The product implementation should be independent and tuned for:</p>
+          <ul>
+          <li>Slow parallax.</li>
+          <li>Infinite repeat without visible seams.</li>
+          <li>CSS compositor transforms or a low-cost canvas worker.</li>
+          <li>Reduced motion support.</li>
+          <li>Blue first paint before cloud module load.</li>
+          <li>Agent-editable module boundaries.</li>
+          </ul>
+          <h2>Voice and Speaker Research</h2>
+          <p>Speaker diarization and recognition should be treated as probabilistic signals, not identity proof on their own.</p>
+          <p>Useful references:</p>
+          <ul>
+          <li><a href="https://pyannote.github.io/pyannote-audio/">pyannote.audio</a> is an open-source Python library with neural building blocks for speaker diarization.</li>
+          <li><a href="https://huggingface.co/pyannote/speaker-diarization">pyannote/speaker-diarization on Hugging Face</a> shows the pipeline API and model task tags for speaker diarization, speaker-change detection, voice activity detection, and overlapped speech detection.</li>
+          <li><a href="https://speechbrain.readthedocs.io/en/v1.0.3/API/speechbrain.lobes.models.ECAPA_TDNN.html">SpeechBrain ECAPA-TDNN docs</a> document ECAPA-TDNN as a speaker embedding model used for speaker verification.</li>
+          <li><a href="https://speechbrain.readthedocs.io/en/stable/tutorials/advanced/pre-trained-models-and-fine-tuning-with-huggingface.html">SpeechBrain pretrained speaker verification tutorial</a> shows <code>speechbrain/spkrec-ecapa-voxceleb</code> for speaker verification from embeddings.</li>
+          <li><a href="https://www.nist.gov/programs-projects/speaker-and-language-recognition">NIST Speaker and Language Recognition</a> describes systematic evaluation for speaker and language recognition technology.</li>
+          <li><a href="https://sre.nist.gov/">NIST SRE site</a> frames speaker recognition evaluation around text-independent speaker recognition and calibration of technical capabilities.</li>
+          </ul>
+          <p>Recommended architecture:</p>
+          <ul>
+          <li>Use VAD first to segment likely speech.</li>
+          <li>Use diarization to partition speakers.</li>
+          <li>Use embeddings for speaker similarity and clustering.</li>
+          <li>Maintain rolling profile summaries instead of storing every raw embedding forever.</li>
+          <li>Track profile quality: seconds of clean speech, noise, device/source, recency, and confidence.</li>
+          <li>Never grant sensitive access on voice similarity alone. Require owner confidence plus context, or ask a private challenge.</li>
+          <li>Keep local-first defaults for household voice profiles.</li>
+          </ul>
+          <h2>Implications For The New Flow</h2>
+          <ul>
+          <li>The requested experience is not a skin on <code>RuntimeGate</code>; it is a new startup product surface.</li>
+          <li>The new Cloud setup needs a backend bridge, not just UI changes.</li>
+          <li>Local setup needs status-driven model download UX, disk checks, and cloud fallback.</li>
+          <li>Voice setup needs real platform capability work: audio output test, mic permission, input selection, waveform signal, and retry line playback.</li>
+          <li>Apps-to-Views is a cross-repo naming/API migration.</li>
+          <li>Dynamic background/avatar/view editing requires code sandbox, permissioning, version history, and rollback.</li>
+          </ul>
+          <h2>Prototype</h2>
+          <p>The mocked end-to-end prototype is at:</p>
+          <p><code>docs/prototypes/onboarding-reimagined/index.html</code></p>
+          <p>It includes:</p>
+          <ul>
+          <li>Blue first paint and slow independent cloud animation.</li>
+          <li>Runtime choices: Cloud, Remote, Local.</li>
+          <li>Language step.</li>
+          <li>Speaker/mic setup with generated Kokoro audio.</li>
+          <li>Owner fact collection.</li>
+          <li>Companion chat with waveform avatar, compact messages, composer modes.</li>
+          <li>Avatar presets.</li>
+          <li>Views panel.</li>
+          <li>Desktop bar mock.</li>
+          <li><code>BACKGROUND_EDIT</code> mock action.</li>
+          </ul>
+        </article>
+      </section>
+
+      <section class="doc-shell root-panel" data-root-panel="plan" hidden>
+        <article class="doc-content">
+          <h1>Onboarding Reimagining Implementation Plan</h1>
+          <p>Date: 2026-05-12</p>
+          <h2>Delivery Shape</h2>
+          <p>Implement as a staged migration behind flags:</p>
+          <ul>
+          <li><code>ELIZA_NEW_ONBOARDING=1</code></li>
+          <li><code>ELIZA_VIEWS_NAMING=1</code></li>
+          <li><code>ELIZA_DESKTOP_COMPANION_START=1</code></li>
+          <li><code>ELIZA_DYNAMIC_SURFACES=1</code></li>
+          </ul>
+          <p>Keep current startup working until the new flow passes E2E on web, desktop, iOS, and Android.</p>
+          <h2>Workstream A: Startup Paint and Background Runtime</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/app/index.html</code></li>
+          <li><code>packages/app/src/main.tsx</code></li>
+          <li><code>packages/ui/src/components/shell/StartupShell.tsx</code></li>
+          <li>New <code>packages/ui/src/backgrounds/*</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Set critical blue background on <code>html</code>, <code>body</code>, root container, and startup shell before React mount.</li>
+          <li>Add <code>BackgroundHost</code> that loads a versioned background module.</li>
+          <li>Implement initial <code>slow-clouds</code> module independently from the CodePen reference.</li>
+          <li>Add reduced-motion behavior.</li>
+          <li>Add <code>BACKGROUND_EDIT</code> action contract, validation, version history, activation, revert, and fallback.</li>
+          <li>Add visual performance smoke test for first paint and background continuity.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Cold-load screenshot must never show white.</li>
+          <li>Reduced motion disables drift.</li>
+          <li>Background module failure falls back to solid blue.</li>
+          <li>Revert restores previous active module.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>This can run independently of onboarding state work if the host accepts static children.</li>
+          </ul>
+          <h2>Workstream B: New Onboarding State Machine</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li>New <code>packages/ui/src/onboarding-v2/*</code></li>
+          <li><code>packages/ui/src/components/shell/StartupShell.tsx</code></li>
+          <li><code>packages/ui/src/state/*</code></li>
+          <li><code>packages/ui/src/i18n/*</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Create explicit steps: runtime, language, speaker, microphone, owner facts, final handoff.</li>
+          <li>Persist progress and allow resume.</li>
+          <li>Remove theme selector from onboarding.</li>
+          <li>Move language into onboarding and update app/agent language together.</li>
+          <li>Render Cloud, Remote, and Local as equal cards.</li>
+          <li>Keep current <code>RuntimeGate</code> available behind fallback flag.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Cloud, Remote, Local can complete.</li>
+          <li>Back/forward/resume works.</li>
+          <li>Theme controls do not appear.</li>
+          <li>Language persists and changes copy before voice step.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Depends only on Workstream A host shell contract, not Cloud backend.</li>
+          </ul>
+          <h2>Workstream C: Cloud Setup Agent and Handoff</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/app-core/src/*</code></li>
+          <li><code>plugins/plugin-elizacloud/*</code></li>
+          <li><code>packages/ui/src/api/*</code></li>
+          <li>New cloud setup session API types.</li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Add tenant-isolated setup agent session.</li>
+          <li>Limit setup agent actions through provider/capability policy.</li>
+          <li>Show setup progress provider in chat.</li>
+          <li>Provision user container in background after Cloud sign-in.</li>
+          <li>Transfer chat transcript, memories, and extracted facts to the container agent.</li>
+          <li>Switch live chat transport to the container without visible interruption.</li>
+          <li>Remove cloud agent selection from first-run Cloud path.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Setup agent cannot access another tenant.</li>
+          <li>Limited actions are enforced server-side.</li>
+          <li>Handoff preserves transcript order and memory IDs.</li>
+          <li>Agent announces setup completion exactly once.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Can be developed against mocked UI contracts while Workstream B lands.</li>
+          </ul>
+          <h2>Workstream D: Local Model Download, Hardware, and Disk Checks</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/ui/src/onboarding/auto-download-recommended.ts</code></li>
+          <li><code>packages/ui/src/services/local-inference/*</code></li>
+          <li><code>packages/app-core/src/services/local-inference/*</code></li>
+          <li><code>packages/shared/src/local-inference/*</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Start model download immediately when Local is selected, before later onboarding steps.</li>
+          <li>Add disk-space probe to local inference API.</li>
+          <li>Warn below 24 GB effective VRAM/shared memory.</li>
+          <li>Warn when free disk is below selected model size plus safety margin.</li>
+          <li>If Cloud is available, route temporary chat to Cloud while Local downloads.</li>
+          <li>If no model is available, make the agent answer with local-loading status.</li>
+          <li>Add end-of-onboarding blocker message if model still downloading.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Download POST is sent once per local selection.</li>
+          <li>Insufficient disk warning appears.</li>
+          <li>Under-24 GB warning appears.</li>
+          <li>Cloud fallback responses stop once local model is active.</li>
+          <li>Download interruption/resume works.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Can proceed independently of Cloud handoff. Needs final integration with Workstream B.</li>
+          </ul>
+          <h2>Workstream E: Voice Setup and Kokoro Assets</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li>New <code>packages/ui/src/onboarding-v2/audio/*</code></li>
+          <li><code>packages/app-core/src/services/local-inference/voice/kokoro/*</code></li>
+          <li><code>packages/app-core/scripts/generate-onboarding-voicelines.mjs</code></li>
+          <li>Platform audio permission bridges.</li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Replace ElevenLabs-only onboarding line generator with Kokoro-capable generator.</li>
+          <li>Add localized manifest for speaker/mic lines.</li>
+          <li>Implement speaker playback test.</li>
+          <li>Implement mic permission prompt, input selector, and live waveform.</li>
+          <li>Cycle retry lines every few seconds up to the list, then loop.</li>
+          <li>Add skip paths.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Generated voice assets exist and match manifest keys.</li>
+          <li>Audio playback failure has visible fallback.</li>
+          <li>Mic waveform responds to mock input.</li>
+          <li>Multiple inputs render selector only when needed.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Independent from Cloud and Local model work.</li>
+          </ul>
+          <h2>Workstream F: Companion Chat Surface</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/app-companion/*</code></li>
+          <li><code>packages/ui/src/components/chat/*</code></li>
+          <li><code>packages/ui/src/components/shell/*</code></li>
+          <li>New <code>packages/ui/src/companion-start/*</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Make companion screen default after onboarding on mobile and desktop.</li>
+          <li>Build compact expandable message stack.</li>
+          <li>Build composer modes: attach, text, send, voice, dictate, waveform.</li>
+          <li>Add fade-in full history behavior on upward scroll.</li>
+          <li>Integrate chat transport status for Cloud setup, Remote, and Local fallback.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>No text means right button is mic.</li>
+          <li>Text means right button is send.</li>
+          <li>Dictate toggles X/check behavior.</li>
+          <li>Voice mode replaces input with waveform.</li>
+          <li>Tapping message expands; upward scroll expands history.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Can be built with mocked data while Workstream C/D transports mature.</li>
+          </ul>
+          <h2>Workstream G: Avatar Runtime and Character View</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/app-companion/*</code></li>
+          <li><code>packages/ui/src/components/pages/Character*</code></li>
+          <li>New <code>packages/ui/src/avatar-runtime/*</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Define dynamic avatar module contract.</li>
+          <li>Implement waveform shader preset.</li>
+          <li>Implement Jarvis preset.</li>
+          <li>Implement VRM 3D preset using existing VRM/Three.js assets.</li>
+          <li>Add Avatar item to Character view side menu.</li>
+          <li>Add agent actions for avatar edit/create/revert/delete/restore.</li>
+          <li>Add sandbox, validation, preview, and fallback avatar.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>All three presets mount and unmount cleanly.</li>
+          <li>Audio level changes avatar state.</li>
+          <li>Bad module fails closed and reverts.</li>
+          <li>Character view can select and save preset.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Shares visual surface with Workstream F, but can own its runtime boundary.</li>
+          </ul>
+          <h2>Workstream H: Desktop Tray and Bottom Bar</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/ui/src/desktop-runtime/DesktopTrayRuntime.tsx</code></li>
+          <li><code>packages/native-plugins/desktop/*</code></li>
+          <li><code>packages/app/src/main.tsx</code></li>
+          <li>New <code>packages/ui/src/desktop-runtime/CompanionBar.tsx</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Keep tray app behavior on macOS, Windows, and Linux.</li>
+          <li>Open companion screen after setup.</li>
+          <li>Add thin bottom bar.</li>
+          <li>Add Ctrl Space shortcut.</li>
+          <li>Add click-to-expand chat.</li>
+          <li>Add mic toggle and press-hold push-to-talk.</li>
+          <li>Add macOS Fn push-to-talk with conflict avoidance.</li>
+          <li>Add soft red glow for collapsed always-on mode.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Tray launches without full shell when configured.</li>
+          <li>Ctrl Space expands/collapses.</li>
+          <li>Push-to-talk emits start/stop events.</li>
+          <li>Toggle mic persists state.</li>
+          <li>Fn behavior does not trigger during normal function-key combinations.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Can build against mocked chat transport and audio capture events.</li>
+          </ul>
+          <h2>Workstream I: Always-On Audio, Replay Buffer, and Response Gating</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/app-core/src/services/local-inference/voice/*</code></li>
+          <li><code>packages/native-plugins/*audio*</code></li>
+          <li>New <code>packages/app-core/src/services/ambient-audio/*</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Add consented always-on mode.</li>
+          <li>Capture rolling audio buffer.</li>
+          <li>Transcribe ambient speech.</li>
+          <li>Store ignored speech with retention policy.</li>
+          <li>Add response gating classifier: direct address, wake intent, context expectation, confidence threshold.</li>
+          <li>Add pause/delete/export controls.</li>
+          <li>Add debug trace for &quot;heard but did not respond.&quot;</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Always-on cannot start without consent.</li>
+          <li>Pause stops capture.</li>
+          <li>Replay buffer respects retention.</li>
+          <li>Agent stays silent for non-addressed speech in fixture tests.</li>
+          <li>Protected actions require owner confidence or challenge.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Depends on platform audio bridges from Workstream E but can prototype with file input fixtures.</li>
+          </ul>
+          <h2>Workstream J: Owner Facts, Nicknames, Diarization, and Voice Profiles</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/app-core/src/evaluators/*</code></li>
+          <li><code>packages/app-core/src/memory/*</code></li>
+          <li><code>packages/app-core/src/services/*speaker*</code></li>
+          <li>New <code>packages/app-core/src/services/voice-profiles/*</code></li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Add owner profile fact schema.</li>
+          <li>Add dedupe rules so known facts are not repeatedly extracted.</li>
+          <li>Add nickname evaluator or typed nickname fact.</li>
+          <li>Add diarization pipeline abstraction.</li>
+          <li>Add speaker embedding/profile storage.</li>
+          <li>Support more than 100 voice profiles with quality metadata.</li>
+          <li>Add owner confidence scoring.</li>
+          <li>Add private challenge flow for low-confidence protected access.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Known name is not re-added.</li>
+          <li>New nickname attaches to owner.</li>
+          <li>Multiple speakers are attributed in transcript fixtures.</li>
+          <li>Profile search scales beyond 100 profiles.</li>
+          <li>Low confidence blocks protected action until challenge passes.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Can use offline fixture audio/text while Workstream I captures live audio.</li>
+          </ul>
+          <h2>Workstream K: Apps to Views Migration</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/ui/src/navigation/index.ts</code></li>
+          <li><code>packages/ui/src/components/pages/AppsPageView.tsx</code></li>
+          <li><code>packages/ui/src/components/pages/AppsView.tsx</code></li>
+          <li><code>packages/ui/src/App.tsx</code></li>
+          <li>Plugin registration types across packages/plugins.</li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Rename user-facing Apps labels to Views.</li>
+          <li>Add plugin <code>views</code> array contract.</li>
+          <li>Keep <code>apps</code> alias with deprecation warnings.</li>
+          <li>Register existing mini apps as views.</li>
+          <li>Make Views page itself a registered view.</li>
+          <li>Add agent actions: <code>VIEW_CREATE</code>, <code>VIEW_EDIT</code>, <code>VIEW_REVERT</code>, <code>VIEW_DELETE</code>, <code>VIEW_RESTORE</code>, <code>VIEW_OPEN</code>.</li>
+          <li>Add generated-view storage, version history, and restore flow.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>Navigation shows Views.</li>
+          <li>Existing apps remain reachable.</li>
+          <li>Plugin <code>views</code> render.</li>
+          <li>Deprecated <code>apps</code> still works during migration.</li>
+          <li>Agent view actions are permissioned and auditable.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Broad rename. Keep it isolated from onboarding visuals until route aliases are stable.</li>
+          </ul>
+          <h2>Workstream L: QA, Performance, Accessibility, and Release</h2>
+          <p>Owner files:</p>
+          <ul>
+          <li><code>packages/app/test/*</code></li>
+          <li><code>packages/ui/src/**/*.test.*</code></li>
+          <li>Playwright configs.</li>
+          <li>Release docs.</li>
+          </ul>
+          <p>Tasks:</p>
+          <ul>
+          <li>Add E2E matrix for Cloud, Remote, Local, audio skipped, audio accepted, desktop bar.</li>
+          <li>Add screenshot baselines for desktop and mobile onboarding.</li>
+          <li>Add first-paint no-white test.</li>
+          <li>Add Lighthouse/performance budget for background animation.</li>
+          <li>Add accessibility checks for focus, labels, reduced motion, contrast, keyboard paths.</li>
+          <li>Add migration notes for Apps to Views.</li>
+          <li>Add rollback flags and observability events.</li>
+          </ul>
+          <p>Tests:</p>
+          <ul>
+          <li>CI runs new onboarding E2E behind flag.</li>
+          <li>Visual diff catches white flash and mobile crop regressions.</li>
+          <li>Keyboard-only onboarding completes.</li>
+          <li>Screen reader labels exist for icon-only controls.</li>
+          </ul>
+          <p>Parallel notes:</p>
+          <ul>
+          <li>Starts early with prototype tests, then follows each workstream for coverage.</li>
+          </ul>
+          <h2>Suggested Parallel Agent Assignments</h2>
+          <ol>
+          <li>Shell/background agent: Workstream A only.</li>
+          <li>Onboarding UI agent: Workstream B plus integration with E/F mocks.</li>
+          <li>Cloud handoff agent: Workstream C only.</li>
+          <li>Local inference agent: Workstream D only.</li>
+          <li>Voice setup agent: Workstream E only.</li>
+          <li>Companion/avatar agent: Workstreams F and G, with separate file ownership inside avatar runtime if split further.</li>
+          <li>Desktop agent: Workstream H only.</li>
+          <li>Ambient intelligence agent: Workstreams I and J, split into audio pipeline and memory/profile schema if needed.</li>
+          <li>Views migration agent: Workstream K only.</li>
+          <li>QA agent: Workstream L, continuously rebasing against completed workstreams.</li>
+          </ol>
+          <h2>Integration Order</h2>
+          <ol>
+          <li>Land flags and blue first paint.</li>
+          <li>Land background host with static slow-clouds module.</li>
+          <li>Land onboarding-v2 with mocked Cloud/Remote/Local outcomes.</li>
+          <li>Integrate Local download and warnings.</li>
+          <li>Integrate Cloud setup agent and handoff.</li>
+          <li>Integrate voice setup and Kokoro assets.</li>
+          <li>Switch post-onboarding target to companion screen.</li>
+          <li>Add avatar runtime presets and Character menu.</li>
+          <li>Add desktop bottom bar.</li>
+          <li>Migrate Apps to Views.</li>
+          <li>Add always-on/replay/diarization/profile features behind separate consent flag.</li>
+          <li>Remove old RuntimeGate only after telemetry and E2E show parity or better.</li>
+          </ol>
+          <h2>Main Risks</h2>
+          <ul>
+          <li>Dynamic code editing can become a security boundary failure. Require sandboxing and permissions before exposing agent edit actions.</li>
+          <li>Always-on capture can create trust and compliance risk. Consent, visible state, retention, delete, and audit are part of MVP.</li>
+          <li>Cloud handoff can lose memory or duplicate messages. Treat handoff as a transactional migration with idempotent replay.</li>
+          <li>Apps-to-Views rename touches many files. Use compatibility aliases and route redirects until plugins migrate.</li>
+          <li>Local model download can fail or take too long. The UI needs honest status, cloud fallback, and resumable downloads.</li>
+          </ul>
+        </article>
+      </section>
+      <!-- GENERATED_DOC_TABS_END -->
     </main>
 
     <audio id="voice-audio" preload="none"></audio>
 
     <script>
       const states = Array.from(document.querySelectorAll(".state"));
-      const runtimeNote = document.querySelector("#runtime-note");
       const audio = document.querySelector("#voice-audio");
+      const agentCanvases = Array.from(document.querySelectorAll(".agent-wave-canvas"));
+      const agentTranscripts = Array.from(document.querySelectorAll("[data-agent-transcript]"));
       const tryLines = [
         "try_again_01",
         "try_again_02",
@@ -1126,25 +2121,146 @@
       let tryIndex = 0;
       let runtime = "cloud";
       let avatarMode = "waveform";
+      let voiceAudioContext = null;
+      let voiceAnalyser = null;
+      let voiceData = null;
+      let voiceSource = null;
+      let voiceLoopStarted = false;
+      let micAudioContext = null;
+      let micAnalyser = null;
+      let micData = null;
+      let micStream = null;
+      let micSource = null;
+      let micLoopStarted = false;
+
+      document.querySelectorAll("[data-root-tab]").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          const target = tab.dataset.rootTab;
+          document.querySelectorAll("[data-root-tab]").forEach((item) => {
+            item.classList.toggle("active", item === tab);
+          });
+          document.querySelectorAll("[data-root-panel]").forEach((panel) => {
+            panel.hidden = panel.dataset.rootPanel !== target;
+          });
+        });
+      });
+
+      function buildCodepenClouds() {
+        const cloudHost = document.querySelector("#codepen-clouds");
+        if (!cloudHost) return;
+        const clouds = [];
+        let seed = 42;
+        const rand = () => {
+          seed = (seed * 1664525 + 1013904223) % 4294967296;
+          return seed / 4294967296;
+        };
+        for (let index = 0; index < 25; index += 1) {
+          const top = 3 + rand() * 78;
+          const scale = 0.38 + rand() * 1.34;
+          const duration = 74 + rand() * 120;
+          const delay = -rand() * duration;
+          const opacity = 0.3 + rand() * 0.52;
+          const slow = index % 3 === 0 ? " is-slow" : "";
+          clouds.push(
+            `<div class="codepen-cloud${slow}" style="--top:${top.toFixed(2)}%;--scale:${scale.toFixed(2)};--duration:${duration.toFixed(1)}s;--delay:${delay.toFixed(1)}s;--opacity:${opacity.toFixed(2)}"><span class="codepen-cloud-part back"></span><span class="codepen-cloud-part mid"></span><span class="codepen-cloud-part front"></span></div>`,
+          );
+        }
+        cloudHost.innerHTML = clouds.join("");
+      }
+
+      function setAgentTranscript(text) {
+        if (!text) return;
+        agentTranscripts.forEach((node) => {
+          node.textContent = text;
+        });
+      }
+
+      function fitCanvas(canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const ratio = Math.max(1, window.devicePixelRatio || 1);
+        const width = Math.max(1, Math.floor(rect.width * ratio));
+        const height = Math.max(1, Math.floor(rect.height * ratio));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+        return { width, height };
+      }
+
+      function drawWave(canvas, data, color = "rgba(255,255,255,0.94)") {
+        const ctx = canvas.getContext("2d");
+        const { width, height } = fitCanvas(canvas);
+        ctx.clearRect(0, 0, width, height);
+        ctx.lineWidth = Math.max(2, width / 260);
+        ctx.strokeStyle = color;
+        ctx.beginPath();
+        const source = data ?? new Uint8Array(128).fill(128);
+        for (let index = 0; index < source.length; index += 1) {
+          const x = (index / (source.length - 1)) * width;
+          const centered = (source[index] - 128) / 128;
+          const emphasis = 0.25 + 0.75 * Math.exp(-Math.abs(index / source.length - 0.5) * 4);
+          const y = height / 2 + centered * height * 0.38 * emphasis;
+          if (index === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      function ensureVoiceAnalyser() {
+        if (voiceAnalyser) return;
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        voiceAudioContext = new AudioCtx();
+        voiceAnalyser = voiceAudioContext.createAnalyser();
+        voiceAnalyser.fftSize = 1024;
+        voiceData = new Uint8Array(voiceAnalyser.fftSize);
+        voiceSource = voiceAudioContext.createMediaElementSource(audio);
+        voiceSource.connect(voiceAnalyser);
+        voiceAnalyser.connect(voiceAudioContext.destination);
+        if (!voiceLoopStarted) {
+          voiceLoopStarted = true;
+          drawAgentAudio();
+        }
+      }
+
+      function drawAgentAudio() {
+        if (voiceAnalyser && voiceData) {
+          voiceAnalyser.getByteTimeDomainData(voiceData);
+        }
+        agentCanvases.forEach((canvas) => drawWave(canvas, voiceData));
+        requestAnimationFrame(drawAgentAudio);
+      }
+
+      async function playLine(key, transcript) {
+        if (transcript) setAgentTranscript(transcript);
+        try {
+          ensureVoiceAnalyser();
+          if (voiceAudioContext?.state === "suspended") {
+            await voiceAudioContext.resume();
+          }
+        } catch {
+          // Browser audio policies vary. The transcript still updates.
+        }
+        audio.src = `audio/${key}.wav`;
+        audio.currentTime = 0;
+        await audio.play().catch(() => {});
+      }
 
       function showState(id) {
         states.forEach((state) => state.classList.toggle("active", state.id === `state-${id}`));
+        if (id === "speaker") setAgentTranscript("Can you hear me?");
+        if (id === "mic") setAgentTranscript("Great, now lets see if I can hear you.");
         if (id === "home") {
           startAvatar();
         }
       }
 
-      function playLine(key) {
-        audio.src = `audio/${key}.wav`;
-        audio.play().catch(() => {});
-      }
-
       document.querySelectorAll("[data-next]").forEach((button) => {
         button.addEventListener("click", () => {
-          if (button.dataset.audio) playLine(button.dataset.audio);
           showState(button.dataset.next);
+          if (button.dataset.audio) void playLine(button.dataset.audio, button.dataset.transcript);
           if (button.dataset.next === "home" && runtime === "local") {
-            setTimeout(() => playLine("local_downloading"), 450);
+            setTimeout(() => void playLine("local_downloading"), 450);
           }
         });
       });
@@ -1161,23 +2277,11 @@
         button.addEventListener("click", () => {
           runtime = button.dataset.runtime;
           document.querySelectorAll("[data-runtime]").forEach((choice) => choice.classList.toggle("selected", choice === button));
-          const notes = {
-            cloud: "Cloud creates one tenant-isolated agent. No agent picker.",
-            remote: "Remote verifies the URL and streams setup status from your server.",
-            local: "Local starts the Eliza-1 download immediately. Hardware and disk checks warn before you continue."
-          };
-          runtimeNote.textContent = notes[runtime];
         });
       });
 
-      document.querySelectorAll("[data-lang]").forEach((button) => {
-        button.addEventListener("click", () => {
-          document.querySelectorAll("[data-lang]").forEach((option) => option.classList.toggle("selected", option === button));
-        });
-      });
-
-      document.querySelectorAll("[data-audio]").forEach((button) => {
-        button.addEventListener("click", () => playLine(button.dataset.audio));
+      document.querySelectorAll("[data-audio]:not([data-next])").forEach((button) => {
+        button.addEventListener("click", () => void playLine(button.dataset.audio, button.dataset.transcript));
       });
 
       document.querySelectorAll("[data-audio-cycle]").forEach((button) => {
@@ -1185,17 +2289,86 @@
           const key = tryLines[tryIndex % tryLines.length];
           const text = tryText[tryIndex % tryText.length];
           tryIndex += 1;
-          document.querySelector("#speaker-line").textContent = text;
-          document.querySelector("#mic-hint").textContent = text;
-          playLine(key);
+          setAgentTranscript(text);
+          void playLine(key, text);
         });
       });
 
-      const micBars = document.querySelector("#mic-bars");
-      micBars.innerHTML = Array.from({ length: 26 }, (_, index) => `<i style="animation-delay:${-index * 0.045}s"></i>`).join("");
-
       const voiceLine = document.querySelector("#voice-line");
       voiceLine.innerHTML = Array.from({ length: 34 }, (_, index) => `<i style="animation-delay:${-index * 0.035}s"></i>`).join("");
+
+      async function populateMicSources() {
+        const select = document.querySelector("#mic-source");
+        if (!select || !navigator.mediaDevices?.enumerateDevices) return;
+        const current = select.value;
+        const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+        const inputs = devices.filter((device) => device.kind === "audioinput");
+        select.innerHTML = '<option value="">Default microphone</option>';
+        inputs.forEach((device, index) => {
+          const option = document.createElement("option");
+          option.value = device.deviceId;
+          option.textContent = device.label || `Microphone ${index + 1}`;
+          select.append(option);
+        });
+        if ([...select.options].some((option) => option.value === current)) {
+          select.value = current;
+        }
+      }
+
+      function drawMicAudio() {
+        if (micAnalyser && micData) {
+          micAnalyser.getByteTimeDomainData(micData);
+        }
+        const canvas = document.querySelector("#mic-wave-canvas");
+        if (canvas) drawWave(canvas, micData, "rgba(255,255,255,0.92)");
+        requestAnimationFrame(drawMicAudio);
+      }
+
+      async function stopMic() {
+        micStream?.getTracks().forEach((track) => track.stop());
+        micStream = null;
+        micSource?.disconnect();
+        micSource = null;
+      }
+
+      async function enableMic() {
+        const status = document.querySelector("#mic-status");
+        const select = document.querySelector("#mic-source");
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!navigator.mediaDevices?.getUserMedia || !AudioCtx) {
+          if (status) status.textContent = "Microphone input is not available in this browser.";
+          return;
+        }
+        await stopMic();
+        const deviceId = select?.value || "";
+        const constraints = {
+          audio: deviceId ? { deviceId: { exact: deviceId }, echoCancellation: true } : { echoCancellation: true },
+        };
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia(constraints);
+          await populateMicSources();
+          micAudioContext ??= new AudioCtx();
+          if (micAudioContext.state === "suspended") await micAudioContext.resume();
+          micAnalyser = micAudioContext.createAnalyser();
+          micAnalyser.fftSize = 1024;
+          micData = new Uint8Array(micAnalyser.fftSize);
+          micSource = micAudioContext.createMediaStreamSource(micStream);
+          micSource.connect(micAnalyser);
+          if (status) status.textContent = "Listening. Speak and the line should move.";
+          if (!micLoopStarted) {
+            micLoopStarted = true;
+            drawMicAudio();
+          }
+        } catch {
+          if (status) status.textContent = "I still cannot hear this microphone yet.";
+        }
+      }
+
+      document.querySelector("#mic-permission")?.addEventListener("click", () => void enableMic());
+      document.querySelector("#mic-source")?.addEventListener("change", () => {
+        if (micStream) void enableMic();
+      });
+      void populateMicSources();
 
       const composer = document.querySelector("#composer");
       const chatText = document.querySelector("#chat-text");
@@ -1204,19 +2377,24 @@
       const sendOrVoice = document.querySelector("#send-or-voice");
       let dictateMode = false;
       let voiceMode = false;
+      const dictateMicIcon = '<svg class="mic-icon" viewBox="0 0 24 24"><path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v3" /><path d="M9 21h6" /></svg>';
+      const continuousVoiceIcon = '<path d="M4.5 12a7.5 7.5 0 0 1 15 0" /><path d="M7.5 12a4.5 4.5 0 0 1 9 0" /><path d="M4.75 15.5c2.1 2.5 4.5 3.75 7.25 3.75s5.15-1.25 7.25-3.75" /><path d="M12 11.75v.5" />';
+      const sendIcon = '<path d="M5 12h14" /><path d="M13 6l6 6-6 6" />';
+      const checkIcon = '<path d="M5 13l4 4L19 7" />';
 
       function updateComposer() {
         const hasText = chatText.value.trim().length > 0;
         composer.classList.toggle("voice-active", voiceMode);
         if (dictateMode) {
           dictate.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></svg>';
-          actionIcon.innerHTML = '<path d="M5 13l4 4L19 7" />';
+          actionIcon.innerHTML = checkIcon;
+          sendOrVoice.setAttribute("aria-label", "Accept dictation");
           return;
         }
-        dictate.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" /><path d="M12 18v2" /></svg>';
-        actionIcon.innerHTML = hasText
-          ? '<path d="M5 12h14" /><path d="M13 6l6 6-6 6" />'
-          : '<path d="M12 4v8" /><path d="M8 8v4a4 4 0 0 0 8 0V8" /><path d="M5 11a7 7 0 0 0 14 0" />';
+        dictate.innerHTML = dictateMicIcon;
+        actionIcon.classList.toggle("continuous-icon", !hasText);
+        actionIcon.innerHTML = hasText ? sendIcon : continuousVoiceIcon;
+        sendOrVoice.setAttribute("aria-label", hasText ? "Send message" : "Continuous voice");
       }
 
       chatText.addEventListener("input", updateComposer);
@@ -1234,7 +2412,7 @@
         } else {
           addMessage("You", chatText.value.trim(), true);
           chatText.value = "";
-          setTimeout(() => addMessage("Eliza", "I saved that as an owner fact and will not ask for it again.", false), 420);
+          setTimeout(() => addMessage("Eliza", "I saved that and will use it when it is helpful.", false), 420);
         }
         updateComposer();
       });
@@ -1275,19 +2453,19 @@
       });
 
       document.querySelector("#desktop-bar").addEventListener("click", (event) => {
-        event.currentTarget.classList.toggle("open");
+        event.currentTarget.classList.toggle("is-listening");
       });
 
       document.addEventListener("keydown", (event) => {
         if (event.ctrlKey && event.code === "Space") {
           event.preventDefault();
-          document.querySelector("#desktop-bar").classList.toggle("open");
+          document.querySelector("#desktop-bar").classList.toggle("is-listening");
         }
       });
 
       const bgCode = document.querySelector("#bg-code");
       const edits = [
-        'registerBackground({\\n  id: "slow-clouds",\\n  kind: "css-compositor",\\n  fpsBudget: 1,\\n  action: "BACKGROUND_EDIT"\\n});',
+        'registerBackground({\\n  id: "codepen-cloud-shader",\\n  kind: "svg-filtered-clouds",\\n  fpsBudget: 3,\\n  action: "BACKGROUND_EDIT"\\n});',
         'registerBackground({\\n  id: "sunset-cirrus",\\n  kind: "css-compositor",\\n  palette: ["#1178da", "#ff8a24"],\\n  action: "BACKGROUND_EDIT"\\n});',
         'registerBackground({\\n  id: "quiet-grid",\\n  kind: "canvas-worker",\\n  maxCpuMsPerFrame: 1.6,\\n  action: "BACKGROUND_EDIT"\\n});'
       ];
@@ -1374,6 +2552,7 @@
         };
       }
 
+      buildCodepenClouds();
       updateComposer();
     </script>
   </body>

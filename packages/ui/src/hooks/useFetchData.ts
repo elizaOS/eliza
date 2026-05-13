@@ -78,24 +78,21 @@ export function useFetchData<T>(
     setReloadTick((tick) => tick + 1);
   }, []);
 
-  const mutate = useCallback<FetchMutator<T>>(
-    (next: T | ((prev: T) => T)) => {
-      setState((prev) => {
-        if (isUpdaterFn(next)) {
-          if (prev.status !== "success") {
-            throw new Error(
-              "useFetchData: mutate(updaterFn) called without prior data " +
-                `(current status: ${prev.status}). Pass a value of T directly, ` +
-                "or wait until status === 'success'.",
-            );
-          }
-          return { status: "success", data: next(prev.data) };
+  const mutate = useCallback<FetchMutator<T>>((next: T | ((prev: T) => T)) => {
+    setState((prev) => {
+      if (isUpdaterFn(next)) {
+        if (prev.status !== "success") {
+          throw new Error(
+            "useFetchData: mutate(updaterFn) called without prior data " +
+              `(current status: ${prev.status}). Pass a value of T directly, ` +
+              "or wait until status === 'success'.",
+          );
         }
-        return { status: "success", data: next };
-      });
-    },
-    [],
-  );
+        return { status: "success", data: next(prev.data) };
+      }
+      return { status: "success", data: next };
+    });
+  }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   // `deps` is the intentional dependency list passed by the caller;

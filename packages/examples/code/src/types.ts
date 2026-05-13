@@ -29,7 +29,7 @@ export type TaskStatus =
  */
 export type TaskUserStatus = "open" | "done";
 
-export interface TaskStep {
+interface TaskStep {
   id: string;
   description: string;
   status: TaskStatus;
@@ -38,7 +38,7 @@ export interface TaskStep {
   metadata?: Record<string, JsonValue>;
 }
 
-export interface TaskResult {
+interface TaskResult {
   success: boolean;
   summary: string;
   filesModified: string[];
@@ -48,10 +48,10 @@ export interface TaskResult {
   metadata?: Record<string, JsonValue>;
 }
 
-export type TaskTraceLevel = "info" | "warning" | "error";
-export type TaskTraceStatus = "paused" | "resumed" | "cancelled";
+type TaskTraceLevel = "info" | "warning" | "error";
+type TaskTraceStatus = "paused" | "resumed" | "cancelled";
 
-export interface TaskTraceBase {
+interface TaskTraceBase {
   ts: number;
   seq: number;
   [key: string]: JsonValue | undefined;
@@ -129,33 +129,9 @@ export type SubAgentType =
   | "elizaos-native";
 
 /**
- * Configuration options for sub-agents
- */
-export interface SubAgentConfig {
-  /** The type of sub-agent to use */
-  type: SubAgentType;
-  /** Override the model used by the sub-agent */
-  model?: string;
-  /** Maximum iterations/turns for the sub-agent */
-  maxIterations?: number;
-  /** Custom system prompt override */
-  systemPromptOverride?: string;
-  /** Enable Context7 MCP for documentation lookup */
-  enableContext7?: boolean;
-  /** Enable goals provider in context */
-  enableGoals?: boolean;
-  /** Enable todo tracking during task execution */
-  enableTodos?: boolean;
-  /** Enable thinking/monologue output */
-  enableThinking?: boolean;
-  /** Working directory for the sub-agent */
-  workingDirectory?: string;
-}
-
-/**
  * Goal data available to sub-agents
  */
-export interface SubAgentGoal {
+interface SubAgentGoal {
   id: string;
   name: string;
   description?: string;
@@ -166,7 +142,7 @@ export interface SubAgentGoal {
 /**
  * Todo item available to sub-agents
  */
-export interface SubAgentTodo {
+interface SubAgentTodo {
   id: string;
   name: string;
   description?: string;
@@ -252,17 +228,6 @@ export interface CodeTaskService {
   ): Promise<void>;
   detectAndPauseInterruptedTasks(): Promise<CodeTask[]>;
   on(event: "task", handler: (event: TaskEvent) => Promise<void> | void): void;
-}
-
-// ============================================================================
-// Progress Update
-// ============================================================================
-
-export interface ProgressUpdate {
-  taskId: string;
-  progress: number;
-  message?: string;
-  step?: TaskStep;
 }
 
 // ============================================================================

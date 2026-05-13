@@ -1,6 +1,6 @@
+import type { FormEvent } from "react";
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
-import type { FormEvent } from "react";
 
 export type GameOperatorEventTone =
   | "user"

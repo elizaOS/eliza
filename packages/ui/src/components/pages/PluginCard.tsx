@@ -1,7 +1,7 @@
-import { Button } from "../ui/button";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import { useApp } from "../../state";
 import { getProvenanceFlags, getProvenanceTitle } from "../apps/provenance";
+import { Button } from "../ui/button";
 import {
   getPluginResourceLinks,
   iconImageSource,

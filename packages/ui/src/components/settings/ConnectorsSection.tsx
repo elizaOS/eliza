@@ -12,7 +12,6 @@
  * each with its own bespoke setup surface.
  */
 
-import { Switch } from "../ui/switch";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PluginInfo } from "../../api";
 import {
@@ -34,6 +33,7 @@ import {
   iconImageSource,
   resolveIcon,
 } from "../pages/plugin-list-utils";
+import { Switch } from "../ui/switch";
 
 type ConnectorStatusTone = "ok" | "warn" | "off";
 

@@ -18,9 +18,8 @@
  */
 
 import { execSync } from "node:child_process";
-
-import { getGpuProfile, selectBestProfile } from "./gpu-tier-profiles.js";
 import type { GpuProfile } from "./gpu-tier-profiles.js";
+import { getGpuProfile, selectBestProfile } from "./gpu-tier-profiles.js";
 
 /** Raw data extracted from nvidia-smi for a single GPU. */
 export interface DetectedGpu {

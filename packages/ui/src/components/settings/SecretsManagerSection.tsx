@@ -1,6 +1,3 @@
-import { Button } from "../ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { KeyRound, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -10,6 +7,16 @@ import {
   type VaultTab,
 } from "../../hooks/useSecretsManagerModal";
 import { getShortcutLabel } from "../../hooks/useSecretsManagerShortcut";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { LoginsTab } from "./vault-tabs/LoginsTab";
 import { OverviewTab } from "./vault-tabs/OverviewTab";
 import { RoutingTab } from "./vault-tabs/RoutingTab";

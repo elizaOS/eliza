@@ -1,8 +1,8 @@
-import { Switch } from "../ui/switch";
 import { AlertTriangle, Loader2 } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state";
+import { Switch } from "../ui/switch";
 
 interface AutoTrainingConfig {
   autoTrain: boolean;

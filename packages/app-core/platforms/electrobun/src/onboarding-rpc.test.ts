@@ -7,7 +7,7 @@
  * header comment in onboarding-rpc.ts for the rationale.
  */
 
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it } from "vitest";
 import { AgentNotReadyError } from "./config-and-auth-rpc";
 import {
 	type AgentJsonReader,

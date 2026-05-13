@@ -176,7 +176,12 @@ export class EagerContextBuilder {
     if (det === null || this.isStale()) {
       deterministicWasStale = det !== null; // null means never built; stale = was built but expired
       await this.runPrebuild();
-      det = this.deterministic!;
+      det = this.deterministic;
+      if (det === null) {
+        throw new Error(
+          "deterministic context prebuild did not produce a result",
+        );
+      }
     }
     const msgDep = await this.buildMessageDependentFn(userMessage);
     return mergeContext(det, msgDep, {

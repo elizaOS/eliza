@@ -61,9 +61,7 @@ let storageProxyInstalled = false;
 
 const PREFERENCE_READ_TIMEOUT_MS = 1_500;
 
-async function readPreferenceWithTimeout(
-  key: string,
-): Promise<string | null> {
+async function readPreferenceWithTimeout(key: string): Promise<string | null> {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
     const timeout = new Promise<null>((resolve) => {
@@ -97,10 +95,10 @@ export async function initializeStorageBridge(): Promise<void> {
   // during very early WebView startup on some simulator builds; keep hydration
   // best-effort so a single stale preference read cannot block first paint.
   const entries = await Promise.all(
-    Array.from(SYNCED_KEYS, async (key) => [
-      key,
-      await readPreferenceWithTimeout(key),
-    ] as const),
+    Array.from(
+      SYNCED_KEYS,
+      async (key) => [key, await readPreferenceWithTimeout(key)] as const,
+    ),
   );
   for (const [key, value] of entries) {
     if (value === null) continue;

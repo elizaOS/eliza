@@ -1,5 +1,3 @@
-import { Button } from "../ui/button";
-import { PagePanel } from "../composites/page-panel";
 import {
   BadgeCheck,
   Bot,
@@ -35,7 +33,9 @@ import {
   maybeCompressDocumentUploadImage,
 } from "../../utils/documents-upload-image";
 import { formatByteSize } from "../../utils/format";
+import { PagePanel } from "../composites/page-panel";
 import { ConfirmDeleteControl } from "../shared/confirm-delete-control";
+import { Button } from "../ui/button";
 import {
   DocumentViewer,
   getDocumentSummary,

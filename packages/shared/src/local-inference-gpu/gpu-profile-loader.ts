@@ -17,7 +17,10 @@
  * `detectGpuFromNvidiaSmi` and the runtime falls back to the supplied
  * `GPU_PROFILES` constants in `local-inference/gpu-profiles.ts`.
  */
-import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
+import {
+  type SpawnSyncOptionsWithStringEncoding,
+  spawnSync,
+} from "node:child_process";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,7 +66,8 @@ export function __setNvidiaSmiMockForTests(
  * defaults" — never throw.
  */
 export function detectGpuFromNvidiaSmi(): string | null {
-  if (nvidiaSmiMock.kind === "name") return firstLineOrNull(nvidiaSmiMock.value);
+  if (nvidiaSmiMock.kind === "name")
+    return firstLineOrNull(nvidiaSmiMock.value);
   if (nvidiaSmiMock.kind === "missing") return null;
 
   const opts: SpawnSyncOptionsWithStringEncoding = {

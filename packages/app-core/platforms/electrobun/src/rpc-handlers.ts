@@ -12,6 +12,10 @@ import * as fs from "node:fs";
 import { Utils } from "electrobun/bun";
 import { setAgentReady } from "./agent-ready-state";
 import { postAgentResetFromMain } from "./agent-reset-from-main";
+import {
+	composeAgentStatusSnapshot,
+	readAgentStatusViaHttp,
+} from "./agent-status-rpc";
 import { resolveDesktopRuntimeMode } from "./api-base";
 import { showBackgroundNoticeOnce } from "./background-notice";
 import {
@@ -23,25 +27,53 @@ import { postCloudDisconnectFromMain } from "./cloud-disconnect-from-main";
 import {
 	composeAuthMeSnapshot,
 	composeAuthStatusSnapshot,
+	composeConfigSchemaSnapshot,
 	composeConfigSnapshot,
 	readAuthMeViaHttp,
 	readAuthStatusViaHttp,
+	readConfigSchemaViaHttp,
 	readConfigViaHttp,
 } from "./config-and-auth-rpc";
 import {
 	composeCharacterSnapshot,
+	composeConversationMessagesSnapshot,
 	composeConversationsListSnapshot,
 	readCharacterViaHttp,
+	readConversationMessagesViaHttp,
 	readConversationsListViaHttp,
 } from "./conversations-and-character-rpc";
+import {
+	composeAgentSelfStatusSnapshot,
+	composeCorePluginsSnapshot,
+	composeTriggerHealthSnapshot,
+	readAgentSelfStatusViaHttp,
+	readCorePluginsViaHttp,
+	readTriggerHealthViaHttp,
+} from "./dashboard-rpc";
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
+import {
+	composeExtensionStatusSnapshot,
+	readExtensionStatusViaHttp,
+} from "./extension-rpc";
 import { getFloatingChatManager } from "./floating-chat-window";
+import {
+	composeInboxChatsSnapshot,
+	composeInboxMessagesSnapshot,
+	composeInboxSourcesSnapshot,
+	readInboxChatsViaHttp,
+	readInboxMessagesViaHttp,
+	readInboxSourcesViaHttp,
+} from "./inbox-rpc";
 import { logger } from "./logger";
 import { getAgentManager } from "./native/agent";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
+import {
+	configureCarrotManagerEvents,
+	getCarrotManager,
+} from "./native/carrots";
 import {
 	scanAndValidateProviderCredentials,
 	scanProviderCredentials,
@@ -80,8 +112,32 @@ import {
 	isRuntimePermissionId,
 	mergeRuntimePermissionStates,
 } from "./runtime-permissions";
+import {
+	composeRuntimeSnapshot,
+	readRuntimeSnapshotViaHttp,
+} from "./runtime-rpc";
+import {
+	composeAgentAutomationModeSnapshot,
+	composeAgentAutomationModeUpdate,
+	composeConfigUpdate,
+	composeTradePermissionModeSnapshot,
+	composeTradePermissionModeUpdate,
+	readAgentAutomationModeViaHttp,
+	readTradePermissionModeViaHttp,
+	updateAgentAutomationModeViaHttp,
+	updateConfigViaHttp,
+	updateTradePermissionModeViaHttp,
+} from "./settings-mutations-rpc";
+import {
+	composeSubscriptionStatusSnapshot,
+	readSubscriptionStatusViaHttp,
+} from "./subscription-rpc";
 import { isDetachedSurface } from "./surface-windows";
 import type { SendToWebview } from "./types.js";
+import {
+	composeUpdateStatusSnapshot,
+	readUpdateStatusViaHttp,
+} from "./update-rpc";
 
 function normalizeRendererRoutePath(path: string): string {
 	const trimmed = path.trim();
@@ -231,6 +287,8 @@ export function buildBunRpcHandlers({
 	const talkmode = getTalkModeManager();
 	const musicPlayer = getMusicPlayerManager();
 	const browserWorkspace = getBrowserWorkspaceManager();
+	const carrots = getCarrotManager();
+	configureCarrotManagerEvents(sendToWebview);
 
 	return {
 		// ---- Agent ----
@@ -268,6 +326,48 @@ export function buildBunRpcHandlers({
 			}
 		},
 		agentStatus: async () => agent.getStatus(),
+		getAgentStatus: async () =>
+			composeAgentStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAgentStatusViaHttp,
+			),
+		getUpdateStatus: async (params) =>
+			composeUpdateStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params?.force ?? false,
+				readUpdateStatusViaHttp,
+			),
+		getExtensionStatus: async () =>
+			composeExtensionStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readExtensionStatusViaHttp,
+			),
+		getSubscriptionStatus: async () =>
+			composeSubscriptionStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readSubscriptionStatusViaHttp,
+			),
+		getRuntimeSnapshot: async (params) =>
+			composeRuntimeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				readRuntimeSnapshotViaHttp,
+			),
+		getAgentSelfStatus: async () =>
+			composeAgentSelfStatusSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAgentSelfStatusViaHttp,
+			),
+		getTriggerHealth: async () =>
+			composeTriggerHealthSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readTriggerHealthViaHttp,
+			),
+		getCorePlugins: async () =>
+			composeCorePluginsSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readCorePluginsViaHttp,
+			),
 		/**
 		 * Aggregated boot snapshot — typed counterpart to renderer
 		 * `/api/health` + `/api/dev/stack` polling. Pure composition over
@@ -311,6 +411,39 @@ export function buildBunRpcHandlers({
 				resolveRpcAgentPort(agent.getStatus().port),
 				readConfigViaHttp,
 			),
+		updateConfig: async (params) =>
+			composeConfigUpdate(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				updateConfigViaHttp,
+			),
+		getConfigSchema: async () =>
+			composeConfigSchemaSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readConfigSchemaViaHttp,
+			),
+		getAgentAutomationMode: async () =>
+			composeAgentAutomationModeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readAgentAutomationModeViaHttp,
+			),
+		setAgentAutomationMode: async (params) =>
+			composeAgentAutomationModeUpdate(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params.mode,
+				updateAgentAutomationModeViaHttp,
+			),
+		getTradePermissionMode: async () =>
+			composeTradePermissionModeSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readTradePermissionModeViaHttp,
+			),
+		setTradePermissionMode: async (params) =>
+			composeTradePermissionModeUpdate(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params.mode,
+				updateTradePermissionModeViaHttp,
+			),
 		/**
 		 * Typed counterpart to `client.getAuthStatus()` — auth/pairing
 		 * gate state used by the polling-backend startup phase.
@@ -338,6 +471,29 @@ export function buildBunRpcHandlers({
 			composeConversationsListSnapshot(
 				resolveRpcAgentPort(agent.getStatus().port),
 				readConversationsListViaHttp,
+			),
+		getConversationMessages: async (params) =>
+			composeConversationMessagesSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params.id,
+				readConversationMessagesViaHttp,
+			),
+		getInboxMessages: async (params) =>
+			composeInboxMessagesSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				readInboxMessagesViaHttp,
+			),
+		getInboxChats: async (params) =>
+			composeInboxChatsSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				params,
+				readInboxChatsViaHttp,
+			),
+		getInboxSources: async () =>
+			composeInboxSourcesSnapshot(
+				resolveRpcAgentPort(agent.getStatus().port),
+				readInboxSourcesViaHttp,
 			),
 		/**
 		 * Typed counterpart to `client.getCharacter()` — current
@@ -622,6 +778,27 @@ export function buildBunRpcHandlers({
 		}) => ({
 			success: desktop.setManagedWindowAlwaysOnTop(params.id, params.flag),
 		}),
+
+		// ---- Carrots ----
+		carrotGetStoreRoot: async () => ({ storeRoot: carrots.getStoreRoot() }),
+		carrotList: async () => ({ carrots: carrots.listCarrots() }),
+		carrotGetStoreSnapshot: async () => carrots.getStoreSnapshot(),
+		carrotGet: async (params: { id: string }) => carrots.getCarrot(params.id),
+		carrotInstallFromDirectory: async (params) =>
+			carrots.installFromDirectory(params),
+		carrotUninstall: async (params: { id: string }) =>
+			carrots.uninstall(params.id),
+		carrotStartWorker: async (params: { id: string }) =>
+			carrots.startWorker(params.id),
+		carrotStopWorker: async (params: { id: string }) =>
+			carrots.stopWorker(params.id),
+		carrotGetWorkerStatus: async (params: { id: string }) =>
+			carrots.getWorkerStatus(params.id),
+		carrotListWorkerStatuses: async () => ({
+			workers: carrots.listWorkerStatuses(),
+		}),
+		carrotGetLogs: async (params) =>
+			carrots.getLogs(params.id, params.maxBytes),
 
 		// ---- Browser Workspace ----
 		browserWorkspaceGetSnapshot: async () => ({

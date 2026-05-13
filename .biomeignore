@@ -12,6 +12,8 @@
 **/.turbo/**
 **/target/**
 target
+packages/examples/browser-extension/safari/.generated/**
+packages/examples/browser-extension/safari/Chat with Webpage/**
 **/data/**
 data
 .eliza

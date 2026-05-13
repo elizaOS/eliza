@@ -879,7 +879,7 @@ export async function createVadDetector(
  * integer when the variable is set and valid, otherwise `undefined`.
  */
 function readPauseHangoverMsEnv(): number | undefined {
-  const raw = process.env["MILADY_PAUSE_HANGOVER_MS"]?.trim();
+  const raw = process.env.MILADY_PAUSE_HANGOVER_MS?.trim();
   if (!raw) return undefined;
   const value = Number.parseInt(raw, 10);
   return Number.isFinite(value) && value > 0 ? value : undefined;

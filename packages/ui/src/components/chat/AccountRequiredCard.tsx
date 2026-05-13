@@ -1,9 +1,9 @@
-import { Button } from "../ui/button";
-import { cn } from "../../lib/utils";
-import { Spinner } from "../ui/spinner";
-import { StatusBadge } from "../ui/status-badge";
 import { RefreshCw, ShieldAlert, UserRound } from "lucide-react";
 import type { ConnectorAccountRecord } from "../../api/client-agent";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import {
   connectorAccountDisplayName,
   isConnectorAccountUsable,

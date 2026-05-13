@@ -1571,7 +1571,9 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
               }
               console.warn(
                 "[useVoiceChat] Local inference TTS failed:",
-                error instanceof Error ? `${error.name}: ${error.message}` : error,
+                error instanceof Error
+                  ? `${error.name}: ${error.message}`
+                  : error,
               );
               usingAudioAnalysisRef.current = false;
               setUsingAudioAnalysis(false);

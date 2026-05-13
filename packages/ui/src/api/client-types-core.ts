@@ -299,7 +299,11 @@ export interface AgentAutomationModeResponse {
 
 export interface TradePermissionModeResponse {
   mode: TradePermissionMode;
-  options: TradePermissionMode[];
+  tradePermissionMode: TradePermissionMode;
+  options?: TradePermissionMode[];
+  ok?: boolean;
+  canUserLocalExecute?: boolean;
+  canAgentAutoTrade?: boolean;
 }
 
 export interface ApplyProductionWalletDefaultsResponse {
@@ -321,7 +325,7 @@ export interface AgentSelfStatusSnapshot {
   tradePermissionMode: TradePermissionMode;
   shellEnabled: boolean;
   wallet: {
-    mode: "privy" | "hybrid";
+    walletSource: "local" | "managed" | "none";
     evmAddress: string | null;
     evmAddressShort: string | null;
     solanaAddress: string | null;
@@ -331,6 +335,11 @@ export interface AgentSelfStatusSnapshot {
     hasSolana: boolean;
     localSignerAvailable: boolean;
     managedBscRpcReady: boolean;
+    rpcReady: boolean;
+    pluginEvmLoaded: boolean;
+    pluginEvmRequired: boolean;
+    executionReady: boolean;
+    executionBlockedReason: string | null;
   };
   plugins: {
     totalActive: number;

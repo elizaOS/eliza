@@ -475,3 +475,52 @@ declare module "jsdom" {
     serialize(): string;
   }
 }
+
+declare module "@elizaos/plugin-discord" {
+  import type { AgentRuntime } from "@elizaos/core";
+
+  export interface DiscordUserProfile {
+    avatarUrl?: string;
+    displayName?: string;
+    username?: string;
+  }
+
+  export interface DiscordMessageAuthorProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export interface StoredDiscordEntityProfile extends DiscordUserProfile {
+    rawUserId?: string;
+  }
+
+  export function cacheDiscordAvatarUrl(
+    url: string | undefined,
+    options?: {
+      fetchImpl?: typeof fetch;
+      userId?: string;
+    },
+  ): Promise<string | undefined>;
+  export function getDiscordAvatarCacheDir(): string;
+  export function getDiscordAvatarCachePath(fileName: string): string;
+  export function isCanonicalDiscordSource(
+    source: string | null | undefined,
+  ): boolean;
+  export function cacheDiscordAvatarForRuntime(
+    runtime: AgentRuntime,
+    avatarUrl: string | undefined,
+    userId?: string,
+  ): Promise<string | undefined>;
+  export function resolveDiscordMessageAuthorProfile(
+    runtime: AgentRuntime,
+    channelId: string,
+    messageId: string,
+  ): Promise<DiscordMessageAuthorProfile | null>;
+  export function resolveDiscordUserProfile(
+    runtime: AgentRuntime,
+    userId: string,
+  ): Promise<DiscordUserProfile | null>;
+  export function resolveStoredDiscordEntityProfile(
+    runtime: AgentRuntime,
+    entityId: string | undefined,
+  ): Promise<StoredDiscordEntityProfile | null>;
+}

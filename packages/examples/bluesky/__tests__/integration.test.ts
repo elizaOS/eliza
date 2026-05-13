@@ -25,7 +25,7 @@ import {
   registerBlueskyHandlers,
 } from "../handlers";
 
-type BlueSkyModule = typeof import("../../../../plugins/plugin-bluesky/client");
+type BlueSkyModule = typeof import("@elizaos/plugin-bluesky");
 
 // Load environment
 config({ path: "../../.env" });
@@ -35,10 +35,9 @@ const isLiveTest = process.env.LIVE_TEST === "true";
 const hasBlueskyCredentials = Boolean(
   process.env.BLUESKY_HANDLE && process.env.BLUESKY_PASSWORD,
 );
-const blueskyModuleId: string = "@elizaos/plugin-bluesky";
 
 const loadBlueSkyClient = async (): Promise<BlueSkyModule> => {
-  return (await import(blueskyModuleId)) as BlueSkyModule;
+  return (await import("@elizaos/plugin-bluesky")) as BlueSkyModule;
 };
 
 // ============================================================================

@@ -1,4 +1,3 @@
-import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { Pin, PinOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type AppRunSummary, client, type RegistryAppInfo } from "../../api";
@@ -7,6 +6,7 @@ import {
   isElectrobunRuntime,
   subscribeDesktopBridgeEvent,
 } from "../../bridge";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import {
   getAppSlugFromPath,
   getWindowNavigationPath,

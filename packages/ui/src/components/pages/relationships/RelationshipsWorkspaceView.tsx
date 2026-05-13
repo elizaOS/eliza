@@ -1,7 +1,12 @@
-import { Button } from "../../ui/button";
-import { PageLayout } from "../../../layouts/page-layout/page-layout";
-import { PagePanel } from "../../composites/page-panel";
-import { Filter, Network, RefreshCw, Search, Sparkles, UserRound, X } from "lucide-react";
+import {
+  Filter,
+  Network,
+  RefreshCw,
+  Search,
+  Sparkles,
+  UserRound,
+  X,
+} from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -15,7 +20,10 @@ import type {
   RelationshipsGraphSnapshot,
   RelationshipsPersonDetail,
 } from "../../../api/client-types-relationships";
+import { PageLayout } from "../../../layouts/page-layout/page-layout";
 import { useApp } from "../../../state/useApp";
+import { PagePanel } from "../../composites/page-panel";
+import { Button } from "../../ui/button";
 import { RelationshipsGraphPanel } from "../RelationshipsGraphPanel";
 import { RelationshipsActivityFeed } from "./RelationshipsActivityFeed";
 import { RelationshipsCandidateMergesPanel } from "./RelationshipsCandidateMergesPanel";

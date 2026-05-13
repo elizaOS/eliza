@@ -1,7 +1,3 @@
-import { Button } from "../ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
-import { ContentLayout } from "../../layouts/content-layout/content-layout";
-import { Textarea } from "../ui/textarea";
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,
@@ -13,6 +9,7 @@ import {
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -23,6 +20,15 @@ import {
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
 } from "../../utils/desktop-workspace";
+import { Button } from "../ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Textarea } from "../ui/textarea";
 import {
   DesktopWorkspaceDisplay,
   useDesktopDiagnosticsText,

@@ -310,6 +310,9 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-device-filesystem") {
       return await import("@elizaos/plugin-device-filesystem");
     }
+    if (packageName === "@elizaos/plugin-local-embedding") {
+      return await import("@elizaos/plugin-local-embedding");
+    }
     if (packageName === "@elizaos/plugin-video") {
       return await import("@elizaos/plugin-video");
     }
@@ -347,20 +350,12 @@ async function getPluginSql(): Promise<typeof import("@elizaos/plugin-sql")> {
   return _pluginSqlPromise;
 }
 
-let _pluginLocalEmbeddingPromise: Promise<
-  typeof import("@elizaos/plugin-local-embedding") | null
-> | null = null;
-async function getPluginLocalEmbedding(): Promise<
-  typeof import("@elizaos/plugin-local-embedding") | null
-> {
+let _pluginLocalEmbeddingPromise: Promise<unknown> | null = null;
+async function getPluginLocalEmbedding(): Promise<unknown> {
   if (!_pluginLocalEmbeddingPromise) {
-    _pluginLocalEmbeddingPromise = (async () => {
-      try {
-        return await import("@elizaos/plugin-local-embedding");
-      } catch {
-        return null;
-      }
-    })();
+    _pluginLocalEmbeddingPromise = loadOptionalPlugin(
+      "@elizaos/plugin-local-embedding",
+    );
   }
   return _pluginLocalEmbeddingPromise;
 }

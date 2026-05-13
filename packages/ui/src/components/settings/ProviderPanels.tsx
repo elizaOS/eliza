@@ -3,7 +3,6 @@ import type {
   ModelOption,
   SubscriptionProviderStatus,
 } from "@elizaos/shared";
-import { Button } from "../ui/button";
 import { Cloud, Cpu, KeyRound, ShieldCheck } from "lucide-react";
 import type { ComponentType, Dispatch, ReactNode, SetStateAction } from "react";
 import type { PluginParamDef } from "../../api";
@@ -16,6 +15,7 @@ import type { ConfigUiHint } from "../../types";
 import { AccountList } from "../accounts/AccountList";
 import { LocalInferencePanel } from "../local-inference/LocalInferencePanel";
 import { CloudDashboard } from "../pages/ElizaCloudDashboard";
+import { Button } from "../ui/button";
 import { ApiKeyConfig } from "./ApiKeyConfig";
 import type { CloudModelSchema } from "./cloud-model-schema";
 import { ProviderRoutingPanel } from "./ProviderRoutingPanel";

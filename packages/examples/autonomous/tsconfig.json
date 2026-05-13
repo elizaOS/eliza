@@ -10,7 +10,7 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node", "bun-types"]
+    "types": ["node"]
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"],

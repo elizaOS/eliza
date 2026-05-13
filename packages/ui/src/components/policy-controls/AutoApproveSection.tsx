@@ -1,6 +1,6 @@
+import { ShieldCheck } from "lucide-react";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
-import { ShieldCheck } from "lucide-react";
 import { parseAmount } from "./helpers";
 import type { AutoApproveConfig } from "./types";
 

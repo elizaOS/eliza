@@ -38,9 +38,10 @@ describe("runBenchmark", () => {
       },
     };
 
-    const results = await runBenchmark(throwingHandler ? [throwingHandler] : [], [
-      scenario("s1"),
-    ]);
+    const results = await runBenchmark(
+      throwingHandler ? [throwingHandler] : [],
+      [scenario("s1")],
+    );
     const scored = results.handlers[0]?.scenarios[0];
 
     expect(teardownCalled).toBe(true);

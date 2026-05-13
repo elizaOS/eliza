@@ -18,7 +18,10 @@
  */
 import { z } from "zod";
 
-import { ELIZA_1_TIER_IDS, type Eliza1TierId } from "../local-inference/catalog.js";
+import {
+  ELIZA_1_TIER_IDS,
+  type Eliza1TierId,
+} from "../local-inference/catalog.js";
 
 /**
  * Card ids — must match `GpuProfileId` in

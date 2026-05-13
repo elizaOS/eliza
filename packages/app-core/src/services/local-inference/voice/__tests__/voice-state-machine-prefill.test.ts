@@ -144,9 +144,16 @@ describe("VoiceStateMachine + C7 prefill integration", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     expect(prefillEvents).toHaveLength(1);
-    expect(prefillEvents[0].result).not.toBeNull();
-    expect(prefillEvents[0].error).toBeNull();
-    const result = prefillEvents[0].result!;
+    const prefillEvent = prefillEvents[0];
+    if (!prefillEvent) {
+      throw new Error("expected prefill event");
+    }
+    expect(prefillEvent.result).not.toBeNull();
+    expect(prefillEvent.error).toBeNull();
+    const result = prefillEvent.result;
+    if (result === null) {
+      throw new Error("expected prefill result");
+    }
     expect(result.eotProb).toBeCloseTo(0.5, 1); // latestEotProb default = 0.5
     expect(result.tokenCount).toBeGreaterThanOrEqual(1);
   });
@@ -224,7 +231,10 @@ describe("VoiceStateMachine + C7 prefill integration", () => {
       (op) => op.kind === "save" && op.name === "pre-draft",
     );
     expect(preDraftSave).toBeDefined();
-    expect(restores[0].handleId).toBe(preDraftSave!.handleId);
+    if (!preDraftSave) {
+      throw new Error("expected pre-draft checkpoint save");
+    }
+    expect(restores[0].handleId).toBe(preDraftSave.handleId);
   });
 
   it("works normally when no prefillConfig is provided (backward compat)", async () => {
@@ -237,7 +247,7 @@ describe("VoiceStateMachine + C7 prefill integration", () => {
       startDrafter: drafter.fn,
       pauseHangoverMs: 200,
       events: {
-        onCommit(turnId, transcript, prefillResult) {
+        onCommit(_turnId, _transcript, prefillResult) {
           commits.push({ prefillResult });
         },
       },

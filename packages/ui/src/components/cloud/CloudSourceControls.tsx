@@ -1,7 +1,7 @@
-import { Button } from "../ui/button";
-import { ConnectionStatus } from "../ui/connection-status";
 import { CheckCircle2, WifiOff } from "lucide-react";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { ConnectionStatus } from "../ui/connection-status";
 
 export type CloudSourceMode = "cloud" | "own-key";
 
