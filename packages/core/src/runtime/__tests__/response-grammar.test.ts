@@ -7,7 +7,6 @@ import {
 	buildPlannerParamsSkeleton,
 	buildResponseGrammar,
 	clearResponseGrammarCache,
-	strictPlannerActionGrammarEnabled,
 	withGuidedDecodeProviderOptions,
 } from "../response-grammar";
 import type { ResponseHandlerFieldEvaluator } from "../response-handler-field-evaluator";
@@ -467,48 +466,6 @@ describe("buildPlannerParamsSkeleton — second-pass per-action parameters", () 
 	});
 });
 
-describe("strictPlannerActionGrammarEnabled — env-driven switch for the P2-4 path", () => {
-	const ENV_KEYS = [
-		"MILADY_PLANNER_STRICT_PARAMS",
-		"ELIZA_PLANNER_STRICT_PARAMS",
-	] as const;
-	const saved: Record<string, string | undefined> = {};
-	for (const k of ENV_KEYS) saved[k] = process.env[k];
-	afterEach(() => {
-		for (const k of ENV_KEYS) {
-			if (saved[k] === undefined) delete process.env[k];
-			else process.env[k] = saved[k];
-		}
-	});
-
-	it("is off by default", () => {
-		for (const k of ENV_KEYS) delete process.env[k];
-		expect(strictPlannerActionGrammarEnabled()).toBe(false);
-	});
-
-	it("accepts 1 / true / on / yes as on", () => {
-		for (const value of ["1", "true", "TRUE", "on", "Yes"]) {
-			for (const k of ENV_KEYS) delete process.env[k];
-			process.env.MILADY_PLANNER_STRICT_PARAMS = value;
-			expect(strictPlannerActionGrammarEnabled()).toBe(true);
-		}
-	});
-
-	it("treats 0 / false / off / no / empty as off", () => {
-		for (const value of ["0", "false", "off", "no", ""]) {
-			for (const k of ENV_KEYS) delete process.env[k];
-			process.env.MILADY_PLANNER_STRICT_PARAMS = value;
-			expect(strictPlannerActionGrammarEnabled()).toBe(false);
-		}
-	});
-
-	it("honours the ELIZA_ alias", () => {
-		for (const k of ENV_KEYS) delete process.env[k];
-		process.env.ELIZA_PLANNER_STRICT_PARAMS = "1";
-		expect(strictPlannerActionGrammarEnabled()).toBe(true);
-	});
-});
-
 describe("buildPlannerActionGrammarStrict — single-call per-action union grammar", () => {
 	it("returns null when no actions are exposed", () => {
 		expect(buildPlannerActionGrammarStrict([])).toBeNull();
@@ -614,26 +571,133 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toMatch(/^jsonstring ::= /m);
 	});
 
-	it("falls back to jsonvalue for object/unknown property types", () => {
+	it("recurses into object-typed properties with declared sub-properties", () => {
+		// Mirrors paymentContext in real actions: object with enum-typed
+		// sub-properties. The strict grammar should pin the sub-property
+		// enums, not fall back to a loose jsonvalue.
 		const r = buildPlannerActionGrammarStrict([
-			makeAction("NESTED", {
+			makeAction("PAYMENT", {
 				parameters: [
 					{
-						name: "context",
-						description: "an object",
+						name: "paymentContext",
+						description: "context",
 						required: true,
 						schema: {
 							type: "object",
-							properties: { kind: { type: "string" } },
+							properties: {
+								kind: {
+									type: "string",
+									enum: ["any_payer", "verified_payer", "specific_payer"],
+								},
+								scope: {
+									type: "string",
+									enum: ["owner", "owner_or_linked_identity"],
+								},
+								payerIdentityId: { type: "string" },
+							},
+							required: ["kind"],
 						},
 					},
 				],
 			}),
 		]);
 		if (r === null) throw new Error("expected grammar");
+		// Property rule references the nested object rule, not jsonvalue.
 		expect(r.grammar).toMatch(
-			/paramsofaction_NESTED_p_context ::= "\\"context\\":" jsonvalue/,
+			/paramsofaction_PAYMENT_p_paymentContext ::= "\\"paymentContext\\":" paramsofaction_PAYMENT_paymentContext_obj/,
 		);
+		// Nested object rule exists and pins kind's enum members.
+		expect(r.grammar).toMatch(/paramsofaction_PAYMENT_paymentContext_obj ::= /);
+		expect(r.grammar).toContain('"\\"any_payer\\""');
+		expect(r.grammar).toContain('"\\"verified_payer\\""');
+		expect(r.grammar).toContain('"\\"specific_payer\\""');
+		expect(r.grammar).toContain('"\\"owner\\""');
+	});
+
+	it("falls back to jsonvalue for objects without declared sub-properties", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("BAG", {
+				parameters: [
+					{
+						name: "extras",
+						description: "freeform bag",
+						required: false,
+						schema: { type: "object" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_BAG_p_extras ::= "\\"extras\\":" jsonvalue/,
+		);
+	});
+
+	it("recurses into array-of-object items with declared sub-properties", () => {
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("PAGES", {
+				parameters: [
+					{
+						name: "entries",
+						description: "list of typed records",
+						required: true,
+						schema: {
+							type: "array",
+							items: {
+								type: "object",
+								properties: {
+									kind: { type: "string", enum: ["page", "comment"] },
+									id: { type: "string" },
+								},
+								required: ["kind", "id"],
+							},
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Property rule wraps the item rule in array brackets.
+		expect(r.grammar).toMatch(
+			/paramsofaction_PAGES_p_entries ::= "\\"entries\\":" "\[" ws \( paramsofaction_PAGES_entries_item /,
+		);
+		// Item rule exists and references the kind enum.
+		expect(r.grammar).toMatch(/paramsofaction_PAGES_entries_item ::= /);
+		expect(r.grammar).toContain('"\\"page\\""');
+		expect(r.grammar).toContain('"\\"comment\\""');
+	});
+
+	it("caps object recursion at MAX_NESTED_OBJECT_DEPTH so cyclic schemas don't explode", () => {
+		// Build a 6-deep nested schema. The strict grammar caps recursion at
+		// depth 4; depth-5 and below should collapse to jsonvalue.
+		const deep = (level: number): JSONSchema => {
+			if (level === 0) return { type: "string" };
+			return { type: "object", properties: { next: deep(level - 1) } };
+		};
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("DEEP", {
+				parameters: [
+					{
+						name: "root",
+						description: "",
+						required: true,
+						schema: deep(6) as {
+							type: "object";
+							properties: Record<string, unknown>;
+						},
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Depths 0..3 each emit their own nested _obj rule; depth 4 stops the
+		// recursion and the deepest object falls back to jsonvalue.
+		const objRules = (
+			r.grammar.match(/paramsofaction_DEEP_(?:[A-Za-z0-9_]+_)*next_obj ::=/g) ??
+			[]
+		).length;
+		expect(objRules).toBeLessThanOrEqual(4);
+		expect(r.grammar).toContain("jsonvalue");
 	});
 
 	it("emits required-then-optional structure in the params rule", () => {
@@ -720,6 +784,202 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toContain("callofaction_plugin_foo_bar");
 		expect(r.grammar).not.toContain("callofaction_plugin:foo.bar");
+	});
+});
+
+describe("buildPlannerActionGrammarStrict — realistic action set (P2-4 production shape)", () => {
+	// Mirror the kind of schemas Phase A declared on real actions. The test
+	// catches regressions where the grammar generator silently drops a
+	// constraint someone added downstream.
+	const messageAction = makeAction("MESSAGE", {
+		parameters: [
+			{
+				name: "op",
+				description: "messaging operation",
+				required: true,
+				schema: {
+					type: "string",
+					enum: ["send", "read_channel", "search", "manage"],
+				},
+			},
+			{
+				name: "targetKind",
+				description: "kind of target",
+				required: false,
+				schema: {
+					type: "string",
+					enum: ["user", "channel", "thread", "group"],
+				},
+			},
+			{
+				name: "manageOperation",
+				description: "manage op",
+				required: false,
+				schema: {
+					type: "string",
+					enum: ["archive", "trash", "spam", "mark_read"],
+				},
+			},
+			{
+				name: "text",
+				description: "body",
+				required: false,
+				schema: { type: "string" },
+			},
+		],
+	});
+	const paymentAction = makeAction("PAYMENT", {
+		parameters: [
+			{
+				name: "action",
+				description: "payment op",
+				required: true,
+				schema: {
+					type: "string",
+					enum: ["create_request", "cancel_request"],
+				},
+			},
+			{
+				name: "amountCents",
+				description: "amount in cents",
+				required: false,
+				schema: { type: "integer", minimum: 1 },
+			},
+			{
+				name: "paymentContext",
+				description: "payer constraint",
+				required: false,
+				schema: {
+					type: "object",
+					properties: {
+						kind: {
+							type: "string",
+							enum: ["any_payer", "verified_payer", "specific_payer"],
+						},
+						scope: {
+							type: "string",
+							enum: ["owner", "owner_or_linked_identity"],
+						},
+						payerIdentityId: { type: "string" },
+					},
+					required: ["kind"],
+				},
+			},
+		],
+	});
+	const characterAction = makeAction("CHARACTER", {
+		parameters: [
+			{
+				name: "op",
+				description: "character op",
+				required: true,
+				schema: {
+					type: "string",
+					enum: ["save", "update_identity", "reset"],
+				},
+			},
+			{
+				name: "fieldsToSave",
+				description: "fields to persist",
+				required: false,
+				schema: {
+					type: "array",
+					items: {
+						type: "string",
+						enum: ["name", "system", "bio", "topics"],
+					},
+				},
+			},
+		],
+	});
+	const ignoreAction = makeAction("IGNORE");
+
+	it("emits one branch per action with action name pinned as a literal", () => {
+		const r = buildPlannerActionGrammarStrict([
+			messageAction,
+			paymentAction,
+			characterAction,
+			ignoreAction,
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Root union has one branch per action (alphabetical inside the grammar
+		// since the strict builder sorts by name for cache stability).
+		expect(r.grammar).toMatch(
+			/^root ::= callofaction_CHARACTER \| callofaction_IGNORE \| callofaction_MESSAGE \| callofaction_PAYMENT/m,
+		);
+		// Each call rule pins the action name as a literal.
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"PAYMENT\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"CHARACTER\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"IGNORE\\""');
+	});
+
+	it("pins every declared enum in the realistic action set", () => {
+		const r = buildPlannerActionGrammarStrict([
+			messageAction,
+			paymentAction,
+			characterAction,
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// MESSAGE enums
+		expect(r.grammar).toContain('"\\"send\\""');
+		expect(r.grammar).toContain('"\\"read_channel\\""');
+		expect(r.grammar).toContain('"\\"search\\""');
+		expect(r.grammar).toContain('"\\"manage\\""');
+		expect(r.grammar).toContain('"\\"user\\""');
+		expect(r.grammar).toContain('"\\"thread\\""');
+		expect(r.grammar).toContain('"\\"archive\\""');
+		expect(r.grammar).toContain('"\\"trash\\""');
+		// PAYMENT enums (including nested object enums)
+		expect(r.grammar).toContain('"\\"create_request\\""');
+		expect(r.grammar).toContain('"\\"cancel_request\\""');
+		expect(r.grammar).toContain('"\\"any_payer\\""');
+		expect(r.grammar).toContain('"\\"verified_payer\\""');
+		expect(r.grammar).toContain('"\\"owner_or_linked_identity\\""');
+		// CHARACTER enums (including array items)
+		expect(r.grammar).toContain('"\\"save\\""');
+		expect(r.grammar).toContain('"\\"name\\""');
+		expect(r.grammar).toContain('"\\"system\\""');
+	});
+
+	it("co-determines action name and parameter shape (no cross-branch leak)", () => {
+		// Verify that PAYMENT's params rule references PAYMENT-specific
+		// sub-rules, not MESSAGE's or CHARACTER's. This is the property that
+		// makes the strict grammar fundamentally different from the loose
+		// (independent action/params) variant.
+		const r = buildPlannerActionGrammarStrict([
+			messageAction,
+			paymentAction,
+			characterAction,
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// callofaction_PAYMENT references paramsofaction_PAYMENT (not _MESSAGE
+		// / _CHARACTER) before the thought field.
+		const paymentCallLine = r.grammar
+			.split("\n")
+			.find((l) => l.startsWith("callofaction_PAYMENT ::="));
+		expect(paymentCallLine).toBeDefined();
+		expect(paymentCallLine).toContain("paramsofaction_PAYMENT");
+		expect(paymentCallLine).not.toContain("paramsofaction_MESSAGE");
+		expect(paymentCallLine).not.toContain("paramsofaction_CHARACTER");
+
+		const messageCallLine = r.grammar
+			.split("\n")
+			.find((l) => l.startsWith("callofaction_MESSAGE ::="));
+		expect(messageCallLine).toBeDefined();
+		expect(messageCallLine).toContain("paramsofaction_MESSAGE");
+		expect(messageCallLine).not.toContain("paramsofaction_PAYMENT");
+	});
+
+	it("returns the same actionSchemas map as the loose grammar would", () => {
+		const r = buildPlannerActionGrammarStrict([messageAction, paymentAction]);
+		const loose = buildPlannerActionGrammar([messageAction, paymentAction]);
+		if (r === null || loose === null) throw new Error("expected grammars");
+		expect(Object.keys(r.actionSchemas).sort()).toEqual(
+			Object.keys(loose.actionSchemas).sort(),
+		);
+		expect(r.actionSchemas.PAYMENT).toEqual(loose.actionSchemas.PAYMENT);
+		expect(r.actionSchemas.MESSAGE).toEqual(loose.actionSchemas.MESSAGE);
 	});
 });
 

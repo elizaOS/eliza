@@ -664,28 +664,6 @@ function guidedDecodeEnabledByDefault(): boolean {
 }
 
 /**
- * Opt-in switch for the single-call per-action union grammar
- * (`buildPlannerActionGrammarStrict`) in the Stage-2 planner. **Off by
- * default** because the strict grammar is larger and the loose grammar +
- * `validate-tool-args.ts` coercion path is the current production behavior;
- * flip it on to engage the P2-4 path.
- *
- * Set `MILADY_PLANNER_STRICT_PARAMS=1` (or `=true`/`on`/`yes`) to enable.
- * Aliased on `ELIZA_PLANNER_STRICT_PARAMS` for symmetry with the other
- * env knobs. Cloud adapters still receive `tools` + the unforced contract.
- */
-export function strictPlannerActionGrammarEnabled(): boolean {
-	const raw = (
-		process.env.MILADY_PLANNER_STRICT_PARAMS ??
-		process.env.ELIZA_PLANNER_STRICT_PARAMS ??
-		""
-	)
-		.trim()
-		.toLowerCase();
-	return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
-}
-
-/**
  * Merge `eliza.guidedDecode = true` into a provider-options bag so the local
  * llama-server engine builds the {@link ResponseSkeleton}'s deterministic-token
  * prefill plan (`eliza_prefill_plan`) and fast-forwards the forced scaffold
@@ -955,18 +933,41 @@ function sanitizeGbnfRuleName(name: string): string {
 }
 
 /**
- * Emit a per-action parameters GBNF rule. Walks the action's normalized JSON
- * schema and translates each property into a constrained GBNF span: string
- * enums pin the alternation, arrays-of-string-enum pin element-level, and
- * the rest fall back to the matching shared JSON rule.
- *
- * Empty schemas produce `paramsofaction_NAME ::= "{}"` — the planner sends a
- * literal `{}` for actions that take no parameters.
+ * Cap on object-recursion depth in the strict grammar — protects against
+ * accidental schema cycles and keeps the generated GBNF bounded.
+ */
+const MAX_NESTED_OBJECT_DEPTH = 4;
+
+/**
+ * Emit a per-action parameters GBNF rule. Thin wrapper that pins the
+ * top-level depth at 0; `emitObjectRule` does the recursive heavy lifting.
  */
 function emitActionParamsRule(
 	builder: GbnfBuilder,
 	ruleName: string,
 	schema: JSONSchema,
+): void {
+	emitObjectRule(builder, ruleName, schema, 0);
+}
+
+/**
+ * Emit a GBNF rule for an object schema. Walks `properties`, translates each
+ * value into a constrained GBNF expression, and assembles a body that
+ * sequences required keys in declaration order then permits each optional
+ * key zero-or-more times. (GBNF can't express true unordered sets without
+ * combinatorial blowup; the single-occurrence invariant of optionals is
+ * enforced by the downstream JSON parser rejecting duplicate keys.)
+ *
+ * Recursion: object-typed properties whose schema declares its own
+ * `properties` emit a nested rule via this function, capped at
+ * `MAX_NESTED_OBJECT_DEPTH` so accidental schema cycles can't blow up the
+ * generated grammar.
+ */
+function emitObjectRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+	depth: number,
 ): void {
 	const properties =
 		(schema as { properties?: Record<string, JSONSchema> }).properties ?? {};
@@ -982,14 +983,17 @@ function emitActionParamsRule(
 	const requiredKeys = propertyNames.filter((k) => required.has(k));
 	const optionalKeys = propertyNames.filter((k) => !required.has(k));
 
-	// Emit a rule per property so we can sequence required ones and offer
-	// optional ones in any order via alternation (GBNF can't express true
-	// unordered sets without combinatorial blowup; we enforce required
-	// presence + permit zero-or-more optionals in an alternation).
 	const propertyTokens: Record<string, string> = {};
 	for (const key of propertyNames) {
-		const propertyRuleName = `${ruleName}_p_${sanitizeGbnfRuleName(key)}`;
-		const valueExpr = propertyValueGbnf(builder, properties[key]);
+		const sanitizedKey = sanitizeGbnfRuleName(key);
+		const propertyRuleName = `${ruleName}_p_${sanitizedKey}`;
+		const contextRuleName = `${ruleName}_${sanitizedKey}`;
+		const valueExpr = propertyValueGbnf(
+			builder,
+			properties[key],
+			contextRuleName,
+			depth,
+		);
 		builder.rule(
 			propertyRuleName,
 			[gbnfLiteral(`"${escapeJsonKey(key)}":`), valueExpr].join(" "),
@@ -997,10 +1001,6 @@ function emitActionParamsRule(
 		propertyTokens[key] = propertyRuleName;
 	}
 
-	// Body: `{` <required-in-order, comma-separated> ( "," <optional-property> )* `}`
-	// Optionals are emitted as an alternation; each can appear at most once
-	// (enforced at the parser side — the grammar permits repetition for
-	// simplicity, and a downstream JSON parse rejects duplicate keys).
 	const parts: string[] = [gbnfLiteral("{")];
 	if (requiredKeys.length > 0) {
 		parts.push(propertyTokens[requiredKeys[0]]);
@@ -1023,11 +1023,17 @@ function emitActionParamsRule(
 
 /**
  * Map a single property schema to a GBNF expression. Pulls in the matching
- * shared JSON rules as a side effect on `builder`.
+ * shared JSON rules and (for objects / arrays-of-objects) emits nested rules
+ * as a side effect on `builder`.
+ *
+ * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
+ * unique rule names for nested constructs (e.g. `..._obj`, `..._item`).
  */
 function propertyValueGbnf(
 	builder: GbnfBuilder,
 	propSchema: JSONSchema,
+	contextRuleName: string,
+	depth: number,
 ): string {
 	const type = (propSchema as { type?: unknown }).type;
 	if (type === "string") {
@@ -1053,8 +1059,9 @@ function propertyValueGbnf(
 	}
 	if (type === "array") {
 		const items = (propSchema as { items?: JSONSchema }).items;
-		if (items && (items as { type?: unknown }).type === "string") {
-			const enumValues = readStringEnumForGrammar(items);
+		const itemsType = items && (items as { type?: unknown }).type;
+		if (itemsType === "string") {
+			const enumValues = readStringEnumForGrammar(items as JSONSchema);
 			if (enumValues !== null && enumValues.length > 0) {
 				builder.useShared("ws");
 				const elem = `( ${enumValues
@@ -1063,12 +1070,41 @@ function propertyValueGbnf(
 				return `"[" ws ( ${elem} ( ws "," ws ${elem} )* )? ws "]"`;
 			}
 		}
+		if (
+			itemsType === "object" &&
+			depth < MAX_NESTED_OBJECT_DEPTH &&
+			schemaHasDeclaredProperties(items as JSONSchema)
+		) {
+			const itemRuleName = `${contextRuleName}_item`;
+			emitObjectRule(builder, itemRuleName, items as JSONSchema, depth + 1);
+			builder.useShared("ws");
+			return `"[" ws ( ${itemRuleName} ( ws "," ws ${itemRuleName} )* )? ws "]"`;
+		}
 		builder.useShared("jsonarray");
 		return "jsonarray";
 	}
-	// object, null, or unspecified → permit any JSON value
+	if (
+		type === "object" &&
+		depth < MAX_NESTED_OBJECT_DEPTH &&
+		schemaHasDeclaredProperties(propSchema)
+	) {
+		const objRuleName = `${contextRuleName}_obj`;
+		emitObjectRule(builder, objRuleName, propSchema, depth + 1);
+		return objRuleName;
+	}
+	// object without declared properties, null, or unspecified → permit any JSON.
 	builder.useShared("jsonvalue");
 	return "jsonvalue";
+}
+
+function schemaHasDeclaredProperties(schema: JSONSchema): boolean {
+	const properties = (schema as { properties?: Record<string, unknown> })
+		.properties;
+	return (
+		typeof properties === "object" &&
+		properties !== null &&
+		Object.keys(properties).length > 0
+	);
 }
 
 /** Reuse the conservative string-enum reader from buildPlannerParamsSkeleton. */
