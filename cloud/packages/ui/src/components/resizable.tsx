@@ -7,6 +7,7 @@
 
 import * as React from "react";
 import { cn } from "../lib/utils";
+import { useRenderGuard } from "../runtime/render-telemetry";
 
 interface ResizablePanelGroupProps extends React.HTMLAttributes<HTMLDivElement> {
   direction?: "horizontal" | "vertical";
@@ -42,6 +43,7 @@ export function ResizablePanelGroup({
   children,
   ...props
 }: ResizablePanelGroupProps) {
+  useRenderGuard("ResizablePanelGroup");
   const [panels, setPanels] = React.useState<
     Map<number, { size: number; minSize: number; maxSize: number }>
   >(new Map());
@@ -149,7 +151,6 @@ export function ResizableHandle({ withHandle = false, className, ...props }: Res
   const handleMouseDown = React.useCallback(
     (e: React.MouseEvent) => {
       e.preventDefault();
-      setIsDragging(true);
 
       const panelsArray = Array.from(panels.entries());
       if (panelsArray.length !== 2) return;
@@ -158,6 +159,7 @@ export function ResizableHandle({ withHandle = false, className, ...props }: Res
       const container = (e.currentTarget as HTMLElement).parentElement;
       if (!container) return;
 
+      setIsDragging(true);
       const containerRect = container.getBoundingClientRect();
       const startPos = direction === "horizontal" ? e.clientX : e.clientY;
       const containerSize = direction === "horizontal" ? containerRect.width : containerRect.height;

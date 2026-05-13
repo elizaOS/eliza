@@ -134,12 +134,13 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
-// The `q3` vs `q4` choice is tier-driven: 0_6b and 0_8b ship Q3; 1_7b and larger
-// ship Q4. TCQ required for 4b and above (long-context text).
+// The `q3` vs `q4` choice is tier-driven: the deprecated 0_6b tier ships Q3;
+// active Qwen3.5 tiers ship Q4. TCQ is required for 4b and above
+// (long-context text).
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-  "0_8b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
+  "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
   "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],

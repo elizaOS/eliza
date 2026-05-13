@@ -41,6 +41,7 @@ import {
   useState,
 } from "react";
 import { cn } from "../../lib/utils";
+import { useRenderGuard } from "../../runtime/render-telemetry";
 // Native img used for framework agnosticism
 import { Button } from "../button";
 import {
@@ -122,6 +123,7 @@ export function PromptInputProvider({
   initialInput: initialTextInput = "",
   children,
 }: PromptInputProviderProps) {
+  useRenderGuard("PromptInputProvider");
   // ----- textInput state
   const [textInput, setTextInput] = useState(initialTextInput);
   const clearInput = useCallback(() => setTextInput(""), []);
@@ -431,6 +433,7 @@ export const PromptInput = ({
   children,
   ...props
 }: PromptInputProps) => {
+  useRenderGuard("PromptInput");
   // Try to use a provider controller if present
   const controller = useOptionalPromptInputController();
   const providerAttachments = controller?.attachments;

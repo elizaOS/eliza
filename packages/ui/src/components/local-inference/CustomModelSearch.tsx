@@ -31,6 +31,7 @@ interface CustomModelSearchProps {
 }
 
 const SEARCH_PROVIDERS = listLocalModelSearchProviders();
+const EMPTY_SEARCH_RESULTS: LocalModelSearchResult[] = [];
 
 async function searchProviderViaClient(
   providerId: LocalModelSearchProviderId,
@@ -129,7 +130,7 @@ export function CustomModelSearch({
     return () => clearTimeout(handle);
   }, [provider.searchSupported, providerId, query]);
   const visibleResults =
-    resultsRequestKey === currentRequestKey ? results : [];
+    resultsRequestKey === currentRequestKey ? results : EMPTY_SEARCH_RESULTS;
 
   const handleDownloadClick = useCallback(
     (modelId: string) => {

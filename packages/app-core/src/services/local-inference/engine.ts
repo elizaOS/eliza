@@ -1399,6 +1399,14 @@ export class LocalInferenceEngine {
     generate: (
       request: import("./voice/turn-controller").VoiceGenerateRequest,
     ) => Promise<import("./voice/turn-controller").VoiceTurnOutcome>;
+    /**
+     * Semantic turn detector layered with VAD/STT. Defaults to the local
+     * LiveKit ONNX model when installed, otherwise the deterministic heuristic.
+     * Pass `false` only for tests/manual troubleshooting.
+     */
+    turnDetector?: import("./voice/eot-classifier").EotClassifier | false;
+    /** Optional local LiveKit turn-detector directory override. */
+    turnDetectorModelDir?: string;
     /** KV-prefill / response-handler-prefix prewarm. Defaults to `prewarmConversation`. */
     prewarm?: (roomId: string) => void | Promise<void>;
     speculatePauseMs?: number;
@@ -1444,11 +1452,13 @@ export class LocalInferenceEngine {
       vadMod,
       { VoiceTurnController },
       { InMemoryAudioSink },
+      eotMod,
     ] = await Promise.all([
       import("./voice/mic-source"),
       import("./voice/vad"),
       import("./voice/turn-controller"),
       import("./voice/ring-buffer"),
+      import("./voice/eot-classifier"),
     ]);
 
     const micSource = opts.micSource ?? new DesktopMicSource();
@@ -1475,12 +1485,23 @@ export class LocalInferenceEngine {
     // whisper.cpp is present. Gated on the VAD so silent frames aren't
     // decoded.
     const transcriber = bridge.createStreamingTranscriber({ vad });
+    const turnDetector =
+      opts.turnDetector === false
+        ? undefined
+        : opts.turnDetector ??
+          ((await eotMod.createBundledLiveKitTurnDetector({
+            ...(opts.turnDetectorModelDir
+              ? { modelDir: opts.turnDetectorModelDir }
+              : {}),
+          })) ??
+            new eotMod.HeuristicEotClassifier());
 
     const controller = new VoiceTurnController(
       {
         vad,
         transcriber,
         scheduler: bridge.scheduler,
+        ...(turnDetector ? { turnDetector } : {}),
         prewarm:
           opts.prewarm ??
           ((roomId: string) => {

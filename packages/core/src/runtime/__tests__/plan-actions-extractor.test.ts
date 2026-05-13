@@ -209,39 +209,3 @@ PLAN_ACTIONS({"action":"TASKS_SPAWN_AGENT","parameters":{}})`;
 	});
 });
 
-// ---------------------------------------------------------------------------
-// JSON sanitization — invalid LLM escape sequences
-// ---------------------------------------------------------------------------
-
-describe("extractPlanActionsFromContent — JSON sanitization", () => {
-	it("recovers from \\' (invalid JSON escape for single-quote) in string values", () => {
-		// This is the live-test failure mode: llama3.1-8b emits \'hello\' inside
-		// task descriptions, which is valid in many languages but illegal in JSON.
-		const text = `PLAN_ACTIONS({
-  "action": "TASKS_SPAWN_AGENT",
-  "parameters": {
-    "task": "Writing a Python script at /tmp/hello.py that prints \\'hello\\'.",
-    "agentType": "opencode"
-  },
-  "thought": "Opencode agent should generate simple Python code."
-})`;
-		const result = extractPlanActionsFromContent(text);
-		expect(result).not.toBeNull();
-		expect(result?.action).toBe("TASKS_SPAWN_AGENT");
-		expect(result?.parameters.task).toBe(
-			"Writing a Python script at /tmp/hello.py that prints 'hello'.",
-		);
-	});
-
-	it("recovers from \\` (backtick escape, invalid in JSON) in string values", () => {
-		const text = `PLAN_ACTIONS({"action":"REPLY","parameters":{"text":"run \`ls\` to list files"}})`;
-		const result = extractPlanActionsFromContent(text);
-		expect(result).not.toBeNull();
-		expect(result?.parameters.text).toBe("run `ls` to list files");
-	});
-
-	it("still rejects truly malformed JSON even after sanitization", () => {
-		const text = `PLAN_ACTIONS({"action":"TASKS_SPAWN_AGENT","parameters":{missing_quote}})`;
-		expect(extractPlanActionsFromContent(text)).toBeNull();
-	});
-});

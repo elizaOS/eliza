@@ -83,7 +83,7 @@ except ImportError:  # pragma: no cover - direct script execution path
 from benchmarks.eliza1_gates import apply_gates
 
 VISION_TIERS: Final[set[str]] = {"4b"}
-EMBEDDING_TIERS: Final[set[str]] = {"2b", "4b"}
+EMBEDDING_TIERS: Final[set[str]] = {"4b"}
 EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
 EMBEDDING_FILE: Final[str] = "Qwen3-Embedding-0.6B-Q8_0.gguf"
 
