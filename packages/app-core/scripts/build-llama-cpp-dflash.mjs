@@ -151,7 +151,6 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cuda",
   "linux-x64-rocm",
   "linux-x64-vulkan",
-<<<<<<< HEAD
   // Intel oneAPI / SYCL on Linux x64. Targets Intel discrete and
   // integrated GPUs (Arc, Xe, Lunar Lake / Meteor Lake / Panther Lake
   // iGPUs) through upstream ggml-sycl. Requires Intel oneAPI Base
@@ -168,9 +167,6 @@ const SUPPORTED_TARGETS = [
   // for `backend === "sycl"` (the per-backend branches around line
   // 1490 only match cuda/vulkan/metal).
   "linux-x64-sycl",
-  // Intel OpenVINO target for Linux x64 hosts. Requires OpenVINO runtime
-  // development files and OpenVINO_DIR or INTEL_OPENVINO_DIR.
-=======
   // Intel OpenVINO backend on Linux x64 (ggml-org/llama.cpp PR #15307,
   // merged into upstream master on 2026-04-08; this fork cherry-picks
   // the ggml-openvino/ directory). Builds a single llama-server binary
@@ -195,7 +191,6 @@ const SUPPORTED_TARGETS = [
   // "openvino"` (the per-backend branches around line 1490 only match
   // cuda/vulkan/metal). Supported quantizations: FP16, Q8_0, Q4_0,
   // Q4_1, Q4_K, Q4_K_M (with runtime conversion for Q5_K / Q6_K).
->>>>>>> pr-7634
   "linux-x64-openvino",
   // Linux aarch64. Required for the `server-h200` tier (GH200 = aarch64
   // host + H100/H200 GPU) and for Ampere Altra / AWS Graviton CPU-only
@@ -1210,19 +1205,16 @@ function cmakeFlagsForTarget(target, ctx) {
   //     existing `backend === "cpu" && arch === "x64"` / `arm64` blocks
   //     in the `platform === "windows"` section (and a new linux-cpu
   //     block here if a non-native pin is ever needed).
-<<<<<<< HEAD
   //   * SYCL-AGENT TODO: extra flags for `linux-x64-sycl` go in the
   //     `backend === "sycl"` branch below. Future Eliza-kernel SYCL
   //     backends (turbo3 / qjl / polarquant) will plug into the same
   //     branch alongside an entry in patchAllKernels() at the bottom
   //     of this file.
-=======
   //   * OPENVINO-AGENT TODO: extra flags for `linux-x64-openvino` (and
   //     future `windows-x64-openvino`) go in the `backend ===
   //     "openvino"` branch below. Eliza-kernel OpenVINO backends, if
   //     they're ever written, would plug into the same branch alongside
   //     an entry in patchAllKernels() at the bottom of this file.
->>>>>>> pr-7634
   // ──────────────────────────────────────────────────────────────────
   const { platform, arch, backend, isSimulator } = parseTarget(target);
   const flags = ["-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_EXAMPLES=ON"];
@@ -1236,10 +1228,7 @@ function cmakeFlagsForTarget(target, ctx) {
     "GGML_CUDA",
     "GGML_HIP",
     "GGML_VULKAN",
-<<<<<<< HEAD
     "GGML_SYCL",
-=======
->>>>>>> pr-7634
     "GGML_OPENVINO",
   ];
   for (const name of offByDefault) flags.push(`-D${name}=OFF`);
@@ -1288,7 +1277,6 @@ function cmakeFlagsForTarget(target, ctx) {
     // narrow/extend with ELIZA_DFLASH_CMAKE_FLAGS; those flags append
     // after this list and win on a CMake conflict.
     flags.push(hipArchListFlag());
-<<<<<<< HEAD
   } else if (backend === "sycl") {
     // Intel oneAPI / SYCL backend. Builds plain ggml-sycl from the
     // upstream tree (no Eliza kernel patches — those branches in
@@ -1327,19 +1315,6 @@ function cmakeFlagsForTarget(target, ctx) {
     }
     flags.push(`-DGGML_SYCL_TARGET=${syclTarget}`);
   } else if (backend === "openvino") {
-    flags[flags.indexOf("-DGGML_OPENVINO=OFF")] = "-DGGML_OPENVINO=ON";
-    const openvinoDir =
-      process.env.OpenVINO_DIR?.trim() ||
-      process.env.INTEL_OPENVINO_DIR?.trim();
-    if (openvinoDir) {
-      const normalizedDir = path.normalize(openvinoDir);
-      const cmakeDir =
-        normalizedDir.endsWith(`${path.sep}cmake`) ||
-        normalizedDir.endsWith("/cmake")
-          ? normalizedDir
-          : path.join(normalizedDir, "runtime", "cmake");
-=======
-  } else if (backend === "openvino") {
     // Intel OpenVINO backend. Builds plain ggml-openvino from the
     // cherry-picked upstream tree (no Eliza kernel patches — those
     // branches in patch*Kernels() only match cuda/vulkan/metal).
@@ -1352,16 +1327,19 @@ function cmakeFlagsForTarget(target, ctx) {
     // Pass OpenVINO_DIR explicitly when present — find_package() will
     // honor it. Some OpenVINO tarballs install to non-standard paths
     // (/opt/intel/openvino_<ver>/runtime/cmake) which CMake's default
-    // search heuristics miss.
+    // search heuristics miss. Normalize the env value first so a trailing
+    // slash (`/runtime/cmake/`) doesn't make the `.endsWith("/cmake")`
+    // check miss and we double-append `runtime/cmake`.
     const openvinoDir =
-      process.env.OpenVINO_DIR || process.env.INTEL_OPENVINO_DIR;
+      process.env.OpenVINO_DIR?.trim() ||
+      process.env.INTEL_OPENVINO_DIR?.trim();
     if (openvinoDir) {
-      // INTEL_OPENVINO_DIR points at /opt/intel/openvino_<ver>/, but
-      // find_package() wants the runtime/cmake subdirectory. Normalize.
-      const cmakeDir = openvinoDir.endsWith("/cmake")
-        ? openvinoDir
-        : path.join(openvinoDir, "runtime", "cmake");
->>>>>>> pr-7634
+      const normalizedDir = path.normalize(openvinoDir);
+      const cmakeDir =
+        normalizedDir.endsWith(`${path.sep}cmake`) ||
+        normalizedDir.endsWith("/cmake")
+          ? normalizedDir
+          : path.join(normalizedDir, "runtime", "cmake");
       flags.push(`-DOpenVINO_DIR=${cmakeDir}`);
     }
   } else if (backend === "vulkan") {
