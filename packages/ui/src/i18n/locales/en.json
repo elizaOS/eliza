@@ -2710,6 +2710,8 @@
   "settings.sections.capabilities.computerUseModeOption.smartApprove": "Smart Approve",
   "settings.sections.capabilities.computerUseName": "Computer Use",
   "settings.sections.capabilities.desc": "Enable or disable agent capabilities",
+  "settings.sections.carrots.desc": "Sandboxed mini-apps.",
+  "settings.sections.carrots.label": "Carrots",
   "settings.sections.cloud.desc": "Account, credits, and cloud services.",
   "settings.sections.codingagents.desc": "Agent preferences, models, and permissions",
   "settings.sections.codingagents.label": "Task Agents",
