@@ -162,13 +162,21 @@ export async function resolveElizaEngine(
       reason: `eliza-1 GGUF not found locally for tier ${tierId}`,
     };
   }
-  const engineMod = await tryImport<AppCoreEngineLike>(
-    "@elizaos/app-core/services/local-inference/engine",
-  );
+  // The local-inference engine moved from `@elizaos/app-core/services/local-inference/`
+  // to `@elizaos/plugin-local-inference/services/`. Try the new home first;
+  // fall back to the legacy path for repos pinned to the older layout.
+  const engineMod =
+    (await tryImport<AppCoreEngineLike>(
+      "@elizaos/plugin-local-inference/services/engine",
+    )) ??
+    (await tryImport<AppCoreEngineLike>(
+      "@elizaos/app-core/services/local-inference/engine",
+    ));
   if (!engineMod) {
     return {
       kind: "skip",
-      reason: "failed to import @elizaos/app-core engine",
+      reason:
+        "failed to import local-inference engine (tried @elizaos/plugin-local-inference + legacy app-core)",
     };
   }
   let engine: EngineLike;
