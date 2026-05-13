@@ -441,7 +441,34 @@ export class CarrotManager {
 
 		if (message.action === "stop-carrot") {
 			this.stopWorker(id);
+			return;
 		}
+
+		if (message.action === "emit-carrot-event") {
+			this.dispatchEmitCarrotEvent(id, message.payload);
+		}
+	}
+
+	private dispatchEmitCarrotEvent(
+		callerId: string,
+		payload: JsonValue | undefined,
+	): void {
+		if (!isRecord(payload)) return;
+		const targetId = payload.carrotId;
+		const name = payload.name;
+		if (typeof targetId !== "string" || typeof name !== "string") return;
+		const target = this.workers.get(targetId);
+		if (!target?.handle || target.status.state !== "running") {
+			logger.warn(
+				`[carrots] ${callerId} → emit-carrot-event dropped: target ${targetId} is not running.`,
+			);
+			return;
+		}
+		target.handle.postMessage({
+			type: "event",
+			name,
+			...(payload.payload === undefined ? {} : { payload: payload.payload }),
+		});
 	}
 
 	private handleHostRequest(

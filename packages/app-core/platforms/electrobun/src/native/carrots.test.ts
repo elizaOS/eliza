@@ -361,6 +361,81 @@ describe("CarrotManager", () => {
 			});
 		}));
 
+	it("routes emit-carrot-event between two running carrots", () =>
+		withTempDir((dir) => {
+			const workerA = new FakeWorkerHandle();
+			const workerB = new FakeWorkerHandle();
+			let nextWorker: FakeWorkerHandle = workerA;
+			const manager = new CarrotManager({
+				storeRoot: join(dir, "store"),
+				workerRunner: { start: () => nextWorker },
+				now: () => 1700000000000,
+			});
+
+			// Install bunny.search (worker A)
+			manager.installFromDirectory({ sourceDir: writePayload(dir) });
+			manager.startWorker("bunny.search");
+
+			// Install a second carrot (worker B) with a different id
+			const secondDir = join(dir, "second");
+			mkdirSync(join(secondDir, "views"), { recursive: true });
+			writeFileSync(
+				join(secondDir, "carrot.json"),
+				JSON.stringify({
+					id: "bunny.timer",
+					name: "Timer",
+					version: "1.0.0",
+					description: "Timer helper",
+					mode: "background",
+					permissions: { host: {}, bun: {} },
+					view: {
+						relativePath: "views/index.html",
+						title: "Timer",
+						width: 240,
+						height: 160,
+					},
+					worker: { relativePath: "worker.ts" },
+				}),
+				"utf8",
+			);
+			writeFileSync(join(secondDir, "worker.ts"), "postMessage({type:'ready'});");
+			writeFileSync(join(secondDir, "views", "index.html"), "<div>Timer</div>");
+			nextWorker = workerB;
+			manager.installFromDirectory({ sourceDir: secondDir });
+			manager.startWorker("bunny.timer");
+
+			// A emits to B
+			workerA.emit({
+				type: "action",
+				action: "emit-carrot-event",
+				payload: {
+					carrotId: "bunny.timer",
+					name: "ping",
+					payload: { count: 1 },
+				},
+			});
+
+			const eventMsg = workerB.messages.find((m) => m.type === "event");
+			expect(eventMsg).toMatchObject({
+				type: "event",
+				name: "ping",
+				payload: { count: 1 },
+			});
+
+			// Emit to a non-running carrot — should be dropped silently (warning only)
+			workerA.emit({
+				type: "action",
+				action: "emit-carrot-event",
+				payload: {
+					carrotId: "does-not-exist",
+					name: "ghost",
+				},
+			});
+			// workerB should NOT have received anything new
+			const eventsAfter = workerB.messages.filter((m) => m.type === "event");
+			expect(eventsAfter).toHaveLength(1);
+		}));
+
 	it("ignores late worker events after stop", () =>
 		withTempDir((dir) => {
 			const worker = new FakeWorkerHandle();
