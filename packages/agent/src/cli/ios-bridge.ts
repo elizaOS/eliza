@@ -822,7 +822,20 @@ function extractExactWordsReplyRequest(userText: string): string | null {
   return replyWith?.[1]?.trim() ? replyWith[1].trim() : null;
 }
 
+/**
+ * Mirrors `chat-routes.ts:shouldUseSimpleChatBypass`. iOS bridge inputs
+ * route through the simple-reply template when:
+ *   - operator forces it (`ELIZA_FORCE_DIRECT_REPLY=1`), or
+ *   - the bundled local llama backend is active
+ *     (`ELIZA_LOCAL_LLAMA=1`), or
+ *   - the client explicitly tagged the turn `conversationMode: "simple"`.
+ * Local-bridge inputs are always device-bridge gated by definition, so
+ * we don't need to recheck `ELIZA_DEVICE_BRIDGE_ENABLED` here. See
+ * elizaOS/eliza#7618.
+ */
 function isSimpleConversationInput(input: Record<string, unknown>): boolean {
+  if (process.env.ELIZA_FORCE_DIRECT_REPLY === "1") return true;
+  if (process.env.ELIZA_LOCAL_LLAMA === "1") return true;
   if (input.conversationMode === "simple") return true;
   const metadata = input.metadata;
   return Boolean(
