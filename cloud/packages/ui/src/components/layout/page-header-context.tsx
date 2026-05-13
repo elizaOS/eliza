@@ -15,7 +15,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRenderGuard } from "../../runtime/render-telemetry";
 
 interface PageHeaderInfo {
   title: string;
@@ -31,7 +30,6 @@ interface PageHeaderContextValue {
 const PageHeaderContext = createContext<PageHeaderContextValue | undefined>(undefined);
 
 export function PageHeaderProvider({ children }: { children: ReactNode }) {
-  useRenderGuard("PageHeaderProvider");
   const [pageInfo, setPageInfoRaw] = useState<PageHeaderInfo | null>(null);
 
   // Wrap setter to skip no-op updates (prevents context churn when same title/description
