@@ -124,7 +124,7 @@ jobs:
           ls -lh "${OUT_DIR}"
 
       - name: Upload GGUF artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: omnivoice-singing-gguf-${{ inputs.quantize }}
           path: |
