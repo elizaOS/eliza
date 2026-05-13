@@ -5255,7 +5255,19 @@ export async function runV5MessageRuntimeStage1(args: {
 				// "required" (OpenAI, etc.) still prefer the tool path under
 				// "auto" when the prompt asks for one.
 				toolChoice: "auto",
-				maxTokens: 1024,
+				// Was 1024. Reasoning models (gpt-oss-120b on Cerebras,
+				// gpt-5 on OpenAI) burn ~800–1500 tokens of internal
+				// chain-of-thought BEFORE emitting any visible output —
+				// completionTokens=1024 trajectories were showing 25-char
+				// truncated JSON because the rest of the budget had gone
+				// to reasoning tokens we never see. 4096 leaves the
+				// reasoning model ~3k tokens of actual envelope output
+				// after a typical 1k of reasoning, which is more than
+				// enough for the HANDLE_RESPONSE schema (~300 tokens
+				// fully populated). Non-reasoning models still finish
+				// well under 4096 so the ceiling doesn't change their
+				// cost.
+				maxTokens: 4096,
 				// Streamed structured generation: the local engine (W4) streams the
 				// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 				// / `contexts` route the moment they are known and `replyText` flows to
