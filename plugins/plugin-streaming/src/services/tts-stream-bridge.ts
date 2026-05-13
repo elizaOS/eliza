@@ -11,9 +11,19 @@
 
 import { spawn } from "node:child_process";
 import type { Writable } from "node:stream";
-import { logger, sanitizeSpeechText } from "@elizaos/core";
+import {
+  type IAgentRuntime,
+  logger,
+  ModelType,
+  sanitizeSpeechText,
+} from "@elizaos/core";
 
-export type TtsProvider = "elevenlabs" | "openai" | "edge" | (string & {});
+export type TtsProvider =
+  | "local-inference"
+  | "elevenlabs"
+  | "openai"
+  | "edge"
+  | (string & {});
 
 export type TtsConfig = {
   enabled?: boolean;
@@ -47,10 +57,17 @@ const CHUNK_BYTES =
 
 const ELEVENLABS_TIMEOUT_MS = 20_000;
 const OPENAI_TIMEOUT_MS = 20_000;
+const LOCAL_TTS_PROVIDER_IDS = [
+  "eliza-local-inference",
+  "capacitor-llama",
+  "eliza-device-bridge",
+  "eliza-aosp-llama",
+] as const;
 
 /** Resolved TTS configuration for a speak() call. */
 export interface ResolvedTtsConfig {
   provider: TtsProvider;
+  runtime?: IAgentRuntime;
   elevenlabs?: {
     apiKey: string;
     voiceId: string;
@@ -131,20 +148,23 @@ class TtsStreamBridge implements ITtsStreamBridge {
       return false;
     }
 
-    const speakableText = sanitizeSpeechText(text);
+    const speakableText =
+      config.provider === "local-inference"
+        ? sanitizeLocalInferenceSpeechText(text)
+        : sanitizeSpeechText(text);
     if (!speakableText) return false;
 
     try {
       logger.info(
         `${TAG} Generating TTS (${config.provider}, ${speakableText.length} chars)`,
       );
-      const mp3 = await this.generateTts(speakableText, config);
-      if (!mp3 || mp3.length === 0) {
+      const audio = await this.generateTts(speakableText, config);
+      if (!audio || audio.length === 0) {
         logger.warn(`${TAG} TTS returned empty audio`);
         return false;
       }
 
-      const pcm = await this.decodeMp3ToPcm(mp3);
+      const pcm = await this.decodeAudioToPcm(audio);
       if (!pcm || pcm.length === 0) {
         logger.warn(`${TAG} PCM decode returned empty buffer`);
         return false;
@@ -206,9 +226,33 @@ class TtsStreamBridge implements ITtsStreamBridge {
         return this.generateOpenai(text, config);
       case "edge":
         return this.generateEdge(text, config);
+      case "local-inference":
+        return this.generateLocalInference(text, config);
       default:
         throw new Error(`Unknown TTS provider: ${config.provider}`);
     }
+  }
+
+  private async generateLocalInference(
+    text: string,
+    config: ResolvedTtsConfig,
+  ): Promise<Buffer> {
+    const runtime = config.runtime;
+    if (!runtime) {
+      throw new Error(
+        "Local inference TEXT_TO_SPEECH handler is not available",
+      );
+    }
+    const audio = await useLocalInferenceTts(runtime, text);
+    if (audio instanceof Uint8Array) {
+      return Buffer.from(audio.buffer, audio.byteOffset, audio.byteLength);
+    }
+    if (audio instanceof ArrayBuffer) {
+      return Buffer.from(audio);
+    }
+    throw new Error(
+      "Local inference TEXT_TO_SPEECH returned invalid audio bytes",
+    );
   }
 
   private async generateElevenlabs(
@@ -315,10 +359,10 @@ class TtsStreamBridge implements ITtsStreamBridge {
     }
   }
 
-  // ── MP3 → PCM decode ──────────────────────────────────────────────────
+  // ── Encoded audio → PCM decode ─────────────────────────────────────────
 
-  /** Decode MP3 audio to raw s16le PCM using an FFmpeg subprocess. */
-  private decodeMp3ToPcm(mp3: Buffer): Promise<Buffer> {
+  /** Decode provider audio (WAV, MP3, etc.) to raw s16le PCM using FFmpeg. */
+  private decodeAudioToPcm(audio: Buffer): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const proc = spawn(
         "ffmpeg",
@@ -346,7 +390,7 @@ class TtsStreamBridge implements ITtsStreamBridge {
         }
       });
       proc.on("error", reject);
-      proc.stdin?.write(mp3);
+      proc.stdin?.write(audio);
       proc.stdin?.end();
     });
   }
@@ -366,11 +410,80 @@ function fetchWithTimeout(
   );
 }
 
+async function useLocalInferenceTts(
+  runtime: IAgentRuntime,
+  text: string,
+): Promise<Buffer | Uint8Array | ArrayBuffer> {
+  let lastError: unknown;
+  for (const provider of LOCAL_TTS_PROVIDER_IDS) {
+    try {
+      return await runtime.useModel(
+        ModelType.TEXT_TO_SPEECH,
+        { text },
+        provider,
+      );
+    } catch (err) {
+      lastError = err;
+      if (!isMissingProviderError(err)) {
+        throw err;
+      }
+    }
+  }
+  if (lastError instanceof Error) {
+    throw lastError;
+  }
+  throw new Error("No local-inference TEXT_TO_SPEECH provider is registered");
+}
+
+function isMissingProviderError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    /No handler found for delegate type: TEXT_TO_SPEECH/.test(error.message)
+  );
+}
+
+function sanitizeLocalInferenceSpeechText(input: string): string {
+  let text = input.normalize("NFKC");
+  text = text.replace(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi, " ");
+  text = text.replace(
+    /<(analysis|reasoning|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi,
+    " ",
+  );
+  text = text.replace(/```[\s\S]*?```/g, " ");
+  text = text.replace(/`([^`]+)`/g, "$1");
+  text = text.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
+  text = text.replace(/<[^>\n]+>/g, " ");
+  text = text.replace(/\bhttps?:\/\/\S+/gi, " ");
+  return text.replace(/\s+/g, " ").trim();
+}
+
 // ── Config resolution ─────────────────────────────────────────────────────
 
 /** Helper to check if a string looks like a redacted secret placeholder. */
 function isRedactedSecret(val: string): boolean {
   return /^\*+$/.test(val) || val === "REDACTED" || val === "[REDACTED]";
+}
+
+function hasLocalInferenceTtsHandler(
+  runtime: IAgentRuntime | undefined,
+): boolean {
+  const registrations = (runtime as { models?: unknown } | undefined)?.models;
+  if (registrations instanceof Map) {
+    const handlers = registrations.get(ModelType.TEXT_TO_SPEECH);
+    return (
+      Array.isArray(handlers) &&
+      handlers.some((entry) => {
+        const provider = (entry as { provider?: unknown }).provider;
+        return (
+          typeof provider === "string" &&
+          LOCAL_TTS_PROVIDER_IDS.includes(
+            provider as (typeof LOCAL_TTS_PROVIDER_IDS)[number],
+          )
+        );
+      })
+    );
+  }
+  return false;
 }
 
 /**
@@ -379,19 +492,32 @@ function isRedactedSecret(val: string): boolean {
  */
 export function resolveTtsConfig(
   ttsConfig: TtsConfig | undefined,
+  runtime?: IAgentRuntime,
 ): ResolvedTtsConfig | null {
   if (!ttsConfig) return null;
 
   const preferredProvider = ttsConfig.provider || "elevenlabs";
 
-  // Try providers in preference order: configured → elevenlabs → openai → edge
+  // Try configured/cloud providers in preference order. Edge TTS is only
+  // selected when explicitly configured; it is not an implicit local default.
   const providers: TtsProvider[] = [preferredProvider];
+  if (!providers.includes("local-inference")) providers.push("local-inference");
   if (!providers.includes("elevenlabs")) providers.push("elevenlabs");
   if (!providers.includes("openai")) providers.push("openai");
-  if (!providers.includes("edge")) providers.push("edge");
 
   for (const provider of providers) {
     switch (provider) {
+      case "local-inference": {
+        if (
+          preferredProvider === "local-inference" ||
+          ttsConfig.provider === "local-inference"
+        ) {
+          return hasLocalInferenceTtsHandler(runtime)
+            ? { provider: "local-inference", runtime }
+            : null;
+        }
+        break;
+      }
       case "elevenlabs": {
         const el = ttsConfig.elevenlabs;
         const apiKey = resolveKey(el?.apiKey, "ELEVENLABS_API_KEY");
@@ -426,13 +552,15 @@ export function resolveTtsConfig(
         break;
       }
       case "edge": {
-        // Edge TTS always works (no API key needed)
-        return {
-          provider: "edge",
-          edge: {
-            voice: ttsConfig.edge?.voice || "en-US-AriaNeural",
-          },
-        };
+        if (preferredProvider === "edge") {
+          return {
+            provider: "edge",
+            edge: {
+              voice: ttsConfig.edge?.voice || "en-US-AriaNeural",
+            },
+          };
+        }
+        break;
       }
     }
   }
@@ -467,15 +595,20 @@ function resolveKey(
 /**
  * Get a summary of available TTS providers and their status.
  */
-export function getTtsProviderStatus(ttsConfig: TtsConfig | undefined): {
+export function getTtsProviderStatus(
+  ttsConfig: TtsConfig | undefined,
+  runtime?: IAgentRuntime,
+): {
   configuredProvider: string | null;
   hasApiKey: boolean;
   resolvedProvider: string | null;
 } {
-  const resolved = resolveTtsConfig(ttsConfig);
+  const resolved = resolveTtsConfig(ttsConfig, runtime);
   return {
     configuredProvider: ttsConfig?.provider || null,
-    hasApiKey: resolved ? resolved.provider !== "edge" : false,
+    hasApiKey: resolved
+      ? resolved.provider !== "edge" && resolved.provider !== "local-inference"
+      : false,
     resolvedProvider: resolved?.provider || null,
   };
 }

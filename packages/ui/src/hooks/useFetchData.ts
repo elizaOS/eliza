@@ -9,6 +9,10 @@
  * AbortError is treated as silent: a cancelled request never lands in
  * `error` state. Every other failure surfaces — this hook does NOT
  * swallow real errors.
+ *
+ * Initial state is `loading` (not `idle`) since the effect always fires on
+ * mount. The `idle` variant is reserved in the type for a future opt-out
+ * flag but never surfaces today.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -19,8 +23,14 @@ export type FetchState<T> =
   | { status: "success"; data: T }
   | { status: "error"; error: Error };
 
+export type FetchMutator<T> = {
+  (next: T): void;
+  (updater: (prev: T) => T): void;
+};
+
 export type UseFetchDataResult<T> = FetchState<T> & {
   refetch: () => void;
+  mutate: FetchMutator<T>;
 };
 
 function isAbortError(value: unknown): boolean {
@@ -46,11 +56,15 @@ function toError(value: unknown): Error {
   );
 }
 
+function isUpdaterFn<T>(value: T | ((prev: T) => T)): value is (prev: T) => T {
+  return typeof value === "function";
+}
+
 export function useFetchData<T>(
   fetcher: (signal: AbortSignal) => Promise<T>,
   deps: ReadonlyArray<unknown>,
 ): UseFetchDataResult<T> {
-  const [state, setState] = useState<FetchState<T>>({ status: "idle" });
+  const [state, setState] = useState<FetchState<T>>({ status: "loading" });
   const [reloadTick, setReloadTick] = useState(0);
 
   // Capture the latest fetcher so a refetch / deps change does not need to
@@ -62,6 +76,22 @@ export function useFetchData<T>(
 
   const refetch = useCallback(() => {
     setReloadTick((tick) => tick + 1);
+  }, []);
+
+  const mutate = useCallback<FetchMutator<T>>((next: T | ((prev: T) => T)) => {
+    setState((prev) => {
+      if (isUpdaterFn(next)) {
+        if (prev.status !== "success") {
+          throw new Error(
+            "useFetchData: mutate(updaterFn) called without prior data " +
+              `(current status: ${prev.status}). Pass a value of T directly, ` +
+              "or wait until status === 'success'.",
+          );
+        }
+        return { status: "success", data: next(prev.data) };
+      }
+      return { status: "success", data: next };
+    });
   }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -91,5 +121,5 @@ export function useFetchData<T>(
     };
   }, [...deps, reloadTick]);
 
-  return { ...state, refetch };
+  return { ...state, refetch, mutate };
 }

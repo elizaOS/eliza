@@ -2,8 +2,8 @@
 
 The upstream dataset lives at ``hlt-mt/VoiceBench`` on the Hugging Face
 Hub — 6783 spoken instructions across 8 task suites. We don't bundle the
-audio. The loader fetches lazily on first run via ``datasets``; smoke
-tests use a tiny fixture set with no audio bytes.
+audio. The loader fetches lazily on first run via ``datasets``. Missing audio
+is a hard failure for benchmark runs.
 
 The HF schema per row (verified against the upstream config):
   * ``audio.bytes``   — raw audio bytes
@@ -20,9 +20,7 @@ error rather than papering over it with defaults — per AGENTS.md command
 
 from __future__ import annotations
 
-import json
 import logging
-from pathlib import Path
 from typing import Iterable
 
 from .types import SUITES, Sample, SuiteId
@@ -30,43 +28,18 @@ from .types import SUITES, Sample, SuiteId
 log = logging.getLogger("elizaos_voicebench.dataset")
 
 HF_REPO = "hlt-mt/VoiceBench"
-FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-
 
 def load_samples(
     suite: SuiteId,
     *,
     limit: int | None,
-    mock: bool,
 ) -> list[Sample]:
     """Load samples for one suite.
 
-    ``mock=True`` reads the bundled JSONL fixture (no network, no audio).
-    Otherwise the upstream HF dataset is fetched lazily.
+    The upstream HF dataset is fetched lazily.
     """
 
-    if mock:
-        return _load_fixture(suite, limit=limit)
     return _load_huggingface(suite, limit=limit)
-
-
-def _load_fixture(suite: SuiteId, *, limit: int | None) -> list[Sample]:
-    path = FIXTURES_DIR / f"{suite}.jsonl"
-    if not path.exists():
-        raise FileNotFoundError(
-            f"VoiceBench mock fixture not found for suite '{suite}': {path}"
-        )
-    samples: list[Sample] = []
-    with path.open("r", encoding="utf-8") as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            row = json.loads(line)
-            samples.append(_row_to_sample(suite, row))
-            if limit is not None and len(samples) >= limit:
-                break
-    return samples
 
 
 def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
@@ -124,6 +97,11 @@ def _row_to_sample(suite: SuiteId, row: dict[str, object]) -> Sample:
         raw = audio.get("bytes")
         if isinstance(raw, (bytes, bytearray)):
             audio_bytes = bytes(raw)
+    if audio_bytes is None:
+        raise ValueError(
+            f"VoiceBench row {sample_id_raw!r} has no audio bytes; refusing "
+            "text-only benchmark fallback"
+        )
 
     metadata: dict[str, object] = {}
     for key in ("choices", "instructions", "dialect", "topic", "subject"):

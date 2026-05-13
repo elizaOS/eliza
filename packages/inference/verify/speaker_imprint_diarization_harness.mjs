@@ -3,7 +3,8 @@
  * Generated-voice VAD + attribution-only speaker imprint harness.
  *
  * This records the current local state honestly:
- *   - real app-core VAD is run on a generated voice WAV when one is present;
+ *   - real app-core VAD is run on a generated voice WAV when one is present,
+ *     or on a deterministic generated-speech fixture unless --require-wav is set;
  *   - speaker attribution is exercised on supplied segment embeddings;
  *   - full local multi-speaker diarization DER is reported as unavailable
  *     until a local segmentation + speaker-embedding model is wired.
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     wav: DEFAULT_WAV,
     report: DEFAULT_REPORT,
     json: false,
+    requireWav: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -55,9 +57,10 @@ function parseArgs(argv) {
     else if (arg === "--wav") args.wav = argv[++i] ?? args.wav;
     else if (arg === "--report") args.report = argv[++i] ?? args.report;
     else if (arg === "--json") args.json = true;
+    else if (arg === "--require-wav") args.requireWav = true;
     else if (arg === "--help" || arg === "-h") {
       console.log(
-        "Usage: node speaker_imprint_diarization_harness.mjs [--bundle PATH] [--wav PATH] [--report PATH] [--json]",
+        "Usage: node speaker_imprint_diarization_harness.mjs [--bundle PATH] [--wav PATH] [--report PATH] [--json] [--require-wav]",
       );
       process.exit(0);
     }
@@ -117,18 +120,83 @@ function makeRunnerSource(args) {
       "speaker-imprint.ts",
     ),
   ).href;
+  const fixtureUrl = pathToFileURL(
+    path.join(
+      REPO_ROOT,
+      "packages",
+      "app-core",
+      "src",
+      "services",
+      "local-inference",
+      "voice",
+      "__test-helpers__",
+      "synthetic-speech.ts",
+    ),
+  ).href;
 
   return `
 import fs from "node:fs";
+import path from "node:path";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { resolveSileroVadPath, resolveVadProvider, VadDetector } from ${JSON.stringify(vadUrl)};
 import { attributeVoiceImprintObservations } from ${JSON.stringify(imprintUrl)};
+import { makeSpeechWithSilenceFixture } from ${JSON.stringify(fixtureUrl)};
 
 const bundleRoot = ${JSON.stringify(args.bundle)};
 const wavPath = ${JSON.stringify(args.wav)};
+const requireWav = ${JSON.stringify(args.requireWav)};
 const SR = 16000;
 const FRAME = 512;
+
+function writeWavPcm16Mono(file, pcm, sampleRateHz) {
+  const dataBytes = pcm.length * 2;
+  const buf = Buffer.alloc(44 + dataBytes);
+  buf.write("RIFF", 0, "ascii");
+  buf.writeUInt32LE(36 + dataBytes, 4);
+  buf.write("WAVE", 8, "ascii");
+  buf.write("fmt ", 12, "ascii");
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(1, 22);
+  buf.writeUInt32LE(sampleRateHz, 24);
+  buf.writeUInt32LE(sampleRateHz * 2, 28);
+  buf.writeUInt16LE(2, 32);
+  buf.writeUInt16LE(16, 34);
+  buf.write("data", 36, "ascii");
+  buf.writeUInt32LE(dataBytes, 40);
+  let off = 44;
+  for (const sample of pcm) {
+    const clamped = Math.max(-1, Math.min(1, sample));
+    buf.writeInt16LE(Math.round(clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff), off);
+    off += 2;
+  }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, buf);
+}
+
+function ensureGeneratedVoiceWav() {
+  if (fs.existsSync(wavPath)) {
+    return { path: wavPath, fixtureKind: "provided_generated_voice_wav" };
+  }
+  if (requireWav) {
+    return null;
+  }
+  const fixture = makeSpeechWithSilenceFixture({
+    sampleRate: 24000,
+    leadSilenceSec: 0.35,
+    speechSec: 1.6,
+    tailSilenceSec: 0.45,
+    seed: 0x0e11a,
+  });
+  writeWavPcm16Mono(wavPath, fixture.pcm, fixture.sampleRate);
+  return {
+    path: wavPath,
+    fixtureKind: "deterministic_generated_voice_fixture",
+    speechStartMs: (fixture.speechStartSample / fixture.sampleRate) * 1000,
+    speechEndMs: (fixture.speechEndSample / fixture.sampleRate) * 1000,
+  };
+}
 
 function readWavPcm16Mono(file) {
   const buf = fs.readFileSync(file);
@@ -203,7 +271,8 @@ function p95(xs) {
 }
 
 async function runVad() {
-  if (!fs.existsSync(wavPath)) {
+  const input = ensureGeneratedVoiceWav();
+  if (!input) {
     return {
       available: false,
       reason: "generated voice WAV not found",
@@ -219,7 +288,7 @@ async function runVad() {
       wavPath,
     };
   }
-  const wav = readWavPcm16Mono(wavPath);
+  const wav = readWavPcm16Mono(input.path);
   const pcm16k = resampleLinear(wav.pcm, wav.sampleRateHz, SR);
   const provider = await resolveVadProvider({
     modelPath,
@@ -258,7 +327,10 @@ async function runVad() {
     available: true,
     provider: provider.id,
     vadModelPath: modelPath,
-    wavPath,
+    wavPath: input.path,
+    fixtureKind: input.fixtureKind,
+    expectedSpeechStartMs: input.speechStartMs ?? null,
+    expectedSpeechEndMs: input.speechEndMs ?? null,
     wav: {
       sampleRateHz: wav.sampleRateHz,
       samples: wav.samples,

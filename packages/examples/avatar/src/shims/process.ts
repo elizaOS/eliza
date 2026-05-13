@@ -35,7 +35,7 @@ function ensureSecretSalt(env: ProcessEnv): void {
   }
 }
 
-export function ensureProcessShim(): void {
+function ensureProcessShim(): void {
   const current = readProcessShim();
   if (!current) {
     const processShim: ProcessShim = { env: {} };

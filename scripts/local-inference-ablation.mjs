@@ -244,8 +244,8 @@ function defaultArgsForBackend(backend) {
   return {
     backend,
     binary: null,
-    model: defaultModelPath("eliza-1-mobile-1_7b.gguf"),
-    drafter: defaultModelPath("eliza-1-mobile-1_7b-drafter-q4.repaired.gguf"),
+    model: defaultModelPath("eliza-1-2b.gguf"),
+    drafter: defaultModelPath("eliza-1-2b-drafter-q4.repaired.gguf"),
     runs: 3,
     warmupTokens: 32,
     maxTokens: 256,

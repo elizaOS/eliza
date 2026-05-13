@@ -45,7 +45,9 @@ or "pick the TTS" — that is a runtime concern, not a user concern.
 
 Backbones (do not change without explicit human approval):
 
-- **Text/vision:** Qwen3.5 family, plus Qwen3.6 27B where available. We
+- **Text/vision:** Qwen3.5 family only for the current release line:
+  0.6B, 1.7B, and 4B. Larger historical 9B/27B hardware tiers are hidden
+  placeholders until final Eliza-1 weights and evidence exist. We
   do not name these as "Qwen" in any user-facing string. Internally,
   manifests record the upstream lineage and license; the UI shows
   "Eliza-1 <tier>".
@@ -65,18 +67,23 @@ Backbones (do not change without explicit human approval):
   commercially-licensed corpora — until then, ship it.
 - **ASR:** Qwen3-ASR (`ggml-org/Qwen3-ASR-0.6B-GGUF` for
   lite/mobile/desktop tiers, `ggml-org/Qwen3-ASR-1.7B-GGUF` for
-  pro/server). Tokenizer fused with the Qwen3.5/3.6 text backbone
-  (zero re-tokenization between ASR output and text input). whisper.cpp
-  is **not** the default — it vendors its own ggml, violating the
-  one-llama.cpp-build / one-GGML-pin contract in §4.
+  pro/server). These are the only public GGUF ASR artifacts currently
+  available; do not invent ASR source repos with a Qwen3.5 prefix. The released
+  Eliza bundle may wrap them under `elizaos/eliza-1-*`, but provenance
+  must record the real upstream. whisper.cpp is **not** the default — it
+  vendors its own ggml, violating the one-llama.cpp-build / one-GGML-pin
+  contract in §4.
 - **VAD:** Silero VAD (MIT, ~2 MB ONNX). Ships in every voice-enabled
   bundle. Drives barge-in cancellation; gates ASR to skip silent frames.
 - **Wake word:** openWakeWord (Apache-2.0, ~3 MB). Opt-in, local-mode
   only. Hidden in cloud mode per three-mode hide-not-disable.
-- **Embedding:** Qwen3-Embedding-0.6B (Apache-2.0, 1024-dim with
-  Matryoshka, 32k ctx) for non-lite tiers as a separate `embedding/`
-  artifact. On `0_6b` the embedding model IS the text backbone
-  with `--pooling last` — no duplicate weights.
+- **Embedding:** `0_6b` and `1_7b` reuse the active text backbone with
+  `--pooling last` — no duplicate weights in the mobile/default tiers.
+  Larger tiers may ship a dedicated `embedding/` artifact (1024-dim
+  Matryoshka, 32k ctx) when the manifest records a real source artifact and
+  evidence. Do not fabricate embedding source repos, and do not silently
+  fall back on larger tiers when the manifest says a dedicated region is
+  required.
 - **Drafter:** DFlash. Always present in the bundle. Always wired in.
   Speculative decoding is mandatory, not optional (see §3).
 
@@ -117,12 +124,13 @@ hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 
 | Tier            | Tagline                       | Text  | Voice          | Vision | Context  | DFlash | Quant default                   |
 | --------------- | ----------------------------- | ----- | -------------- | ------ | -------- | ------ | ------------------------------- |
-| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice 0.6B | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
-| `1_7b`         | modern phones                  | 1.7B    | OmniVoice 0.6B | no     | 32k–64k  | yes    | TurboQuant Q3/Q4 + QJL K-cache  |
-| `4b`         | flagship phones, small desktops| 4B    | OmniVoice 0.6B | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
-| `9b`         | laptops, 24GB phones, 48GB Mac | ~9B   | OmniVoice 1.7B | mmproj | 64k–128k | yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b`        | 96GB+ Mac, high-VRAM desktop   | 27B   | OmniVoice 1.7B | mmproj | 128k–256k| yes    | TurboQuant Q4 + QJL + Polar     |
-| `27b-256k`  | server / workstation           | 27B   | OmniVoice 1.7B | mmproj | up to max| yes    | CUDA TurboQuant + QJL + Polar   |
+| `0_6b`       | low-RAM phones, CPU fallback   | 0.6B  | OmniVoice small | no     | 32k      | yes    | TurboQuant Q3 + Polar Q4 KV     |
+| `1_7b`         | modern phones                  | 1.7B    | OmniVoice small | no     | 32k      | yes    | TurboQuant Q4 + QJL K-cache     |
+| `4b`         | flagship phones, small desktops| 4B    | OmniVoice small | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar     |
+| `9b`         | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
+| `27b`        | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
+| `27b-256k`  | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
+| `27b-1m`    | hidden future placeholder       | TBD   | TBD             | TBD    | TBD      | yes    | TBD after final weights         |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -340,21 +348,21 @@ catalogs drift from it — generate them.
 ```json
 {
   "$schema": "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json",
-  "id": "eliza-1-9b",
-  "tier": "9b",
+  "id": "eliza-1-4b",
+  "tier": "4b",
   "version": "1.0.0",
   "publishedAt": "2026-MM-DDTHH:MM:SSZ",
   "lineage": {
-    "text": { "base": "qwen3.5-9b", "license": "..." },
-    "voice": { "base": "omnivoice-1.7b", "license": "..." },
-    "drafter": { "base": "dflash-9b-drafter", "license": "..." }
+    "text": { "base": "qwen3.5-4b", "license": "..." },
+    "voice": { "base": "omnivoice-1_7b", "license": "..." },
+    "drafter": { "base": "dflash-4b-drafter", "license": "..." }
   },
   "files": {
-    "text":    [{ "path": "text/eliza-1-9b-64k.gguf", "ctx": 65536, "sha256": "..." }],
-    "voice":   [{ "path": "tts/omnivoice-1.7b.gguf",          "sha256": "..." }],
+    "text":    [{ "path": "text/eliza-1-4b-64k.gguf", "ctx": 65536, "sha256": "..." }],
+    "voice":   [{ "path": "tts/omnivoice-1_7b.gguf",          "sha256": "..." }],
     "asr":     [{ "path": "asr/...",                          "sha256": "..." }],
-    "vision":  [{ "path": "vision/mmproj-9b.gguf",    "sha256": "..." }],
-    "dflash":  [{ "path": "dflash/drafter-9b.gguf",   "sha256": "..." }],
+    "vision":  [{ "path": "vision/mmproj-4b.gguf",    "sha256": "..." }],
+    "dflash":  [{ "path": "dflash/drafter-4b.gguf",   "sha256": "..." }],
     "cache":   [{ "path": "cache/voice-preset-default.bin",   "sha256": "..." }]
   },
   "kernels": {

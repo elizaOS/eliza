@@ -68,10 +68,7 @@ async function main(): Promise<void> {
   // These are workspace dependencies that need to be built first
   const sqlPlugin = (await import("@elizaos/plugin-sql")).default;
   const { openaiPlugin } = await import("@elizaos/plugin-openai");
-  const blueskyModuleId: string = "@elizaos/plugin-bluesky";
-  const { blueSkyPlugin } = (await import(blueskyModuleId)) as {
-    blueSkyPlugin: Plugin;
-  };
+  const { blueSkyPlugin } = await import("@elizaos/plugin-bluesky");
 
   // Create the runtime with all required plugins
   // Note: basicCapabilities is true by default (provides REPLY, IGNORE, NONE actions)

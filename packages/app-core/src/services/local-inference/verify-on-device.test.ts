@@ -31,10 +31,10 @@ function verifier() {
 }
 
 const ARGS = {
-  modelId: "eliza-1-0_6b",
+  modelId: "eliza-1-0_8b",
   bundleRoot: "/tmp/bundle",
   manifestPath: "/tmp/bundle/eliza-1.manifest.json",
-  textGgufPath: "/tmp/bundle/text/eliza-1-0_6b.gguf",
+  textGgufPath: "/tmp/bundle/text/eliza-1-0_8b.gguf",
 };
 
 afterEach(() => {

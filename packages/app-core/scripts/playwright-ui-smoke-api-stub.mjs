@@ -1583,6 +1583,16 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/runtime/mode") {
+    sendJson(req, res, 200, {
+      mode: "local",
+      deploymentRuntime: "local",
+      isRemoteController: false,
+      remoteApiBaseConfigured: false,
+    });
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/memories/stats") {
     sendJson(req, res, 200, stubMemoryStats);
     return;

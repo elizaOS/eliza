@@ -1,10 +1,13 @@
 {
 	"extends": "./tsconfig.json",
 	"compilerOptions": {
-		"outDir": "./dist/browser",
+		"outDir": "./dist/node",
+		"rootDir": ".",
 		"declaration": true,
-		"declarationMap": true
+		"declarationMap": true,
+		"emitDeclarationOnly": true,
+		"noEmit": false
 	},
-	"include": ["index.ts", "index.browser.ts", "types/**/*.ts", "utils/**/*.ts"],
-	"exclude": ["node_modules", "__tests__"]
+	"include": ["*.ts", "managers/**/*.ts", "services/**/*.ts", "types/**/*.ts", "utils/**/*.ts"],
+	"exclude": ["node_modules", "dist", "build.ts", "vitest.config.ts", "__tests__", "**/*.test.ts"]
 }

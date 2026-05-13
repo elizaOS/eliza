@@ -73,6 +73,40 @@ describe("MetricsCollector", () => {
     expect(m.dflashDrafted).toBe(100);
   });
 
+  it("populates rollbackCount + rollbackWasteTokens from rollback-drop events", () => {
+    const c = new MetricsCollector({ fixtureId: "rollback" });
+    c.record("speech-start");
+    c.record("rollback-drop", { tokens: 4, reason: "false-eos" });
+    c.record("rollback-drop", { tokens: 7, reason: "barge-in" });
+    c.record("speech-end");
+    c.record("audio-out-first-frame");
+    const m = c.finalize(STUB_RESULT);
+    expect(m.rollbackCount).toBe(2);
+    expect(m.rollbackWasteTokens).toBe(11);
+  });
+
+  it("prefers driver-supplied rollbackWasteTokens over the event-derived sum", () => {
+    const c = new MetricsCollector({ fixtureId: "rollback-override" });
+    c.record("speech-start");
+    c.record("rollback-drop", { tokens: 4 });
+    c.record("rollback-drop"); // no payload
+    c.record("speech-end");
+    c.record("audio-out-first-frame");
+    const m = c.finalize({ ...STUB_RESULT, rollbackWasteTokens: 99 });
+    expect(m.rollbackCount).toBe(2);
+    expect(m.rollbackWasteTokens).toBe(99);
+  });
+
+  it("defaults rollback metrics to zero when no rollback-drop events fire", () => {
+    const c = new MetricsCollector({ fixtureId: "no-rollback" });
+    c.record("speech-start");
+    c.record("speech-end");
+    c.record("audio-out-first-frame");
+    const m = c.finalize(STUB_RESULT);
+    expect(m.rollbackCount).toBe(0);
+    expect(m.rollbackWasteTokens).toBe(0);
+  });
+
   it("rejects out-of-order required events with a negative-latency error", () => {
     const c = new MetricsCollector({ fixtureId: "ooo" });
     // Record speech-end BEFORE speech-start to force a negative TTFA.

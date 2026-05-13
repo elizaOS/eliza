@@ -351,6 +351,42 @@ public final class LlamaBridgeImpl {
 
     private init() {}
 
+    private static var isRunningInSimulator: Bool {
+#if targetEnvironment(simulator)
+        return true
+#else
+        return false
+#endif
+    }
+
+    /// Keep this in sync with the pinned `llama_model_params` layout mirrored
+    /// in `runtime-symbol-shim.c`. Upstream defaults keep `use_extra_bufts`
+    /// enabled, which can still touch Metal buffer types even when
+    /// `n_gpu_layers` is zero. `split_mode = LLAMA_SPLIT_MODE_NONE` plus
+    /// `main_gpu = -1` tells llama.cpp to clear discovered GPU devices.
+    private static func forceModelCpuOnly(_ params: UnsafeMutablePointer<LlamaModelParamsBag>) {
+        let raw = UnsafeMutableRawPointer(params)
+        raw.advanced(by: 20).storeBytes(of: Int32(0), as: Int32.self) // split_mode = LLAMA_SPLIT_MODE_NONE
+        raw.advanced(by: 24).storeBytes(of: Int32(-1), as: Int32.self) // main_gpu = disabled
+        raw.advanced(by: 69).storeBytes(of: UInt8(0), as: UInt8.self) // use_extra_bufts
+    }
+
+    /// Keep this in sync with the pinned `llama_context_params` layout mirrored
+    /// in `runtime-symbol-shim.c`. CPU-only simulator loads must also disable
+    /// KQV/op offload and flash attention, otherwise llama.cpp can initialize
+    /// ggml-metal during context creation.
+    private static func setContextGpuOffload(
+        _ params: UnsafeMutablePointer<LlamaContextParamsBag>,
+        enabled: Bool
+    ) {
+        let raw = UnsafeMutableRawPointer(params)
+        if !enabled {
+            raw.advanced(by: 36).storeBytes(of: Int32(0), as: Int32.self) // flash_attn_type disabled
+        }
+        raw.advanced(by: 113).storeBytes(of: UInt8(enabled ? 1 : 0), as: UInt8.self) // offload_kqv
+        raw.advanced(by: 115).storeBytes(of: UInt8(enabled ? 1 : 0), as: UInt8.self) // op_offload
+    }
+
     /// Synchronously loads a GGUF and returns either a context_id or an error.
     /// Heavy operation (file I/O + model mmap + Metal init); the caller should
     /// dispatch onto a background queue before invoking.
@@ -368,9 +404,13 @@ public final class LlamaBridgeImpl {
         let resolvedThreads = threads ?? min(4, Int32(ProcessInfo.processInfo.activeProcessorCount))
 
         var modelParams = c_llama_model_default_params()
-        let nGpuLayers: Int32 = (useGPU && shim_has_metal()) ? 999 : 0
+        let canUseGPU = useGPU && shim_has_metal() && !Self.isRunningInSimulator
+        let nGpuLayers: Int32 = canUseGPU ? 999 : 0
         withUnsafeMutablePointer(to: &modelParams) { ptr in
             shim_model_params_set_n_gpu_layers(ptr, nGpuLayers)
+            if !canUseGPU {
+                Self.forceModelCpuOnly(ptr)
+            }
         }
 
         guard let modelPtr = path.withCString({ cpath in
@@ -383,6 +423,7 @@ public final class LlamaBridgeImpl {
         withUnsafeMutablePointer(to: &ctxParams) { ptr in
             shim_context_params_set_n_ctx(ptr, contextSize)
             shim_context_params_set_n_threads(ptr, resolvedThreads, resolvedThreads)
+            Self.setContextGpuOffload(ptr, enabled: canUseGPU)
         }
 
         guard let llamaCtx = c_llama_init_from_model(modelPtr, ctxParams) else {
@@ -559,13 +600,7 @@ public final class LlamaBridgeImpl {
     /// Reports runtime capabilities. Synchronous and cheap to call.
     public func hardwareInfo() -> LlamaHardwareInfo {
         let pi = ProcessInfo.processInfo
-        let isSim: Bool = {
-#if targetEnvironment(simulator)
-            return true
-#else
-            return false
-#endif
-        }()
+        let isSim = Self.isRunningInSimulator
         let totalRAM = Double(pi.physicalMemory) / (1024.0 * 1024.0 * 1024.0)
         let availRAM = LlamaBridgeImpl.availableMemoryGB()
         let metalSupported = shim_has_metal() && !isSim

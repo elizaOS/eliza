@@ -6,7 +6,7 @@
 #define WARPS_PER_BLOCK 32
 // EMB_DIM is a compile-time template parameter on the kernel and host
 // wrapper. Upstream hard-coded EMB_DIM=128. We instantiate {128, 256}
-// to support Qwen3.6-27B / 35B-A3B (head_dim=256).
+// to support active Qwen3.5 text models (head_dim=256).
 //
 // NOTE: this file has multiple upstream bugs (typos like `sketched_vaues`,
 // undefined `quantize_value_kernel` symbol, returning wrong tensors) and

@@ -417,7 +417,7 @@ Complete privacy — Ollama for local inference, no external API calls.
 
   // Local embedding model (no OpenAI calls)
   embedding: {
-    model: "eliza-1-lite-0_6b-32k.gguf",
+    model: "eliza-1-0_8b-32k.gguf",
     dimensions: 1024,
     gpuLayers: "auto",
   },

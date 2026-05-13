@@ -270,6 +270,30 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     if (packageName === "@elizaos/plugin-coding-tools") {
       return await import("@elizaos/plugin-coding-tools");
     }
+    if (packageName === "@elizaos/plugin-ollama") {
+      return await import("@elizaos/plugin-ollama");
+    }
+    if (packageName === "@elizaos/plugin-elizacloud") {
+      return await import("@elizaos/plugin-elizacloud");
+    }
+    if (packageName === "@elizaos/plugin-commands") {
+      return await import("@elizaos/plugin-commands");
+    }
+    if (packageName === "@elizaos/plugin-video") {
+      return await import("@elizaos/plugin-video");
+    }
+    if (packageName === "@elizaos/plugin-background-runner") {
+      return await import("@elizaos/plugin-background-runner");
+    }
+    if (packageName === "@elizaos/plugin-mlx") {
+      return await import("@elizaos/plugin-mlx");
+    }
+    if (packageName === "@elizaos/plugin-anthropic") {
+      return await import("@elizaos/plugin-anthropic");
+    }
+    if (packageName === "@elizaos/plugin-openai") {
+      return await import("@elizaos/plugin-openai");
+    }
     return await import(packageName);
   } catch {
     return null;
@@ -1410,7 +1434,10 @@ export async function autoResolveDiscordAppId(): Promise<void> {
   try {
     const res = await fetch(
       "https://discord.com/api/v10/oauth2/applications/@me",
-      { headers: { Authorization: `Bot ${discordToken}` } },
+      {
+        headers: { Authorization: `Bot ${discordToken}` },
+        signal: AbortSignal.timeout(10_000),
+      },
     );
 
     if (!res.ok) {

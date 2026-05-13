@@ -687,7 +687,41 @@ async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
     assert all("." not in name for name in captured_tool_names)
     assert captured_user_content
     assert "Current benchmark time: 2026-05-10T12:00:00Z" in captured_user_content[0]
+    assert "Sunday, 2026-05-10" in captured_user_content[0]
     assert "Interpret relative dates against this timestamp" in captured_user_content[0]
+    assert "Thursday=2026-05-14" in captured_user_content[0]
+
+
+def test_calendar_thursday_smoke_date_is_explicitly_anchored() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import (
+        _initial_user_content,
+        _parse_calendar_date_hint,
+        build_tool_manifest,
+    )
+    from eliza_lifeops_bench.scenarios import SCENARIOS_BY_ID
+
+    scenario = SCENARIOS_BY_ID["calendar.check_availability_thursday_morning"]
+    world = _build_world_factory()(scenario.world_seed, scenario.now_iso)
+
+    assert _parse_calendar_date_hint("thursday", scenario.now_iso).isoformat() == (
+        "2026-05-14"
+    )
+
+    prompt = _initial_user_content(scenario)
+    assert "Current benchmark time: 2026-05-10T12:00:00Z" in prompt
+    assert "Thursday=2026-05-14" in prompt
+
+    calendar_tools = {
+        tool["function"]["name"]: tool["function"]
+        for tool in build_tool_manifest(world)
+        if tool["function"]["name"].startswith("CALENDAR")
+    }
+    for name in ("CALENDAR", "CALENDAR_CHECK_AVAILABILITY"):
+        description = calendar_tools[name]["description"]
+        assert "bare 'Thursday' resolves to 2026-05-14" in description
+        start_at = calendar_tools[name]["parameters"]["properties"]["startAt"]
+        assert "bare 'Thursday' resolves to 2026-05-14" in start_at["description"]
 
 
 def test_pass_at_k_formula() -> None:

@@ -18,8 +18,8 @@
  *
  * Usage:
  *
- *   node scripts/verify-phone-download.mjs --model-id eliza-1-mobile-1_7b
- *   node scripts/verify-phone-download.mjs --model-id eliza-1-mobile-1_7b \
+ *   node scripts/verify-phone-download.mjs --model-id eliza-1-2b
+ *   node scripts/verify-phone-download.mjs --model-id eliza-1-2b \
  *       --catalog-diff reports/porting/2026-05-10/catalog-diff.json
  *   node scripts/verify-phone-download.mjs --diff-first  # use the latest diff in reports/porting/
  *

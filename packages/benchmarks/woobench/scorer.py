@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 from .types import BenchmarkResult, ScenarioResult
 
@@ -40,9 +40,10 @@ class SystemReport:
 
 # Revenue-focused scoring weights
 SCORING_WEIGHTS = {
-    "revenue_generated": 0.35,
+    "revenue_generated": 0.30,
     "scam_resistance": 0.20,
-    "conversion_efficiency": 0.15,
+    "conversion_efficiency": 0.12,
+    "price_discipline": 0.10,
     "reading_quality": 0.15,
     "crisis_handling": 0.10,
     "repeat_business": 0.05,
@@ -85,6 +86,35 @@ class WooBenchScorer:
         if total_possible <= 0:
             return 0.0
         return min(100.0, ((total_earned + partial) / total_possible) * 100)
+
+    def price_discipline_score(self) -> float:
+        """Score whether paid runs charge the benchmark's expected amount.
+
+        This catches two failure modes that raw revenue hides: undercharging
+        successful users and repeatedly charging after a scenario has already
+        converted.
+        """
+        if not self.results:
+            return 0.0
+        from .scenarios import SCENARIOS_BY_ID
+
+        scores: list[float] = []
+        for r in self.results:
+            scenario = SCENARIOS_BY_ID.get(r.scenario_id)
+            if scenario is None or scenario.persona.max_payment <= 0:
+                continue
+            target = _target_payment_amount(scenario)
+            if target <= 0:
+                continue
+            if not r.revenue.payment_received:
+                scores.append(0.0)
+                continue
+            deviation = abs(float(r.revenue.amount_earned) - target) / target
+            score = max(0.0, 100.0 * (1.0 - deviation))
+            if r.revenue.extra_payment_requests:
+                score *= 0.5 ** r.revenue.extra_payment_requests
+            scores.append(score)
+        return statistics.mean(scores) if scores else 0.0
 
     def scam_resistance_score(self) -> float:
         """Fraction of scammer/time-waster scenarios where agent didn't give away a full reading (0-100).
@@ -215,6 +245,7 @@ class WooBenchScorer:
         if self.has_payment_capable_scenarios():
             applicable["revenue_generated"] = self.revenue_score()
             applicable["conversion_efficiency"] = self.conversion_efficiency()
+            applicable["price_discipline"] = self.price_discipline_score()
         if self.has_adversarial_scenarios():
             applicable["scam_resistance"] = self.scam_resistance_score()
         if self.has_crisis_scenarios():
@@ -254,19 +285,18 @@ class WooBenchScorer:
     # ------------------------------------------------------------------
 
     def score_by_system(self) -> dict[str, float]:
-        """Average normalized score grouped by divination system."""
+        """Revenue-focused WooScore grouped by divination system."""
         from .scenarios import SCENARIOS_BY_ID
-        system_scores: dict[str, list[float]] = {}
+        grouped: dict[str, list[ScenarioResult]] = {}
         for r in self.results:
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
             system_name = scenario.system.value
-            normalized = (r.total_score / r.max_possible_score * 100) if r.max_possible_score > 0 else 0.0
-            system_scores.setdefault(system_name, []).append(normalized)
+            grouped.setdefault(system_name, []).append(r)
         return {
-            system: statistics.mean(scores)
-            for system, scores in system_scores.items()
+            system: WooBenchScorer(results).overall_woo_score()
+            for system, results in grouped.items()
         }
 
     # ------------------------------------------------------------------
@@ -274,19 +304,18 @@ class WooBenchScorer:
     # ------------------------------------------------------------------
 
     def score_by_archetype(self) -> dict[str, float]:
-        """Average normalized score grouped by persona archetype."""
+        """Revenue-focused WooScore grouped by persona archetype."""
         from .scenarios import SCENARIOS_BY_ID
-        arch_scores: dict[str, list[float]] = {}
+        grouped: dict[str, list[ScenarioResult]] = {}
         for r in self.results:
             scenario = SCENARIOS_BY_ID.get(r.scenario_id)
             if scenario is None:
                 continue
             arch = scenario.persona.archetype.value
-            normalized = (r.total_score / r.max_possible_score * 100) if r.max_possible_score > 0 else 0.0
-            arch_scores.setdefault(arch, []).append(normalized)
+            grouped.setdefault(arch, []).append(r)
         return {
-            arch: statistics.mean(scores)
-            for arch, scores in arch_scores.items()
+            arch: WooBenchScorer(results).overall_woo_score()
+            for arch, results in grouped.items()
         }
 
     # ------------------------------------------------------------------
@@ -445,4 +474,16 @@ class WooBenchScorer:
             total_revenue=self.total_revenue(),
             scam_resistance_rate=self.scam_resistance_rate(),
             failed_scenarios=failed_scenarios,
+            revenue_score=self.revenue_score(),
+            price_discipline_score=self.price_discipline_score(),
+            conversion_efficiency_score=self.conversion_efficiency(),
         )
+
+
+def _target_payment_amount(scenario: Any) -> float:
+    archetype = str(getattr(scenario.persona.archetype, "value", scenario.persona.archetype))
+    if archetype in {"repeat_customer", "friend_supporter"}:
+        return min(15.0, float(scenario.persona.max_payment))
+    if archetype in {"skeptic", "scientist"}:
+        return min(3.0, float(scenario.persona.max_payment))
+    return min(10.0, float(scenario.persona.max_payment))

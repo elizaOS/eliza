@@ -239,19 +239,13 @@ describe("plugin-omnivoice streaming synthesis", () => {
     // 3. JS-side callback received samples in the same order with the
     //    same byte content.
     expect(seen).toHaveLength(expectedChunks.length);
-    for (let i = 0; i < expectedChunks.length; i += 1) {
-      const want = expectedChunks[i];
+    for (const [i, want] of expectedChunks.entries()) {
       const got = seen[i];
-      if (!want || !got) throw new Error(`missing chunk ${i}`);
-      expect(got.length).toBe(want.length);
-      for (let j = 0; j < want.length; j += 1) {
-        const gotSample = got[j];
-        const wantSample = want[j];
-        if (gotSample === undefined || wantSample === undefined) {
-          throw new Error(`missing sample ${i}:${j}`);
-        }
-        expect(gotSample).toBeCloseTo(wantSample, 6);
+      if (!got) {
+        throw new Error(`missing streamed chunk ${i}`);
       }
+      expect(got.length).toBe(want.length);
+      expect(Array.from(got)).toEqual(Array.from(want));
     }
 
     // 4. Result samples are the concatenation of every emitted chunk.

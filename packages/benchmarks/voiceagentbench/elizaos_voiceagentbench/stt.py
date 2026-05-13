@@ -1,10 +1,9 @@
 """Speech-to-text shim for the cascaded baseline.
 
 The cascaded baseline transcribes a query's ``audio_bytes`` to text via
-Groq Whisper before forwarding to the agent's text path. When no audio
-is attached (text-only fixture runs) or when ``--mock`` is set, the
-shim returns the query's ground-truth transcript so smoke tests stay
-deterministic.
+Groq Whisper before forwarding to the agent's text path. Missing audio or
+missing credentials are hard failures so benchmark reports cannot silently use
+ground-truth transcripts.
 
 Direct-audio adapters (future work) bypass this shim entirely.
 """
@@ -24,17 +23,6 @@ class STTBackend(Protocol):
         ...
 
 
-class TranscriptPassthroughSTT:
-    """Returns ``query.transcript`` unchanged.
-
-    Used in mock mode and when audio bytes are absent. Deterministic,
-    requires no credentials.
-    """
-
-    def transcribe(self, query: AudioQuery) -> str:
-        return query.transcript
-
-
 class GroqWhisperSTT:
     """Groq Whisper backend.
 
@@ -51,8 +39,7 @@ class GroqWhisperSTT:
         self._api_key = api_key or os.environ.get("GROQ_API_KEY")
         if not self._api_key:
             raise RuntimeError(
-                "GroqWhisperSTT requires GROQ_API_KEY (env or arg). Use "
-                "TranscriptPassthroughSTT for mock / fixture runs."
+                "GroqWhisperSTT requires GROQ_API_KEY (env or arg)."
             )
         self._model = os.environ.get("GROQ_TRANSCRIPTION_MODEL") or model
         self._client = None
@@ -66,7 +53,10 @@ class GroqWhisperSTT:
 
     def transcribe(self, query: AudioQuery) -> str:
         if query.audio_bytes is None:
-            return query.transcript
+            raise RuntimeError(
+                "VoiceAgentBench task is missing audio bytes; refusing to use "
+                "ground-truth transcript as STT output."
+            )
         self._ensure_client()
         assert self._client is not None
         response = self._client.audio.transcriptions.create(
@@ -83,10 +73,6 @@ class GroqWhisperSTT:
         return text
 
 
-def build_stt(*, mock: bool) -> STTBackend:
-    """Pick an STT backend based on run mode."""
-    if mock:
-        return TranscriptPassthroughSTT()
-    if os.environ.get("GROQ_API_KEY"):
-        return GroqWhisperSTT()
-    return TranscriptPassthroughSTT()
+def build_stt() -> STTBackend:
+    """Build the real STT backend."""
+    return GroqWhisperSTT()

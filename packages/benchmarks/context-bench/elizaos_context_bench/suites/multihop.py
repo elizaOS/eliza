@@ -43,7 +43,10 @@ class MultiHopBenchmarkSuite:
         self.config = config
         self.llm_query_fn = llm_query_fn
         self.generator = ContextGenerator(seed=seed)
-        self.evaluator = RetrievalEvaluator(embedding_fn=embedding_fn)
+        self.evaluator = RetrievalEvaluator(
+            embedding_fn=embedding_fn,
+            semantic_threshold=config.semantic_threshold,
+        )
         self._task_counter = 0
 
     def _get_next_task_id(self, num_hops: int) -> str:

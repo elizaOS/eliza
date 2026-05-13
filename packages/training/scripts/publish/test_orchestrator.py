@@ -59,8 +59,8 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
-    """Eval blob whose results pass every 9b gate.
+def _passing_eval_blob(tier: str = "4b") -> dict[str, Any]:
+    """Eval blob whose results pass every 4b gate.
 
     Carries both ``thirty_turn_ok`` and ``e2e_loop_ok`` because
     AGENTS.md §6 declares them as independent contract gates. The
@@ -81,6 +81,7 @@ def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
             "barge_in_cancel_ms": 55,
             "thirty_turn_ok": True,
             "e2e_loop_ok": True,
+            "format_ok": True,
             "dflash_acceptance": 0.71,
             "dflash_speedup": 1.8,
             "expressive_tag_faithfulness": 0.90,
@@ -92,7 +93,7 @@ def _passing_eval_blob(tier: str = "9b") -> dict[str, Any]:
 
 def _build_fixture_bundle(
     tmp_path: Path,
-    tier: str = "9b",
+    tier: str = "4b",
     *,
     eval_blob: dict[str, Any] | None = None,
     skip_license: str | None = None,
@@ -102,9 +103,9 @@ def _build_fixture_bundle(
 
     # Weight files — content irrelevant; sha256 is the contract.
     _write(bundle / "text" / f"eliza-1-{tier}-64k.gguf", b"\x00text-64k\x00")
-    _write(bundle / "tts" / "omnivoice-base-Q8_0.gguf", b"\x00tts\x00")
+    _write(bundle / "tts" / "omnivoice-base-Q4_K_M.gguf", b"\x00tts\x00")
     _write(
-        bundle / "tts" / "omnivoice-tokenizer-Q8_0.gguf", b"\x00tts-tok\x00"
+        bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf", b"\x00tts-tok\x00"
     )
     _write(bundle / "asr" / "asr.gguf", b"\x00asr\x00")
     _write(bundle / "vad" / "eliza-1-vad.onnx", b"\x00vad\x00")
@@ -288,10 +289,10 @@ def _build_fixture_bundle(
         bundle / "lineage.json",
         json.dumps(
             {
-                "text": {"base": "eliza-1-9b", "license": "apache-2.0"},
-                "voice": {"base": "omnivoice-1.7b", "license": "apache-2.0"},
+                "text": {"base": "eliza-1-4b", "license": "apache-2.0"},
+                "voice": {"base": "omnivoice-2b", "license": "apache-2.0"},
                 "drafter": {
-                    "base": "dflash-9b-drafter",
+                    "base": "dflash-4b-drafter",
                     "license": "apache-2.0",
                 },
             }
@@ -310,18 +311,21 @@ def _build_fixture_bundle(
 
 def _source_models() -> dict[str, dict[str, str]]:
     return {
-        "text": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "text.gguf"},
+        "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
-        "drafter": {"repo": "elizaos/eliza-1-9b-drafter"},
-        "asr": {"repo": "ggml-org/Qwen3-ASR-0.8B-GGUF"},
+        "drafter": {
+            "repo": "elizaos/eliza-1",
+            "file": "bundles/4b/dflash/drafter-4b.gguf",
+        },
+        "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
         "vad": {"repo": "ggml-org/whisper-vad"},
-        "vision": {"repo": "unsloth/Qwen3.5-9B-GGUF", "file": "mmproj.gguf"},
+        "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj.gguf"},
     }
 
 
 def _write_release_evidence(
     bundle: Path,
-    tier: str = "9b",
+    tier: str = "4b",
     *,
     release_state: str = "upload-candidate",
 ) -> None:
@@ -332,7 +336,7 @@ def _write_release_evidence(
     evidence: dict[str, Any] = {
         "schemaVersion": 1,
         "tier": tier,
-        "repoId": f"elizaos/eliza-1-{tier}",
+        "repoId": "elizaos/eliza-1",
         "releaseState": release_state,
         "final": {
             "weights": True,
@@ -386,7 +390,7 @@ def _write_release_evidence(
             "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
         },
         "hf": {
-            "repoId": f"elizaos/eliza-1-{tier}",
+            "repoId": "elizaos/eliza-1",
             "status": "pending-upload",
         },
     }
@@ -444,7 +448,7 @@ def _ctx(
         bundle_dir=bundle,
         dry_run=dry_run,
         metal_verification=metal,
-        repo_id=f"elizaos/eliza-1-{tier}",
+        repo_id="elizaos/eliza-1",
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
         template_path=(
@@ -463,7 +467,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     metal = _metal_report(tmp_path)
 
     with caplog.at_level(logging.INFO, logger="publish.orchestrator"):
-        rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+        rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
 
@@ -471,7 +475,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     manifest_path = bundle / "eliza-1.manifest.json"
     assert manifest_path.is_file()
     manifest = json.loads(manifest_path.read_text())
-    assert manifest["tier"] == "9b"
+    assert manifest["tier"] == "4b"
     assert manifest["defaultEligible"] is True
     assert manifest["evals"]["dflash"] == {
         "acceptanceRate": 0.71,
@@ -487,7 +491,7 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     readme = bundle / "README.md"
     assert readme.is_file()
     text = readme.read_text()
-    assert "# eliza-1-9b" in text
+    assert "# eliza-1-4b" in text
     assert "Q" + "wen" not in text
     assert "L" + "lama" not in text
 
@@ -496,25 +500,13 @@ def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
     assert "manifest preview" in log_text
 
 
-def test_dry_run_succeeds_for_27b_1m_without_metal_report(tmp_path: Path) -> None:
-    bundle = _build_fixture_bundle(tmp_path, tier="27b-1m")
-
-    rc = run(_ctx("27b-1m", bundle, metal=None, dry_run=True))
-
-    assert rc == EXIT_OK
-    manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
-    assert manifest["tier"] == "27b-1m"
-    assert manifest["kernels"]["verifiedBackends"]["cuda"]["status"] == "pass"
-    assert manifest["kernels"]["verifiedBackends"]["metal"]["status"] == "skipped"
-
-
 def test_dflash_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
     blob = _passing_eval_blob()
     blob["results"].pop("dflash_speedup")
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
@@ -534,23 +526,23 @@ def test_dflash_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
 def test_missing_license_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.dflash")
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
 def test_missing_component_license_fails_when_component_ships(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path, skip_license="LICENSE.vad")
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
 def test_wrong_hf_org_fails_before_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     metal = _metal_report(tmp_path)
-    ctx = _ctx("9b", bundle, metal=metal, dry_run=True)
+    ctx = _ctx("4b", bundle, metal=metal, dry_run=True)
     bad = PublishContext(
-        **{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-9b"}
+        **{**ctx.__dict__, "repo_id": "someoneelse/eliza-1-4b"}
     )
     rc = run(bad)
     assert rc == EXIT_USAGE
@@ -560,7 +552,7 @@ def test_missing_quantization_sidecar_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "quantization" / "qjl_config.json").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -568,7 +560,7 @@ def test_missing_fused_turboquant_sidecar_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "quantization" / "fused_turboquant.json").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -583,7 +575,7 @@ def test_quantization_sidecar_must_target_expected_kernel_family(
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_BUNDLE_LAYOUT_FAIL
 
@@ -592,7 +584,7 @@ def test_missing_voice_cache_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "cache" / "voice-preset-default.bin").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -600,15 +592,15 @@ def test_missing_vad_model_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "vad" / "eliza-1-vad.onnx").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc != EXIT_OK
 
 
 def test_missing_frozen_voice_tokenizer_fails(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
-    (bundle / "tts" / "omnivoice-tokenizer-Q8_0.gguf").unlink()
+    (bundle / "tts" / "omnivoice-tokenizer-Q4_K_M.gguf").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -616,7 +608,7 @@ def test_missing_release_evidence_fails_in_dry_run(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path)
     (bundle / "evidence" / "release.json").unlink()
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -630,7 +622,7 @@ def test_final_release_state_requires_hf_upload_evidence(tmp_path: Path) -> None
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
@@ -646,17 +638,17 @@ def test_base_v1_release_evidence_is_allowed_and_writes_manifest_provenance(
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["provenance"]["releaseState"] == "base-v1"
     assert manifest["provenance"]["finetuned"] is False
     assert manifest["provenance"]["sourceModels"]["text"]["repo"] == (
-        "unsloth/Qwen3.5-9B-GGUF"
+        "unsloth/Qwen3.5-4B-GGUF"
     )
     assert manifest["provenance"]["sourceModels"]["vision"]["repo"] == (
-        "unsloth/Qwen3.5-9B-GGUF"
+        "unsloth/Qwen3.5-4B-GGUF"
     )
 
 
@@ -669,7 +661,26 @@ def test_base_v1_release_evidence_requires_source_models(tmp_path: Path) -> None
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_base_v1_release_evidence_rejects_fake_qwen_component_repos(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path, release_state="base-v1")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["sourceModels"]["asr"] = {"repo": "ggml-org/Qwen3-ASR-2B-GGUF"}
+    release["sourceModels"]["embedding"] = {
+        "repo": "Qwen/Qwen3-Embedding-0.8B-GGUF"
+    }
+    release_path.write_text(json.dumps(release, indent=2))
+    _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
@@ -684,7 +695,7 @@ def test_bad_checksum_manifest_blocks_publish(tmp_path: Path) -> None:
     assert first_sha != "f" * 64
     checksum_path.write_text("\n".join(lines) + "\n")
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -693,7 +704,7 @@ def test_missing_runtime_dispatch_evidence_blocks_publish(tmp_path: Path) -> Non
     (bundle / "evals" / "metal_dispatch.json").unlink()
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_MISSING_FILE
 
 
@@ -704,7 +715,7 @@ def test_symbol_only_dispatch_evidence_blocks_publish(tmp_path: Path) -> None:
     )
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -723,7 +734,7 @@ def test_runtime_dispatch_report_requires_graph_evidence(tmp_path: Path) -> None
     )
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -737,7 +748,7 @@ def test_platform_evidence_is_target_keyed(tmp_path: Path) -> None:
     release_path.write_text(json.dumps(release, indent=2))
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -750,7 +761,7 @@ def test_ios_skipped_voice_abi_blocks_publish(tmp_path: Path) -> None:
     ios_path.write_text(json.dumps(ios_report, indent=2))
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -765,7 +776,7 @@ def test_evidence_sidecars_must_be_checksummed(tmp_path: Path) -> None:
     ]
     checksum_path.write_text("\n".join(lines) + "\n")
     metal = _metal_report(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
 
@@ -778,7 +789,7 @@ def test_eval_reports_must_cover_all_shipped_eval_files(tmp_path: Path) -> None:
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
@@ -790,17 +801,17 @@ def test_upload_evidence_paths_must_cover_payload_commit(tmp_path: Path) -> None
     release["releaseState"] = "final"
     release["hf"]["status"] = "uploaded"
     release["hf"]["uploadEvidence"] = {
-        "repoId": "elizaos/eliza-1-9b",
+        "repoId": "elizaos/eliza-1",
         "status": "uploaded",
         "commit": "abc123",
-        "url": "https://huggingface.co/elizaos/eliza-1-9b/commit/abc123",
+        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
         "uploadedPaths": ["eliza-1.manifest.json", "README.md"],
     }
     release_path.write_text(json.dumps(release, indent=2))
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_RELEASE_EVIDENCE_FAIL
 
@@ -812,11 +823,11 @@ def test_upload_list_includes_nested_evidence(tmp_path: Path) -> None:
     )
 
     bundle = _build_fixture_bundle(tmp_path)
-    ctx = _ctx("9b", bundle, metal=_metal_report(tmp_path), dry_run=True)
+    ctx = _ctx("4b", bundle, metal=_metal_report(tmp_path), dry_run=True)
     layout = validate_bundle_layout(ctx)
     upload_targets = {target for _, target in _build_upload_list(ctx, layout)}
-    assert "evidence/platform/ios-arm64-metal.json" in upload_targets
-    assert "checksums/SHA256SUMS" in upload_targets
+    assert "bundles/4b/evidence/platform/ios-arm64-metal.json" in upload_targets
+    assert "bundles/4b/checksums/SHA256SUMS" in upload_targets
 
 
 def test_real_publish_finalizes_and_uploads_hf_evidence(
@@ -835,15 +846,15 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
         upload_pairs: list[tuple[Path, str]],
     ) -> dict[str, Any]:
         uploaded_paths = [
-            "eliza-1.manifest.json",
-            "README.md",
+            "bundles/4b/eliza-1.manifest.json",
+            "bundles/4b/README.md",
             *(target for _, target in upload_pairs),
         ]
         return {
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "payload123",
-            "url": "https://huggingface.co/elizaos/eliza-1-9b/commit/payload123",
+            "url": "https://huggingface.co/elizaos/eliza-1/commit/payload123",
             "uploadedPaths": uploaded_paths,
         }
 
@@ -865,7 +876,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     )
     monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=False))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
     assert rc == EXIT_OK
     assert final_uploads == [("evidence/release.json", "checksums/SHA256SUMS")]
@@ -873,7 +884,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     assert release["releaseState"] == "final"
     assert release["hf"]["status"] == "uploaded"
     assert release["hf"]["uploadEvidence"]["commit"] == "payload123"
-    assert release["hf"]["uploadEvidence"]["repoId"] == "elizaos/eliza-1-9b"
+    assert release["hf"]["uploadEvidence"]["repoId"] == "elizaos/eliza-1"
     checksum_lines = (bundle / "checksums" / "SHA256SUMS").read_text().splitlines()
     release_line = next(
         line for line in checksum_lines if "  evidence/release.json" in line
@@ -899,10 +910,10 @@ def test_real_base_v1_publish_preserves_release_state(
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "basev1",
-            "url": "https://huggingface.co/elizaos/eliza-1-9b/commit/basev1",
+            "url": "https://huggingface.co/elizaos/eliza-1/commit/basev1",
             "uploadedPaths": [
-                "eliza-1.manifest.json",
-                "README.md",
+                "bundles/4b/eliza-1.manifest.json",
+                "bundles/4b/README.md",
                 *(target for _, target in upload_pairs),
             ],
         }
@@ -915,7 +926,7 @@ def test_real_base_v1_publish_preserves_release_state(
     )
     monkeypatch.setattr(orchestrator, "tag_training_repo", lambda *args: "tagged")
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=False))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=False))
 
     assert rc == EXIT_OK
     release = json.loads((bundle / "evidence" / "release.json").read_text())
@@ -935,7 +946,7 @@ def test_failing_eval_gate_blocks_publish(tmp_path: Path) -> None:
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_EVAL_GATE_FAIL
 
     # Manifest must NOT have been written when eval gate fails.
@@ -964,14 +975,14 @@ def test_failing_kernel_verification_blocks_publish(tmp_path: Path) -> None:
     _write_checksums(bundle)
     metal = _metal_report(tmp_path)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_KERNEL_VERIFY_FAIL
 
 
 def test_metal_required_but_missing_fails(tmp_path: Path) -> None:
     """Tier supports metal; without --metal-verification the run aborts."""
     bundle = _build_fixture_bundle(tmp_path)
-    rc = run(_ctx("9b", bundle, metal=None, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=None, dry_run=True))
     assert rc == EXIT_KERNEL_VERIFY_FAIL
 
 
@@ -1000,7 +1011,7 @@ def test_red_gate_prevents_default_eligible(tmp_path: Path) -> None:
     blob["results"]["voice_rtf"] = 5.0  # blow the <=0.4 gate
     bundle = _build_fixture_bundle(tmp_path, eval_blob=blob)
     metal = _metal_report(tmp_path)
-    ctx = _ctx("9b", bundle, metal=metal, dry_run=True)
+    ctx = _ctx("4b", bundle, metal=metal, dry_run=True)
     layout = validate_bundle_layout(ctx)
 
     backends = {
@@ -1050,11 +1061,11 @@ def test_dry_run_tag_is_printed_not_executed(
     metal = _metal_report(tmp_path)
 
     with caplog.at_level(logging.INFO, logger="publish.orchestrator"):
-        rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+        rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
     # The dry-run tag log line names the tag explicitly.
-    assert "dry-run: would run `git tag -a eliza-1-9b-v1.0.0" in caplog.text
+    assert "dry-run: would run `git tag -a eliza-1-4b-v1.0.0" in caplog.text
 
 
 # ---------------------------------------------------------------------------
@@ -1077,7 +1088,7 @@ def test_missing_e2e_loop_ok_blocks_publish_without_opt_in(
     metal = _metal_report(tmp_path)
     monkeypatch.delenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", raising=False)
 
-    rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
     assert rc == EXIT_EVAL_GATE_FAIL
     assert not (bundle / "eliza-1.manifest.json").is_file()
 
@@ -1093,7 +1104,7 @@ def test_alias_opt_in_allows_publish_with_warning(
     monkeypatch.setenv("ELIZA_PUBLISH_ALLOW_GATE_ALIAS", "1")
 
     with caplog.at_level(logging.WARNING, logger="publish.orchestrator"):
-        rc = run(_ctx("9b", bundle, metal=metal, dry_run=True))
+        rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
 
     assert rc == EXIT_OK
     assert "aliasing results.e2e_loop_ok" in caplog.text
@@ -1110,4 +1121,4 @@ def test_cli_help(monkeypatch, capsys) -> None:
     assert excinfo.value.code == 0
     captured = capsys.readouterr()
     assert "--tier" in captured.out
-    assert "9b" in captured.out
+    assert "4b" in captured.out

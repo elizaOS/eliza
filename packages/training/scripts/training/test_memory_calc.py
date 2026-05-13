@@ -23,10 +23,11 @@ from scripts.training.memory_calc import (
 
 
 def test_shapes_match_eliza_1_series() -> None:
-    # Three production sizes plus the qwen3.5-0.8b smoke key consumed by
-    # smoke_full_stack.sh and resolved by scripts/preflight.sh.
-    assert {"qwen3.5-2b", "qwen3.5-9b", "qwen3.6-27b"} <= set(SHAPES)
-    assert "qwen3.5-0.8b" in SHAPES, "smoke key missing from SHAPES"
+    assert set(SHAPES) == {
+        "qwen3.5-0.8b",
+        "qwen3.5-2b",
+        "qwen3.5-4b",
+    }
 
 
 def test_train_2b_under_24gb_at_8k() -> None:
@@ -49,43 +50,43 @@ def test_train_2b_under_24gb_at_8k() -> None:
     )
 
 
-def test_train_27b_needs_2xh200() -> None:
+def test_train_4b_fits_48gb_at_4k() -> None:
     cfg = TrainConfig(
-        seq_len=147_456,
+        seq_len=4096,
         optimizer=TrainOpt.APOLLO_MINI,
-        fsdp_world_size=2,
+        fsdp_world_size=1,
         use_liger=True,
         use_grad_checkpointing=True,
         use_flash_attn=True,
     )
-    b = estimate_train(SHAPES["qwen3.6-27b"], cfg)
-    ok, util = fits_on(b, hw="h200-141", headroom_pct=5.0)
-    assert ok, f"27B 2xH200 should fit, got {b.total_gb:.1f} GB ({util:.0f}% util)"
+    b = estimate_train(SHAPES["qwen3.5-4b"], cfg)
+    ok, util = fits_on(b, hw="rtx-pro-5000-blackwell-48", headroom_pct=5.0)
+    assert ok, f"4B active tier should fit 48 GB training GPU, got {b.total_gb:.1f} GB ({util:.0f}% util)"
 
 
-def test_infer_27b_full_quant_under_24gb_at_144k() -> None:
-    s = SHAPES["qwen3.6-27b"]
+def test_infer_4b_full_quant_under_24gb_at_64k() -> None:
+    s = SHAPES["qwen3.5-4b"]
     cfg = InferConfig(
-        seq_in=131_072, seq_out=16_384,
+        seq_in=65_536, seq_out=4096,
         weight_quant=WeightQuant.POLARQUANT_Q4,
         kv_k_quant=KvKQuant.QJL_1BIT,
         kv_v_quant=KvVQuant.TURBOQUANT_Q4,
     )
     b = estimate_infer(s, cfg)
     assert b.total_gb < 24.0, (
-        f"27B fully-quantized inference at 144k should fit under 24 GB, got {b.total_gb:.2f}"
+        f"4B fully-quantized inference at 64k should fit under 24 GB, got {b.total_gb:.2f}"
     )
 
 
-def test_max_context_27b_fits_1m_on_blackwell_6000() -> None:
-    max_seq, _ = max_context_for("qwen3.6-27b", hw="rtx-pro-6000-blackwell")
-    assert max_seq >= 1_048_576
+def test_max_context_4b_fits_256k_on_blackwell_6000() -> None:
+    max_seq, _ = max_context_for("qwen3.5-4b", hw="rtx-pro-6000-blackwell")
+    assert max_seq >= 262_144
 
 
 @pytest.mark.parametrize("hw", ["h200-141", "h100-80", "rtx-pro-6000-blackwell"])
 def test_estimate_train_seconds_returns_positive(hw: str) -> None:
     secs, meta = estimate_train_seconds(
-        "qwen3.6-27b", hw=hw, world_size=2, n_tokens=1_000_000_000,
+        "qwen3.5-4b", hw=hw, world_size=1, n_tokens=1_000_000_000,
     )
     assert secs > 0
     assert meta["wall_hours"] == pytest.approx(secs / 3600, rel=1e-6)

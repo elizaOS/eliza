@@ -35,6 +35,9 @@
       "@elizaos/plugin-local-embedding": [
         "../../plugins/plugin-local-embedding/src/index.ts"
       ],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
       "@elizaos/plugin-telegram": [
         "../../plugins/plugin-telegram/src/index.ts"

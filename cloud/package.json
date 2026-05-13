@@ -71,6 +71,8 @@
     "admin:promote": "bun run packages/scripts/promote-admin.ts",
     "admin:list": "bun run packages/scripts/promote-admin.ts --list",
     "admin:revoke": "bun run packages/scripts/promote-admin.ts --revoke",
+    "eliza1:cost-reconciliation": "bun ./scripts/eliza1/cost-reconciliation.ts",
+    "eliza1:dashboard-alerts": "bun ./scripts/eliza1/dashboard-alerts.ts",
     "vast:doctor": "bun run scripts/vast/doctor.ts",
     "vast:smoke": "bun run scripts/vast/smoke.ts",
     "test:unit": "SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts packages/tests/unit",

@@ -15,9 +15,6 @@
     "resolveJsonModule": true,
     "moduleDetection": "force",
     "allowArbitraryExtensions": true,
-    "paths": {
-      "@elizaos/core": ["../../packages/core/src"]
-    },
     "types": ["node", "bun-types"]
   },
   "include": ["src/**/*.ts"],

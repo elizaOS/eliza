@@ -25,6 +25,10 @@ import { findOwnPackageRoot } from "./server-helpers.ts";
 const require = createRequire(import.meta.url);
 
 function findPluginsManifestRoot(startDir: string): string {
+  // Mobile bundles are single-file — no workspace tree to walk.
+  if (process.env.ELIZA_MOBILE_PLATFORM) {
+    return startDir;
+  }
   let dir = startDir;
   let manifestRoot: string | null = null;
 

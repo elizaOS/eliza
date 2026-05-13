@@ -11,7 +11,12 @@
  * benchmarked through that harness without per-method shims.
  */
 
-export type CompactorRole = "system" | "user" | "assistant" | "tool";
+export type CompactorRole =
+  | "system"
+  | "developer"
+  | "user"
+  | "assistant"
+  | "tool";
 
 export type CompactorToolCall = {
   id: string;

@@ -27,19 +27,6 @@ import type {
   LinkedAccountProviderId,
 } from "@elizaos/shared";
 import {
-  Button,
-  cn,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Input,
-  Label,
-  Spinner,
-} from "@elizaos/ui";
-import {
   type FormEvent,
   useCallback,
   useEffect,
@@ -47,8 +34,21 @@ import {
   useState,
 } from "react";
 import { client } from "../../api";
+import { cn } from "../../lib/utils";
 import { useApp } from "../../state";
 import { navigatePreOpenedWindow, preOpenWindow } from "../../utils";
+import { Button } from "../ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
+import { Spinner } from "../ui/spinner";
 
 interface AddAccountDialogProps {
   open: boolean;

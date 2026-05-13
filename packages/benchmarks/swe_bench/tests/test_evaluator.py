@@ -99,10 +99,16 @@ class TestSWEBenchEvaluator:
         assert not result.success
 
     @pytest.mark.asyncio
-    async def test_basic_validation_valid_patch(
+    async def test_docker_unavailable_returns_incompatible(
         self, evaluator: SWEBenchEvaluator, sample_instance: SWEBenchInstance
     ) -> None:
-        """Test basic validation with valid patch format."""
+        """Without Docker, evaluator must refuse to fall back to similarity scoring.
+
+        The previous behavior leaked the ground-truth patch into a fuzzy
+        line/file overlap comparison and reported ``success=True`` for any
+        patch with similarity >= 0.35. That is removed in favor of an
+        ``incompatible`` outcome so the orchestrator quarantines the result.
+        """
         patch = """diff --git a/file.py b/file.py
 --- a/file.py
 +++ b/file.py
@@ -113,17 +119,10 @@ class TestSWEBenchEvaluator:
 """
         result = await evaluator.evaluate_patch(sample_instance, patch)
         assert result.patch_status == PatchStatus.GENERATED
-        assert "modifies 1 file" in (result.error or "")
-
-    @pytest.mark.asyncio
-    async def test_basic_validation_invalid_patch(
-        self, evaluator: SWEBenchEvaluator, sample_instance: SWEBenchInstance
-    ) -> None:
-        """Test basic validation with invalid patch format."""
-        result = await evaluator.evaluate_patch(
-            sample_instance, "not a valid patch format"
-        )
-        assert result.patch_status == PatchStatus.NOT_GENERATED
+        assert result.success is False
+        assert result.tokens_used is None
+        assert result.status == "incompatible"
+        assert "Docker unavailable" in (result.error or "")
 
     def test_parse_test_results_pytest(self, evaluator: SWEBenchEvaluator) -> None:
         """Test parsing pytest output."""

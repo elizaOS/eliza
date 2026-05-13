@@ -75,6 +75,21 @@ export interface BenchMetrics {
   draftTokensTotal: number;
   /** Drafter tokens rejected by the verifier (rollback waste). */
   draftTokensWasted: number;
+  /**
+   * Number of distinct rollback events fired during the run — one per
+   * `speech-active` rebound, false-EOS, or barge-in that restores a C1
+   * checkpoint. Read from the `rollback-drop` probe events; defaults to
+   * `0` when the driver doesn't emit them.
+   */
+  rollbackCount: number;
+  /**
+   * Sum of drafter tokens wasted *attributed to rollback events*. Identical
+   * to `draftTokensWasted` for the mock driver (every wasted token comes
+   * from a rollback); the real-pipeline driver may report a finer split
+   * (e.g. verifier-rejected vs. rolled-back) — until then the two numbers
+   * align.
+   */
+  rollbackWasteTokens: number;
   /** Tokens accepted from the DFlash drafter (speculative-decoding stat).
    *  Absent on runs where DFlash isn't wired. */
   dflashAccepted?: number;
@@ -191,8 +206,8 @@ export interface BenchInjection {
 /**
  * Driver contract the harness uses to talk to the voice pipeline. The
  * real pipeline (VoicePipeline + VoiceScheduler) implements this via a
- * thin adapter; for unit tests and CI without a model, MockPipelineDriver
- * implements it deterministically.
+ * thin adapter. Unit tests may use deterministic test drivers, but release
+ * evidence must come from a real backend.
  *
  * `run` plays the audio through the pipeline and returns once the pipeline
  * has either finished generating, been cancelled, or hit the token cap.
@@ -201,7 +216,7 @@ export interface BenchInjection {
  */
 export interface PipelineDriver {
   readonly name: string;
-  /** Backend label used in result JSON (`metal`, `cuda`, `cpu`, `mock`). */
+  /** Backend label used in result JSON (`metal`, `cuda`, `vulkan`, `cpu`). */
   readonly backend: string;
   run(args: {
     audio: BenchAudioPayload;
@@ -225,6 +240,14 @@ export interface BenchDriverResult {
   dflashAccepted?: number;
   /** Tokens drafted by DFlash. */
   dflashDrafted?: number;
+  /**
+   * Optional: drafter tokens that were thrown away specifically because the
+   * voice state machine rolled the slot back to a C1 checkpoint
+   * (`rollback-drop` events). When absent, the metrics collector
+   * approximates this from the `rollback-drop` probe events. When present,
+   * it overrides the approximation.
+   */
+  rollbackWasteTokens?: number;
 }
 
 /**

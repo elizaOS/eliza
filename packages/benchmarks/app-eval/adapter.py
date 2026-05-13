@@ -78,6 +78,38 @@ def _build_env(config: AppBenchmarkConfig) -> dict[str, str]:
     return env
 
 
+def _parse_json_objects(text: str) -> list[dict[str, Any]]:
+    """Extract JSON objects from mixed CLI stdout."""
+    decoder = json.JSONDecoder()
+    objects: list[dict[str, Any]] = []
+    for index, ch in enumerate(text):
+        if ch != "{":
+            continue
+        try:
+            parsed, _end = decoder.raw_decode(text, index)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            objects.append(parsed)
+    return objects
+
+
+def _failure_result(
+    task: dict[str, Any],
+    *,
+    duration_ms: int,
+    error: str,
+) -> dict[str, Any]:
+    return {
+        "id": task.get("id", "unknown"),
+        "response": "",
+        "actions_taken": [],
+        "duration_ms": duration_ms,
+        "success": False,
+        "error": error,
+    }
+
+
 def run_benchmark(
     task: dict[str, Any],
     config: AppBenchmarkConfig,
@@ -113,15 +145,9 @@ def run_benchmark(
         )
 
         if result.returncode == 0:
-            # Parse JSON from stdout (last line should be the result)
-            lines = result.stdout.strip().split("\n")
-            for line in reversed(lines):
-                line = line.strip()
-                if line.startswith("{"):
-                    try:
-                        return json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
+            parsed = _parse_json_objects(result.stdout)
+            if parsed:
+                return parsed[-1]
 
             return {
                 "id": task["id"],
@@ -144,23 +170,13 @@ def run_benchmark(
                 ),
             }
     except subprocess.TimeoutExpired:
-        return {
-            "id": task["id"],
-            "response": "",
-            "actions_taken": [],
-            "duration_ms": config.timeout_seconds * 1000,
-            "success": False,
-            "error": "Timeout",
-        }
+        return _failure_result(
+            task,
+            duration_ms=config.timeout_seconds * 1000,
+            error="Timeout",
+        )
     except Exception as e:
-        return {
-            "id": task["id"],
-            "response": "",
-            "actions_taken": [],
-            "duration_ms": 0,
-            "success": False,
-            "error": str(e),
-        }
+        return _failure_result(task, duration_ms=0, error=str(e))
 
 
 def run_benchmark_batch(
@@ -208,38 +224,43 @@ def run_benchmark_batch(
             cwd=config.app_root,
         )
 
-        results: list[dict[str, Any]] = []
-        for line in result.stdout.strip().split("\n"):
-            line = line.strip()
-            if line.startswith("{"):
-                try:
-                    results.append(json.loads(line))
-                except json.JSONDecodeError:
-                    continue
+        results = _parse_json_objects(result.stdout)
+        seen_ids = {
+            str(r.get("id"))
+            for r in results
+            if isinstance(r.get("id"), (str, int, float))
+        }
+        error_suffix = ""
+        if result.returncode != 0:
+            error_suffix = (
+                f"Process exited with code {result.returncode}: "
+                f"{result.stderr[:500]}"
+            )
+        for task in tasks:
+            task_id = str(task.get("id", "unknown"))
+            if task_id in seen_ids:
+                continue
+            results.append(
+                _failure_result(
+                    task,
+                    duration_ms=0,
+                    error=error_suffix or "No JSON result found in batch output",
+                )
+            )
         return results
 
     except subprocess.TimeoutExpired:
         return [
-            {
-                "id": t.get("id", "unknown"),
-                "response": "",
-                "actions_taken": [],
-                "duration_ms": config.timeout_seconds * 1000,
-                "success": False,
-                "error": "Batch timeout",
-            }
+            _failure_result(
+                t,
+                duration_ms=config.timeout_seconds * 1000,
+                error="Batch timeout",
+            )
             for t in tasks
         ]
     except Exception as e:
         return [
-            {
-                "id": t.get("id", "unknown"),
-                "response": "",
-                "actions_taken": [],
-                "duration_ms": 0,
-                "success": False,
-                "error": str(e),
-            }
+            _failure_result(t, duration_ms=0, error=str(e))
             for t in tasks
         ]
 

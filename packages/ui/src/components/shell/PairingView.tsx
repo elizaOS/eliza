@@ -1,16 +1,16 @@
+import { client } from "../../api";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
+import { useApp } from "../../state";
+import { Button } from "../ui/button";
 import {
-  Button,
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-  Input,
-  Label,
-} from "@elizaos/ui";
-import { client } from "../../api";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
-import { useApp } from "../../state";
+} from "../ui/card";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import { PairingCommandHint } from "./PairingCommandHint";
 
 const SCREEN_SHELL_CLASS =

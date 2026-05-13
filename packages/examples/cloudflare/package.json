@@ -14,17 +14,16 @@
     "secret": "wrangler secret put OPENAI_API_KEY",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "echo 'Cloudflare Workers use wrangler for type checking'",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "bun run typecheck"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-openai": "workspace:*",
-    "uuid": "^14.0.0"
+    "@elizaos/plugin-openai": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
-    "@types/uuid": "^11.0.0",
+    "typescript": "^6.0.3",
     "wrangler": "^4.88.0"
   },
   "keywords": [

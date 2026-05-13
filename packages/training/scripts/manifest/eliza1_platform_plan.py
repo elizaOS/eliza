@@ -19,8 +19,10 @@ try:
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
+        VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
+        canonical_qwen_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 except ImportError:  # pragma: no cover - script execution path
@@ -28,18 +30,15 @@ except ImportError:  # pragma: no cover - script execution path
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
+        VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
         VOICE_QUANT_BY_TIER,
+        canonical_qwen_source_repo_error,
         required_voice_artifacts_for_tier,
     )
 
 TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
-    # 0_8b / 2b / 4b (Qwen3.5 family, the active small/mid tiers) ship Q4;
-    # the deprecated legacy Qwen3 0_6b stays on Q3 to match the existing
-    # published bundle (no new SFT runs land there).
     "0_8b": "Q4_K_M",
-    "0_6b": "Q3_K_M",
-    "1_7b": "Q4_K_M",
     "2b": "Q4_K_M",
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
@@ -48,14 +47,14 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "27b-1m": "Q4_K_M",
 }
 
+TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = ("Q4_K_M", "Q6_K", "Q8_0")
+
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("32k",),
-    "0_6b": ("32k",),
-    "1_7b": ("32k", "64k"),
-    "2b": ("32k", "64k"),
-    "4b": ("32k", "64k"),
+    "2b": ("32k",),
+    "4b": ("64k", "128k"),
     "9b": ("64k", "128k"),
-    "27b": ("128k", "256k"),
+    "27b": ("128k",),
     "27b-256k": ("256k",),
     "27b-1m": ("1m",),
 }
@@ -78,7 +77,7 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.vad",
         "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1",
-        "licenses/LICENSE.vision",
+        *(("licenses/LICENSE.vision",) if tier in {"4b", "9b", "27b", "27b-256k"} else ()),
     )
     for tier in ELIZA_1_TIERS
 }
@@ -121,41 +120,9 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "linux-x64-cpu",
         "windows-x64-cpu",
     ),
-    # 2b (Qwen3.5-2B-Base) — mid local tier, same backend coverage as 1_7b
-    # plus desktop CUDA (handles modern phone + mid-laptop + workstation).
-    "2b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-x64-vulkan",
-        "windows-arm64-cpu",
-        "windows-arm64-vulkan",
-    ),
-    # 4b (Qwen3.5-4B-Base) — local/workstation tier. Same backend matrix as
-    # 1_7b/2b at the manifest layer (metal/vulkan/cpu); CUDA falls out of the
-    # supported set until a per-tier dispatch report lands.
-    "4b": (
-        "darwin-arm64-metal",
-        "ios-arm64-metal",
-        "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
-        "linux-x64-cpu",
-        "windows-x64-cpu",
-        "windows-x64-vulkan",
-        "windows-arm64-cpu",
-        "windows-arm64-vulkan",
-    ),
     "9b": (
         "darwin-arm64-metal",
-        "ios-arm64-metal",
         "linux-x64-vulkan",
-        "android-adreno-vulkan",
-        "android-mali-vulkan",
         "linux-x64-cuda",
         "linux-x64-rocm",
         "windows-x64-cuda",
@@ -171,18 +138,17 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "windows-x64-cuda",
         "windows-x64-vulkan",
         "linux-x64-cpu",
+        "windows-x64-cpu",
     ),
     "27b-256k": (
-        "darwin-arm64-metal",
-        "linux-aarch64-cuda",
         "linux-x64-cuda",
         "linux-x64-rocm",
-        "linux-x64-vulkan",
-        "linux-x64-cpu",
+        "windows-x64-cuda",
     ),
-    # 1M context is GH200-class only — Grace-Hopper aarch64+CUDA is the
-    # only platform with the memory to hold the KV cache at that window.
-    "27b-1m": ("linux-aarch64-cuda",),
+    "27b-1m": (
+        "linux-x64-cuda",
+        "linux-aarch64-cuda",
+    ),
 }
 
 
@@ -197,7 +163,9 @@ class PlatformTarget:
 class TierGgufPlan:
     tier: str
     text_quant: str
+    text_quantizations: tuple[str, ...]
     voice_quant: str
+    voice_backends: tuple[str, ...]
     contexts: tuple[str, ...]
     required_files: tuple[str, ...]
     optional_files: tuple[str, ...]
@@ -205,13 +173,8 @@ class TierGgufPlan:
 
 
 def text_artifact_name(tier: str, ctx: str) -> str:
-    # The dedicated long-context tiers (27b-256k, 27b-1m) carry the context
-    # in the tier id itself, so the file is `eliza-1-<tier>.gguf` rather than
-    # `eliza-1-<tier>-<ctx>.gguf` (which would double up the context token).
-    if tier == "27b-256k" and ctx == "256k":
-        return "text/eliza-1-27b-256k.gguf"
-    if tier == "27b-1m" and ctx == "1m":
-        return "text/eliza-1-27b-1m.gguf"
+    if tier.endswith(f"-{ctx}"):
+        return f"text/eliza-1-{tier}.gguf"
     return f"text/eliza-1-{tier}-{ctx}.gguf"
 
 
@@ -226,7 +189,11 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
     dflash_files = (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
-    vision_files = (f"vision/mmproj-{tier}.gguf",)
+    vision_files = (
+        (f"vision/mmproj-{tier}.gguf",)
+        if tier in {"4b", "9b", "27b", "27b-256k"}
+        else ()
+    )
     return (
         *text_files,
         *voice_files,
@@ -269,7 +236,9 @@ def build_plan() -> dict[str, TierGgufPlan]:
         out[tier] = TierGgufPlan(
             tier=tier,
             text_quant=TEXT_QUANT_BY_TIER[tier],
+            text_quantizations=TEXT_QUANTIZATION_MATRIX,
             voice_quant=VOICE_QUANT_BY_TIER[tier],
+            voice_backends=VOICE_BACKENDS_BY_TIER[tier],
             contexts=CONTEXTS_BY_TIER[tier],
             required_files=required_files_for_tier(tier),
             optional_files=VAD_OPTIONAL_FALLBACK_ARTIFACTS,
@@ -318,19 +287,34 @@ _RELEASE_FINAL_FLAGS_ALL: Final[tuple[str, ...]] = (
 _RELEASE_FINAL_FLAGS_BASE_V1: Final[tuple[str, ...]] = tuple(
     f for f in _RELEASE_FINAL_FLAGS_ALL if f != "weights"
 )
+_WEIGHT_PAYLOAD_DIRS: Final[frozenset[str]] = frozenset(
+    {"text", "tts", "asr", "vad", "vision", "dflash", "embedding", "wakeword"}
+)
 
 
 def release_status_blockers(
     bundle_root: Path, plan: Mapping[str, TierGgufPlan]
 ) -> dict[str, list[str]]:
     blockers: dict[str, list[str]] = {}
-    for tier in plan:
+    for tier, tier_plan in plan.items():
         plain_root = bundle_root / f"eliza-1-{tier}"
         bundle_root_candidate = bundle_root / f"eliza-1-{tier}.bundle"
         root = bundle_root_candidate if bundle_root_candidate.exists() else plain_root
         evidence_path = root / "evidence" / "release.json"
         tier_blockers: list[str] = []
-        if evidence_path.is_file():
+        if not bundle_root_candidate.exists() and not plain_root.exists():
+            tier_blockers.append(
+                "`bundle`: missing canonical local bundle "
+                f"`{bundle_root_candidate.name}` or `{plain_root.name}`; "
+                "final payloads, checksums, license evidence, and HF upload "
+                "evidence cannot be verified"
+            )
+        if not evidence_path.is_file():
+            tier_blockers.append(
+                "`evidence/release.json`: missing; release state, final flags, "
+                "source models, and HF upload evidence are not proven"
+            )
+        else:
             try:
                 evidence = json.loads(evidence_path.read_text())
             except json.JSONDecodeError as exc:
@@ -348,6 +332,32 @@ def release_status_blockers(
                     tier_blockers.append(
                         "`evidence/release.json`: publishEligible is not true"
                     )
+                if evidence.get("checksumManifest") != "checksums/SHA256SUMS":
+                    tier_blockers.append(
+                        "`evidence/release.json`: checksumManifest is not "
+                        "`checksums/SHA256SUMS`"
+                    )
+                weights = evidence.get("weights")
+                if not isinstance(weights, list) or not all(
+                    isinstance(p, str) for p in weights
+                ):
+                    tier_blockers.append(
+                        "`evidence/release.json`: weights must list final "
+                        "bundle-relative payload paths"
+                    )
+                else:
+                    weights_set = set(weights)
+                    required_weight_paths = {
+                        rel
+                        for rel in tier_plan.required_files
+                        if rel.split("/", 1)[0] in _WEIGHT_PAYLOAD_DIRS
+                    }
+                    missing_weight_paths = sorted(required_weight_paths - weights_set)
+                    if missing_weight_paths:
+                        tier_blockers.append(
+                            "`evidence/release.json`: weights missing final "
+                            f"payload path(s): {missing_weight_paths}"
+                        )
                 if release_state == "base-v1":
                     finetuned = evidence.get("finetuned")
                     if finetuned is not False:
@@ -355,12 +365,28 @@ def release_status_blockers(
                             "`evidence/release.json`: releaseState is `base-v1` "
                             "but `finetuned` is not false"
                         )
-                    if not isinstance(evidence.get("sourceModels"), dict) or not evidence.get(
-                        "sourceModels"
-                    ):
+                    if not isinstance(
+                        evidence.get("sourceModels"), dict
+                    ) or not evidence.get("sourceModels"):
                         tier_blockers.append(
                             "`evidence/release.json`: base-v1 release missing `sourceModels`"
                         )
+                    else:
+                        for slot, source in evidence["sourceModels"].items():
+                            repo = (
+                                source.get("repo")
+                                if isinstance(source, dict)
+                                else None
+                            )
+                            if isinstance(repo, str):
+                                repo_error = canonical_qwen_source_repo_error(
+                                    slot, repo
+                                )
+                                if repo_error is not None:
+                                    tier_blockers.append(
+                                        "`evidence/release.json`: "
+                                        f"sourceModels.{slot}.repo {repo_error}"
+                                    )
                 required_final_flags = (
                     _RELEASE_FINAL_FLAGS_BASE_V1
                     if release_state == "base-v1"
@@ -377,10 +403,43 @@ def release_status_blockers(
                     tier_blockers.append("`evidence/release.json`: final object missing")
                 hf = evidence.get("hf")
                 upload = hf.get("uploadEvidence") if isinstance(hf, dict) else None
-                if release_state == "final" and not isinstance(upload, dict):
+                if not isinstance(hf, dict):
+                    tier_blockers.append("`evidence/release.json`: hf object missing")
+                else:
+                    if hf.get("repoId") != "elizaos/eliza-1":
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.repoId is not "
+                            "`elizaos/eliza-1`"
+                        )
+                    if hf.get("status") != "uploaded":
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.status is not `uploaded`; "
+                            "final Hugging Face payload upload is not proven"
+                        )
+                if not isinstance(upload, dict):
                     tier_blockers.append(
-                        "`evidence/release.json`: final release missing hf.uploadEvidence"
+                        "`evidence/release.json`: hf.uploadEvidence missing; "
+                        "final Hugging Face commit/url/uploaded paths are not proven"
                     )
+                else:
+                    if upload.get("repoId") != "elizaos/eliza-1":
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.uploadEvidence.repoId is not "
+                            "`elizaos/eliza-1`"
+                        )
+                    for key in ("commit", "url"):
+                        if not isinstance(upload.get(key), str) or not upload.get(key):
+                            tier_blockers.append(
+                                f"`evidence/release.json`: hf.uploadEvidence.{key} missing"
+                            )
+                    uploaded_paths = upload.get("uploadedPaths")
+                    if not isinstance(uploaded_paths, list) or not all(
+                        isinstance(p, str) for p in uploaded_paths
+                    ):
+                        tier_blockers.append(
+                            "`evidence/release.json`: hf.uploadEvidence.uploadedPaths "
+                            "must list uploaded bundle paths"
+                        )
         blockers[tier] = sorted(set(tier_blockers))
     return blockers
 
@@ -402,12 +461,20 @@ def render_readiness(
         "",
         "Important caveats:",
         "",
-        "- Text, TTS, ASR, and DFlash payloads are GGUF artifacts in the final plan.",
+        "- Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. "
+        "Kokoro TTS for 0.8B/2B/4B is ONNX by design; 9B carries both "
+        "Kokoro and OmniVoice; 27B-class tiers ship OmniVoice GGUF only.",
         "- VAD is a native GGML artifact at "
         "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
         "Legacy bundles may additionally carry the ONNX fallback "
         "`vad/silero-vad-int8.onnx`, but the fallback is not the release "
         "readiness path.",
+        "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
+        "Qwen3.5 2B (`2b`), and Qwen3.5 4B (`4b`). ASR and embedding are "
+        "real Qwen3 upstream exceptions: use the published Qwen3-ASR "
+        "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
+        "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "
+        "Qwen3-ASR-0.8B/2B, or Qwen3-Embedding-0.8B/2B repo IDs.",
         "- v1 release shape (`releaseState=base-v1`): the upstream BASE models "
         "— GGUF-converted via the elizaOS/llama.cpp fork and fully "
         "Eliza-optimized (every quant/kernel trick in `packages/inference/AGENTS.md` "
@@ -425,6 +492,10 @@ def render_readiness(
         "licenses, platform reports, and Hugging Face upload records — and "
         "real GGUF/quant-sidecar bytes from a real fork build. Fabricated "
         "hashes / not-yet-built tiers are blockers.",
+        "- No-larp release readiness requires canonical local bundle names, "
+        "real `checksums/SHA256SUMS`, real license evidence, and "
+        "`hf.status=uploaded` with `hf.uploadEvidence` commit/url/uploaded paths. "
+        "`pending-upload` or blocked local evidence is not release-ready.",
         "",
     ]
 
@@ -434,7 +505,11 @@ def render_readiness(
                 f"## {tier}",
                 "",
                 f"- Text quant: `{tier_plan.text_quant}`",
-                f"- Voice quant: `{tier_plan.voice_quant}`",
+                "- Text quantization matrix: "
+                + ", ".join(f"`{quant}`" for quant in tier_plan.text_quantizations),
+                "- Voice backends: "
+                + ", ".join(f"`{backend}`" for backend in tier_plan.voice_backends),
+                f"- OmniVoice quant: `{tier_plan.voice_quant}`",
                 "- Contexts: "
                 + ", ".join(f"`{ctx}`" for ctx in tier_plan.contexts),
                 "- Required platform evidence: "
@@ -452,8 +527,14 @@ def render_readiness(
             lines.extend(f"- `{rel}`" for rel in tier_plan.optional_files)
             lines.append("")
 
-        tier_missing = list(missing.get(tier, ())) if missing else []
-        if tier_missing:
+        tier_missing = list(missing.get(tier, ())) if missing is not None else []
+        if missing is None:
+            lines.append(
+                "Missing files/evidence: not evaluated in plan-only mode. "
+                "Re-run with `--bundle-root <path>` to check local payloads."
+            )
+            lines.append("")
+        elif tier_missing:
             lines.append("Missing files/evidence:")
             lines.extend(f"- `{rel}`" for rel in tier_missing)
             lines.append("")

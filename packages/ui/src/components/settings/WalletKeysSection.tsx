@@ -16,9 +16,11 @@
  * client.
  */
 
-import { Button, Input, Label } from "@elizaos/ui";
 import { Eye, EyeOff, Loader2, Plus, Trash2 } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useState } from "react";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 import type { VaultEntryMeta } from "./vault-tabs/types";
 
 interface RevealPayload {

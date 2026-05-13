@@ -198,6 +198,10 @@ export function voiceSpeakerFromImprintMatch(args: {
     confidence: args.match.confidence,
     metadata: {
       ...(profile.metadata ?? {}),
+      attributionOnly: true,
+      evidenceKind: "voice_imprint_attribution",
+      identityAuthority: false,
+      synthesisAuthorization: false,
       matchSimilarity: args.match.similarity,
       embeddingModel: profile.embeddingModel ?? undefined,
     },
@@ -254,6 +258,10 @@ export function attributeVoiceImprintObservations(args: {
         metadata: {
           ...(observation.metadata ?? {}),
           attributionOnly: true,
+          evidenceKind: "voice_imprint_attribution",
+          identityAuthority: false,
+          synthesisAuthorization: false,
+          diarizationMode: "attribution_only",
           embeddingModel: observation.embeddingModel ?? undefined,
           imprintObservationId: observation.id,
           imprintClusterId: speaker?.imprintClusterId,

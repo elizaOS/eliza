@@ -1,5 +1,6 @@
 import {
   DEFAULT_ELIGIBLE_MODEL_IDS,
+  type Eliza1TierId,
   FIRST_RUN_DEFAULT_MODEL_ID,
   MODEL_CATALOG,
 } from "./catalog";
@@ -37,51 +38,49 @@ const BYTES_PER_GB = 1024 ** 3;
  * tier that fits the platform; desktops/servers pick larger tiers
  * first when memory headroom allows.
  */
-// Per the 2026-05-12 operator directive, the Qwen3.5 line is the default —
-// eliza-1-0_8b (Qwen3.5-0.8B) is the small default, eliza-1-2b
-// (Qwen3.5-2B) is the mid default. The legacy Qwen3 tiers (eliza-1-0_6b /
-// eliza-1-1_7b) stay in the ladders as DEPRECATED fallbacks but sit below
-// the Qwen3.5 tiers. Mirrors the app-core SLOT_LADDERS — keep the two in
-// sync.
+const TIER_0_8B: Eliza1TierId = "eliza-1-0_8b";
+const TIER_2B: Eliza1TierId = "eliza-1-2b";
+const TIER_4B: Eliza1TierId = "eliza-1-4b";
+const TIER_9B: Eliza1TierId = "eliza-1-9b";
+const TIER_27B: Eliza1TierId = "eliza-1-27b";
+const TIER_27B_256K: Eliza1TierId = "eliza-1-27b-256k";
+const TIER_27B_1M: Eliza1TierId = "eliza-1-27b-1m";
+
 const SLOT_LADDERS: Record<
   RecommendationPlatformClass,
-  Record<TextGenerationSlot, string[]>
+  Record<TextGenerationSlot, ReadonlyArray<Eliza1TierId>>
 > = {
   mobile: {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-0_6b", "eliza-1-2b", "eliza-1-1_7b"],
-    TEXT_LARGE: ["eliza-1-2b", "eliza-1-0_8b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: [TIER_0_8B],
+    TEXT_LARGE: [TIER_4B, TIER_2B, TIER_0_8B],
   },
   "apple-silicon": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-27b", "eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "linux-gpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
     TEXT_LARGE: [
-      "eliza-1-27b-256k",
-      "eliza-1-27b",
-      "eliza-1-9b",
-      "eliza-1-2b",
-      "eliza-1-1_7b",
+      TIER_27B_1M,
+      TIER_27B_256K,
+      TIER_27B,
+      TIER_9B,
+      TIER_4B,
+      TIER_2B,
+      TIER_0_8B,
     ],
   },
   "linux-cpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-gpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: [
-      "eliza-1-27b-256k",
-      "eliza-1-27b",
-      "eliza-1-9b",
-      "eliza-1-2b",
-      "eliza-1-1_7b",
-    ],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_27B_256K, TIER_27B, TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
   "desktop-cpu": {
-    TEXT_SMALL: ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-1_7b", "eliza-1-0_6b"],
-    TEXT_LARGE: ["eliza-1-9b", "eliza-1-2b", "eliza-1-1_7b"],
+    TEXT_SMALL: [TIER_0_8B, TIER_2B, TIER_4B],
+    TEXT_LARGE: [TIER_9B, TIER_4B, TIER_2B, TIER_0_8B],
   },
 };
 
@@ -186,7 +185,7 @@ function kernelRequirementsSatisfied(
 }
 
 function modelsFromLadder(
-  ids: string[],
+  ids: ReadonlyArray<string>,
   catalog: CatalogModel[],
 ): CatalogModel[] {
   const byId = catalogById(catalog);

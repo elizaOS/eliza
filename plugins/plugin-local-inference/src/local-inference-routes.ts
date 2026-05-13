@@ -19,6 +19,16 @@ import {
 	loadMobileDeviceBridgeModel,
 	unloadMobileDeviceBridgeModel,
 } from "@elizaos/plugin-capacitor-bridge";
+import {
+	buildHuggingFaceResolveUrl,
+	MODEL_CATALOG as SHARED_MODEL_CATALOG,
+	type CatalogModel as SharedCatalogModel,
+} from "@elizaos/shared";
+import {
+	LOCAL_INFERENCE_MODEL_TYPES,
+	LOCAL_INFERENCE_PROVIDER_ID,
+	LOCAL_INFERENCE_TEXT_MODEL_TYPES,
+} from "./provider.js";
 
 type ModelRole = "chat" | "embedding" | "drafter";
 type DownloadState =
@@ -39,21 +49,8 @@ export type LocalInferenceCommandIntent =
 	| "use_cloud"
 	| "use_local";
 
-interface CatalogModel {
-	id: string;
-	displayName: string;
-	hfRepo: string;
-	ggufFile: string;
-	params: string;
-	quant: string;
-	sizeGb: number;
-	minRamGb: number;
-	category: string;
-	bucket: string;
-	blurb: string;
+interface CatalogModel extends SharedCatalogModel {
 	role: ModelRole;
-	companionModelIds?: string[];
-	hiddenFromCatalog?: boolean;
 }
 
 interface InstalledModel {
@@ -114,7 +111,7 @@ export interface LocalInferenceChatResult {
 }
 
 type Assignments = Partial<
-	Record<"TEXT_SMALL" | "TEXT_LARGE" | "TEXT_EMBEDDING", string>
+	Record<(typeof LOCAL_INFERENCE_MODEL_TYPES)[number], string>
 >;
 
 interface RoutingPreferences {
@@ -140,64 +137,18 @@ export function getLocalInferenceActiveModelId(): string | undefined {
 		: undefined;
 }
 
-const CATALOG: CatalogModel[] = [
-	{
-		id: "eliza-1-1_7b",
-		displayName: "eliza-1-1_7b",
-		hfRepo: "elizaos/eliza-1-1_7b",
-		ggufFile: "text/eliza-1-1_7b-32k.gguf",
-		params: "1.7B",
-		quant: "fused GGUF",
-		sizeGb: 1.2,
-		minRamGb: 4,
-		category: "chat",
-		bucket: "small",
-		blurb: "eliza-1-1_7b default local chat model for mobile and laptops.",
-		role: "chat",
-	},
-	{
-		id: "eliza-1-9b",
-		displayName: "eliza-1-9b",
-		hfRepo: "elizaos/eliza-1-9b",
-		ggufFile: "text/eliza-1-9b-64k.gguf",
-		params: "9B",
-		quant: "fused GGUF",
-		sizeGb: 5.4,
-		minRamGb: 16,
-		category: "chat",
-		bucket: "medium",
-		blurb: "eliza-1-9b local chat model for desktop systems.",
-		role: "chat",
-	},
-	{
-		id: "eliza-1-27b",
-		displayName: "eliza-1-27b",
-		hfRepo: "elizaos/eliza-1-27b",
-		ggufFile: "text/eliza-1-27b-128k.gguf",
-		params: "27B",
-		quant: "fused GGUF",
-		sizeGb: 16.8,
-		minRamGb: 32,
-		category: "chat",
-		bucket: "large",
-		blurb: "eliza-1-27b local chat model for high-memory systems.",
-		role: "chat",
-	},
-	{
-		id: "eliza-1-0_6b",
-		displayName: "eliza-1-0_6b",
-		hfRepo: "elizaos/eliza-1-0_6b",
-		ggufFile: "text/eliza-1-0_6b-32k.gguf",
-		params: "0.6B",
-		quant: "fused GGUF",
-		sizeGb: 0.5,
-		minRamGb: 2,
-		category: "chat",
-		bucket: "small",
-		blurb: "eliza-1-0_6b local chat model for low-RAM devices.",
-		role: "chat",
-	},
-];
+function catalogRole(model: SharedCatalogModel): ModelRole {
+	if (model.runtimeRole === "dflash-drafter" || model.category === "drafter") {
+		return "drafter";
+	}
+	if ((model.category as string) === "embedding") return "embedding";
+	return "chat";
+}
+
+const CATALOG: CatalogModel[] = SHARED_MODEL_CATALOG.map((model) => ({
+	...model,
+	role: catalogRole(model),
+}));
 
 const activeDownloads = new Map<
 	string,
@@ -250,14 +201,7 @@ function stagingPath(model: CatalogModel): string {
 }
 
 function huggingFaceResolveUrl(model: CatalogModel): string {
-	const base =
-		process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
-		"https://huggingface.co";
-	const encodedPath = model.ggufFile
-		.split("/")
-		.map((segment) => encodeURIComponent(segment))
-		.join("/");
-	return `${base}/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
+	return buildHuggingFaceResolveUrl(model);
 }
 
 function shouldUseMobileDns(): boolean {
@@ -468,6 +412,15 @@ async function assignModel(
 	} else if (model.role === "chat") {
 		if (overwrite || !assignments.TEXT_SMALL) assignments.TEXT_SMALL = model.id;
 		if (overwrite || !assignments.TEXT_LARGE) assignments.TEXT_LARGE = model.id;
+		if (overwrite || !assignments.TEXT_EMBEDDING) {
+			assignments.TEXT_EMBEDDING = model.id;
+		}
+		if (overwrite || !assignments.TEXT_TO_SPEECH) {
+			assignments.TEXT_TO_SPEECH = model.id;
+		}
+		if (overwrite || !assignments.TRANSCRIPTION) {
+			assignments.TRANSCRIPTION = model.id;
+		}
 	}
 	await writeAssignments(assignments);
 }
@@ -866,7 +819,7 @@ async function setRoutingForChat(provider: string): Promise<void> {
 	);
 	const preferences =
 		current.preferences ?? defaultRoutingPreferences().preferences;
-	for (const slot of ["TEXT_SMALL", "TEXT_LARGE"] as const) {
+	for (const slot of LOCAL_INFERENCE_TEXT_MODEL_TYPES) {
 		preferences.preferredProvider[slot] = provider;
 		preferences.policy[slot] = "manual";
 	}
@@ -1188,21 +1141,22 @@ export async function handleLocalInferenceRoutes(
 					registeredSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
 				},
 				{
-					id: "eliza-local-inference",
-					label: "Local models",
+					id: LOCAL_INFERENCE_PROVIDER_ID,
+					label: "Eliza-1 local inference",
 					kind: "local",
 					description:
-						"GGUF models installed in this mobile agent state directory.",
-					supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"],
+						"Eliza-1 bundles installed in this agent state directory.",
+					supportedSlots: LOCAL_INFERENCE_MODEL_TYPES,
 					configureHref: "#local-inference-panel",
 					enableState: {
 						enabled: installed.length > 0,
 						reason:
 							installed.length > 0
-								? "GGUF model installed"
-								: "No local model installed",
+								? "Eliza-1 bundle installed"
+								: "No Eliza-1 bundle installed",
 					},
-					registeredSlots: [],
+					registeredSlots:
+						installed.length > 0 ? LOCAL_INFERENCE_MODEL_TYPES : [],
 				},
 			],
 		});
@@ -1235,14 +1189,12 @@ export async function handleLocalInferenceRoutes(
 			defaultRoutingPreferences(),
 		);
 		sendJson(res, {
-			registrations: ["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING"].map(
-				(modelType) => ({
-					modelType,
-					provider: "capacitor-llama",
-					priority: 0,
-					registeredAt: new Date().toISOString(),
-				}),
-			),
+			registrations: LOCAL_INFERENCE_MODEL_TYPES.map((modelType) => ({
+				modelType,
+				provider: LOCAL_INFERENCE_PROVIDER_ID,
+				priority: 0,
+				registeredAt: new Date().toISOString(),
+			})),
 			preferences:
 				preferences.preferences ?? defaultRoutingPreferences().preferences,
 		});

@@ -44,6 +44,10 @@ import {
 	segmentBlock,
 } from "../runtime/context-renderer";
 import {
+	getMessageHistoryCompactionHook,
+	type MessageHistoryCompactionTelemetry,
+} from "../runtime/conversation-compaction-hook";
+import {
 	type EvaluatorEffects,
 	type EvaluatorOutput,
 	runEvaluator,
@@ -69,6 +73,7 @@ import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
 } from "../runtime/model-input-budget";
+import { extractPlanActionsFromContent } from "../runtime/plan-actions-extractor";
 import {
 	actionResultToPlannerToolResult,
 	cacheProviderOptions,
@@ -990,7 +995,84 @@ function hasPageScopedRoutingMetadata(message: Memory): boolean {
 	return false;
 }
 
-function composeResponseState(
+function latestMessageHistoryCompactionTelemetry(
+	state: State,
+): MessageHistoryCompactionTelemetry | undefined {
+	const value = state.data?.messageHistoryCompaction;
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as unknown as MessageHistoryCompactionTelemetry;
+}
+
+function appendMessageHistoryCompactionTelemetry(
+	state: State,
+	telemetry: MessageHistoryCompactionTelemetry,
+): State {
+	const history = Array.isArray(state.data?.messageHistoryCompactionHistory)
+		? state.data.messageHistoryCompactionHistory
+		: [];
+	return {
+		...state,
+		data: {
+			...state.data,
+			messageHistoryCompaction: telemetry as unknown as State["data"][string],
+			messageHistoryCompactionHistory: [
+				...history,
+				telemetry as unknown as State["data"][string],
+			].slice(-10) as unknown as State["data"][string],
+		},
+	};
+}
+
+async function applyMessageHistoryCompactionHook(
+	runtime: IAgentRuntime,
+	message: Memory,
+	state: State,
+	source:
+		| "compose-response-state"
+		| "provider-grounded-state"
+		| "continuation-state",
+): Promise<State> {
+	const hook = getMessageHistoryCompactionHook(runtime);
+	if (!hook) return state;
+	try {
+		const result = await hook({ runtime, message, state, source });
+		if (!result?.state) return state;
+		return result.telemetry
+			? appendMessageHistoryCompactionTelemetry(result.state, result.telemetry)
+			: result.state;
+	} catch (error) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				error: error instanceof Error ? error.message : String(error),
+			},
+			"Message-history compaction hook failed",
+		);
+		return state;
+	}
+}
+
+function withMessageHistoryCompactionProviderOptions<
+	T extends Record<string, unknown>,
+>(providerOptions: T, state: State): T {
+	const telemetry = latestMessageHistoryCompactionTelemetry(state);
+	if (!telemetry) return providerOptions;
+	const eliza =
+		typeof providerOptions.eliza === "object" && providerOptions.eliza !== null
+			? (providerOptions.eliza as Record<string, unknown>)
+			: {};
+	return {
+		...providerOptions,
+		eliza: {
+			...eliza,
+			messageHistoryCompaction: telemetry,
+		},
+	} as T;
+}
+
+async function composeResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	skipCache = false,
@@ -999,14 +1081,26 @@ function composeResponseState(
 		? [...CORE_RESPONSE_STATE_PROVIDERS, "CONTEXT_BENCH"]
 		: CORE_RESPONSE_STATE_PROVIDERS;
 	if (hasPageScopedRoutingMetadata(message)) {
-		return runtime.composeState(
+		const state = await runtime.composeState(
 			message,
 			[...providers, "page-scoped-context"],
 			true,
 			skipCache,
 		);
+		return applyMessageHistoryCompactionHook(
+			runtime,
+			message,
+			state,
+			"compose-response-state",
+		);
 	}
-	return runtime.composeState(message, providers, true, skipCache);
+	const state = await runtime.composeState(message, providers, true, skipCache);
+	return applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"compose-response-state",
+	);
 }
 
 function _composeStructuredResponseState(
@@ -1022,17 +1116,23 @@ function _composeStructuredResponseState(
 	);
 }
 
-function composeProviderGroundedResponseState(
+async function composeProviderGroundedResponseState(
 	runtime: IAgentRuntime,
 	message: Memory,
 	providers: string[],
 	skipCache = false,
 ): Promise<State> {
-	return runtime.composeState(
+	const state = await runtime.composeState(
 		message,
 		[...CORE_RESPONSE_STATE_PROVIDERS, ...providers],
 		false,
 		skipCache,
+	);
+	return applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"provider-grounded-state",
 	);
 }
 
@@ -1334,6 +1434,42 @@ type FailureReplyAttempt =
 	| { kind: "text"; value: string }
 	| { kind: "noProvider" };
 
+export function buildFailureReplyPrompt(recentMessages: string): string {
+	return [
+		"You hit a transient model error and have to send a short user-facing reply.",
+		"Write a one or two sentence reply in plain language.",
+		"",
+		"Hard rules:",
+		"- Stay in character. Keep your usual voice and tone.",
+		"- NEVER answer the user's question on the merits.",
+		"- The trajectory that would have GROUNDED the answer failed, so do not emit answer-shaped tokens from memory or context.",
+		"- Do not provide a SHA, a count, a price, a date, a status, a file path, or a name as if it were verified.",
+		"- Acknowledge that something went wrong and suggest a retry.",
+		"- Do not paraphrase or echo the user's question as if you are about to answer it.",
+		"- NEVER mention internal mechanism words such as: planner, action_planner,",
+		"  XML, JSON, schema, structured output, model, retries, sonnet,",
+		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
+		"  loop, runtime, dispatch, or hand off. The user does not know or care",
+		"  what those are.",
+		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
+		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
+		"",
+		"Recent Conversation:",
+		recentMessages,
+		"",
+		"Reply:",
+	].join("\n");
+}
+
+export function stripReasoningBlocks(raw: string): string {
+	return raw
+		.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, "")
+		.replace(/^[\s\S]*?<\/think>/i, "")
+		.replace(/<think\b[^>]*>[\s\S]*$/gi, "")
+		.replace(/\/?\bno_think\b/gi, "")
+		.trim();
+}
+
 export type V5MessageRuntimeStage1Result =
 	| {
 			kind: "terminal";
@@ -1363,6 +1499,56 @@ function isVoiceChannelMessage(message: Pick<Memory, "content">): boolean {
 	return (
 		message.content?.channelType === ChannelType.VOICE_DM ||
 		message.content?.channelType === ChannelType.VOICE_GROUP
+	);
+}
+
+type VoiceTurnSignalMetadata = {
+	endOfTurnProbability?: number;
+	nextSpeaker?: "agent" | "user" | "unknown";
+	agentShouldSpeak?: boolean | null;
+	source?: string;
+	model?: string;
+};
+
+function getVoiceTurnSignalMetadata(
+	message: Pick<Memory, "content">,
+): VoiceTurnSignalMetadata | null {
+	const value = message.content?.voiceTurnSignal;
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return null;
+	}
+	const raw = value as Record<string, unknown>;
+	const signal: VoiceTurnSignalMetadata = {};
+	if (typeof raw.endOfTurnProbability === "number") {
+		signal.endOfTurnProbability = raw.endOfTurnProbability;
+	}
+	if (
+		raw.nextSpeaker === "agent" ||
+		raw.nextSpeaker === "user" ||
+		raw.nextSpeaker === "unknown"
+	) {
+		signal.nextSpeaker = raw.nextSpeaker;
+	}
+	const agentShouldSpeak = raw.agentShouldSpeak;
+	if (typeof agentShouldSpeak === "boolean") {
+		signal.agentShouldSpeak = agentShouldSpeak;
+	} else if (agentShouldSpeak === null) {
+		signal.agentShouldSpeak = null;
+	}
+	if (typeof raw.source === "string") signal.source = raw.source;
+	if (typeof raw.model === "string") signal.model = raw.model;
+	return Object.keys(signal).length > 0 ? signal : null;
+}
+
+function voiceTurnSignalSuppressesAgent(
+	signal: VoiceTurnSignalMetadata | null,
+): boolean {
+	if (!signal) return false;
+	return (
+		signal.agentShouldSpeak === false ||
+		signal.nextSpeaker === "user" ||
+		(typeof signal.endOfTurnProbability === "number" &&
+			signal.endOfTurnProbability < 0.4)
 	);
 }
 
@@ -2649,6 +2835,27 @@ function buildKnownToolRequestResponseHandlerPatch(args: {
 const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 	[
 		{
+			name: "core.voice_turn_signal",
+			description:
+				"Deterministically suppresses voice replies when semantic turn-taking says the next speaker is not the agent.",
+			priority: 0,
+			shouldRun: ({ message }) =>
+				isVoiceChannelMessage(message) &&
+				voiceTurnSignalSuppressesAgent(getVoiceTurnSignalMetadata(message)),
+			evaluate: ({ message }) => {
+				const signal = getVoiceTurnSignalMetadata(message);
+				return {
+					processMessage: "IGNORE",
+					requiresTool: false,
+					simple: true,
+					clearReply: true,
+					debug: [
+						`voice turn signal suppressed reply (${signal?.source ?? "unknown"}; p=${typeof signal?.endOfTurnProbability === "number" ? signal.endOfTurnProbability.toFixed(3) : "n/a"}; next=${signal?.nextSpeaker ?? "unknown"})`,
+					],
+				};
+			},
+		},
+		{
 			name: "core.known_tool_request_repair",
 			description:
 				"Deterministically repairs Stage 1 routing for explicit known tool requests.",
@@ -3160,14 +3367,18 @@ function parseMessageHandlerModelOutput(
 	raw: string | GenerateTextResult,
 ): MessageHandlerResult | null {
 	if (typeof raw !== "string") {
+		const text = getV5ModelText(raw);
 		return (
 			parseMessageHandlerNativeToolCall(raw) ??
-			parseMessageHandlerOutput(getV5ModelText(raw)) ??
-			synthesizeSimpleReplyFromPlainText(getV5ModelText(raw))
+			parseMessageHandlerOutput(text) ??
+			recoverPlanActionsFromContentText(text) ??
+			synthesizeSimpleReplyFromPlainText(text)
 		);
 	}
 	return (
-		parseMessageHandlerOutput(raw) ?? synthesizeSimpleReplyFromPlainText(raw)
+		parseMessageHandlerOutput(raw) ??
+		recoverPlanActionsFromContentText(raw) ??
+		synthesizeSimpleReplyFromPlainText(raw)
 	);
 }
 
@@ -3188,9 +3399,8 @@ function synthesizeSimpleReplyFromPlainText(
 	if (typeof raw !== "string") return null;
 	const trimmed = raw.trim();
 	if (!trimmed) return null;
-	// Strip <think>...</think> blocks emitted by reasoning models.
-	const cleaned = trimmed.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-	const replyText = cleaned || trimmed;
+	const replyText = stripReasoningBlocks(trimmed);
+	if (!replyText) return null;
 	return {
 		processMessage: "RESPOND",
 		thought:
@@ -3199,6 +3409,49 @@ function synthesizeSimpleReplyFromPlainText(
 			contexts: [SIMPLE_CONTEXT_ID],
 			reply: replyText,
 			simple: true,
+		},
+	};
+}
+
+/**
+ * Stage 1 tolerant recovery: when the model emitted a single well-formed
+ * PLAN_ACTIONS({...}) block as message-content text instead of invoking the
+ * HANDLE_RESPONSE tool (symptom: Cerebras / weak-planner LLMs), synthesize a
+ * planning envelope that will let Stage 2 dispatch the intended action.
+ *
+ * Only fires when the raw text is exclusively the PLAN_ACTIONS call (strict
+ * mode) so explanatory text like "here's how you'd call it: PLAN_ACTIONS({...})"
+ * falls through to the existing simple-reply path.
+ *
+ * The envelope sets requiresTool=true and candidateActions=[extracted.action]
+ * so the Stage 2 planner narrows to the right action. Role-gate checks and
+ * action resolution still run normally in Stage 2 — this is a parse-layer
+ * recovery only.
+ */
+function recoverPlanActionsFromContentText(
+	text: string,
+): MessageHandlerResult | null {
+	const extracted = extractPlanActionsFromContent(text);
+	if (!extracted) return null;
+
+	logger.info(
+		{
+			src: "service:message",
+			action: extracted.action,
+			recoverySource: extracted.recoverySource,
+		},
+		"Recovered planner action from content (Stage 1 RESPONSE_HANDLER)",
+	);
+
+	return {
+		processMessage: "RESPOND",
+		thought: `Tolerant recovery: model emitted PLAN_ACTIONS as content text rather than tool call; routing to Stage 2 with candidateActions=[${extracted.action}].`,
+		plan: {
+			contexts: ["general"],
+			reply: "",
+			simple: false,
+			requiresTool: true,
+			candidateActions: [extracted.action],
 		},
 	};
 }
@@ -4437,9 +4690,11 @@ function subPlannerResultToPlannerToolResult(
 	const lastStep =
 		subResult.trajectory.steps[subResult.trajectory.steps.length - 1];
 	const success = evaluator?.success ?? lastStep?.result?.success ?? true;
+	const userFacingText = subResult.finalMessage ?? evaluator?.messageToUser;
 	return {
 		success,
-		text: subResult.finalMessage ?? evaluator?.messageToUser,
+		text: userFacingText,
+		userFacingText,
 		data: lastStep?.result?.data,
 		error: lastStep?.result?.error,
 	};
@@ -4555,7 +4810,6 @@ export async function runV5MessageRuntimeStage1(args: {
 		const messageHandlerStartedAt = Date.now();
 		const directMessageChannel =
 			args.message.content?.channelType === ChannelType.DM ||
-			args.message.content?.channelType === ChannelType.VOICE_DM ||
 			args.message.content?.channelType === ChannelType.API ||
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
@@ -4604,25 +4858,29 @@ export async function runV5MessageRuntimeStage1(args: {
 					"Stage 1 — populate the registered response-handler fields exactly once before any PLAN_ACTIONS calls. Use empty values for non-applicable fields.",
 			}),
 		];
-		const messageHandlerProviderOptions = withModelInputBudgetProviderOptions(
-			cacheProviderOptions({
-				prefixHash: stage1PrefixHash,
-				segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
-				promptSegments: messageHandlerInput.promptSegments,
-				// Use `roomId` as the conversation id for local-inference slot
-				// pinning. Cloud providers ignore it; local backends route
-				// every turn of the same room to the same KV slot, which is
-				// the dominant cache reuse signal for chat.
-				conversationId: args.message.roomId
-					? String(args.message.roomId)
-					: undefined,
-			}),
-			buildModelInputBudget({
-				messages: messageHandlerInput.messages,
-				promptSegments: messageHandlerInput.promptSegments,
-				tools: messageHandlerTools,
-			}),
-		);
+		const messageHandlerProviderOptions =
+			withMessageHistoryCompactionProviderOptions(
+				withModelInputBudgetProviderOptions(
+					cacheProviderOptions({
+						prefixHash: stage1PrefixHash,
+						segmentHashes: stage1PrefixHashes.map((entry) => entry.segmentHash),
+						promptSegments: messageHandlerInput.promptSegments,
+						// Use `roomId` as the conversation id for local-inference slot
+						// pinning. Cloud providers ignore it; local backends route
+						// every turn of the same room to the same KV slot, which is
+						// the dominant cache reuse signal for chat.
+						conversationId: args.message.roomId
+							? String(args.message.roomId)
+							: undefined,
+					}),
+					buildModelInputBudget({
+						messages: messageHandlerInput.messages,
+						promptSegments: messageHandlerInput.promptSegments,
+						tools: messageHandlerTools,
+					}),
+				),
+				args.state,
+			);
 
 		// RESPONSE_HANDLER_BEFORE (blocking): hooks fire right before the Stage 1 model
 		// call. Used to inject providers / facts / relationships into the
@@ -5444,60 +5702,6 @@ function extractMessageHandlerUsage(raw: GenerateTextResult):
 		out.cacheCreationInputTokens = usage.cacheCreationInputTokens;
 	}
 	return out;
-}
-
-/**
- * Build the prompt sent to the fallback "failure reply" model when the
- * planner trajectory errors out (rate limits, transient network failure,
- * provider 5xx). The prompt forbids the model from emitting any
- * substantive answer to the user's question — including answers that
- * appear "obvious" from recent-conversation context — because the
- * grounding trajectory never ran.
- *
- * Why a separate exported function: this prompt is load-bearing for
- * correctness (a previous version's "if you can plausibly act, do it"
- * escape hatch caused gpt-oss-120b on Cerebras to hallucinate a git
- * SHA from prior chat context during a live battle test, even though
- * no tool was actually called). Pinning the hard rules in tests means
- * a future "let's make the failure reply more helpful" refactor can't
- * silently re-introduce the hallucination vector.
- *
- * @param recentMessages Plain-text projection of the recent conversation
- * (whatever the caller has at hand — typically `state.values.recentMessages`).
- */
-export function buildFailureReplyPrompt(recentMessages: string): string {
-	return [
-		"You hit a transient model error and have to send a short user-facing reply.",
-		"Write a one or two sentence reply in plain language.",
-		"",
-		"Hard rules:",
-		"- Stay in character. Keep your usual voice and tone.",
-		"- NEVER mention internal mechanism words such as: planner, action_planner,",
-		"  XML, JSON, schema, structured output, model, retries, sonnet,",
-		"  opus, claude, anthropic, prompt, parse, parser, xml plan, decision",
-		"  loop, runtime, dispatch, or hand off. The user does not know or care",
-		"  what those are.",
-		"- Do not use em-dashes or en-dashes. Use a plain hyphen, period, or comma.",
-		"- Acknowledge that something went wrong and suggest a retry. Examples:",
-		'  "something flaked, try again in a sec",',
-		'  "weird hiccup, give me another shot in a moment",',
-		'  "got stuck on my end, retry that?"',
-		"- NEVER answer the user's question on the merits in this reply. Even",
-		"  if the answer looks obvious from context (a SHA, a count, a price,",
-		"  a date, a status, a file path, a name, a result), DO NOT emit it.",
-		"  The trajectory that would have GROUNDED the answer failed, so any",
-		"  factual claim you make here is by definition ungrounded. The user",
-		"  will retry, the real run will produce the grounded answer, and",
-		"  meanwhile you must not invent one from recent-conversation context.",
-		"- Do not paraphrase or echo the user's question as if you were about",
-		"  to answer it. Just say something went wrong and invite a retry.",
-		"- Return only the reply text. No labels, no XML, no JSON, no <think>.",
-		"",
-		"Recent Conversation:",
-		recentMessages,
-		"",
-		"Reply:",
-	].join("\n");
 }
 
 /**
@@ -7995,15 +8199,19 @@ async function _composeContinuationDecisionState(
 	// assistant reply and/or action_result memories. Refresh RECENT_MESSAGES so
 	// the follow-up planner does not reuse stale conversation history cached on
 	// the original user turn.
-	return withContextRoutingValues(
-		await runtime.composeState(
-			message,
-			["RECENT_MESSAGES", "ACTIONS"],
-			false,
-			false,
-		),
-		contextRoutingStateValues,
+	const state = await runtime.composeState(
+		message,
+		["RECENT_MESSAGES", "ACTIONS"],
+		false,
+		false,
 	);
+	const compactedState = await applyMessageHistoryCompactionHook(
+		runtime,
+		message,
+		state,
+		"continuation-state",
+	);
+	return withContextRoutingValues(compactedState, contextRoutingStateValues);
 }
 
 /**
@@ -9948,9 +10156,7 @@ export class DefaultMessageService implements IMessageService {
 					continue;
 				}
 
-				const cleaned = response
-					.replace(/<think>[\s\S]*?<\/think>/g, "")
-					.trim();
+				const cleaned = stripReasoningBlocks(response);
 				const looksStructuredReply =
 					cleaned.startsWith("{") && cleaned.includes("}");
 				const parsed = looksStructuredReply

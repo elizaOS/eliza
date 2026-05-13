@@ -1,17 +1,3 @@
-import {
-  Badge,
-  Button,
-  Checkbox,
-  cn,
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  Spinner,
-  StatusBadge,
-} from "@elizaos/ui";
 import { RefreshCw, Star, Trash2 } from "lucide-react";
 import { useCallback, useState } from "react";
 import type {
@@ -19,7 +5,22 @@ import type {
   ConnectorAccountStatus,
   ConnectorAccountUpdateInput,
 } from "../../api/client-agent";
+import { useModalState } from "../../hooks/useModalState";
+import { cn } from "../../lib/utils";
 import { EditableAccountLabel } from "../accounts/EditableAccountLabel";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Checkbox } from "../ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
+import { Spinner } from "../ui/spinner";
+import { StatusBadge } from "../ui/status-badge";
 import { ConnectorAccountPrivacySelector } from "./ConnectorAccountPrivacySelector";
 import { ConnectorAccountPurposeSelector } from "./ConnectorAccountPurposeSelector";
 
@@ -93,22 +94,17 @@ export function ConnectorAccountCard({
   onDelete,
   onMakeDefault,
 }: ConnectorAccountCardProps) {
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleteBusy, setDeleteBusy] = useState(false);
+  const deleteModal = useModalState();
+  const deleteBusy = deleteModal.state.status === "submitting";
+  const confirmingDelete = deleteModal.state.status !== "closed";
   const [defaultBusy, setDefaultBusy] = useState(false);
   const status = deriveStatus(account.status);
   const displayHandle = account.handle ?? account.externalId ?? null;
   const enabled = account.enabled !== false;
 
-  const handleDelete = useCallback(async () => {
-    setDeleteBusy(true);
-    try {
-      await onDelete();
-      setConfirmingDelete(false);
-    } finally {
-      setDeleteBusy(false);
-    }
-  }, [onDelete]);
+  const handleDelete = () => {
+    void deleteModal.submit(() => Promise.resolve(onDelete()));
+  };
 
   const handleMakeDefault = useCallback(async () => {
     setDefaultBusy(true);
@@ -228,7 +224,7 @@ export function ConnectorAccountCard({
             variant="ghost"
             size="sm"
             disabled={saving}
-            onClick={() => setConfirmingDelete(true)}
+            onClick={deleteModal.open}
             aria-label="Delete connector account"
             title="Delete connector account"
             className="h-7 w-7 p-0 text-destructive hover:bg-destructive/10"
@@ -271,7 +267,7 @@ export function ConnectorAccountCard({
       <Dialog
         open={confirmingDelete}
         onOpenChange={(open) => {
-          if (!deleteBusy) setConfirmingDelete(open);
+          if (!open && !deleteBusy) deleteModal.close();
         }}
       >
         <DialogContent>
@@ -288,7 +284,7 @@ export function ConnectorAccountCard({
               type="button"
               variant="ghost"
               disabled={deleteBusy}
-              onClick={() => setConfirmingDelete(false)}
+              onClick={deleteModal.close}
             >
               Cancel
             </Button>
@@ -296,7 +292,7 @@ export function ConnectorAccountCard({
               type="button"
               variant="destructive"
               disabled={deleteBusy}
-              onClick={() => void handleDelete()}
+              onClick={handleDelete}
             >
               {deleteBusy ? <Spinner className="h-3 w-3" /> : "Remove account"}
             </Button>

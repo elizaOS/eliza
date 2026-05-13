@@ -53,42 +53,42 @@ export interface ModelSpecs {
   vision: VisionModelSpec;
   visionvl: VisionModelSpec;
   tts: {
-    default: TransformersJsTTSModelSpec;
+    default: TTSModelSpec;
   };
 }
 
 export const MODEL_SPECS: ModelSpecs = {
   small: {
-    name: "text/eliza-1-mobile-1_7b-32k.gguf",
-    repo: "elizaos/eliza-1-mobile-1_7b",
-    size: "1.7B",
+    name: "text/eliza-1-2b-32k.gguf",
+    repo: "elizaos/eliza-1",
+    size: "2B",
     quantization: "fused GGUF",
     contextSize: 32768,
     tokenizer: {
-      name: "elizaos/eliza-1-mobile-1_7b",
+      name: "elizaos/eliza-1",
       type: "eliza1",
     },
   },
   medium: {
-    name: "text/eliza-1-desktop-9b-64k.gguf",
-    repo: "elizaos/eliza-1-desktop-9b",
-    size: "9B",
+    name: "text/eliza-1-4b-64k.gguf",
+    repo: "elizaos/eliza-1",
+    size: "4B",
     quantization: "fused GGUF",
     contextSize: 65536,
     tokenizer: {
-      name: "elizaos/eliza-1-desktop-9b",
+      name: "elizaos/eliza-1",
       type: "eliza1",
     },
   },
   embedding: {
-    name: "text/eliza-1-lite-0_6b-32k.gguf",
-    repo: "elizaos/eliza-1-lite-0_6b",
+    name: "text/eliza-1-0_8b-32k.gguf",
+    repo: "elizaos/eliza-1",
     size: "512 MB",
     quantization: "fused GGUF",
     contextSize: 32768,
     dimensions: 1024,
     tokenizer: {
-      name: "elizaos/eliza-1-lite-0_6b",
+      name: "elizaos/eliza-1",
       type: "eliza1",
     },
   },
@@ -130,10 +130,20 @@ export const MODEL_SPECS: ModelSpecs = {
   },
   tts: {
     default: {
-      modelId: "Xenova/speecht5_tts",
-      defaultSampleRate: 16000,
-      defaultSpeakerEmbeddingUrl:
-        "https://huggingface.co/datasets/Xenova/transformers.js-docs/resolve/main/speaker_embeddings.bin",
+      name: "tts/omnivoice-small.gguf",
+      repo: "elizaos/eliza-1",
+      size: "bundle component",
+      quantization: "fused GGUF",
+      speakers: ["default"],
+      languages: ["en"],
+      features: ["streaming", "barge-in", "dflash"],
+      maxInputLength: 4096,
+      sampleRate: 24000,
+      contextSize: 4096,
+      tokenizer: {
+        name: "tts/omnivoice-tokenizer-small.gguf",
+        type: "omnivoice",
+      },
     },
   },
 };

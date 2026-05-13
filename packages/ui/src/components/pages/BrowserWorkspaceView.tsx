@@ -4,18 +4,6 @@ import type {
   BrowserBridgeCompanionStatus,
 } from "@elizaos/plugin-browser";
 import {
-  Button,
-  ConfirmDialog,
-  Input,
-  SidebarCollapsedActionButton,
-  SidebarContent,
-  SidebarPanel,
-  SidebarScrollRegion,
-  useConfirm,
-  useIntervalWhenDocumentVisible,
-  WorkspaceLayout,
-} from "@elizaos/ui";
-import {
   ExternalLink,
   FolderOpen,
   PanelLeftClose,
@@ -40,7 +28,9 @@ import {
   client,
 } from "../../api";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
+import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { WorkspaceLayout } from "../../layouts/workspace-layout/workspace-layout";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
 import { useApp } from "../../state";
 import { openExternalUrl } from "../../utils";
@@ -48,8 +38,15 @@ import {
   BROWSER_TAB_PRELOAD_SCRIPT,
   setBrowserTabsRendererImpl,
 } from "../../utils/browser-tabs-renderer-registry";
+import { SidebarCollapsedActionButton } from "../composites/sidebar/sidebar-collapsed-rail";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
 import { CollapsibleSidebarSection } from "../shared/CollapsibleSidebarSection";
+import { Button } from "../ui/button";
+import { ConfirmDialog, useConfirm } from "../ui/confirm-dialog";
+import { Input } from "../ui/input";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,

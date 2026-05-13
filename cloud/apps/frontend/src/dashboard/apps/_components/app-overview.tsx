@@ -36,7 +36,7 @@ import {
   TrendingUp,
   XCircle,
 } from "lucide-react";
-import { type JSX, useEffect, useState } from "react";
+import { type JSX, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
@@ -73,6 +73,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [monetizationEnabled, setMonetizationEnabled] = useState<boolean | null>(null);
   const [totalEarnings, setTotalEarnings] = useState<number | null>(null);
+  const hideApiKeyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -81,19 +82,28 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     setTimeout(() => setCopiedItem(null), 2000);
   };
 
-  useEffect(() => {
-    if (showApiKey) {
-      setTimeout(() => {
-        setDisplayApiKey(showApiKey);
-        setShowKey(true);
-      }, 0);
-      const timer = setTimeout(() => {
-        setDisplayApiKey("");
-        setShowKey(false);
-      }, 60000);
-      return () => clearTimeout(timer);
+  const revealApiKey = useCallback((apiKey: string) => {
+    if (hideApiKeyTimerRef.current) {
+      clearTimeout(hideApiKeyTimerRef.current);
     }
-  }, [showApiKey]);
+    setDisplayApiKey(apiKey);
+    setShowKey(true);
+    hideApiKeyTimerRef.current = setTimeout(() => {
+      setDisplayApiKey("");
+      setShowKey(false);
+      hideApiKeyTimerRef.current = null;
+    }, 60000);
+  }, []);
+
+  useEffect(() => {
+    if (showApiKey) revealApiKey(showApiKey);
+  }, [showApiKey, revealApiKey]);
+
+  useEffect(() => {
+    return () => {
+      if (hideApiKeyTimerRef.current) clearTimeout(hideApiKeyTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchMonetization = async () => {
@@ -126,10 +136,11 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       }
 
       const data = await response.json();
-      setDisplayApiKey(data.apiKey);
-      setShowKey(true);
+      if (typeof data.apiKey !== "string" || data.apiKey.length === 0) {
+        throw new Error("Regeneration response did not include an API key");
+      }
+      revealApiKey(data.apiKey);
       toast.success("API key regenerated");
-      window.location.reload();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to regenerate");
     } finally {
@@ -150,7 +161,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   return (
     <div className="space-y-4">
       {/* New API Key Alert */}
-      {showApiKey && displayApiKey && (
+      {showKey && displayApiKey && (
         <div className="p-4 rounded-xl bg-[#FF5800]/10 border border-[#FF5800]/20">
           <div className="flex items-start gap-3">
             <Key className="h-5 w-5 text-[#FF5800] mt-0.5 shrink-0" />

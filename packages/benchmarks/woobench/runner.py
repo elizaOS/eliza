@@ -52,6 +52,7 @@ class WooBenchRunner:
         self.evaluator_mode = evaluator_mode
         self.concurrency = concurrency
         self.payment_client = payment_client
+        self.last_results: list[ScenarioResult] = []
 
         if scenarios is not None:
             self.scenarios = scenarios
@@ -72,11 +73,23 @@ class WooBenchRunner:
     async def run_all(self) -> BenchmarkResult:
         """Run all configured scenarios and return aggregated results."""
         results = await self._run_scenarios(self.scenarios)
+        return self.compile_result(results)
+
+    def compile_result(
+        self,
+        results: list[ScenarioResult],
+        *,
+        interrupted: bool = False,
+    ) -> BenchmarkResult:
+        """Compile a result object from completed scenarios."""
         scorer = WooBenchScorer(results)
-        return scorer.compile_benchmark_result(
+        result = scorer.compile_benchmark_result(
             model_name=self.evaluator_model,
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
+        if interrupted:
+            result.failed_scenarios += max(0, len(self.scenarios) - len(results))
+        return result
 
     async def run_system(self, system: str) -> list[ScenarioResult]:
         """Run all scenarios for a specific divination system."""
@@ -123,6 +136,7 @@ class WooBenchRunner:
         """Run a list of scenarios with concurrency control."""
         semaphore = asyncio.Semaphore(self.concurrency)
         results: list[ScenarioResult] = []
+        self.last_results = []
 
         async def _run_one(scenario: Scenario) -> ScenarioResult:
             async with semaphore:
@@ -165,8 +179,17 @@ class WooBenchRunner:
                         revenue=RevenueResult(0, False, False, -1, 0, True),
                     )
 
-        tasks = [_run_one(s) for s in scenarios]
-        results = await asyncio.gather(*tasks)
+        tasks = [asyncio.create_task(_run_one(s)) for s in scenarios]
+        try:
+            for task in asyncio.as_completed(tasks):
+                result = await task
+                results.append(result)
+                self.last_results = list(results)
+        except (asyncio.CancelledError, KeyboardInterrupt):
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
         return list(results)
 
     # ------------------------------------------------------------------
@@ -201,6 +224,8 @@ class WooBenchRunner:
             return obj
 
         data = _serialize(result)
+        if getattr(result, "interrupted", False):
+            data["interrupted"] = True
         with open(filepath, "w") as f:
             json.dump(data, f, indent=2, default=str)
 

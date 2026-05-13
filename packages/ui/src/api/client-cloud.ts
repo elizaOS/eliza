@@ -111,6 +111,27 @@ type DirectCloudJob = {
   created_at?: string;
 };
 
+type ProvisioningAgentStatusData = {
+  status?: string;
+  bridgeUrl?: string | null;
+  webUiUrl?: string | null;
+  agentId?: string | null;
+};
+
+type ProvisioningAgentChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+type ProvisioningAgentChatData = {
+  reply?: string;
+  containerStatus?: string;
+  bridgeUrl?: string | null;
+  webUiUrl?: string | null;
+  agentId?: string | null;
+  history?: ProvisioningAgentChatMessage[];
+};
+
 function isCloudRouteNotFound(error: unknown): error is ApiError {
   return (
     error instanceof Error &&
@@ -979,6 +1000,17 @@ declare module "./client-base" {
     getCloudCompatAgentStatus(agentId: string): Promise<{
       success: boolean;
       data: CloudCompatAgentStatus;
+    }>;
+    getProvisioningAgentStatus(agentId?: string): Promise<{
+      success: boolean;
+      data: ProvisioningAgentStatusData;
+    }>;
+    sendProvisioningAgentMessage(
+      message: string,
+      agentId?: string,
+    ): Promise<{
+      success: boolean;
+      data: ProvisioningAgentChatData;
     }>;
     getCloudCompatAgentLogs(
       agentId: string,
@@ -1898,6 +1930,64 @@ ElizaClient.prototype.getCloudCompatAgentStatus = async function (
   return this.fetch(
     `/api/cloud/compat/agents/${encodeURIComponent(agentId)}/status`,
   );
+};
+
+ElizaClient.prototype.getProvisioningAgentStatus = async function (
+  this: ElizaClient,
+  agentId,
+) {
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: ProvisioningAgentStatusData;
+  }>(this, "/api/v1/provisioning-agent");
+  if (direct) return { success: direct.success, data: direct.data ?? {} };
+
+  try {
+    return await this.fetch<{
+      success: boolean;
+      data: ProvisioningAgentStatusData;
+    }>("/api/v1/provisioning-agent");
+  } catch (error) {
+    if (!agentId || !isCloudRouteNotFound(error)) throw error;
+
+    const compat = await this.getCloudCompatAgentStatus(agentId);
+    return {
+      success: compat.success,
+      data: {
+        status: compat.data.status,
+        bridgeUrl: compat.data.bridgeUrl ?? null,
+        webUiUrl: compat.data.webUiUrl ?? null,
+        agentId,
+      },
+    };
+  }
+};
+
+ElizaClient.prototype.sendProvisioningAgentMessage = async function (
+  this: ElizaClient,
+  message,
+  agentId,
+) {
+  const body = JSON.stringify({
+    message,
+    ...(agentId ? { agentId } : {}),
+  });
+  const direct = await directCloudRequest<{
+    success: boolean;
+    data?: ProvisioningAgentChatData;
+  }>(this, "/api/v1/provisioning-agent/chat", {
+    method: "POST",
+    body,
+  });
+  if (direct) return { success: direct.success, data: direct.data ?? {} };
+
+  return this.fetch<{
+    success: boolean;
+    data: ProvisioningAgentChatData;
+  }>("/api/v1/provisioning-agent/chat", {
+    method: "POST",
+    body,
+  });
 };
 
 ElizaClient.prototype.getCloudCompatAgentLogs = async function (

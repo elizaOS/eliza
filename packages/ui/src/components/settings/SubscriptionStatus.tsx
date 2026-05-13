@@ -1,4 +1,3 @@
-import { Button, Input, Label, useTimeout } from "@elizaos/ui";
 import { AlertTriangle, CheckCircle2, Loader2, LogOut } from "lucide-react";
 import {
   type ReactNode,
@@ -8,6 +7,7 @@ import {
   useState,
 } from "react";
 import { client } from "../../api";
+import { useTimeout } from "../../hooks/useTimeout";
 import {
   getStoredSubscriptionProvider,
   type SubscriptionProviderSelectionId,
@@ -18,6 +18,9 @@ import {
   formatSubscriptionRequestError,
   normalizeOpenAICallbackInput,
 } from "../../utils/subscription-auth";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 export interface SubscriptionStatusProps {
   resolvedSelectedId: string | null;

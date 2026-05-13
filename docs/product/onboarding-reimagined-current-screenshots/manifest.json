@@ -1,0 +1,72 @@
+{
+  "baseUrl": "http://127.0.0.1:59713",
+  "apiBaseUrl": "http://127.0.0.1:59712",
+  "screenshots": [
+    {
+      "name": "desktop-welcome",
+      "file": "docs/product/onboarding-reimagined-current-screenshots/desktop-welcome.png",
+      "width": 1440,
+      "height": 900,
+      "bodyText": "🇺🇸\nEN\n\nelizaOS — immersion agent runtime\n\nWELCOME TO ELIZA\n\nYour personal AI. Ready in seconds, hosted by us.\n\nGET STARTED\nI WANT TO RUN IT MYSELF\n▾",
+      "logs": [
+        "[error] [RenderTelemetry] \"App\" rendered 3 times within 1000ms {source: useRenderGuard, name: App, severity: error, renderCount: 3, threshold: 3}",
+        "[error] [RenderTelemetry] \"RuntimeGate\" rendered 3 times within 1000ms {source: useRenderGuard, name: RuntimeGate, severity: error, renderCount: 3, threshold: 3}"
+      ]
+    },
+    {
+      "name": "desktop-cloud",
+      "file": "docs/product/onboarding-reimagined-current-screenshots/desktop-cloud.png",
+      "width": 1440,
+      "height": 900,
+      "bodyText": "🇺🇸\nEN\nSIGN IN TO ELIZA CLOUD\n\nWe'll handle the heavy lifting for you.\n\nUse local embeddings\n?\n\nGenerate semantic search locally on this device. Slower first run; private.\n\nSIGN IN WITH ELIZA CLOUD\nBack",
+      "logs": [
+        "[error] [RenderTelemetry] \"App\" rendered 3 times within 1000ms {source: useRenderGuard, name: App, severity: error, renderCount: 3, threshold: 3}",
+        "[error] [RenderTelemetry] \"RuntimeGate\" rendered 3 times within 1000ms {source: useRenderGuard, name: RuntimeGate, severity: error, renderCount: 3, threshold: 3}"
+      ]
+    },
+    {
+      "name": "desktop-remote",
+      "file": "docs/product/onboarding-reimagined-current-screenshots/desktop-remote.png",
+      "width": 1440,
+      "height": 900,
+      "bodyText": "🇺🇸\nEN\n\nelizaOS — immersion agent runtime\n\nWELCOME TO ELIZA\n\nYour personal AI. Ready in seconds, hosted by us.\n\nGET STARTED\nI WANT TO RUN IT MYSELF\n▾",
+      "logs": [
+        "[error] [RenderTelemetry] \"App\" rendered 3 times within 1000ms {source: useRenderGuard, name: App, severity: error, renderCount: 3, threshold: 3}",
+        "[error] [RenderTelemetry] \"RuntimeGate\" rendered 3 times within 1000ms {source: useRenderGuard, name: RuntimeGate, severity: error, renderCount: 3, threshold: 3}"
+      ]
+    },
+    {
+      "name": "desktop-local-provider",
+      "file": "docs/product/onboarding-reimagined-current-screenshots/desktop-local-provider.png",
+      "width": 1440,
+      "height": 900,
+      "bodyText": "🇺🇸\nEN\n\nelizaOS — immersion agent runtime\n\nWELCOME TO ELIZA\n\nYour personal AI. Ready in seconds, hosted by us.\n\nGET STARTED\nI WANT TO RUN IT MYSELF\n▾",
+      "logs": [
+        "[error] [RenderTelemetry] \"App\" rendered 3 times within 1000ms {source: useRenderGuard, name: App, severity: error, renderCount: 3, threshold: 3}",
+        "[error] [RenderTelemetry] \"RuntimeGate\" rendered 3 times within 1000ms {source: useRenderGuard, name: RuntimeGate, severity: error, renderCount: 3, threshold: 3}"
+      ]
+    },
+    {
+      "name": "mobile-welcome",
+      "file": "docs/product/onboarding-reimagined-current-screenshots/mobile-welcome.png",
+      "width": 390,
+      "height": 844,
+      "bodyText": "🇺🇸\n\nelizaOS — immersion agent runtime\n\nWELCOME TO ELIZA\n\nYour personal AI. Ready in seconds, hosted by us.\n\nGET STARTED\nI WANT TO RUN IT MYSELF\n▾",
+      "logs": [
+        "[error] [RenderTelemetry] \"App\" rendered 3 times within 1000ms {source: useRenderGuard, name: App, severity: error, renderCount: 3, threshold: 3}",
+        "[error] [RenderTelemetry] \"RuntimeGate\" rendered 3 times within 1000ms {source: useRenderGuard, name: RuntimeGate, severity: error, renderCount: 3, threshold: 3}"
+      ]
+    },
+    {
+      "name": "mobile-cloud",
+      "file": "docs/product/onboarding-reimagined-current-screenshots/mobile-cloud.png",
+      "width": 390,
+      "height": 844,
+      "bodyText": "🇺🇸\nSIGN IN TO ELIZA CLOUD\n\nWe'll handle the heavy lifting for you.\n\nUse local embeddings\n?\n\nGenerate semantic search locally on this device. Slower first run; private.\n\nSIGN IN WITH ELIZA CLOUD\nBack",
+      "logs": [
+        "[error] [RenderTelemetry] \"App\" rendered 3 times within 1000ms {source: useRenderGuard, name: App, severity: error, renderCount: 3, threshold: 3}",
+        "[error] [RenderTelemetry] \"RuntimeGate\" rendered 3 times within 1000ms {source: useRenderGuard, name: RuntimeGate, severity: error, renderCount: 3, threshold: 3}"
+      ]
+    }
+  ]
+}

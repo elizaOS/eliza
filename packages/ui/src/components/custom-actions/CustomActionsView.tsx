@@ -1,5 +1,4 @@
 import type { CustomActionDef } from "@elizaos/shared";
-import { Button, Input, Switch } from "@elizaos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state/useApp";
@@ -7,6 +6,9 @@ import {
   alertDesktopMessage,
   confirmDesktopAction,
 } from "../../utils/desktop-dialogs";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Switch } from "../ui/switch";
 import { CustomActionEditor } from "./CustomActionEditor";
 
 const CUSTOM_ACTIONS_SHELL_CLASS =

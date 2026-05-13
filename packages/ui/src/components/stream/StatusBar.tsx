@@ -1,11 +1,12 @@
-import { Button } from "@elizaos/ui";
 import { ExternalLink } from "lucide-react";
 import { type CSSProperties, useEffect, useRef } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { getBootConfig } from "../../config/boot-config";
 import { useApp } from "../../state/useApp";
 import { formatUptime } from "../../utils/format";
+import { Button } from "../ui/button";
 import { IS_POPOUT } from "./helpers";
+import { openStreamPopout } from "./popout-url";
 
 export function StatusBar({
   agentName,
@@ -112,21 +113,7 @@ export function StatusBar({
             className="inline-flex min-h-9 h-9 w-9 items-center justify-center rounded-xl border border-border/45 bg-card/92 px-0 py-1.5 text-xs-tight text-muted-strong shadow-sm transition-[border-color,background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-accent/35 hover:border-border-strong hover:bg-bg-hover hover:text-txt hover:shadow-md"
             title={t("statusbar.PopOutStreamView")}
             onClick={() => {
-              const apiBase = getBootConfig().apiBase;
-              const base = window.location.origin || "";
-              const sep =
-                window.location.protocol === "file:" ||
-                window.location.protocol === "electrobun:"
-                  ? "#"
-                  : "";
-              const qs = apiBase
-                ? `popout&apiBase=${encodeURIComponent(apiBase)}`
-                : "popout";
-              const popoutWin = window.open(
-                `${base}${sep}/?${qs}`,
-                "elizaos-stream",
-                "width=1280,height=720,menubar=no,toolbar=no,location=no,status=no",
-              );
+              const popoutWin = openStreamPopout(getBootConfig().apiBase);
               if (popoutWin) {
                 window.dispatchEvent(
                   new CustomEvent("stream-popout", { detail: "opened" }),

@@ -2,27 +2,43 @@ import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 
-vi.mock("@elizaos/core", () => ({
-  logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
-}));
+vi.mock("@elizaos/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/core")>();
+  return {
+    ...actual,
+    logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
+  };
+});
 vi.mock("@elizaos/agent", () => ({
   loadElizaConfig: () => ({ meta: {}, agents: {} }),
 }));
-vi.mock("@elizaos/shared", () => ({
-  resolveDesktopApiPort: () => 31337,
-  resolveDesktopUiPort: () => 2138,
-  isLoopbackBindHost: () => true,
-  normalizeOnboardingProviderId: (v: unknown) =>
-    typeof v === "string" ? v.trim().toLowerCase() : null,
-  resolveDeploymentTargetInConfig: () => ({}),
-  resolveServiceRoutingInConfig: () => ({}),
-}));
-vi.mock("./auth", () => ({
-  ensureRouteAuthorized: vi.fn(async () => true),
-}));
-vi.mock("./auth.ts", () => ({
-  ensureRouteAuthorized: vi.fn(async () => true),
-}));
+vi.mock("@elizaos/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@elizaos/shared")>();
+  return {
+    ...actual,
+    resolveDesktopApiPort: () => 31337,
+    resolveDesktopUiPort: () => 2138,
+    isLoopbackBindHost: () => true,
+    normalizeOnboardingProviderId: (v: unknown) =>
+      typeof v === "string" ? v.trim().toLowerCase() : null,
+    resolveDeploymentTargetInConfig: () => ({}),
+    resolveServiceRoutingInConfig: () => ({}),
+  };
+});
+vi.mock("./auth", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth")>();
+  return {
+    ...actual,
+    ensureRouteAuthorized: vi.fn(async () => true),
+  };
+});
+vi.mock("./auth.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./auth.ts")>();
+  return {
+    ...actual,
+    ensureRouteAuthorized: vi.fn(async () => true),
+  };
+});
 
 import { voiceLatencyTracer } from "../services/local-inference/latency-trace";
 import { handleDevCompatRoutes } from "./dev-compat-routes";

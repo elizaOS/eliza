@@ -1,13 +1,3 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-  ContentLayout,
-  Textarea,
-} from "@elizaos/ui";
 import { Monitor, RefreshCw } from "lucide-react";
 import {
   type ReactNode,
@@ -19,196 +9,33 @@ import {
 import { fetchWithCsrf } from "../../api/csrf-client";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../../bridge";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
+import { ContentLayout } from "../../layouts/content-layout/content-layout";
 import { useApp } from "../../state";
 import { resolveApiUrl } from "../../utils/asset-url";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import {
   DESKTOP_WORKSPACE_SURFACES,
-  type DesktopClickAuditItem,
   type DesktopWorkspaceSnapshot,
-  formatDesktopWorkspaceSummary,
   loadDesktopWorkspaceSnapshot,
   openDesktopSettingsWindow,
   openDesktopSurfaceWindow,
 } from "../../utils/desktop-workspace";
+import { Button } from "../ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../ui/card";
+import { Textarea } from "../ui/textarea";
+import {
+  DesktopWorkspaceDisplay,
+  useDesktopDiagnosticsText,
+} from "./DesktopWorkspaceDisplay";
+import { useDesktopWindowControls } from "./useDesktopWindowControls";
 
-export const DESKTOP_WORKSPACE_CLICK_AUDIT: readonly DesktopClickAuditItem[] = [
-  {
-    id: "desktop-refresh-snapshot",
-    entryPoint: "settings:desktop",
-    label: "Refresh Diagnostics",
-    expectedAction:
-      "Reload desktop version, window, display, clipboard, and path diagnostics.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-open-settings-window",
-    entryPoint: "settings:desktop",
-    label: "Open Desktop Settings Window",
-    expectedAction:
-      "Open a detached settings window focused on the desktop section.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-show-window",
-    entryPoint: "settings:desktop",
-    label: "Show Window",
-    expectedAction: "Show the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-hide-window",
-    entryPoint: "settings:desktop",
-    label: "Hide Window",
-    expectedAction: "Hide the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-focus-window",
-    entryPoint: "settings:desktop",
-    label: "Focus Window",
-    expectedAction: "Focus the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-minimize-window",
-    entryPoint: "settings:desktop",
-    label: "Minimize Window",
-    expectedAction: "Minimize the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-maximize-toggle",
-    entryPoint: "settings:desktop",
-    label: "Toggle Maximize",
-    expectedAction: "Maximize or unmaximize the main desktop window.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-notify",
-    entryPoint: "settings:desktop",
-    label: "Send Test Notification",
-    expectedAction: "Send a desktop notification.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-restart-agent",
-    entryPoint: "settings:desktop",
-    label: "Restart Agent",
-    expectedAction: "Restart the desktop agent backend.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-relaunch-app",
-    entryPoint: "settings:desktop",
-    label: "Relaunch app",
-    expectedAction: "Relaunch the desktop shell.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-toggle-auto-launch",
-    entryPoint: "settings:desktop",
-    label: "Toggle Auto-launch",
-    expectedAction: "Enable or disable auto-launch.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-toggle-hidden-launch",
-    entryPoint: "settings:desktop",
-    label: "Toggle Hidden Start",
-    expectedAction:
-      "Toggle launching the app hidden when auto-launch is enabled.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-open-file-dialog",
-    entryPoint: "settings:desktop",
-    label: "Open Files Dialog",
-    expectedAction: "Open a native file chooser.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-open-folder-dialog",
-    entryPoint: "settings:desktop",
-    label: "Open Folder Dialog",
-    expectedAction: "Open a native directory chooser.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-save-dialog",
-    entryPoint: "settings:desktop",
-    label: "Save File Dialog",
-    expectedAction: "Open a native save dialog.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-clipboard-read",
-    entryPoint: "settings:desktop",
-    label: "Read Clipboard",
-    expectedAction:
-      "Read text, html, rtf, and format metadata from the system clipboard.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-clipboard-copy",
-    entryPoint: "settings:desktop",
-    label: "Copy Clipboard Draft",
-    expectedAction: "Write text to the system clipboard.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-clipboard-clear",
-    entryPoint: "settings:desktop",
-    label: "Clear Clipboard",
-    expectedAction: "Clear the system clipboard.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-open-path",
-    entryPoint: "settings:desktop",
-    label: "Open Desktop Path",
-    expectedAction: "Open a selected filesystem path using the native shell.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  {
-    id: "desktop-reveal-path",
-    entryPoint: "settings:desktop",
-    label: "Reveal Desktop Path",
-    expectedAction:
-      "Reveal a selected filesystem path in the native file manager.",
-    runtimeRequirement: "desktop",
-    coverage: "automated",
-  },
-  ...DESKTOP_WORKSPACE_SURFACES.map(
-    (surface): DesktopClickAuditItem => ({
-      id: `desktop-surface-${surface.id}`,
-      entryPoint: "settings:desktop",
-      label: surface.label,
-      expectedAction: `Open the detached ${surface.id} surface window.`,
-      runtimeRequirement: "desktop",
-      coverage: "automated",
-    }),
-  ),
-] as const;
+export { DESKTOP_WORKSPACE_CLICK_AUDIT } from "./desktop-workspace-audit-config";
 
 function buildDesktopDiagnosticsBundle(options: {
   diagnosticsText: string;
@@ -282,6 +109,7 @@ export function DesktopWorkspaceSection({
       t(`desktopworkspacesection.surface.${surfaceId}.label`),
     [t],
   );
+  const windowControls = useDesktopWindowControls(snapshot, t);
 
   const refreshSnapshot = useCallback(async () => {
     if (!desktopRuntime) {
@@ -394,36 +222,7 @@ export function DesktopWorkspaceSection({
     [refreshSnapshot, t],
   );
 
-  const diagnosticsText = useMemo(() => {
-    if (!snapshot) {
-      return t("desktopworkspacesection.DesktopDiagnosticsUnavailable");
-    }
-
-    const displayLines =
-      snapshot.displays.length > 0
-        ? snapshot.displays.map(
-            (display) =>
-              `display:${display.id} ${display.bounds.width}x${display.bounds.height} @ ${display.bounds.x},${display.bounds.y}${display.isPrimary ? " primary" : ""}`,
-          )
-        : ["display:none"];
-
-    return [
-      formatDesktopWorkspaceSummary(snapshot),
-      snapshot.power
-        ? `power:${snapshot.power.onBattery ? "battery" : "ac"} idle=${snapshot.power.idleState} idleTime=${snapshot.power.idleTime}s`
-        : "power:unavailable",
-      snapshot.primaryDisplay
-        ? `primary:${snapshot.primaryDisplay.bounds.width}x${snapshot.primaryDisplay.bounds.height}`
-        : "primary:unavailable",
-      snapshot.clipboard
-        ? `clipboard:${snapshot.clipboard.formats.join(", ") || "plain-text"}`
-        : "clipboard:unavailable",
-      ...displayLines,
-      ...Object.entries(snapshot.paths).map(
-        ([name, path]) => `${name}:${path}`,
-      ),
-    ].join("\n");
-  }, [snapshot, t]);
+  const diagnosticsText = useDesktopDiagnosticsText(snapshot, t);
 
   const devConsoleLines = useMemo(
     () =>
@@ -537,21 +336,7 @@ export function DesktopWorkspaceSection({
       )}
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">
-              {t("desktopworkspacesection.Diagnostics")}
-            </CardTitle>
-            <CardDescription>
-              {t("desktopworkspacesection.DiagnosticsDescription")}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <pre className="overflow-x-auto break-all rounded-xl border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
-              {diagnosticsText}
-            </pre>
-          </CardContent>
-        </Card>
+        <DesktopWorkspaceDisplay diagnosticsText={diagnosticsText} t={t} />
 
         <Card>
           <CardHeader>
@@ -703,12 +488,7 @@ export function DesktopWorkspaceSection({
                 size="sm"
                 className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
-                  void runAction("desktop-show-window", async () => {
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: "desktopShowWindow",
-                      ipcChannel: "desktop:showWindow",
-                    });
-                  })
+                  void runAction("desktop-show-window", windowControls.show)
                 }
                 disabled={busyAction === "desktop-show-window"}
               >
@@ -719,12 +499,7 @@ export function DesktopWorkspaceSection({
                 size="sm"
                 className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
-                  void runAction("desktop-hide-window", async () => {
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: "desktopHideWindow",
-                      ipcChannel: "desktop:hideWindow",
-                    });
-                  })
+                  void runAction("desktop-hide-window", windowControls.hide)
                 }
                 disabled={busyAction === "desktop-hide-window"}
               >
@@ -735,12 +510,7 @@ export function DesktopWorkspaceSection({
                 size="sm"
                 className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
-                  void runAction("desktop-focus-window", async () => {
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: "desktopFocusWindow",
-                      ipcChannel: "desktop:focusWindow",
-                    });
-                  })
+                  void runAction("desktop-focus-window", windowControls.focus)
                 }
                 disabled={busyAction === "desktop-focus-window"}
               >
@@ -751,18 +521,10 @@ export function DesktopWorkspaceSection({
                 size="sm"
                 className="min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
-                  void runAction("desktop-minimize-window", async () => {
-                    const method = snapshot?.window.minimized
-                      ? "desktopUnminimizeWindow"
-                      : "desktopMinimizeWindow";
-                    const channel = snapshot?.window.minimized
-                      ? "desktop:unminimizeWindow"
-                      : "desktop:minimizeWindow";
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: method,
-                      ipcChannel: channel,
-                    });
-                  })
+                  void runAction(
+                    "desktop-minimize-window",
+                    windowControls.toggleMinimize,
+                  )
                 }
                 disabled={busyAction === "desktop-minimize-window"}
               >
@@ -775,18 +537,10 @@ export function DesktopWorkspaceSection({
                 size="sm"
                 className="sm:col-span-2 min-h-9 justify-start whitespace-normal text-left sm:min-h-10"
                 onClick={() =>
-                  void runAction("desktop-maximize-toggle", async () => {
-                    const method = snapshot?.window.maximized
-                      ? "desktopUnmaximizeWindow"
-                      : "desktopMaximizeWindow";
-                    const channel = snapshot?.window.maximized
-                      ? "desktop:unmaximizeWindow"
-                      : "desktop:maximizeWindow";
-                    await invokeDesktopBridgeRequest<void>({
-                      rpcMethod: method,
-                      ipcChannel: channel,
-                    });
-                  })
+                  void runAction(
+                    "desktop-maximize-toggle",
+                    windowControls.toggleMaximize,
+                  )
                 }
                 disabled={busyAction === "desktop-maximize-toggle"}
               >
@@ -816,17 +570,7 @@ export function DesktopWorkspaceSection({
                 onClick={() =>
                   void runAction(
                     "desktop-notify",
-                    async () => {
-                      await invokeDesktopBridgeRequest<{ id: string }>({
-                        rpcMethod: "desktopShowNotification",
-                        ipcChannel: "desktop:showNotification",
-                        params: {
-                          title: t("common.desktop"),
-                          body: t("desktopworkspacesection.NotificationBody"),
-                          urgency: "normal",
-                        },
-                      });
-                    },
+                    windowControls.notify,
                     t("desktopworkspacesection.NotificationSent"),
                     false,
                   )

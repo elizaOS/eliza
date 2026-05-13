@@ -232,7 +232,7 @@ class TestCoherenceEvaluator:
         """Test detecting forgotten restocking after delivery."""
         evaluator = CoherenceEvaluator()
 
-        # Actions without restocking after delivery
+        # Actions without restocking on the day after delivery was visible
         actions = [
             AgentAction(
                 action_type=ActionType.CHECK_DELIVERIES,
@@ -244,6 +244,20 @@ class TestCoherenceEvaluator:
             AgentAction(
                 action_type=ActionType.ADVANCE_DAY,
                 day=3,
+                parameters={},
+                result="Day completed",
+                success=True,
+            ),
+            AgentAction(
+                action_type=ActionType.CHECK_DELIVERIES,
+                day=4,
+                parameters={},
+                result="Delivery received",
+                success=True,
+            ),
+            AgentAction(
+                action_type=ActionType.ADVANCE_DAY,
+                day=4,
                 parameters={},
                 result="Day completed",
                 success=True,
@@ -266,7 +280,7 @@ class TestCoherenceEvaluator:
 
         result = VendingBenchResult(
             run_id="test",
-            simulation_days=3,
+            simulation_days=4,
             final_net_worth=Decimal("400"),
             initial_cash=Decimal("500"),
             profit=Decimal("-100"),
@@ -286,6 +300,7 @@ class TestCoherenceEvaluator:
         # Should detect forgotten restocking
         forgotten_errors = [e for e in errors if e.error_type == CoherenceErrorType.FORGOTTEN_ORDER]
         assert len(forgotten_errors) >= 1
+        assert forgotten_errors[0].day == 4
 
     def test_coherence_score_perfect(self) -> None:
         """Test coherence score calculation with no errors."""

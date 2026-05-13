@@ -63,14 +63,14 @@ component.
 
 | Component | v1 source (upstream HF repo) | In bundle as | Optimization on top |
 |---|---|---|---|
-| Text 0.6B | `Qwen/Qwen3-0.6B-GGUF` (until `Qwen3.5-0.6B` is published) | `text/eliza-1-0_6b-32k.gguf` | TurboQuant Q3 + QJL K-cache + PolarQuant V-cache + fused-attn + DFlash |
-| Text 1.7B | `Qwen/Qwen3-1.7B-GGUF` (until `Qwen3.5-1.7B` is published) | `text/eliza-1-1_7b-{32k,64k}.gguf` | TurboQuant Q3/Q4 + QJL + Polar + fused-attn + DFlash |
+| Text 0.8B | `Qwen/Qwen3.5-0.8B` (convert from safetensors or the matching GGUF once published) | `text/eliza-1-0_8b-32k.gguf` | TurboQuant Q3 + QJL K-cache + PolarQuant V-cache + fused-attn + DFlash |
+| Text 2B | `Qwen/Qwen3.5-2B` (convert from safetensors or the matching GGUF once published) | `text/eliza-1-2b-{32k,64k}.gguf` | TurboQuant Q3/Q4 + QJL + Polar + fused-attn + DFlash |
 | Text 9B | `unsloth/Qwen3.5-9B-GGUF` (reconvert from HF safetensors for Eliza types) | `text/eliza-1-9b-{64k,128k}.gguf` + `vision/mmproj-9b.gguf` | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` (≥64k) + fused-attn + DFlash |
 | Text 27B (`27b`, `27b-256k`, `27b-1m`) | `batiai/Qwen3.6-27B-GGUF` (reconvert for Eliza types) | `text/eliza-1-27b-{128k,256k,1m}.gguf` + `vision/mmproj-27b*.gguf` | TurboQuant Q4 + QJL + Polar + `turbo3_tcq` + fused-attn + DFlash |
-| Voice (TTS) | `Serveurperso/OmniVoice-GGUF` | `tts/omnivoice-base-<quant>.gguf` + `tts/omnivoice-tokenizer-<quant>.gguf` | fused-omnivoice runtime; quant = `Q4_K_M` on 0.6B/1.7B, `Q8_0` on 9B+ (`VOICE_QUANT_BY_TIER`); non-commercial CC-compatible licensing per `packages/inference/AGENTS.md` §1 |
-| ASR | `ggml-org/Qwen3-ASR-0.6B-GGUF` (0.6B/1.7B/9B) / `ggml-org/Qwen3-ASR-1.7B-GGUF` (27B tiers) | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` | tokenizer fused with the text backbone (zero re-tokenization) |
+| Voice (TTS) | `Serveurperso/OmniVoice-GGUF` | `tts/omnivoice-base-<quant>.gguf` + `tts/omnivoice-tokenizer-<quant>.gguf` | fused-omnivoice runtime; quant = `Q4_K_M` on 0.8B/2B, `Q8_0` on 9B+ (`VOICE_QUANT_BY_TIER`); non-commercial CC-compatible licensing per `packages/inference/AGENTS.md` §1 |
+| ASR | Eliza-1 ASR GGUF staged under the bundle's `asr/` region | `asr/eliza-1-asr.gguf` + `asr/eliza-1-asr-mmproj.gguf` | tokenizer fused with the text backbone (zero re-tokenization) |
 | VAD | Silero VAD v5.1.2 (MIT) | `vad/silero-vad-v5.1.2.ggml.bin` (native GGML; legacy bundles may also carry the `vad/silero-vad-int8.onnx` fallback — not the release path) | none |
-| Embedding | `Qwen/Qwen3-Embedding-0.6B-GGUF` (1.7B+ tiers) | `embedding/...gguf` | none beyond fork conversion; the `0_6b` tier omits it (pools from the text backbone with `--pooling last`) |
+| Embedding | Eliza-1 dedicated embedding GGUF (2B+ tiers) | `embedding/...gguf` | none beyond fork conversion; the `0_8b` tier may omit it (pools from the text backbone with `--pooling last`) |
 | Drafter (DFlash) | distilled (KD, NOT fine-tuning of the target) from each tier's base text model; published under `elizaos/eliza-1-<tier>` | `dflash/drafter-<tier>.gguf` + `dflash/target-meta.json` | drafter GGUF stamps `dflash-draft.target_checkpoint_sha256` |
 | Voice preset cache | placeholder until a real fused build emits one | `cache/voice-preset-default.bin` | n/a |
 
@@ -115,11 +115,12 @@ for the per backend × device catalog with runner commands. In summary:
 - **Verified on hardware:** Metal standalone + built-fork graph dispatch (Apple
   M4 Max); Vulkan standalone score/fallback/fused-attn (Intel ARL Mesa ANV;
   also lavapipe + MoltenVK for parts) and Vulkan built-fork graph dispatch on
-  Intel-ANV; Android Vulkan standalone fixtures (Pixel 6a / Mali-G78); iOS
+  Intel-ANV; Android Vulkan standalone fixtures **and built-fork graph dispatch**
+  (Pixel 6a / Mali-G78); iOS
   device runtime smoke (iPhone 15 Pro / iOS 26.3.1 — symbol/Metal-availability/ABI
   shape, 3/3 XCTest); CPU SIMD self-tests (Intel Arrow Lake AVX2 + AVX-VNNI).
 - **Needs hardware:** AMD / NVIDIA native Vulkan graph dispatch; Android Adreno
-  + Mali built-fork graph-dispatch evidence; CUDA (desktop NVIDIA + GH200/Hopper
+  graph-dispatch evidence; CUDA (desktop NVIDIA + GH200/Hopper
   aarch64); ROCm/HIP; native Windows x64/arm64 smoke; the weight-backed iOS
   Capacitor bundle smoke; ARM CPU SIMD bench; the Metal fused-attn kernel
   hardware verify; and — for each tier — the real fork build, the per-backend

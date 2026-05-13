@@ -44,6 +44,11 @@ export async function runBench(opts: RunBenchOpts): Promise<BenchRun> {
       throw new Error(`[voice-bench] unknown scenario id: ${id}`);
     }
   }
+  if (isMockBackendLabel(opts.driver.name) || isMockBackendLabel(opts.driver.backend)) {
+    throw new Error(
+      "[voice-bench] mock/fake/stub drivers are not permitted for benchmark runs; use a real local voice pipeline driver",
+    );
+  }
 
   const allMetrics: BenchMetrics[] = [];
   for (const build of selected) {
@@ -79,6 +84,18 @@ export async function runBench(opts: RunBenchOpts): Promise<BenchRun> {
     fixtures: allMetrics,
     aggregates,
   };
+}
+
+function isMockBackendLabel(value: string | undefined): boolean {
+  const label = value?.trim().toLowerCase() ?? "";
+  return (
+    label === "mock" ||
+    label === "fake" ||
+    label === "stub" ||
+    label.includes("mock") ||
+    label.includes("fake") ||
+    label.includes("stub")
+  );
 }
 
 function readGitSha(): string {
@@ -119,8 +136,8 @@ export function parseCliArgs(argv: readonly string[]): ParsedCliArgs {
     }
   }
   return {
-    bundle: args.bundle ?? "eliza-1-1.7b",
-    backend: args.backend ?? "mock",
+    bundle: args.bundle ?? "eliza-1-2b",
+    backend: args.backend ?? "real",
     scenario: args.scenario ?? "all",
     runs: Number.parseInt(args.runs ?? "1", 10) || 1,
     output: args.output,

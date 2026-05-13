@@ -1,7 +1,8 @@
-import { Badge, Button } from "@elizaos/ui";
 import { useEffect, useRef } from "react";
 import type { ColumnInfo } from "../../api";
 import { useApp } from "../../state";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 
 export type DbView = "tables" | "query";
 export type SortDir = "asc" | "desc" | null;

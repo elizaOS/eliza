@@ -244,6 +244,7 @@ class AgentAction:
     success: bool = True
     tokens_used: int = 0
     latency_ms: float = 0.0
+    raw_response: str = ""
 
 
 @dataclass
@@ -268,6 +269,8 @@ class VendingBenchResult:
     total_tokens: int = 0
     total_latency_ms: float = 0.0
     error: str | None = None
+    starter_baseline_revenue: Decimal = Decimal("0")
+    incremental_revenue: Decimal = Decimal("0")
 
 
 @dataclass
@@ -305,6 +308,9 @@ class VendingBenchMetrics:
 
     # Optional metrics with defaults
     error_breakdown: dict[CoherenceErrorType, int] = field(default_factory=dict)
+    avg_starter_baseline_revenue: Decimal = Decimal("0")
+    avg_incremental_revenue: Decimal = Decimal("0")
+    total_incremental_revenue: Decimal = Decimal("0")
 
 
 @dataclass
@@ -339,6 +345,7 @@ class VendingBenchConfig:
     max_days_per_run: int = 30
     initial_cash: Decimal = Decimal("500.00")
     random_seed: int | None = None
+    starter_inventory: bool = False
 
     # Environment settings
     daily_base_fee: Decimal = Decimal("5.00")

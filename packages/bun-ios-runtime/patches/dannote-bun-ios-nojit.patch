@@ -1,5 +1,5 @@
 diff --git a/cmake/targets/BuildBun.cmake b/cmake/targets/BuildBun.cmake
-index 7fd4a2d57..46143106a 100644
+index 7fd4a2d575..46143106af 100644
 --- a/cmake/targets/BuildBun.cmake
 +++ b/cmake/targets/BuildBun.cmake
 @@ -702,7 +702,7 @@ if(NOT "${REVISION}" STREQUAL "")
@@ -27,8 +27,39 @@ index 7fd4a2d57..46143106a 100644
      )
  
      if(ENABLE_ASAN)
+diff --git a/cmake/tools/SetupZig.cmake b/cmake/tools/SetupZig.cmake
+index cd5e677702..423b8ae7c1 100644
+--- a/cmake/tools/SetupZig.cmake
++++ b/cmake/tools/SetupZig.cmake
+@@ -68,7 +68,9 @@ setenv(ZIG_GLOBAL_CACHE_DIR ${ZIG_GLOBAL_CACHE_DIR})
+ 
+ setx(ZIG_PATH ${VENDOR_PATH}/zig)
+ 
+-if(WIN32)
++if(DEFINED ENV{ELIZA_BUN_IOS_ZIG_EXECUTABLE})
++  setx(ZIG_EXECUTABLE $ENV{ELIZA_BUN_IOS_ZIG_EXECUTABLE})
++elseif(WIN32)
+   setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig.exe)
+ else()
+   setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig)
+diff --git a/src/Global.zig b/src/Global.zig
+index 91fb6994a8..ddb0ebffae 100644
+--- a/src/Global.zig
++++ b/src/Global.zig
+@@ -127,10 +127,7 @@ pub fn exit(code: u32) noreturn {
+             // The host app continues running.
+             if (bun_ios_exit_callback) |cb| {
+                 cb(code);
+-                // Don't exit - just sleep this thread forever so host app keeps running
+-                while (true) {
+-                    std.Thread.sleep(std.time.ns_per_s * 60 * 60 * 24); // Sleep 1 day
+-                }
++                bun.exitThread();
+             }
+             // Only call _exit if no callback is set (command-line mode)
+             std.c._exit(@bitCast(code));
 diff --git a/src/bun.js/bindings/BunCPUProfiler.cpp b/src/bun.js/bindings/BunCPUProfiler.cpp
-index 5cbafb227..e1b79f21e 100644
+index 5cbafb227c..e1b79f21e8 100644
 --- a/src/bun.js/bindings/BunCPUProfiler.cpp
 +++ b/src/bun.js/bindings/BunCPUProfiler.cpp
 @@ -21,6 +21,54 @@ extern "C" void Bun__startCPUProfiler(JSC::VM* vm);
@@ -144,7 +175,7 @@ index 5cbafb227..e1b79f21e 100644
 +
 +#endif
 diff --git a/src/bun.js/bindings/BunDebugger.cpp b/src/bun.js/bindings/BunDebugger.cpp
-index c0db82afc..d62a7bd34 100644
+index c0db82afce..d62a7bd34c 100644
 --- a/src/bun.js/bindings/BunDebugger.cpp
 +++ b/src/bun.js/bindings/BunDebugger.cpp
 @@ -19,6 +19,43 @@
@@ -198,7 +229,7 @@ index c0db82afc..d62a7bd34 100644
 +
 +#endif
 diff --git a/src/bun.js/bindings/BunInspector.cpp b/src/bun.js/bindings/BunInspector.cpp
-index cbabe4f91..722da9ffb 100644
+index cbabe4f91e..722da9ffb6 100644
 --- a/src/bun.js/bindings/BunInspector.cpp
 +++ b/src/bun.js/bindings/BunInspector.cpp
 @@ -8,6 +8,14 @@
@@ -223,7 +254,7 @@ index cbabe4f91..722da9ffb 100644
 +
 +#endif
 diff --git a/src/bun.js/bindings/ConsoleObject.cpp b/src/bun.js/bindings/ConsoleObject.cpp
-index 6d8fddae5..be134fdeb 100644
+index 6d8fddae56..be134fdeb5 100644
 --- a/src/bun.js/bindings/ConsoleObject.cpp
 +++ b/src/bun.js/bindings/ConsoleObject.cpp
 @@ -34,11 +34,13 @@ void ConsoleObject::messageWithTypeAndLevel(MessageType type, MessageLevel level
@@ -272,7 +303,7 @@ index 6d8fddae5..be134fdeb 100644
  
  }
 diff --git a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
-index 4cc5e4c65..bfa6ea10b 100644
+index 4cc5e4c659..bfa6ea10bc 100644
 --- a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
 +++ b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
 @@ -13,6 +13,24 @@
@@ -307,7 +338,7 @@ index 4cc5e4c65..bfa6ea10b 100644
 +
 +#endif
 diff --git a/src/bun.js/bindings/InspectorHTTPServerAgent.cpp b/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
-index e1e127849..c7b031c35 100644
+index e1e1278498..c7b031c35b 100644
 --- a/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
 +++ b/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
 @@ -9,6 +9,18 @@
@@ -336,7 +367,7 @@ index e1e127849..c7b031c35 100644
 +
 +#endif
 diff --git a/src/bun.js/bindings/InspectorLifecycleAgent.cpp b/src/bun.js/bindings/InspectorLifecycleAgent.cpp
-index e3c24a1f9..582036c5b 100644
+index e3c24a1f9a..582036c5bd 100644
 --- a/src/bun.js/bindings/InspectorLifecycleAgent.cpp
 +++ b/src/bun.js/bindings/InspectorLifecycleAgent.cpp
 @@ -19,6 +19,17 @@
@@ -364,7 +395,7 @@ index e3c24a1f9..582036c5b 100644
 +
 +#endif
 diff --git a/src/bun.js/bindings/InspectorTestReporterAgent.cpp b/src/bun.js/bindings/InspectorTestReporterAgent.cpp
-index 968e5faf6..20c7beeb8 100644
+index 968e5faf6e..20c7beeb89 100644
 --- a/src/bun.js/bindings/InspectorTestReporterAgent.cpp
 +++ b/src/bun.js/bindings/InspectorTestReporterAgent.cpp
 @@ -13,6 +13,19 @@
@@ -394,7 +425,7 @@ index 968e5faf6..20c7beeb8 100644
 +
 +#endif
 diff --git a/src/bun.js/bindings/ZigGlobalObject.cpp b/src/bun.js/bindings/ZigGlobalObject.cpp
-index 996b007e5..8bfe3e876 100644
+index 996b007e54..8bfe3e876b 100644
 --- a/src/bun.js/bindings/ZigGlobalObject.cpp
 +++ b/src/bun.js/bindings/ZigGlobalObject.cpp
 @@ -302,7 +302,6 @@ extern "C" void JSCInitialize(const char* envp[], size_t envc, void (*onCrash)(c
@@ -406,45 +437,27 @@ index 996b007e5..8bfe3e876 100644
              JSC::Options::heapGrowthSteepnessFactor() = 1.0;
              JSC::Options::heapGrowthMaxIncrease() = 2.0;
 diff --git a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp
-index 1217b37ee..fa050a59c 100644
+index 1217b37ee7..8ab769f9cc 100644
 --- a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp
 +++ b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.cpp
-@@ -49,14 +49,14 @@ WebCoreTypedArrayController::WebCoreTypedArrayController(bool allowAtomicsWait)
+@@ -51,11 +51,15 @@ WebCoreTypedArrayController::~WebCoreTypedArrayController() = default;
  
- WebCoreTypedArrayController::~WebCoreTypedArrayController() = default;
- 
--JSC::JSArrayBuffer* WebCoreTypedArrayController::toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer* buffer)
-+JSC::JSArrayBuffer* WebCoreTypedArrayController::toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer& buffer)
+ JSC::JSArrayBuffer* WebCoreTypedArrayController::toJS(JSC::JSGlobalObject* lexicalGlobalObject, JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer* buffer)
  {
--    return JSC::jsCast<JSC::JSArrayBuffer*>(WebCore::toJS(lexicalGlobalObject, getDefaultGlobal(globalObject), buffer));
-+    return JSC::jsCast<JSC::JSArrayBuffer*>(WebCore::toJS(lexicalGlobalObject, getDefaultGlobal(globalObject), &buffer));
++    if (!buffer)
++        return nullptr;
+     return JSC::jsCast<JSC::JSArrayBuffer*>(WebCore::toJS(lexicalGlobalObject, getDefaultGlobal(globalObject), buffer));
  }
  
--void WebCoreTypedArrayController::registerWrapper(JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer* native, JSC::JSArrayBuffer* wrapper)
-+void WebCoreTypedArrayController::registerWrapper(JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer& native, JSC::JSArrayBuffer& wrapper)
+ void WebCoreTypedArrayController::registerWrapper(JSC::JSGlobalObject* globalObject, JSC::ArrayBuffer* native, JSC::JSArrayBuffer* wrapper)
  {
--    cacheWrapper(static_cast<JSVMClientData*>(JSC::getVM(globalObject).clientData)->normalWorld(), native, wrapper);
-+    cacheWrapper(static_cast<JSVMClientData*>(JSC::getVM(globalObject).clientData)->normalWorld(), &native, &wrapper);
++    if (!native || !wrapper)
++        return;
+     cacheWrapper(static_cast<JSVMClientData*>(JSC::getVM(globalObject).clientData)->normalWorld(), native, wrapper);
  }
  
- bool WebCoreTypedArrayController::isAtomicsWaitAllowedOnCurrentThread()
-diff --git a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h
-index d283a946d..ae94125a9 100644
---- a/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h
-+++ b/src/bun.js/bindings/webcore/WebCoreTypedArrayController.h
-@@ -35,8 +35,8 @@ public:
-     WebCoreTypedArrayController(bool allowAtomicsWait);
-     virtual ~WebCoreTypedArrayController();
- 
--    JSC::JSArrayBuffer* toJS(JSC::JSGlobalObject*, JSC::JSGlobalObject*, JSC::ArrayBuffer*) override;
--    void registerWrapper(JSC::JSGlobalObject*, ArrayBuffer*, JSC::JSArrayBuffer*) override;
-+    JSC::JSArrayBuffer* toJS(JSC::JSGlobalObject*, JSC::JSGlobalObject*, JSC::ArrayBuffer&) override;
-+    void registerWrapper(JSC::JSGlobalObject*, ArrayBuffer&, JSC::JSArrayBuffer&) override;
-     bool isAtomicsWaitAllowedOnCurrentThread() override;
- 
-     JSC::WeakHandleOwner* wrapperOwner() { return &m_owner; }
 diff --git a/src/bun.js/bindings/workaround-missing-symbols.cpp b/src/bun.js/bindings/workaround-missing-symbols.cpp
-index 15703aa7b..871f3aec2 100644
+index 15703aa7b9..871f3aec25 100644
 --- a/src/bun.js/bindings/workaround-missing-symbols.cpp
 +++ b/src/bun.js/bindings/workaround-missing-symbols.cpp
 @@ -269,6 +269,8 @@ extern "C" __attribute__((used)) char __libc_single_threaded = 0;
@@ -456,8 +469,106 @@ index 15703aa7b..871f3aec2 100644
  #else
  #define BUN_VERBOSE_ABORT_NOEXCEPT
  #endif
+diff --git a/src/bun.js/modules/BunJSCModule.h b/src/bun.js/modules/BunJSCModule.h
+index ef8670ff17..f4e708aec4 100644
+--- a/src/bun.js/modules/BunJSCModule.h
++++ b/src/bun.js/modules/BunJSCModule.h
+@@ -79,11 +79,14 @@ JSC_DEFINE_HOST_FUNCTION(functionStartRemoteDebugger,
+     JSC::JSValue hostValue = callFrame->argument(0);
+     JSC::JSValue portValue = callFrame->argument(1);
+     const char* host = defaultHost;
++    CString hostCString;
+     if (hostValue.isString()) {
+ 
+         auto str = hostValue.toWTFString(globalObject);
+-        if (!str.isEmpty())
+-            host = toCString(str).span().data();
++        if (!str.isEmpty()) {
++            hostCString = toCString(str);
++            host = hostCString.span().data();
++        }
+     } else if (!hostValue.isUndefined()) {
+         throwVMError(globalObject, scope,
+             createTypeError(globalObject, "host must be a string"_s));
+@@ -405,6 +408,7 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame* callFrame))
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -436,6 +440,10 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+ 
+     samplingProfiler.noticeCurrentThreadAsJSCExecutionThread();
+     samplingProfiler.start();
++#else
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(callFrame);
++#endif
+     return JSC::JSValue::encode(jsUndefined());
+ }
+ 
+@@ -444,6 +452,7 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame*))
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     auto& vm = JSC::getVM(globalObject);
+     JSC::DeferTermination deferScope(vm);
+     auto scope = DECLARE_THROW_SCOPE(vm);
+@@ -457,6 +466,9 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     JSC::EncodedJSValue result = JSC::JSValue::encode(JSONParse(globalObject, jsonString));
+     scope.releaseAssertNoException();
+     return result;
++#else
++    return JSC::JSValue::encode(JSC::constructEmptyArray(globalObject, nullptr, 0));
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGetRandomSeed);
+@@ -632,6 +644,7 @@ JSC_DEFINE_HOST_FUNCTION(functionSetTimeZone, (JSGlobalObject * globalObject, Ca
+ 
+ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, CallFrame* callFrame))
+ {
++#if ENABLE(SAMPLING_PROFILER)
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -744,6 +757,15 @@ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, Ca
+ 
+     JSValue result = report(vm, globalObject);
+     RELEASE_AND_RETURN(throwScope, JSValue::encode(result));
++#else
++    UNUSED_PARAM(callFrame);
++    auto& vm = JSC::getVM(globalObject);
++    JSObject* result = constructEmptyObject(globalObject, globalObject->objectPrototype(), 3);
++    result->putDirect(vm, Identifier::fromString(vm, "functions"_s), jsEmptyString(vm));
++    result->putDirect(vm, Identifier::fromString(vm, "bytecodes"_s), jsEmptyString(vm));
++    result->putDirect(vm, Identifier::fromString(vm, "stackTraces"_s), constructEmptyArray(globalObject, nullptr, 0));
++    return JSValue::encode(result);
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGenerateHeapSnapshotForDebugging);
+diff --git a/src/crash_handler.zig b/src/crash_handler.zig
+index 9dfb83f06e..a62b0c4f03 100644
+--- a/src/crash_handler.zig
++++ b/src/crash_handler.zig
+@@ -892,9 +892,10 @@ pub fn init() void {
+         .windows => {
+             windows_segfault_handle = windows.kernel32.AddVectoredExceptionHandler(0, handleSegfaultWindows);
+         },
+-        .mac, .ios, .linux => {
++        .mac, .linux => {
+             resetOnPosix();
+         },
++        .ios => {},
+         .wasm => @compileError("TODO"),
+     }
+ }
 diff --git a/src/ios/embedding.c b/src/ios/embedding.c
-index bdcb508df..384aa7be4 100644
+index bdcb508df5..384aa7be48 100644
 --- a/src/ios/embedding.c
 +++ b/src/ios/embedding.c
 @@ -19,8 +19,8 @@ extern void bun_main(void);

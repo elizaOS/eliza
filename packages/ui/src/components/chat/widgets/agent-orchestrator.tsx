@@ -16,7 +16,6 @@
  * plugin just provides the backend capabilities it consumes.
  */
 
-import { Button } from "@elizaos/ui";
 import {
   Activity,
   AlertTriangle,
@@ -47,6 +46,7 @@ import type { TranslateFn } from "../../../types";
 import { AppHero, type AppIdentitySource } from "../../apps/app-identity";
 import { loadMergedCatalogApps } from "../../apps/catalog-loader";
 import { getRunAttentionReasons } from "../../apps/run-attention";
+import { Button } from "../../ui/button";
 import { EmptyWidgetState, WidgetSection } from "./shared";
 import type {
   ChatSidebarWidgetDefinition,

@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import sharp from "sharp";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, "../..");
@@ -58,8 +59,17 @@ const APPS = [
   },
 ];
 
+const BENIGN_ISSUES = [
+  /"Keyboard" plugin is not implemented on web/i,
+  /\[Eliza\] Network plugin not available: Cannot read properties of undefined \(reading 'addListener'\)/i,
+];
+
 async function ensureDir(path) {
   await mkdir(path, { recursive: true });
+}
+
+function isBenignIssue(text) {
+  return BENIGN_ISSUES.some((pattern) => pattern.test(text));
 }
 
 async function readUiBase() {
@@ -67,6 +77,30 @@ async function readUiBase() {
   const parsed = JSON.parse(raw);
   if (!parsed.uiBase) throw new Error("Missing uiBase in .static-stack.json");
   return parsed.uiBase;
+}
+
+async function verifyStaticStack(uiBase) {
+  const statusUrl = `${uiBase}/api/status`;
+  let response;
+  try {
+    response = await fetch(statusUrl);
+  } catch (error) {
+    throw new Error(
+      `Static QA stack is not reachable at ${statusUrl}. Restart it with scripts/ai-qa/static-stack.mjs. Cause: ${String(error)}`,
+    );
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `Static QA stack status failed at ${statusUrl}: ${response.status} ${body}`,
+    );
+  }
+  const payload = await response.json().catch(() => null);
+  if (!payload || payload.state !== "running") {
+    throw new Error(
+      `Static QA stack is not running at ${statusUrl}: ${JSON.stringify(payload)}`,
+    );
+  }
 }
 
 async function seedPage(page) {
@@ -119,11 +153,12 @@ function installIssueCapture(page) {
       location: message.location(),
     };
     logs.push(entry);
-    if (message.type() === "error") {
+    if (message.type() === "error" && !isBenignIssue(message.text())) {
       issues.push({ kind: "console.error", detail: message.text() });
     }
   });
   page.on("pageerror", (error) => {
+    if (isBenignIssue(error.message)) return;
     issues.push({ kind: "pageerror", detail: error.message });
   });
   page.on("requestfailed", (request) => {
@@ -247,15 +282,74 @@ function issueSummary(records) {
   return all;
 }
 
+async function makeContactSheet(records, viewport) {
+  const rows = records.filter((record) => record.viewport === viewport);
+  if (rows.length === 0) return;
+
+  const tileWidth = viewport === "desktop" ? 480 : 220;
+  const tileHeight = viewport === "desktop" ? 300 : 300;
+  const labelHeight = 28;
+  const gap = 12;
+  const columns = viewport === "desktop" ? 3 : 5;
+  const sheetWidth = columns * tileWidth + (columns + 1) * gap;
+  const sheetHeight =
+    Math.ceil(rows.length / columns) * (tileHeight + labelHeight + gap) + gap;
+  const composites = [];
+
+  for (let index = 0; index < rows.length; index += 1) {
+    const record = rows[index];
+    const left = gap + (index % columns) * (tileWidth + gap);
+    const top = gap + Math.floor(index / columns) * (tileHeight + labelHeight + gap);
+    const image = await sharp(join(REPORT_DIR, record.screenshotRelPath))
+      .resize(tileWidth, tileHeight, { fit: "contain", background: "#09090b" })
+      .png()
+      .toBuffer();
+    const label = await sharp({
+      create: {
+        width: tileWidth,
+        height: labelHeight,
+        channels: 4,
+        background: "#111116",
+      },
+    })
+      .composite([
+        {
+          input: Buffer.from(
+            `<svg width="${tileWidth}" height="${labelHeight}"><text x="0" y="20" fill="#f4f4f5" font-size="18" font-family="Arial">${record.label}</text></svg>`,
+          ),
+        },
+      ])
+      .png()
+      .toBuffer();
+    composites.push({ input: label, left, top });
+    composites.push({ input: image, left, top: top + labelHeight });
+  }
+
+  await sharp({
+    create: {
+      width: sheetWidth,
+      height: sheetHeight,
+      channels: 4,
+      background: "#111116",
+    },
+  })
+    .composite(composites)
+    .png()
+    .toFile(join(REPORT_DIR, `contact-sheet-${viewport}.png`));
+}
+
 async function main() {
   await ensureDir(REPORT_DIR);
   const uiBase = await readUiBase();
+  await verifyStaticStack(uiBase);
   const browser = await chromium.launch();
   const records = [];
   try {
     for (const app of APPS) {
       for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
+        await verifyStaticStack(uiBase);
         records.push(await captureOne({ browser, uiBase, app, viewportName, viewport }));
+        await verifyStaticStack(uiBase);
       }
     }
   } finally {
@@ -270,6 +364,8 @@ async function main() {
     issueSummary: issueSummary(records),
   };
   await writeFile(join(REPORT_DIR, "report.json"), JSON.stringify(report, null, 2));
+  await makeContactSheet(records, "desktop");
+  await makeContactSheet(records, "mobile");
   console.log(REPORT_DIR);
 }
 

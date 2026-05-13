@@ -27,7 +27,7 @@ type ExportedStaticBindings = {
 
 export type ActionScanSort = "name" | "filepath";
 
-export type ScannedParameter = {
+type ScannedParameter = {
   name: string;
   description: string;
   required?: boolean;
@@ -36,7 +36,7 @@ export type ScannedParameter = {
   source: string;
 };
 
-export type SubActionReference = {
+type SubActionReference = {
   raw: string;
   name: string;
   kind: "name" | "ref" | "inline" | "spread" | "expression";
@@ -46,13 +46,13 @@ export type SubActionReference = {
   targetLine?: number;
 };
 
-export type InferredSubAction = {
+type InferredSubAction = {
   name: string;
   parameter: string;
   source: "parameter-enum" | "parameter-description";
 };
 
-export type ScannedAction = {
+type ScannedAction = {
   id: string;
   name: string;
   nameStatic: boolean;
@@ -81,7 +81,7 @@ export type ScannedAction = {
   parentNames: string[];
 };
 
-export type ActionTreeNode = {
+type ActionTreeNode = {
   id: string;
   name: string;
   kind: "action" | "missing" | "inferred";
@@ -97,7 +97,7 @@ export type ActionTreeNode = {
   children: ActionTreeNode[];
 };
 
-export type ActionScanResult = {
+type ActionScanResult = {
   generatedAt: string;
   repoRoot: string;
   sourceRoots: string[];

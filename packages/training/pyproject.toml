@@ -6,7 +6,10 @@ readme = "README.md"
 requires-python = ">=3.11,<3.13"
 
 dependencies = [
-  "huggingface-hub>=0.27.0",
+  # 1.13.0 has a one-file LFS upload typo in _upload_lfs_files
+  # (`filtered_tool_calls` vs `filtered_actions`) that breaks large GGUF
+  # publishes when Xet is disabled. Keep Hub publishing on the fixed line.
+  "huggingface-hub>=1.14.0",
   "datasets>=3.2.0",
   "pandas>=2.2.0",
   "pyyaml>=6.0.2",
@@ -19,6 +22,10 @@ dependencies = [
   "tiktoken>=0.8.0",
   "argostranslate>=1.11.0",
   "httpx>=0.27.0",
+  # PolarQuant's Lloyd-Max centroid generation imports scipy.stats.norm
+  # directly; keep it in the base training environment so smoke tests and
+  # dry-run recipe generation do not depend on optional train extras.
+  "scipy>=1.17.0",
   # Property-based testing for the privacy filter contract. Lightweight
   # pure-Python dep; pinned only at the floor to match the rest of the
   # test stack (pytest>=8).

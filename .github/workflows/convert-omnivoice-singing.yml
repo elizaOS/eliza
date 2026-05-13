@@ -1,0 +1,149 @@
+name: Convert OmniVoice singing -> GGUF
+
+# Converts ModelsLab/omnivoice-singing -> GGUF, uploads as workflow
+# artifact (always) and optionally to a Hugging Face mirror. Manual
+# dispatch only — heavy (~10-30 min, ~10 GB intermediate disk).
+# Secrets: HUGGINGFACE_HUB_TOKEN (download), HF_WRITE_TOKEN (upload).
+
+on:
+  workflow_dispatch:
+    inputs:
+      quantize:
+        description: "Quantization to apply to the F32 base GGUF"
+        required: true
+        type: choice
+        default: "Q8_0"
+        options:
+          - "none"
+          - "F16"
+          - "BF16"
+          - "Q8_0"
+          - "Q4_K_M"
+      upload_to_hf:
+        description: "Upload converted GGUFs to a Hugging Face mirror repo"
+        required: false
+        type: boolean
+        default: false
+      target_hf_repo:
+        description: "HF mirror repo (only used when upload_to_hf=true)"
+        required: false
+        type: string
+        default: "elizaOS/OmniVoice-Singing-GGUF"
+
+concurrency:
+  group: convert-omnivoice-singing-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  OMNIVOICE_REPO: "https://github.com/elizaOS/omnivoice.cpp.git"
+  OMNIVOICE_REF: "main"
+  OUT_DIR: "artifacts/omnivoice-singing"
+
+jobs:
+  convert:
+    name: Convert + (optional) upload
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Check available disk space
+        run: |
+          set -euo pipefail
+          FREE_GB=$(df -BG --output=avail / | tail -n1 | tr -dc '0-9')
+          echo "Free disk on /: ${FREE_GB} GB"
+          if [ "${FREE_GB}" -lt 25 ]; then
+            echo "::error::Need at least 25 GB free for HF download + GGUF conversion (have ${FREE_GB} GB)."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          show-progress: false
+
+      - name: Clone omnivoice.cpp (gitignored in parent repo)
+        env:
+          OMNIVOICE_REPO: ${{ env.OMNIVOICE_REPO }}
+          OMNIVOICE_REF: ${{ env.OMNIVOICE_REF }}
+        run: |
+          set -euo pipefail
+          TARGET_DIR="packages/inference/omnivoice.cpp"
+          if [ ! -d "${TARGET_DIR}/.git" ]; then
+            git clone --recurse-submodules "${OMNIVOICE_REPO}" "${TARGET_DIR}"
+          fi
+          git -C "${TARGET_DIR}" fetch --tags origin
+          git -C "${TARGET_DIR}" checkout "${OMNIVOICE_REF}"
+          git -C "${TARGET_DIR}" submodule update --init --recursive
+          git -C "${TARGET_DIR}" rev-parse HEAD
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python deps
+        run: |
+          set -euo pipefail
+          python3 -m pip install --upgrade pip
+          python3 -m pip install --upgrade \
+            transformers \
+            gguf \
+            safetensors \
+            numpy \
+            "huggingface_hub[cli]"
+          huggingface-cli --version || hf --version
+
+      - name: Build omnivoice.cpp quantize binary (skipped when quantize=none)
+        if: ${{ inputs.quantize != 'none' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build build-essential
+          cd packages/inference/omnivoice.cpp
+          if [ -x ./buildcpu.sh ]; then
+            ./buildcpu.sh
+          else
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+            cmake --build build --target quantize
+          fi
+          test -x build/quantize
+
+      - name: Run conversion
+        env:
+          HUGGINGFACE_HUB_TOKEN: ${{ secrets.HUGGINGFACE_HUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HUGGINGFACE_HUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${OUT_DIR}"
+          node scripts/inference/convert-omnivoice-singing.mjs \
+            --out-dir "${OUT_DIR}" \
+            --quantize "${{ inputs.quantize }}"
+          ls -lh "${OUT_DIR}"
+
+      - name: Upload GGUF artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: omnivoice-singing-gguf-${{ inputs.quantize }}
+          path: |
+            ${{ env.OUT_DIR }}/*.gguf
+            ${{ env.OUT_DIR }}/manifest.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload to Hugging Face mirror
+        if: ${{ inputs.upload_to_hf == true }}
+        env:
+          HF_TOKEN: ${{ secrets.HF_WRITE_TOKEN }}
+          TARGET_HF_REPO: ${{ inputs.target_hf_repo }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HF_TOKEN}" ]; then
+            echo "::error::upload_to_hf=true but HF_WRITE_TOKEN secret is not set."
+            exit 1
+          fi
+          huggingface-cli upload "${TARGET_HF_REPO}" "${OUT_DIR}" . \
+            --repo-type model \
+            --commit-message "Convert ModelsLab/omnivoice-singing -> GGUF (${{ inputs.quantize }}) [run ${{ github.run_id }}]"

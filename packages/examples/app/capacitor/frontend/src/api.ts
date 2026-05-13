@@ -1,6 +1,6 @@
 import type { AppConfig, ChatMessage, ProviderMode } from "./types";
 
-export type ChatResponse = {
+type ChatResponse = {
   responseText: string;
   effectiveMode: ProviderMode;
 };

@@ -2,12 +2,50 @@
  * Shared app manager contracts.
  */
 
-import {
-  getRegisteredCuratedApps,
-  type IAgentRuntime,
-  registerCuratedApp as registerCoreCuratedApp,
-} from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import z from "zod";
+
+// ---------------------------------------------------------------------------
+// Runtime-registered curated apps — keyed on a global Symbol so the same
+// store is shared across @elizaos/shared, @elizaos/app-core, and any plugin
+// that wires in additional curated entries. Owning the helpers here removes
+// shared's dependency on the @elizaos/core export.
+// ---------------------------------------------------------------------------
+
+const ELIZA_CURATED_APP_REGISTRY_KEY = Symbol.for(
+  "elizaos.curated-app-registry",
+);
+
+interface CuratedAppRegistryStore {
+  entries: ElizaCuratedAppDefinition[];
+}
+
+function getCuratedAppRegistryStore(): CuratedAppRegistryStore {
+  const globalObject = globalThis as Record<PropertyKey, unknown>;
+  const existing = globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] as
+    | CuratedAppRegistryStore
+    | null
+    | undefined;
+  if (existing) return existing;
+
+  const created: CuratedAppRegistryStore = { entries: [] };
+  globalObject[ELIZA_CURATED_APP_REGISTRY_KEY] = created;
+  return created;
+}
+
+function registerCoreCuratedApp(def: ElizaCuratedAppDefinition): void {
+  const store = getCuratedAppRegistryStore();
+  const existing = store.entries.findIndex((d) => d.slug === def.slug);
+  if (existing >= 0) {
+    store.entries[existing] = def;
+  } else {
+    store.entries.push(def);
+  }
+}
+
+function getRegisteredCuratedApps(): ElizaCuratedAppDefinition[] {
+  return [...getCuratedAppRegistryStore().entries];
+}
 
 export type AppSessionMode = "viewer" | "spectate-and-steer" | "external";
 

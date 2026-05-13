@@ -66,14 +66,13 @@ import {
   SharedResourceRegistry,
 } from "./shared-resources";
 import {
+  DEFAULT_VOICE_ID,
   DEFAULT_VOICE_PRESET_REL_PATH,
   SpeakerPresetCache,
 } from "./speaker-preset-cache";
 import {
   AsrUnavailableError,
   createStreamingTranscriber,
-  FfiStreamingTranscriber,
-  ffiSupportsStreamingAsr,
   type WhisperCppOptions,
 } from "./transcriber";
 import type {
@@ -107,6 +106,10 @@ const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
 const PHRASE_MAX_TOKENS_DEFAULT = 8;
 const STUB_PCM_MS_PER_PHRASE = 100;
 const STUB_PCM_STREAM_CHUNKS = 4;
+
+function ffiSpeakerPresetId(preset: SpeakerPreset): string | null {
+  return preset.voiceId === DEFAULT_VOICE_ID ? null : preset.voiceId;
+}
 
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
 export { VoiceStartupError };
@@ -345,7 +348,7 @@ export class FfiOmniVoiceBackend
       this.ffi.ttsSynthesizeStream({
         ctx,
         text: args.phrase.text,
-        speakerPresetId: args.preset.voiceId,
+        speakerPresetId: ffiSpeakerPresetId(args.preset),
         onChunk: ({ pcm, isFinal }) => {
           args.onKernelTick?.();
           if (!isFinal && pcm.length > 0) {
@@ -373,7 +376,7 @@ export class FfiOmniVoiceBackend
     const samples = this.ffi.ttsSynthesize({
       ctx,
       text: args.phrase.text,
-      speakerPresetId: args.preset.voiceId,
+      speakerPresetId: ffiSpeakerPresetId(args.preset),
       out,
     });
     return {
@@ -411,7 +414,7 @@ export class FfiOmniVoiceBackend
       const { cancelled } = this.ffi.ttsSynthesizeStream({
         ctx,
         text: args.phrase.text,
-        speakerPresetId: args.preset.voiceId,
+        speakerPresetId: ffiSpeakerPresetId(args.preset),
         onChunk: ({ pcm, isFinal }) => {
           args.onKernelTick?.();
           if (args.cancelSignal.cancelled) return true;
@@ -434,7 +437,7 @@ export class FfiOmniVoiceBackend
     const samples = this.ffi.ttsSynthesize({
       ctx,
       text: args.phrase.text,
-      speakerPresetId: args.preset.voiceId,
+      speakerPresetId: ffiSpeakerPresetId(args.preset),
       out,
     });
     let cancelled = args.cancelSignal.cancelled === true;
@@ -460,36 +463,12 @@ export class FfiOmniVoiceBackend
   }
 
   /**
-   * Batch transcription. Routes to the fused streaming ASR ABI (the
-   * final path) when the loaded library advertises a working decoder
-   * (`eliza_inference_asr_stream_supported() == 1`): a one-shot run
-   * feeds the whole buffer as a single frame and `flush()`es. When the
-   * library does not yet implement streaming ASR, falls through to the
-   * v1 batch `eliza_inference_asr_transcribe` symbol — which is itself a
-   * stub returning `ELIZA_ERR_NOT_IMPLEMENTED` until W7's fused build —
-   * so the failure is a real, surfaced error, not a silent empty
-   * transcript. (The whisper.cpp interim adapter lives a layer up in
-   * `EngineVoiceBridge.transcribePcm` / `createStreamingTranscriber`,
-   * which has the bundle context to choose it.)
+   * Batch transcription. One-shot callers should use the fused batch ABI
+   * directly so the native side receives the original sample-rate metadata
+   * and can apply its own audio preprocessing. Live mic streaming remains
+   * available through `EngineVoiceBridge.createStreamingTranscriber()`.
    */
   async transcribe(args: TranscriptionAudio): Promise<string> {
-    if (ffiSupportsStreamingAsr(this.ffi)) {
-      const transcriber = new FfiStreamingTranscriber({
-        ffi: this.ffi,
-        getContext: this.getContext,
-      });
-      try {
-        transcriber.feed({
-          pcm: args.pcm,
-          sampleRate: args.sampleRate,
-          timestampMs: 0,
-        });
-        const final = await transcriber.flush();
-        return final.partial;
-      } finally {
-        transcriber.dispose();
-      }
-    }
     return this.ffi.asrTranscribe({
       ctx: this.getContext(),
       pcm: args.pcm,
@@ -506,10 +485,9 @@ export interface EngineVoiceBridgeOptions {
    */
   bundleRoot: string;
   /**
-   * When true, use `FfiOmniVoiceBackend` (will hard-fail at synthesize
-   * time until the fused build lands). When false, use the stub backend
-   * so tests and the streaming-graph integration can run end-to-end
-   * with synthetic PCM.
+   * When true, use `FfiOmniVoiceBackend`. When false, use the stub backend
+   * only for lifecycle/unit tests; live sessions and direct synthesis reject
+   * the stub before user-visible audio can be emitted.
    */
   useFfiBackend: boolean;
   /** Override sample rate. Defaults to 24 kHz. */
@@ -860,6 +838,12 @@ export class EngineVoiceBridge {
 
   async synthesizeTextToWav(text: string): Promise<Uint8Array> {
     this.assertVoiceOn("synthesize speech");
+    if (!this.hasRealTtsBackend()) {
+      throw new VoiceStartupError(
+        "missing-fused-build",
+        "[voice] Direct speech synthesis requires a fused OmniVoice backend. The stub backend is only allowed in scheduler/unit tests.",
+      );
+    }
     const chunk = await this.scheduler.synthesizeText(text);
     return encodeMonoPcm16Wav(chunk.pcm, chunk.sampleRate);
   }
@@ -1017,14 +1001,22 @@ export class EngineVoiceBridge {
   }
 
   /**
-   * Batch transcription: one-shot over a whole PCM buffer. Drives a
-   * `StreamingTranscriber` (fused streaming ASR → fused-batch interim) —
-   * feeds the buffer as a single frame,
-   * `flush()`es, returns the final transcript. Throws `AsrUnavailableError`
-   * when no ASR backend is available — never a silent empty string.
+   * Batch transcription: one-shot over a whole PCM buffer. When the active
+   * backend exposes the fused batch ASR ABI, use it directly so the native
+   * side receives the original sample rate and can apply its own resampling.
+   * Otherwise drive a `StreamingTranscriber` (fused streaming ASR →
+   * fused-batch interim) by feeding the buffer as a single frame and
+   * `flush()`ing. Throws `AsrUnavailableError` when no ASR backend is
+   * available — never a silent empty string.
    */
   async transcribePcm(args: TranscriptionAudio): Promise<string> {
     this.assertVoiceOn("transcribe audio");
+    const backendBatch = this.backend as OmniVoiceBackend & {
+      transcribe?: (args: TranscriptionAudio) => Promise<string>;
+    };
+    if (typeof backendBatch.transcribe === "function") {
+      return backendBatch.transcribe(args);
+    }
     const transcriber = this.createStreamingTranscriber();
     try {
       transcriber.feed({

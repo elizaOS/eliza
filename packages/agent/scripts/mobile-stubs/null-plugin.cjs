@@ -61,6 +61,8 @@ function makeStubProxy() {
     "handleSignalRoute",
     // plugin-discord-local (api server)
     "handleDiscordLocalRoute",
+    // plugin-computeruse (api server route handler)
+    "handleComputerUseRoutes",
     // plugin-mcp / plugin-streaming used elsewhere; safer to populate
     // since some are stubbed via `optionalPluginStubs`.
     "handleMcpRoutes",

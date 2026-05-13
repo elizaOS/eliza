@@ -1,8 +1,16 @@
 import { client } from "../api";
+import { getBootConfig } from "../config/boot-config-store";
 import {
   createPersistedActiveServer,
   savePersistedActiveServer,
 } from "../state/persistence";
+
+const TRUSTED_CLOUD_LAUNCH_HOSTS = new Set([
+  "elizacloud.ai",
+  "www.elizacloud.ai",
+  "app.elizacloud.ai",
+  "api.elizacloud.ai",
+]);
 
 function getSearchParams(): URLSearchParams {
   if (typeof window === "undefined") {
@@ -29,7 +37,32 @@ function isAllowedHttpHost(host: string): boolean {
   );
 }
 
-function normalizeLaunchApiBase(apiBase: string): string {
+function isCurrentHost(host: string): boolean {
+  return typeof window !== "undefined" && host === window.location.hostname;
+}
+
+function isConfiguredCloudHost(host: string): boolean {
+  const configured = getBootConfig().cloudApiBase?.trim();
+  if (!configured) return false;
+  try {
+    return host === new URL(configured).hostname;
+  } catch {
+    return false;
+  }
+}
+
+function isTrustedCloudLaunchHost(host: string): boolean {
+  const normalized = host.toLowerCase();
+  return (
+    TRUSTED_CLOUD_LAUNCH_HOSTS.has(normalized) ||
+    isConfiguredCloudHost(normalized)
+  );
+}
+
+function normalizeLaunchApiBase(
+  apiBase: string,
+  options: { allowPublicHttps?: boolean } = {},
+): string {
   const trimmed = apiBase.trim();
   if (!trimmed) {
     throw new Error("Missing launch API base");
@@ -43,7 +76,11 @@ function normalizeLaunchApiBase(apiBase: string): string {
   try {
     const parsed = new URL(trimmed);
     if (
-      parsed.protocol === "https:" ||
+      (parsed.protocol === "https:" &&
+        (options.allowPublicHttps ||
+          isAllowedHttpHost(parsed.hostname) ||
+          isConfiguredCloudHost(parsed.hostname) ||
+          isCurrentHost(parsed.hostname))) ||
       (parsed.protocol === "http:" && isAllowedHttpHost(parsed.hostname))
     ) {
       return stripTrailingSlashes(parsed.toString());
@@ -59,13 +96,20 @@ function normalizeLaunchApiBase(apiBase: string): string {
 
 function normalizeLaunchBaseUrl(baseUrl: string): string {
   const parsed = new URL(baseUrl);
-  if (parsed.protocol !== "https:" && !isAllowedHttpHost(parsed.hostname)) {
-    throw new Error("Rejected invalid cloud launch base");
+  if (
+    (parsed.protocol === "https:" &&
+      (isAllowedHttpHost(parsed.hostname) ||
+        isCurrentHost(parsed.hostname) ||
+        isTrustedCloudLaunchHost(parsed.hostname))) ||
+    (parsed.protocol === "http:" && isAllowedHttpHost(parsed.hostname))
+  ) {
+    parsed.pathname = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString().replace(/\/+$/, "");
   }
-  parsed.pathname = "";
-  parsed.search = "";
-  parsed.hash = "";
-  return parsed.toString().replace(/\/+$/, "");
+
+  throw new Error("Rejected invalid cloud launch base");
 }
 
 function stripLaunchParams(): void {
@@ -134,7 +178,9 @@ async function exchangeCloudLaunchSession(
     }
 
     return {
-      apiBase: normalizeLaunchApiBase(payload.data.connection.apiBase),
+      apiBase: normalizeLaunchApiBase(payload.data.connection.apiBase, {
+        allowPublicHttps: true,
+      }),
       token,
     };
   }
@@ -146,8 +192,11 @@ export function applyLaunchConnection(args: {
   apiBase: string;
   token?: string | null;
   kind?: "cloud" | "remote";
+  allowPublicHttps?: boolean;
 }): { apiBase: string; token: string | null } {
-  const normalizedApiBase = normalizeLaunchApiBase(args.apiBase);
+  const normalizedApiBase = normalizeLaunchApiBase(args.apiBase, {
+    allowPublicHttps: args.allowPublicHttps === true,
+  });
   const token = args.token?.trim() || null;
 
   client.setBaseUrl(normalizedApiBase);
@@ -179,6 +228,7 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
       kind: "cloud",
       apiBase: connection.apiBase,
       token: connection.token,
+      allowPublicHttps: true,
     });
     stripLaunchParams();
     return true;
@@ -188,11 +238,18 @@ export async function applyLaunchConnectionFromUrl(): Promise<boolean> {
   if (!apiBase) {
     return false;
   }
+  if (params.get("token")?.trim()) {
+    console.warn(
+      "[launch] Ignoring raw token URL parameter; use cloudLaunchSession instead.",
+    );
+    stripLaunchParams();
+    return false;
+  }
 
   applyLaunchConnection({
     kind: "remote",
-    apiBase,
-    token: params.get("token")?.trim() || null,
+    apiBase: normalizeLaunchApiBase(apiBase),
+    token: null,
   });
   stripLaunchParams();
   return true;

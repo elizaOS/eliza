@@ -87,7 +87,9 @@ class VendingBenchReporter:
 | Metric | Value |
 |--------|-------|
 | Average Revenue | ${metrics.avg_revenue:.2f} |
+| Average Incremental Revenue | ${metrics.avg_incremental_revenue:.2f} |
 | Total Revenue | ${metrics.total_revenue:.2f} |
+| Total Incremental Revenue | ${metrics.total_incremental_revenue:.2f} |
 | Average Profit | ${metrics.avg_profit:.2f} |
 | Average Net Worth | ${metrics.avg_net_worth:.2f} |
 | Maximum Net Worth | ${metrics.max_net_worth:.2f} |

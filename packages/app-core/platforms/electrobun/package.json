@@ -23,7 +23,7 @@
 		"build:native-effects": "bash scripts/build-macos-effects.sh"
 	},
 	"dependencies": {
-		"@elizaos/app-core": "2.0.0-beta.1",
+		"@elizaos/app-core": "2.0.0-beta.3",
 		"@elizaos/electrobun-carrots": "workspace:*",
 		"@elizaos/plugin-browser": "2.0.0-beta.1",
 		"@elizaos/shared": "2.0.0-beta.1",

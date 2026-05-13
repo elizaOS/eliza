@@ -12,9 +12,9 @@
 #
 # Usage:
 #   bash scripts/train_grpo_verl.sh \
-#       --registry-key qwen3.5-9b \
-#       --dpo-checkpoint checkpoints/eliza-1-9b-dpo/final \
-#       --output-dir checkpoints/eliza-1-9b-grpo \
+#       --registry-key qwen3.5-4b \
+#       --dpo-checkpoint checkpoints/eliza-1-4b-dpo/final \
+#       --output-dir checkpoints/eliza-1-4b-grpo \
 #       --rollouts 64 --rollout-batch 8 --epochs 1
 #
 set -euo pipefail
@@ -24,7 +24,7 @@ usage() {
 Usage: train_grpo_verl.sh [options]
 
 Required:
-  --registry-key KEY        e.g. qwen3.5-2b, qwen3.5-9b, qwen3.6-27b
+  --registry-key KEY        e.g. qwen3.5-2b, qwen3.5-4b, qwen3.5-4b
   --dpo-checkpoint DIR      Path to SFT+DPO checkpoint (the `final/` subdir)
   --output-dir DIR          Where to write the GRPO checkpoint + JSONL traces
 

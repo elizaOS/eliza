@@ -1,7 +1,12 @@
+import { inferenceTelemetry } from "../inference-telemetry";
 import { BargeInController } from "./barge-in";
 import type { PhonemeTokenizer } from "./phoneme-tokenizer";
 import { PhraseCache } from "./phrase-cache";
 import { PhraseChunker } from "./phrase-chunker";
+import {
+  PrefixPreservingQueue,
+  type TaggedAudioChunk,
+} from "./prefix-preserving-queue";
 import { InMemoryAudioSink, PcmRingBuffer } from "./ring-buffer";
 import { RollbackQueue } from "./rollback-queue";
 import type {
@@ -24,6 +29,31 @@ import type {
   VoiceTtsCancelReason,
 } from "./types";
 
+/**
+ * T2 — per-phrase TTS chunk-size telemetry, emitted once per
+ * `synthesizePhraseStream` call when `SchedulerEvents.onChunkMetrics` is
+ * wired. `chunks` is the in-arrival-order distribution of streamed PCM
+ * chunks (size in PCM bytes assuming Float32 samples, duration in ms
+ * derived from samples / sampleRate). Used to debug T1-class chunk-size
+ * pathologies and to verify T3 time-budget effects.
+ */
+export interface TtsPhraseChunkMetrics {
+  phraseId: number;
+  /** Order-preserving list of per-chunk sizes. Empty when no chunks landed. */
+  chunks: ReadonlyArray<{
+    chunkBytes: number;
+    chunkDurationMs: number;
+  }>;
+  /** Sum of chunk durations in ms. */
+  totalDurationMs: number;
+  /** Sum of chunk bytes. */
+  totalBytes: number;
+  /** Whether the phrase synthesis was cancelled mid-stream. */
+  cancelled: boolean;
+}
+
+export type TtsChunkMetricsListener = (metrics: TtsPhraseChunkMetrics) => void;
+
 export interface SchedulerEvents {
   onPhrase?(phrase: Phrase): void;
   onRollback?(phraseId: number, range: RejectedTokenRange): void;
@@ -41,6 +71,13 @@ export interface SchedulerEvents {
   onTtsResume?(): void;
   /** Structured scheduler telemetry for latency, cache, rollback, and barge-in metrics. */
   onTelemetry?: VoiceSchedulerTelemetryListener;
+  /**
+   * T2 — per-phrase TTS chunk-size distribution. Optional; when set, the
+   * scheduler emits one summary per streamed phrase synthesis (success or
+   * cancelled). Lets test harnesses and metrics consumers verify T1/T3
+   * effects without scraping the audio bus.
+   */
+  onChunkMetrics?: TtsChunkMetricsListener;
 }
 
 export interface SchedulerDeps {
@@ -123,18 +160,34 @@ export class VoiceScheduler {
   readonly ringBuffer: PcmRingBuffer;
   readonly sink: AudioSink;
   readonly preset: SpeakerPreset;
+  /**
+   * Prefix-preserving barge-in queue. When the streaming TTS path is active,
+   * each audio chunk is enqueued here tagged with its token range. On
+   * hard-stop (barge-in), `rollbackAt(divergencePoint)` partitions the
+   * queue: chunks at or before the divergence point are replayed into the
+   * sink; chunks after are dropped. This lets audio that was already
+   * correct play through without re-synthesizing.
+   */
+  readonly prefixQueue = new PrefixPreservingQueue();
   private readonly backend: OmniVoiceBackend;
   private readonly phraseCache: PhraseCache;
   private readonly events: SchedulerEvents;
   private readonly sampleRate: number;
   private readonly inFlight = new Map<number, InFlight>();
   private readonly maxInFlight: number;
+  private readonly streamingTtsActive: boolean;
   private kernelTicks = 0;
   private nextStandalonePhraseId = -1;
   /** True while a provisional barge-in (`pause-tts`) has paused playback. */
   private paused = false;
+  /**
+   * The last committed token index — updated whenever a phrase is dispatched
+   * to TTS. Used as the divergence point when a barge-in fires mid-response.
+   */
+  private lastCommittedTokenIndex = 0;
   private agentSpeakingUntilMs = 0;
   private agentSpeakingTimer: ReturnType<typeof setTimeout> | null = null;
+  private phraseFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(
     config: SchedulerConfig,
@@ -160,6 +213,10 @@ export class VoiceScheduler {
       1,
       config.maxInFlightPhrases ?? DEFAULT_MAX_IN_FLIGHT_PHRASES,
     );
+    // streamingTtsActive defaults true. The Metal ggml_conv_transpose_1d stall
+    // that previously required disabling this on macOS is fixed in the
+    // llama.cpp merge (native Metal kernels; CPU fallback no longer triggers).
+    this.streamingTtsActive = config.streamingTtsActive ?? true;
     // Legacy hard-stop hook (`bargeIn.onMicActive()` / `attach.onCancel`).
     this.bargeIn.attach({
       onCancel: () => this.handleBargeIn(),
@@ -175,8 +232,11 @@ export class VoiceScheduler {
     const acc: AcceptedToken = { ...token, acceptedAt };
     const phrase = this.chunker.push(acc);
     if (phrase) {
+      this.clearPhraseFlushTimer();
       await this.dispatchPhrase(phrase);
+      return;
     }
+    this.armPhraseFlushTimer();
   }
 
   async reject(range: RejectedTokenRange): Promise<void> {
@@ -184,6 +244,7 @@ export class VoiceScheduler {
     // packed into a phrase) so the verifier's correction is not glued
     // onto stale text.
     this.chunker.dropPendingFrom(range.fromIndex);
+    this.armPhraseFlushTimer();
     const events = this.rollback.onRejected(range);
     let cancelledStreamingInFlight = false;
     for (const ev of events) {
@@ -209,6 +270,7 @@ export class VoiceScheduler {
   }
 
   async flushPending(): Promise<void> {
+    this.clearPhraseFlushTimer();
     const tail = this.chunker.flushPending();
     if (tail) {
       await this.dispatchPhrase(tail);
@@ -389,7 +451,10 @@ export class VoiceScheduler {
   cancelPendingTts(): void {
     this.paused = false;
     this.clearAgentSpeaking();
+    this.clearPhraseFlushTimer();
     this.ringBuffer.drain();
+    this.prefixQueue.clear();
+    this.lastCommittedTokenIndex = 0;
     this.chunker.reset();
     for (const inflight of this.inFlight.values()) {
       inflight.cancelSignal.cancelled = true;
@@ -400,6 +465,12 @@ export class VoiceScheduler {
 
   private async dispatchPhrase(phrase: Phrase): Promise<void> {
     this.rollback.track(phrase);
+    // Advance the divergence-point cursor. Tokens up to toIndex are now
+    // "committed" — a barge-in rollback keeps audio for them.
+    this.lastCommittedTokenIndex = Math.max(
+      this.lastCommittedTokenIndex,
+      phrase.toIndex,
+    );
     this.events.onPhrase?.(phrase);
     this.emitTelemetry({
       type: "phrase-dispatch",
@@ -464,7 +535,7 @@ export class VoiceScheduler {
         phrase: phraseTelemetry(phrase),
         inFlightPhrases: this.inFlight.size,
       });
-      if (isStreamingTtsBackend(this.backend)) {
+      if (this.streamingTtsActive && isStreamingTtsBackend(this.backend)) {
         const cancelled = await this.synthesizePhraseStream(
           phrase,
           cancelSignal,
@@ -509,6 +580,8 @@ export class VoiceScheduler {
     let totalSamples = 0;
     let sampleRate = 0;
     let firstAudio = true;
+    // T2 — per-chunk size distribution. Float32 samples => 4 bytes/sample.
+    const chunkSamples: Array<{ samples: number; sampleRate: number }> = [];
     const result = await backend.synthesizeStream({
       phrase,
       preset: this.preset,
@@ -525,6 +598,37 @@ export class VoiceScheduler {
         parts.push(pcm);
         totalSamples += pcm.length;
         sampleRate = chunk.sampleRate;
+        chunkSamples.push({
+          samples: pcm.length,
+          sampleRate: chunk.sampleRate,
+        });
+        // T2 — emit per-chunk metrics so consumers can detect whether TTS is
+        // streaming short chunks (good) or batching whole phrases (bad). The
+        // backend constructor name is the cheapest available identity label
+        // without threading a separate config field.
+        const chunkDurationMs =
+          chunk.sampleRate > 0 ? (pcm.length / chunk.sampleRate) * 1000 : 0;
+        const ttsBackendName = backend.constructor.name;
+        inferenceTelemetry.record("tts.chunk_size_ms", chunkDurationMs, {
+          backend: ttsBackendName,
+        });
+        inferenceTelemetry.record(
+          "tts.chunk_size_bytes",
+          pcm.length * 4, // Float32: 4 bytes per sample
+          { backend: ttsBackendName },
+        );
+        // Tag the chunk with its phrase token range and enqueue it for
+        // prefix-preserving barge-in rollback. The chunk covers the full
+        // phrase range — sub-phrase token attribution is not available from
+        // the streaming TTS ABI, so all chunks of a phrase carry the same
+        // [fromIndex, toIndex]. Rollback at phrase granularity is still a
+        // large improvement over dropping all in-flight audio.
+        const taggedChunk: TaggedAudioChunk = {
+          pcm,
+          tokenRange: [phrase.fromIndex, phrase.toIndex],
+          durationMs: chunkDurationMs,
+        };
+        this.prefixQueue.enqueue(taggedChunk);
         this.commitAudio(
           {
             phraseId: phrase.id,
@@ -552,6 +656,29 @@ export class VoiceScheduler {
           sampleRate,
         });
       }
+    }
+    // T2 — fire the chunk-size telemetry callback. Done unconditionally so
+    // a cancelled phrase still reports what it did stream (helps debug
+    // barge-in latency). Float32 samples occupy 4 bytes each.
+    if (this.events.onChunkMetrics) {
+      const chunks = chunkSamples.map((c) => ({
+        chunkBytes: c.samples * 4,
+        chunkDurationMs:
+          c.sampleRate > 0 ? (c.samples / c.sampleRate) * 1000 : 0,
+      }));
+      let totalDurationMs = 0;
+      let totalBytes = 0;
+      for (const c of chunks) {
+        totalDurationMs += c.chunkDurationMs;
+        totalBytes += c.chunkBytes;
+      }
+      this.events.onChunkMetrics({
+        phraseId: phrase.id,
+        chunks,
+        totalDurationMs,
+        totalBytes,
+        cancelled,
+      });
     }
     return cancelled;
   }
@@ -649,10 +776,51 @@ export class VoiceScheduler {
     const sinkBufferedSamplesDrained = this.sink.bufferedSamples();
     const wasPaused = this.paused;
     const inFlightPhrases = Array.from(this.inFlight.values());
+    const divergencePoint = this.lastCommittedTokenIndex;
+
     this.paused = false;
     this.clearAgentSpeaking();
-    this.ringBuffer.drain();
+    this.clearPhraseFlushTimer();
+
+    // Prefix-preserving rollback: partition in-flight audio chunks at the
+    // divergence point. Chunks for tokens <= divergencePoint are replayed
+    // into the sink (they were already correct); the rest are dropped.
+    // This avoids re-synthesizing audio the user would have heard anyway.
+    //
+    // If the prefix queue is empty (e.g. the backend emitted no streaming
+    // chunks yet), fall through to the plain drain path.
+    const prefixResult = this.prefixQueue.rollbackAt(divergencePoint);
+    if (prefixResult.retained.length > 0 || prefixResult.dropped.length > 0) {
+      // We had tagged chunks — apply prefix-preserving rollback.
+      // Drain the ring buffer first (it may hold chunks we're about to
+      // replay from the retained prefix, or chunks past the cutoff).
+      this.ringBuffer.drain();
+      // Replay retained prefix into the ring buffer and flush to sink.
+      for (const taggedChunk of prefixResult.retained) {
+        this.ringBuffer.write(taggedChunk.pcm);
+      }
+      if (prefixResult.retained.length > 0) {
+        const flushed = this.ringBuffer.flushToSink();
+        this.markAgentSpeakingForAudio(flushed, this.sampleRate);
+      }
+      this.emitTelemetry({
+        type: "barge-in-prefix-rollback",
+        atMs: nowMs(),
+        divergencePoint,
+        retainedChunks: prefixResult.retained.length,
+        droppedChunks: prefixResult.dropped.length,
+        straddledChunks: prefixResult.straddled.length,
+        retainedDurationMs: prefixResult.retainedDurationMs,
+        droppedDurationMs: prefixResult.droppedDurationMs,
+      });
+    } else {
+      // No tagged chunks — plain ring-buffer drain (legacy path).
+      this.ringBuffer.drain();
+    }
+
     this.chunker.reset();
+    this.lastCommittedTokenIndex = 0;
+
     for (const inflight of inFlightPhrases) {
       inflight.cancelSignal.cancelled = true;
       this.emitTtsCancel(inflight.phrase, "barge-in");
@@ -680,6 +848,35 @@ export class VoiceScheduler {
 
   private emitTelemetry(event: VoiceSchedulerTelemetryEvent): void {
     this.events.onTelemetry?.(event);
+  }
+
+  private armPhraseFlushTimer(): void {
+    this.clearPhraseFlushTimer();
+    const delayMs = this.chunker.msUntilTimeBudget();
+    if (!Number.isFinite(delayMs)) return;
+    this.phraseFlushTimer = setTimeout(
+      () => {
+        this.phraseFlushTimer = null;
+        const phrase = this.chunker.flushIfTimeBudgetExceeded();
+        if (!phrase) {
+          this.armPhraseFlushTimer();
+          return;
+        }
+        void this.dispatchPhrase(phrase).catch((err) => {
+          setTimeout(() => {
+            throw err;
+          }, 0);
+        });
+      },
+      Math.max(0, delayMs),
+    );
+  }
+
+  private clearPhraseFlushTimer(): void {
+    if (this.phraseFlushTimer) {
+      clearTimeout(this.phraseFlushTimer);
+      this.phraseFlushTimer = null;
+    }
   }
 
   private armAgentSpeakingTimer(): void {

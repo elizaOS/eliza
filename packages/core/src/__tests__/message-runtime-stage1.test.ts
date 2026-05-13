@@ -6,7 +6,7 @@ import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-
 import { runV5MessageRuntimeStage1 } from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
-import type { UUID } from "../types/primitives";
+import { ChannelType, type UUID } from "../types/primitives";
 import type { IAgentRuntime } from "../types/runtime";
 import type { State } from "../types/state";
 
@@ -384,6 +384,48 @@ describe("runV5MessageRuntimeStage1", () => {
 				"The follow-up is complete.",
 			);
 		}
+	});
+
+	it("voice turn signal can force IGNORE before early reply/planning", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				thought: "The model would otherwise answer.",
+				contexts: ["general"],
+				intents: [],
+				candidateActionNames: [],
+				replyText: "I'll jump in.",
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			}),
+		]);
+		const earlyReply = vi.fn(async () => undefined);
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: {
+				...makeMessage(),
+				content: {
+					...makeMessage().content,
+					channelType: ChannelType.VOICE_DM,
+					voiceTurnSignal: {
+						endOfTurnProbability: 0.08,
+						nextSpeaker: "user",
+						agentShouldSpeak: false,
+						source: "livekit-turn-detector",
+					},
+				},
+			},
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+			onResponseHandlerEarlyReply: earlyReply,
+		});
+
+		expect(result.kind).toBe("terminal");
+		if (result.kind === "terminal") {
+			expect(result.action).toBe("IGNORE");
+		}
+		expect(earlyReply).not.toHaveBeenCalled();
 	});
 
 	it("preserves the parsed response-handler reply for early delivery even when a repair clears plan.reply", async () => {

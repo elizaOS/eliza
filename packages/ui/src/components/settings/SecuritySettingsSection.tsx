@@ -1,4 +1,3 @@
-import { Button, cn, Input, Label } from "@elizaos/ui";
 import {
   KeyRound,
   Laptop,
@@ -28,6 +27,10 @@ import {
   authSetup,
 } from "../../api/auth-client";
 import { useBootConfig } from "../../config/boot-config-react";
+import { cn } from "../../lib/utils";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
+import { Label } from "../ui/label";
 
 function formatRelativeTime(ms: number | null): string {
   if (ms == null) return "local only";

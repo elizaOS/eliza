@@ -9,12 +9,11 @@
 //   advertises), not the lower-level llama.cpp kernel handles in `../types.ts`
 //   (`turbo3` / `turbo4` / `turbo3_tcq` / `qjl_full` / `dflash`). The two
 //   layers map but are not the same enum.
-// - The schema URL `https://elizalabs.ai/schemas/eliza-1.manifest.v1.json` is
+// - The schema URL `https://elizaos.ai/schemas/eliza-1.manifest.v1.json` is
 //   exported as a JSON Schema sibling file in this directory.
 // - Shared-vocabulary invariant: every speculative-decoding GGUF in an
-//   Eliza-1 bundle — the text/vision model and the DFlash drafter — is
-//   Qwen3.5/Qwen3.6-lineage and shares the same Qwen3.5 BPE vocabulary
-//   (248 320 tokens) and the same merges table. This is what makes
+//   Eliza-1 bundle — the text/vision model and the DFlash drafter — shares
+//   the same Eliza-1 BPE vocabulary and merges table. This is what makes
 //   (a) DFlash speculative decoding correct (spec decoding only works if token
 //   ids match), and (b) the drafter GGUFs ship without
 //   their own `tokenizer.ggml.merges` (repaired at load time from the text GGUF
@@ -31,23 +30,17 @@ import { z } from "zod";
 
 export const ELIZA_1_MANIFEST_SCHEMA_VERSION = "1" as const;
 export const ELIZA_1_MANIFEST_SCHEMA_URL =
-  "https://elizalabs.ai/schemas/eliza-1.manifest.v1.json" as const;
+  "https://elizaos.ai/schemas/eliza-1.manifest.v1.json" as const;
 
-// The shared Qwen3.5 BPE vocabulary every text/drafter component in an
-// Eliza-1 bundle uses. Exported so runtime code can assert it (a GGUF whose
-// `tokenizer.ggml.tokens` length differs from this is not an Eliza-1 component
-// and the merges-repair / zero-re-tokenization assumptions do not hold).
+// The shared Eliza-1 BPE vocabulary every text/drafter component in an
+// Eliza-1 bundle uses. Exported so runtime code can assert it.
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). `27b-1m` is the
-// GH200-class 1M-context variant of the 27B tier. `0_8b` and `2b` are the
-// active Qwen3.5 small/mid local tiers; `0_6b` / `1_7b` / `4b` remain
-// enumerated for existing bundle ids. Enum stays size-ordered.
+// GH200-class 1M-context variant of the 27B tier. Enum stays size-ordered.
 export const ELIZA_1_TIERS = [
   "0_8b",
-  "0_6b",
-  "1_7b",
   "2b",
   "4b",
   "9b",
@@ -130,18 +123,16 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors AGENTS.md §3:
 // - All tiers require turboquant + qjl + polarquant + dflash.
-// - 9B and larger tiers require `turbo3_tcq`. The validator also enforces the
+// - 4B and larger tiers require `turbo3_tcq`. The validator also enforces the
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
 //
-// The `q3` vs `q4` choice is tier-driven: 0_6b and 0_8b ship Q3; 1_7b and larger
-// ship Q4. TCQ required for 4b and above (long-context text).
+// Q4 is the release text quant baseline. TCQ is required for 4b and above
+// because those tiers ship long-context text variants.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-  "0_8b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
-  "0_6b": ["turboquant_q3", "qjl", "polarquant", "dflash"],
-  "1_7b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+  "0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
   "4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
   "9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -150,16 +141,13 @@ export const REQUIRED_KERNELS_BY_TIER: Readonly<
   "27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
-// Backends each tier is expected to support on shipped hardware. The small
-// tiers (0.8B / 0.6B / 1.7B / 2B / 4B) do not need cuda/rocm.
+// Backends each tier is expected to support on shipped hardware.
 export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
   Record<Eliza1Tier, ReadonlyArray<Eliza1Backend>>
 > = {
   "0_8b": ["metal", "vulkan", "cpu"],
-  "0_6b": ["metal", "vulkan", "cpu"],
-  "1_7b": ["metal", "vulkan", "cpu"],
   "2b": ["metal", "vulkan", "cpu"],
-  "4b": ["metal", "vulkan", "cpu"],
+  "4b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
   "27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
@@ -213,15 +201,15 @@ export const Eliza1FilesSchema = z.object({
   dflash: z.array(Eliza1FileEntrySchema).min(1),
   cache: z.array(Eliza1FileEntrySchema).min(1),
   // Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-  // embedding model (Qwen3-Embedding-0.6B-GGUF on non-lite tiers) and
+  // embedding model (Qwen3-Embedding-GGUF on non-lite tiers) and
   // a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-  // optional in the schema — the 0_6b tier intentionally omits the
+  // optional in the schema — the 0_8b tier intentionally omits the
   // dedicated embedding (pools from text backbone) and a tier may
   // ship without wake-word support.
   //
   // Schema-level optionality: empty array = "this bundle does not
   // ship this component"; the validator enforces tier-specific
-  // consistency rules (e.g. 1_7b-and-up MUST ship `embedding[]`).
+  // consistency rules (e.g. 4b-and-up MUST ship `embedding[]`).
   embedding: z.array(Eliza1FileEntrySchema).optional(),
   vad: z.array(Eliza1FileEntrySchema).optional(),
   wakeword: z.array(Eliza1FileEntrySchema).optional(),

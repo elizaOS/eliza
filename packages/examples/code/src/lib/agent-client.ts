@@ -10,7 +10,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { ChatRoom } from "../types.js";
 import type { SessionIdentity } from "./identity.js";
 
-export interface SendMessageParams {
+interface SendMessageParams {
   room: ChatRoom;
   text: string;
   identity: SessionIdentity;
@@ -29,7 +29,7 @@ export interface SendMessageParams {
  * returns the agent response. All conversation state is owned by the runtime DB
  * (and optionally mirrored in the UI store).
  */
-export class AgentClient {
+class AgentClient {
   private runtime: IAgentRuntime | null = null;
 
   setRuntime(runtime: IAgentRuntime): void {

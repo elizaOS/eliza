@@ -43,7 +43,32 @@ def test_lite_tiers_are_source_only_and_keep_dflash_missing(
     assert any("No upstream DFlash drafter" in b for b in report["blockers"])
 
 
-def test_pro_tier_records_text_dflash_and_vision_sources(
+def test_mobile_tier_uses_qwen35_17b_source(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+
+    report = stage.stage_sources(_args(tmp_path, "2b"))
+
+    assert "unsloth/Qwen3.5-2B-GGUF" in report["sources"]
+
+
+def test_4b_tier_records_text_and_vision_sources_with_dflash_missing(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+
+    report = stage.stage_sources(_args(tmp_path, "4b"))
+
+    assert [f["kind"] for f in report["files"]] == ["text", "vision"]
+    assert "unsloth/Qwen3.5-4B-GGUF" in report["sources"]
+    assert any("No upstream DFlash drafter" in b for b in report["blockers"])
+    assert all("final Eliza-1" not in f["destination"] for f in report["files"])
+
+
+def test_stage_sources_accepts_large_active_tier(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
@@ -51,21 +76,4 @@ def test_pro_tier_records_text_dflash_and_vision_sources(
 
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
-    assert [f["kind"] for f in report["files"]] == ["text", "dflash", "vision"]
-    assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
-    assert all("final Eliza-1" not in f["destination"] for f in report["files"])
-
-
-def test_one_million_context_tier_reuses_27b_sources(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
-
-    report = stage.stage_sources(_args(tmp_path, "27b-1m"))
-
-    assert [f["kind"] for f in report["files"]] == ["text", "dflash", "vision"]
-    assert "batiai/Qwen3.6-27B-GGUF" in report["sources"]
-    assert "spiritbuun/Qwen3.6-27B-DFlash-GGUF" in report["sources"]
-    assert any("final 1m" in note for f in report["files"] for note in f["notes"])
+    assert "unsloth/Qwen3.5-27B-GGUF" in report["sources"]

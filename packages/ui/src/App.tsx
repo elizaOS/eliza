@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 
 import "./components/chat/chat-source-registration";
-import { Button, ErrorBoundary } from "@elizaos/ui";
 import {
   type ComponentType,
   type LazyExoticComponent,
@@ -48,6 +47,8 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { Button } from "./components/ui/button";
+import { ErrorBoundary } from "./components/ui/error-boundary";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,

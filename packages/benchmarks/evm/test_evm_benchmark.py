@@ -479,7 +479,7 @@ class TestAnvilEnv:
             "error": None,
         })
 
-        step_result = asyncio.get_event_loop().run_until_complete(env.step(result_json))
+        step_result = asyncio.run(env.step(result_json))
         assert step_result.reward == 3
         assert env.total_reward == 3
         assert env.discovered_count == 3
@@ -497,7 +497,7 @@ class TestAnvilEnv:
             "error": None,
         })
 
-        step_result = asyncio.get_event_loop().run_until_complete(env.step(result_json))
+        step_result = asyncio.run(env.step(result_json))
         assert step_result.reward == 1  # Second is duplicate
         assert env.total_reward == 1
 
@@ -513,7 +513,7 @@ class TestAnvilEnv:
             "error": None,
         })
 
-        step_result = asyncio.get_event_loop().run_until_complete(env.step(result_json))
+        step_result = asyncio.run(env.step(result_json))
         assert step_result.reward == 0
 
     def test_step_with_error(self):
@@ -523,7 +523,7 @@ class TestAnvilEnv:
         env = AnvilEnv(use_external_node=True)
         result_json = json.dumps({"results": [], "error": "Something failed"})
 
-        step_result = asyncio.get_event_loop().run_until_complete(env.step(result_json))
+        step_result = asyncio.run(env.step(result_json))
         assert step_result.reward == 0
         assert step_result.error == "Something failed"
 
@@ -532,7 +532,7 @@ class TestAnvilEnv:
         from benchmarks.evm.anvil_env import AnvilEnv
 
         env = AnvilEnv(use_external_node=True)
-        step_result = asyncio.get_event_loop().run_until_complete(env.step("not json"))
+        step_result = asyncio.run(env.step("not json"))
         assert step_result.reward == 0
         assert "Invalid JSON" in step_result.error
 
@@ -549,7 +549,7 @@ class TestAnvilEnv:
             "error": None,
         })
 
-        step_result = asyncio.get_event_loop().run_until_complete(env.step(result_json))
+        step_result = asyncio.run(env.step(result_json))
         assert "0xnewcontract" in env._deployed_contracts
 
 

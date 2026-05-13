@@ -45,6 +45,8 @@
       "!packages/benchmarks/loca-bench/vis_traj",
       "!packages/benchmarks/**/*.html",
       "!packages/examples/app/electron/backend/renderer/assets",
+      "!packages/examples/browser-extension/safari/.generated/**",
+      "!packages/examples/browser-extension/safari/Chat with Webpage/**",
       "!packages/app-core/src/styles"
     ]
   },

@@ -1,15 +1,11 @@
 import {
-  Button,
-  MetaPill,
-  PageLayout,
-  PagePanel,
-  SegmentedControl,
-  SidebarContent,
-  SidebarHeader,
-  SidebarPanel,
-  SidebarScrollRegion,
-} from "@elizaos/ui";
-import { RefreshCw, Search } from "lucide-react";
+  Brain,
+  FileText,
+  MessageSquareText,
+  RefreshCw,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import {
   type ReactNode,
   useCallback,
@@ -26,9 +22,18 @@ import type {
   MemoryStatsResponse,
 } from "../../api/client-types-chat";
 import type { RelationshipsPersonSummary } from "../../api/client-types-relationships";
+import { PageLayout } from "../../layouts/page-layout/page-layout";
 import { useApp } from "../../state";
 import { formatDateTime } from "../../utils/format";
+import { PagePanel } from "../composites/page-panel";
+import { MetaPill } from "../composites/page-panel/page-panel-header";
+import { SidebarContent } from "../composites/sidebar/sidebar-content";
+import { SidebarHeader } from "../composites/sidebar/sidebar-header";
+import { SidebarPanel } from "../composites/sidebar/sidebar-panel";
+import { SidebarScrollRegion } from "../composites/sidebar/sidebar-scroll-region";
 import { AppPageSidebar } from "../shared/AppPageSidebar";
+import { Button } from "../ui/button";
+import { SegmentedControl } from "../ui/segmented-control";
 
 // ── Constants ────────────────────────────────────────────────────────────
 
@@ -64,6 +69,12 @@ const VIEW_MODE_ITEMS = [
   { value: "feed" as const, label: "Feed", testId: "memory-view-feed" },
   { value: "browse" as const, label: "Browse", testId: "memory-view-browse" },
 ];
+
+const MEMORY_FEED_EMPTY_FEATURES = [
+  { id: "chat", label: "Chat", icon: MessageSquareText, tone: "text-info" },
+  { id: "facts", label: "Facts", icon: Sparkles, tone: "text-warning" },
+  { id: "docs", label: "Docs", icon: FileText, tone: "text-ok" },
+] as const;
 
 const FEED_PAGE_SIZE = 50;
 const BROWSE_PAGE_SIZE = 50;
@@ -228,11 +239,12 @@ function MemoryFeedPanel({ typeFilter }: { typeFilter: string | null }) {
 
   if (feed.length === 0) {
     return (
-      <PagePanel.Empty
-        variant="panel"
+      <PagePanel.FeatureEmpty
         className="min-h-[24rem]"
+        features={MEMORY_FEED_EMPTY_FEATURES}
+        icon={Brain}
+        iconTone="border-accent/25 bg-accent/12 text-accent"
         title="No memories yet"
-        description="Memories will appear here as the agent processes conversations, extracts facts, and builds relationships."
       />
     );
   }
@@ -366,16 +378,22 @@ function MemoryBrowserPanel({
           {error}
         </div>
       ) : !result || result.memories.length === 0 ? (
-        <PagePanel.Empty
-          variant="panel"
-          className="min-h-[20rem]"
+        <PagePanel.FeatureEmpty
+          icon={Search}
+          iconTone="border-border/30 bg-bg-hover text-muted"
           title="No memories found"
-          description={
-            deferredSearch
-              ? "No memories match your search query."
-              : "No memories match the current filters."
-          }
-        />
+        >
+          <div className="mt-4 flex flex-wrap justify-center gap-2">
+            {TYPE_KEYS.slice(0, 4).map((type) => (
+              <span
+                key={type}
+                className={`memory-type-badge-${type} rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.12em]`}
+              >
+                {typeLabel(type)}
+              </span>
+            ))}
+          </div>
+        </PagePanel.FeatureEmpty>
       ) : (
         <>
           <div className="flex items-center justify-between gap-3 text-xs-tight text-muted">

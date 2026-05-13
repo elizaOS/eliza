@@ -155,6 +155,18 @@ export class MetricsCollector {
     const tSpeechStart = this.firstByName.get("speech-start") ?? 0;
     const tSpeechEnd = this.firstByName.get("speech-end") ?? 0;
     const tFirstAudio = this.firstByName.get("audio-out-first-frame") ?? 0;
+    // Required events must arrive in canonical order:
+    // speech-start ≤ speech-end ≤ audio-out-first-frame.
+    if (tSpeechEnd < tSpeechStart) {
+      throw new Error(
+        `[voice-bench] metrics: out of order — speech-end (${round1(tSpeechEnd)}ms) arrived before speech-start (${round1(tSpeechStart)}ms) for fixture "${this.fixtureId}"`,
+      );
+    }
+    if (tFirstAudio < tSpeechEnd) {
+      throw new Error(
+        `[voice-bench] metrics: out of order — audio-out-first-frame (${round1(tFirstAudio)}ms) preceded speech-end (${round1(tSpeechEnd)}ms) for fixture "${this.fixtureId}"`,
+      );
+    }
     const ttfaMs = round1(tFirstAudio - tSpeechStart);
     const speechEndToFirstAudioMs = round1(tFirstAudio - tSpeechEnd);
 
@@ -165,6 +177,21 @@ export class MetricsCollector {
     const lastAudio = this.lastByName.get("audio-out-first-frame") ?? tFirstAudio;
     const e2eLatencyMs = round1(lastAudio - tSpeechStart);
 
+    // Sum any `tokens` payload on rollback-drop probes to estimate the
+    // wasted-token count. Drivers that emit a single rollback-drop without
+    // a payload contribute one rollback event but zero tokens; the
+    // driver-supplied `rollbackWasteTokens` override is preferred when set.
+    let rollbackTokensFromEvents = 0;
+    for (const evt of this.events) {
+      if (evt.name !== "rollback-drop") continue;
+      const tokens = evt.data?.tokens;
+      if (typeof tokens === "number" && Number.isFinite(tokens)) {
+        rollbackTokensFromEvents += tokens;
+      }
+    }
+    const rollbackWasteTokens = driverResult.rollbackWasteTokens ??
+      rollbackTokensFromEvents;
+
     const result: BenchMetrics = {
       fixtureId: this.fixtureId,
       ttfaMs,
@@ -174,6 +201,8 @@ export class MetricsCollector {
         this.countOf("barge-in-hard-stop"),
       draftTokensTotal: driverResult.draftTokensTotal,
       draftTokensWasted: driverResult.draftTokensWasted,
+      rollbackCount: this.countOf("rollback-drop"),
+      rollbackWasteTokens,
       peakRssMb: this.resourceUsage().peakRssMb,
       peakCpuPct: this.resourceUsage().peakCpuPct,
     };

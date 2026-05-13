@@ -89,6 +89,7 @@
     "chalk": "^5.3.0",
     "drizzle-orm": "0.45.2",
     "react": "^19.0.0",
+    "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },
   "optionalDependencies": {

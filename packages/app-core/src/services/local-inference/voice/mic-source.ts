@@ -415,6 +415,7 @@ export class DesktopMicSource extends BaseMicSource {
 export class PushMicSource extends BaseMicSource {
   // Pending samples that didn't complete a frame.
   private pending: Float32Array = new Float32Array(0);
+  private pendingStartTimestampMs = 0;
 
   constructor(
     opts: { sampleRate?: number; frameMs?: number; frameSamples?: number } = {},
@@ -433,21 +434,35 @@ export class PushMicSource extends BaseMicSource {
   async stop(): Promise<void> {
     this._running = false;
     this.pending = new Float32Array(0);
+    this.pendingStartTimestampMs = 0;
   }
 
-  /** Feed mono PCM in [-1, 1] at `sampleRate`. Re-frames and emits. */
+  /**
+   * Feed mono PCM in [-1, 1] at `sampleRate`. Re-frames and emits. The
+   * timestamp is the first sample's timestamp; emitted frames advance by
+   * their sample offset so a large pushed buffer still presents a real audio
+   * timeline to VAD/ASR.
+   */
   push(pcm: Float32Array, timestampMs = now()): void {
     if (!this._running) return;
+    const mergedStartTimestampMs =
+      this.pending.length > 0 ? this.pendingStartTimestampMs : timestampMs;
     const merged = new Float32Array(this.pending.length + pcm.length);
     merged.set(this.pending, 0);
     merged.set(pcm, this.pending.length);
     let offset = 0;
     while (merged.length - offset >= this.frameSamples) {
       const frame = merged.slice(offset, offset + this.frameSamples);
+      const frameTimestampMs =
+        mergedStartTimestampMs + (offset / this.sampleRate) * 1000;
       offset += this.frameSamples;
-      this.emitFrame(frame, timestampMs);
+      this.emitFrame(frame, frameTimestampMs);
     }
     this.pending = merged.slice(offset);
+    this.pendingStartTimestampMs =
+      this.pending.length > 0
+        ? mergedStartTimestampMs + (offset / this.sampleRate) * 1000
+        : 0;
   }
 
   /** Feed mono PCM16 little-endian bytes (Discord / browser path). */

@@ -56,6 +56,7 @@ class TestRetrievalEvaluator:
         assert evaluator.evaluate_contains("The secret code is XYZ123", "XYZ123") is True
         assert evaluator.evaluate_contains("xyz123", "XYZ123") is True
         assert evaluator.evaluate_contains("ABC", "XYZ") is False
+        assert evaluator.evaluate_contains("ABC", "") is False
 
     def test_fuzzy_match(self) -> None:
         """Test fuzzy matching."""
@@ -123,9 +124,30 @@ class TestRetrievalEvaluator:
         assert "fuzzy_match" in result
         assert "fuzzy_score" in result
         assert "semantic_similarity" in result
+        assert "semantic_match" in result
         assert "retrieval_success" in result
         assert "contains_needle_info" in result
 
+        assert result["retrieval_success"] is True
+
+    def test_semantic_match_contributes_to_retrieval_success(self) -> None:
+        """Semantic similarity should not be report-only."""
+        vectors = {
+            "automobile": [1.0, 0.0],
+            "car": [1.0, 0.0],
+        }
+        evaluator = RetrievalEvaluator(
+            embedding_fn=lambda text: vectors[text],
+            semantic_threshold=0.95,
+        )
+
+        result = evaluator.evaluate(predicted="automobile", expected="car")
+
+        assert result["exact_match"] is False
+        assert result["contains_answer"] is False
+        assert result["fuzzy_match"] is False
+        assert result["semantic_similarity"] == 1.0
+        assert result["semantic_match"] is True
         assert result["retrieval_success"] is True
 
 

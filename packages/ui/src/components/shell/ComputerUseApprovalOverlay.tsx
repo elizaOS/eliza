@@ -1,14 +1,9 @@
-import {
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  StatusBadge,
-} from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ComputerUseApprovalSnapshot, client } from "../../api/client";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { Card, CardContent, CardDescription, CardHeader } from "../ui/card";
+import { StatusBadge } from "../ui/status-badge";
 
 const OVERLAY_SHELL_CLASS =
   "fixed inset-0 z-[1002] flex min-h-screen w-full items-center justify-center overflow-hidden bg-bg/75 px-4 py-6 font-body text-txt backdrop-blur-sm sm:px-6";

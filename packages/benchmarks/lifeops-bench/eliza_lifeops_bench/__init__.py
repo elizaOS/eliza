@@ -9,7 +9,6 @@ Public API:
 
 from __future__ import annotations
 
-from .runner import LifeOpsBenchRunner
 from .types import (
     Action,
     BenchmarkResult,
@@ -24,6 +23,15 @@ from .types import (
     attach_usage_cache_fields,
     compute_cache_hit_pct,
 )
+
+
+def __getattr__(name: str):
+    if name == "LifeOpsBenchRunner":
+        from .runner import LifeOpsBenchRunner
+
+        return LifeOpsBenchRunner
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "Action",

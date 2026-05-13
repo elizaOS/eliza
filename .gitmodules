@@ -13,4 +13,4 @@
 	# the gitlink (commit SHA) is tracked.
 	path = packages/inference/llama.cpp
 	url = https://github.com/elizaOS/llama.cpp.git
-	branch = eliza/main
+	branch = eliza/omnivoice-build-flag

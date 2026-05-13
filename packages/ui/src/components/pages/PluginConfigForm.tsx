@@ -1,4 +1,3 @@
-import { Switch } from "@elizaos/ui";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { PluginInfo, PluginParamDef } from "../../api";
 import {
@@ -7,6 +6,7 @@ import {
 } from "../../components/config-ui/config-renderer";
 import { useApp } from "../../state";
 import type { ConfigUiHint } from "../../types";
+import { Switch } from "../ui/switch";
 import { paramsToSchema, TELEGRAM_ALLOW_ALL_HIDDEN } from "./plugin-list-utils";
 
 /* ── Telegram chat mode ─────────────────────────────────────────────── */

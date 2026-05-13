@@ -32,6 +32,35 @@ index 6ba85116d1b..b0fab9b4422 100644
  namespace DOMJIT {
  
  struct Effect {
+diff --git a/Source/JavaScriptCore/runtime/JSLock.cpp b/Source/JavaScriptCore/runtime/JSLock.cpp
+index 2a2cb85767a..fba66ddfcfb 100644
+--- a/Source/JavaScriptCore/runtime/JSLock.cpp
++++ b/Source/JavaScriptCore/runtime/JSLock.cpp
+@@ -299,6 +299,7 @@ void JSLock::willReleaseLock()
+     {
+         RefPtr protectedVM { m_vm };
+         if (protectedVM) {
++#if !(USE(BUN_JSC_ADDITIONS) && OS(IOS_FAMILY))
+             static bool useLegacyDrain = false;
+ #if PLATFORM(COCOA)
+             static std::once_flag once;
+@@ -306,9 +307,16 @@ void JSLock::willReleaseLock()
+                 useLegacyDrain = !linkedOnOrAfterSDKWithBehavior(SDKAlignedBehavior::DoesNotDrainTheMicrotaskQueueWhenCallingObjC);
+             });
+ #endif
++#endif
+ 
++#if USE(BUN_JSC_ADDITIONS) && OS(IOS_FAMILY)
++            // Bun owns microtask draining through its event loop. On iOS, running
++            // JSC's Cocoa legacy lock-release drain during VM/global creation can
++            // re-enter a partially initialized Bun VM.
++#else
+             if (!m_lockDropDepth || useLegacyDrain)
+                 protectedVM->drainMicrotasks();
++#endif
+ 
+             if (!protectedVM->topCallFrame)
+                 protectedVM->clearLastException();
 diff --git a/Source/JavaScriptCore/runtime/StackFrame.h b/Source/JavaScriptCore/runtime/StackFrame.h
 index b689e68d58d..5578051a6b2 100644
 --- a/Source/JavaScriptCore/runtime/StackFrame.h
@@ -48,6 +77,98 @@ index b689e68d58d..5578051a6b2 100644
      }
  
  #if USE(BUN_JSC_ADDITIONS)
+diff --git a/Source/JavaScriptCore/runtime/VM.cpp b/Source/JavaScriptCore/runtime/VM.cpp
+index 4e8ffc31ef1..16e8051b2b6 100644
+--- a/Source/JavaScriptCore/runtime/VM.cpp
++++ b/Source/JavaScriptCore/runtime/VM.cpp
+@@ -1386,6 +1386,9 @@ void VM::drainMicrotasks()
+ {
+     if (m_drainMicrotaskDelayScopeCount) [[unlikely]]
+         return;
++    if (m_isDrainingMicrotasks) [[unlikely]]
++        return;
++    SetForScope isDrainingMicrotasks(m_isDrainingMicrotasks, true);
+ 
+     if (executionForbidden()) [[unlikely]]
+         m_defaultMicrotaskQueue.clear();
+@@ -1401,9 +1404,7 @@ void VM::drainMicrotasks()
+                     if (RefPtr dispatcher = task.dispatcher())
+                         return dispatcher->run(task);
+ 
+-                    auto catchScope = DECLARE_TOP_EXCEPTION_SCOPE(*this);
+                     runInternalMicrotask(globalObject, task.job(), task.payload(), task.arguments());
+-                    catchScope.clearExceptionExceptTermination();
+                     return QueuedTask::Result::Executed;
+                 });
+             if (hasPendingTerminationException()) [[unlikely]]
+diff --git a/Source/JavaScriptCore/runtime/VM.h b/Source/JavaScriptCore/runtime/VM.h
+index 0e3f9e80c05..3dac6c9ee87 100644
+--- a/Source/JavaScriptCore/runtime/VM.h
++++ b/Source/JavaScriptCore/runtime/VM.h
+@@ -1067,14 +1067,25 @@ public:
+ 
+     DrainMicrotaskDelayScope drainMicrotaskDelayScope() { return DrainMicrotaskDelayScope { *this }; }
+     JS_EXPORT_PRIVATE void drainMicrotasks();
++    bool isDrainingMicrotasks() const { return m_isDrainingMicrotasks; }
+ #if USE(BUN_JSC_ADDITIONS)
+     void drainMicrotasksForGlobalObject(JSGlobalObject* globalObject) { m_defaultMicrotaskQueue.clearForGlobalObject(globalObject); }
+ #endif
+-    void setOnEachMicrotaskTick(WTF::Function<void(VM&)>&& func) { m_onEachMicrotaskTick = WTF::move(func); }
++    void setOnEachMicrotaskTick(WTF::Function<void(VM&)>&& func)
++    {
++        m_onEachMicrotaskTick = WTF::move(func);
++        ++m_onEachMicrotaskTickGeneration;
++    }
+     void callOnEachMicrotaskTick()
+     {
+-        if (m_onEachMicrotaskTick)
+-            m_onEachMicrotaskTick(*this);
++        if (!m_onEachMicrotaskTick)
++            return;
++
++        auto generation = m_onEachMicrotaskTickGeneration;
++        auto onEachMicrotaskTick = WTF::move(m_onEachMicrotaskTick);
++        onEachMicrotaskTick(*this);
++        if (!m_onEachMicrotaskTick && m_onEachMicrotaskTickGeneration == generation)
++            m_onEachMicrotaskTick = WTF::move(onEachMicrotaskTick);
+     }
+     void finalizeSynchronousJSExecution()
+     {
+@@ -1319,11 +1330,13 @@ private:
+     LazyUniqueRef<VM, ShadowChicken> m_shadowChicken;
+     std::unique_ptr<BytecodeIntrinsicRegistry> m_bytecodeIntrinsicRegistry;
+     uint64_t m_drainMicrotaskDelayScopeCount { 0 };
++    bool m_isDrainingMicrotasks { false };
+ 
+     // FIXME: We should remove handled promises from this list at GC flip. <https://webkit.org/b/201005>
+     Vector<Strong<JSPromise>> m_aboutToBeNotifiedRejectedPromises;
+ 
+     WTF::Function<void(VM&)> m_onEachMicrotaskTick;
++    uint64_t m_onEachMicrotaskTickGeneration { 0 };
+ #if USE(BUN_JSC_ADDITIONS)
+     ErrorInfoFunction m_onComputeErrorInfo;
+     ErrorInfoFunctionJSValue m_onComputeErrorInfoJSValue;
+diff --git a/Source/JavaScriptCore/wasm/WasmWorklist.cpp b/Source/JavaScriptCore/wasm/WasmWorklist.cpp
+index e738280558c..ba48d9ba187 100644
+--- a/Source/JavaScriptCore/wasm/WasmWorklist.cpp
++++ b/Source/JavaScriptCore/wasm/WasmWorklist.cpp
+@@ -30,6 +30,7 @@
+ 
+ #include "CPU.h"
+ #include "WasmPlan.h"
++#include <wtf/Seconds.h>
+ #include <wtf/TZoneMallocInlines.h>
+ 
+ namespace JSC { namespace Wasm {
+@@ -62,7 +63,7 @@ public:
+ 
+ private:
+     Thread(const AbstractLocker& locker, Worklist& work)
+-        : Base(locker, work.m_lock, work.m_planEnqueued.copyRef(), ThreadType::Compiler)
++        : Base(locker, work.m_lock, work.m_planEnqueued.copyRef(), ThreadType::Compiler, Seconds::infinity())
+         , worklist(work)
+     {
+ 
 diff --git a/Source/WTF/wtf/generic/RunLoopGeneric.cpp b/Source/WTF/wtf/generic/RunLoopGeneric.cpp
 index 9e683db7df6..b9aa3a8798c 100644
 --- a/Source/WTF/wtf/generic/RunLoopGeneric.cpp
@@ -105,7 +226,7 @@ index c21cd8eaa76..4a7ad0464c7 100644
      ASSERT_UNUSED(jitCageEnabled, !jitCageEnabled); // Not supported for mach API.
      vm_prot_t protections = VM_PROT_READ;
 diff --git a/Source/bmalloc/bmalloc/BPlatform.h b/Source/bmalloc/bmalloc/BPlatform.h
-index abf75cb0ed3..74540ad4ac1 100644
+index 3db4f84f43b..2d003652c54 100644
 --- a/Source/bmalloc/bmalloc/BPlatform.h
 +++ b/Source/bmalloc/bmalloc/BPlatform.h
 @@ -328,7 +328,7 @@
@@ -117,3 +238,21 @@ index abf75cb0ed3..74540ad4ac1 100644
  #define BOS_EFFECTIVE_ADDRESS_WIDTH (bmalloc::getMSBSetConstexpr(MACH_VM_MAX_ADDRESS) + 1)
  #else
  /* We strongly assume that effective address width is <= 48 in 64bit architectures (e.g. NaN boxing). */
+diff --git a/Source/cmake/WebKitCommon.cmake b/Source/cmake/WebKitCommon.cmake
+index 629fce4dc6d..9599ed5276c 100644
+--- a/Source/cmake/WebKitCommon.cmake
++++ b/Source/cmake/WebKitCommon.cmake
+@@ -96,8 +96,12 @@ if (NOT HAS_RUN_WEBKIT_COMMON)
+     # since the later one just resolves to the host processor on Windows.
+     if (MSVC_CXX_ARCHITECTURE_ID)
+         string(TOLOWER ${MSVC_CXX_ARCHITECTURE_ID} LOWERCASE_CMAKE_SYSTEM_PROCESSOR)
+-    else ()
++    elseif (CMAKE_SYSTEM_PROCESSOR)
+         string(TOLOWER ${CMAKE_SYSTEM_PROCESSOR} LOWERCASE_CMAKE_SYSTEM_PROCESSOR)
++    elseif (CMAKE_OSX_ARCHITECTURES)
++        string(TOLOWER ${CMAKE_OSX_ARCHITECTURES} LOWERCASE_CMAKE_SYSTEM_PROCESSOR)
++    else ()
++        set(LOWERCASE_CMAKE_SYSTEM_PROCESSOR "unknown")
+     endif ()
+     if (LOWERCASE_CMAKE_SYSTEM_PROCESSOR MATCHES "(^aarch64|^arm64|^cortex-?[am][2-7][2-8])")
+          if (FORCE_32BIT)

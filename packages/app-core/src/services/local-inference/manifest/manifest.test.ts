@@ -84,15 +84,19 @@ describe("Eliza-1 manifest schema constants", () => {
     expect(ELIZA_1_MANIFEST_SCHEMA_VERSION).toBe("1");
   });
 
-  it("uses Qwen3.5 small-tier ids and tokenizer family", () => {
+  it("uses Eliza-1 size-tier ids and tokenizer family", () => {
     expect(ELIZA_1_TOKENIZER_FAMILY).toBe("qwen35");
-    // Tier order — `0_8b` and `2b` are the active Qwen3.5 small/mid local
-    // tiers; the legacy Qwen3 tiers `0_6b` / `1_7b` / `4b` remain
-    // enumerated for existing bundle ids. The schema-level enum stays
-    // size-ordered.
-    expect(ELIZA_1_TIERS.slice(0, 4)).toEqual(["0_8b", "0_6b", "1_7b", "2b"]);
+    expect(ELIZA_1_TIERS).toEqual([
+      "0_8b",
+      "2b",
+      "4b",
+      "9b",
+      "27b",
+      "27b-256k",
+      "27b-1m",
+    ]);
     expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
-      expect.arrayContaining(["0_6b", "0_8b", "1_7b", "2b"]),
+      expect.arrayContaining(["0_8b", "2b", "4b"]),
     );
   });
 });
@@ -305,8 +309,8 @@ describe("validateManifest — contract rejections", () => {
   });
 
   it("does not require cuda or rocm for tiers that don't ship on cuda/rocm", () => {
-    const m = baseManifest("0_6b");
-    // 0.6B tier doesn't ship on cuda/rocm; failures there should not block.
+    const m = baseManifest("0_8b");
+    // 0.8B tier doesn't ship on cuda/rocm; failures there should not block.
     m.kernels.verifiedBackends.cuda = {
       status: "fail",
       atCommit: "abc1234",
@@ -393,9 +397,9 @@ describe("canSetAsDefault", () => {
       sourceModels: {
         text: { repo: "Qwen/Qwen3.5-9B" },
         voice: { repo: "Serveurperso/OmniVoice-GGUF" },
-        drafter: { repo: "elizaos/eliza-1-9b" },
-        asr: { repo: "ggml-org/Qwen3-ASR-1.7B-GGUF" },
-        embedding: { repo: "Qwen/Qwen3-Embedding-0.6B" },
+        drafter: { repo: "elizaos/eliza-1" },
+        asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
+        embedding: { repo: "Qwen/Qwen3-Embedding-GGUF" },
         vad: { repo: "onnx-community/silero-vad" },
         vision: { repo: "unsloth/Qwen3.5-9B-GGUF" },
       },

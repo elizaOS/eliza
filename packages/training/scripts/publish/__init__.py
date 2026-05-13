@@ -2,7 +2,8 @@
 
 End-to-end runner that takes an already-quantized bundle directory,
 verifies kernels, applies eval gates, builds the Eliza-1 manifest,
-generates the README, and pushes to ``elizaos/eliza-1-<tier>``.
+generates the README, and pushes the bundle into ``elizaos/eliza-1``
+under ``bundles/<tier>/``.
 
 The flow is the canonical implementation of
 ``packages/training/AGENTS.md`` §6. There is no opt-out flag for any

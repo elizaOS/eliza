@@ -16,12 +16,13 @@
 
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import { isElectrobunRuntime } from "../bridge";
-import { isAndroid, isElizaOS, isNative } from "../platform";
+import { isAndroid, isElizaOS, isIOS, isNative } from "../platform";
 import { loadPersistedOnboardingComplete } from "./persistence";
 import {
   createAndroidPolicy,
   createDesktopPolicy,
   createElizaOSPolicy,
+  createIosPolicy,
   createMobilePolicy,
   createWebPolicy,
   INITIAL_STARTUP_STATE,
@@ -93,6 +94,7 @@ function detectPlatformPolicy(): PlatformPolicy {
   // backend timeout (vanilla mobile is cloud-only with a fast-fail budget).
   if (isElizaOS()) return createElizaOSPolicy();
   if (isAndroid) return createAndroidPolicy();
+  if (isIOS) return createIosPolicy();
   if (isNative) return createMobilePolicy();
   return createWebPolicy();
 }

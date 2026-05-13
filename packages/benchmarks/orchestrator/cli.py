@@ -278,6 +278,8 @@ def _cmd_calibration_report(args: argparse.Namespace) -> int:
                 return 1
             if row.get("real_pattern") in {"all_real_zero", "all_real_one", "all_real_equal"}:
                 return 1
+            if str(row.get("real_pattern") or "").endswith("_mixed_config"):
+                return 1
     return 0
 
 
@@ -777,3 +779,7 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
     return int(args.func(args))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

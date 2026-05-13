@@ -1,7 +1,8 @@
-import { Button, StatusBadge } from "@elizaos/ui";
 import { Check, Cloud, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { StatusBadge } from "../ui/status-badge";
 import { PermissionIcon } from "./PermissionIcon";
 
 type MediaPermissionState = "granted" | "denied" | "prompt" | "unknown";

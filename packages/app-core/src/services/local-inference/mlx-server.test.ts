@@ -29,10 +29,14 @@ function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
   }
 }
 
-function readFetchJson(init: RequestInit | undefined): Record<string, unknown> {
+type FetchInput = Parameters<typeof fetch>[0];
+type FetchInit = Parameters<typeof fetch>[1];
+
+function readFetchBody(init: FetchInit): string {
   const body = init?.body;
-  if (typeof body !== "string") return {};
-  return JSON.parse(body) as Record<string, unknown>;
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return new TextDecoder().decode(body);
+  throw new Error("Expected string request body");
 }
 
 function sseResponse(chunks: string[]): Response {
@@ -52,6 +56,19 @@ function sseResponse(chunks: string[]): Response {
       },
     }),
     { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+function installMlxFetchMock(
+  handler: (url: URL, init: FetchInit) => Response | Promise<Response>,
+): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((input: FetchInput, init?: FetchInit) => {
+      const rawUrl =
+        typeof input === "string" || input instanceof URL ? input : input.url;
+      return handler(new URL(rawUrl), init);
+    }),
   );
 }
 
@@ -148,30 +165,20 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
   });
 
   it("health-checks /v1/models and routes /v1/chat/completions (non-streaming)", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
-        const rawUrl =
-          typeof input === "string" || input instanceof URL ? input : input.url;
-        const url = new URL(rawUrl);
-        const method = (init?.method ?? "GET").toUpperCase();
-        if (url.pathname === "/v1/models") {
-          return Response.json({ data: [{ id: "eliza-1-0_6b-mlx" }] });
-        }
-        if (url.pathname === "/v1/chat/completions" && method === "POST") {
-          const parsed = readFetchJson(init);
-          expect(parsed.model).toBe("eliza-1-0_6b-mlx");
-          const messages = parsed.messages as
-            | Array<{ content?: unknown }>
-            | undefined;
-          expect(messages?.[0]?.content).toBe("hello");
-          return Response.json({
-            choices: [{ message: { content: "world" } }],
-          });
-        }
-        return new Response(null, { status: 404 });
-      }),
-    );
+    installMlxFetchMock((url, init) => {
+      if (url.pathname === "/v1/models") {
+        return Response.json({ data: [{ id: "eliza-1-0_8b-mlx" }] });
+      }
+      if (url.pathname === "/v1/chat/completions") {
+        const parsed = JSON.parse(readFetchBody(init));
+        expect(parsed.model).toBe("eliza-1-0_8b-mlx");
+        expect(parsed.messages?.[0]?.content).toBe("hello");
+        return Response.json({
+          choices: [{ message: { content: "world" } }],
+        });
+      }
+      return new Response(null, { status: 404 });
+    });
 
     // Drive the adapter against the mock HTTP server directly (no spawn): the
     // class exposes the route/health logic, so we point baseUrl at the mock by
@@ -190,17 +197,19 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
     }
     const t = new TestMlx();
     svc = t;
-    t.attach("http://mlx.test", "eliza-1-0_6b-mlx");
+    t.attach("http://mlx.test", "eliza-1-0_8b-mlx");
     expect(t.hasLoadedModel()).toBe(true);
     const out = await t.generate({ prompt: "hello" } as never);
     expect(out).toBe("world");
   });
 
   it("streams SSE deltas through onTextChunk", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => sseResponse(["foo", " bar"])),
-    );
+    installMlxFetchMock((url) => {
+      if (url.pathname === "/v1/chat/completions") {
+        return sseResponse(["foo", " bar"]);
+      }
+      return new Response(null, { status: 404 });
+    });
     class TestMlx extends MlxLocalServer {
       attach(baseUrl: string) {
         // @ts-expect-error

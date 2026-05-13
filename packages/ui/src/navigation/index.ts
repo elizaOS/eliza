@@ -2,8 +2,6 @@
  * Navigation — tabs + onboarding.
  */
 
-/// <reference types="vite/client" />
-
 import { Capacitor } from "@capacitor/core";
 import type { LucideIcon } from "lucide-react";
 import {

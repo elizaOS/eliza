@@ -136,10 +136,11 @@ const routeMap = {
   "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq": { key: "turbo3_tcq", capability: "turbo3_tcq", op: "GGML_OP_ATTN_SCORE_TBQ" },
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=0": { key: "polar", capability: "polarquant", op: "GGML_OP_ATTN_SCORE_POLAR" },
   "GGML_OP_ATTN_SCORE_POLAR/use_qjl=1": { key: "polar", capability: "polarquant", op: "GGML_OP_ATTN_SCORE_POLAR" },
+  "GGML_OP_FUSED_ATTN_QJL_TBQ": { key: "fused_attn_qjl_tbq", capability: "fused_attn_qjl_tbq", op: "GGML_OP_FUSED_ATTN_QJL_TBQ" },
 };
 const seen = new Map();
-for (const match of text.matchAll(/\[vulkan_dispatch_smoke\] PASS ([^:]+): (\d+) scores, max diff ([0-9.eE+-]+)/g)) {
-  const [, route, scores, maxDiff] = match;
+for (const match of text.matchAll(/\[vulkan_dispatch_smoke\] PASS ([^:]+): (\d+) (?:scores|outputs), max diff ([0-9.eE+-]+)/g)) {
+  const [, route, outputs, maxDiff] = match;
   const meta = routeMap[route];
   if (!meta) continue;
   const current = seen.get(meta.key) ?? {
@@ -149,17 +150,17 @@ for (const match of text.matchAll(/\[vulkan_dispatch_smoke\] PASS ([^:]+): (\d+)
     graphOp: meta.op,
     smokeTarget: "vulkan-dispatch-smoke",
     smokeCommand: "make -C packages/inference/verify vulkan-dispatch-smoke",
-    smokeScores: 0,
+    smokeOutputs: 0,
     maxDiff: 0,
     graphRoutes: [],
     evidenceDate: new Date().toISOString().slice(0, 10),
   };
-  current.smokeScores += Number(scores);
+  current.smokeOutputs += Number(outputs);
   current.maxDiff = Math.max(current.maxDiff, Number(maxDiff));
   current.graphRoutes.push(route);
   seen.set(meta.key, current);
 }
-const required = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar"];
+const required = ["turbo3", "turbo4", "turbo3_tcq", "qjl", "polar", "fused_attn_qjl_tbq"];
 const missing = required.filter((key) => !seen.has(key));
 if (missing.length) {
   console.error(`[linux-vulkan-smoke] cannot write runtime evidence; missing graph route(s): ${missing.join(", ")}`);

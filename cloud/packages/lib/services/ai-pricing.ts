@@ -41,11 +41,12 @@ const VAST_DEFAULT_PRICING_PER_1M: Record<string, { input: number; output: numbe
   "vast/eliza-1-2b": { input: 0.2, output: 0.4 },
   "vast/eliza-1-9b": { input: 1, output: 2 },
   "vast/eliza-1-27b": { input: 4, output: 8 },
+  "vast/eliza-1-27b-256k": { input: 5, output: 10 },
 };
 
 type PriceLookupSource = PricingBillingSource | "seed";
 
-type PricingRefreshSource = "gateway" | "openrouter" | "fal" | "elevenlabs" | "suno";
+type PricingRefreshSource = "gateway" | "openrouter" | "fal" | "elevenlabs" | "suno" | "vast";
 
 type PreparedPricingEntry = {
   billingSource: PriceLookupSource;
@@ -1666,7 +1667,7 @@ async function refreshSourceEntries(
 }
 
 export async function refreshPricingCatalog(
-  sources: PricingRefreshSource[] = ["openrouter", "fal", "elevenlabs"],
+  sources: PricingRefreshSource[] = ["openrouter", "fal", "elevenlabs", "vast"],
 ) {
   const results = [];
 
@@ -1698,6 +1699,14 @@ export async function refreshPricingCatalog(
     results.push(
       await refreshSourceEntries("suno", "https://docs.sunoapi.org/suno-api/", async () => {
         return await fetchSunoEntries();
+      }),
+    );
+  }
+
+  if (sources.includes("vast")) {
+    results.push(
+      await refreshSourceEntries("vast", "internal://vast/pricing", async () => {
+        return await fetchVastSnapshotEntries();
       }),
     );
   }

@@ -61,6 +61,10 @@ export function buildScenarios(set: FixtureSet = generateAllFixtures()): Scenari
       "false-end-of-speech",
       "Mid-clause 400ms pause. Optimistic decode should fire and roll back gracefully.",
       set.falseEos,
+      {
+        falseEosAtMs: 3000,
+        falseEosDurationMs: 400,
+      },
     ),
     make(
       "barge-in",
@@ -68,6 +72,15 @@ export function buildScenarios(set: FixtureSet = generateAllFixtures()): Scenari
       set.long,
       {
         bargeInAtMs: 3000,
+        bargeInAudio: set.bargeInOverlay,
+      },
+    ),
+    make(
+      "barge-in-mid-response",
+      "Agent is mid-response when the user barges in at t=5s. Tests C1 restore (state machine rolls back from SPEAKING → LISTENING).",
+      set.long,
+      {
+        bargeInAtMs: 5000,
         bargeInAudio: set.bargeInOverlay,
       },
     ),
@@ -90,6 +103,7 @@ export const SCENARIO_IDS = [
   "long-turn",
   "false-end-of-speech",
   "barge-in",
+  "barge-in-mid-response",
   "cold-start",
   "warm-start",
 ] as const;

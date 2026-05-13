@@ -11,10 +11,19 @@
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
     "types": [
       "node",
       "bun-types"
-    ]
+    ],
+    "paths": {
+      "@elizaos/core": [
+        "../../packages/core/src/index.node.ts"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../plugin-local-inference/src/index.ts"
+      ]
+    }
   },
   "include": [
     "**/*.ts"

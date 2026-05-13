@@ -2,6 +2,7 @@
 
 const externalDeps = [
   "@elizaos/core",
+  "@elizaos/plugin-local-inference",
   "@huggingface/transformers",
   "node-llama-cpp",
   "whisper-node",

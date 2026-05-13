@@ -54,7 +54,11 @@ class CoherenceEvaluator:
                 (s for s in result.daily_summaries if s.day_number == day),
                 None,
             )
-            self._evaluate_day(day, day_actions, day_summary)
+            previous_summary = next(
+                (s for s in result.daily_summaries if s.day_number == day - 1),
+                None,
+            )
+            self._evaluate_day(day, day_actions, day_summary, previous_summary)
 
         # Cross-day analysis
         self._evaluate_cross_day_patterns(result)
@@ -72,6 +76,7 @@ class CoherenceEvaluator:
         day: int,
         actions: list[AgentAction],
         summary: DailySummary | None,
+        previous_summary: DailySummary | None = None,
     ) -> None:
         """Evaluate actions for a single day."""
         # Track action types for loop detection
@@ -87,9 +92,11 @@ class CoherenceEvaluator:
         # Check for loop behavior
         self._check_loop_behavior(day, actions)
 
-        # Check for forgotten restocking
-        if summary and summary.deliveries_received:
-            self._check_forgotten_restock(day, actions, summary)
+        # Deliveries are processed during ADVANCE_DAY after the agent's actions.
+        # Only flag forgotten restocks once that inventory was visible at the
+        # start of the following day.
+        if previous_summary and previous_summary.deliveries_received:
+            self._check_forgotten_restock(day, actions, previous_summary)
 
         # Check for cash flow errors
         self._check_cash_flow_errors(day, actions, summary)

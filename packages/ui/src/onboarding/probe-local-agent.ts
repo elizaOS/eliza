@@ -4,8 +4,8 @@
  * Liveness probe for an on-device Eliza agent.
  *
  * Android reaches the bundled foreground service over loopback. iOS reaches
- * an in-process route kernel through the ITTP transport, so its local option
- * is available as soon as the native app is running.
+ * the bundled runtime through an in-app IPC identity, so its local option is
+ * available as soon as the native app is running.
  *
  * Result is cached for `PROBE_CACHE_TTL_MS` so repeated renders during the
  * onboarding flow do not hammer loopback. The cache is keyed by URL.
@@ -127,8 +127,9 @@ export interface LocalOptionGate {
  *   "is the agent's `/api/health` reachable yet?" — used by the splash to
  *   know when to call `finishAsLocal()`. It is **not** a gate on whether
  *   the local mode is offered at all; on Android it always is.
- * - iOS: `true` in native builds because the local agent uses the in-WebView
- *   ITTP route kernel instead of a TCP listener.
+ * - iOS: `true` in native builds because local requests are intercepted by
+ *   the Capacitor/native IPC bridge or the compatibility ITTP kernel instead
+ *   of probing a TCP listener.
  * - Plain web: `false`. It does not host a local agent.
  */
 export async function shouldShowLocalOption(
