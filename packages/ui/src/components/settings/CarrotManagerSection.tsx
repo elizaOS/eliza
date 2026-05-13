@@ -133,6 +133,9 @@ function CarrotRow({
               {carrot.id}
             </span>
             <span className="text-[10px] text-muted">v{carrot.version}</span>
+            <span className="rounded bg-bg/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
+              {carrot.mode}
+            </span>
             <StateBadge state={state} />
           </div>
           <p className="mt-0.5 truncate text-xs text-muted">
