@@ -197,7 +197,6 @@ function defaultModelPath(name) {
 const QUICK_VARIANTS = [
   "baseline_f16_kv",
   "turbo4_polar_kv",
-  "qjl_tcq_forced",
   "dflash_only",
 ];
 
