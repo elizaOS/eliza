@@ -31,8 +31,38 @@ function usesModelSubclassApi(llamaCppRoot) {
   });
 }
 
+function hparamsMemberExpr(llamaCppRoot, member) {
+  const header = path.join(llamaCppRoot, "src", "llama-hparams.h");
+  if (fs.existsSync(header)) {
+    const source = fs.readFileSync(header, "utf8");
+    if (
+      source.includes(` ${member};`) ||
+      source.includes(` ${member} =`) ||
+      source.includes(` ${member} //`)
+    ) {
+      return `hparams.${member}`;
+    }
+  }
+  return `hparams.${member}()`;
+}
+
+function adaptDflashDraftSource(source, llamaCppRoot) {
+  return source
+    .replaceAll(
+      "hparams.n_embd_head_v()",
+      hparamsMemberExpr(llamaCppRoot, "n_embd_head_v"),
+    )
+    .replaceAll(
+      "hparams.n_embd_head_k()",
+      hparamsMemberExpr(llamaCppRoot, "n_embd_head_k"),
+    );
+}
+
 function dflashDraftSourceForRoot(llamaCppRoot) {
-  const source = fs.readFileSync(DFLASH_DRAFT_SOURCE, "utf8");
+  const source = adaptDflashDraftSource(
+    fs.readFileSync(DFLASH_DRAFT_SOURCE, "utf8"),
+    llamaCppRoot,
+  );
   if (usesModelSubclassApi(llamaCppRoot)) {
     return source;
   }

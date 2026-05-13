@@ -19,6 +19,10 @@ mock.module("@/lib/utils/error-handling", () => ({
   extractErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }));
 
+mock.module("@/lib/security/outbound-url", () => ({
+  assertSafeOutboundUrl: async (rawUrl: string) => new URL(rawUrl),
+}));
+
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
   if (ORIGINAL_META_PAGE_ID === undefined) delete process.env.META_DEFAULT_PAGE_ID;
