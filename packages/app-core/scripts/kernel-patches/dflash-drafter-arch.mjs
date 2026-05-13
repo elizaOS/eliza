@@ -46,6 +46,17 @@ function dflashDraftSourceForRoot(llamaCppRoot) {
   return `${source.slice(0, start)}${source.slice(end)}`;
 }
 
+function loaderMetadataExpr(llamaCppRoot) {
+  const header = path.join(llamaCppRoot, "src", "llama-model-loader.h");
+  if (fs.existsSync(header)) {
+    const source = fs.readFileSync(header, "utf8");
+    if (source.includes("gguf_context_ptr meta;")) {
+      return "ml.meta.get()";
+    }
+  }
+  return "ml.metadata";
+}
+
 function requireIncludes(source, needle, rel) {
   if (!source.includes(needle)) {
     throw new Error(
@@ -240,7 +251,9 @@ function patchModelHeader(source, rel) {
 function patchModelsHeader(source, rel) {
   if (
     source.includes("struct llm_build_dflash_draft") &&
-    (!source.includes("struct llama_model_mistral3 : public llama_model_base") ||
+    (!source.includes(
+      "struct llama_model_mistral3 : public llama_model_base",
+    ) ||
       source.includes("struct llama_model_dflash_draft"))
   ) {
     return source;
@@ -277,11 +290,11 @@ struct llama_model_dflash_draft : public llama_model_base {
   return out;
 }
 
-function patchModelCpp(source, rel) {
-  if (source.includes("return new llama_model_dflash_draft(params);")) {
-    return source;
+function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
+  let out = source.replaceAll("ml.metadata", metadataExpr);
+  if (out.includes("return new llama_model_dflash_draft(params);")) {
+    return out;
   }
-  let out = source;
   if (out.includes("return new llama_model_qwen35(params);")) {
     out = insertBefore(
       out,
@@ -313,12 +326,12 @@ function patchModelCpp(source, rel) {
                 ml.get_key(LLM_KV_DFLASH_N_TARGET_FEATURES,    hparams.dflash_n_target_features, false);
 
                 const std::string key = ml.llm_kv(LLM_KV_DFLASH_TARGET_LAYER_IDS);
-                const int kid = gguf_find_key(ml.metadata, key.c_str());
-                if (kid >= 0 && gguf_get_kv_type(ml.metadata, kid) == GGUF_TYPE_ARRAY) {
-                    const enum gguf_type arr_type = gguf_get_arr_type(ml.metadata, kid);
-                    const size_t n = gguf_get_arr_n(ml.metadata, kid);
+                const int kid = gguf_find_key(${metadataExpr}, key.c_str());
+                if (kid >= 0 && gguf_get_kv_type(${metadataExpr}, kid) == GGUF_TYPE_ARRAY) {
+                    const enum gguf_type arr_type = gguf_get_arr_type(${metadataExpr}, kid);
+                    const size_t n = gguf_get_arr_n(${metadataExpr}, kid);
                     hparams.dflash_n_target_layers = std::min((uint32_t) n, (uint32_t) 8);
-                    const void * data = gguf_get_arr_data(ml.metadata, kid);
+                    const void * data = gguf_get_arr_data(${metadataExpr}, kid);
                     for (uint32_t i = 0; i < hparams.dflash_n_target_layers; ++i) {
                         if (arr_type == GGUF_TYPE_UINT32) {
                             hparams.dflash_target_layer_ids[i] = ((const uint32_t *) data)[i];
@@ -409,7 +422,10 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
     ["src/llama-hparams.h", "dflash_n_target_features"],
     ["src/llama-model.h", "dflash_hidden_norm"],
     ["src/models/models.h", "llm_build_dflash_draft"],
-    ["src/models/dflash_draft.cpp", "llm_build_dflash_draft::llm_build_dflash_draft"],
+    [
+      "src/models/dflash_draft.cpp",
+      "llm_build_dflash_draft::llm_build_dflash_draft",
+    ],
   ];
   const missing = [];
   for (const [rel, marker] of requiredMarkers) {
@@ -462,7 +478,11 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
     ["src/llama-hparams.h", patchHparams],
     ["src/llama-model.h", patchModelHeader],
     ["src/models/models.h", patchModelsHeader],
-    ["src/llama-model.cpp", patchModelCpp],
+    [
+      "src/llama-model.cpp",
+      (source, rel) =>
+        patchModelCpp(source, rel, loaderMetadataExpr(llamaCppRoot)),
+    ],
   ];
 
   if (dryRun) {
