@@ -913,9 +913,29 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
   }
   let content = fs.readFileSync(specPath, "utf8");
   const original = content;
+  const hasDflashDispatch = (source) =>
+    source.includes(
+      "bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));",
+    ) ||
+    source.includes(
+      "bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);",
+    );
+  if (
+    hasDflashDispatch(content) &&
+    content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) &&
+    content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
+  ) {
+    return;
+  }
   content = content.replace(
     "        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT));\n",
     "        bool has_dflash = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DFLASH));\n        bool has_draft = (enabled_configs & (1u << COMMON_SPECULATIVE_TYPE_DRAFT)) || has_dflash;\n",
+  );
+  content = content.replace(
+    "        bool has_draft = !params.mparams_dft.path.empty();\n",
+    "        bool has_dflash = (params.type == COMMON_SPECULATIVE_TYPE_DFLASH);\n        bool has_draft = !params.mparams_dft.path.empty();\n",
   );
   content = content.replace(
     "        static_assert(COMMON_SPECULATIVE_TYPE_COUNT == 8);\n",
@@ -926,15 +946,18 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
     "            configs.push_back(common_speculative_config(has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT, params));\n",
   );
   content = content.replace(
-    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
-    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n                impls.push_back(std::make_unique<common_speculative_state_draft>(config.params, n_seq));",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT: {\n",
+    "            case COMMON_SPECULATIVE_TYPE_DRAFT:\n            case COMMON_SPECULATIVE_TYPE_DFLASH: {\n",
   );
   if (content === original) {
     return;
   }
   if (
-    !content.includes("bool has_dflash =") ||
-    !content.includes("COMMON_SPECULATIVE_TYPE_COUNT == 9")
+    !hasDflashDispatch(content) ||
+    !content.includes(
+      "has_dflash ? COMMON_SPECULATIVE_TYPE_DFLASH : COMMON_SPECULATIVE_TYPE_DRAFT",
+    ) ||
+    !content.includes("case COMMON_SPECULATIVE_TYPE_DFLASH")
   ) {
     throw new Error(
       `[dflash-build] patchDflashSpeculativeDispatch: patch verification failed for ${specPath}`,
