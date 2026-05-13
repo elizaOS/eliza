@@ -409,6 +409,26 @@ async function runSpawnAgent(
     return {
       success: true,
       text: "",
+      // Terminate the planner loop after the first spawn fires.
+      //
+      // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
+      // instant the PTY starts, while the sub-agent's actual work runs
+      // asynchronously over the next 5-60+ seconds. The planner loop,
+      // not seeing a "completed" signal in the immediate result, calls
+      // the planner again and the planner re-emits another
+      // TASKS_SPAWN_AGENT for the same task. We've observed up to 5
+      // duplicate spawns per Discord message, which (a) burns through
+      // the 8-slot concurrent-session pool inside a single turn, (b)
+      // costs 5x more Cerebras tokens, and (c) wastes opencode CPU
+      // running the same task in parallel.
+      //
+      // `continueChain: false` is the planner-loop's terminal flag —
+      // setting it here makes the spawn act as a "the request has
+      // been dispatched, end the turn" signal. The orchestrator's
+      // separate task-event channel reports completion later when the
+      // sub-agent actually finishes (or fails). This matches how
+      // sendDraft / respondToMessage already mark themselves terminal.
+      continueChain: false,
       data: {
         sessionId: session.sessionId,
         agentType: session.agentType,
@@ -427,7 +447,7 @@ async function runSpawnAgent(
         ? "Invalid credentials for task agent."
         : `Failed to spawn agent: ${messageTextValue}`,
     );
-    return { success: false, error: code };
+    return { success: false, error: code, continueChain: false };
   }
 }
 
