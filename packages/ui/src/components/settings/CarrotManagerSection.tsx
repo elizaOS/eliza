@@ -9,13 +9,21 @@
  * uninstall.
  */
 
-import { FolderOpen, Play, RefreshCw, Square, Trash2 } from "lucide-react";
+import {
+  ExternalLink,
+  FolderOpen,
+  Play,
+  RefreshCw,
+  Square,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type DesktopCarrotPermissionTag,
   type DesktopCarrotStoreSnapshot,
   type DesktopCarrotWorkerStatus,
   type DesktopInstalledCarrotSnapshot,
+  desktopOpenPath,
   getDesktopCarrotLogs,
   getDesktopCarrotStoreRoot,
   getDesktopCarrotStoreSnapshot,
@@ -367,8 +375,18 @@ export function CarrotManagerSection() {
           sources you trust.
         </p>
         {storeRoot ? (
-          <p className="text-[11px] text-muted/80">
-            Store: <code>{storeRoot}</code>
+          <p className="flex items-center gap-1 text-[11px] text-muted/80">
+            <span>
+              Store: <code>{storeRoot}</code>
+            </span>
+            <button
+              type="button"
+              className="rounded p-0.5 hover:bg-bg-3"
+              title="Reveal in file manager"
+              onClick={() => void desktopOpenPath(storeRoot)}
+            >
+              <ExternalLink className="h-3 w-3" />
+            </button>
           </p>
         ) : null}
       </section>
