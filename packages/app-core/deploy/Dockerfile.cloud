@@ -42,7 +42,11 @@ ENV NODE_LLAMA_CPP_SKIP_DOWNLOAD=true
 # Materialize the standalone cloud-agent template at the Docker deploy
 # boundary. Source manifests stay workspace-local; the image install uses the
 # local package versions as exact npm dependencies.
-RUN node <<'EOF'
+# Note: bun's node shim does not support reading scripts from stdin (heredoc),
+# so we write to a temp file and execute with bun instead of `node <<'EOF'`.
+RUN <<'SCRIPT'
+set -e
+cat > /tmp/prune-workspace.mjs << 'JS'
 const fs = require("fs");
 
 const KEEP = [
@@ -117,7 +121,7 @@ function materializeWorkspaceDeps(path, dependencyNames, versions) {
     const spec = pkg.dependencies?.[name];
     if (typeof spec !== "string" || !spec.startsWith("workspace:")) continue;
     const version = versions.get(name);
-    if (!version) throw new Error(`No local package version found for ${name}`);
+    if (!version) throw new Error("No local package version found for " + name);
     pkg.dependencies[name] = version;
     changed = true;
   }
@@ -162,7 +166,10 @@ writeJson("package.json", root);
   "packages/app-core/deploy/cloud-agent-template/package.json",
 ].forEach(prune);
 if (fs.existsSync("bun.lock")) fs.unlinkSync("bun.lock");
-EOF
+JS
+bun /tmp/prune-workspace.mjs
+rm /tmp/prune-workspace.mjs
+SCRIPT
 # Drop --frozen-lockfile: bun.lock has been removed above so bun regenerates
 # fresh against the pruned workspace set.
 RUN bun install --ignore-scripts --no-progress
