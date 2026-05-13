@@ -163,16 +163,25 @@ function stage1Response(fields: {
 	replyText?: string;
 }): CannedResponse {
 	return {
-		body: JSON.stringify({
-			shouldRespond: fields.shouldRespond ?? "RESPOND",
-			contexts: fields.contexts ?? [],
-			intents: fields.intents ?? [],
-			candidateActionNames: fields.candidateActionNames ?? [],
-			replyText: fields.replyText ?? "",
-			facts: [],
-			relationships: [],
-			addressedTo: [],
-		}),
+		body: {
+			text: "",
+			toolCalls: [
+				{
+					id: "handle-response-1",
+					name: "HANDLE_RESPONSE",
+					arguments: {
+						shouldRespond: fields.shouldRespond ?? "RESPOND",
+						contexts: fields.contexts ?? [],
+						intents: fields.intents ?? [],
+						candidateActionNames: fields.candidateActionNames ?? [],
+						replyText: fields.replyText ?? "",
+						facts: [],
+						relationships: [],
+						addressedTo: [],
+					},
+				},
+			],
+		},
 	};
 }
 
