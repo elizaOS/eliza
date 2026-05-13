@@ -365,7 +365,7 @@ jobs:
 
       - name: Cross-build windows-x64-cpu
         env:
-          # Override the dflash fork to elizaOS/llama.cpp v1.0.0-eliza so
+          # Override the dflash fork to the kernel-complete elizaOS/llama.cpp pin so
           # CI exercises the symbols downstream consumers actually expect.
           # Operators that want to test against the spiritbuun upstream can
           # leave this unset.
@@ -374,7 +374,7 @@ jobs:
           set -euo pipefail
           node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
             --target windows-x64-cpu \
-            --ref v1.0.0-eliza \
+            --ref bfab6689d7640db682b73f05a6af64b244a69dbd \
             --cache-dir "$RUNNER_TEMP/llama-cpp-cross-cache" \
             --out-dir "$GITHUB_WORKSPACE/build-output/windows-x64-cpu"
 
