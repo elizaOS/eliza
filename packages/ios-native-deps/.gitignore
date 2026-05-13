@@ -1,0 +1,12 @@
+# llama.cpp xcframework build artifacts
+llama.cpp/src/
+llama.cpp/build/
+llama.cpp/dist/
+
+# sqlite-vec build artifacts (pending wire-up)
+sqlite-vec/src/
+sqlite-vec/build/
+sqlite-vec/dist/
+
+# node_modules (in case this becomes a workspace package consumer)
+node_modules/
