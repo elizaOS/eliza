@@ -59,7 +59,7 @@ import type {
 	PlannerTrajectory,
 } from "./planner-types";
 import {
-	buildPlannerActionGrammar,
+	buildPlannerActionGrammarStrict,
 	withGuidedDecodeProviderOptions,
 } from "./response-grammar";
 import type {
@@ -952,14 +952,22 @@ async function callPlanner(params: {
 		// `providerOptions.eliza.plannerActionSchemas` — `tools` carries the
 		// equivalent unforced contract for them.
 		const exposedTools = collectExposedTools(params.context);
-		const plannerActionGrammar = buildPlannerActionGrammar(
-			exposedTools.map((tool) => ({
-				name: tool.name,
-				parameters: tool.action?.parameters ?? [],
-				allowAdditionalParameters:
-					tool.action?.allowAdditionalParameters === true,
-			})),
-		);
+		const plannerActions = exposedTools.map((tool) => ({
+			name: tool.name,
+			parameters: tool.action?.parameters ?? [],
+			allowAdditionalParameters:
+				tool.action?.allowAdditionalParameters === true,
+		}));
+		// Always use the per-action union grammar (P2-4) for the local engine:
+		// the GBNF root is the alternation of per-action branches, each with
+		// literal action name + a sub-grammar for that action's parameter
+		// shape. Chosen `action` and parameter shape are co-determined by the
+		// grammar in one call; the `validate-tool-args.ts` re-plan round
+		// becomes a no-op when the model lands inside the strict grammar.
+		// Cloud adapters ignore the skeleton/grammar and use `tools` carrying
+		// the same schemas via the W3 contract.
+		const plannerActionGrammar =
+			buildPlannerActionGrammarStrict(plannerActions);
 		if (plannerActionGrammar) {
 			modelParams.responseSkeleton = plannerActionGrammar.responseSkeleton;
 			modelParams.grammar = plannerActionGrammar.grammar;
