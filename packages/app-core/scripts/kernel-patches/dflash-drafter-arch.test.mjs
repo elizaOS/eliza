@@ -48,7 +48,14 @@ function makeLlamaCppFixture() {
   write(
     root,
     "src/llama-hparams.h",
-    "struct llama_hparams {\n    uint32_t n_embd_head_kda = 0;\n};\n",
+    [
+      "struct llama_hparams {",
+      "    uint32_t n_embd_head_k;",
+      "    uint32_t n_embd_head_v;",
+      "    uint32_t n_embd_head_kda = 0;",
+      "};",
+      "",
+    ].join("\n"),
   );
   write(
     root,
@@ -140,6 +147,12 @@ describe("patchDflashDrafterArch", () => {
     expect(
       fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
     ).not.toMatch(/llama_model_dflash_draft::/);
+    expect(
+      fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
+    ).toMatch(/hparams\.n_embd_head_v;/);
+    expect(
+      fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
+    ).not.toMatch(/hparams\.n_embd_head_v\(\)/);
     expect(fs.existsSync(path.join(root, "src/models/dflash_draft.cpp"))).toBe(
       true,
     );
