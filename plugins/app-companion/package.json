@@ -48,7 +48,7 @@
     "@pixiv/three-vrm": "^3.5.2",
     "@playwright/test": "^1.58.2",
     "@storybook/addon-a11y": "^10.0.0",
-    "@storybook/addon-essentials": "^8.6.0",
+    "@storybook/addon-docs": "^10.0.0",
     "@storybook/addon-themes": "^10.0.0",
     "@storybook/react": "^10.0.0",
     "@storybook/react-vite": "^10.0.0",
