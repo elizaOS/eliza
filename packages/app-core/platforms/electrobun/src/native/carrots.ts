@@ -674,6 +674,16 @@ export class CarrotManager {
 		record.status.state = "error";
 		record.status.error = error.message;
 		record.status.stoppedAt = this.now();
+		// Don't leave an orphaned window for a dead worker — close it and
+		// let the next start cycle reopen one cleanly.
+		if (record.window) {
+			try {
+				record.window.close();
+			} catch {
+				// already destroyed
+			}
+			record.window = null;
+		}
 		this.emitWorkerChanged(record.status);
 	}
 
