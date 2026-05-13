@@ -69,6 +69,7 @@ export class WavFileAudioSink implements AudioSink {
   }
 
   drain(): void {
+    this.chunks.length = 0;
     this.samples = 0;
   }
 
