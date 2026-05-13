@@ -63,6 +63,10 @@ const pluginStreamingSrc = path.join(
   "plugins/plugin-streaming/src",
 );
 const pluginWhatsappRoot = path.join(monorepoRoot, "plugins/plugin-whatsapp");
+const pluginAgentOrchestratorSrc = path.join(
+  monorepoRoot,
+  "plugins/plugin-agent-orchestrator/src",
+);
 const pluginWorkflowSrc = path.join(
   monorepoRoot,
   "plugins/plugin-workflow/src",
@@ -104,6 +108,11 @@ export default defineConfig({
       "**/*.spec.{ts,tsx}",
       "platforms/electrobun/**",
       "scripts/run-mobile-build-policy.test.mjs",
+      "scripts/aosp/compile-libllama-fused.test.mjs",
+      // node:sqlite (stable in Node ≥24) is unavailable in Bun. CI runs this
+      // separately under Node via vitest.node-sqlite.config.ts with
+      // NODE_OPTIONS=--experimental-sqlite (see .github/workflows/test.yml).
+      "src/api/training-benchmarks.test.ts",
       ".claude/**",
       "test/app/memory-relationships.real.e2e.test.ts",
       "test/app/qa-checklist.real.e2e.test.ts",
@@ -296,6 +305,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-whatsapp$/,
         replacement: path.join(pluginWhatsappRoot, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-orchestrator$/,
+        replacement: path.join(pluginAgentOrchestratorSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-agent-orchestrator\/(.+)$/,
+        replacement: path.join(pluginAgentOrchestratorSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-workflow$/,

@@ -2,6 +2,7 @@ name: Cloud Tests
 
 # Runs cloud's lint/typecheck/unit/integration/e2e/playwright suite when cloud/** changes.
 # Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
+# Root cause of prior failures: CatalogModel["params"] was missing "0.5B" in packages/shared.
 
 on:
   pull_request:
