@@ -16,6 +16,18 @@ export default defineConfig({
         repoRoot,
         "plugins/plugin-signal/src/index.ts",
       ),
+      "@elizaos/plugin-whatsapp": path.join(
+        repoRoot,
+        "plugins/plugin-whatsapp/src/index.ts",
+      ),
+      "@elizaos/plugin-computeruse": path.join(
+        repoRoot,
+        "plugins/plugin-computeruse/src/index.ts",
+      ),
+      "@elizaos/plugin-workflow": path.join(
+        repoRoot,
+        "plugins/plugin-workflow/src/index.ts",
+      ),
     },
   },
   test: {
