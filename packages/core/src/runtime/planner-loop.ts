@@ -2067,7 +2067,21 @@ function normalizeArgs(value: unknown): Record<string, unknown> | undefined {
 }
 
 function isTerminalToolCall(toolCall: PlannerToolCall): boolean {
-	return ["REPLY", "IGNORE", "STOP"].includes(toolCall.name.toUpperCase());
+	// REPLY / IGNORE / STOP / NONE are the planner's terminal signals —
+	// they mean "I have nothing further to dispatch, end the turn."
+	// `NONE` was missing here, so when the planner emitted it after a
+	// successful tool call the loop tried to EXECUTE NONE as a real
+	// action. NONE's contextGate (`contexts: ["general"]`) commonly
+	// fails when the surface narrowed to a non-general tier-A context,
+	// the call returned "Action NONE is not allowed in the current
+	// context", and the planner retried until hitting the
+	// repeated-tool-failure limit — at which point the runtime
+	// shipped a generic "something flaked" reply even though the
+	// previous action's work had succeeded. Treating NONE as terminal
+	// makes the loop stop cleanly instead.
+	return ["REPLY", "IGNORE", "STOP", "NONE"].includes(
+		toolCall.name.toUpperCase(),
+	);
 }
 
 function getToolDefinitionName(tool: ToolDefinition): string | undefined {
