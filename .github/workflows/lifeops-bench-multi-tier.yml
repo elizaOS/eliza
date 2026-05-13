@@ -293,7 +293,7 @@ jobs:
 
       - name: Restore dflash llama-cpp fork cache
         id: dflash-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/eliza-dflash/eliza-llama-cpp/build/bin/llama-server
           key: dflash-llama-cpp-${{ runner.os }}-v1
