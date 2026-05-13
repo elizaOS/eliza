@@ -1,15 +1,11 @@
 /**
  * Identity-observation pipeline routing through EntityStore + RelationshipStore.
  *
- * Replaces the prior `identity-observations.ts` planner-flow (kept in-place
- * with a deletion deferred to W2-D). New code should call `observeIdentity`
- * here; legacy code paths still compile against the original module.
- *
- * The observer takes platform-side observations (gmail-sender, phone-contact,
- * chat-identity, etc.), normalizes them via the existing
- * `normalizeIdentityObservation` helpers, and routes the result through:
+ * Takes platform-side observations (gmail-sender, phone-contact, chat-identity,
+ * etc.), normalizes them via `normalizeIdentityObservation` helpers, and routes
+ * the result through:
  *   1. `EntityStore.observeIdentity` — collapses identities by (platform, handle)
- *   2. `RelationshipStore.observe`     — strengthens edges that already exist
+ *   2. `RelationshipStore.observe`   — strengthens edges that already exist
  */
 
 import type { EntityStore } from "../entities/store.js";

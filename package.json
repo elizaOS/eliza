@@ -181,6 +181,7 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "2.4.14",
+    "ethers": "^6.16.0",
     "@capacitor/core": "8.3.1",
     "@elizaos-benchmarks/lib": "workspace:*",
     "@elizaos/agent": "workspace:*",

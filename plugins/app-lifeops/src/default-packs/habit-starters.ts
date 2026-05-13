@@ -2,24 +2,17 @@
  * Default pack: `habit-starters` — 8 habits, **offered** at first-run
  * customize, not auto-seeded.
  *
- * The 8 habits are derived directly from the existing
- * `src/lifeops/seed-routines.ts` (which `IMPLEMENTATION_PLAN.md` §3.4 says
- * becomes a transitional alias importing from this file). The casts:
- *
+ * Habits:
  *   1. brush teeth — twice daily
  *   2. shower — 3×/week
  *   3. invisalign — lunchtime weekday
  *   4. drink water — interval
- *   5. stretch — interval + multi-gate (`first_deny`: weekend_skip,
- *      late_evening_skip, stretch.walk_out_reset) per IMPL §3.4 + §3.6 of GAP
+ *   5. stretch — interval + multi-gate
  *   6. vitamins — with-meal trigger
- *   7. workout — afternoon, with workout-blocker pipeline placeholder for W2-F
+ *   7. workout — afternoon
  *   8. shave — weekly
  *
  * `defaultEnabled: false` — first-run customize asks; defaults path skips.
- *
- * Stub status: see `contract-stubs.ts` — `ScheduledTask` types local until
- * W1-A's `src/lifeops/scheduled-task/types.ts` lands.
  */
 
 import type { ScheduledTaskSeed } from "./contract-stubs.js";
@@ -144,10 +137,8 @@ const drinkWaterRecord: ScheduledTaskSeed = {
  * Stretch — interval + multi-gate composition (per IMPL §3.4):
  *   `first_deny`: [weekend_skip, late_evening_skip, stretch.walk_out_reset]
  *
- * `first_deny` short-circuits on the first denying gate; the registered
- * `stretch.walk_out_reset` gate from W1-A's `gate-registry.ts` is the
- * replacement for the legacy `stretch-decider.ts` walk-out reset (per
- * GAP §2.7).
+ * `first_deny` short-circuits on the first denying gate. The `stretch.walk_out_reset`
+ * gate is registered by the scheduled-task runner's gate-registry.
  */
 const stretchRecord: ScheduledTaskSeed = {
   kind: "reminder",
@@ -201,11 +192,7 @@ const vitaminsRecord: ScheduledTaskSeed = {
   },
 };
 
-/**
- * Workout — afternoon, with workout-blocker pipeline placeholder for W2-F
- * (BlockerRegistry). Wave-1 keeps the pipeline empty; Wave-2 will inject the
- * "release block on completion" follow-up.
- */
+/** Workout — afternoon. Pipeline child for blocker-release can be added via BlockerRegistry. */
 const workoutRecord: ScheduledTaskSeed = {
   kind: "reminder",
   promptInstructions:
@@ -226,9 +213,8 @@ const workoutRecord: ScheduledTaskSeed = {
   ownerVisible: true,
   idempotencyKey: recordIdFor(HABIT_STARTER_KEYS.workout),
   pipeline: {
-    // Placeholder: W2-F's BlockerRegistry will register the "workout-blocker
-    // release on completion" pipeline child. Wave-1 ships an empty array so
-    // the field is always present and W2-F can populate without schema churn.
+    // BlockerRegistry contributions can register a "release on completion"
+    // child here without requiring a schema change.
     onComplete: [],
   },
   metadata: {

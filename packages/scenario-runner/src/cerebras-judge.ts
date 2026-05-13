@@ -86,16 +86,16 @@ export function extractBalancedJsonObject(raw: string): string | null {
 
   let depth = 0;
   let inString = false;
-  let escape = false;
+  let escapeNext = false;
 
   for (let i = start; i < raw.length; i += 1) {
     const ch = raw[i];
-    if (escape) {
-      escape = false;
+    if (escapeNext) {
+      escapeNext = false;
       continue;
     }
     if (ch === "\\" && inString) {
-      escape = true;
+      escapeNext = true;
       continue;
     }
     if (ch === '"') {
@@ -326,7 +326,10 @@ export class CerebrasJudge {
         return data.choices?.[0]?.message?.content ?? "";
       } catch (err) {
         if (err instanceof CerebrasJudgeError) {
-          if (!shouldRetryStatus(err.status ?? 0) || attempt >= this.maxRetries) {
+          if (
+            !shouldRetryStatus(err.status ?? 0) ||
+            attempt >= this.maxRetries
+          ) {
             throw err;
           }
           lastError = err;

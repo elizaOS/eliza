@@ -299,6 +299,7 @@ export class SteerLiquidityService extends Service {
   private supportedChains: number[];
   private vaultClients: Map<number, VaultClient> = new Map();
   private stakingClients: Map<number, StakingClient> = new Map();
+  private steerClient?: SteerClient;
   private cache: Map<string, { data: JsonValue; timestamp: number }> =
     new Map();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes cache TTL

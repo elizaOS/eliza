@@ -1,30 +1,15 @@
 /**
- * Wave-1 contract stubs for default-pack consumers.
+ * Canonical contract types for default-pack consumers.
  *
- * These types mirror the **frozen** signatures in
- * `eliza/plugins/app-lifeops/docs/audit/wave1-interfaces.md` so this agent
- * (W1-D) can ship default packs without blocking on W1-A's spine landing
- * first.
+ * These types define the frozen `ScheduledTask`, `ScheduledTaskRunner`,
+ * `AnchorConsolidationPolicy`, `RecentTaskStatesProvider`,
+ * `RelationshipStore`, and `ConnectorRegistry` shapes used by all default
+ * packs. Do not edit these definitions without updating all pack consumers.
  *
- * **STUB STATUS:**
- *   - `ScheduledTask`, `ScheduledTaskRunner`, `AnchorConsolidationPolicy`,
- *     `EscalationStep`, `TerminalState`, `GateDecision` come from W1-A's
- *     `src/lifeops/scheduled-task/types.ts` once it lands.
- *   - `RecentTaskStatesProvider` comes from W1-C.
- *   - `RelationshipStore` / `RelationshipFilter` come from W1-E.
- *   - `ConnectorRegistry` / `ConnectorContribution` come from W1-F.
- *
- * Once those modules ship, this file flips to `export type ... from
- * "<owner-module>"` re-exports (the integration gate in §4 of
- * `IMPLEMENTATION_PLAN.md` enforces the swap).
- *
- * The on-the-wire shapes here are copies of the wave1-interfaces.md `§1`,
- * `§2.3`, `§3.x`, `§4` definitions — do not edit them in place. If the
- * upstream contract changes, the integration gate routes the change through
- * W1-A / W1-C / W1-E / W1-F first.
+ * Reference: `docs/audit/wave1-interfaces.md`.
  */
 
-// -- §1 W1-A — ScheduledTask --
+// -- §1 ScheduledTask --
 
 export type TerminalState =
   | "completed"
@@ -175,7 +160,7 @@ export interface ScheduledTask {
   metadata?: Record<string, unknown>;
 }
 
-// W1-D ships pack records as the input to `ScheduledTaskRunner.schedule`,
+// Pack records are the input to `ScheduledTaskRunner.schedule`,
 // i.e. `Omit<ScheduledTask, "taskId" | "state">`. This alias is the canonical
 // "default-pack record" type.
 export type ScheduledTaskSeed = Omit<ScheduledTask, "taskId" | "state">;
@@ -190,7 +175,7 @@ export interface AnchorConsolidationPolicy {
   sortBy?: "priority_desc" | "fired_at_asc";
 }
 
-// -- §3.4 default escalation ladders (frozen in wave1-interfaces.md §3.4) --
+// -- §3.4 default escalation ladders --
 
 export type DefaultEscalationLadderKey =
   | "priority_low_default"
@@ -201,7 +186,7 @@ export interface EscalationLadder {
   steps: EscalationStep[];
 }
 
-// -- §4.4 RecentTaskStatesProvider (W1-C) --
+// -- §4.4 RecentTaskStatesProvider --
 
 export interface RecentTaskStatesSummary {
   summary: string;
@@ -221,7 +206,7 @@ export interface RecentTaskStatesProvider {
   }): Promise<RecentTaskStatesSummary>;
 }
 
-// -- §2.3 RelationshipStore (W1-E) — only the surface W1-D consumes --
+// -- §2.3 RelationshipStore --
 
 export interface RelationshipStateStub {
   lastObservedAt?: string;
@@ -261,7 +246,7 @@ export interface RelationshipStoreStub {
   list(filter?: RelationshipFilterStub): Promise<RelationshipStub[]>;
 }
 
-// -- §3.1 ConnectorRegistry (W1-F) — only the surface W1-D consumes --
+// -- §3.1 ConnectorRegistry --
 
 export interface ConnectorContributionStub {
   kind: string;
