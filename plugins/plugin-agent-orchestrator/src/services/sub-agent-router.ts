@@ -1,5 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 
@@ -300,6 +306,16 @@ export class SubAgentRouter {
       createdAt: Date.now(),
     };
 
+    // The Discord plugin wires a callback bound to the originating channel
+    // when it calls handleMessage; without that callback, the planner has
+    // nowhere to deliver its reply and the bot's answer to the sub-agent
+    // narration is dropped silently (the user sees only "On it…" and never
+    // the actual result). For synthetic router posts we build the same
+    // callback from `runtime.sendMessageToTarget`, scoped to the origin
+    // source/room. If the connector isn't registered, fall through to
+    // handleMessage without a callback — the planner will still update
+    // state but no message reaches the user.
+    const replyCallback = this.buildReplyCallback(origin, sessionId);
     // messageService.handleMessage saves the memory itself ("Saving message
     // to memory" inside SERVICE:MESSAGE). When that path is available, skip
     // the explicit createMemory — otherwise we double-save with the same
@@ -307,7 +323,7 @@ export class SubAgentRouter {
     // violation, killing the planner trip and dropping the sub-agent answer.
     if (this.runtime.messageService?.handleMessage) {
       await this.runtime.messageService
-        .handleMessage(this.runtime, memory, undefined)
+        .handleMessage(this.runtime, memory, replyCallback)
         .catch((err) => {
           this.log("error", "handleMessage for sub-agent post failed", {
             sessionId,
@@ -341,6 +357,44 @@ export class SubAgentRouter {
         source: ACPX_ROUTER_SOURCE,
       });
     }
+  }
+
+  private buildReplyCallback(
+    origin: OriginInfo,
+    sessionId: string,
+  ): HandlerCallback | undefined {
+    const sendToTarget = (
+      this.runtime as {
+        sendMessageToTarget?: (
+          target: { source: string; roomId?: UUID; accountId?: string },
+          content: Content,
+        ) => Promise<Memory | undefined>;
+      }
+    ).sendMessageToTarget?.bind(this.runtime);
+    if (!sendToTarget) return undefined;
+    const source = origin.source;
+    if (!source) return undefined;
+    return async (response: Content): Promise<Memory[]> => {
+      const text =
+        typeof response?.text === "string" ? response.text.trim() : "";
+      if (!text) return [];
+      const delivered = await sendToTarget(
+        {
+          source,
+          roomId: origin.roomId,
+        },
+        response,
+      ).catch((err) => {
+        this.log("warn", "sub-agent reply delivery failed", {
+          sessionId,
+          source,
+          roomId: origin.roomId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return undefined;
+      });
+      return delivered ? [delivered] : [];
+    };
   }
 
   private log(
