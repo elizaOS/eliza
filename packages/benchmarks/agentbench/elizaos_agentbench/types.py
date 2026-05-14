@@ -31,6 +31,13 @@ class TaskDifficulty(Enum):
     HARD = "hard"
 
 
+class BenchmarkSplit(Enum):
+    """Which slice of upstream AgentBench data to run."""
+
+    DEV = "dev"
+    TEST = "test"
+
+
 # JSON-like value types (no Any)
 JSONPrimitive = str | int | float | bool | None
 JSONValue = JSONPrimitive | list["JSONValue"] | dict[str, "JSONValue"]
@@ -361,7 +368,14 @@ class AgentBenchConfig:
     enable_baseline_comparison: bool = True
     use_docker: bool = True
 
-    # Dataset paths
+    # Which AgentBench data slice to use. ``"dev"`` uses the smaller
+    # validation set (good for smoke tests and iteration). ``"test"``
+    # uses the official "standard" split corresponding to the public
+    # leaderboard. Per-env counts: see ``upstream_loader``.
+    split: BenchmarkSplit = BenchmarkSplit.TEST
+
+    # Dataset paths (legacy field, no longer used for task loading;
+    # kept for back-compat with config files in the wild).
     dataset_path: str = "./datasets/agentbench"
 
     def get_env_config(self, env: AgentBenchEnvironment) -> EnvironmentConfig:
@@ -383,7 +397,15 @@ class AgentBenchConfig:
         return [env for env in AgentBenchEnvironment if self.get_env_config(env).enabled]
 
 
-# GPT-4 baseline scores from the original paper
+# Published AgentBench leaderboard scores (ICLR 2024 paper, table 3).
+#
+# NOTE: these are *reference numbers* only. They are NOT comparable to
+# any local run unless that run executes the exact same upstream
+# dev/test splits via ``elizaos_agentbench.upstream_loader``. The runner
+# explicitly labels any comparison output as "reference-only".
+#
+# Source: https://arxiv.org/abs/2308.03688 + the THUDM/AgentBench
+# leaderboard at https://llmbench.ai/agent/data
 GPT4_BASELINE_SCORES: dict[AgentBenchEnvironment, float] = {
     AgentBenchEnvironment.OS: 0.421,
     AgentBenchEnvironment.DATABASE: 0.326,
@@ -395,7 +417,6 @@ GPT4_BASELINE_SCORES: dict[AgentBenchEnvironment, float] = {
     AgentBenchEnvironment.WEB_BROWSING: 0.493,
 }
 
-# GPT-3.5 baseline scores from the original paper
 GPT35_BASELINE_SCORES: dict[AgentBenchEnvironment, float] = {
     AgentBenchEnvironment.OS: 0.360,
     AgentBenchEnvironment.DATABASE: 0.102,
@@ -407,7 +428,7 @@ GPT35_BASELINE_SCORES: dict[AgentBenchEnvironment, float] = {
     AgentBenchEnvironment.WEB_BROWSING: 0.150,
 }
 
-# Claude baseline scores (estimated)
+# Claude-2 baseline (paper, table 3).
 CLAUDE_BASELINE_SCORES: dict[AgentBenchEnvironment, float] = {
     AgentBenchEnvironment.OS: 0.395,
     AgentBenchEnvironment.DATABASE: 0.298,

@@ -1,8 +1,9 @@
-"""WebShop local agents without the Python Eliza runtime.
+"""WebShop local agents.
 
 Bridge-backed Eliza runs are implemented in ``eliza_adapter.webshop``. This
-module keeps the deterministic mock agent and a few compatibility helpers for
-the Python harness, but intentionally does not import ``elizaos``.
+module keeps the deterministic mock agent (now driving the **real** upstream
+``WebAgentTextEnv``) and a few compatibility helpers for the Python harness,
+but intentionally does not import ``elizaos``.
 """
 
 from __future__ import annotations
@@ -47,7 +48,6 @@ def set_webshop_context(
     trajectory: WebShopTrajectoryIntegration | None = None,
     trial_number: int = 1,
 ) -> None:
-    """Reset the global WebShop task context."""
     _global_context.task = task
     _global_context.env = env
     _global_context.steps.clear()
@@ -62,12 +62,10 @@ def set_webshop_context(
 
 
 def get_webshop_context() -> WebShopContext:
-    """Return the current WebShop context."""
     return _global_context
 
 
 async def get_webshop_context_provider(*_args: object, **_kwargs: object) -> object:
-    """Compatibility stub for the removed Python Eliza provider."""
     ctx = get_webshop_context()
     task = ctx.task
     if task is None:
@@ -85,7 +83,12 @@ async def get_webshop_context_provider(*_args: object, **_kwargs: object) -> obj
 
 
 class MockWebShopAgent:
-    """Simple deterministic agent for smoke tests and harness validation."""
+    """Deterministic agent that drives the real upstream env.
+
+    Strategy: extract a short query from the goal, search, click the first
+    product, select the first value for each option, then buy. Used for
+    smoke tests and harness validation, *not* as a baseline.
+    """
 
     def __init__(self, env: WebShopEnvironment, *, max_turns: int = 20) -> None:
         self.env = env
@@ -120,48 +123,80 @@ class MockWebShopAgent:
             ctx.last_observation = outcome.observation
             return outcome
 
-        query = " ".join(task.instruction.split()[:6]).strip() or "product"
-        out = take_step(f"search[{query}]")
-        if out is not None and out.observation.results:
-            pid = out.observation.results[0].product_id
-            out2 = take_step(f"click[{pid}]")
-            if out2 is not None and out2.observation.product is not None:
-                for opt, vals in out2.observation.product.options.items():
-                    if not vals:
-                        continue
-                    preferred = task.goal_attributes.get(f"{opt}_option")
-                    if preferred not in vals:
-                        preferred = task.goal_attributes.get(opt)
-                    value = preferred if preferred in vals else vals[0]
-                    out3 = take_step(f"select_option[{opt}, {value}]")
-                    if out3 is None or out3.done:
-                        break
-                if not ctx.done:
-                    take_step("buy")
+        # Build a simple query from the instruction text.
+        query = " ".join(task.instruction.split()[:8]).strip() or "product"
+        take_step(f"search[{query}]")
+        if ctx.done:
+            ctx.final_response = self._final_message()
+            return list(ctx.steps), ctx.final_response, ctx.last_observation
 
-        ctx.final_response = (
-            f"Purchased {self.env.purchased_product_id or 'nothing'} with reward {self.env.final_reward:.2f}"
-            if ctx.done
-            else f"Stopped after {len(ctx.steps)} turns with reward {ctx.reward:.2f}"
+        # Click the first product-link clickable in the available actions.
+        avail = self.env.available_actions
+        product_click = next(
+            (a for a in avail if a.startswith("click[") and "next >" not in a.lower()
+             and "< prev" not in a.lower() and "back to search" not in a.lower()
+             and "buy now" not in a.lower()),
+            None,
         )
+        if product_click is not None:
+            take_step(product_click)
+
+        # Select first value for every visible option (click[<value>] entries
+        # appear as button clickables on the item page).
+        if not ctx.done:
+            seen: set[str] = set()
+            for _ in range(self.max_turns):
+                avail = self.env.available_actions
+                # An option clickable is anything that isn't a navigation/page button.
+                option_click = next(
+                    (a for a in avail
+                     if a.startswith("click[")
+                     and a not in seen
+                     and not any(k in a.lower() for k in (
+                         "buy now", "back to search", "next >", "< prev",
+                         "description", "features", "reviews", "attributes",
+                     ))
+                     and not any(a.startswith(f"click[b000") for _ in (0,))  # not a different ASIN
+                     ),
+                    None,
+                )
+                if option_click is None:
+                    break
+                seen.add(option_click)
+                take_step(option_click)
+                if ctx.done:
+                    break
+
+        if not ctx.done:
+            take_step("click[Buy Now]")
+
+        ctx.final_response = self._final_message()
         return list(ctx.steps), ctx.final_response, ctx.last_observation
+
+    def _final_message(self) -> str:
+        if self.env.done:
+            return (
+                f"Purchased {self.env.purchased_product_id or 'nothing'} "
+                f"with reward {self.env.final_reward:.2f}"
+            )
+        return (
+            f"Stopped after {len(get_webshop_context().steps)} turns "
+            f"with reward {get_webshop_context().reward:.2f}"
+        )
 
     async def close(self) -> None:
         return None
 
 
 def get_model_provider_plugin(_provider: str | None = None) -> None:
-    """Compatibility stub for the removed Python Eliza model plugin path."""
     return None
 
 
 def create_webshop_actions() -> list[object]:
-    """Compatibility stub for the removed Python Eliza actions."""
     return []
 
 
 def get_webshop_plugin() -> None:
-    """Compatibility stub for the removed Python Eliza plugin."""
     return None
 
 

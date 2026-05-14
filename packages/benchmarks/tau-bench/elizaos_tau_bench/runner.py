@@ -1,652 +1,272 @@
-"""
-Benchmark runner for Tau-bench.
+"""Benchmark runner.
+
+Wires the vendored upstream ``Env`` (which already contains the LLM-driven
+user simulator) to an ElizaOS agent, runs each task ``num_trials`` times,
+applies the LLM judge to gate ``task.outputs``, and computes pass^k.
+
+This replaces the previous handwritten environments + executor pipeline.
 """
 
-import asyncio
+from __future__ import annotations
+
 import json
 import logging
 import os
 import time
-import tracemalloc
-from dataclasses import asdict
-from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
-from elizaos_tau_bench.types import (
-    TauBenchConfig,
-    TauBenchTask,
-    TauBenchResult,
-    TauBenchReport,
-    TauDomain,
-    DomainReport,
-)
-from elizaos_tau_bench.dataset import TauBenchDataset
-from elizaos_tau_bench.evaluator import TauBenchEvaluator
+from elizaos_tau_bench.dataset import iter_sample_tasks, iter_tasks
 from elizaos_tau_bench.eliza_agent import (
+    AgentRunResult,
+    BaseTauAgent,
+    LiteLLMToolCallingAgent,
     MockTauAgent,
 )
-from elizaos_tau_bench.trajectory_integration import (
-    TauBenchTrajectoryConfig,
-    TauBenchTrajectoryIntegration,
+from elizaos_tau_bench.judge import judge_outputs_satisfied
+from elizaos_tau_bench.pass_k import calculate_pass_hat_k
+from elizaos_tau_bench.types import (
+    BenchmarkReport,
+    DomainName,
+    PassKResult,
+    RESPOND_ACTION_NAME,
+    Task,
+    TaskRunResult,
+    TauBenchConfig,
 )
-from elizaos_tau_bench.executor import ToolExecutor
-from elizaos_tau_bench.environments.retail import RetailEnvironment
-from elizaos_tau_bench.environments.airline import AirlineEnvironment
-from elizaos_tau_bench.environments.base import DomainEnvironment
-from elizaos_tau_bench.constants import LEADERBOARD_SCORES
+from elizaos_tau_bench.upstream.envs import get_env
+from elizaos_tau_bench.upstream.envs.base import Env
 
 logger = logging.getLogger(__name__)
 
-TauAgentType = Any
-
-
-class MemoryTracker:
-    """Tracks memory usage during benchmark execution."""
-
-    def __init__(self, enabled: bool = True) -> None:
-        self.enabled = enabled
-        self.measurements: list[int] = []
-        self._running = False
-        self._task: Optional[asyncio.Task[None]] = None
-
-    async def start(self) -> None:
-        if not self.enabled:
-            return
-
-        self.measurements = []
-        self._running = True
-        tracemalloc.start()
-        self._task = asyncio.create_task(self._track())
-
-    async def stop(self) -> None:
-        self._running = False
-        if self._task:
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        if self.enabled:
-            tracemalloc.stop()
-
-    async def _track(self) -> None:
-        while self._running:
-            current, _ = tracemalloc.get_traced_memory()
-            self.measurements.append(current)
-            await asyncio.sleep(1.0)
-
-    def get_stats(self) -> dict[str, int]:
-        if not self.enabled or not self.measurements:
-            return {"peak": 0, "average": 0}
-
-        return {
-            "peak": max(self.measurements),
-            "average": sum(self.measurements) // len(self.measurements),
-        }
-
 
 class TauBenchRunner:
-    """Runs Tau-bench evaluation."""
+    """Orchestrates evaluation of a set of tasks across trials."""
 
     def __init__(self, config: TauBenchConfig) -> None:
         self.config = config
-        self.dataset = TauBenchDataset(config.data_path)
-        self.evaluator = TauBenchEvaluator(use_llm_judge=config.use_llm_judge)
-        self.memory_tracker = MemoryTracker(config.enable_memory_tracking)
-        self._start_time = 0.0
-        self._bridge_mode = not config.use_mock
-        self._bridge_manager: Any | None = None
-        self._trajectory: TauBenchTrajectoryIntegration | None = None
 
-        if self._bridge_mode:
-            logger.info(
-                "[TauBenchRunner] Running with %s harness",
-                self._selected_harness(),
-            )
-            if config.enable_trajectory_logging:
-                logger.warning(
-                    "[TauBenchRunner] Local Python trajectory logging is not available in real-agent mode; "
-                    "continuing without trajectory export"
-                )
-        elif config.enable_trajectory_logging:
-            self._trajectory = TauBenchTrajectoryIntegration(
-                TauBenchTrajectoryConfig(
-                    enabled=True,
-                    export_format="grpo"
-                    if config.trajectory_export_format == "grpo"
-                    else "art",
-                    scenario_prefix="tau-bench",
-                )
-            )
+    # --- Env construction -------------------------------------------------
 
-        if not self._bridge_mode:
-            logger.info("[TauBenchRunner] Running in mock mode (no LLM calls)")
+    def _make_env(self, domain: DomainName, task_index: int) -> Env:
+        return get_env(
+            env_name=domain,
+            user_strategy=self.config.user_strategy,
+            user_model=self.config.user_model,
+            user_provider=self.config.user_provider,
+            task_split=self.config.task_split,
+            task_index=task_index,
+        )
 
-    def _ensure_bridge_manager(self) -> Any:
-        if self._bridge_manager is None:
-            from eliza_adapter.server_manager import ElizaServerManager
-
-            self._bridge_manager = ElizaServerManager()
-            self._bridge_manager.start()
-        return self._bridge_manager
-
-    def _selected_harness(self) -> str:
-        harness = (
-            os.environ.get("BENCHMARK_HARNESS")
-            or os.environ.get("ELIZA_BENCH_HARNESS")
-            or "eliza"
-        ).strip().lower()
-        if harness in {"eliza", "hermes", "openclaw"}:
-            return harness
-        return "eliza"
-
-    def _create_agent(self, executor: ToolExecutor) -> TauAgentType:
+    def _make_agent(self) -> BaseTauAgent:
         if self.config.use_mock:
-            return MockTauAgent(
-                executor=executor,
-                max_turns=self.config.max_turns_per_task,
-            )
-
-        harness = self._selected_harness()
-        if harness == "hermes":
-            from hermes_adapter.tau_bench import HermesTauAgent
-
-            return HermesTauAgent(
-                executor=executor,
-                max_turns=self.config.max_turns_per_task,
-            )
-        if harness == "openclaw":
-            from openclaw_adapter.tau_bench import OpenClawTauAgent
-
-            return OpenClawTauAgent(
-                executor=executor,
-                max_turns=self.config.max_turns_per_task,
-            )
-
-        from eliza_adapter.tau_bench import ElizaTauAgent
-
-        bridge_manager = self._ensure_bridge_manager()
-        return ElizaTauAgent(
-            executor=executor,
-            max_turns=self.config.max_turns_per_task,
-            client=bridge_manager.client,
+            return MockTauAgent()
+        return LiteLLMToolCallingAgent(
+            model=self.config.agent_model,
+            provider=self.config.agent_provider,
+            temperature=self.config.agent_temperature,
         )
 
-    async def run_benchmark(self) -> TauBenchReport:
-        """Run the complete Tau-bench evaluation."""
-        self._start_time = time.time()
-        await self.memory_tracker.start()
+    # --- Per-trial -------------------------------------------------------
 
-        logger.info("[TauBenchRunner] Starting Tau-bench evaluation")
-        logger.info(f"[TauBenchRunner] Domains: {[d.value for d in self.config.domains]}")
-        logger.info(f"[TauBenchRunner] Trials per task: {self.config.num_trials}")
+    def _extract_agent_messages(self, messages: list[dict]) -> list[str]:
+        """Pull out the agent's RESPOND content (visible to the user)."""
+        out: list[str] = []
+        for m in messages:
+            if m.get("role") != "assistant":
+                continue
+            # Only count plain content (tool calls are not customer-facing)
+            if m.get("tool_calls"):
+                continue
+            content = m.get("content")
+            if content:
+                out.append(str(content))
+        return out
 
+    def _run_trial(
+        self,
+        domain: DomainName,
+        task_index: int,
+        task: Task,
+        trial: int,
+        agent: BaseTauAgent,
+    ) -> TaskRunResult:
         try:
-            # Load dataset
-            await self.dataset.load()
-
-            # If no tasks loaded, create sample tasks
-            if not self.dataset.tasks:
-                logger.warning("[TauBenchRunner] No tasks found, using sample tasks")
-                self.dataset.tasks = self.dataset.create_sample_tasks()
-
-            all_results: list[TauBenchResult] = []
-
-            # Run tasks for each domain
-            for domain in self.config.domains:
-                tasks = self.dataset.get_tasks(
-                    domain=domain,
-                    difficulty=self.config.difficulty,
-                    limit=self.config.max_tasks,
-                )
-
-                logger.info(f"[TauBenchRunner] Running {len(tasks)} tasks for {domain.value}")
-
-                for task in tasks:
-                    # Run multiple trials for Pass^k evaluation
-                    for trial in range(1, self.config.num_trials + 1):
-                        logger.debug(
-                            f"[TauBenchRunner] Task {task.task_id} trial {trial}/{self.config.num_trials}"
-                        )
-                        result = await self._run_task(task, trial)
-                        all_results.append(result)
-
-            # Generate report
-            report = self._generate_report(all_results)
-
-            # Save results
-            await self._save_results(report)
-
-            # Export trajectories (ART/GRPO) alongside benchmark outputs
-            if self._trajectory and self._trajectory.enabled:
-                traj_dir = str(Path(self.config.output_dir) / "trajectories")
-                exported = self._trajectory.export_trajectories(
-                    output_dir=traj_dir,
-                    dataset_name="tau_bench_trajectories",
-                )
-                if exported and exported.success:
-                    logger.info(
-                        f"[TauBenchRunner] Exported {exported.trajectories_exported} trajectories to {exported.dataset_url}"
-                    )
-
-            logger.info(
-                f"[TauBenchRunner] Benchmark completed: "
-                f"{report.passed_tasks}/{report.total_tasks} passed "
-                f"({report.overall_success_rate * 100:.1f}%)"
-            )
-
-            return report
-
+            env = self._make_env(domain, task_index)
         except Exception as e:
-            logger.error(f"[TauBenchRunner] Benchmark failed: {e}")
-            raise
-        finally:
-            await self.memory_tracker.stop()
-            if self._bridge_manager is not None:
-                self._bridge_manager.stop()
-
-    async def _run_task(self, task: TauBenchTask, trial_number: int = 1) -> TauBenchResult:
-        """Run a single task."""
-        start_time = time.time()
-
-        try:
-            # Store trial_number for downstream telemetry (agent-side trajectory metadata)
-            task.metadata["trial_number"] = trial_number
-
-            # Create environment
-            environment = self._create_environment(task)
-            await environment.initialize()
-
-            # Create executor and register tools
-            executor = ToolExecutor(environment)
-            tools = environment.get_available_tools()
-            executor.register_tools(tools)
-
-            # Update task with environment tools if not already set
-            if not task.available_tools:
-                task.available_tools = tools
-
-            if not task.policy_constraints:
-                task.policy_constraints = environment.get_policy_constraints()
-
-            agent = self._create_agent(executor)
-
-            # Initialize agent (connects to LLM if not mock)
-            await agent.initialize()
-
-            # Process task with timeout
-            try:
-                tool_calls, response, conversation = await asyncio.wait_for(
-                    agent.process_task(task),
-                    timeout=self.config.timeout_ms / 1000,
-                )
-            except asyncio.TimeoutError:
-                return TauBenchResult(
-                    task_id=task.task_id,
-                    domain=task.domain,
-                    trial_number=trial_number,
-                    success=False,
-                    error="Task timed out",
-                    duration_ms=(time.time() - start_time) * 1000,
-                )
-
-            # Check policy compliance
-            policy_violations = await environment.check_policy_compliance()
-
-            # Check if goal achieved
-            goal_achieved = await environment.check_goal_achieved()
-
-            # Get final state
-            final_state = environment.get_state_snapshot()
-
-            # Evaluate
-            duration_ms = (time.time() - start_time) * 1000
-            result = self.evaluator.evaluate_task(
-                task=task,
-                tool_calls_made=tool_calls,
-                response=response,
-                policy_violations=policy_violations,
-                goal_achieved=goal_achieved,
-                final_state=final_state,
-                duration_ms=duration_ms,
-                trial_number=trial_number,
-            )
-
-            # Trajectory finalize (after evaluation so we have success signal)
-            if self._trajectory and self._trajectory.enabled:
-                await self._trajectory.end_task(result=result)
-
-            return result
-
-        except Exception as e:
-            logger.error(f"[TauBenchRunner] Task {task.task_id} failed: {e}")
-            return TauBenchResult(
-                task_id=task.task_id,
-                domain=task.domain,
-                trial_number=trial_number,
+            logger.exception("Failed to construct env for %s task %d", domain, task_index)
+            return TaskRunResult(
+                task_id=task_index,
+                trial=trial,
+                domain=domain,
+                reward=0.0,
                 success=False,
-                error=str(e),
-                duration_ms=(time.time() - start_time) * 1000,
+                error=f"env_init: {e}",
             )
 
-    def _create_environment(self, task: TauBenchTask) -> DomainEnvironment:
-        """Create the appropriate environment for the task domain."""
-        if task.domain == TauDomain.RETAIL:
-            return RetailEnvironment(task)
-        elif task.domain == TauDomain.AIRLINE:
-            return AirlineEnvironment(task)
+        run: AgentRunResult = agent.solve(
+            env=env, task_index=task_index, max_num_steps=self.config.agent_max_turns
+        )
+
+        # Upstream env's calculate_reward fired on done; pull both data-hash and
+        # outputs sub-rewards out of info.reward_info.
+        reward_info = run.info.get("reward_info") if isinstance(run.info, dict) else None
+        r_actions: Optional[float] = None
+        r_outputs: Optional[float] = None
+        if reward_info:
+            sub = reward_info.get("info") if isinstance(reward_info, dict) else None
+            if sub:
+                if "r_actions" in sub:
+                    r_actions = float(sub["r_actions"])
+                if "r_outputs" in sub:
+                    r_outputs = float(sub["r_outputs"])
+
+        # LLM judge — only consulted when outputs are required.
+        judge_passed: Optional[bool] = None
+        judge_expl = ""
+        outputs_required = list(task.outputs or [])
+        if outputs_required:
+            agent_messages = self._extract_agent_messages(run.messages)
+            judge = judge_outputs_satisfied(
+                outputs=outputs_required,
+                agent_messages=agent_messages,
+                model=self.config.judge_model,
+                provider=self.config.judge_provider,
+                use_llm=self.config.use_llm_judge,
+            )
+            judge_passed = judge.satisfied
+            judge_expl = judge.explanation
+
+        # Final success: upstream reward + (if outputs present) judge pass.
+        success = run.reward >= 1.0
+        if outputs_required and judge_passed is not None:
+            # Replace the brittle substring check with the judge result.
+            # Reward goes to 1.0 iff actions match AND judge_passed.
+            if r_actions is not None and r_actions >= 1.0 and judge_passed:
+                success = True
+            elif r_actions is not None and r_actions < 1.0:
+                success = False
+            else:
+                success = bool(judge_passed and run.reward >= 1.0)
+
+        user_cost = 0.0
+        ri = run.info.get("user_cost") if isinstance(run.info, dict) else None
+        if isinstance(ri, (int, float)):
+            user_cost = float(ri)
+
+        return TaskRunResult(
+            task_id=task_index,
+            trial=trial,
+            domain=domain,
+            reward=float(run.reward),
+            success=bool(success),
+            judge_passed=judge_passed,
+            judge_explanation=judge_expl,
+            r_actions=r_actions,
+            r_outputs=r_outputs,
+            num_turns=run.num_turns,
+            num_tool_calls=run.num_tool_calls,
+            user_cost=user_cost,
+            agent_cost=run.agent_cost,
+            error=run.error,
+            messages=run.messages,
+            info={"reward_info": reward_info} if reward_info else {},
+        )
+
+    # --- Public API ------------------------------------------------------
+
+    def run(self) -> BenchmarkReport:
+        if self.config.use_sample_tasks:
+            task_iter = iter_sample_tasks(self.config.domains, self.config.task_split)
         else:
-            raise ValueError(f"Unknown domain: {task.domain}")
+            task_iter = iter_tasks(
+                domains=self.config.domains,
+                split=self.config.task_split,
+                task_ids=self.config.task_ids,
+                start_index=self.config.start_index,
+                end_index=self.config.end_index,
+                max_per_domain=self.config.max_tasks_per_domain,
+            )
+        task_list = list(task_iter)
+        if not task_list:
+            raise ValueError("No tasks selected — check --domains / --task-ids / --split")
 
-    def _generate_report(self, results: list[TauBenchResult]) -> TauBenchReport:
-        """Generate comprehensive benchmark report."""
-        total_duration = time.time() - self._start_time
-        memory_stats = self.memory_tracker.get_stats()
+        agent = self._make_agent()
 
-        # Calculate overall metrics
-        total_tasks = len(set(r.task_id for r in results))
-        total_trials = len(results)
-        passed_tasks = sum(1 for r in results if r.success)
-        failed_tasks = total_trials - passed_tasks
-
-        success_rate = passed_tasks / total_trials if total_trials > 0 else 0
-        avg_tool_accuracy = (
-            sum(r.tool_call_accuracy for r in results) / total_trials
-            if total_trials > 0
-            else 0
-        )
-        avg_policy_compliance = (
-            sum(r.policy_compliance for r in results) / total_trials
-            if total_trials > 0
-            else 0
-        )
-        avg_response_quality = (
-            sum(r.response_quality for r in results) / total_trials
-            if total_trials > 0
-            else 0
-        )
-        avg_duration = (
-            sum(r.duration_ms for r in results) / total_trials if total_trials > 0 else 0
+        results: list[TaskRunResult] = []
+        domain_results: dict[str, list[TaskRunResult]] = {}
+        start_ts = time.time()
+        total = len(task_list) * self.config.num_trials
+        logger.info(
+            "Running tau-bench: %d tasks × %d trials = %d rollouts",
+            len(task_list),
+            self.config.num_trials,
+            total,
         )
 
-        # Calculate Pass^k metrics
-        pass_k_metrics = TauBenchEvaluator.calculate_pass_k(results, [1, 2, 4, 8])
-
-        # Calculate per-domain reports
-        domain_reports: dict[TauDomain, DomainReport] = {}
-        for domain in TauDomain:
-            domain_results = [r for r in results if r.domain == domain]
-            if domain_results:
-                domain_tasks = len(set(r.task_id for r in domain_results))
-                domain_passed = sum(1 for r in domain_results if r.success)
-                domain_failed = len(domain_results) - domain_passed
-
-                domain_reports[domain] = DomainReport(
-                    domain=domain,
-                    total_tasks=domain_tasks,
-                    passed_tasks=domain_passed,
-                    failed_tasks=domain_failed,
-                    success_rate=domain_passed / len(domain_results) if domain_results else 0,
-                    average_tool_accuracy=sum(r.tool_call_accuracy for r in domain_results)
-                    / len(domain_results),
-                    average_policy_compliance=sum(r.policy_compliance for r in domain_results)
-                    / len(domain_results),
-                    average_response_quality=sum(r.response_quality for r in domain_results)
-                    / len(domain_results),
-                    average_turns=sum(r.turns_used for r in domain_results)
-                    / len(domain_results),
-                    average_duration_ms=sum(r.duration_ms for r in domain_results)
-                    / len(domain_results),
-                    pass_k_metrics=TauBenchEvaluator.calculate_pass_k(domain_results, [1, 2, 4, 8]),
-                    results=domain_results,
+        done = 0
+        for domain, task_index, task in task_list:
+            for trial in range(self.config.num_trials):
+                r = self._run_trial(domain, task_index, task, trial, agent)
+                results.append(r)
+                domain_results.setdefault(domain, []).append(r)
+                done += 1
+                logger.info(
+                    "[%d/%d] %s#%d trial=%d reward=%.2f success=%s",
+                    done,
+                    total,
+                    domain,
+                    task_index,
+                    trial,
+                    r.reward,
+                    r.success,
                 )
 
-        # Compare to leaderboard
-        comparisons = TauBenchEvaluator.compare_to_leaderboard(results, LEADERBOARD_SCORES)
+        # Pass^k aggregation
+        pass_k: dict[int, PassKResult] = {}
+        for k in self.config.pass_k_values:
+            pk, num_tasks = calculate_pass_hat_k(results, k)
+            pass_k[k] = PassKResult(k=k, num_tasks=num_tasks, pass_hat_k=pk)
 
-        # Find closest comparable model
-        closest_model = ""
-        closest_diff = float("inf")
-        for model, diff in comparisons.items():
-            if abs(diff) < abs(closest_diff):
-                closest_diff = diff
-                closest_model = model
+        avg_reward = sum(r.reward for r in results) / len(results) if results else 0.0
 
-        # Generate summary
-        key_findings = []
-        strengths = []
-        weaknesses = []
-        recommendations = []
-
-        if success_rate > 0.7:
-            key_findings.append("Strong overall performance on Tau-bench tasks")
-            strengths.append("High task completion rate")
-        elif success_rate > 0.4:
-            key_findings.append("Moderate performance with room for improvement")
-        else:
-            key_findings.append("Significant improvement needed in task completion")
-            weaknesses.append("Low overall success rate")
-            recommendations.append("Focus on improving tool selection accuracy")
-
-        if avg_tool_accuracy > 0.8:
-            strengths.append("Excellent tool selection and parameter extraction")
-        elif avg_tool_accuracy < 0.5:
-            weaknesses.append("Tool selection needs improvement")
-            recommendations.append("Improve parameter extraction from context")
-
-        if avg_policy_compliance > 0.9:
-            strengths.append("Strong policy compliance")
-        elif avg_policy_compliance < 0.7:
-            weaknesses.append("Policy violations occurring")
-            recommendations.append("Review and enforce policy constraints")
-
-        # Domain-specific findings
-        for domain, report in domain_reports.items():
-            if report.success_rate > 0.8:
-                strengths.append(f"Strong performance in {domain.value} domain")
-            elif report.success_rate < 0.4:
-                weaknesses.append(f"Weak performance in {domain.value} domain")
-
-        return TauBenchReport(
-            total_tasks=total_tasks,
-            total_trials=total_trials,
-            passed_tasks=passed_tasks,
-            failed_tasks=failed_tasks,
-            overall_success_rate=success_rate,
-            overall_tool_accuracy=avg_tool_accuracy,
-            overall_policy_compliance=avg_policy_compliance,
-            overall_response_quality=avg_response_quality,
-            average_duration_ms=avg_duration,
-            domain_reports=domain_reports,
-            pass_k_metrics=pass_k_metrics,
-            overall_metrics={
-                "total_tokens": sum(r.tokens_used for r in results),
-                "average_tokens_per_task": sum(r.tokens_used for r in results) / total_trials
-                if total_trials > 0
-                else 0,
-                "average_turns_per_task": sum(r.turns_used for r in results) / total_trials
-                if total_trials > 0
-                else 0,
-                "average_tool_calls_per_task": sum(len(r.tool_calls_made) for r in results)
-                / total_trials
-                if total_trials > 0
-                else 0,
-                "total_duration_seconds": total_duration,
-                "memory_peak_mb": memory_stats["peak"] / 1024 / 1024,
-                "memory_average_mb": memory_stats["average"] / 1024 / 1024,
-            },
-            comparison_to_leaderboard={
-                "best_comparable_model": closest_model,
-                "difference_from_best": closest_diff,
-                "comparison_details": comparisons,
-            },
-            summary={
-                "status": "success" if success_rate > 0.7 else "partial" if success_rate > 0.4 else "needs_improvement",
-                "key_findings": key_findings,
-                "strengths": strengths,
-                "weaknesses": weaknesses,
-                "recommendations": recommendations,
-                "timestamp": datetime.now().isoformat(),
-            },
+        report = BenchmarkReport(
+            config=self.config,
             results=results,
+            pass_k=pass_k,
+            avg_reward=avg_reward,
+            num_tasks=len(task_list),
+            num_trials_per_task=self.config.num_trials,
+            domain_results=domain_results,
         )
 
-    async def _save_results(self, report: TauBenchReport) -> None:
-        """Save benchmark results to files."""
-        output_dir = Path(self.config.output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        # Persist
+        self._save_report(report)
+        elapsed = time.time() - start_ts
+        logger.info("Done in %.1fs. Avg reward=%.3f", elapsed, avg_reward)
+        return report
 
-        # Save main results JSON
-        results_path = output_dir / "tau-bench-results.json"
-        results_dict = self._report_to_dict(report)
-
-        with open(results_path, "w") as f:
-            json.dump(results_dict, f, indent=2, default=str)
-
-        # Save markdown summary
-        summary_path = output_dir / "tau-bench-summary.md"
-        summary_md = self._generate_markdown_summary(report)
-
-        with open(summary_path, "w") as f:
-            f.write(summary_md)
-
-        # Save detailed results if enabled
-        if self.config.save_detailed_logs:
-            detailed_path = output_dir / "tau-bench-detailed.json"
-            detailed_dict = {
-                "results": [self._result_to_dict(r) for r in report.results],
-                "domain_reports": {
-                    d.value: asdict(r) for d, r in report.domain_reports.items()
-                },
+    def _save_report(self, report: BenchmarkReport) -> None:
+        out_dir = Path(self.config.output_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "report.json").write_text(
+            json.dumps(report.to_dict(), indent=2, default=str), encoding="utf-8"
+        )
+        # Detailed trajectories
+        trajectories = [
+            {
+                "domain": r.domain,
+                "task_id": r.task_id,
+                "trial": r.trial,
+                "reward": r.reward,
+                "success": r.success,
+                "messages": r.messages,
             }
-            with open(detailed_path, "w") as f:
-                json.dump(detailed_dict, f, indent=2, default=str)
+            for r in report.results
+        ]
+        (out_dir / "trajectories.json").write_text(
+            json.dumps(trajectories, indent=2, default=str), encoding="utf-8"
+        )
 
-        logger.info(f"[TauBenchRunner] Results saved to {output_dir}")
 
-    def _report_to_dict(self, report: TauBenchReport) -> dict:
-        """Convert report to dictionary for JSON serialization."""
-        return {
-            "total_tasks": report.total_tasks,
-            "total_trials": report.total_trials,
-            "passed_tasks": report.passed_tasks,
-            "failed_tasks": report.failed_tasks,
-            "overall_success_rate": report.overall_success_rate,
-            "overall_tool_accuracy": report.overall_tool_accuracy,
-            "overall_policy_compliance": report.overall_policy_compliance,
-            "overall_response_quality": report.overall_response_quality,
-            "average_duration_ms": report.average_duration_ms,
-            "pass_k_metrics": {
-                str(k): {"k": v.k, "pass_rate": v.pass_rate, "trials_passed": v.trials_passed}
-                for k, v in report.pass_k_metrics.items()
-            },
-            "overall_metrics": report.overall_metrics,
-            "comparison_to_leaderboard": report.comparison_to_leaderboard,
-            "summary": report.summary,
-        }
-
-    def _result_to_dict(self, result: TauBenchResult) -> dict[str, Any]:
-        """Convert result to dictionary."""
-        return {
-            "task_id": result.task_id,
-            "domain": result.domain.value,
-            "trial_number": result.trial_number,
-            "success": result.success,
-            "tool_call_accuracy": result.tool_call_accuracy,
-            "policy_compliance": result.policy_compliance,
-            "response_quality": result.response_quality,
-            "goal_achieved": result.goal_achieved,
-            "duration_ms": result.duration_ms,
-            "turns_used": result.turns_used,
-            "tool_calls_made": [tc.to_dict() for tc in result.tool_calls_made],
-            "policy_violations": result.policy_violations,
-            "metrics": result.metrics,
-            "error": result.error,
-        }
-
-    def _generate_markdown_summary(self, report: TauBenchReport) -> str:
-        """Generate a markdown summary of the benchmark results."""
-        md = f"""# Tau-bench Benchmark Results
-
-## Executive Summary
-
-- **Status**: {report.summary['status'].upper()}
-- **Overall Success Rate**: {report.overall_success_rate * 100:.1f}%
-- **Total Tasks**: {report.total_tasks} ({report.total_trials} trials)
-- **Passed**: {report.passed_tasks} | **Failed**: {report.failed_tasks}
-- **Duration**: {report.overall_metrics['total_duration_seconds']:.1f}s
-
-## Pass^k Reliability Metrics
-
-| k | Pass Rate | Tasks Passed |
-|---|-----------|--------------|
-"""
-        for k, metrics in sorted(report.pass_k_metrics.items()):
-            md += f"| {k} | {metrics.pass_rate * 100:.1f}% | {metrics.trials_passed}/{metrics.total_trials} |\n"
-
-        md += f"""
-## Performance Metrics
-
-| Metric | Score |
-|--------|-------|
-| Tool Selection Accuracy | {report.overall_tool_accuracy * 100:.1f}% |
-| Policy Compliance | {report.overall_policy_compliance * 100:.1f}% |
-| Response Quality | {report.overall_response_quality * 100:.1f}% |
-| Avg. Duration | {report.average_duration_ms:.0f}ms |
-| Avg. Turns per Task | {report.overall_metrics['average_turns_per_task']:.1f} |
-| Avg. Tool Calls per Task | {report.overall_metrics['average_tool_calls_per_task']:.1f} |
-
-## Domain Results
-
-"""
-        for domain, domain_report in report.domain_reports.items():
-            md += f"""### {domain.value.title()} Domain
-
-- **Success Rate**: {domain_report.success_rate * 100:.1f}%
-- **Tasks**: {domain_report.total_tasks} ({domain_report.passed_tasks} passed)
-- **Tool Accuracy**: {domain_report.average_tool_accuracy * 100:.1f}%
-- **Policy Compliance**: {domain_report.average_policy_compliance * 100:.1f}%
-
-"""
-
-        md += """## Leaderboard Comparison
-
-| Model | Difference |
-|-------|------------|
-"""
-        for model, diff in sorted(
-            report.comparison_to_leaderboard.get("comparison_details", {}).items(),
-            key=lambda x: x[1],
-            reverse=True,
-        ):
-            direction = "+" if diff > 0 else ""
-            md += f"| {model} | {direction}{diff * 100:.1f}% |\n"
-
-        md += f"""
-**Closest Comparable**: {report.comparison_to_leaderboard.get('best_comparable_model', 'N/A')}
-
-## Key Findings
-
-"""
-        for finding in report.summary.get("key_findings", []):
-            md += f"- {finding}\n"
-
-        md += "\n## Strengths\n\n"
-        for strength in report.summary.get("strengths", []):
-            md += f"- ✅ {strength}\n"
-
-        md += "\n## Areas for Improvement\n\n"
-        for weakness in report.summary.get("weaknesses", []):
-            md += f"- ⚠️ {weakness}\n"
-
-        md += "\n## Recommendations\n\n"
-        for rec in report.summary.get("recommendations", []):
-            md += f"- 💡 {rec}\n"
-
-        md += f"""
----
-*Generated on {report.summary.get('timestamp', datetime.now().isoformat())}*
-*Benchmark: Tau-bench (Tool-Agent-User Interaction)*
-"""
-        return md
+__all__ = ["TauBenchRunner"]

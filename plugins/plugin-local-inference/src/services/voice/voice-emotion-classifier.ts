@@ -204,7 +204,7 @@ export class VoiceEmotionClassifier {
 	/** Lazy session-load; first call pays the cost. Subsequent calls reuse. */
 	async ensureLoaded(): Promise<void> {
 		if (this.session) return;
-		let ort;
+		let ort: Awaited<ReturnType<typeof loadOnnxRuntime>>;
 		try {
 			ort = await loadOnnxRuntime();
 		} catch (err) {

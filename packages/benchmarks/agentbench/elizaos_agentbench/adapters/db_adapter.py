@@ -72,13 +72,19 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
         logger.info("[DB] Database environment adapter initialized")
 
     def _validate_sql_identifier(self, name: str, identifier_type: str) -> None:
-        """Validate that a name is safe for use as SQL identifier."""
+        """Validate that a name is safe for use as a quoted SQL identifier.
+
+        Upstream AgentBench DB tables contain identifiers with spaces
+        (e.g. ``"Termination of Mission"``) and punctuation. We still
+        reject control chars and identifier-injection characters so the
+        ``[name]`` quoting in queries is safe.
+        """
         if not name:
             raise ValueError(f"{identifier_type} name cannot be empty")
-        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
-            raise ValueError(f"Invalid {identifier_type} name: {name}")
-        if name.upper() in self.SQL_RESERVED_WORDS:
-            raise ValueError(f"{identifier_type} name cannot be a SQL reserved word: {name}")
+        # Reject closing-bracket / null / backtick / quote characters which
+        # would break ``[name]`` quoting.
+        if any(ch in name for ch in ("]", "[", "`", '"', "'", "\x00", "\n", "\r")):
+            raise ValueError(f"Invalid {identifier_type} name: {name!r}")
 
     async def reset(self, task: AgentBenchTask) -> ObservationType:
         """Reset database for a new task."""
@@ -325,37 +331,99 @@ class DatabaseEnvironmentAdapter(EnvironmentAdapter):
         return "\n\n".join(schema_lines)
 
     async def evaluate(self, task: AgentBenchTask, trajectory: list[str]) -> bool:
-        """Evaluate if the SQL task was completed correctly."""
-        if not task.ground_truth:
+        """Evaluate if the SQL task was completed correctly.
+
+        Matches AgentBench's official ``DBResultProcessor.compare_results``
+        contract: compare the *result set* produced by the agent's final
+        SELECT (or the answer string for INSERT/UPDATE/DELETE) against
+        the gold ``label`` from upstream. Falls back to executing
+        ``ground_truth`` as SQL only when no label is available (legacy
+        fixtures).
+        """
+        last_query = self._query_history[-1] if self._query_history else ""
+        if not last_query:
             return False
 
-        # Execute expected query and compare results
-        expected_query = task.ground_truth
-        last_query = self._query_history[-1] if self._query_history else ""
+        label = task.metadata.get("label") if isinstance(task.metadata, dict) else None
 
         try:
             cursor = self._connection.cursor() if self._connection else None
             if not cursor:
                 return False
 
-            # Execute expected query
-            cursor.execute(expected_query)
-            expected_results = [tuple(row) for row in cursor.fetchall()]
+            cursor.execute(last_query)
+            actual_rows = cursor.fetchall()
+            actual_values: list[str] = []
+            for row in actual_rows:
+                # Flatten row tuples; upstream label is a list of scalar strings.
+                for cell in row:
+                    actual_values.append(self._normalize_db_value(cell))
 
-            # Execute agent's last query
-            if last_query:
-                cursor.execute(last_query)
-                actual_results = [tuple(row) for row in cursor.fetchall()]
+            if isinstance(label, list) and label:
+                gold_values = [self._normalize_db_value(v) for v in label]
+                return self._compare_db_values(actual_values, gold_values)
 
-                # Compare results
-                if set(expected_results) == set(actual_results):
-                    return True
+            # Legacy fallback: ground_truth is a SQL string, execute it.
+            if task.ground_truth and isinstance(task.ground_truth, str):
+                gt = task.ground_truth.strip()
+                if gt.upper().startswith("SELECT"):
+                    cursor.execute(gt)
+                    expected_rows = cursor.fetchall()
+                    expected = set(tuple(r) for r in expected_rows)
+                    return set(tuple(r) for r in actual_rows) == expected
 
             return False
-
         except Exception as e:
             logger.error(f"[DB] Evaluation error: {e}")
             return False
+
+    @staticmethod
+    def _normalize_db_value(v: object) -> str:
+        """Match upstream DBResultProcessor normalization rules."""
+        if v is None:
+            return "0"
+        s = str(v).strip()
+        if s.endswith("%"):
+            s = s[:-1].strip()
+        if "," in s and not (s.startswith("[") or s.endswith("]")):
+            s = s.replace(",", "")
+        low = s.lower()
+        if low in {"none", "null", "undefined", "nan", "inf", "infinity", "-inf", "-infinity", ""}:
+            return "0"
+        return s
+
+    @staticmethod
+    def _compare_db_values(actual: list[str], gold: list[str]) -> bool:
+        """Match upstream's set / float-tolerant comparison."""
+        def is_float(x: str) -> bool:
+            try:
+                float(x)
+                return True
+            except (ValueError, TypeError):
+                return False
+
+        if len(actual) == 1 and len(gold) == 1:
+            a, g = actual[0], gold[0]
+            if is_float(a) and is_float(g):
+                return abs(float(a) - float(g)) <= 1e-2
+            return a == g
+
+        if (actual and all(is_float(x) for x in actual)
+                and gold and all(is_float(x) for x in gold)):
+            if len(actual) != len(gold):
+                return False
+            matched = [False] * len(gold)
+            for a in actual:
+                found = False
+                for i, g in enumerate(gold):
+                    if not matched[i] and abs(float(a) - float(g)) <= 1e-2:
+                        matched[i] = True
+                        found = True
+                        break
+                if not found:
+                    return False
+            return all(matched)
+        return set(actual) == set(gold)
 
     async def cleanup(self) -> None:
         """Close database connection and cleanup."""
