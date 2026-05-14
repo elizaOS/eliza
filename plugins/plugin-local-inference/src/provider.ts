@@ -102,9 +102,27 @@ interface LocalInferenceTranscriptionService {
 	}) => Promise<string | { text?: string }>;
 }
 
+/**
+ * Optional arbiter accessor. When the local-inference plugin's runtime
+ * service registers a MemoryArbiter (WS1) on the IAgentRuntime, this
+ * field returns it. Cross-plugin consumers (plugin-vision, plugin-image-gen,
+ * plugin-aosp-local-inference) call `service.getMemoryArbiter()` to
+ * register their capability handlers and request model swaps without
+ * knowing which backend is loaded.
+ *
+ * The concrete return type is intentionally `unknown` here to keep this
+ * provider file free of a hard dependency on `./services/memory-arbiter`;
+ * consumers should import the `MemoryArbiter` type from
+ * `@elizaos/plugin-local-inference/services` and cast.
+ */
+interface LocalInferenceArbiterAccessor {
+	getMemoryArbiter?: () => unknown;
+}
+
 interface LocalInferenceRuntimeService
 	extends LocalInferenceTextToSpeechService,
-		LocalInferenceTranscriptionService {
+		LocalInferenceTranscriptionService,
+		LocalInferenceArbiterAccessor {
 	generate?: (args: LocalInferenceGenerateArgs) => Promise<string>;
 	embed?: (args: {
 		input: string;

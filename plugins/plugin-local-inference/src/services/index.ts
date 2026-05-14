@@ -64,6 +64,33 @@ export {
 	planKvSpill,
 } from "./kv-spill";
 export {
+	type ArbiterCapability,
+	type ArbiterEvent,
+	type ArbiterEventListener,
+	type ArbiterHandle,
+	type CapabilityRegistration,
+	getMemoryArbiter,
+	MemoryArbiter,
+	type MemoryArbiterOptions,
+	setMemoryArbiter,
+	tryGetMemoryArbiter,
+} from "./memory-arbiter";
+export {
+	type CapacitorPressureSource,
+	capacitorPressureSource,
+	compositePressureSource,
+	type MemoryPressureEvent,
+	type MemoryPressureLevel,
+	type MemoryPressureListener,
+	type MemoryPressureSource,
+	nodeOsPressureSource,
+} from "./memory-pressure";
+export {
+	type VisionEmbeddingCacheConfig,
+	VisionEmbeddingCache,
+	type VisionEmbeddingEntry,
+} from "./vision-embedding-cache";
+export {
 	buildVoiceLatencyDevPayload,
 	EndToEndLatencyTracer,
 	endVoiceLatencyTurn,
