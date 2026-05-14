@@ -1,0 +1,24 @@
+# Build outputs and scratch — never committed.
+
+# finished ISOs land here
+out/
+# staged by build.sh from tails/submodules/live-build/
+tails-live-build/
+# throwaway repo build-iso.sh inits when tails/ has no .git
+tails/.git/
+
+# live-build artifacts written into the vendored tails/ tree during a build
+tails/chroot/
+tails/binary/
+tails/cache/
+tails/.build/
+tails/tmp/
+tails/chroot.files
+tails/*.buildlog
+tails/*.iso
+tails/*.img
+tails/tails-build-env.list
+
+# the prebuilt Milady app artifact staged for the 9100-install-milady hook
+# (Phase 4 — built by `just milady-app`, far too large to commit)
+tails/config/chroot_local-includes/usr/share/milady-tails/milady-app/

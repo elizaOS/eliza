@@ -2,6 +2,18 @@
 MINT Benchmark Type Definitions
 
 Defines all data classes and enums used by the MINT benchmark implementation.
+
+Taxonomy follows the original UIUC MINT benchmark
+(https://github.com/xingyaoww/mint-bench, ICLR 2024):
+
+    - 8 subtasks split across 3 high-level task types:
+        * reasoning        : gsm8k, math, theoremqa, mmlu, hotpotqa
+        * code_generation  : humaneval, mbpp
+        * decision_making  : alfworld
+
+The 4-bucket category enum that previously lived here was invented and is
+gone. Subtasks remain the canonical unit because the paper reports turn-k
+metrics per subtask, not per task-type.
 """
 
 from dataclasses import dataclass, field
@@ -9,13 +21,50 @@ from enum import Enum
 from typing import Optional
 
 
-class MINTCategory(str, Enum):
-    """Task categories in MINT benchmark."""
+class MINTSubtask(str, Enum):
+    """The 8 MINT subtasks defined by the paper."""
+
+    HUMANEVAL = "humaneval"
+    MBPP = "mbpp"
+    MATH = "math"
+    GSM8K = "gsm8k"
+    HOTPOTQA = "hotpotqa"
+    MMLU = "mmlu"
+    THEOREMQA = "theoremqa"
+    ALFWORLD = "alfworld"
+
+
+class MINTTaskType(str, Enum):
+    """The 3 high-level task types that group the 8 subtasks."""
 
     REASONING = "reasoning"
-    CODING = "coding"
+    CODE_GENERATION = "code_generation"
     DECISION_MAKING = "decision_making"
-    INFORMATION_SEEKING = "information_seeking"
+
+
+# Mapping from subtask -> task type.
+SUBTASK_TO_TASK_TYPE: dict[MINTSubtask, MINTTaskType] = {
+    MINTSubtask.HUMANEVAL: MINTTaskType.CODE_GENERATION,
+    MINTSubtask.MBPP: MINTTaskType.CODE_GENERATION,
+    MINTSubtask.MATH: MINTTaskType.REASONING,
+    MINTSubtask.GSM8K: MINTTaskType.REASONING,
+    MINTSubtask.HOTPOTQA: MINTTaskType.REASONING,
+    MINTSubtask.MMLU: MINTTaskType.REASONING,
+    MINTSubtask.THEOREMQA: MINTTaskType.REASONING,
+    MINTSubtask.ALFWORLD: MINTTaskType.DECISION_MAKING,
+}
+
+
+# ---------------------------------------------------------------------------
+# Backwards-compatibility shim
+#
+# Older code in this package, in eliza-adapter, and in tests refers to
+# ``MINTCategory``. We keep the name as an alias for ``MINTSubtask`` so the
+# import path keeps working while the rebuild lands incrementally. Tests that
+# specifically check for the 4-bucket invented taxonomy have been deleted /
+# rewritten.
+# ---------------------------------------------------------------------------
+MINTCategory = MINTSubtask
 
 
 class TurnType(str, Enum):
@@ -32,9 +81,11 @@ class EvaluationMetric(str, Enum):
 
     EXACT_MATCH = "exact_match"
     NUMERIC = "numeric"
-    CODE_OUTPUT = "code_output"
-    SEMANTIC = "semantic"
+    CODE_TEST = "code_test"  # Upstream HumanEval / MBPP harness.
     PARTIAL_MATCH = "partial_match"
+    SEMANTIC = "semantic"
+    THEOREMQA = "theoremqa"  # Upstream TheoremqaTask grader.
+    MULTIPLE_CHOICE = "multiple_choice"  # Upstream MMLU grader.
 
 
 @dataclass
@@ -49,6 +100,9 @@ class Turn:
     tool_success: bool = True
     feedback: Optional[str] = None
     timestamp_ms: float = 0.0
+    # Whether the assistant claimed this turn was its final answer. Used by
+    # the metrics calculator to compute Turn-1 / Turn-3 / Turn-5 SR.
+    proposed_solution: bool = False
 
 
 @dataclass
@@ -56,7 +110,7 @@ class MINTTask:
     """A MINT benchmark task."""
 
     id: str
-    category: MINTCategory
+    subtask: MINTSubtask
     description: str
     initial_prompt: str
     ground_truth: str
@@ -64,13 +118,26 @@ class MINTTask:
     tools_allowed: list[str] = field(default_factory=lambda: ["python"])
     evaluation_metric: str = "exact_match"
     difficulty: str = "medium"  # easy, medium, hard
-    subcategory: Optional[str] = None
     metadata: dict[str, str | int | float | bool] = field(default_factory=dict)
+
+    # Backwards-compatible alias for callers that still read ``task.category``.
+    @property
+    def category(self) -> MINTSubtask:
+        return self.subtask
+
+    @property
+    def task_type(self) -> MINTTaskType:
+        return SUBTASK_TO_TASK_TYPE[self.subtask]
 
 
 @dataclass
 class MINTTrajectory:
-    """Records the trajectory of solving a MINT task."""
+    """Records the trajectory of solving a MINT task.
+
+    ``per_turn_answers`` records the answer the agent had committed to at the
+    end of each assistant turn (or ``None`` if no answer was proposed yet).
+    This is what powers the Turn-k SR metric.
+    """
 
     task_id: str
     turns: list[Turn] = field(default_factory=list)
@@ -81,6 +148,8 @@ class MINTTrajectory:
     total_tokens: int = 0
     start_time_ms: float = 0.0
     end_time_ms: float = 0.0
+    per_turn_answers: list[Optional[str]] = field(default_factory=list)
+    per_turn_success: list[bool] = field(default_factory=list)
 
 
 @dataclass
@@ -88,7 +157,7 @@ class MINTResult:
     """Result of evaluating a single MINT task."""
 
     task_id: str
-    category: MINTCategory
+    subtask: MINTSubtask
     trajectory: MINTTrajectory
     success: bool
     turns_used: int
@@ -99,6 +168,14 @@ class MINTResult:
     error: Optional[str] = None
     score: float = 0.0  # 0.0 to 1.0
     evaluation_details: dict[str, str | int | float | bool] = field(default_factory=dict)
+    # Per-turn cumulative success flags for the Turn-k SR metric. Index ``i``
+    # is True if the agent had a correct answer by turn ``i + 1``.
+    cumulative_success_per_turn: list[bool] = field(default_factory=list)
+
+    # Backwards-compatible alias.
+    @property
+    def category(self) -> MINTSubtask:
+        return self.subtask
 
 
 @dataclass
@@ -111,9 +188,13 @@ class MINTMetrics:
     passed_tasks: int
     failed_tasks: int
 
-    # Per-category metrics
-    category_success_rates: dict[MINTCategory, float] = field(default_factory=dict)
-    category_counts: dict[MINTCategory, int] = field(default_factory=dict)
+    # Per-subtask metrics (the canonical paper view).
+    subtask_success_rates: dict[MINTSubtask, float] = field(default_factory=dict)
+    subtask_counts: dict[MINTSubtask, int] = field(default_factory=dict)
+
+    # Per-task-type metrics (reasoning / code_generation / decision_making).
+    task_type_success_rates: dict[MINTTaskType, float] = field(default_factory=dict)
+    task_type_counts: dict[MINTTaskType, int] = field(default_factory=dict)
 
     # Turn analysis
     avg_turns_to_success: float = 0.0
@@ -132,11 +213,16 @@ class MINTMetrics:
     avg_feedback_turns_success: float = 0.0
     avg_feedback_turns_failure: float = 0.0
 
-    # Multi-turn analysis
-    multi_turn_gain: float = 0.0  # Improvement from multi-turn
+    # Multi-turn analysis (the canonical MINT headline metric).
+    # ``turn_k_success_rate`` is the fraction of tasks where the agent had a
+    # correct answer AT OR BEFORE turn k.
+    multi_turn_gain: float = 0.0
     turn_1_success_rate: float = 0.0
+    turn_2_success_rate: float = 0.0
     turn_3_success_rate: float = 0.0
+    turn_4_success_rate: float = 0.0
     turn_5_success_rate: float = 0.0
+    per_turn_success_rates: list[float] = field(default_factory=list)
 
     # Performance metrics
     avg_latency_ms: float = 0.0
@@ -150,31 +236,36 @@ class MINTConfig:
     """Configuration for MINT benchmark runner."""
 
     # Paths
-    data_path: str = "./data/mint"
+    data_path: str = ""  # Empty -> use vendored upstream/data/processed.
     output_dir: str = "./benchmark_results/mint"
 
     # Execution settings
-    max_tasks_per_category: Optional[int] = None
+    max_tasks_per_subtask: Optional[int] = None
     timeout_per_task_ms: int = 120000  # 2 minutes per task
     max_turns: int = 5
     use_docker: bool = True
     code_timeout_seconds: int = 30
 
     # What to run
-    categories: Optional[list[MINTCategory]] = None  # None = all categories
+    subtasks: Optional[list[MINTSubtask]] = None  # None = all (minus alfworld lazy).
     enable_tools: bool = True
     enable_feedback: bool = True
     run_ablation: bool = True  # Run with different configs
+
+    # Mock / sample-task escape hatches (must be opted in explicitly).
+    use_mock_executor: bool = False
+    use_sample_tasks: bool = False  # If True, use a tiny hand-written smoke set.
+    allow_ground_truth_mock: bool = False
 
     # Reporting
     save_detailed_logs: bool = True
     save_trajectories: bool = True
     generate_report: bool = True
 
-    # Model settings
-    feedback_model: str = "gpt-4"  # Model for feedback generation
-    use_llm_feedback: bool = False  # If True, generate feedback via runtime model
-    temperature: float = 0.0  # Temperature for deterministic results
+    # Feedback settings
+    feedback_mode: str = "templated"  # "templated" or "llm"
+    feedback_model: str = "gpt-4"  # Used only when feedback_mode == "llm".
+    temperature: float = 0.0  # Temperature for deterministic results.
 
 
 @dataclass
@@ -201,34 +292,19 @@ class MINTBenchmarkResults:
     summary: dict[str, str | list[str]] = field(default_factory=dict)
 
 
-# Leaderboard reference scores from the MINT paper
-LEADERBOARD_SCORES: dict[str, dict[str, float]] = {
-    "gpt-4-0613": {
-        "reasoning": 0.72,
-        "coding": 0.68,
-        "decision_making": 0.65,
-        "information_seeking": 0.58,
-        "overall": 0.66,
-    },
-    "gpt-3.5-turbo": {
-        "reasoning": 0.45,
-        "coding": 0.42,
-        "decision_making": 0.38,
-        "information_seeking": 0.35,
-        "overall": 0.40,
-    },
-    "claude-2": {
-        "reasoning": 0.68,
-        "coding": 0.62,
-        "decision_making": 0.60,
-        "information_seeking": 0.52,
-        "overall": 0.61,
-    },
-    "llama-2-70b": {
-        "reasoning": 0.38,
-        "coding": 0.32,
-        "decision_making": 0.30,
-        "information_seeking": 0.28,
-        "overall": 0.32,
-    },
-}
+# ---------------------------------------------------------------------------
+# Leaderboard reference
+#
+# The original 4-bucket scores were apples-to-oranges. We deliberately do not
+# ship invented reference numbers. Consumers that want to compare to the
+# paper should look up the per-subtask Turn-5 SR in Table 2 / Table 3 of
+# https://arxiv.org/abs/2309.10691 .
+#
+# We keep the symbol exported as an EMPTY dict so import sites that read
+# ``LEADERBOARD_SCORES`` don't break, and so report generation degrades to
+# "no published numbers available" instead of fabricating a comparison.
+# ---------------------------------------------------------------------------
+LEADERBOARD_SCORES: dict[str, dict[str, float]] = {}
+
+# Direct link to the paper, surfaced in the markdown report.
+PAPER_RESULTS_URL: str = "https://arxiv.org/abs/2309.10691"

@@ -41,41 +41,11 @@ class ParsedAction(TypedDict):
     params: dict[str, str]
 
 
-SAMPLE_PUZZLES: list[PuzzleType] = [
-    {
-        "id": "ltp001",
-        "scenario": "A man walks into a bar and asks for a glass of water. The bartender pulls out a gun and points it at him. The man says 'Thank you' and walks out. Why?",
-        "answer": "hiccups",
-        "hints": [
-            "The man had a physical condition.",
-            "The gun wasn't meant to harm him.",
-            "Fear can cure certain conditions.",
-        ],
-        "keywords": ["hiccups", "hiccup", "scared", "fright", "cure", "startled", "startle", "shock", "scare"],
-    },
-    {
-        "id": "ltp002",
-        "scenario": "A man is found dead in a field with an unopened package next to him. There are no other people, animals, or vehicles nearby. How did he die?",
-        "answer": "parachute",
-        "hints": [
-            "The package is related to his death.",
-            "He fell from somewhere.",
-            "The package should have opened before he landed.",
-        ],
-        "keywords": ["parachute", "skydiving", "failed", "open", "fall"],
-    },
-    {
-        "id": "ltp003",
-        "scenario": "A woman shoots her husband, holds him under water for five minutes, and then hangs him. Ten minutes later, they go out to dinner. How is this possible?",
-        "answer": "photograph",
-        "hints": [
-            "She didn't actually kill him.",
-            "The words have different meanings.",
-            "It's related to a hobby.",
-        ],
-        "keywords": ["photograph", "camera", "picture", "photo", "develop", "darkroom"],
-    },
-]
+# Lateral Thinking Puzzles are loaded from the upstream AgentBench data
+# files (``upstream/data/lateralthinkingpuzzle/{dev,standard}.xlsx``) by
+# ``elizaos_agentbench.upstream_loader.load_ltp_tasks``. There are no
+# hand-written sample puzzles here on purpose - any sample set would
+# produce non-comparable benchmark scores.
 
 
 class LateralThinkingAdapter(EnvironmentAdapter):
@@ -103,7 +73,8 @@ class LateralThinkingAdapter(EnvironmentAdapter):
     async def initialize(self) -> None:
         if self._initialized:
             return
-        self._puzzles = list(SAMPLE_PUZZLES)
+        # Puzzles come from the per-task ``initial_state``; no pre-loaded list.
+        self._puzzles = []
         self._initialized = True
 
     def _coerce_str_list(self, value: object) -> list[str]:
@@ -116,26 +87,29 @@ class LateralThinkingAdapter(EnvironmentAdapter):
         self._guesses = []
         self._questions_asked = []
 
-        puzzle_id_val = task.initial_state.get("puzzle_id")
-        puzzle_id = puzzle_id_val if isinstance(puzzle_id_val, str) else ""
+        # Upstream loader puts ``story_key`` and ``answer_key`` (the
+        # gold key-point breakdown) in ``initial_state`` / ``metadata``;
+        # the puzzle's "answer" is ``task.ground_truth``. We surface key
+        # phrases as soft keywords for the local heuristic host so the
+        # adapter remains runnable without the upstream eval-agent.
+        answer_key_raw = task.initial_state.get("answer_key", "") if isinstance(task.initial_state, dict) else ""
+        answer_key = answer_key_raw if isinstance(answer_key_raw, str) else ""
+        keyword_pool: list[str] = []
+        if answer_key:
+            for line in answer_key.split("\n"):
+                line = line.strip().lstrip("-•0123456789. ")
+                if line:
+                    keyword_pool.append(line.lower())
+        # Fall back to metadata.keywords for legacy callers.
+        keyword_pool.extend(self._coerce_str_list(task.metadata.get("keywords", [])))
 
-        selected: PuzzleType | None = None
-        if puzzle_id:
-            for p in self._puzzles:
-                if p["id"] == puzzle_id:
-                    selected = p
-                    break
-
-        if selected is None:
-            keywords_val = task.metadata.get("keywords", [])
-            keywords = self._coerce_str_list(keywords_val)
-            selected = {
-                "id": task.id,
-                "scenario": task.description,
-                "answer": task.ground_truth or "",
-                "hints": list(task.hints),
-                "keywords": keywords,
-            }
+        selected: PuzzleType = {
+            "id": task.id,
+            "scenario": task.description,
+            "answer": task.ground_truth or "",
+            "hints": list(task.hints),
+            "keywords": keyword_pool,
+        }
 
         self._current_puzzle = selected
 

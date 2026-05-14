@@ -1072,6 +1072,15 @@ export async function handleLocalInferenceRoutes(
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
+	// Co-located voice-onboarding namespace — runs alongside local-inference
+	// so the existing /api/local-inference/* mount point in server.ts also
+	// catches /api/voice/onboarding/* without a second wire-up.
+	if (pathname.startsWith("/api/voice/onboarding/")) {
+		const { handleVoiceOnboardingRoutes } = await import(
+			"./routes/voice-onboarding-routes.js"
+		);
+		if (await handleVoiceOnboardingRoutes(req, res)) return true;
+	}
 	if (!pathname.startsWith("/api/local-inference/")) return false;
 
 	if (

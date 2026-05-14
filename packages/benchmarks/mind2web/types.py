@@ -32,6 +32,25 @@ class Mind2WebSplit(str, Enum):
     TEST_DOMAIN = "test_domain"  # Cross-Domain: new domains
 
 
+class Mind2WebRankerMode(str, Enum):
+    """Candidate-ranker stage configuration for the MindAct pipeline.
+
+    - ``REAL``: Use the pretrained DeBERTa-v3 cross-encoder to score all DOM
+      candidates and pass only the top-K to the LLM. This is the faithful
+      MindAct stage-1 reproduction; numbers are leaderboard-comparable.
+    - ``ORACLE``: Pass the dataset's annotated ``pos_candidates`` straight
+      through to the LLM (leaks the answer; produces an UPPER BOUND that is
+      NOT comparable to published leaderboard scores).
+    - ``NONE``: Skip candidate ranking entirely and pass the full set of
+      candidates (pos + neg, often hundreds) to the LLM. Useful for studying
+      long-context behavior.
+    """
+
+    REAL = "real"
+    ORACLE = "oracle"
+    NONE = "none"
+
+
 @dataclass
 class Mind2WebElement:
     """A DOM element candidate in Mind2Web."""
@@ -113,6 +132,9 @@ class Mind2WebStepResult:
     value_correct: bool = False
     step_correct: bool = False  # All components correct
     latency_ms: float = 0.0
+    # Stage-1 ranker Recall@K (1.0 if a GT positive appears in the top-K, 0.0
+    # otherwise, NaN if there were no GT positives or the ranker wasn't run).
+    ranker_recall_at_k: float = float("nan")
 
 
 @dataclass
@@ -134,6 +156,9 @@ class Mind2WebResult:
     latency_ms: float = 0.0
     error: str | None = None
     agent_trajectory: list[Mind2WebAction] = field(default_factory=list)
+    # Aggregated stage-1 ranker Recall@K across the task's steps. NaN when the
+    # ranker was not used (oracle / none modes).
+    ranker_recall_at_k: float = float("nan")
 
 
 @dataclass
@@ -184,6 +209,12 @@ class Mind2WebConfig:
     verbose: bool = False
     check_should_respond: bool = False
     advanced_planning: bool = False
+
+    # Candidate ranker (MindAct stage 1). See Mind2WebRankerMode docstring.
+    ranker_mode: Mind2WebRankerMode = Mind2WebRankerMode.REAL
+    ranker_top_k: int = 50
+    ranker_model: str | None = None  # None -> DEFAULT_RANKER_MODEL in ranker.py
+    ranker_device: str | None = None  # None -> auto (cuda if available, else cpu)
 
     # Trajectory logging
     enable_trajectory_logging: bool = True

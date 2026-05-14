@@ -943,6 +943,166 @@ describe("ScheduledTaskRunner — dispatcher", () => {
   });
 });
 
+describe("ScheduledTaskRunner — executionProfile host-capability substitution", () => {
+  /**
+   * When the host can't satisfy a task's `executionProfile`, runner.fire()
+   * MUST rewrite the dispatch channel to `in_app` (notify-only) and write a
+   * `"substituted"` state-log row carrying the original + substitute
+   * profiles. The task still transitions to `fired`; substitution shifts
+   * the wire-out mechanism, not the status.
+   */
+  it("substitutes a bg-heavy-fgs task to notify-only on a foreground-only host", async () => {
+    const dispatch = vi.fn(async () => undefined);
+    const gates = createTaskGateRegistry();
+    registerBuiltInGates(gates);
+    const completionChecks = createCompletionCheckRegistry();
+    registerBuiltInCompletionChecks(completionChecks);
+    const ladders = createEscalationLadderRegistry();
+    registerDefaultEscalationLadders(ladders);
+    const logStore = createInMemoryScheduledTaskLogStore();
+    const runner = createScheduledTaskRunner({
+      agentId: "t-sub",
+      store: createInMemoryScheduledTaskStore(),
+      logStore,
+      gates,
+      completionChecks,
+      ladders,
+      anchors: createAnchorRegistry(),
+      consolidation: createConsolidationRegistry(),
+      ownerFacts: async () => ({}),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: { dispatch },
+      // Host can only run foreground + notify-only. A `bg-heavy-fgs` task
+      // is NOT in this set, so the runner must substitute.
+      hostCapabilities: () => new Set(["foreground", "notify-only"]),
+      newTaskId: () => "task_sub",
+      now: () => new Date("2026-05-14T08:00:00.000Z"),
+    });
+    const task = await runner.schedule(
+      baseInput({
+        executionProfile: "bg-heavy-fgs",
+        // Set the task's output destination to something OTHER than in_app
+        // to prove substitution rewrites the channel.
+        output: { destination: "channel", target: "discord:owner-dm" },
+      }),
+    );
+    const result = await runner.fire(task.taskId);
+    expect(result.state.status).toBe("fired");
+
+    // The dispatcher should have been called with channelKey === "in_app"
+    // even though the task asked for "discord".
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskId: task.taskId,
+        channelKey: "in_app",
+      }),
+    );
+
+    // A `substituted` log row must exist with the original + substitute
+    // profile in its detail.
+    const log = await logStore.list({
+      agentId: "t-sub",
+      taskId: task.taskId,
+    });
+    const substituted = log.find((r) => r.transition === "substituted");
+    expect(substituted).toBeDefined();
+    expect(substituted?.reason).toBe("host_incapable");
+    const detail = substituted?.detail as Record<string, unknown> | undefined;
+    expect(detail?.originalProfile).toBe("bg-heavy-fgs");
+    expect(detail?.substituteProfile).toBe("notify-only");
+  });
+
+  it("does NOT substitute when the host CAN satisfy the profile", async () => {
+    const dispatch = vi.fn(async () => undefined);
+    const gates = createTaskGateRegistry();
+    registerBuiltInGates(gates);
+    const completionChecks = createCompletionCheckRegistry();
+    registerBuiltInCompletionChecks(completionChecks);
+    const ladders = createEscalationLadderRegistry();
+    registerDefaultEscalationLadders(ladders);
+    const logStore = createInMemoryScheduledTaskLogStore();
+    const runner = createScheduledTaskRunner({
+      agentId: "t-no-sub",
+      store: createInMemoryScheduledTaskStore(),
+      logStore,
+      gates,
+      completionChecks,
+      ladders,
+      anchors: createAnchorRegistry(),
+      consolidation: createConsolidationRegistry(),
+      ownerFacts: async () => ({}),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: { dispatch },
+      // Host CAN run bg-heavy-fgs.
+      hostCapabilities: () =>
+        new Set(["foreground", "bg-light-30s", "bg-heavy-fgs", "notify-only"]),
+      newTaskId: () => "task_no_sub",
+      now: () => new Date("2026-05-14T08:00:00.000Z"),
+    });
+    const task = await runner.schedule(
+      baseInput({
+        executionProfile: "bg-heavy-fgs",
+        output: { destination: "channel", target: "discord:owner-dm" },
+      }),
+    );
+    await runner.fire(task.taskId);
+
+    // Dispatcher should see the original (discord) channel, not the
+    // substituted one.
+    expect(dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: task.taskId, channelKey: "discord" }),
+    );
+    const log = await logStore.list({
+      agentId: "t-no-sub",
+      taskId: task.taskId,
+    });
+    expect(log.find((r) => r.transition === "substituted")).toBeUndefined();
+  });
+
+  it("uses DEFAULT_TASK_EXECUTION_PROFILE when task.executionProfile is absent", async () => {
+    // A task with no executionProfile defaults to `foreground`; foreground
+    // is always in every host's capability set, so no substitution.
+    const dispatch = vi.fn(async () => undefined);
+    const gates = createTaskGateRegistry();
+    registerBuiltInGates(gates);
+    const completionChecks = createCompletionCheckRegistry();
+    registerBuiltInCompletionChecks(completionChecks);
+    const ladders = createEscalationLadderRegistry();
+    registerDefaultEscalationLadders(ladders);
+    const logStore = createInMemoryScheduledTaskLogStore();
+    const runner = createScheduledTaskRunner({
+      agentId: "t-default",
+      store: createInMemoryScheduledTaskStore(),
+      logStore,
+      gates,
+      completionChecks,
+      ladders,
+      anchors: createAnchorRegistry(),
+      consolidation: createConsolidationRegistry(),
+      ownerFacts: async () => ({}),
+      globalPause: { current: async () => ({ active: false }) },
+      activity: { hasSignalSince: () => false },
+      subjectStore: { wasUpdatedSince: () => false },
+      dispatcher: { dispatch },
+      hostCapabilities: () => new Set(["foreground", "notify-only"]),
+      newTaskId: () => "task_default",
+      now: () => new Date("2026-05-14T08:00:00.000Z"),
+    });
+    const task = await runner.schedule(baseInput()); // no executionProfile
+    await runner.fire(task.taskId);
+    const log = await logStore.list({
+      agentId: "t-default",
+      taskId: task.taskId,
+    });
+    expect(log.find((r) => r.transition === "substituted")).toBeUndefined();
+  });
+});
+
 describe("ScheduledTaskRunner — every trigger kind (schema-level)", () => {
   it("schedules tasks with each trigger kind without throwing", async () => {
     const h = makeHarness();

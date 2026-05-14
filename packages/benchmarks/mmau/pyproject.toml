@@ -3,9 +3,12 @@ requires = ["hatchling>=1.18"]
 build-backend = "hatchling.build"
 
 [project]
-name = "elizaos-mmau"
+# Renamed from "elizaos-mmau" to disambiguate from Salesforce's MMAU agent
+# benchmark (arXiv:2407.18961). This package implements the *audio* MMAU
+# (Sakshi et al., ICLR 2025, gamma-lab-umd/MMAU-test-mini).
+name = "elizaos-mmau-audio"
 version = "0.1.0"
-description = "MMAU (Massive Multi-task Audio Understanding, ICLR 2025) benchmark for elizaOS"
+description = "Audio MMAU (Massive Multi-task Audio Understanding, Sakshi et al., ICLR 2025) benchmark for elizaOS"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
@@ -27,10 +30,14 @@ hf = [
     "soundfile>=0.12",
 ]
 all = [
-    "elizaos-mmau[dev,hf]",
+    "elizaos-mmau-audio[dev,hf]",
 ]
 
 [project.scripts]
+mmau-audio = "benchmarks.mmau.cli:main"
+elizaos-mmau-audio = "benchmarks.mmau.cli:main"
+# Kept for backward compatibility with existing invocations; will be
+# removed once downstream callers migrate to the disambiguated names.
 mmau = "benchmarks.mmau.cli:main"
 elizaos-mmau = "benchmarks.mmau.cli:main"
 

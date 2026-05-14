@@ -1,0 +1,200 @@
+.text {
+    font-family: Arial, Helvetica;
+}
+
+* {
+    -webkit-border-radius: 1px !important;
+       -moz-border-radius: 1px !important;
+            border-radius: 1px !important;
+  }
+
+#logo {
+    color: #666;
+    width:100%;   
+}
+
+#logo h1 {
+    font-size: 60px;
+    text-shadow: 1px 2px 3px #999;
+    font-family: Roboto, sans-serif;
+    font-weight: 700;
+    letter-spacing: -1px;
+}
+
+#logo p{
+    padding-bottom: 20px;
+}
+  
+#thankyou {
+    color: #666;
+    width:100%;
+    font-size: 60px;
+    font-family: Roboto, sans-serif;
+    font-weight: 700;
+    padding-bottom: 20px;
+    letter-spacing: -1px;
+}
+
+#form-buscar >.form-group >.input-group > .form-control {
+    height: 40px;
+}
+
+#form-buscar >.form-group >.input-group > .input-group-btn > .btn{
+    height: 40px;
+    font-size: 16px;
+    font-weight: 300;      
+}
+
+#form-buscar >.form-group >.input-group > .input-group-btn > .btn .glyphicon{
+    margin-right:12px;   
+}    
+    
+#form-buscar >.form-group >.input-group > .form-control {
+    font-size: 16px;
+    font-weight: 300;
+}
+  
+#form-buscar >.form-group >.input-group > .form-control:focus {
+    border-color: #33A444;
+    outline: 0;
+    -webkit-box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 1px rgba(0, 109, 0, 0.8);
+    box-shadow: inset 0 1px 1px rgba(0,0,0,.075), 0 0 1px rgba(0, 109, 0, 0.8);
+}
+
+body {
+    background: white;
+    min-height: 100vh
+}
+
+.text-gray {
+    color: #aaa
+}
+
+.result-img {
+    max-height: 300px;
+    max-width: 300px;
+    overflow: hidden;
+}
+
+.item-page-img {
+    max-height: 600px;
+    max-width: 370px;
+    overflow: hidden;
+}
+
+.top-buffer { margin-top:10px; }
+
+.product-info {
+    font-size: 18px;
+}
+
+.star-active {
+    color: #FBC02D;
+    margin-top: 10px;
+    margin-bottom: 10px
+}
+
+.star-active:hover {
+    color: #F9A825;
+    cursor: pointer
+}
+
+.star-inactive {
+    color: #CFD8DC;
+    margin-top: 10px;
+    margin-bottom: 10px
+}
+
+.blue-text {
+    color: #116396
+}
+
+.btn {
+    margin-left: 0px;
+    margin-right: 0px;
+}
+/* Boostrap Buttons Styling */
+  
+.btn-primary {
+  font-size: 13px;
+  color: rgba(58, 133, 191, 0.75);
+  letter-spacing: 1px;
+  line-height: 15px;
+  border: 2px solid rgba(58, 133, 191, 0.75);
+  border-radius: 40px;
+  background: transparent;
+}
+
+.btn-primary:hover {
+  color: #FFF;
+  background: rgba(58, 133, 191, 0.75);
+}
+
+.btn-success {
+  font-size: 13px;
+  color: rgba(103, 192, 103, 0.75);
+  letter-spacing: 1px;
+  line-height: 15px;
+  border: 2px solid rgba(103, 192, 103, 0.75);
+  border-radius: 40px;
+  background: transparent;
+}
+
+.btn-success:hover {
+  color: #FFF;
+  background: rgb(103, 192, 103, 0.75);
+}
+
+.btn.purchase {
+  color: rgb(0, 0, 0);
+  background: rgb(250, 167, 13);
+}
+
+.btn.purchase:hover {
+  color: rgb(0, 0, 0);
+  background: rgb(253, 199, 98);
+}
+
+.radio-toolbar {
+  margin: 5px;
+}
+
+.radio-toolbar input[type="radio"] {
+  opacity: 0;
+  position: fixed;
+  width: 0;
+}
+
+.radio-toolbar label {
+    display: inline-block;
+    background-color: rgb(245, 241, 241);
+    padding: 10px 10px;
+    font-size: 14px;
+    border: 1px solid #444;
+    border-radius: 4px;
+}
+
+.radio-toolbar label:hover {
+  background-color: rgb(255, 247, 217);
+}
+
+.radio-toolbar input[type="radio"]:focus + label {
+    border: 1px solid #444;
+}
+
+.radio-toolbar input[type="radio"]:checked + label {
+    background-color: rgb(255, 234, 163);
+    border: 1px solid #444;
+}
+
+#instruction-text {
+    margin-top:10px;
+    margin-bottom:10px;
+    border: #797474 solid;
+    border-radius: 20px;
+    padding: 5px;
+}
+
+pre {
+    white-space: pre-line;
+}

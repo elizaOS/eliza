@@ -25,15 +25,22 @@ class GAIAEvaluator:
 
     def __init__(
         self,
-        strict_mode: bool = False,
+        strict_mode: bool = True,
         fuzzy_threshold: float = 0.9,
     ):
         """
         Initialize evaluator.
 
         Args:
-            strict_mode: If True, only exact matches count as correct
-            fuzzy_threshold: Similarity threshold for fuzzy matching (0-1)
+            strict_mode: If True (default), only exact matches after
+                normalization and numeric comparison count as correct.
+                This matches the official GAIA scorer behavior
+                (see https://huggingface.co/spaces/gaia-benchmark/leaderboard
+                question_scorer.py). When False, additional substring
+                containment and Levenshtein fuzzy matching (controlled by
+                ``fuzzy_threshold``) are applied, which inflates scores.
+            fuzzy_threshold: Similarity threshold for fuzzy matching (0-1).
+                Only applied when ``strict_mode`` is False.
         """
         self.strict_mode = strict_mode
         self.fuzzy_threshold = fuzzy_threshold

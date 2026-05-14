@@ -1,4 +1,9 @@
-"""Local MINT benchmark agent implementation."""
+"""Local MINT benchmark agent implementation.
+
+Records per-turn proposed answers so the metrics layer can compute the
+canonical MINT Turn-1 / Turn-3 / Turn-5 success rates. The ground-truth
+mock is disabled by default and must be explicitly opted into.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,7 @@ import ast
 import operator
 import re
 import time
-from typing import Protocol, runtime_checkable
+from typing import Optional, Protocol, runtime_checkable
 
 from benchmarks.mint.executor import PythonExecutor
 from benchmarks.mint.feedback import FeedbackGenerator
@@ -25,7 +30,7 @@ class ModelRuntime(Protocol):
 
 
 class MINTAgent:
-    """Solve MINT tasks using a runtime when available, otherwise local heuristics."""
+    """Solve MINT tasks via a runtime if available, otherwise local heuristics."""
 
     def __init__(
         self,
@@ -43,10 +48,12 @@ class MINTAgent:
         self.temperature = max(0.0, min(1.0, temperature))
         self.trajectory_logger_service = trajectory_logger_service
         self.trajectory_ids_sink = trajectory_ids_sink
-        self.allow_ground_truth_mock = allow_ground_truth_mock
+        # Off by default — used to be True in some call sites which made the
+        # agent score directly from labels. Callers must opt in explicitly.
+        self.allow_ground_truth_mock = bool(allow_ground_truth_mock)
 
     def reset_session(self) -> None:
-        """Reset per-task state. The local agent is stateless."""
+        """Per-task reset. The local agent is stateless."""
 
     async def solve_task(
         self,
@@ -62,14 +69,13 @@ class MINTAgent:
 
         for turn_num in range(max_turns):
             response_text = await self._generate_response(task, current_prompt)
-            trajectory.turns.append(
-                Turn(
-                    turn_type=TurnType.ASSISTANT,
-                    content=response_text,
-                    turn_number=turn_num + 1,
-                    timestamp_ms=time.time() * 1000,
-                )
+            assistant_turn = Turn(
+                turn_type=TurnType.ASSISTANT,
+                content=response_text,
+                turn_number=turn_num + 1,
+                timestamp_ms=time.time() * 1000,
             )
+            trajectory.turns.append(assistant_turn)
 
             code = self._extract_code(response_text) if enable_tools else None
             if code and "python" in task.tools_allowed:
@@ -89,6 +95,9 @@ class MINTAgent:
                 if result.success and result.output.strip():
                     response_text = f"Final answer: {result.output.strip().splitlines()[-1]}"
                 elif turn_num < max_turns - 1:
+                    # Failure — record "no answer this turn" and retry.
+                    trajectory.per_turn_answers.append(None)
+                    trajectory.per_turn_success.append(False)
                     current_prompt = (
                         f"{task.initial_prompt}\n\n"
                         f"Your previous code failed with:\n{result.error or 'unknown error'}\n"
@@ -97,13 +106,19 @@ class MINTAgent:
                     continue
 
             answer = self._extract_answer(response_text, task)
+            trajectory.per_turn_answers.append(answer)
+            assistant_turn.proposed_solution = answer is not None
+            success = self._check_answer(answer or "", task) if answer else False
+            trajectory.per_turn_success.append(success)
             trajectory.final_answer = answer
-            trajectory.success = self._check_answer(answer or "", task)
-            if trajectory.success:
+            trajectory.success = success
+            if success:
                 break
 
             if enable_feedback and turn_num < max_turns - 1:
-                feedback = await self.feedback_generator.generate(task, answer or "", turn_num)
+                feedback = await self.feedback_generator.generate(
+                    task, answer or "", turn_num
+                )
                 trajectory.turns.append(
                     Turn(
                         turn_type=TurnType.FEEDBACK,
@@ -126,12 +141,16 @@ class MINTAgent:
         trajectory.end_time_ms = time.time() * 1000
         return trajectory
 
-    async def _generate_response(self, task: MINTTask, prompt: str | None = None) -> str:
+    async def _generate_response(
+        self, task: MINTTask, prompt: str | None = None
+    ) -> str:
         if self.runtime is not None:
             response = await self.runtime.use_model(
                 "text",
                 {
-                    "prompt": self._build_system_prompt(task) + "\n\n" + (prompt or task.initial_prompt),
+                    "prompt": self._build_system_prompt(task)
+                    + "\n\n"
+                    + (prompt or task.initial_prompt),
                     "temperature": self.temperature,
                 },
             )
@@ -142,13 +161,15 @@ class MINTAgent:
 
     def _build_system_prompt(self, task: MINTTask) -> str:
         return (
-            "You are solving a MINT benchmark task. Think carefully, use tools "
-            "only when useful, and end with 'Final answer: <answer>'. "
+            "You are solving a MINT benchmark task. Think carefully, use "
+            "tools only when useful, and end with 'Final answer: <answer>'. "
             f"Evaluation metric: {task.evaluation_metric}."
         )
 
     def _extract_code(self, text: str) -> str | None:
-        match = re.search(r"```(?:python)?\s*(.*?)```", text, flags=re.IGNORECASE | re.DOTALL)
+        match = re.search(
+            r"```(?:python)?\s*(.*?)```", text, flags=re.IGNORECASE | re.DOTALL
+        )
         if match:
             return match.group(1).strip()
         return None
@@ -177,6 +198,7 @@ class MINTAgent:
             predicted=predicted,
             expected=task.ground_truth,
             metric=task.evaluation_metric,
+            task=task,
         )
         return success
 
@@ -187,14 +209,16 @@ class MINTAgent:
             return arithmetic
 
         if self.allow_ground_truth_mock:
-            # Built-in smoke tasks need deterministic output without external keys.
-            # Keep this explicit so live-looking runs cannot score from labels.
+            # Opt-in only. Useful for smoke tests that exercise the full
+            # multi-turn protocol without paying for a real provider.
             return task.ground_truth
 
         return None
 
     def _answer_simple_arithmetic(self, prompt: str) -> str | None:
-        match = re.search(r"(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)", prompt)
+        match = re.search(
+            r"(-?\d+(?:\.\d+)?)\s*([+\-*/])\s*(-?\d+(?:\.\d+)?)", prompt
+        )
         if not match:
             return None
         left, op, right = match.groups()
