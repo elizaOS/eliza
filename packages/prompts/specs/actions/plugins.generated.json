@@ -846,6 +846,23 @@
             "minimum": 1,
             "maximum": 20
           }
+        },
+        {
+          "name": "displayId",
+          "description": "Display the coordinate is local to. Required for any coordinate-bearing action on multi-monitor hosts. See the `computerState` provider for the live `displays[]` list.",
+          "required": false,
+          "schema": {
+            "type": "number"
+          }
+        },
+        {
+          "name": "coordSource",
+          "description": "Coordinate space of the coordinate fields: 'logical' (default; matches display.bounds) or 'backing' (raw retina pixels — macOS only).",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["logical", "backing"]
+          }
         }
       ],
       "descriptionCompressed": "Canonical cross-platform desktop control: screenshot/click/modified click/double/right/move/type/key/key_combo/scroll/drag/detect_elements/ocr.",
@@ -883,7 +900,9 @@
               "button": "left",
               "clicks": 1,
               "scrollDirection": "up",
-              "scrollAmount": 3
+              "scrollAmount": 3,
+              "displayId": 1,
+              "coordSource": "logical"
             }
           }
         }
@@ -3927,6 +3946,14 @@
           }
         },
         {
+          "name": "lockWorkdir",
+          "description": "When true, the supplied `workdir` is used verbatim and operator ",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
           "name": "memoryContent",
           "description": "Additional memory/context for action=create / action=spawn_agent.",
           "required": false,
@@ -4361,6 +4388,7 @@
               "agents": "example",
               "repo": "example",
               "workdir": "example",
+              "lockWorkdir": false,
               "memoryContent": "example",
               "label": "example",
               "approvalPreset": "readonly",
