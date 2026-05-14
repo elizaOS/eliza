@@ -32,14 +32,14 @@ import type {
   Phrase,
   PhraseChunker,
   PhraseChunkerConfig,
-} from "@elizaos/plugin-local-inference/services";
+} from "@elizaos/plugin-local-inference";
 
 // Lazy module reference — avoids a static boundary violation while preserving
 // synchronous construction semantics for callers that supply the PhraseChunker
 // class via `PhraseChunkedTtsOptions.chunkerClass` (used in tests).
 let _PhraseChunkerClass: typeof PhraseChunker | undefined;
 let _servicesImport:
-  | Promise<typeof import("@elizaos/plugin-local-inference/services")>
+  | Promise<typeof import("@elizaos/plugin-local-inference")>
   | undefined;
 function requirePhraseChunker(): typeof PhraseChunker {
   if (_PhraseChunkerClass) return _PhraseChunkerClass;
@@ -51,7 +51,7 @@ function requirePhraseChunker(): typeof PhraseChunker {
  *  PhraseChunkedTts is instantiated if the class hasn't been loaded yet. */
 async function ensurePhraseChunkerLoaded(): Promise<void> {
   if (_PhraseChunkerClass) return;
-  _servicesImport ??= import("@elizaos/plugin-local-inference/services");
+  _servicesImport ??= import("@elizaos/plugin-local-inference");
   const mod = await _servicesImport;
   _PhraseChunkerClass = mod.PhraseChunker;
 }
