@@ -305,7 +305,11 @@ export function resolveWorkdirRoute(
     logger.info(
       `[workdir-routes] Matched route "${route.id}" → workdir=${expanded}`,
     );
-    return { id: route.id, workdir: expanded, instructions: route.instructions };
+    return {
+      id: route.id,
+      workdir: expanded,
+      instructions: route.instructions,
+    };
   }
   return undefined;
 }
