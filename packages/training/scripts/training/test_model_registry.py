@@ -187,7 +187,7 @@ def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
     for public_name in VERIFIED_PUBLIC_NAMES:
         assert public_name in table
-    assert "qwen3.6-27b" in table
+    assert "Qwen/Qwen3.6-27B" in table or "eliza-1-27b" in table
     assert "qwen3.5-27b" not in table
 
 

@@ -9,7 +9,7 @@ export type NativeLibraryCandidate = {
 export type NativeLibraryPolicyOptions = {
   env?: NodeJS.ProcessEnv;
   execPath?: string;
-  expectedBasename: string;
+  expectedBasename: string | readonly string[];
   moduleDir: string;
   warn?: (message: string) => void;
 };
@@ -66,6 +66,19 @@ function candidateLabel(candidate: NativeLibraryCandidate): string {
     : candidate.path;
 }
 
+function expectedBasenames(opts: NativeLibraryPolicyOptions): Set<string> {
+  return new Set(
+    (Array.isArray(opts.expectedBasename)
+      ? opts.expectedBasename
+      : [opts.expectedBasename]
+    ).map((name) => name.trim()),
+  );
+}
+
+function expectedBasenameLabel(expected: Set<string>): string {
+  return [...expected].join(", ");
+}
+
 export function resolveNativeLibraryCandidate(
   candidate: NativeLibraryCandidate,
   opts: NativeLibraryPolicyOptions,
@@ -80,18 +93,26 @@ export function resolveNativeLibraryCandidate(
   if (!existsSync(resolvedPath)) return null;
 
   if (!isStoreBuildVariant(opts.env)) {
-    return resolvedPath;
+    return realpath(resolvedPath) ?? resolvedPath;
   }
 
-  if (path.basename(resolvedPath) !== opts.expectedBasename) {
+  const expected = expectedBasenames(opts);
+  if (!expected.has(path.basename(resolvedPath))) {
     opts.warn?.(
-      `Rejected native library candidate ${candidateLabel(candidate)} for store build: expected ${opts.expectedBasename}.`,
+      `Rejected native library candidate ${candidateLabel(candidate)} for store build: expected ${expectedBasenameLabel(expected)}.`,
     );
     return null;
   }
 
   const candidateRealpath = realpath(resolvedPath);
   if (!candidateRealpath) return null;
+
+  if (!expected.has(path.basename(candidateRealpath))) {
+    opts.warn?.(
+      `Rejected native library candidate ${candidateLabel(candidate)} for store build: realpath basename is not ${expectedBasenameLabel(expected)}.`,
+    );
+    return null;
+  }
 
   const roots = trustedBundleRoots(opts)
     .map((root) => realpath(root))

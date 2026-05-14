@@ -251,20 +251,24 @@ async function runVfsInSandbox(
 
   const vfs = createVirtualFilesystemService({ projectId: cwd.projectId });
   await vfs.initialize();
+  const normalizedCwd = vfs.resolveVirtualPath(cwd.virtualPath);
   const materializedRoot = path.join(
     workspaceRoot,
     "vfs-projects",
-    cwd.projectId,
+    vfs.projectId,
     "files",
   );
   await fsp.rm(materializedRoot, { recursive: true, force: true });
   await fsp.mkdir(materializedRoot, { recursive: true, mode: 0o700 });
-  await copyDirectoryContents(vfs.filesRoot, materializedRoot);
+  await materializeVfsTree(vfs, materializedRoot);
 
   const hostCwd = path.resolve(
     materializedRoot,
-    cwd.virtualPath.replace(/^\/+/, ""),
+    normalizedCwd.replace(/^\/+/, ""),
   );
+  if (!isInsideOrEqual(materializedRoot, hostCwd)) {
+    throw new Error("[shell-router] vfs:// cwd escapes materialized root");
+  }
   await fsp.mkdir(hostCwd, { recursive: true, mode: 0o700 });
   const sandboxCwd =
     vfsManager.getContainerWorkspacePath?.(hostCwd) ??
@@ -273,27 +277,32 @@ async function runVfsInSandbox(
       .replace(/\\/g, "/")
       .replace(/^\/+/, "")}`;
 
-  const result = await runInSandbox(
-    {
-      ...req,
-      cwd: sandboxCwd,
-    },
-    manager,
-  );
-  await importMaterializedTree(vfs, materializedRoot);
-  return result;
+  try {
+    return await runInSandbox(
+      {
+        ...req,
+        cwd: sandboxCwd,
+      },
+      manager,
+    );
+  } finally {
+    await importMaterializedTree(vfs, materializedRoot);
+  }
 }
 
-async function copyDirectoryContents(from: string, to: string): Promise<void> {
-  try {
-    await fsp.cp(from, to, {
-      recursive: true,
-      force: true,
-      errorOnExist: false,
-      dereference: false,
-    });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+async function materializeVfsTree(
+  vfs: ReturnType<typeof createVirtualFilesystemService>,
+  root: string,
+): Promise<void> {
+  for (const file of await vfs.exportFiles()) {
+    const target = path.resolve(root, file.path);
+    if (!isInsideOrEqual(root, target)) {
+      throw new Error(
+        `[shell-router] VFS export path escapes materialized root: ${file.path}`,
+      );
+    }
+    await fsp.mkdir(path.dirname(target), { recursive: true, mode: 0o700 });
+    await fsp.writeFile(target, file.bytes, { mode: 0o600 });
   }
 }
 
@@ -410,6 +419,11 @@ export async function runShell(
       assertShellCapability(req, mode, `sandbox.${req.toolName}`);
       return await runVfsInSandbox(req, vfsCwd, manager);
     }
+    if (mode === "local-safe" && !isIosPlatform()) {
+      throw new Error(
+        "[shell-router] local-safe mode requires SandboxManager but none is available",
+      );
+    }
     const result = await runVfsBuiltinShell({
       cwdUri: req.cwd,
       command: req.command,
@@ -439,4 +453,13 @@ export async function runShell(
 
   assertShellCapability(req, mode, req.toolName);
   return await runOnHost(req);
+}
+
+function isInsideOrEqual(root: string, target: string): boolean {
+  const relative = path.relative(path.resolve(root), path.resolve(target));
+  return !relative || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function isIosPlatform(): boolean {
+  return process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios";
 }
