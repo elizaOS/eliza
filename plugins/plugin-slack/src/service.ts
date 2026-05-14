@@ -2875,10 +2875,18 @@ export class SlackService extends Service implements ISlackService {
       const result = await client.chat.postMessage({
         channel: channelId,
         text: msg,
-        ...(options?.threadTs !== undefined ? { thread_ts: options.threadTs } : {}),
-        ...(options?.replyBroadcast !== undefined ? { reply_broadcast: options.replyBroadcast } : {}),
-        ...(options?.unfurlLinks !== undefined ? { unfurl_links: options.unfurlLinks } : {}),
-        ...(options?.unfurlMedia !== undefined ? { unfurl_media: options.unfurlMedia } : {}),
+        ...(options?.threadTs !== undefined
+          ? { thread_ts: options.threadTs }
+          : {}),
+        ...(options?.replyBroadcast !== undefined
+          ? { reply_broadcast: options.replyBroadcast }
+          : {}),
+        ...(options?.unfurlLinks !== undefined
+          ? { unfurl_links: options.unfurlLinks }
+          : {}),
+        ...(options?.unfurlMedia !== undefined
+          ? { unfurl_media: options.unfurlMedia }
+          : {}),
         mrkdwn: options?.mrkdwn ?? true,
         attachments: options?.attachments as never,
         blocks: options?.blocks as never,
@@ -3144,15 +3152,15 @@ export class SlackService extends Service implements ISlackService {
 
     const result = await client.files.uploadV2({
       channel_id: channelId,
-      ...(typeof content === "string"
-        ? { content }
-        : { file: content }),
+      ...(typeof content === "string" ? { content } : { file: content }),
       filename,
       ...(options?.title !== undefined ? { title: options.title } : {}),
       ...(options?.initialComment !== undefined
         ? { initial_comment: options.initialComment }
         : {}),
-      ...(options?.threadTs !== undefined ? { thread_ts: options.threadTs } : {}),
+      ...(options?.threadTs !== undefined
+        ? { thread_ts: options.threadTs }
+        : {}),
     } as Parameters<typeof client.files.uploadV2>[0]);
 
     const resultWithFile = result as WebAPICallResult & {

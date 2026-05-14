@@ -286,4 +286,3 @@ async function runMflux(
 		});
 	});
 }
-

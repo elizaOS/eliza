@@ -60,6 +60,7 @@ import {
 import { getBootConfig } from "../config/boot-config";
 import type { UiLanguage } from "../i18n";
 import { APPS_ENABLED, COMPANION_ENABLED, type Tab } from "../navigation";
+import { ensureStoreBuildWorkspaceFolder } from "../onboarding/ensure-store-build-workspace-folder";
 import {
   canRevertOnboardingTo,
   getFlaminaTopicForOnboardingStep,
@@ -70,7 +71,6 @@ import {
   shouldSkipFeaturesStep,
   shouldUseCloudOnboardingFastTrack,
 } from "../onboarding/flow";
-import { ensureStoreBuildWorkspaceFolder } from "../onboarding/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
 import { isElizaCloudOnboardingTarget } from "../onboarding/server-target";
 import { buildOnboardingRuntimeConfig } from "../onboarding-config";

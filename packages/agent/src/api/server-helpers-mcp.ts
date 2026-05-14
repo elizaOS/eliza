@@ -206,7 +206,6 @@ async function resolveMcpRemoteUrlRejection(
   return null;
 }
 
-
 export async function validateMcpServerConfig(
   config: Record<string, unknown>,
 ): Promise<string | null> {

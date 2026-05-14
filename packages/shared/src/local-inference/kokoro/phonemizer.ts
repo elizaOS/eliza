@@ -19,9 +19,9 @@
  */
 
 import {
-	type KokoroPhonemeSequence,
-	type KokoroPhonemizer,
-	KokoroPhonemizerError,
+  type KokoroPhonemeSequence,
+  type KokoroPhonemizer,
+  KokoroPhonemizerError,
 } from "./types.js";
 
 /**
@@ -32,44 +32,44 @@ import {
  * them.
  */
 const VOCAB: Readonly<Record<string, number>> = {
-	"<pad>": 0,
-	"<s>": 1,
-	"</s>": 2,
-	// Whitespace / punctuation — kept terse, this is the fallback path.
-	" ": 16,
-	",": 17,
-	".": 18,
-	"?": 19,
-	"!": 20,
-	";": 21,
-	":": 22,
-	// Vowels (very rough mapping — see README "fallback phonemizer caveats").
-	a: 43,
-	e: 44,
-	i: 45,
-	o: 46,
-	u: 47,
-	// Consonants.
-	b: 60,
-	d: 61,
-	f: 62,
-	g: 63,
-	h: 64,
-	j: 65,
-	k: 66,
-	l: 67,
-	m: 68,
-	n: 69,
-	p: 70,
-	q: 71,
-	r: 72,
-	s: 73,
-	t: 74,
-	v: 75,
-	w: 76,
-	x: 77,
-	y: 78,
-	z: 79,
+  "<pad>": 0,
+  "<s>": 1,
+  "</s>": 2,
+  // Whitespace / punctuation — kept terse, this is the fallback path.
+  " ": 16,
+  ",": 17,
+  ".": 18,
+  "?": 19,
+  "!": 20,
+  ";": 21,
+  ":": 22,
+  // Vowels (very rough mapping — see README "fallback phonemizer caveats").
+  a: 43,
+  e: 44,
+  i: 45,
+  o: 46,
+  u: 47,
+  // Consonants.
+  b: 60,
+  d: 61,
+  f: 62,
+  g: 63,
+  h: 64,
+  j: 65,
+  k: 66,
+  l: 67,
+  m: 68,
+  n: 69,
+  p: 70,
+  q: 71,
+  r: 72,
+  s: 73,
+  t: 74,
+  v: 75,
+  w: 76,
+  x: 77,
+  y: 78,
+  z: 79,
 };
 
 const PAD = VOCAB["<pad>"];
@@ -82,41 +82,41 @@ const EOS = VOCAB["</s>"];
  * still hear *something*, not to ship to production. README documents.
  */
 export class FallbackG2PPhonemizer implements KokoroPhonemizer {
-	readonly id = "fallback-g2p";
+  readonly id = "fallback-g2p";
 
-	async phonemize(text: string, _lang: string): Promise<KokoroPhonemeSequence> {
-		const cleaned = text.normalize("NFKD").toLowerCase();
-		for (const ch of cleaned) {
-			const cp = ch.codePointAt(0);
-			if (cp === undefined) continue;
-			// Allow ASCII printable + whitespace; refuse anything else so we
-			// surface non-English text rather than emit silence.
-			if (cp > 127) {
-				throw new KokoroPhonemizerError(
-					`[kokoro] fallback phonemizer cannot handle non-ASCII character '${ch}' (U+${cp.toString(16).padStart(4, "0")}). Install the 'phonemize' npm package or pass a custom KokoroPhonemizer for full Unicode coverage.`,
-				);
-			}
-		}
-		const ids: number[] = [BOS];
-		for (const ch of cleaned) {
-			const id = VOCAB[ch];
-			if (id !== undefined) ids.push(id);
-			// Unknown char: skip (acts as a pad). The model's training data did
-			// not contain raw graphemes anyway — best effort.
-		}
-		ids.push(EOS);
-		return {
-			ids: Int32Array.from(ids),
-			phonemes: cleaned,
-		};
-	}
+  async phonemize(text: string, _lang: string): Promise<KokoroPhonemeSequence> {
+    const cleaned = text.normalize("NFKD").toLowerCase();
+    for (const ch of cleaned) {
+      const cp = ch.codePointAt(0);
+      if (cp === undefined) continue;
+      // Allow ASCII printable + whitespace; refuse anything else so we
+      // surface non-English text rather than emit silence.
+      if (cp > 127) {
+        throw new KokoroPhonemizerError(
+          `[kokoro] fallback phonemizer cannot handle non-ASCII character '${ch}' (U+${cp.toString(16).padStart(4, "0")}). Install the 'phonemize' npm package or pass a custom KokoroPhonemizer for full Unicode coverage.`,
+        );
+      }
+    }
+    const ids: number[] = [BOS];
+    for (const ch of cleaned) {
+      const id = VOCAB[ch];
+      if (id !== undefined) ids.push(id);
+      // Unknown char: skip (acts as a pad). The model's training data did
+      // not contain raw graphemes anyway — best effort.
+    }
+    ids.push(EOS);
+    return {
+      ids: Int32Array.from(ids),
+      phonemes: cleaned,
+    };
+  }
 }
 
 interface PhonemizeMod {
-	// The `phonemize` npm package's typing varies between v1/v2; we treat it
-	// structurally so a minor version bump does not break our import.
-	phonemize?: (text: string, opts?: unknown) => string | Promise<string>;
-	default?: { phonemize?: PhonemizeMod["phonemize"] };
+  // The `phonemize` npm package's typing varies between v1/v2; we treat it
+  // structurally so a minor version bump does not break our import.
+  phonemize?: (text: string, opts?: unknown) => string | Promise<string>;
+  default?: { phonemize?: PhonemizeMod["phonemize"] };
 }
 
 /**
@@ -126,48 +126,48 @@ interface PhonemizeMod {
  * this is the "install npm and it works" middle ground.
  */
 export class NpmPhonemizePhonemizer implements KokoroPhonemizer {
-	readonly id = "phonemize";
-	private constructor(private readonly mod: PhonemizeMod) {}
+  readonly id = "phonemize";
+  private constructor(private readonly mod: PhonemizeMod) {}
 
-	static async tryLoad(): Promise<NpmPhonemizePhonemizer | null> {
-		try {
-			const spec = "phonemize";
-			const mod = (await import(spec)) as PhonemizeMod;
-			const phon = mod.phonemize ?? mod.default?.phonemize;
-			if (typeof phon !== "function") return null;
-			return new NpmPhonemizePhonemizer(mod);
-		} catch {
-			return null;
-		}
-	}
+  static async tryLoad(): Promise<NpmPhonemizePhonemizer | null> {
+    try {
+      const spec = "phonemize";
+      const mod = (await import(spec)) as PhonemizeMod;
+      const phon = mod.phonemize ?? mod.default?.phonemize;
+      if (typeof phon !== "function") return null;
+      return new NpmPhonemizePhonemizer(mod);
+    } catch {
+      return null;
+    }
+  }
 
-	async phonemize(text: string, lang: string): Promise<KokoroPhonemeSequence> {
-		const phon = this.mod.phonemize ?? this.mod.default?.phonemize;
-		if (!phon) {
-			throw new KokoroPhonemizerError(
-				"[kokoro] 'phonemize' module loaded but does not export a phonemize() function",
-			);
-		}
-		const out = await phon(text, { lang });
-		const phonemes = typeof out === "string" ? out : String(out);
-		const ids: number[] = [BOS];
-		for (const ch of phonemes.toLowerCase()) {
-			const id = VOCAB[ch];
-			if (id !== undefined) ids.push(id);
-		}
-		ids.push(EOS);
-		return { ids: Int32Array.from(ids), phonemes };
-	}
+  async phonemize(text: string, lang: string): Promise<KokoroPhonemeSequence> {
+    const phon = this.mod.phonemize ?? this.mod.default?.phonemize;
+    if (!phon) {
+      throw new KokoroPhonemizerError(
+        "[kokoro] 'phonemize' module loaded but does not export a phonemize() function",
+      );
+    }
+    const out = await phon(text, { lang });
+    const phonemes = typeof out === "string" ? out : String(out);
+    const ids: number[] = [BOS];
+    for (const ch of phonemes.toLowerCase()) {
+      const id = VOCAB[ch];
+      if (id !== undefined) ids.push(id);
+    }
+    ids.push(EOS);
+    return { ids: Int32Array.from(ids), phonemes };
+  }
 }
 
 /** Lazy resolver: caller override → npm `phonemize` → bundled fallback. */
 export async function resolvePhonemizer(
-	override?: KokoroPhonemizer,
+  override?: KokoroPhonemizer,
 ): Promise<KokoroPhonemizer> {
-	if (override) return override;
-	const npm = await NpmPhonemizePhonemizer.tryLoad();
-	if (npm) return npm;
-	return new FallbackG2PPhonemizer();
+  if (override) return override;
+  const npm = await NpmPhonemizePhonemizer.tryLoad();
+  if (npm) return npm;
+  return new FallbackG2PPhonemizer();
 }
 
 /** Exported for tests and bench-time diagnostics. */
