@@ -181,9 +181,15 @@ describe("resolveKokoroEngineConfig", () => {
 		// kokoro-llama-cpp-feasibility.md §5).
 		const root = mkdtempSync(path.join(os.tmpdir(), "kokoro-engine-test-"));
 		writeFileSync(path.join(root, "kokoro-v1.0.onnx"), Buffer.alloc(4));
-		writeFileSync(path.join(root, "kokoro-82m-v1_0-Q4_K_M.gguf"), Buffer.alloc(4));
+		writeFileSync(
+			path.join(root, "kokoro-82m-v1_0-Q4_K_M.gguf"),
+			Buffer.alloc(4),
+		);
 		mkdirSync(path.join(root, "voices"), { recursive: true });
-		writeFileSync(path.join(root, "voices", "af_bella.bin"), Buffer.alloc(1024));
+		writeFileSync(
+			path.join(root, "voices", "af_bella.bin"),
+			Buffer.alloc(1024),
+		);
 		cleanups.push(() => rmSync(root, { recursive: true, force: true }));
 
 		process.env.ELIZA_KOKORO_MODEL_DIR = root;
