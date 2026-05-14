@@ -11,7 +11,9 @@ afterEach(() => {
 });
 
 function makeClient(overrides?: Partial<VoiceProfilesClient>) {
-  const base = new VoiceProfilesClient({ fetch: async () => ({ profiles: [] }) });
+  const base = new VoiceProfilesClient({
+    fetch: async <T,>(): Promise<T> => ({ profiles: [] }) as T,
+  });
   return Object.assign(base, overrides);
 }
 

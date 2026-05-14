@@ -15,7 +15,9 @@ afterEach(() => {
 });
 
 function makeClient() {
-  return new VoiceProfilesClient({ fetch: async () => ({ profiles: [] }) });
+  return new VoiceProfilesClient({
+    fetch: async <T,>(): Promise<T> => ({ profiles: [] }) as T,
+  });
 }
 
 const baseProps = {
