@@ -56,10 +56,18 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
 
   declarers.sort((a, b) => a.name.localeCompare(b.name));
 
-  // Multiple apps declaring mainTab=true is a misconfiguration; use the first
-  // alphabetically and continue.
+  // Multiple apps declaring mainTab=true is a misconfiguration; warn so a
+  // developer reading logs notices the collision, then pick the first
+  // alphabetically and continue. The deterministic pick keeps the system
+  // usable; the warn keeps the collision visible.
+  if (declarers.length > 1) {
+    console.warn(
+      `[main-tab] multiple apps declare mainTab=true: ${declarers.map((d) => d.name).join(", ")}; picking ${declarers[0]?.name}`,
+    );
+  }
 
   const winner = declarers[0];
+  if (!winner) return null;
   const tabId = packageNameToAppRouteSlug(winner.name);
   if (!tabId) return null;
 
