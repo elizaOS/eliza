@@ -98,7 +98,7 @@ function extractDeclarations(source) {
   // export { X, Y } from '...'  or  export * from '...'
   // (We'll handle per-match below too)
 
-  // Unified regex: matches the keyword and name at the start of each declaration
+  // Declaration regex: matches the keyword and name at the start of each declaration
   const DECL_RE =
     /^(?:export\s+)?(?:declare\s+)?(?:(type)\s+(\w+)(?:<[^>]*>)?\s*=|(interface)\s+(\w+)(?:<[^>]*>)?(?:\s+extends\s+[^{]+)?|(enum)\s+(\w+))/gm;
 

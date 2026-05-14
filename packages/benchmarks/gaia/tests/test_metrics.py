@@ -5,7 +5,6 @@ from elizaos_gaia.types import (
     GAIALevel,
     ToolType,
     GAIAResult,
-    LEADERBOARD_SCORES,
 )
 from elizaos_gaia.metrics import MetricsCalculator
 

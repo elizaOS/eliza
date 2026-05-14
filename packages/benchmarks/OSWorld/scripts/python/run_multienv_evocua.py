@@ -148,7 +148,7 @@ def config() -> argparse.Namespace:
     parser.add_argument("--coordinate_type", type=str, default="relative", help="Coordinate type: relative, absolute, qwen25")
     parser.add_argument("--password", type=str, default="osworld-public-evaluation", help="VM Password")
     
-    # Unified History Parameter
+    # History Parameter
     parser.add_argument("--max_history_turns", type=int, default=3, help="Number of history turns to include")
     parser.add_argument("--resize_factor", type=int, default=32, help="Image resize factor (S1: 28, S2: 32)")
     

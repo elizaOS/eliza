@@ -14,34 +14,53 @@
  *  s7 – Trivial type aliases (type Foo = Bar with no transformation)
  */
 
-import { readFileSync, readdirSync, statSync } from "fs";
-import { join, relative, basename } from "path";
-import { fileURLToPath } from "url";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ── Configuration ──────────────────────────────────────────────────────────────
 
 const ROOT = new URL("../packages", import.meta.url);
 const PACKAGES_DIR = fileURLToPath(ROOT);
+const args = process.argv.slice(2);
+const includeTests = args.includes("--include-tests");
+const packageFilters = args
+  .filter((arg) => arg.startsWith("--package="))
+  .map((arg) => arg.slice("--package=".length));
+const maxResultsArg = args.find((arg) => arg.startsWith("--max-results="));
+const maxResults = maxResultsArg
+  ? Number.parseInt(maxResultsArg.slice("--max-results=".length), 10)
+  : 100;
+const RESULT_LIMIT =
+  Number.isFinite(maxResults) && maxResults > 0 ? maxResults : 100;
 
-// Packages to scan
-const SCAN_PACKAGES = [
-  "agent",
-  "app-core",
-  "ui",
-  "shared",
-  "cloud-routing",
-  "scenario-runner",
-  "scenario-schema",
-  "registry",
-  "training",
-  "workflows",
-  "os",
-  "vault",
-  "browser-bridge-extension",
-  "core",
-  "elizaos",
-  "prompts",
-];
+const IGNORED_DIRS = new Set([
+  ".git",
+  ".next",
+  ".pytest_cache",
+  ".turbo",
+  ".vite",
+  "__pycache__",
+  "build",
+  "coverage",
+  "data",
+  "dist",
+  "dist-mobile",
+  "dist-mobile-ios",
+  "dist-mobile-ios-jsc",
+  "node_modules",
+  "test-results",
+  "vendor",
+]);
+
+const SOURCE_EXTENSIONS = new Set([
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".mts",
+  ".ts",
+  ".tsx",
+]);
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -53,15 +72,12 @@ function walkTs(dir) {
     try {
       const st = statSync(full);
       if (st.isDirectory()) {
-        if (
-          entry === "node_modules" ||
-          entry === "dist" ||
-          entry === ".turbo" ||
-          entry === "__generated__"
-        )
-          continue;
+        if (IGNORED_DIRS.has(entry) || entry === "__generated__") continue;
         results.push(...walkTs(full));
-      } else if (entry.endsWith(".ts") && !entry.endsWith(".d.ts")) {
+      } else if (
+        SOURCE_EXTENSIONS.has(entry.slice(entry.lastIndexOf("."))) &&
+        !entry.endsWith(".d.ts")
+      ) {
         results.push(full);
       }
     } catch {
@@ -69,6 +85,32 @@ function walkTs(dir) {
     }
   }
   return results;
+}
+
+function walkPackageRoots(dir, relDir = "") {
+  const roots = [];
+  if (!existsDir(dir)) return roots;
+  for (const entry of readdirSync(dir)) {
+    if (IGNORED_DIRS.has(entry)) continue;
+    const full = join(dir, entry);
+    const rel = relDir ? `${relDir}/${entry}` : entry;
+    let st;
+    try {
+      st = statSync(full);
+    } catch {
+      continue;
+    }
+    if (!st.isDirectory()) continue;
+
+    const packageJson = join(full, "package.json");
+    const srcDir = join(full, "src");
+    if (existsFile(packageJson) && existsDir(srcDir)) {
+      roots.push(rel);
+      continue;
+    }
+    roots.push(...walkPackageRoots(full, rel));
+  }
+  return roots;
 }
 
 function existsDir(p) {
@@ -79,10 +121,18 @@ function existsDir(p) {
   }
 }
 
+function existsFile(p) {
+  try {
+    return statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function getPkgName(pkgDir) {
   try {
     const pj = JSON.parse(
-      readFileSync(join(PACKAGES_DIR, pkgDir, "package.json"), "utf8")
+      readFileSync(join(PACKAGES_DIR, pkgDir, "package.json"), "utf8"),
     );
     return pj.name || pkgDir;
   } catch {
@@ -90,21 +140,46 @@ function getPkgName(pkgDir) {
   }
 }
 
+function shouldIncludeFile(file) {
+  if (includeTests) return true;
+  const normalized = file.split("\\").join("/");
+  return !(
+    /(^|\/)(__tests__|test|tests|fixtures|mocks)(\/|$)/.test(normalized) ||
+    /\.(?:test|spec|e2e|live)\.[cm]?[jt]sx?$/.test(normalized) ||
+    /(^|\/)(vitest|playwright|jest)\.config\.[cm]?[jt]s$/.test(normalized)
+  );
+}
+
+function matchesPackageFilter(pkgDir, pkgName) {
+  if (packageFilters.length === 0) return true;
+  return packageFilters.some(
+    (filter) =>
+      pkgDir === filter ||
+      pkgDir.startsWith(`${filter}/`) ||
+      pkgName === filter ||
+      pkgName.includes(filter),
+  );
+}
+
 // ── File collector ─────────────────────────────────────────────────────────────
 
 const allFiles = []; // { pkg, pkgName, file, relFile, src }
+const scanPackages = walkPackageRoots(PACKAGES_DIR).sort();
 
-for (const pkg of SCAN_PACKAGES) {
-  const srcDir = join(PACKAGES_DIR, pkg, "src");
-  if (!existsDir(srcDir)) continue;
+for (const pkg of scanPackages) {
   const pkgName = getPkgName(pkg);
+  if (!matchesPackageFilter(pkg, pkgName)) continue;
+  const pkgDir = join(PACKAGES_DIR, pkg);
+  const srcDir = join(pkgDir, "src");
+  if (!existsDir(srcDir)) continue;
   for (const file of walkTs(srcDir)) {
+    if (!shouldIncludeFile(relative(PACKAGES_DIR, file))) continue;
     try {
       const src = readFileSync(file, "utf8");
       allFiles.push({
         pkg: pkgName,
         file,
-        relFile: relative(join(PACKAGES_DIR, pkg), file),
+        relFile: relative(pkgDir, file),
         src,
       });
     } catch {
@@ -149,7 +224,7 @@ const DECL_PATTERNS = [
 ];
 
 // Extract body text for a declaration (heuristic: grab up to 800 chars after the match start)
-function extractBody(src, matchIndex, kind) {
+function extractBody(src, matchIndex, _kind) {
   const snippet = src.slice(matchIndex, matchIndex + 800).replace(/\n/g, " ");
   return snippet.slice(0, 300);
 }
@@ -213,7 +288,10 @@ function normalizeName(name) {
   // Strip leading T prefix before capital
   n = n.replace(/^T([A-Z])/, "$1");
   // Strip trailing suffixes
-  n = n.replace(/(Type|Interface|DTO|Config|Request|Response|Params|Options|Data|Props|Info|Entry|Record|Item|Model|Schema)$/, "");
+  n = n.replace(
+    /(Type|Interface|DTO|Config|Request|Response|Params|Options|Data|Props|Info|Entry|Record|Item|Model|Schema)$/,
+    "",
+  );
   return n.toLowerCase();
 }
 
@@ -329,8 +407,10 @@ for (let i = 0; i < fieldSets.length; i++) {
     s3Seen.add(key);
 
     const isIdentical = jaccard === 1.0;
-    const aIsSubsetOfB = overlap === aFields.size && bFields.size > aFields.size;
-    const bIsSubsetOfA = overlap === bFields.size && aFields.size > bFields.size;
+    const aIsSubsetOfB =
+      overlap === aFields.size && bFields.size > aFields.size;
+    const bIsSubsetOfA =
+      overlap === bFields.size && aFields.size > bFields.size;
 
     let relationship = "similar";
     if (isIdentical) relationship = "identical";
@@ -547,7 +627,7 @@ for (const [sig, fns] of bySig) {
 
 const s7 = [];
 
-for (const { pkg, file, relFile, src } of allFiles) {
+for (const { pkg, relFile, src } of allFiles) {
   // type Foo = Bar (no generics, no union, no intersection)
   const re = /^export\s+type\s+(\w+)\s*=\s*(\w+)\s*;/gm;
   let m;
@@ -568,7 +648,7 @@ for (const { pkg, file, relFile, src } of allFiles) {
               pkg,
               file: relFile,
               kind,
-            })
+            }),
           ),
         },
       });
@@ -581,18 +661,19 @@ for (const { pkg, file, relFile, src } of allFiles) {
 const result = {
   meta: {
     scannedFiles: allFiles.length,
-    scannedPackages: SCAN_PACKAGES.length,
+    scannedPackages: new Set(allFiles.map((file) => file.pkg)).size,
+    discoveredPackages: scanPackages.length,
     uniqueSymbolNames: byName.size,
     generated: new Date().toISOString(),
   },
   strategies: {
-    s1: s1.slice(0, 100),
-    s2: s2.slice(0, 50),
-    s3: s3.slice(0, 50),
-    s4: s4.slice(0, 30),
-    s5: s5.slice(0, 30),
-    s6: s6.slice(0, 30),
-    s7: s7.slice(0, 50),
+    s1: s1.slice(0, RESULT_LIMIT),
+    s2: s2.slice(0, RESULT_LIMIT),
+    s3: s3.slice(0, RESULT_LIMIT),
+    s4: s4.slice(0, RESULT_LIMIT),
+    s5: s5.slice(0, RESULT_LIMIT),
+    s6: s6.slice(0, RESULT_LIMIT),
+    s7: s7.slice(0, RESULT_LIMIT),
   },
   summary: {
     s1_count: s1.length,

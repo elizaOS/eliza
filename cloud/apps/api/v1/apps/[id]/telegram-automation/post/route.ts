@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -13,17 +14,16 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
 const postSchema = z.object({
   text: z.string().max(4000).optional(),
   channelId: z.string().optional(),
   groupId: z.string().optional(),
 });
 
-async function __hono_POST(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_POST(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
 

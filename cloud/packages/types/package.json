@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit --project tsconfig.json"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250109.0",
+    "@cloudflare/workers-types": "^4.20260429.1",
     "@types/node": "22.19.17",
     "typescript": "^6.0.3"
   }

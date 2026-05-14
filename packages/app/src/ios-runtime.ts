@@ -66,11 +66,8 @@ function readBool(env: RuntimeEnv, keys: string[]): boolean {
 
 export function resolveCloudApiBase(env: RuntimeEnv): string {
   return (
-    readString(env, [
-      "VITE_ELIZA_CLOUD_BASE",
-      "VITE_ELIZA_CLOUD_BASE",
-      "VITE_CLOUD_BASE",
-    ]) ?? DEFAULT_ELIZA_CLOUD_BASE
+    readString(env, ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) ??
+    DEFAULT_ELIZA_CLOUD_BASE
   ).replace(/\/+$/, "");
 }
 

@@ -11,10 +11,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from benchmarks.mmau.agent import MMAUAgentProtocol, OracleMMAUAgent
-from benchmarks.mmau.dataset import MMAUDataset
-from benchmarks.mmau.evaluator import MMAUEvaluator
-from benchmarks.mmau.types import (
+from elizaos_mmau_audio.agent import MMAUAgentProtocol, OracleMMAUAgent
+from elizaos_mmau_audio.dataset import MMAUDataset
+from elizaos_mmau_audio.evaluator import MMAUEvaluator
+from elizaos_mmau_audio.types import (
     MMAUConfig,
     MMAUPrediction,
     MMAUReport,
@@ -103,7 +103,7 @@ class MMAURunner:
         self, agent: MMAUAgentProtocol, sample: MMAUSample
     ) -> MMAUResult:
         started = time.time()
-        timeout_s = max(1.0, self.config.timeout_ms / 1000)
+        timeout_s = max(0.001, self.config.timeout_ms / 1000)
         try:
             prediction = await asyncio.wait_for(agent.predict(sample), timeout=timeout_s)
         except asyncio.TimeoutError:

@@ -1,3 +1,5 @@
+import { isObjectRecord as isRecord } from "../utils/type-guards";
+
 export interface CacheUsageObservation {
 	provider?: string;
 	model?: string;
@@ -13,10 +15,6 @@ export interface CacheUsageObservation {
 export interface CacheUsageNormalizationOptions {
 	provider?: string;
 	model?: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function numericValue(...values: unknown[]): number | undefined {

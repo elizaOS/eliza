@@ -11,10 +11,6 @@
  */
 
 import type {
-  BrowserWorkspaceSnapshot,
-  BrowserWorkspaceTab,
-} from "@elizaos/plugin-browser";
-import type {
   AllPermissionsState,
   AudioGenConfig,
   AudioGenProvider,
@@ -83,6 +79,10 @@ import {
   normalizeWalletRpcSelections,
   WALLET_RPC_PROVIDER_OPTIONS,
 } from "@elizaos/shared";
+import type {
+  BrowserWorkspaceSnapshot,
+  BrowserWorkspaceTab,
+} from "./browser-contracts";
 import type {
   StewardApprovalActionResponse,
   StewardApprovalInfo,

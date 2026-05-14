@@ -5,11 +5,10 @@ Four scenarios pairing different persona archetypes with I Ching readings.
 
 from ..types import (
     Scenario, ResponseNode, ResponseTree, ReadingSystem, ScenarioScoring,
-    Persona, PersonaArchetype, HiddenContext, BirthData,
+    Persona, PersonaArchetype, HiddenContext,
 )
 from ..personas.curious_newbie import create_curious_newbie_iching
 from ..personas.emotional_crisis import create_emotional_crisis_iching
-from ..personas.antagonist import create_antagonist_iching
 
 
 def _create_true_believer_iching_persona() -> Persona:

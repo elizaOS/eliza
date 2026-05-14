@@ -10,12 +10,6 @@ const SRC_INDEX = join(PACKAGE_ROOT, "src", "index.ts");
 const SPECS_DIR = join(PACKAGE_ROOT, "specs");
 const SCRIPTS_DIR = join(PACKAGE_ROOT, "scripts");
 
-// As of the @elizaos/prompts → TypeScript migration, prompt templates are
-// exported as `camelCaseTemplate` string constants from `src/index.ts`
-// (with an `UPPER_SNAKE_CASE_TEMPLATE` re-export alongside each). The
-// previous .txt-file layout under `prompts/` is gone. These tests verify
-// the shape that actually exists today.
-
 function readSrc() {
   return readFileSync(SRC_INDEX, "utf-8");
 }
@@ -71,32 +65,19 @@ describe("prompt templates (src/index.ts)", () => {
   });
 
   it("known required templates exist", () => {
-    const src = readSrc();
     const required = [
       "messageHandlerTemplate",
       "replyTemplate",
       "shouldRespondTemplate",
     ];
-    const names = new Set(extractTemplateConsts(src));
+    const names = new Set(extractTemplateConsts(readSrc()));
     for (const r of required) {
-      if (!names.has(r)) {
-        // Some templates are optional; only assert against what's actually
-        // present. We DO require messageHandlerTemplate (Stage-1 prompt).
-        if (r === "messageHandlerTemplate") {
-          assert.ok(
-            names.has(r),
-            `Required template "${r}" should be exported`,
-          );
-        }
-      }
+      assert.ok(names.has(r), `Required template "${r}" should be exported`);
     }
   });
 
   it("templates have balanced Handlebars delimiters", () => {
     const src = readSrc();
-    // Per-template balance is too strict given handlebars syntax inside
-    // example JSON ({"a":1}) is escaped as \\{{ in some files. Instead,
-    // verify the source file as a whole has balanced {{ / }} delimiters.
     const opens = (src.match(/\{\{/g) || []).length;
     const closes = (src.match(/\}\}/g) || []).length;
     assert.strictEqual(

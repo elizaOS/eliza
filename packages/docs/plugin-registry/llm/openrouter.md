@@ -4,7 +4,7 @@ sidebarTitle: "OpenRouter"
 description: "OpenRouter multi-provider gateway for Eliza — access 200+ models from OpenAI, Anthropic, Google, Meta, and others through a single API."
 ---
 
-The OpenRouter plugin connects Eliza agents to OpenRouter's unified inference gateway, providing access to over 200 models from all major providers through a single API key and endpoint.
+The OpenRouter plugin connects Eliza agents to OpenRouter's canonical inference gateway, providing access to over 200 models from all major providers through a single API key and endpoint.
 
 **Package:** `@elizaos/plugin-openrouter`
 

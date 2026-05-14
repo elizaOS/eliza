@@ -86,9 +86,9 @@ export type {
   ManagerPreferences,
   ManagerSetOptions,
   SecretsManager,
-  UnifiedLoginListEntry,
-  UnifiedLoginListResult,
-  UnifiedLoginReveal,
+  LoginListEntry,
+  LoginListResult,
+  LoginReveal,
 } from "./manager.js";
 export {
   createManager,

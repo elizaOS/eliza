@@ -48,10 +48,10 @@ Total actions: 150
 | `DOC_REQUEST_SIGNATURE` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
 | `DOC_TRACK_DEADLINE` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
 | `DOC_UPLOAD_ASSET` | @elizaos/app-lifeops | — | read, write, update, schedule | internal | docs: request_signature\|request_approval\|track_deadline\|upload_asset\|collect_id… |
-| `INBOX_UNIFIED` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
-| `INBOX_UNIFIED_LIST` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
-| `INBOX_UNIFIED_SEARCH` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
-| `INBOX_UNIFIED_SUMMARIZE` | @elizaos/app-lifeops | — | read | internal | unified inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `INBOX` | @elizaos/app-lifeops | — | read | internal | inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `INBOX_LIST` | @elizaos/app-lifeops | — | read | internal | inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `INBOX_SEARCH` | @elizaos/app-lifeops | — | read | internal | inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
+| `INBOX_SUMMARIZE` | @elizaos/app-lifeops | — | read | internal | inbox: list\|search\|summarize across gmail\|slack\|discord\|telegram\|signal… |
 | `OWNER_FINANCES` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
 | `OWNER_FINANCES_ADD_SOURCE` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |
 | `OWNER_FINANCES_DASHBOARD` | @elizaos/app-lifeops | — |  |  | owner finances: dashboard\|list_sources\|add_source\|remove_source\|import_csv\|list… |

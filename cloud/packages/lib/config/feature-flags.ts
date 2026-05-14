@@ -14,39 +14,34 @@ export interface FeatureFlagConfig {
 
 type FeatureFlagsMap = Record<FeatureFlag, FeatureFlagConfig>;
 
-const parseEnvFlag = (envVar: string | undefined, defaultValue: boolean): boolean => {
-  if (envVar === undefined) return defaultValue;
-  return envVar === "true" || envVar === "1";
-};
-
 export const FEATURE_FLAGS: FeatureFlagsMap = {
   mcp: {
-    enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_MCP, true),
+    enabled: true,
     name: "MCP Integration",
     description: "Model Context Protocol integration and management",
   },
   containers: {
-    enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_CONTAINERS, true),
+    enabled: true,
     name: "Serverless Containers",
     description: "Container management and serverless deployment",
   },
   gallery: {
-    enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_GALLERY, true),
+    enabled: true,
     name: "Agent Gallery",
     description: "Public gallery of community agents",
   },
   memories: {
-    enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_MEMORIES, true),
+    enabled: true,
     name: "Memories & Knowledge",
     description: "Agent memories and knowledge base management",
   },
   voiceCloning: {
-    enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_VOICE_CLONING, true),
+    enabled: true,
     name: "Voice Cloning",
     description: "Custom voice synthesis and cloning",
   },
   billing: {
-    enabled: parseEnvFlag(process.env.NEXT_PUBLIC_FEATURE_BILLING, true),
+    enabled: true,
     name: "Billing & Credits",
     description: "Credit purchases and billing management",
   },

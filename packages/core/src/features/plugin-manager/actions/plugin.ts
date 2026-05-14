@@ -328,7 +328,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 		],
 
 		description:
-			"Unified plugin control. action=install installs from registry; eject clones a registry plugin locally; sync pulls upstream into an ejected plugin; reinject removes the local copy; list shows loaded/installed; list_ejected shows ejected; search queries the registry; details shows registry/runtime details; status reports plugin state; enable/disable load or unload runtime-registered plugins; core_status reports @elizaos/core ejection state; create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
+			"Plugin control. action=install installs from registry; eject clones a registry plugin locally; sync pulls upstream into an ejected plugin; reinject removes the local copy; list shows loaded/installed; list_ejected shows ejected; search queries the registry; details shows registry/runtime details; status reports plugin state; enable/disable load or unload runtime-registered plugins; core_status reports @elizaos/core ejection state; create runs the multi-turn create-or-edit flow that scaffolds from the min-plugin template and dispatches a coding agent with AppVerificationService validator.",
 
 		parameters: [
 			{

@@ -1,5 +1,5 @@
 import { AgentNotReadyError } from "./config-and-auth-rpc";
-import { isRecord } from "./rpc-parse-utils";
+import { isRecord, parseStringArray } from "./rpc-parse-utils";
 import type {
 	AgentCloudStatusSnapshot,
 	AgentStatusSnapshot,
@@ -31,13 +31,6 @@ function optionalNumber(value: unknown): number | undefined {
 
 function optionalString(value: unknown): string | undefined {
 	return typeof value === "string" ? value : undefined;
-}
-
-function parseStringList(value: unknown): readonly string[] | undefined {
-	if (value === undefined) return undefined;
-	if (!Array.isArray(value)) return undefined;
-	if (!value.every((entry) => typeof entry === "string")) return undefined;
-	return value;
 }
 
 function parseCloudStatus(
@@ -80,13 +73,11 @@ function parseAgentStatusOptionalParts(
 	| "startup"
 	| "uptime"
 > | null {
-	const pendingRestartReasons = parseStringList(body.pendingRestartReasons);
-	if (
-		body.pendingRestartReasons !== undefined &&
-		pendingRestartReasons === undefined
-	) {
-		return null;
-	}
+	const pendingRestartReasons =
+		body.pendingRestartReasons === undefined
+			? undefined
+			: parseStringArray(body.pendingRestartReasons);
+	if (pendingRestartReasons === null) return null;
 	const cloud = parseCloudStatus(body.cloud);
 	if (body.cloud !== undefined && cloud === undefined) return null;
 	const startup = parseStartup(body.startup);

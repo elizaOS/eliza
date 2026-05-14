@@ -98,7 +98,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Consolidated filter and sort state
+  // Filter and sort state
   const [filters, setFilters] = useState<TableFilters>(DEFAULT_FILTERS);
 
   const getStatusColor = (status: string): string => {

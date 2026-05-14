@@ -54,7 +54,7 @@ for (const entry of entries) {
   const origHash = gitBlobHash(original);
   const newHash = gitBlobHash(modified);
 
-  // Unified diff: change is a single line in peerDependencies. Provide 3 lines
+  // Diff: change is a single line in peerDependencies. Provide 3 lines
   // of context above and below to match git's default. Find line index.
   const origLines = original.split("\n");
   const newLines = modified.split("\n");

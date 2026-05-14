@@ -53,7 +53,7 @@ import type {
 import type { VerifierStreamEvent } from "./voice/types";
 
 /**
- * One event from a unified generation stream. Both backends produce the
+ * One event from a generation stream. Both backends produce the
  * same shape; consumers do not need to know which one is live.
  */
 export type InferenceStreamEvent =
@@ -146,7 +146,7 @@ export interface HttpStreamingAdapter {
 }
 
 /**
- * Run one generation against the requested backend and yield unified
+ * Run one generation against the requested backend and yield
  * events. Throws if the input describes a backend it has no adapter for
  * (i.e. caller forgot to populate `http` or `ffi`).
  *
@@ -282,7 +282,7 @@ async function* dispatchHttp(
 				if (event.kind === "accept") {
 					// `TextToken.id` is optional — producers that only have surface
 					// text (e.g. the whisper.cpp interim adapter) skip it. Filter
-					// those out so the unified `accept` event carries only ids the
+					// those out so the `accept` event carries only ids the
 					// downstream consumer can use.
 					const tokens = event.tokens
 						.map((t) => t.id)

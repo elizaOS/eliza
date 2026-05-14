@@ -9,7 +9,6 @@ from ..models.trace import (
     AuditSnapshot,
     MediaLoad,
     TraceEnd,
-    TraceEvent,
     TraceMessage,
     TraceStart,
     ToolDispatch,

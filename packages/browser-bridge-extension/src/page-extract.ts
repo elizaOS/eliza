@@ -1,3 +1,5 @@
+import type { PageContextSnapshot } from "./protocol";
+
 function normalizeText(
   value: string | null | undefined,
   maxLength: number,
@@ -101,16 +103,7 @@ function collectForms(): Array<{ action: string | null; fields: string[] }> {
     .slice(0, 10);
 }
 
-export function capturePageContext(): {
-  url: string;
-  title: string;
-  selectionText: string | null;
-  mainText: string | null;
-  headings: string[];
-  links: Array<{ text: string; href: string }>;
-  forms: Array<{ action: string | null; fields: string[] }>;
-  capturedAt: string;
-} {
+export function capturePageContext(): PageContextSnapshot {
   return {
     url: window.location.href,
     title: document.title || window.location.href,

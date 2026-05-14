@@ -12,12 +12,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  type DrizzleDatabase,
-  plugin as sqlPlugin,
-} from "@elizaos/plugin-sql";
-import {
   exportJWK,
   generateKeyPair,
   type JWK,
@@ -25,13 +19,26 @@ import {
   SignJWT,
 } from "jose";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AuthStore } from "../../services/auth-store";
+import { AuthStore, type DrizzleDatabase } from "../../services/auth-store";
 import { BOOTSTRAP_TOKEN_SCOPE, verifyBootstrapToken } from "./bootstrap-token";
 
 interface AdapterWithDb {
   db?: unknown;
   initialize?: () => Promise<void>;
   close?: () => Promise<void>;
+}
+
+interface SqlPluginModule {
+  createDatabaseAdapter: (
+    cfg: { dataDir: string },
+    id: `${string}-${string}-${string}-${string}-${string}`,
+  ) => unknown;
+  DatabaseMigrationService: new () => {
+    initializeWithDatabase: (db: unknown) => Promise<void>;
+    discoverAndRegisterPluginSchemas: (plugins: unknown[]) => void;
+    runAllPluginMigrations: () => Promise<void>;
+  };
+  plugin: unknown;
 }
 
 interface Harness {
@@ -61,6 +68,11 @@ function jwksJson(keys: JWK[]): string {
 }
 
 async function open(): Promise<Harness> {
+  const {
+    createDatabaseAdapter,
+    DatabaseMigrationService,
+    plugin: sqlPlugin,
+  } = (await import("@elizaos/plugin-sql")) as SqlPluginModule;
   const dataDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-bootstrap-token-"),
   );

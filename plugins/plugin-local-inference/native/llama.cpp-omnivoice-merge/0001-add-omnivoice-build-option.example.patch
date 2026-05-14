@@ -4,7 +4,7 @@ Date: 2026-05-12
 
 Adds an opt-in CMake option that will (once patch 0002 vendors the
 tree under `tools/omnivoice/`) wire the merged omnivoice subtree into
-the unified llama.cpp build.
+the canonical llama.cpp build.
 
 Default OFF so existing llama.cpp consumers see no change. When ON,
 the build currently fails fast with an actionable error message — the

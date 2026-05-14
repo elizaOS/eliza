@@ -60,13 +60,10 @@ export function formatSkillEntriesForPrompt(entries: SkillEntry[]): string {
   return formatSkillsForPrompt(visibleSkills);
 }
 
-/** Maximum length for skill command names */
 const SKILL_COMMAND_MAX_LENGTH = 32;
 
-/** Fallback command name if sanitization produces empty string */
 const SKILL_COMMAND_FALLBACK = "skill";
 
-/** Maximum length for command descriptions (Discord limit) */
 const SKILL_COMMAND_DESCRIPTION_MAX_LENGTH = 100;
 
 /**
@@ -98,11 +95,10 @@ function resolveUniqueSkillCommandName(
   base: string,
   used: Set<string>,
 ): string {
-  const normalizedBase = base.toLowerCase();
-  if (!used.has(normalizedBase)) {
-    return base;
-  }
-  for (let index = 2; index < 1000; index += 1) {
+  for (let index = 1; ; index += 1) {
+    if (index === 1 && !used.has(base.toLowerCase())) {
+      return base;
+    }
     const suffix = `_${index}`;
     const maxBaseLength = Math.max(1, SKILL_COMMAND_MAX_LENGTH - suffix.length);
     const trimmedBase = base.slice(0, maxBaseLength);
@@ -112,8 +108,6 @@ function resolveUniqueSkillCommandName(
       return candidate;
     }
   }
-  const fallback = `${base.slice(0, Math.max(1, SKILL_COMMAND_MAX_LENGTH - 2))}_x`;
-  return fallback;
 }
 
 /**
@@ -128,7 +122,6 @@ export function buildSkillCommandSpecs(
   entries: SkillEntry[],
   reservedNames?: Set<string>,
 ): SkillCommandSpec[] {
-  // Filter to user-invocable skills
   const userInvocable = entries.filter(
     (entry) => entry.invocation?.userInvocable !== false,
   );
@@ -152,7 +145,6 @@ export function buildSkillCommandSpecs(
         ? `${rawDescription.slice(0, SKILL_COMMAND_DESCRIPTION_MAX_LENGTH - 1)}…`
         : rawDescription;
 
-    // Parse dispatch configuration from frontmatter
     const dispatch = (() => {
       const kindRaw = (
         entry.frontmatter?.["command-dispatch"] ??

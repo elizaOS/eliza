@@ -29,7 +29,7 @@ import json
 import logging
 import os
 import uuid
-from typing import Any, Final, Optional
+from typing import Any, Final
 
 from eliza_adapter.client import ElizaClient
 

@@ -1,11 +1,3 @@
-/**
- * Script for the blocked-site interstitial page.
- *
- * Reads the blocked host from URL search params, fetches task context from
- * the LifeOps API, and polls for unblock so the page auto-redirects once
- * the user completes the required tasks.
- */
-
 const POLL_INTERVAL_MS = 30_000;
 
 interface RequiredTask {

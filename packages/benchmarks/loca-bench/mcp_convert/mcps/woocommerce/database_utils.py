@@ -8,9 +8,8 @@ Provides complete WooCommerce functionality using local storage.
 import json
 import os
 import sys
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 from datetime import datetime, timezone
-from copy import deepcopy
 
 
 class WooCommerceDatabase:

@@ -11,15 +11,16 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { isJsonObject } from "./json.js";
 import {
   flattenCarrotPermissions,
+  isCarrotIsolation,
   normalizeCarrotPermissions,
 } from "./permissions.js";
 import type {
   BunPermission,
   CarrotInstallRecord,
   CarrotInstallSource,
-  CarrotIsolation,
   CarrotListEntry,
   CarrotManifest,
   CarrotPermissionGrant,
@@ -29,11 +30,7 @@ import type {
   JsonObject,
   JsonValue,
 } from "./types.js";
-import {
-  BUN_PERMISSIONS,
-  CARROT_ISOLATIONS,
-  HOST_PERMISSIONS,
-} from "./types.js";
+import { BUN_PERMISSIONS, HOST_PERMISSIONS } from "./types.js";
 import { isValidCarrotId, validateCarrotManifest } from "./validation.js";
 
 const REGISTRY_FILE_NAME = "registry.json";
@@ -106,15 +103,6 @@ export class CarrotStoreError extends Error {
 
 function parseJsonFile(filePath: string): JsonValue {
   return JSON.parse(readFileSync(filePath, "utf8")) as JsonValue;
-}
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return (
-    value !== undefined &&
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value)
-  );
 }
 
 function ensureStoreRoot(storeRoot: string): void {
@@ -214,10 +202,6 @@ function parseBooleanRecord<K extends string>(
     output[permission] = entry;
   }
   return output;
-}
-
-function isCarrotIsolation(value: string): value is CarrotIsolation {
-  return CARROT_ISOLATIONS.some((entry) => entry === value);
 }
 
 function parsePermissionGrant(
@@ -707,9 +691,7 @@ export function toCarrotListEntry(carrot: InstalledCarrot): CarrotListEntry {
     description: manifest.description,
     version: manifest.version,
     mode: manifest.mode,
-    permissions: flattenCarrotPermissions(
-      normalizeCarrotPermissions(install.permissionsGranted),
-    ),
+    permissions: flattenCarrotPermissions(install.permissionsGranted),
     status: install.status,
     devMode: install.devMode ?? false,
   };

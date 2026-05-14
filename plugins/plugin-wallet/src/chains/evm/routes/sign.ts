@@ -10,7 +10,13 @@
  * we only sign here.
  */
 
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  LegacyRouteHandler,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   type Address,
@@ -23,8 +29,6 @@ import {
 } from "viem";
 import * as viemChains from "viem/chains";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
-
-type RouteHandler = NonNullable<Route["handler"]>;
 
 interface JsonResponse {
   setHeader?: (name: string, value: string) => void;
@@ -117,7 +121,7 @@ function readChainId(body: unknown): number {
   throw new Error("chainId must be a number or hex string");
 }
 
-const addressHandler: RouteHandler = async (req, res, runtime) => {
+const addressHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const backend = await resolveWalletBackend(runtime);
@@ -133,7 +137,7 @@ const addressHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const personalSignHandler: RouteHandler = async (req, res, runtime) => {
+const personalSignHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as { message?: unknown };
@@ -156,7 +160,7 @@ const personalSignHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const signTypedDataHandler: RouteHandler = async (req, res, runtime) => {
+const signTypedDataHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as { typedData?: unknown };
@@ -200,7 +204,7 @@ function hexOrIntToBigInt(value: unknown): bigint | undefined {
   return undefined;
 }
 
-const sendTransactionHandler: RouteHandler = async (req, res, runtime) => {
+const sendTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as { tx?: EvmTxRequest };
@@ -244,7 +248,7 @@ const sendTransactionHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const signTransactionHandler: RouteHandler = async (req, res, runtime) => {
+const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as { tx?: EvmTxRequest };

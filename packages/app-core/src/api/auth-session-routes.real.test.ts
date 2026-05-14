@@ -11,14 +11,8 @@ import * as http from "node:http";
 import { Socket } from "node:net";
 import os from "node:os";
 import path from "node:path";
-import {
-  createDatabaseAdapter,
-  DatabaseMigrationService,
-  type DrizzleDatabase,
-  plugin as sqlPlugin,
-} from "@elizaos/plugin-sql";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AuthStore } from "../services/auth-store";
+import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import { _resetAuthRateLimiter } from "./auth";
 import { SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
@@ -35,6 +29,19 @@ interface AdapterWithDb {
   ready?: boolean;
 }
 
+interface SqlPluginModule {
+  createDatabaseAdapter: (
+    cfg: { dataDir: string },
+    id: `${string}-${string}-${string}-${string}-${string}`,
+  ) => unknown;
+  DatabaseMigrationService: new () => {
+    initializeWithDatabase: (db: unknown) => Promise<void>;
+    discoverAndRegisterPluginSchemas: (plugins: unknown[]) => void;
+    runAllPluginMigrations: () => Promise<void>;
+  };
+  plugin: unknown;
+}
+
 interface Harness {
   db: DrizzleDatabase;
   store: AuthStore;
@@ -43,6 +50,11 @@ interface Harness {
 }
 
 async function open(): Promise<Harness> {
+  const {
+    createDatabaseAdapter,
+    DatabaseMigrationService,
+    plugin: sqlPlugin,
+  } = (await import("@elizaos/plugin-sql")) as SqlPluginModule;
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-routes-"));
   const adapter = createDatabaseAdapter(
     { dataDir },

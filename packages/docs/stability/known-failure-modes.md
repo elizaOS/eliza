@@ -170,15 +170,15 @@ This document catalogs known failure modes across the Eliza system, organized by
 
 ## Coding Agents / PTY
 
-### F-11: Coordinator wiring exhaustion
+### F-11: Legacy coordinator wiring exhaustion
 
 | Field | Detail |
 |---|---|
-| **Status** | **Fixed** (PR #795, #811) |
+| **Status** | **Removed with legacy PTY/coordinator path** |
 | **Symptoms** | Coding agents do not respond to commands. No error is shown in the UI. |
-| **Root cause** | The SwarmCoordinator is not available after the retry loop exhausts its 15 attempts. The bridge connection to the coordinator fails permanently. |
-| **Current mitigation** | System-warning WS event emitted when coordinator wiring fails; UI surfaces the error. |
-| **Gap / Risk** | No user-visible alert after exhaustion. The coding agents section of the UI appears functional but is completely inert. The user has no indication that a restart is needed. |
+| **Root cause** | The removed PTY coordinator path could fail to wire its bridge after repeated attempts. |
+| **Current mitigation** | Task agents now route through ACP only; there is no separate coordinator bridge to wire. |
+| **Gap / Risk** | Historical record only. |
 
 ### F-12: Deferred task delivery race
 

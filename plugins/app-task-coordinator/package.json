@@ -20,8 +20,6 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/xterm": "^6.0.0",
     "lucide-react": "^1.0.0"
   },
   "elizaos": {

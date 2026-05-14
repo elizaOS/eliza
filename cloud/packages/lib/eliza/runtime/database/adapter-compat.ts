@@ -13,7 +13,7 @@ import {
 } from "@elizaos/core";
 import { stableSerialize } from "../stable-serialize";
 
-type CompatDatabaseMethod = (...args: any[]) => Promise<any> | any;
+type CompatDatabaseMethod = (...args: unknown[]) => Promise<unknown> | unknown;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
 type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;
 type LegacyCountMemories = (roomId: UUID, unique?: boolean, tableName?: string) => Promise<number>;
@@ -488,11 +488,11 @@ export function applyLegacyDatabaseAdapterCompat(adapter: IDatabaseAdapter): IDa
             return entity;
           }
 
-          const allComponents = await compat.getComponents(
+          const allComponents = (await compat.getComponents(
             (entity as { id: UUID }).id,
             params.worldId,
-          );
-          const matchedComponents = allComponents.filter((component: any) => {
+          )) as Component[];
+          const matchedComponents = allComponents.filter((component) => {
             if (
               params.componentType &&
               (component as { type?: string }).type !== params.componentType

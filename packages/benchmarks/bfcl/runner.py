@@ -18,6 +18,7 @@ Routes each test case to the appropriate evaluation path:
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -28,8 +29,6 @@ from benchmarks.bfcl.dataset import BFCLDataset
 from benchmarks.bfcl.evaluators import ASTEvaluator, ExecutionEvaluator, RelevanceEvaluator
 from benchmarks.bfcl.executable_runtime import (
     MEMORY_PREREQ_CONVERSATION_PATH,
-    RESTCallSpec,
-    RESTRateLimited,
     RuntimeNetworkRequired,
     decode_python_calls,
 )
@@ -39,14 +38,12 @@ from benchmarks.bfcl.types import (
     BFCLBenchmarkResults,
     BFCLCategory,
     BFCLConfig,
-    BFCLMetrics,
     BFCLResult,
     BFCLTestCase,
     MEMORY_CATEGORIES,
     MULTI_TURN_CATEGORIES,
     NETWORK_REQUIRED_CATEGORIES,
     TestStatus,
-    WEB_SEARCH_CATEGORIES,
 )
 
 logger = logging.getLogger(__name__)
@@ -687,4 +684,21 @@ class BFCLRunner:
         its user-content strings into a single list. Returns an empty list
         if the fixture isn't present."""
         if not scenario:
-   
+            return []
+        path = MEMORY_PREREQ_CONVERSATION_PATH / f"memory_{scenario}.json"
+        if not path.exists():
+            return []
+
+        messages: list[str] = []
+        with path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                entry = json.loads(line)
+                for turn in entry.get("question", []):
+                    for message in turn:
+                        if message.get("role") == "user":
+                            content = message.get("content")
+                            if isinstance(content, str):
+                                messages.append(content)
+        return messages

@@ -6,6 +6,7 @@ import {
 	nullableString,
 	optionalFiniteNumber,
 	optionalString,
+	parseStringArray,
 } from "./rpc-parse-utils";
 import type {
 	AgentSelfStatusSnapshot,
@@ -15,16 +16,6 @@ import type {
 } from "./rpc-schema";
 
 const DEFAULT_TIMEOUT_MS = 4_000;
-
-function parseStringArray(value: unknown): string[] | null {
-	if (!Array.isArray(value)) return null;
-	const output: string[] = [];
-	for (const entry of value) {
-		if (typeof entry !== "string") return null;
-		output.push(entry);
-	}
-	return output;
-}
 
 function isAgentState(
 	value: unknown,

@@ -496,14 +496,14 @@ export const roomOpAction: Action = {
 		"ROOM",
 	],
 	description:
-		"Mute, unmute, follow, or unfollow a room. Defaults to the current room; targets a specific connector chat when `platform` and `chatName` (or `roomId`) are supplied. `action: mute` with `durationMinutes` returns a scheduling hint for an automatic unmute.",
+		"Room mute/unmute/follow/unfollow. Default current room. Use roomId or platform+chatName for connector chat. mute+durationMinutes returns auto-unmute hint.",
 	descriptionCompressed:
-		"room subscription state: action=mute|unmute|follow|unfollow + optional roomId|platform+chatName + durationMinutes (mute auto-unmute hint)",
+		"room state: action=mute|unmute|follow|unfollow + roomId|platform+chatName + durationMinutes auto-unmute hint",
 	parameters: [
 		{
 			name: "action",
 			description:
-				"Operation: mute | unmute | follow | unfollow. Inferred from message text when omitted.",
+				"Operation: mute | unmute | follow | unfollow. Infer if omitted.",
 			required: false,
 			schema: {
 				type: "string" as const,
@@ -513,28 +513,28 @@ export const roomOpAction: Action = {
 		{
 			name: "roomId",
 			description:
-				"Target room id. Defaults to the current message's room when omitted.",
+				"Target room id. Default current room.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "platform",
 			description:
-				"Connector id (telegram, discord, ...) for cross-room targeting via chatName.",
+				"Connector id (telegram, discord, ...) for chatName targeting.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "chatName",
 			description:
-				"Channel/group title to look up when targeting a room other than the current one.",
+				"Channel/group title for non-current room.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "durationMinutes",
 			description:
-				"For op=mute: temporary mute window. Returns a scheduleAutoUnmuteIso hint.",
+				"For action=mute: temporary mute minutes. Returns scheduleAutoUnmuteIso hint.",
 			required: false,
 			schema: { type: "number" as const },
 		},
@@ -835,7 +835,7 @@ export const muteRoomAction = makeRoomOpChildAction({
 	name: "MUTE_ROOM",
 	op: "mute",
 	description:
-		"Mute a room or connector chat when the agent is not already muted there.",
+		"Mute room/chat if agent not already muted.",
 	descriptionCompressed:
 		"mute room/chat if current participant state is not MUTED; optional roomId|platform+chatName|durationMinutes",
 	similes: ["MUTE_CHAT", "SILENCE_GROUP_CHAT", "MUTE_CHANNEL"],
@@ -845,7 +845,7 @@ export const unmuteRoomAction = makeRoomOpChildAction({
 	name: "UNMUTE_ROOM",
 	op: "unmute",
 	description:
-		"Unmute a room or connector chat only when the agent is currently muted there.",
+		"Unmute room/chat only if agent muted.",
 	descriptionCompressed:
 		"unmute room/chat only from MUTED participant state; optional roomId|platform+chatName",
 	similes: ["UNMUTE_CHAT", "RESTORE_CHAT", "UNMUTE_CHANNEL"],
@@ -855,7 +855,7 @@ export const followRoomAction = makeRoomOpChildAction({
 	name: "FOLLOW_ROOM",
 	op: "follow",
 	description:
-		"Follow a room or connector chat when the agent is not already following or muted there.",
+		"Follow room/chat if agent not followed/muted.",
 	descriptionCompressed:
 		"follow room/chat if state is neither FOLLOWED nor MUTED; optional roomId|platform+chatName",
 	similes: ["FOLLOW_CHAT", "FOLLOW_CHANNEL", "JOIN_ROOM"],
@@ -865,7 +865,7 @@ export const unfollowRoomAction = makeRoomOpChildAction({
 	name: "UNFOLLOW_ROOM",
 	op: "unfollow",
 	description:
-		"Unfollow a room or connector chat only when the agent is currently following there.",
+		"Unfollow room/chat only if agent following.",
 	descriptionCompressed:
 		"unfollow room/chat only from FOLLOWED participant state; optional roomId|platform+chatName",
 	similes: ["UNFOLLOW_CHAT", "UNFOLLOW_THREAD", "LEAVE_ROOM"],

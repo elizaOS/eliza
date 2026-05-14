@@ -140,7 +140,7 @@ const prefs = await musicLibrary.getUserPreferences(userId);
 ### Actions
 
 Available actions:
-- `MUSIC_LIBRARY` - Consolidated planner-facing action.
+- `MUSIC_LIBRARY` - Planner-facing action.
   - `op=playlist`, `subaction=save|load|delete|add` - Manage playlists.
   - `op=search-youtube` - Search YouTube for music.
   - `op=play-query` - Smart music query parser.

@@ -6,13 +6,11 @@ import React from "react";
 
 const queryClient = new QueryClient();
 
-// Define the interface for the ELIZA_CONFIG
 interface ElizaConfig {
   agentId: string;
   apiBase: string;
 }
 
-// Define the interface for time response
 interface TimeResponse {
   timestamp: string;
   unix: number;
@@ -20,9 +18,6 @@ interface TimeResponse {
   timezone: string;
 }
 
-/**
- * Time display component that fetches from backend
- */
 function TimeDisplay({ apiBase }: { apiBase: string }) {
   const { data, isLoading, error, refetch } = useQuery<TimeResponse>({
     queryKey: ["currentTime"],
@@ -33,7 +28,7 @@ function TimeDisplay({ apiBase }: { apiBase: string }) {
       }
       return response.json();
     },
-    refetchInterval: 1000, // Refresh every second
+    refetchInterval: 1000,
   });
 
   if (isLoading) {
@@ -73,9 +68,6 @@ function TimeDisplay({ apiBase }: { apiBase: string }) {
   );
 }
 
-/**
- * Main Example route component
- */
 function ExampleRoute() {
   interface WindowWithElizaConfig extends Window {
     ELIZA_CONFIG?: ElizaConfig;
@@ -84,7 +76,6 @@ function ExampleRoute() {
   const agentId = config?.agentId;
   const apiBase = config?.apiBase || "http://localhost:3000";
 
-  // Apply dark mode to the root element
   React.useEffect(() => {
     document.documentElement.classList.add("dark");
   }, []);
@@ -103,9 +94,6 @@ function ExampleRoute() {
   return <ExampleProvider agentId={agentId as UUID} apiBase={apiBase} />;
 }
 
-/**
- * Example provider component
- */
 function ExampleProvider({ agentId, apiBase }: { agentId: UUID; apiBase: string }) {
   return (
     <QueryClientProvider client={queryClient}>
@@ -120,29 +108,24 @@ function ExampleProvider({ agentId, apiBase }: { agentId: UUID; apiBase: string 
   );
 }
 
-// Initialize the application - no router needed for iframe
 const rootElement = document.getElementById("root");
 if (rootElement) {
   createRoot(rootElement).render(<ExampleRoute />);
 }
 
-// Define types for integration with agent UI system
 export interface AgentPanel {
   name: string;
   path: string;
   component: React.ComponentType<{ agentId?: string } & Record<string, unknown>>;
   icon?: string;
   public?: boolean;
-  shortLabel?: string; // Optional short label for mobile
+  shortLabel?: string;
 }
 
 interface PanelProps {
   agentId?: string;
 }
 
-/**
- * Example panel component for the plugin system
- */
 const PanelComponent: React.FC<PanelProps> = ({ agentId }) => {
   return (
     <div className="p-4">
@@ -152,7 +135,6 @@ const PanelComponent: React.FC<PanelProps> = ({ agentId }) => {
   );
 };
 
-// Export the panel configuration for integration with the agent UI
 export const panels: AgentPanel[] = [
   {
     name: "Example",

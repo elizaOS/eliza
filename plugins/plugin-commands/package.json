@@ -64,13 +64,6 @@
 	"agentConfig": {
 		"pluginType": "elizaos:plugin:1.0.0",
 		"pluginParameters": {
-			"COMMANDS_ENABLED": {
-				"type": "boolean",
-				"description": "Enable command system",
-				"required": false,
-				"default": "true",
-				"sensitive": false
-			},
 			"COMMANDS_CONFIG_ENABLED": {
 				"type": "boolean",
 				"description": "Enable /config command",

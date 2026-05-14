@@ -6,7 +6,6 @@ import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
 import { logger } from "@elizaos/core";
-import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud";
 import {
   isNullOriginAllowed,
   resolveAllowedHosts,
@@ -18,6 +17,10 @@ import {
   stripOptionalHostPort,
 } from "@elizaos/shared";
 import { sweepExpiredEntries } from "./memory-bounds.ts";
+
+const { isCloudProvisionedContainer } = await import(
+  "@elizaos/plugin-elizacloud"
+);
 
 // ---------------------------------------------------------------------------
 // CORS

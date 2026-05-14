@@ -1,12 +1,4 @@
 import type http from "node:http";
-import { handleSandboxRoute } from "@elizaos/plugin-computeruse";
-import {
-  type CloudRouteState,
-  handleCloudBillingRoute,
-  handleCloudCompatRoute,
-  handleCloudRelayRoute,
-  handleCloudRoute,
-} from "@elizaos/plugin-elizacloud";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 import { handleChatRoutes } from "./chat-routes.ts";
 import { handleConversationRoutes } from "./conversation-routes.ts";
@@ -15,6 +7,14 @@ import { handleInboxRoute } from "./inbox-routes.ts";
 import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
 import { handleXRelayRoute } from "./x-relay-routes.ts";
+
+const { handleSandboxRoute } = await import("@elizaos/plugin-computeruse");
+const {
+  handleCloudBillingRoute,
+  handleCloudCompatRoute,
+  handleCloudRelayRoute,
+  handleCloudRoute,
+} = await import("@elizaos/plugin-elizacloud");
 
 type ChatRouteArg = Parameters<typeof handleChatRoutes>[0];
 type ConversationRouteArg = Parameters<typeof handleConversationRoutes>[0];
@@ -40,6 +40,15 @@ interface CloudAndCoreRouteContext extends DispatchRouteContext {
   restartRuntime: (reason: string) => Promise<boolean>;
   saveConfig: (config: ServerState["config"]) => void;
   isAuthorizedRequest: (req: http.IncomingMessage) => boolean;
+}
+
+interface CloudRouteState {
+  config: ServerState["config"];
+  cloudManager: ServerState["cloudManager"];
+  runtime: ServerState["runtime"];
+  saveConfig: (config: ServerState["config"]) => void;
+  createTelemetrySpan: typeof createIntegrationTelemetrySpan;
+  restartRuntime: (reason: string) => Promise<boolean>;
 }
 
 export async function handleInboxAndCloudRelayRouteGroup({
@@ -142,7 +151,7 @@ export async function handleCloudAndCoreRouteGroup({
     createTelemetrySpan: createIntegrationTelemetrySpan,
     restartRuntime,
   };
-  return handleCloudRoute(req, res, pathname, method, cloudState);
+  return handleCloudRoute(req, res, pathname, method, cloudState as never);
 }
 
 export async function handleSandboxRouteGroup({

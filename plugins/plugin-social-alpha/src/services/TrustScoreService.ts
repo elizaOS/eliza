@@ -14,7 +14,7 @@ export {
 } from "./trustScoreOptimizer";
 
 /**
- * Consolidated Trust Score Service
+ * Trust Score Service
  */
 export class TrustScoreService {
 	private calculator: BalancedTrustScoreCalculator;

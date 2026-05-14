@@ -33,9 +33,6 @@
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
       ],
       "@elizaos/plugin-local-inference": [
-        "../../plugins/plugin-local-embedding/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],

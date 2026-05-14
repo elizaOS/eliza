@@ -13,7 +13,6 @@ import logging
 import sys
 import os
 import argparse
-from typing import Any, Dict
 
 # Suppress logging unless verbose mode is enabled
 if os.environ.get('LOCA_QUIET', '').lower() in ('1', 'true', 'yes'):

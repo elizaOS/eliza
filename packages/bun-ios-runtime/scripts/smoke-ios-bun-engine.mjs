@@ -1,36 +1,13 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { argValue, fail, run } from "./script-utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
 const repoRoot = path.resolve(packageRoot, "..", "..");
-
-function argValue(name, fallback = null) {
-  const prefix = `${name}=`;
-  for (const arg of process.argv.slice(2)) {
-    if (arg === name) return "1";
-    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
-  }
-  return fallback;
-}
-
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, {
-    cwd: options.cwd ?? repoRoot,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  return result;
-}
-
-function fail(message) {
-  console.error(`[bun-ios-runtime] ${message}`);
-  process.exit(1);
-}
 
 const appPath = path.resolve(
   argValue("--app", process.env.ELIZA_IOS_APP_PATH || ""),
@@ -53,7 +30,12 @@ if (!fs.existsSync(frameworkBinary)) {
   fail(`missing full Bun engine framework at ${frameworkBinary}`);
 }
 
-const nm = run("nm", ["-gU", frameworkBinary]);
+const nm = run("nm", ["-gU", frameworkBinary], {
+  check: false,
+  cwd: repoRoot,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"],
+});
 const symbols = nm.stdout + nm.stderr;
 for (const symbol of [
   "_eliza_bun_engine_abi_version",

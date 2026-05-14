@@ -43,10 +43,10 @@ COPY app/ /app/
 RUN rm -rf /app/src/app/api
 
 
-# Download font file for testing (Inter font from Google Fonts)
+# Use a locally installed font for deterministic offline testing.
 RUN mkdir -p /app/public/fonts && \
-    curl -L "https://fonts.gstatic.com/s/inter/v13/UcCO3FwrK3iLTeHuS_fvQtMwCp50KnMw2boKoduKmMEVuLyfAZ9hjp-Ek-_EeA.woff2" \
-    -o /app/public/fonts/custom.woff2
+    cp /usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf \
+    /app/public/fonts/custom.ttf
 
 # Install npm dependencies (versions pinned in package.json)
 RUN npm install

@@ -1,9 +1,13 @@
 import * as http from "node:http";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { Socket } from "node:net";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
   __resetWakeTelemetryForTests,
+  __setDeviceSecretPathForTests,
   __setDeviceSecretForTests,
   getDeviceSecret,
   getWakeTelemetry,
@@ -337,6 +341,10 @@ describe("POST /api/internal/wake — routing", () => {
 });
 
 describe("getDeviceSecret", () => {
+  beforeEach(() => {
+    __setDeviceSecretPathForTests(null);
+  });
+
   it("returns a stable value across calls within a process", () => {
     __setDeviceSecretForTests(null);
     const a = getDeviceSecret();
@@ -359,6 +367,24 @@ describe("getDeviceSecret", () => {
         process.env.ELIZA_DEVICE_SECRET = previous;
       }
       __setDeviceSecretForTests(null);
+    }
+  });
+
+  it("persists generated secrets across cache resets", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-device-secret-"));
+    const filePath = path.join(dir, "state", "internal", "device-secret");
+    __setDeviceSecretPathForTests(filePath);
+    try {
+      const first = getDeviceSecret();
+      __setDeviceSecretForTests(null);
+      const second = getDeviceSecret();
+      expect(second).toBe(first);
+      expect(fs.readFileSync(filePath, "utf8").trim()).toBe(first);
+      const mode = fs.statSync(filePath).mode & 0o777;
+      expect(mode).toBe(0o600);
+    } finally {
+      __setDeviceSecretPathForTests(null);
+      fs.rmSync(dir, { recursive: true, force: true });
     }
   });
 });

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from benchmarks.mmau.dataset import FIXTURE_PATH, MMAUDataset
-from benchmarks.mmau.types import MMAUCategory
+from elizaos_mmau_audio.dataset import FIXTURE_PATH, MMAUDataset
+from elizaos_mmau_audio.types import MMAUCategory
 
 
 def test_fixture_loads_all_samples() -> None:

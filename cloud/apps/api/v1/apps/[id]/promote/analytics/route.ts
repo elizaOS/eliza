@@ -1,16 +1,13 @@
 import { Hono } from "hono";
 import { nextJsonFromCaughtError } from "@/lib/api/errors";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { advertisingService } from "@/lib/services/advertising";
 import { appsService } from "@/lib/services/apps";
 import { conversionTrackingService } from "@/lib/services/conversion-tracking";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
-async function __hono_GET(request: Request, { params }: RouteParams) {
+async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;

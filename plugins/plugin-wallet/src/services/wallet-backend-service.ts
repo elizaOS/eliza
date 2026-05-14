@@ -31,7 +31,7 @@ export class WalletBackendService extends Service {
   static override serviceType = WALLET_BACKEND_SERVICE_TYPE;
 
   override capabilityDescription =
-    "Unified wallet backend and chain router (EVM + Solana, local or Steward)";
+    "Wallet backend and chain router (EVM + Solana, local or Steward)";
 
   private backend: WalletBackend | null = null;
   private backendLoadError: unknown = null;

@@ -1,25 +1,3 @@
-/**
- * Wallet shim content script — runs at `document_start` on every page.
- *
- * Reads `walletShim.apiBase` / `walletShim.signToken` (and the cached
- * `solanaPublicKey` / `evmAddress` / `evmChainId`) from `chrome.storage.local`,
- * bakes them into the shim template (which lives in the bundle as a string
- * constant via `__WALLET_SHIM_TEMPLATE__`), and injects the resulting JS into
- * the page's MAIN world by appending a `<script>textContent=…</script>` to
- * `document.documentElement`. The MAIN-world script registers a Wallet-Standard
- * Solana wallet and an EIP-1193 EVM provider (`window.ethereum` + EIP-6963).
- *
- * If config is missing or stale, the shim no-ops — pages see no provider.
- *
- * Population path:
- *   `chrome.storage.local.set({ walletShim: { apiBase, signToken,
- *     solanaPublicKey, evmAddress, evmChainId } })`
- *
- * The popup will eventually expose a paired-agent button that pulls these
- * fields from the agent's auth handshake and writes them; until then they can
- * be populated manually from the extension's service worker console.
- */
-
 declare const __WALLET_SHIM_TEMPLATE__: string;
 
 interface WalletShimStored {
@@ -50,7 +28,6 @@ const DEFAULT_ICON =
 function readShimConfig(): Promise<WalletShimStored | null> {
   return new Promise((resolve) => {
     try {
-      // Manifest V3: chrome.storage.local is async-callback or Promise-based.
       const api =
         (
           globalThis as unknown as {
@@ -106,17 +83,9 @@ function injectIntoMainWorld(js: string): void {
     if (!root) return;
     const tag = document.createElement("script");
     tag.textContent = js;
-    // Prepending so we run before any page script that does early provider
-    // detection.
     root.insertBefore(tag, root.firstChild);
-    // The script runs synchronously on insertion; remove the element to keep
-    // the DOM clean (page scripts that race document_start may still pick up
-    // our window.solana/window.ethereum since they're set during the insert).
     tag.remove();
-  } catch {
-    // Permission-denied / CSP violations are expected on a few hardened
-    // origins (Chrome web store, etc.). We silently no-op in that case.
-  }
+  } catch {}
 }
 
 (async () => {

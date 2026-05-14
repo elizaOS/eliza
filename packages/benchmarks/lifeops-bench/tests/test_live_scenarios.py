@@ -35,7 +35,6 @@ from eliza_lifeops_bench.lifeworld.entities import (
     Calendar,
     Conversation,
     EmailMessage,
-    EmailThread,
     ReminderList,
 )
 from eliza_lifeops_bench.runner import LifeOpsBenchRunner

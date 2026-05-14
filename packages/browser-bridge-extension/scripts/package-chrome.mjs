@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +7,7 @@ import {
   resolveBrowserBridgeReleaseVersion,
   versionedArtifactName,
 } from "./release-version.mjs";
+import { run } from "./script-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(scriptDir, "..");
@@ -21,27 +21,6 @@ const versionedArtifactPath = path.join(
   artifactsDir,
   versionedArtifactName("browser-bridge-chrome", "zip", release),
 );
-
-function run(command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: "inherit",
-      ...options,
-    });
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new Error(
-          `${command} ${args.join(" ")} exited with code ${code ?? "unknown"}`,
-        ),
-      );
-    });
-  });
-}
 
 await run("bun", [path.join(scriptDir, "build.mjs"), "chrome"], {
   cwd: extensionRoot,

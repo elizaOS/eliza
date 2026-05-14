@@ -8,7 +8,7 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Optional
 
-from gauntlet.harness.metrics_collector import LevelMetrics, RunMetrics, TaskMetrics
+from gauntlet.harness.metrics_collector import RunMetrics, TaskMetrics
 from gauntlet.scoring.thresholds import (
     LEVEL_THRESHOLDS,
     STABILITY_STD_DEV_THRESHOLD,

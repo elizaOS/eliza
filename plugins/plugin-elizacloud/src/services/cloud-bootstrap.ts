@@ -15,7 +15,7 @@
  * trusts a default URL.
  */
 
-import { type IAgentRuntime, logger, Service } from "@elizaos/core";
+import { type IAgentRuntime, logger, type ProcessEnvLike, Service } from "@elizaos/core";
 
 export interface CloudBootstrapService {
   /** Returns `${ELIZA_CLOUD_ISSUER}/.well-known/jwks.json`. */
@@ -27,8 +27,6 @@ export interface CloudBootstrapService {
   /** Returns the configured `ELIZA_CLOUD_CONTAINER_ID`, or `null` when unset. */
   getExpectedContainerId(): string | null;
 }
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function readEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {

@@ -36,33 +36,3 @@ export function readConfigCloudKey(key: string): string | undefined {
   const val = (config?.cloud as Record<string, unknown> | undefined)?.[key];
   return typeof val === "string" ? val : undefined;
 }
-
-/**
- * Read the `agents.defaults.orchestrator.codexSubscriptionRestrictedToCodexFramework`
- * flag from Eliza's config. Returns false when the flag is unset or the
- * config file is missing/malformed.
- *
- * When true, Codex (ChatGPT Plus/Pro) subscription tokens are only usable when
- * the orchestrator targets the `codex` framework — other frameworks
- * (claude/gemini/aider) must fall back to API keys instead.
- */
-export function readConfigCodexSubscriptionRestrictedToCodexFramework(): boolean {
-  const config = readConfig();
-  if (!config || typeof config !== "object") return false;
-  const agents = (config as Record<string, unknown>).agents;
-  if (!agents || typeof agents !== "object" || Array.isArray(agents))
-    return false;
-  const defaults = (agents as Record<string, unknown>).defaults;
-  if (!defaults || typeof defaults !== "object" || Array.isArray(defaults))
-    return false;
-  const orchestrator = (defaults as Record<string, unknown>).orchestrator;
-  if (
-    !orchestrator ||
-    typeof orchestrator !== "object" ||
-    Array.isArray(orchestrator)
-  )
-    return false;
-  const flag = (orchestrator as Record<string, unknown>)
-    .codexSubscriptionRestrictedToCodexFramework;
-  return flag === true;
-}

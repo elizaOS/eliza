@@ -279,6 +279,7 @@ function buildFakeAndroidBridge(
     getAccessibilityTree: () => stub("accessibility_unavailable"),
     dispatchGesture: () => stub("accessibility_unavailable"),
     performGlobalAction: () => stub("accessibility_unavailable"),
+    setText: () => stub("accessibility_unavailable"),
     enumerateApps: () => stub("permission_denied"),
     getMemoryPressureSnapshot: () => stub("internal_error"),
     dispatchMemoryPressure: () => stub("internal_error"),

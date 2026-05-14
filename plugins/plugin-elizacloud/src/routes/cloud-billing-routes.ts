@@ -1,6 +1,10 @@
 import type http from "node:http";
 import type { AgentRuntime, Service } from "@elizaos/core";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
+import {
+  type CloudAuthApiKeyService,
+  normalizeCloudApiKey,
+} from "../cloud/auth-service-types";
 import { resolveCloudApiKey } from "../cloud/cloud-api-key.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
 import type { CloudProxyConfigLike } from "../lib/config-like";
@@ -64,22 +68,8 @@ async function fetchCryptoStatusCached(
   return value;
 }
 
-interface CloudAuthApiKeyService {
-  isAuthenticated: () => boolean;
-  getApiKey?: () => string | undefined;
-}
-
 function resolveCloudBaseUrl(config: CloudProxyConfigLike): string {
   return normalizeCloudSiteUrl(config.cloud?.baseUrl);
-}
-
-function normalizeCloudApiKey(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") {
-    return null;
-  }
-  return trimmed;
 }
 
 function resolveProxyApiKey(state: CloudBillingRouteState): string | null {

@@ -1,6 +1,6 @@
 /**
  * Agent domain methods — lifecycle, auth, config, connectors, triggers,
- * training, plugins, streaming/PTY, logs, character, permissions, updates.
+ * training, plugins, streaming, logs, character, permissions, updates.
  */
 
 import type {
@@ -58,7 +58,7 @@ import type {
   PluginInfo,
   PluginMutationResult,
   ProviderModelRecord,
-  RawPtySession,
+  RawAcpSession,
   RelationshipsActivityResponse,
   RelationshipsGraphQuery,
   RelationshipsGraphSnapshot,
@@ -88,10 +88,7 @@ import type {
   UpdateStatus,
   UpdateTriggerRequest,
 } from "./client-types";
-import {
-  mapPtySessionsToCodingAgentSessions,
-  mapTaskThreadsToCodingAgentSessions,
-} from "./client-types";
+import { mapAcpSessionsToCodingAgentSessions } from "./client-types";
 
 // ---------------------------------------------------------------------------
 // Module-level helpers
@@ -3101,37 +3098,20 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
   this: ElizaClient,
 ) {
   try {
-    const status = await this.fetch<CodingAgentStatus>(
-      "/api/coding-agents/coordinator/status",
-    );
-    if (
-      status &&
-      status.tasks.length === 0 &&
-      Array.isArray(status.taskThreads) &&
-      status.taskThreads.length > 0
-    ) {
-      status.tasks = mapTaskThreadsToCodingAgentSessions(
-        status.taskThreads,
-      ).filter((task) => !TERMINAL_STATUSES.has(task.status));
-      status.taskCount = status.tasks.length;
-    }
-    if (status && !status.tasks) {
-      // Only fall back to the raw PTY session list when the coordinator
-      // didn't return a tasks array at all (null/undefined).  An empty
-      // array means "no tasks" — no need to hit /api/coding-agents which
-      // may not have a handler and would hang until timeout.
-      try {
-        const ptySessions =
-          await this.fetch<RawPtySession[]>("/api/coding-agents");
-        if (Array.isArray(ptySessions) && ptySessions.length > 0) {
-          status.tasks = mapPtySessionsToCodingAgentSessions(ptySessions);
-          status.taskCount = status.tasks.length;
-        }
-      } catch {
-        // /api/coding-agents may not exist — ignore
-      }
-    }
-    return status;
+    const acpSessions = await this.fetch<RawAcpSession[]>("/api/coding-agents");
+    const tasks = Array.isArray(acpSessions)
+      ? mapAcpSessionsToCodingAgentSessions(acpSessions).filter(
+          (task) => !TERMINAL_STATUSES.has(task.status),
+        )
+      : [];
+    return {
+      supervisionLevel: "acp",
+      taskCount: tasks.length,
+      tasks,
+      pendingConfirmations: 0,
+      taskThreadCount: 0,
+      taskThreads: [],
+    } satisfies CodingAgentStatus;
   } catch {
     return null;
   }
@@ -3139,58 +3119,30 @@ ElizaClient.prototype.getCodingAgentStatus = async function (
 
 ElizaClient.prototype.listCodingAgentTaskThreads = function (
   this: ElizaClient,
-  options,
+  _options,
 ) {
-  const params = new URLSearchParams();
-  if (options?.includeArchived) params.set("includeArchived", "true");
-  if (options?.status) params.set("status", options.status);
-  if (options?.search) params.set("search", options.search);
-  if (typeof options?.limit === "number" && options.limit > 0) {
-    params.set("limit", String(options.limit));
-  }
-  const query = params.toString();
-  return this.fetch<
-    | CodingAgentTaskThread[]
-    | { threads?: CodingAgentTaskThread[] | null }
-    | null
-  >(`/api/coding-agents/coordinator/threads${query ? `?${query}` : ""}`).then(
-    (response) => {
-      if (Array.isArray(response)) return response;
-      if (Array.isArray(response?.threads)) return response.threads;
-      return [];
-    },
-  );
+  return Promise.resolve([]);
 };
 
 ElizaClient.prototype.getCodingAgentTaskThread = function (
   this: ElizaClient,
-  threadId,
+  _threadId,
 ) {
-  return this.fetch<CodingAgentTaskThreadDetail>(
-    `/api/coding-agents/coordinator/threads/${encodeURIComponent(threadId)}`,
-  );
+  return Promise.resolve(null);
 };
 
 ElizaClient.prototype.archiveCodingAgentTaskThread = async function (
   this: ElizaClient,
-  threadId,
+  _threadId,
 ) {
-  await this.fetch(
-    `/api/coding-agents/coordinator/threads/${encodeURIComponent(threadId)}/archive`,
-    { method: "POST" },
-  );
-  return true;
+  return false;
 };
 
 ElizaClient.prototype.reopenCodingAgentTaskThread = async function (
   this: ElizaClient,
-  threadId,
+  _threadId,
 ) {
-  await this.fetch(
-    `/api/coding-agents/coordinator/threads/${encodeURIComponent(threadId)}/reopen`,
-    { method: "POST" },
-  );
-  return true;
+  return false;
 };
 
 ElizaClient.prototype.stopCodingAgent = async function (

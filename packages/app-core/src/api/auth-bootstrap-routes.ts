@@ -11,8 +11,7 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { logger as Logger } from "@elizaos/core";
-import type { DrizzleDatabase } from "@elizaos/plugin-sql";
-import { AuthStore } from "../services/auth-store";
+import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
 import {
   appendAuditEvent,
   bootstrapExchangeLimiter,

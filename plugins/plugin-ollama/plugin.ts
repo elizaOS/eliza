@@ -36,6 +36,7 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   Plugin,
+  ProcessEnvLike,
   TextEmbeddingParams,
   TextStreamResult,
 } from "@elizaos/core";
@@ -57,8 +58,6 @@ import {
   handleTextSmall,
 } from "./models/text";
 import { getApiBase, getBaseURL } from "./utils/config";
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined" || !process.env) {

@@ -13,10 +13,8 @@ import type {
 /**
  * Web fallback for `@elizaos/capacitor-bun-runtime`.
  *
- * There is no JavaScriptCore in browser environments. The runtime is
- * iOS-only today; Android will get a JNI-backed implementation in a
- * follow-up pass. This stub throws a clear error so callers know the plugin
- * isn't available on this platform.
+ * Browser environments do not host the native runtime. This implementation
+ * reports an unavailable status and throws clear errors for runtime calls.
  */
 export class ElizaBunRuntimeWeb
   extends WebPlugin
@@ -32,7 +30,7 @@ export class ElizaBunRuntimeWeb
 
   async sendMessage(_options: SendMessageOptions): Promise<SendMessageResult> {
     throw this.unavailable(
-      "ElizaBunRuntime.sendMessage is unavailable on web (iOS only for now).",
+      "ElizaBunRuntime.sendMessage is unavailable on web.",
     );
   }
 
@@ -46,7 +44,7 @@ export class ElizaBunRuntimeWeb
 
   async call(_options: CallOptions): Promise<CallResult> {
     throw this.unavailable(
-      "ElizaBunRuntime.call is unavailable on web (iOS only for now).",
+      "ElizaBunRuntime.call is unavailable on web.",
     );
   }
 }

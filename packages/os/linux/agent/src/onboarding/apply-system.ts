@@ -194,38 +194,3 @@ export async function applySystemCalibration(
     }
     return out;
 }
-
-/**
- * Try to detect the user's timezone from a free geo-IP API. Returns
- * `null` on any error or when the network is offline (NetworkManager
- * status fed in as the `online` flag — the caller is expected to know
- * this and skip when offline). Used by the timezone question to
- * suggest a sensible default rather than always asking blind.
- *
- * Endpoint: ipapi.co is free, no key, and ships a `timezone` field as
- * an IANA string. We give it a tight 2-second timeout so a slow API
- * doesn't stall onboarding — falling back to a generic prompt is
- * preferable to a 30-second hang.
- */
-export async function suggestTimezoneFromIp(
-    fetchImpl: typeof fetch = fetch,
-    timeoutMs = 2_000,
-): Promise<string | null> {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        const res = await fetchImpl("https://ipapi.co/json/", { signal: controller.signal });
-        if (!res.ok) return null;
-        const data = (await res.json()) as { timezone?: unknown };
-        const tz = data.timezone;
-        if (typeof tz !== "string" || tz === "") return null;
-        // Cheap sanity check — IANA strings always contain a `/` and
-        // alphanumerics. Reject anything that doesn't look like one.
-        if (!/^[A-Za-z]+\/[A-Za-z_\-+/0-9]+$/.test(tz)) return null;
-        return tz;
-    } catch {
-        return null;
-    } finally {
-        clearTimeout(timer);
-    }
-}

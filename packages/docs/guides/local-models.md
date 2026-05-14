@@ -83,7 +83,7 @@ Models can also be managed through the REST API endpoints at `/api/models`.
 ## Related
 
 - [Model Providers](/model-providers) — all inference backends
-- [Local AI Plugin](/plugin-registry/llm/local-ai) — embedded GGUF inference without an Ollama server
+- [Configuration schema](/config-schema#embedding) — embedded GGUF embedding configuration
 - [Ollama Plugin](/plugin-registry/llm/ollama) — local inference via a running Ollama server
 - [Environment variables](/cli/environment) — `OLLAMA_API_ENDPOINT`, `LOCAL_EMBEDDING_*`
 - [`eliza models`](/cli/models) — check configured providers

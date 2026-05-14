@@ -55,7 +55,7 @@ ORG = "elizaos"
 # by deprecation tooling, not by the current release publisher.
 BUNDLE_TIERS = M.ELIZA_1_TIERS
 
-# Where the staged bundles live on a dev box (see RELEASE_V1.md). The path can
+# Where the staged bundles live on a dev box (see docs/eliza-1-pipeline/06-test-matrix.md). The path can
 # be overridden with --bundles-root.
 DEFAULT_BUNDLES_ROOT = Path.home() / ".eliza" / "local-inference" / "models"
 
@@ -155,7 +155,7 @@ def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
     if not bundle_dir.is_dir():
         return Outcome(repo, "model-bundle", "pending",
                        f"{remote}: no staged bundle at {bundle_dir} — assemble it "
-                       "(RELEASE_V1.md), then the orchestrator dry-run reports the gate")
+                       "(docs/eliza-1-pipeline/06-test-matrix.md), then the orchestrator dry-run reports the gate")
     cmd = [sys.executable, "-m", "scripts.publish.orchestrator",
            "--tier", tier, "--bundle-dir", str(bundle_dir), "--dry-run"]
     proc = subprocess.run(cmd, cwd=str(TRAINING_ROOT), capture_output=True, text=True)

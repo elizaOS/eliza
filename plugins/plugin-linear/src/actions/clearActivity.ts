@@ -21,7 +21,7 @@ export const clearActivityAction: Action = {
   contextGate: { anyOf: ["tasks", "connectors", "automation"] },
   roleGate: { minRole: "USER" },
   description:
-    "Clear the cached Linear activity log for the connected Linear account. Use when the user asks to reset, wipe, or refresh their Linear activity history before pulling a fresh view of recent issue and comment events.",
+    "Clear cached Linear activity log for connected account. Use for reset/wipe/refresh activity before fresh issue/comment events.",
   descriptionCompressed: "clear Linear activity log",
   similes: ["clear-linear-activity", "reset-linear-activity", "delete-linear-activity"],
   parameters: [linearAccountIdParameter],

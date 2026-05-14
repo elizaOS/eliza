@@ -1,5 +1,4 @@
 #!/usr/bin/env bun
-import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +8,7 @@ import {
   resolveBrowserBridgeReleaseVersion,
   versionedArtifactName,
 } from "./release-version.mjs";
+import { findFileWithExtension, run } from "./script-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(scriptDir, "..");
@@ -23,44 +23,6 @@ const bundleIdentifier = "ai.elizaos.browserbridge.app";
 const release = resolveBrowserBridgeReleaseVersion();
 const metadata = buildBrowserBridgeReleaseMetadata(release);
 const safariVersions = buildSafariExtensionVersions(release);
-
-function run(command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: "inherit",
-      ...options,
-    });
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new Error(
-          `${command} ${args.join(" ")} exited with code ${code ?? "unknown"}`,
-        ),
-      );
-    });
-  });
-}
-
-async function findFileWithExtension(directory, extension) {
-  const entries = await fs.readdir(directory, { withFileTypes: true });
-  for (const entry of entries) {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.name.endsWith(extension)) {
-      return fullPath;
-    }
-    if (entry.isDirectory()) {
-      const nested = await findFileWithExtension(fullPath, extension);
-      if (nested) {
-        return nested;
-      }
-    }
-  }
-  return null;
-}
 
 async function patchGeneratedSafariProjectVersions(projectPath) {
   const projectFile = path.join(projectPath, "project.pbxproj");

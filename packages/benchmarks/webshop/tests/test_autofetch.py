@@ -12,8 +12,6 @@ freshly-cloned repo without requiring the WebShop data to be present.
 
 from __future__ import annotations
 
-import importlib
-import os
 import types
 from pathlib import Path
 from unittest import mock
@@ -263,7 +261,7 @@ def test_load_fetch_module_use_sample_tasks_is_noop(monkeypatch, tmp_path: Path)
     # Set opt-out so a *real* fetch attempt would raise loudly.
     monkeypatch.setenv("WEBSHOP_NO_AUTOFETCH", "1")
 
-    ds = ds_mod.WebShopDataset(
+    ds_mod.WebShopDataset(
         split="test",
         profile="small",
         use_sample_tasks=True,

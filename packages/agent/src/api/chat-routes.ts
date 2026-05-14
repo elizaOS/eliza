@@ -25,12 +25,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  getLocalInferenceChatStatus,
-  handleLocalInferenceChatCommand,
-  type LocalInferenceChatMetadata,
-  type LocalInferenceCommandIntent,
-} from "@elizaos/plugin-local-inference";
 import type { LogEntry, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
@@ -87,6 +81,21 @@ import {
 import type { ChatImageAttachment } from "./server-types.ts";
 
 export type { ChatImageAttachment, LogEntry };
+
+const { getLocalInferenceChatStatus, handleLocalInferenceChatCommand } =
+  await import("@elizaos/plugin-local-inference");
+
+type LocalInferenceChatMetadata = Record<string, unknown>;
+type LocalInferenceCommandIntent =
+  | "cancel"
+  | "download"
+  | "redownload"
+  | "resume"
+  | "retry"
+  | "status"
+  | "switch_smaller"
+  | "use_cloud"
+  | "use_local";
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 

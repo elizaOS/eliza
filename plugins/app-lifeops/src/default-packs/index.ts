@@ -117,13 +117,13 @@ export function getDefaultEnabledPacks(
   options: { connectorRegistry?: ConnectorRegistryStub | null } = {},
 ): DefaultPack[] {
   return DEFAULT_PACKS.filter((pack) => pack.defaultEnabled).filter((pack) => {
-    if (!pack.requiredCapabilities || pack.requiredCapabilities.length === 0) {
+    if (pack.requiredCapabilities.length === 0) {
       return true;
     }
     if (!options.connectorRegistry) return false;
     return pack.requiredCapabilities.every(
       (capability) =>
-        options.connectorRegistry!.byCapability(capability).length > 0,
+        options.connectorRegistry.byCapability(capability).length > 0,
     );
   });
 }

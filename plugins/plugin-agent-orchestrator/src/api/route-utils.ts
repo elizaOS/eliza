@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { PTYService } from "../services/pty-service.js";
-import type { SwarmCoordinator } from "../services/swarm-coordinator.js";
+import type { AcpActionService } from "../actions/common.js";
 import type { CodingWorkspaceService } from "../services/workspace-service.js";
 
 export type JsonValue =
@@ -14,9 +13,8 @@ export type JsonValue =
 
 export interface RouteContext {
   runtime: IAgentRuntime;
-  ptyService: PTYService | null;
+  acpService: AcpActionService | null;
   workspaceService: CodingWorkspaceService | null;
-  coordinator?: SwarmCoordinator;
 }
 
 // Max request body size (1 MB)

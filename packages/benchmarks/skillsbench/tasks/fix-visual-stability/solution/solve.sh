@@ -125,7 +125,7 @@ cat > /app/src/app/globals.css << 'EOF'
 /* FIXED: Added font-display: swap to prevent FOIT */
 @font-face {
   font-family: 'CustomFont';
-  src: url('/fonts/custom.woff2') format('woff2');
+  src: url('/fonts/custom.ttf') format('truetype');
   font-display: swap;
 }
 

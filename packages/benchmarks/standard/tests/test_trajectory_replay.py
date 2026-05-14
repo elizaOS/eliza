@@ -13,7 +13,6 @@ from benchmarks.standard._cli import main_entry
 from benchmarks.standard.trajectory_replay import (
     BENCHMARK_ID,
     DATASET_VERSION,
-    SMOKE_TRAJECTORY,
     BaselineToolCall,
     ReplayStage,
     ReplayTrajectory,

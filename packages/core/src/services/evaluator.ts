@@ -16,6 +16,7 @@ import type {
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
+import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -27,10 +28,6 @@ const EMPTY_STATE: State = {
 	data: {},
 	text: "",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function stringifyForPrompt(value: unknown): string {
 	if (typeof value === "string") return value;
@@ -125,17 +122,17 @@ function buildPrompt(params: {
 				"",
 				section,
 				"",
-				`Output this evaluator's result under property "${evaluator.name}".`,
+				`Put result under "${evaluator.name}".`,
 			].join("\n");
 		})
 		.join("\n\n");
 
 	return `# Task: Post-turn evaluation
 
-You are evaluating the just-finished message turn for ${agentName}.
+Evaluate just-finished turn for ${agentName}.
 
-Return exactly one JSON object. Do not include prose, markdown fences, XML, or hidden reasoning.
-Populate one top-level property for each active evaluator listed below. Use only the provided context. If an evaluator has nothing to record, return its empty shape.
+Return exactly one JSON object. No prose, markdown fences, XML, hidden reasoning.
+One top-level property per active evaluator. Use only provided context. Nothing to record => empty shape.
 
 ## Shared Turn Context
 

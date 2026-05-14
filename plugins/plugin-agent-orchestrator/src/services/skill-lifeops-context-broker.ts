@@ -9,7 +9,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import type { SessionInfo } from "./pty-types.js";
+import type { SessionInfo } from "./types.js";
 import type { RecommendedSkill } from "./skill-recommender.js";
 
 const LOG_PREFIX = "[LifeOpsContextBroker]";

@@ -24,7 +24,7 @@
  *   ELIZA_MAS_INSTALLER_IDENTITY
  *   ELIZA_APPLE_TEAM_ID
  *
- * Exits non-zero on any signing or verification failure. No try/catch sludge.
+ * Exits non-zero on any signing or verification failure.
  */
 
 import { spawnSync } from "node:child_process";

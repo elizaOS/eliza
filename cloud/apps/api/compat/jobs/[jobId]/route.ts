@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -16,9 +17,7 @@ import { handleCompatError } from "../../_lib/error-handler";
 
 const CORS_METHODS = "GET, OPTIONS";
 
-type RouteParams = { params: Promise<{ jobId: string }> };
-
-async function __hono_GET(request: Request, { params }: RouteParams) {
+async function __hono_GET(request: Request, { params }: RouteContext<{ jobId: string }>) {
   try {
     const { user } = await requireCompatAuth(request);
     const { jobId } = await params;

@@ -235,7 +235,7 @@ def is_timeout_error(error: Exception) -> bool:
 class MCPTool(BaseTool):
     """A tool for connecting to MCP servers.
 
-    This tool provides a unified configuration-based interface to connect to and
+    This tool provides a configuration-based interface to connect to and
     interact with MCP servers following the GEM framework's BaseTool interface.
 
     Uses FastMCP client with configuration-based setup for reliable MCP

@@ -1,7 +1,7 @@
 # vast-pyworker — GGUF / DFlash on Vast Serverless
 
 PyWorker that fronts a `llama.cpp` `llama-server` hosting a Q4_K_M / Q6_K
-GGUF from the consolidated Eliza-1 bundle repo
+GGUF from the canonical Eliza-1 bundle repo
 [`elizaos/eliza-1`][1] (subpath `bundles/27b/text/`) on a single RTX 5090
 worker. Deployed by Vast.ai Serverless; the template defines the image and
 the on-start script, both committed in this repo. The same worker can serve
@@ -223,7 +223,7 @@ retryable 5xx/timeout/capacity errors from 27B to 9B, and from 9B to 2B.
 ## Swapping in a fine-tuned model
 
 After the training pipeline (`/training/scripts/train_nebius.sh` or vast)
-emits a checkpoint and pushes it to HF as a GGUF inside the consolidated
+emits a checkpoint and pushes it to HF as a GGUF inside the canonical
 bundle repo (e.g. `elizaos/eliza-1` with `bundles/27b/text/eliza-1-pro-27b-128k.gguf`):
 
 1. Update the Vast template's `MODEL_REPO` / `MODEL_FILE` env (re-run

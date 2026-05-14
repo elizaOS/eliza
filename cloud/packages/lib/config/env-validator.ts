@@ -344,7 +344,12 @@ export function isFeatureConfigured(feature: string): boolean {
       // Hetzner-Docker control plane: nodes are seeded either via the admin
       // API (DB-backed, no env required) or via the AGENT_DOCKER_NODES
       // env var (seed-only fallback). Either way, an SSH key is required.
-      return !!(process.env.AGENT_SSH_KEY || process.env.AGENT_SSH_KEY_PATH);
+      return !!(
+        process.env.CONTAINERS_SSH_KEY ||
+        process.env.CONTAINERS_SSH_KEY_PATH ||
+        process.env.AGENT_SSH_KEY ||
+        process.env.AGENT_SSH_KEY_PATH
+      );
     case "stripe":
       return !!(process.env.STRIPE_SECRET_KEY && process.env.STRIPE_WEBHOOK_SECRET);
     case "crypto":

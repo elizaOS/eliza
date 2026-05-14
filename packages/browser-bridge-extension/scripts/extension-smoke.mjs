@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { run } from "./script-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const extensionRoot = path.resolve(scriptDir, "..");
@@ -76,27 +76,6 @@ function resolvePlaywrightModulePath() {
   throw new Error(
     "Could not resolve @playwright/test. Install app dependencies before running Agent Browser Bridge smoke tests.",
   );
-}
-
-function run(command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: "inherit",
-      ...options,
-    });
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      if (code === 0) {
-        resolve();
-        return;
-      }
-      reject(
-        new Error(
-          `${command} ${args.join(" ")} exited with code ${code ?? "unknown"}`,
-        ),
-      );
-    });
-  });
 }
 
 async function ensureChromeBuild() {

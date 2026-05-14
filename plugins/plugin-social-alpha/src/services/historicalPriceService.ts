@@ -32,6 +32,7 @@ export interface TokenResolution {
 }
 
 export class HistoricalPriceService {
+	private runtime: IAgentRuntime;
 	private birdeyeClient: BirdeyeClient;
 	private dexscreenerClient: DexscreenerClient;
 
@@ -116,11 +117,12 @@ export class HistoricalPriceService {
 				maxPrice: Math.max(...prices),
 				fetchedAt: Date.now(),
 			};
-		} catch (error: any) {
+		} catch (error: unknown) {
 			// If OHLCV fails, try to get current price at least
+			const message = error instanceof Error ? error.message : String(error);
 			console.warn(
 				`OHLCV failed for ${address}, trying current price:`,
-				error.message,
+				message,
 			);
 
 			try {

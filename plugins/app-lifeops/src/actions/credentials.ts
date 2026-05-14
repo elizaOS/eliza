@@ -137,13 +137,13 @@ export const credentialsAction: Action & {
     "risk:irreversible",
   ],
   description:
-    "Owner-only password and autofill operations across browser autofill (LifeOps extension) and the OS password manager (1Password / ProtonPass). " +
-    "Actions: fill (one-field autofill on a whitelisted site), whitelist_add (add a domain; requires confirmed:true), whitelist_list, search (match items by query), list (bounded), inject_username, inject_password (copy to OS clipboard; both require confirmed:true). " +
-    "Plaintext credentials never appear in chat — only the OS clipboard.",
+    "Owner-only credentials. Browser autofill + OS password manager (1Password/ProtonPass). " +
+    "Actions fill whitelisted one-field; whitelist_add domain confirmed:true; whitelist_list; search query; list bounded; inject_username|inject_password OS clipboard confirmed:true. " +
+    "No plaintext credentials in chat; clipboard only.",
   descriptionCompressed:
-    "credentials: fill|whitelist_add|whitelist_list|search|list|inject_username|inject_password; clipboard-only; confirmed:true required for inject and whitelist_add",
+    "CREDENTIALS fill|whitelist_add|list|search|inject_username|inject_password; clipboard-only",
   routingHint:
-    "credential search/list/copy/inject -> CREDENTIALS action=search|list|inject_*; on-page form fill -> CREDENTIALS action=fill",
+    "credentials search/list/copy/inject -> CREDENTIALS action=search|list|inject_*; on-page form fill -> action=fill",
   contexts: ["browser", "secrets", "settings", "automation"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -154,64 +154,59 @@ export const credentialsAction: Action & {
     {
       name: "action",
       description:
-        "fill | whitelist_add | whitelist_list (autofill) | search | list | inject_username | inject_password (password manager).",
+        "fill | whitelist_add | whitelist_list | search | list | inject_username | inject_password.",
       required: true,
       schema: { type: "string" as const, enum: [...ALL_SUBACTIONS] },
     },
     // Autofill-side params.
     {
       name: "field",
-      description:
-        "(action=fill) One of email, password, name, phone, custom. Tells the password manager which field to resolve.",
+      description: "(action=fill) email | password | name | phone | custom.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "domain",
       description:
-        "(action=fill | whitelist_add) Domain to act on. For fill, used as the tab URL when url is omitted.",
+        "(action=fill|whitelist_add) Domain. fill fallback when url omitted.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "url",
-      description:
-        "(action=fill) Optional explicit tab URL (used for whitelist enforcement).",
+      description: "(action=fill) Optional tab URL; whitelist enforcement.",
       required: false,
       schema: { type: "string" as const },
     },
     // Password-manager-side params.
     {
       name: "intent",
-      description:
-        "(action=search) Natural-language description of the lookup intent.",
+      description: "(action=search) Lookup intent text.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "query",
-      description:
-        "(action=search) Search string matched against item title, URL, username, and tags.",
+      description: "(action=search) Match title, URL, username, tags.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "itemId",
       description:
-        "(action=inject_username | inject_password) Password manager item id.",
+        "(action=inject_username|inject_password) Password manager item id.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "limit",
-      description: "(action=list) Optional item limit (default 20).",
+      description: "(action=list) Item limit. Default 20.",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "confirmed",
-      description:
-        "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change.",
+      description: "true required for whitelist_add and inject_*; owner gate.",
       required: false,
       schema: { type: "boolean" as const },
     },

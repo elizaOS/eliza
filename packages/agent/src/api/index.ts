@@ -1,18 +1,24 @@
-export { handleSandboxRoute } from "@elizaos/plugin-computeruse";
-export { applySignalQrOverride } from "@elizaos/plugin-signal";
-export {
-  applyWhatsAppQrOverride,
-  handleWhatsAppRoute,
-  type WhatsAppPairingEventLike,
-  type WhatsAppPairingSessionLike,
-  type WhatsAppRouteDeps,
-  type WhatsAppRouteState,
-} from "@elizaos/plugin-whatsapp";
-export {
-  handleTriggerRoutes,
-  type TriggerRouteContext,
-  type TriggerRouteHelpers,
-} from "@elizaos/plugin-workflow";
+const computerUseModule = await import("@elizaos/plugin-computeruse");
+const signalModule = await import("@elizaos/plugin-signal");
+const whatsAppModule = (await import("@elizaos/plugin-whatsapp")) as {
+  applyWhatsAppQrOverride: (...args: never[]) => unknown;
+  handleWhatsAppRoute: (...args: never[]) => unknown;
+};
+const workflowModule = await import("@elizaos/plugin-workflow");
+
+export const { handleSandboxRoute } = computerUseModule;
+export const { applySignalQrOverride } = signalModule;
+export const { applyWhatsAppQrOverride, handleWhatsAppRoute } = whatsAppModule;
+export const { handleTriggerRoutes } = workflowModule;
+
+export type WhatsAppPairingEventLike = Record<string, unknown>;
+export interface WhatsAppPairingSessionLike {
+  stop: () => void | Promise<void>;
+}
+export type WhatsAppRouteDeps = Record<string, unknown>;
+export type WhatsAppRouteState = Record<string, unknown>;
+export type TriggerRouteContext = Parameters<typeof handleTriggerRoutes>[0];
+export type TriggerRouteHelpers = Record<string, unknown>;
 export * from "./accounts-routes.ts";
 export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";

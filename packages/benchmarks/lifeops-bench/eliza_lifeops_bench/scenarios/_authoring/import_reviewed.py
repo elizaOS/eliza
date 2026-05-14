@@ -27,7 +27,6 @@ from pathlib import Path
 from typing import Any
 
 from ...lifeworld.snapshots import package_root, snapshots_dir
-from ...types import Domain
 from .. import SCENARIOS_BY_ID
 from .validate import validate_batch
 

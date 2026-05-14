@@ -16,7 +16,6 @@ from elizaos_experience_bench.hard_cases import (
     JACCARD_CATEGORIES,
     SEMANTIC_CATEGORIES,
     HardCase,
-    get_all_cases,
 )
 from elizaos_experience_bench.service import ExperienceService
 

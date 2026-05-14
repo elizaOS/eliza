@@ -302,7 +302,7 @@ export type PositionWithBalance = Position & {
 };
 
 /**
- * Unified transaction type enums to ensure consistency
+ * Transaction type enums to ensure consistency
  * IMPORTANT: Must match the enum in config.ts
  */
 export enum TransactionType {

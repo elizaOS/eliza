@@ -1,8 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Self-contained build script for elizaOS plugins
- */
-
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { $ } from "bun";
@@ -19,14 +15,11 @@ async function build() {
 	console.log("🚀 Building plugin...");
 
 	try {
-		// Clean previous build
 		await cleanBuild("dist");
 
-		// Run JavaScript build and TypeScript declarations in parallel
 		console.log("Starting build tasks...");
 
 		const [buildResult, _tscResult] = await Promise.all([
-			// Task 1: Build with Bun
 			(async () => {
 				console.log("📦 Bundling with Bun...");
 				const result = await Bun.build({
@@ -57,7 +50,6 @@ async function build() {
 				return result;
 			})(),
 
-			// Task 2: Generate TypeScript declarations
 			(async () => {
 				console.log("📝 Generating TypeScript declarations...");
 				await $`tsc --emitDeclarationOnly --incremental --project ./tsconfig.build.json`.quiet();
@@ -79,7 +71,6 @@ async function build() {
 	}
 }
 
-// Execute the build
 build()
 	.then((success) => {
 		if (!success) {

@@ -15,12 +15,10 @@ import {
 
 let tempDir = "";
 const originalStateDir = process.env.USBELIZA_STATE_DIR;
-const originalGeoip = process.env.USBELIZA_DISABLE_GEOIP;
 
 beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "usbeliza-onboarding-"));
     process.env.USBELIZA_STATE_DIR = tempDir;
-    process.env.USBELIZA_DISABLE_GEOIP = "1";
 });
 
 afterEach(() => {
@@ -29,11 +27,6 @@ afterEach(() => {
         process.env.USBELIZA_STATE_DIR = originalStateDir;
     } else {
         delete process.env.USBELIZA_STATE_DIR;
-    }
-    if (originalGeoip !== undefined) {
-        process.env.USBELIZA_DISABLE_GEOIP = originalGeoip;
-    } else {
-        delete process.env.USBELIZA_DISABLE_GEOIP;
     }
     resetForTest();
 });
@@ -118,11 +111,10 @@ describe("onboarding — clarification + skip handling", () => {
         expect(next?.reply.toLowerCase()).toMatch(/build|first/);
     });
 
-    test("skip on buildIntent advances with the freeform fallback", async () => {
+    test("skip on buildIntent completes onboarding", async () => {
         await handleOnboarding("", true);
         await handleOnboarding("Eve", false);
         await handleOnboarding("no", false);
-        // skip is freeform — empty / too-short reject, but normal text accepts
         const final = await handleOnboarding("skip", false);
         expect(final?.completed).toBe(true);
     });

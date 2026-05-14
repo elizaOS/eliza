@@ -261,11 +261,11 @@ Conversations are scoped to the web-chat interface. Each conversation maps to an
 
 ---
 
-## Inbox (Unified Messages)
+## Inbox (Canonical Messages)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/inbox/messages` | List recent messages across all connector channels in a unified feed |
+| `GET` | `/api/inbox/messages` | List recent messages across all connector channels in a canonical feed |
 | `GET` | `/api/inbox/chats` | List connector chat threads (one row per external chat room) |
 | `GET` | `/api/inbox/sources` | List distinct connector source tags the agent has messages for |
 
@@ -619,7 +619,7 @@ Routes under `/api/cloud/v1/` are forwarded as `/api/v1/` on the cloud backend, 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/automations` | Unified list of all automations (triggers, workflows, workbench tasks) |
+| `GET` | `/api/automations` | Canonical list of all automations (triggers, workflows, workbench tasks) |
 | `GET` | `/api/automations/nodes` | Node catalog — available trigger, action, context, integration, and agent nodes |
 
 ---
@@ -643,7 +643,7 @@ Routes under `/api/cloud/v1/` are forwarded as `/api/v1/` on the cloud backend, 
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/automations` | Unified list of all automations (triggers + workflows + workbench tasks) with summary counts |
+| `GET` | `/api/automations` | Canonical list of all automations (triggers + workflows + workbench tasks) with summary counts |
 | `GET` | `/api/automations/nodes` | Node catalog — available trigger, action, context, integration, and agent nodes |
 | `GET` | `/api/workflow/workflows` | List workflows |
 | `GET` | `/api/workflow/status` | Get workflow status (mode, health, platform) |

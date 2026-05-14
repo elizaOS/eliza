@@ -8,6 +8,7 @@ import type {
 	UUID,
 } from "../../../../types/index.ts";
 import { isSyntheticConversationArtifactMemory } from "../../../../utils/synthetic-conversation-artifact.ts";
+import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
 import type { ExperienceService } from "../service.ts";
 import { type Experience, ExperienceType, OutcomeType } from "../types.ts";
 
@@ -99,10 +100,6 @@ interface ExperiencePrepared {
 		| "sourceTrajectoryStepId"
 		| "associatedEntityIds"
 	>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function actionResultsFromState(state: unknown): unknown[] {

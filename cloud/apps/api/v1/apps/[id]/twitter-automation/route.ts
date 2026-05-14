@@ -1,13 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { twitterAppAutomationService } from "@/lib/services/twitter-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
 
 const TwitterAutomationConfigSchema = z.object({
   enabled: z.boolean().optional(),
@@ -21,7 +18,10 @@ const TwitterAutomationConfigSchema = z.object({
   topics: z.array(z.string().max(50)).max(10).optional(),
 });
 
-async function __hono_GET(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
@@ -30,7 +30,10 @@ async function __hono_GET(request: Request, { params }: RouteParams): Promise<Re
   return Response.json(status);
 }
 
-async function __hono_POST(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_POST(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
@@ -97,7 +100,10 @@ async function __hono_POST(request: Request, { params }: RouteParams): Promise<R
   });
 }
 
-async function __hono_DELETE(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_DELETE(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 

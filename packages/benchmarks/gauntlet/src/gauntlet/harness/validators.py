@@ -5,8 +5,6 @@ Verifies that agent transactions match the scenario intent.
 """
 
 from typing import Any, Optional
-from solders.transaction import Transaction
-from solders.message import Message
 
 def validate_transaction(
     tx_bytes: bytes,

@@ -861,10 +861,10 @@ export async function startBenchmarkServer() {
     }
   }
 
-  // Load computer use plugin if enabled
-  if (process.env.ELIZA_ENABLE_COMPUTERUSE) {
+  // Load computer use plugin if enabled.
+  if (process.env.COMPUTER_USE_ENABLED === "1") {
     try {
-      process.env.COMPUTERUSE_ENABLED ??= "true";
+      process.env.COMPUTER_USE_ENABLED ??= "1";
       process.env.COMPUTERUSE_MODE ??= "local";
       const localComputerusePath =
         "../../../../plugins/plugin-computeruse/src/index.ts";

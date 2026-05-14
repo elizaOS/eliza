@@ -583,38 +583,38 @@ export const LOOSE_TARGET_PARAMETERS: ActionParameter[] = [
 	{
 		name: "source",
 		description:
-			"Connector source such as discord, slack, signal, x, bluesky, nostr, or telegram.",
+			"Connector source: discord, slack, signal, x, bluesky, nostr, telegram.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "target",
 		description:
-			"Loose target reference: channel, room, user, handle, ID, or platform-specific label.",
+			"Loose target: channel, room, user, handle, ID, platform label.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "serverId",
-		description: "Optional server, guild, workspace, or team ID.",
+		description: "Server/guild/workspace/team ID.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "channelId",
-		description: "Optional channel, room, chat, or conversation ID.",
+		description: "Channel/room/chat/conversation ID.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "userId",
-		description: "Optional user, entity, or account ID.",
+		description: "User/entity/account ID.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "thread",
-		description: "Optional thread or parent message identifier.",
+		description: "Thread or parent message ID.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -623,27 +623,27 @@ export const LOOSE_TARGET_PARAMETERS: ActionParameter[] = [
 export const PAGINATION_PARAMETERS: ActionParameter[] = [
 	{
 		name: "limit",
-		description: "Maximum number of items to return.",
+		description: "Max items.",
 		required: false,
 		schema: { type: "number" },
 	},
 	{
 		name: "cursor",
-		description: "Opaque connector-defined pagination cursor.",
+		description: "Opaque connector pagination cursor.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "before",
 		description:
-			"Optional platform timestamp or message/post ID before which to read.",
+			"Read before platform timestamp or message/post ID.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "after",
 		description:
-			"Optional platform timestamp or message/post ID after which to read.",
+			"Read after platform timestamp or message/post ID.",
 		required: false,
 		schema: { type: "string" },
 	},

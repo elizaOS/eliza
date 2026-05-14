@@ -29,7 +29,7 @@ from elizaos_adhdbench.baselines import (
     compute_random_baseline,
 )
 from elizaos_adhdbench.config import ADHDBenchConfig
-from elizaos_adhdbench.scenarios import ALL_SCENARIOS, get_scenarios
+from elizaos_adhdbench.scenarios import get_scenarios
 from elizaos_adhdbench.types import ScalePoint
 
 

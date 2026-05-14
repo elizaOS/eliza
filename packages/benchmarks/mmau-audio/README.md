@@ -35,13 +35,11 @@ letter — **no LLM-judge is ever required**.
 
 ```
 packages/benchmarks/
-  elizaos_mmau/        Distribution-name shim so `python -m elizaos_mmau` works
+  mmau-audio/
+    elizaos_mmau_audio/
     __init__.py
     __main__.py
-  mmau/
-    __init__.py
-    __main__.py
-    cli.py             argparse CLI (`python -m benchmarks.mmau`)
+    cli.py             argparse CLI (`python -m elizaos_mmau_audio`)
     types.py           MMAUSample / MMAUPrediction / MMAUResult / MMAUReport / MMAUConfig
     dataset.py         JSONL fixture + Hugging Face streaming loader
     evaluator.py       Deterministic MCQ scoring + per-skill aggregation
@@ -59,9 +57,9 @@ context. Run from the `packages/` root or with that on `PYTHONPATH`:
 
 ```bash
 # canonical module path (preferred from scripts / the registry)
-python -m benchmarks.mmau --mock --limit 2
+python -m elizaos_mmau_audio --mock --limit 2
 
-# distribution-name shim (matches the README + task spec)
+# legacy distribution-name shim (when installed through the compatibility entry point)
 python -m elizaos_mmau --mock --limit 2
 python -m elizaos_mmau --mock --output ./results --json
 ```
@@ -108,7 +106,7 @@ The mock / oracle run path needs no credentials.
 ## Verification
 
 ```bash
-cd packages/benchmarks/mmau
+cd packages/benchmarks/mmau-audio
 python -m pytest tests/ -x
 python -m elizaos_mmau --mock --limit 2
 ```

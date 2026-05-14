@@ -171,7 +171,7 @@ export function ImageGeneratorAdvanced({ initialHistory = [] }: ImageGeneratorAd
     });
   };
 
-  // Consolidated image state - current batch and selection (initialized with server history)
+  // Image state - current batch and selection (initialized with server history)
   const [imageState, setImageState] = useState<{
     currentImage: GeneratedImage | null;
     currentImages: GeneratedImage[];
@@ -184,7 +184,7 @@ export function ImageGeneratorAdvanced({ initialHistory = [] }: ImageGeneratorAd
     history: convertedHistory,
   });
 
-  // Consolidated request state
+  // Request state
   const [requestState, setRequestState] = useState<{
     isLoading: boolean;
     error: string | null;
@@ -193,7 +193,7 @@ export function ImageGeneratorAdvanced({ initialHistory = [] }: ImageGeneratorAd
     error: null,
   });
 
-  // Consolidated UI state
+  // UI state
   const [uiState, setUiState] = useState<{
     activeTab: string;
     isFullscreenOpen: boolean;

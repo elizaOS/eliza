@@ -9,7 +9,6 @@ from benchmarks.swe_bench.providers import (
     set_current_instance,
     swe_bench_action_results_provider,
     swe_bench_issue_provider,
-    swe_bench_repo_structure_provider,
     swe_bench_strategy_provider,
     swe_bench_tools_provider,
 )

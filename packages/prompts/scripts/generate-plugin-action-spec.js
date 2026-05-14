@@ -12,6 +12,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureDirectory, readJson, readText } from "./file-utils.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -126,14 +127,6 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "OWNER_ACTIONS",
 ]);
 
-function readText(filePath) {
-  return fs.readFileSync(filePath, "utf-8");
-}
-
-function readJson(filePath) {
-  return JSON.parse(readText(filePath));
-}
-
 /**
  * Template literals are extracted as raw source text; expand known `${...}` patterns
  * so generated JSON/docs contain real strings (Biome flags `${` inside quoted TS strings).
@@ -175,18 +168,6 @@ function expandDescriptionTemplateLiterals(description, actionFilePath) {
   }
   const joined = ids.join(", ");
   return description.replace(/\$\{VALID_EMOTE_IDS\.join\([^)]*\)\}/g, joined);
-}
-
-/**
- * Ensures a directory exists, creating it and parent directories if necessary.
- * @param {string} dir - The directory path to ensure exists
- * @throws {Error} If the directory path is empty or whitespace-only
- */
-function ensureDir(dir) {
-  if (!dir || dir.trim() === "") {
-    throw new Error("Directory path cannot be empty");
-  }
-  fs.mkdirSync(dir, { recursive: true });
 }
 
 function listTsFiles(rootDir) {
@@ -1601,13 +1582,6 @@ function main() {
         `[generate-plugin-action-spec] ${path.relative(REPO_ROOT, filePath)}`,
       );
     }
-    // Only consider files that look like they might define actions.
-    if (
-      !filePath.includes(`${path.sep}actions${path.sep}`) &&
-      !filePath.endsWith(`${path.sep}actions.ts`)
-    ) {
-      continue;
-    }
     const src = readText(filePath);
     if (!src.includes(": Action")) continue;
     const constants = extractConstLiterals(src);
@@ -1641,9 +1615,7 @@ function main() {
       );
       const descriptionParameters = inferParametersFromDescription(description);
       const jsonTemplateParameters =
-        explicitParameters.length === 0 &&
-        descriptionParameters.length === 0 &&
-        (name.endsWith("") || description.toLowerCase().includes("router"))
+        explicitParameters.length === 0 && descriptionParameters.length === 0
           ? inferParametersFromJsonTemplate(src)
           : [];
       const parameters =
@@ -1693,7 +1665,7 @@ function main() {
 
   const outRoot = { version, actions };
 
-  ensureDir(path.dirname(OUTPUT_PATH));
+  ensureDirectory(path.dirname(OUTPUT_PATH));
   fs.writeFileSync(OUTPUT_PATH, `${JSON.stringify(outRoot, null, 2)}\n`);
   console.log(
     `Wrote ${actions.length} plugin actions to ${path.relative(REPO_ROOT, OUTPUT_PATH)}`,
