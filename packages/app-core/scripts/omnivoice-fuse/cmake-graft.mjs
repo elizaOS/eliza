@@ -260,10 +260,67 @@ export function appendCmakeGraft({ llamaCppRoot }) {
 /**
  * The CMake -D flags a fused build must add on top of the per-target
  * defaults. Returns an array of `-D…=…` strings.
+ *
+ * Kokoro shares the omnivoice-core static library — when the in-tree
+ * `omnivoice/src/kokoro-*.cpp` sources exist, append
+ * `-DELIZA_FUSE_KOKORO=ON` so the Kokoro graft block in CMakeLists.txt
+ * kicks in. The block itself FATAL_ERRORs if ELIZA_FUSE_OMNIVOICE is
+ * off, so the two flags are always consistent.
  */
 export function fusedExtraCmakeFlags() {
-  return ["-DELIZA_FUSE_OMNIVOICE=ON", "-DBUILD_SHARED_LIBS=ON"];
+  const flags = ["-DELIZA_FUSE_OMNIVOICE=ON", "-DBUILD_SHARED_LIBS=ON"];
+  if (hasKokoroSourcesInTree()) {
+    flags.push("-DELIZA_FUSE_KOKORO=ON");
+  }
+  return flags;
 }
+
+const KOKORO_SENTINEL = "# ELIZA-KOKORO-FUSION-GRAFT-V1";
+
+/**
+ * True when the in-tree submodule has `omnivoice/src/kokoro-*.cpp`
+ * sources staged. The Kokoro fuse step is opt-in based on this signal
+ * so a fork checkout without the port still builds OmniVoice cleanly.
+ */
+export function hasKokoroSourcesInTree(forkRoot) {
+  const root = forkRoot ?? defaultForkRoot();
+  if (!root) return false;
+  const dir = path.join(root, "omnivoice", "src");
+  let entries;
+  try {
+    entries = fs.readdirSync(dir);
+  } catch {
+    return false;
+  }
+  return entries.some(
+    (name) => name.startsWith("kokoro-") && name.endsWith(".cpp"),
+  );
+}
+
+function defaultForkRoot() {
+  // Probe the standard in-tree location. Returns null when the
+  // submodule has not been initialised.
+  const candidate = path.resolve(
+    process.cwd(),
+    "plugins/plugin-local-inference/native/llama.cpp",
+  );
+  try {
+    return fs.statSync(candidate).isDirectory() ? candidate : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * True when the root CMakeLists.txt already contains the Kokoro graft
+ * sentinel. Used by `applyKokoroCmakeGraft` to stay idempotent across
+ * repeated runs of the orchestrator's fuse prep step.
+ */
+export function hasKokoroCmakeGraft(cmakeListsContents) {
+  return cmakeListsContents.includes(KOKORO_SENTINEL);
+}
+
+export { KOKORO_SENTINEL as KOKORO_CMAKE_GRAFT_SENTINEL };
 
 /**
  * Names of CMake build targets the fused build must produce. Caller

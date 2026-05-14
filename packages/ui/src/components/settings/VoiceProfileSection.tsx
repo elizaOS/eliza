@@ -8,15 +8,14 @@
  * state instead of crashing.
  */
 
+import { Crown, Download, Mic, Pencil, Trash2, Users } from "lucide-react";
 // biome-ignore lint/correctness/noUnusedImports: Required for JSX transform.
 import * as React from "react";
-import { Crown, Download, Mic, Pencil, Trash2, Users } from "lucide-react";
-
-import { cn } from "../../lib/utils";
-import {
+import type {
+  VoiceProfile,
   VoiceProfilesClient,
-  type VoiceProfile,
 } from "../../api/client-voice-profiles";
+import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";
 
 export interface VoiceProfileSectionProps {
@@ -95,9 +94,7 @@ export function VoiceProfileSection({
       setProfiles(list);
     } catch (err) {
       setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to load voice profiles.",
+        err instanceof Error ? err.message : "Failed to load voice profiles.",
       );
     } finally {
       setLoading(false);
@@ -262,7 +259,10 @@ export function VoiceProfileSection({
           agent hears a distinct voice (or you can add one in onboarding).
         </div>
       ) : (
-        <ul className="divide-y divide-border/30" data-testid="voice-profile-list">
+        <ul
+          className="divide-y divide-border/30"
+          data-testid="voice-profile-list"
+        >
           {sorted.map((profile) => {
             const isEditingThis = renameId === profile.id;
             return (
@@ -294,7 +294,10 @@ export function VoiceProfileSection({
                       onChange={(e) => setRenameValue(e.target.value)}
                       onBlur={() => {
                         setRenameId(null);
-                        if (renameValue.trim() && renameValue !== profile.displayName) {
+                        if (
+                          renameValue.trim() &&
+                          renameValue !== profile.displayName
+                        ) {
                           void dispatch({
                             type: "rename",
                             id: profile.id,

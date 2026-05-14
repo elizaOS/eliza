@@ -28,7 +28,7 @@ import {
 	shouldAutoUpdateVoiceModel,
 	VoiceModelDownloadError,
 	type VoiceModelCatalogSource,
-} from "./voice-model-updater";
+} from "../../src/services/voice-model-updater";
 
 function makeVersion(overrides: Partial<VoiceModelVersion>): VoiceModelVersion {
 	return {

@@ -78,11 +78,8 @@
  */
 
 import { existsSync } from "node:fs";
-import {
-	type VisionDescribeBackend,
-	type VisionDescribeLoadArgs,
-} from "./types";
 import { VisionBackendUnavailableError } from "./node-llama-cpp";
+import type { VisionDescribeBackend, VisionDescribeLoadArgs } from "./types";
 
 /**
  * The AOSP binding's mtmd surface, when present. The AOSP plugin

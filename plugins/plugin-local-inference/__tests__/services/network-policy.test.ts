@@ -17,7 +17,7 @@ import {
 	isHeadlessRuntime,
 	NODE_DEFAULT_PROBE,
 	pickActiveProbe,
-} from "./network-policy";
+} from "../../src/services/network-policy";
 
 describe("isHeadlessRuntime", () => {
 	function withEnv<T>(

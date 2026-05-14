@@ -3,10 +3,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  VoiceTierBanner,
-  VOICE_DEVICE_TIERS,
-} from "./VoiceTierBanner";
+import { VOICE_DEVICE_TIERS, VoiceTierBanner } from "./VoiceTierBanner";
 
 afterEach(() => {
   cleanup();

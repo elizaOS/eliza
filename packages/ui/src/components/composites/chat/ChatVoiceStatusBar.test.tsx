@@ -28,10 +28,7 @@ describe("ChatVoiceStatusBar", () => {
 
   it("renders interim transcript", () => {
     render(
-      <ChatVoiceStatusBar
-        status="listening"
-        interimTranscript="hello there"
-      />,
+      <ChatVoiceStatusBar status="listening" interimTranscript="hello there" />,
     );
     const t = screen.getByTestId("chat-voice-interim-transcript");
     expect(t.textContent).toContain("hello there");
