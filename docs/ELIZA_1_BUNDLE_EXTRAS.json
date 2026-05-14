@@ -198,11 +198,51 @@
       "ELIZA_1_GGUF_PLATFORM_PLAN.json under required_files",
       "(vision/mmproj-<tier>.gguf). This block records the size estimates so",
       "the budget table and arbiter can plan resident memory.",
-      "Estimates are for Qwen3-VL mmproj at the per-tier matching quant."
+      "Estimates are for Qwen3-VL mmproj at the per-tier matching quant.",
+      "",
+      "`staged: true` marks tiers whose mmproj GGUF is built locally by the",
+      "publish pipeline (packages/training/scripts/manifest/",
+      "stage_eliza1_bundle_assets.py) rather than mirrored verbatim from a",
+      "standalone HF mmproj GGUF repo. The 0_8b and 2b tiers fall here because",
+      "Qwen3-VL does not publish standalone mmproj GGUFs at these parameter",
+      "counts — the projector lives inside the upstream Qwen3-VL-2B-Instruct",
+      "multimodal archive, and the build step extracts it and re-emits it as",
+      "an mtmd-compatible GGUF at the per-tier quant (Q4_K_M for 0_8b, Q8_0",
+      "for 2b). The 4B+ tiers mirror an already-published standalone mmproj.",
+      "",
+      "The validator (scripts/validate-bundle-plan.mjs) accepts a `staged: true`",
+      "entry here as the resolution path for a hasVision tier whose plan",
+      "required_files lists vision/mmproj-<tier>.gguf — i.e. the bundle plan",
+      "references the file and the build pipeline produces it. Neither path",
+      "treats an empty publish state as a silent fallback."
     ],
     "perTier": {
-      "eliza-1-0_8b": { "estimatedSizeBytes": 220000000, "quant": "Q4_K_M" },
-      "eliza-1-2b":   { "estimatedSizeBytes": 320000000, "quant": "Q8_0"   },
+      "eliza-1-0_8b": {
+        "estimatedSizeBytes": 220000000,
+        "quant": "Q4_K_M",
+        "staged": true,
+        "stagedBuild": {
+          "script": "packages/training/scripts/manifest/stage_eliza1_bundle_assets.py",
+          "step": "stage_vision_mmproj",
+          "sourceModel": "Qwen/Qwen3-VL-2B-Instruct",
+          "quant": "Q4_K_M",
+          "rationale": "Qwen3-VL does not ship a native 0.8B projector. The 0_8b tier reuses the Qwen3-VL-2B-Instruct projector requantized to Q4_K_M to keep the resident footprint under the 2 GB-floor mobile target (~220 MB on disk, ~270 MB resident). The runtime treats the projector as model-family `qwen3-vl` regardless of decoder size; this shared-projector pattern is consistent with how mtmd encodes are decoupled from the text decoder weights.",
+          "license": "licenses/LICENSE.vision"
+        }
+      },
+      "eliza-1-2b": {
+        "estimatedSizeBytes": 320000000,
+        "quant": "Q8_0",
+        "staged": true,
+        "stagedBuild": {
+          "script": "packages/training/scripts/manifest/stage_eliza1_bundle_assets.py",
+          "step": "stage_vision_mmproj",
+          "sourceModel": "Qwen/Qwen3-VL-2B-Instruct",
+          "quant": "Q8_0",
+          "rationale": "The 2B tier's mmproj is the upstream Qwen3-VL-2B-Instruct projector exported as a standalone GGUF at Q8_0. The build step extracts the projector tensors from the upstream HF multimodal archive and re-emits them in mtmd-compatible GGUF; this is `staged` rather than `mirrored` because the upstream HF repo packages the projector inside the multimodal model checkpoint, not as a standalone mmproj GGUF.",
+          "license": "licenses/LICENSE.vision"
+        }
+      },
       "eliza-1-4b":   { "estimatedSizeBytes": 380000000, "quant": "Q8_0"   },
       "eliza-1-9b":   { "estimatedSizeBytes": 600000000, "quant": "Q8_0"   },
       "eliza-1-27b":  { "estimatedSizeBytes": 720000000, "quant": "Q8_0"   },
