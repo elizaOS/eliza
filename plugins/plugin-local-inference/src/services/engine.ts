@@ -285,8 +285,20 @@ interface LlamaChatSession {
 	dispose?(): void | Promise<void>;
 }
 
+interface ChatWrapperLike {
+	readonly wrapperName?: string;
+}
+
+interface ChatWrapperCtor {
+	new (...args: unknown[]): ChatWrapperLike;
+}
+
 interface LlamaChatSessionCtor {
-	new (args: { contextSequence: LlamaContextSequence }): LlamaChatSession;
+	new (args: {
+		contextSequence: LlamaContextSequence;
+		chatWrapper?: ChatWrapperLike;
+		systemPrompt?: string;
+	}): LlamaChatSession;
 }
 
 /**
@@ -336,6 +348,7 @@ interface LlamaBindingModule {
 	getLlama(options?: { gpu?: "auto" | false }): Promise<Llama>;
 	LlamaChatSession: LlamaChatSessionCtor;
 	LlamaGrammar: LlamaGrammarCtor;
+	ChatMLChatWrapper?: ChatWrapperCtor;
 }
 
 /**
@@ -520,8 +533,23 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 			maxSize: poolSize,
 			factory: async () => {
 				const sequence = context.getSequence();
+				// Eliza-1 GGUFs ship a Qwen-VL Jinja chat template that auto-
+				// inserts `<think>\n\n</think>\n\n` when `enable_thinking` is
+				// not passed (and node-llama-cpp's default wrapper renders the
+				// template with that flag unset). The resulting empty `<think>`
+				// pair causes the model to emit EOS immediately on the first
+				// generation, returning an empty string. The model was actually
+				// fine-tuned on plain ChatML, so override to the explicit
+				// ChatMLChatWrapper when the binding exposes it. Falls back to
+				// the default wrapper on bindings that don't have the class
+				// (older node-llama-cpp builds) — those won't hit the bug
+				// because they also don't honour the Jinja template.
+				const ChatMLChatWrapper = bindingModule.ChatMLChatWrapper;
 				return new bindingModule.LlamaChatSession({
 					contextSequence: sequence,
+					...(ChatMLChatWrapper
+						? { chatWrapper: new ChatMLChatWrapper() }
+						: {}),
 				});
 			},
 		});
@@ -687,6 +715,7 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 				"LlamaGrammar" in mod &&
 				typeof (mod as { getLlama: unknown }).getLlama === "function"
 			) {
+				// ChatMLChatWrapper is optional — older builds don't have it.
 				return mod as LlamaBindingModule;
 			}
 			return null;

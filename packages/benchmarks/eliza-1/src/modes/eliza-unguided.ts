@@ -51,11 +51,18 @@ export class ElizaUnguidedMode implements ModeAdapter {
     let firstTokenAt: number | null = null;
     let accumulated = "";
     let reloadedOnce = false;
+    // Eliza-1 is fine-tuned to emit a `<think>...</think>` reasoning trace
+    // before its answer. Without a grammar to short-circuit the trace, the
+    // model will burn the entire `maxTokens` budget on thinking before it
+    // ever produces JSON. Give it enough headroom that the *answer* fits
+    // after the thinking. Guided mode doesn't need this — the grammar
+    // skips thinking entirely.
+    const effectiveMaxTokens = Math.max(req.maxTokens, 1024);
     while (true) {
       try {
         const text = await this.engine.generate({
           prompt,
-          maxTokens: req.maxTokens,
+          maxTokens: effectiveMaxTokens,
           temperature: 0,
           onTextChunk: (chunk: string) => {
             if (firstTokenAt === null) firstTokenAt = Date.now();
