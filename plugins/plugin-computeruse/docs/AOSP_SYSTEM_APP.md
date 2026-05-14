@@ -200,9 +200,9 @@ On a flashed AOSP image:
 1. Confirm `ROLE_ASSISTANT` resolves to Eliza:
    `adb shell settings get secure assistant`.
 2. Trigger the assistant activity:
-   `adb shell am start -a android.intent.action.ASSIST ai.elizaos.app/.ElizaAssistActivity`.
+   `adb shell am start -a android.intent.action.ASSIST -n com.elizaai.eliza/ai.elizaos.app.ElizaAssistActivity`.
 3. Trigger voice command routing:
-   `adb shell am start -a android.intent.action.VOICE_COMMAND ai.elizaos.app/.ElizaAssistActivity`.
+   `adb shell am start -a android.intent.action.VOICE_COMMAND -n com.elizaai.eliza/ai.elizaos.app.ElizaAssistActivity`.
 4. Ask for a reminder, a check-in, and a follow-up. Verify the app/runtime
    creates LifeOps `ScheduledTask` records for each request.
 5. Verify privileged capture/input (`SurfaceControl` / `InputManager`) does not

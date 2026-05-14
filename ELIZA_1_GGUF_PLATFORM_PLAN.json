@@ -11,8 +11,6 @@
       "tts/kokoro/model_q4.onnx",
       "tts/kokoro/tokenizer.json",
       "tts/kokoro/voices/af_bella.bin",
-      "tts/omnivoice-base-Q4_K_M.gguf",
-      "tts/omnivoice-tokenizer-Q4_K_M.gguf",
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
@@ -99,7 +97,6 @@
     ],
     "tier": "0_8b",
     "voice_backends": [
-      "omnivoice",
       "kokoro"
     ],
     "voice_quant": "Q4_K_M"
@@ -342,8 +339,6 @@
       "tts/kokoro/model_q4.onnx",
       "tts/kokoro/tokenizer.json",
       "tts/kokoro/voices/af_bella.bin",
-      "tts/omnivoice-base-Q4_K_M.gguf",
-      "tts/omnivoice-tokenizer-Q4_K_M.gguf",
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
@@ -430,7 +425,6 @@
     ],
     "tier": "2b",
     "voice_backends": [
-      "omnivoice",
       "kokoro"
     ],
     "voice_quant": "Q4_K_M"
@@ -449,8 +443,6 @@
       "tts/kokoro/model_q4.onnx",
       "tts/kokoro/tokenizer.json",
       "tts/kokoro/voices/af_bella.bin",
-      "tts/omnivoice-base-Q4_K_M.gguf",
-      "tts/omnivoice-tokenizer-Q4_K_M.gguf",
       "asr/eliza-1-asr.gguf",
       "asr/eliza-1-asr-mmproj.gguf",
       "vad/silero-vad-v5.1.2.ggml.bin",
@@ -548,7 +540,6 @@
     ],
     "tier": "4b",
     "voice_backends": [
-      "omnivoice",
       "kokoro"
     ],
     "voice_quant": "Q4_K_M"
@@ -651,8 +642,8 @@
     ],
     "tier": "9b",
     "voice_backends": [
-      "omnivoice",
-      "kokoro"
+      "kokoro",
+      "omnivoice"
     ],
     "voice_quant": "Q8_0"
   }

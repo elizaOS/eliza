@@ -57,7 +57,7 @@ struct AskElizaIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/chat", queryItems: [
+        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/ask", queryItems: [
             URLQueryItem(name: "source", value: "ios-app-shortcuts"),
             URLQueryItem(name: "action", value: "ask"),
             URLQueryItem(name: "text", value: question),
@@ -74,7 +74,7 @@ struct StartElizaVoiceIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/chat", queryItems: [
+        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/voice", queryItems: [
             URLQueryItem(name: "source", value: "ios-app-shortcuts"),
             URLQueryItem(name: "action", value: "startVoice"),
         ]))
@@ -94,7 +94,7 @@ struct CreateLifeOpsTaskIntent: AppIntent {
     @MainActor
     func perform() async throws -> some IntentResult {
         // LifeOps persistence is owned by the JS ScheduledTask runner; native only hands off structured input.
-        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/apps/lifeops", queryItems: [
+        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/lifeops/create", queryItems: [
             URLQueryItem(name: "source", value: "ios-app-shortcuts"),
             URLQueryItem(name: "action", value: "createScheduledTask"),
             URLQueryItem(name: "kind", value: "scheduledTaskDraft"),
@@ -112,7 +112,7 @@ struct OpenDailyBriefIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/apps/lifeops", queryItems: [
+        await ElizaShortcutRoute.open(ElizaShortcutRoute.url(path: "/daily-brief", queryItems: [
             URLQueryItem(name: "source", value: "ios-app-shortcuts"),
             URLQueryItem(name: "action", value: "openDailyBrief"),
             URLQueryItem(name: "view", value: "dailyBrief"),

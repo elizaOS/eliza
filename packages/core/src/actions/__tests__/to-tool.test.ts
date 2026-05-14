@@ -9,6 +9,10 @@ import {
 	buildPlannerToolsFromActions,
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
+	HANDLE_RESPONSE_DIRECT_LEGACY_REQUIRED_FIELDS,
+	HANDLE_RESPONSE_DIRECT_SCHEMA,
+	HANDLE_RESPONSE_LEGACY_REQUIRED_FIELDS,
+	HANDLE_RESPONSE_SCHEMA,
 } from "../to-tool.ts";
 
 function makeAction(overrides: Partial<Action>): Action {
@@ -157,6 +161,17 @@ describe("actionToTool", () => {
 		expect(() => actionToTool(makeAction({ name: "1_SEARCH" }))).toThrow(
 			/must match/,
 		);
+	});
+});
+
+describe("legacy HANDLE_RESPONSE schemas", () => {
+	it("uses centralized required-field lists for the fallback schemas", () => {
+		expect(HANDLE_RESPONSE_SCHEMA.required).toEqual([
+			...HANDLE_RESPONSE_LEGACY_REQUIRED_FIELDS,
+		]);
+		expect(HANDLE_RESPONSE_DIRECT_SCHEMA.required).toEqual([
+			...HANDLE_RESPONSE_DIRECT_LEGACY_REQUIRED_FIELDS,
+		]);
 	});
 });
 

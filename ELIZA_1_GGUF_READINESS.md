@@ -16,7 +16,7 @@ Important caveats:
 
 - Text quant: `Q4_K_M`
 - Text quantization matrix: `Q4_K_M`, `Q6_K`, `Q8_0`
-- Voice backends: `omnivoice`, `kokoro`
+- Voice backends: `kokoro`
 - OmniVoice quant: `Q4_K_M`
 - Contexts: `32k`
 - Required platform evidence: `darwin-arm64-metal`, `ios-arm64-metal`, `linux-x64-vulkan`, `android-adreno-vulkan`, `android-mali-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`, `windows-x64-vulkan`, `windows-arm64-cpu`, `windows-arm64-vulkan`
@@ -26,8 +26,6 @@ Required files:
 - `tts/kokoro/model_q4.onnx`
 - `tts/kokoro/tokenizer.json`
 - `tts/kokoro/voices/af_bella.bin`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
@@ -63,7 +61,7 @@ Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-r
 
 - Text quant: `Q4_K_M`
 - Text quantization matrix: `Q4_K_M`, `Q6_K`, `Q8_0`
-- Voice backends: `omnivoice`, `kokoro`
+- Voice backends: `kokoro`
 - OmniVoice quant: `Q4_K_M`
 - Contexts: `32k`
 - Required platform evidence: `darwin-arm64-metal`, `ios-arm64-metal`, `linux-x64-vulkan`, `android-adreno-vulkan`, `android-mali-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`, `windows-x64-vulkan`, `windows-arm64-cpu`, `windows-arm64-vulkan`
@@ -73,8 +71,6 @@ Required files:
 - `tts/kokoro/model_q4.onnx`
 - `tts/kokoro/tokenizer.json`
 - `tts/kokoro/voices/af_bella.bin`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
@@ -110,7 +106,7 @@ Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-r
 
 - Text quant: `Q4_K_M`
 - Text quantization matrix: `Q4_K_M`, `Q6_K`, `Q8_0`
-- Voice backends: `omnivoice`, `kokoro`
+- Voice backends: `kokoro`
 - OmniVoice quant: `Q4_K_M`
 - Contexts: `64k`, `128k`
 - Required platform evidence: `darwin-arm64-metal`, `ios-arm64-metal`, `linux-x64-vulkan`, `android-adreno-vulkan`, `android-mali-vulkan`, `linux-x64-cuda`, `linux-x64-rocm`, `windows-x64-cuda`, `windows-x64-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`
@@ -121,8 +117,6 @@ Required files:
 - `tts/kokoro/model_q4.onnx`
 - `tts/kokoro/tokenizer.json`
 - `tts/kokoro/voices/af_bella.bin`
-- `tts/omnivoice-base-Q4_K_M.gguf`
-- `tts/omnivoice-tokenizer-Q4_K_M.gguf`
 - `asr/eliza-1-asr.gguf`
 - `asr/eliza-1-asr-mmproj.gguf`
 - `vad/silero-vad-v5.1.2.ggml.bin`
@@ -164,7 +158,7 @@ Missing files/evidence: not evaluated in plan-only mode. Re-run with `--bundle-r
 
 - Text quant: `Q4_K_M`
 - Text quantization matrix: `Q4_K_M`, `Q6_K`, `Q8_0`
-- Voice backends: `omnivoice`, `kokoro`
+- Voice backends: `kokoro`, `omnivoice`
 - OmniVoice quant: `Q8_0`
 - Contexts: `64k`, `128k`
 - Required platform evidence: `darwin-arm64-metal`, `linux-x64-vulkan`, `linux-x64-cuda`, `linux-x64-rocm`, `windows-x64-cuda`, `windows-x64-vulkan`, `linux-x64-cpu`, `windows-x64-cpu`
